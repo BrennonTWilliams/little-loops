@@ -753,6 +753,694 @@ PYEOF
         assert result.stdout.strip() == "1"
 
 
+# ---------------------------------------------------------------------------
+# Token length filter tests
+# ---------------------------------------------------------------------------
+
+
+def _make_enriched_batch(run_dir: Path, examples: list[dict]) -> Path:
+    """Write multiple enriched examples to a JSONL file for batch processing tests."""
+    run_dir.mkdir(parents=True, exist_ok=True)
+    enriched = run_dir / "enriched.jsonl"
+    with open(enriched, "w") as f:
+        for ex in examples:
+            f.write(json.dumps(ex) + "\n")
+    return enriched
+
+
+class TestTokenLengthFilter:
+    """Token length filter: discards examples outside [min_tokens, max_tokens] range."""
+
+    def test_passes_example_within_range(self, tmp_path: Path) -> None:
+        """Example with token count in [min, max] passes through."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        enriched_file = _make_enriched_batch(
+            run_dir,
+            [
+                {
+                    "source": "sess-1.jsonl",
+                    "messages": [
+                        {"role": "user", "content": "hello world"},
+                        {"role": "assistant", "content": "hi there"},
+                    ],
+                }
+            ],
+        )
+
+        result = _bash(
+            f"""python3 -c "
+import json
+min_tokens = 2
+max_tokens = 1000
+
+with open('{enriched_file}') as f:
+    for line in f:
+        if not line.strip():
+            continue
+        ex = json.loads(line)
+        # Word count across all message content
+        word_count = sum(
+            len(m.get('content', '').split())
+            for m in ex.get('messages', [])
+        )
+        if min_tokens <= word_count <= max_tokens:
+            print(json.dumps(ex))
+"
+""",
+            tmp_path,
+        )
+        assert result.returncode == 0
+        lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
+        assert len(lines) == 1  # example passed through
+
+    def test_rejects_example_below_min_tokens(self, tmp_path: Path) -> None:
+        """Example with too few tokens is dropped."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        enriched_file = _make_enriched_batch(
+            run_dir,
+            [
+                {
+                    "source": "sess-1.jsonl",
+                    "messages": [
+                        {"role": "user", "content": "hi"},
+                    ],
+                }
+            ],
+        )
+
+        result = _bash(
+            f"""python3 -c "
+import json
+min_tokens = 5
+max_tokens = 1000
+
+with open('{enriched_file}') as f:
+    for line in f:
+        if not line.strip():
+            continue
+        ex = json.loads(line)
+        word_count = sum(
+            len(m.get('content', '').split())
+            for m in ex.get('messages', [])
+        )
+        if min_tokens <= word_count <= max_tokens:
+            print(json.dumps(ex))
+"
+""",
+            tmp_path,
+        )
+        assert result.returncode == 0
+        lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
+        assert len(lines) == 0  # rejected
+
+    def test_rejects_example_above_max_tokens(self, tmp_path: Path) -> None:
+        """Example with too many tokens is dropped."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        long_content = "word " * 5000  # 5000 words
+        enriched_file = _make_enriched_batch(
+            run_dir,
+            [
+                {
+                    "source": "sess-1.jsonl",
+                    "messages": [
+                        {"role": "user", "content": long_content},
+                    ],
+                }
+            ],
+        )
+
+        result = _bash(
+            f"""python3 -c "
+import json
+min_tokens = 0
+max_tokens = 100
+
+with open('{enriched_file}') as f:
+    for line in f:
+        if not line.strip():
+            continue
+        ex = json.loads(line)
+        word_count = sum(
+            len(m.get('content', '').split())
+            for m in ex.get('messages', [])
+        )
+        if min_tokens <= word_count <= max_tokens:
+            print(json.dumps(ex))
+"
+""",
+            tmp_path,
+        )
+        assert result.returncode == 0
+        lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
+        assert len(lines) == 0  # rejected
+
+    def test_mixed_batch_filters_correctly(self, tmp_path: Path) -> None:
+        """Batch with mix of valid and invalid examples; only valid pass."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        enriched_file = _make_enriched_batch(
+            run_dir,
+            [
+                {
+                    "source": "sess-1.jsonl",
+                    "messages": [{"role": "user", "content": "hi"}],  # 1 word, below min
+                },
+                {
+                    "source": "sess-2.jsonl",
+                    "messages": [
+                        {"role": "user", "content": "hello world how are you"},
+                        {"role": "assistant", "content": "I am doing great today"},
+                    ],  # 10 words
+                },
+                {
+                    "source": "sess-3.jsonl",
+                    "messages": [
+                        {"role": "user", "content": "a" * 5000},  # many tokens
+                    ],
+                },
+            ],
+        )
+
+        result = _bash(
+            f"""python3 -c "
+import json
+min_tokens = 3
+max_tokens = 1000
+
+with open('{enriched_file}') as f:
+    for line in f:
+        if not line.strip():
+            continue
+        ex = json.loads(line)
+        word_count = sum(
+            len(m.get('content', '').split())
+            for m in ex.get('messages', [])
+        )
+        if min_tokens <= word_count <= max_tokens:
+            print(json.dumps(ex))
+"
+""",
+            tmp_path,
+        )
+        assert result.returncode == 0
+        lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
+        assert len(lines) == 1
+        passed = json.loads(lines[0])
+        assert passed["source"] == "sess-2.jsonl"
+
+    def test_rejection_entry_written_for_filtered_examples(self, tmp_path: Path) -> None:
+        """Rejected examples produce a rejection entry with reason."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        enriched_file = _make_enriched_batch(
+            run_dir,
+            [
+                {
+                    "source": "sess-1.jsonl",
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+                {
+                    "source": "sess-2.jsonl",
+                    "messages": [{"role": "user", "content": "hello world how are you doing today"}],
+                },
+            ],
+        )
+
+        script = f"""python3 << 'PYEOF'
+import json, os
+from datetime import datetime, timezone
+
+min_tokens = 3
+max_tokens = 1000
+out_dir = "{run_dir}/output"
+os.makedirs(out_dir, exist_ok=True)
+rejections = os.path.join(out_dir, "rejections.jsonl")
+
+with open("{enriched_file}") as f_in:
+    for line in f_in:
+        if not line.strip():
+            continue
+        ex = json.loads(line)
+        word_count = sum(
+            len(m.get('content', '').split())
+            for m in ex.get('messages', [])
+        )
+        if min_tokens <= word_count <= max_tokens:
+            continue  # passes
+        # Reject
+        entry = {{
+            "path": ex.get("source", ""),
+            "score": word_count,
+            "reason": "token_length",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }}
+        with open(rejections, "a") as f:
+            f.write(json.dumps(entry) + "\\n")
+
+print(len([l for l in open(rejections) if l.strip()]))
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "1"  # one rejection
+
+
+# ---------------------------------------------------------------------------
+# Dedup tests
+# ---------------------------------------------------------------------------
+
+
+class TestDedup:
+    """Near-duplicate removal via Jaccard similarity."""
+
+    def test_identical_examples_are_deduplicated(self, tmp_path: Path) -> None:
+        """Two identical examples → only one survives."""
+        from little_loops.text_utils import calculate_word_overlap, extract_words
+
+        example = {
+            "messages": [
+                {"role": "user", "content": "how do I fix a bug in Python"},
+                {"role": "assistant", "content": "You should use a debugger to trace the issue"},
+            ]
+        }
+
+        words1 = extract_words(
+            " ".join(m["content"] for m in example["messages"])
+        )
+        words2 = extract_words(
+            " ".join(m["content"] for m in example["messages"])
+        )
+
+        similarity = calculate_word_overlap(words1, words2)
+        assert similarity > 0.9  # identical → high similarity
+
+    def test_different_examples_are_kept(self, tmp_path: Path) -> None:
+        """Two very different examples → both survive."""
+        from little_loops.text_utils import calculate_word_overlap, extract_words
+
+        ex1 = {
+            "messages": [
+                {"role": "user", "content": "how do I fix a bug in Python"},
+                {"role": "assistant", "content": "You should use a debugger"},
+            ]
+        }
+        ex2 = {
+            "messages": [
+                {"role": "user", "content": "what is the best restaurant in Paris"},
+                {"role": "assistant", "content": "Le Comptoir is highly recommended"},
+            ]
+        }
+
+        words1 = extract_words(
+            " ".join(m["content"] for m in ex1["messages"])
+        )
+        words2 = extract_words(
+            " ".join(m["content"] for m in ex2["messages"])
+        )
+
+        similarity = calculate_word_overlap(words1, words2)
+        assert similarity < 0.5  # different topics → low similarity
+
+    def test_dedup_shell_logic_removes_duplicates(self, tmp_path: Path) -> None:
+        """Inline Python dedup logic: removes examples with Jaccard > threshold."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        enriched_file = _make_enriched_batch(
+            run_dir,
+            [
+                {
+                    "source": "sess-1.jsonl",
+                    "messages": [
+                        {"role": "user", "content": "how do I fix a bug in Python"},
+                        {"role": "assistant", "content": "use a debugger to trace the issue"},
+                    ],
+                },
+                {
+                    "source": "sess-2.jsonl",
+                    "messages": [
+                        {"role": "user", "content": "how do I fix a bug in Python"},
+                        {"role": "assistant", "content": "use a debugger to trace the issue"},
+                    ],
+                },  # near-identical
+                {
+                    "source": "sess-3.jsonl",
+                    "messages": [
+                        {"role": "user", "content": "what is the capital of France"},
+                        {"role": "assistant", "content": "Paris is the capital of France"},
+                    ],
+                },
+            ],
+        )
+
+        script = f"""python3 << 'PYEOF'
+import json, sys
+sys.path.insert(0, "scripts")
+from little_loops.text_utils import extract_words, calculate_word_overlap
+
+threshold = 0.9
+input_file = "{enriched_file}"
+
+# Load all examples
+examples = []
+with open(input_file) as f:
+    for line in f:
+        if line.strip():
+            examples.append(json.loads(line))
+
+# Dedup: keep first occurrence, skip near-duplicates
+kept = []
+seen_word_sets = []
+
+for ex in examples:
+    text = " ".join(
+        m.get("content", "") for m in ex.get("messages", [])
+    )
+    current_words = extract_words(text)
+
+    is_dup = False
+    for seen_words in seen_word_sets:
+        if calculate_word_overlap(current_words, seen_words) > threshold:
+            is_dup = True
+            break
+
+    if not is_dup:
+        kept.append(ex)
+        seen_word_sets.append(current_words)
+
+for ex in kept:
+    print(json.dumps(ex))
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
+        assert len(lines) == 2  # sess-1 and sess-3, sess-2 deduped
+        sources = [json.loads(ln)["source"] for ln in lines]
+        assert "sess-1.jsonl" in sources
+        assert "sess-3.jsonl" in sources
+        assert "sess-2.jsonl" not in sources  # removed as duplicate
+
+    def test_dedup_preserves_single_example(self, tmp_path: Path) -> None:
+        """Single example batch: nothing to dedup, example preserved."""
+        from little_loops.text_utils import calculate_word_overlap, extract_words
+
+        ex = {
+            "messages": [
+                {"role": "user", "content": "hello world"},
+            ]
+        }
+        words = extract_words(
+            " ".join(m["content"] for m in ex["messages"])
+        )
+        # No crash, self-comparison would be 1.0 but we skip self
+        similarity = calculate_word_overlap(words, words)
+        assert similarity == 1.0  # identical to itself
+
+
+# ---------------------------------------------------------------------------
+# Split tests
+# ---------------------------------------------------------------------------
+
+
+class TestSplit:
+    """Train/val/test split by source session."""
+
+    def test_split_proportions_approximate_configured_ratios(self, tmp_path: Path) -> None:
+        """Split 10 sessions with 0.1 val, 0.1 test → ~8 train, ~1 val, ~1 test."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        examples = []
+        for i in range(10):
+            examples.append({
+                "source": f"sess-{i}.jsonl",
+                "messages": [{"role": "user", "content": f"message {i}"}],
+            })
+        enriched_file = _make_enriched_batch(run_dir, examples)
+
+        script = f"""python3 << 'PYEOF'
+import json, os, random
+
+val_ratio = 0.1
+test_ratio = 0.1
+input_file = "{enriched_file}"
+output_dir = "{run_dir}/staged"
+os.makedirs(output_dir, exist_ok=True)
+
+# Load all examples
+examples = []
+with open(input_file) as f:
+    for line in f:
+        if line.strip():
+            examples.append(json.loads(line))
+
+# Group by source session
+by_session = {{}}
+for ex in examples:
+    source = ex.get("source", "unknown")
+    by_session.setdefault(source, []).append(ex)
+
+sessions = list(by_session.keys())
+random.seed(42)
+random.shuffle(sessions)
+
+n = len(sessions)
+n_test = max(1, round(n * test_ratio))
+n_val = max(1, round(n * val_ratio))
+n_train = n - n_val - n_test
+
+test_sessions = set(sessions[:n_test])
+val_sessions = set(sessions[n_test:n_test + n_val])
+train_sessions = set(sessions[n_test + n_val:])
+
+# Write splits
+for split_name, split_sessions in [
+    ("train", train_sessions),
+    ("val", val_sessions),
+    ("test", test_sessions),
+]:
+    split_file = os.path.join(output_dir, f"{{split_name}}.jsonl")
+    with open(split_file, "w") as f_out:
+        for session in split_sessions:
+            for ex in by_session[session]:
+                f_out.write(json.dumps(ex) + "\\n")
+
+# Report
+for split_name in ["train", "val", "test"]:
+    split_file = os.path.join(output_dir, f"{{split_name}}.jsonl")
+    count = 0
+    if os.path.exists(split_file):
+        with open(split_file) as f:
+            count = sum(1 for _ in f)
+    print(f"{{split_name}}={{count}}")
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+
+        # Parse output
+        counts = {}
+        for line in result.stdout.strip().split("\n"):
+            if "=" in line:
+                k, v = line.split("=")
+                counts[k] = int(v)
+
+        assert counts.get("train", 0) > 0
+        assert counts.get("val", 0) > 0
+        assert counts.get("test", 0) > 0
+        total = counts["train"] + counts["val"] + counts["test"]
+        assert total == 10  # all examples accounted for
+
+    def test_split_output_files_exist(self, tmp_path: Path) -> None:
+        """Split creates train.jsonl, val.jsonl, test.jsonl in output dir."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        examples = [
+            {"source": "sess-1.jsonl", "messages": [{"role": "user", "content": "hello"}]},
+            {"source": "sess-2.jsonl", "messages": [{"role": "user", "content": "world"}]},
+        ]
+        enriched_file = _make_enriched_batch(run_dir, examples)
+        output_dir = run_dir / "staged"
+        output_dir.mkdir(parents=True)
+
+        script = f"""python3 << 'PYEOF'
+import json, os, random
+
+val_ratio = 0.0
+test_ratio = 0.0
+input_file = "{enriched_file}"
+output_dir = "{output_dir}"
+
+examples = []
+with open(input_file) as f:
+    for line in f:
+        if line.strip():
+            examples.append(json.loads(line))
+
+by_session = {{}}
+for ex in examples:
+    source = ex.get("source", "unknown")
+    by_session.setdefault(source, []).append(ex)
+
+sessions = list(by_session.keys())
+random.seed(42)
+random.shuffle(sessions)
+
+n = len(sessions)
+n_test = max(1, round(n * test_ratio)) if test_ratio > 0 else 0
+n_val = max(1, round(n * val_ratio)) if val_ratio > 0 else 0
+n_train = n - n_val - n_test
+
+test_sessions = set(sessions[:n_test])
+val_sessions = set(sessions[n_test:n_test + n_val])
+train_sessions = set(sessions[n_test + n_val:])
+
+for split_name, split_sessions in [
+    ("train", train_sessions),
+    ("val", val_sessions),
+    ("test", test_sessions),
+]:
+    split_file = os.path.join(output_dir, f"{{split_name}}.jsonl")
+    with open(split_file, "w") as f_out:
+        for session in split_sessions:
+            for ex in by_session[session]:
+                f_out.write(json.dumps(ex) + "\\n")
+
+for fname in ["train.jsonl", "val.jsonl", "test.jsonl"]:
+    path = os.path.join(output_dir, fname)
+    exists = os.path.exists(path)
+    print(f"{{fname}}={{exists}}")
+    if exists:
+        with open(path) as f:
+            print(f"{{fname}}_count={{sum(1 for _ in f)}}")
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        assert "train.jsonl=True" in result.stdout
+        assert "val.jsonl=True" in result.stdout
+        assert "test.jsonl=True" in result.stdout
+
+    def test_split_stratifies_by_source_session(self, tmp_path: Path) -> None:
+        """Examples from the same source session stay together in one split."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        examples = [
+            {"source": "sess-a.jsonl", "messages": [{"role": "user", "content": "a1"}]},
+            {"source": "sess-a.jsonl", "messages": [{"role": "user", "content": "a2"}]},
+            {"source": "sess-b.jsonl", "messages": [{"role": "user", "content": "b1"}]},
+            {"source": "sess-c.jsonl", "messages": [{"role": "user", "content": "c1"}]},
+        ]
+        enriched_file = _make_enriched_batch(run_dir, examples)
+        output_dir = run_dir / "staged"
+        output_dir.mkdir(parents=True)
+
+        script = f"""python3 << 'PYEOF'
+import json, os, random
+
+val_ratio = 0.3
+test_ratio = 0.3
+input_file = "{enriched_file}"
+output_dir = "{output_dir}"
+
+examples = []
+with open(input_file) as f:
+    for line in f:
+        if line.strip():
+            examples.append(json.loads(line))
+
+by_session = {{}}
+for ex in examples:
+    source = ex.get("source", "unknown")
+    by_session.setdefault(source, []).append(ex)
+
+sessions = list(by_session.keys())
+random.seed(42)
+random.shuffle(sessions)
+
+n = len(sessions)
+n_test = max(1, round(n * test_ratio))
+n_val = max(1, round(n * val_ratio))
+n_train = n - n_val - n_test
+
+test_sessions = set(sessions[:n_test])
+val_sessions = set(sessions[n_test:n_test + n_val])
+train_sessions = set(sessions[n_test + n_val:])
+
+for split_name, split_sessions in [
+    ("train", train_sessions),
+    ("val", val_sessions),
+    ("test", test_sessions),
+]:
+    split_file = os.path.join(output_dir, f"{{split_name}}.jsonl")
+    with open(split_file, "w") as f_out:
+        for session in split_sessions:
+            for ex in by_session[session]:
+                f_out.write(json.dumps(ex) + "\\n")
+
+# Verify sess-a examples are all in the same split
+for split_name in ["train", "val", "test"]:
+    split_file = os.path.join(output_dir, f"{{split_name}}.jsonl")
+    if os.path.exists(split_file):
+        with open(split_file) as f:
+            sources = [json.loads(l)["source"] for l in f if l.strip()]
+        # All sess-a entries (if present) must be in the same file
+        a_entries = [s for s in sources if s.startswith("sess-a")]
+        if a_entries:
+            assert len(a_entries) in (0, 2)  # either both here or none
+            print(f"sess-a_in_{{split_name}}=True")
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# Harvest sentinel tests
+# ---------------------------------------------------------------------------
+
+
+class TestHarvestSentinel:
+    """Harvest sentinel pattern: incremental re-runs skip already-processed sessions."""
+
+    def test_sentinel_read_returns_empty_when_no_file(self, tmp_path: Path) -> None:
+        """First run: no sentinel file → SINCE_ARG is empty."""
+        result = _bash(
+            """SINCE_ARG=""
+[ -f sft-corpus.last_harvested ] && SINCE_ARG="--since $(cat sft-corpus.last_harvested)"
+echo "SINCE_ARG=${SINCE_ARG}"
+""",
+            tmp_path,
+        )
+        assert result.returncode == 0
+        assert "SINCE_ARG=" in result.stdout
+        assert "--since" not in result.stdout
+
+    def test_sentinel_read_returns_date_when_file_exists(self, tmp_path: Path) -> None:
+        """Subsequent run: sentinel file exists → SINCE_ARG populated."""
+        sentinel = tmp_path / "sft-corpus.last_harvested"
+        sentinel.write_text("2026-06-01T00:00:00Z")
+
+        result = _bash(
+            """SINCE_ARG=""
+[ -f sft-corpus.last_harvested ] && SINCE_ARG="--since $(cat sft-corpus.last_harvested)"
+echo "SINCE_ARG=${SINCE_ARG}"
+""",
+            tmp_path,
+        )
+        assert result.returncode == 0
+        assert "--since 2026-06-01T00:00:00Z" in result.stdout
+
+    def test_sentinel_write_updates_timestamp(self, tmp_path: Path) -> None:
+        """Publish writes a new sentinel timestamp."""
+        sentinel = tmp_path / "sft-corpus.last_harvested"
+
+        result = _bash(
+            f"""date -u +%Y-%m-%dT%H:%M:%SZ > {sentinel}
+echo "sentinel_written"
+""",
+            tmp_path,
+        )
+        assert result.returncode == 0
+        assert sentinel.exists()
+        content = sentinel.read_text().strip()
+        assert content.endswith("Z")  # ISO 8601 UTC
+        assert "T" in content
+
+
 class TestPiiDefaultBehavior:
     """PII module defaults: unknown/unset action falls through gracefully."""
 

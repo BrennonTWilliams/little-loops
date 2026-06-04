@@ -12,34 +12,44 @@ description: |
   modifications) via lookup_session_metadata(), filter with four opt-in quality
   predicates, track rejections, and publish a quality-gated SFT training corpus.
 initial: stage
-max_iterations: 30
+max_iterations: 40
 timeout: 3600               # 1-hour wall clock limit
 on_handoff: spawn
 context:
-  data_dir: "data/sessions"             # directory with session UUID.jsonl files
+  data_dir: "data/sessions"             # directory with session UUID.jsonl files (legacy JSONL path)
   output_dir: "data/corpus"             # final corpus + rejections output directory
+  sft_format: "chatml"                  # chatml | alpaca | sharegpt — SFT output format
+  max_turns: 20                         # max turns per conversation window
+  min_tokens: 50                        # discard very short exchanges (word-count proxy)
+  max_tokens: 4096                      # discard context-overflow examples (word-count proxy)
   require_issue_outcome: false          # drop sessions where no issue was closed
   exclude_user_corrections: false       # drop sessions with user corrections
   min_tool_invocations: 0               # drop sessions below this tool-call count
   require_file_modifications: false     # drop sessions with zero file modifications
   pii_action: "flag"                    # flag | redact | discard — PII handling mode
+  val_ratio: 0.1                        # fraction of sessions for validation split
+  test_ratio: 0.1                       # fraction of sessions for test split
+  schema_path: "schemas/sft.json"       # schema for dataset-curation validation
+  dedup_threshold: 0.9                  # Jaccard similarity threshold for near-duplicate removal
 states:
 
   # -------------------------------------------------------------------
-  # Stage: collect session JSONL files into a raw corpus
+  # Stage: collect session transcripts via ll-messages DB-first ingestion
+  # with harvest sentinel for incremental re-runs.
   # -------------------------------------------------------------------
   stage:
     action_type: shell
     action: |
       DIR="${context.run_dir}"
       mkdir -p "$DIR"
-      DATA_DIR="${context.data_dir}"
       OUTPUT="$DIR/raw.jsonl"
-      if [ -d "$DATA_DIR" ]; then
-        cat "$DATA_DIR"/*.jsonl > "$OUTPUT" 2>/dev/null || touch "$OUTPUT"
-      else
-        touch "$OUTPUT"
-      fi
+      SINCE_ARG=""
+      [ -f sft-corpus.last_harvested ] && SINCE_ARG="--since $(cat sft-corpus.last_harvested)"
+      ll-messages --sft-format ${context.sft_format} \
+        --reader db \
+        --context-window ${context.max_turns} \
+        $SINCE_ARG \
+        --stdout > "$OUTPUT" 2>/dev/null || touch "$OUTPUT"
       echo "$OUTPUT"
     capture: stage_output
     next: enrich
@@ -293,7 +303,7 @@ states:
       type: output_numeric
       operator: eq
       target: 1
-    on_yes: publish
+    on_yes: check_token_length
     on_no: reject_pii
 
   reject_pii:
@@ -314,10 +324,215 @@ states:
           f.write(json.dumps(entry) + '\n')
       print('rejected: pii_detected')
       "
+    next: check_token_length
+
+  # -------------------------------------------------------------------
+  # Token-length filter: discard examples outside [min_tokens, max_tokens].
+  # Processes ALL enriched examples (unlike predicate checks which gate on
+  # the first example only). Writes passing examples to token_filtered.jsonl.
+  # -------------------------------------------------------------------
+  check_token_length:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os
+      from datetime import datetime, timezone
+
+      min_tokens = ${context.min_tokens}
+      max_tokens = ${context.max_tokens}
+      input_file = "${captured.enrich_output.output}"
+      output_file = "${context.run_dir}/token_filtered.jsonl"
+      out_dir = "${context.output_dir}"
+      os.makedirs(out_dir, exist_ok=True)
+
+      passed = 0
+      with open(input_file) as f_in, open(output_file, "w") as f_out:
+          for line in f_in:
+              if not line.strip():
+                  continue
+              ex = json.loads(line)
+              word_count = sum(
+                  len(m.get('content', '').split())
+                  for m in ex.get('messages', [])
+              )
+              if min_tokens <= word_count <= max_tokens:
+                  f_out.write(json.dumps(ex) + "\n")
+                  passed += 1
+              else:
+                  entry = {
+                      "path": ex.get("source", ""),
+                      "score": word_count,
+                      "reason": "token_length",
+                      "timestamp": datetime.now(timezone.utc).isoformat(),
+                  }
+                  with open(os.path.join(out_dir, "rejections.jsonl"), "a") as rf:
+                      rf.write(json.dumps(entry) + "\n")
+
+      print(passed)
+      PYEOF
+    capture: token_filter_result
+    evaluate:
+      type: output_numeric
+      operator: gt
+      target: 0
+    on_yes: dedup
+    on_no: reject_token_length
+
+  reject_token_length:
+    action_type: shell
+    action: |
+      echo "rejected: all examples outside token length range [${context.min_tokens}, ${context.max_tokens}]"
     next: publish
 
   # -------------------------------------------------------------------
-  # Publish: aggregate stats and write final corpus
+  # Dedup: remove near-duplicate examples by Jaccard similarity.
+  # Uses text_utils.extract_words() + calculate_word_overlap().
+  # Keeps first occurrence; skips examples with Jaccard > dedup_threshold.
+  # -------------------------------------------------------------------
+  dedup:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, sys
+      sys.path.insert(0, "scripts")
+      from little_loops.text_utils import extract_words, calculate_word_overlap
+
+      threshold = float("${context.dedup_threshold}")
+      input_file = "${context.run_dir}/token_filtered.jsonl"
+      output_file = "${context.run_dir}/deduped.jsonl"
+
+      examples = []
+      if not __import__("os").path.exists(input_file):
+          print(0)
+          exit()
+
+      with open(input_file) as f:
+          for line in f:
+              if line.strip():
+                  examples.append(json.loads(line))
+
+      kept = []
+      seen_word_sets = []
+      duplicates = 0
+
+      for ex in examples:
+          text = " ".join(
+              m.get("content", "") for m in ex.get("messages", [])
+          )
+          current_words = extract_words(text)
+
+          is_dup = False
+          for seen_words in seen_word_sets:
+              if calculate_word_overlap(current_words, seen_words) > threshold:
+                  is_dup = True
+                  break
+
+          if not is_dup:
+              kept.append(ex)
+              seen_word_sets.append(current_words)
+          else:
+              duplicates += 1
+
+      with open(output_file, "w") as f_out:
+          for ex in kept:
+              f_out.write(json.dumps(ex) + "\n")
+
+      print(len(kept))
+      PYEOF
+    capture: dedup_result
+    evaluate:
+      type: output_numeric
+      operator: gt
+      target: 0
+    on_yes: split
+    on_no: publish
+
+  # -------------------------------------------------------------------
+  # Split: stratify by source session, write train/val/test to staged dir.
+  # Uses a fixed random seed (42) for reproducible splits.
+  # -------------------------------------------------------------------
+  split:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os, random
+
+      val_ratio = float("${context.val_ratio}")
+      test_ratio = float("${context.test_ratio}")
+      input_file = "${context.run_dir}/deduped.jsonl"
+      output_dir = "${context.output_dir}/staged"
+      os.makedirs(output_dir, exist_ok=True)
+
+      examples = []
+      if os.path.exists(input_file):
+          with open(input_file) as f:
+              for line in f:
+                  if line.strip():
+                      examples.append(json.loads(line))
+
+      if not examples:
+          for split_name in ["train", "val", "test"]:
+              with open(os.path.join(output_dir, f"{split_name}.jsonl"), "w") as f:
+                  pass
+          print("train=0 val=0 test=0")
+          exit()
+
+      # Group by source session
+      by_session = {}
+      for ex in examples:
+          source = ex.get("source", "unknown")
+          by_session.setdefault(source, []).append(ex)
+
+      sessions = list(by_session.keys())
+      random.seed(42)
+      random.shuffle(sessions)
+
+      n = len(sessions)
+      n_test = max(1, round(n * test_ratio)) if test_ratio > 0 else 0
+      n_val = max(1, round(n * val_ratio)) if val_ratio > 0 else 0
+      n_train = n - n_val - n_test
+
+      test_sessions = set(sessions[:n_test])
+      val_sessions = set(sessions[n_test:n_test + n_val])
+      train_sessions = set(sessions[n_test + n_val:])
+
+      counts = {}
+      for split_name, split_sessions in [
+          ("train", train_sessions),
+          ("val", val_sessions),
+          ("test", test_sessions),
+      ]:
+          split_file = os.path.join(output_dir, f"{split_name}.jsonl")
+          count = 0
+          with open(split_file, "w") as f_out:
+              for session in split_sessions:
+                  for ex in by_session[session]:
+                      f_out.write(json.dumps(ex) + "\n")
+                      count += 1
+          counts[split_name] = count
+
+      print(f"train={counts['train']} val={counts['val']} test={counts['test']}")
+      PYEOF
+    capture: split_result
+    next: curate
+
+  # -------------------------------------------------------------------
+  # Curate: hand off to dataset-curation for quality validation + publish.
+  # Uses Option B wiring — explicit with: bindings via ParameterSpec.
+  # dataset-curation.yaml parameters: block is already provisioned (ENH-1949).
+  # -------------------------------------------------------------------
+  curate:
+    loop: dataset-curation
+    with:
+      data_dir: "${context.output_dir}/staged"
+      output_dir: "${context.output_dir}"
+      schema_path: "${context.schema_path}"
+    on_success: publish
+    on_failure: done
+
+  # -------------------------------------------------------------------
+  # Publish: aggregate stats, write manifest, and update harvest sentinel
+  # for incremental re-runs.
   # -------------------------------------------------------------------
   publish:
     action_type: shell
@@ -359,6 +574,15 @@ states:
       }
       with open(out_dir / "manifest.json", "w") as f:
           json.dump(manifest, f, indent=2)
+
+      # Update harvest sentinel for incremental re-runs
+      import subprocess
+      sentinel = subprocess.run(
+          ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"],
+          capture_output=True, text=True
+      )
+      with open("sft-corpus.last_harvested", "w") as sf:
+          sf.write(sentinel.stdout.strip())
 
       print(f"PUBLISHED={accepted}")
       PYEOF
