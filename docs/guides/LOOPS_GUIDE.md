@@ -445,6 +445,9 @@ ll-loop run integrate-sdk --context target="anthropic" --context goal="streaming
 | `deep-research-arxiv` | Arxiv-only sibling of `deep-research` — constrains web search to `site:arxiv.org`, scores sources on relevance + recency (derived from arxiv submission date) instead of credibility, and emits an arxiv-ID-keyed sources table plus a `## BibTeX` section ready to drop into a `.bib` file; delegates inner FSM chain to `oracles/research-coverage` with `academic_mode=true` (ENH-1876) |
 | `rn-plan` | Recursive task planning with self-scoring rubric — accepts a natural language task description, generates a 8-dimension rubric (breadth, depth, complexity, clarity, consistency, logic_strategy, feasibility, testability, risk_mitigation), then iteratively researches and refines the plan until all dimensions reach VERY-HIGH |
 | `rn-refine` | Recursive refinement loop for an existing plan document — accepts a path to a plan `.md` file, calibrates a 9-dimension rubric to the plan's current state, then iteratively researches and refines until all dimensions reach VERY-HIGH |
+| `rn-implement` | Queue orchestrator for recursive plan-and-implement — manages a depth-bounded issue queue, delegating per-issue remediation to `rn-remediate` and decomposition to `rn-decompose` |
+| `rn-decompose` | Sub-loop for issue decomposition (size review → child detection → enqueue with cycle detection), extracted from `rn-implement` Phase 5 |
+| `rn-remediate` | Sub-loop for iterative deepening remediation cycle (diagnose → remediate → converge), extracted from `rn-implement` |
 
 Run:
 ```bash
@@ -553,6 +556,114 @@ init             (shell: validate plan_file exists, copy to run_dir/plan.md)
 
 - **In-place update**: On completion, the loop overwrites the **original** plan file (the path passed to `ll-loop run rn-refine`) with the refined content. No manual copy from `.loops/` is needed. The `plan.md` under the run directory is kept as a working-copy reference you can diff against or delete.
 - **Report state**: Prints `diff` commands comparing the original file against the working copy, so you can review changes before discarding the reference copy.
+
+<!-- TODO: update-docs stub — FEAT-1933 / ENH-1936 / ENH-1938 / ENH-1939 / ENH-1940 — drafted 2026-06-04 -->
+### `rn-implement` — Queue Orchestrator for Recursive Plan-and-Implement
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+
+**Technique**: Queue orchestrator that manages a depth-bounded issue queue. Accepts an issue ID, initialises the queue, then loops: dequeue an issue → depth gate → delegate remediation to `rn-remediate` → on failure, delegate decomposition to `rn-decompose` → enqueue children with cycle detection → repeat until queue is empty or `max_iterations` is exhausted. Domain logic (diagnosis, dimensional routing, convergence detection) lives in the delegated sub-loops.
+
+**When to use**: When an issue is too large for a single implementation pass and needs recursive decomposition — the issue is split into children, each child is independently remediated, and any child that still fails is further decomposed. This replaces the old monolithic implementation approach with a structured divide-and-conquer strategy.
+
+**Usage:**
+
+```bash
+ll-loop run rn-implement "<issue-id>"
+```
+
+**Sub-loop delegation:**
+
+| Sub-loop | Role | Invoked when |
+|----------|------|-------------|
+| `rn-remediate` | Diagnose → remediate → converge on a single issue | Every dequeued issue |
+| `rn-decompose` | Size review → child detection → enqueue with cycle detection | Remediation fails or stalls |
+
+**FSM flow:**
+
+```
+init → dequeue → depth_gate → run_remediate
+  on_yes (PASS)          → dequeue_next
+  on_no  (FAIL/STALLED)  → run_decompose
+    on_yes (children enqueued) → dequeue_next
+    on_no  (no children found) → skip_issue
+  on_error               → skip_issue
+→ report → done
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `max_depth` | `3` | Maximum decomposition depth (prevents infinite recursion) |
+| `readiness_threshold` | `0.8` | Confidence threshold for issue readiness |
+| `outcome_threshold` | `0.8` | Confidence threshold for implementation success |
+| `max_remediation_passes` | `3` | Maximum remediation attempts per issue before escalation to decomposition |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-implement-{timestamp}/`) |
+
+See individual sub-loop sections below for their context variables and FSM flows.
+
+### `rn-decompose` — Issue Decomposition Sub-Loop
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+
+**Technique**: Sub-loop extracted from `rn-implement` Phase 5. Accepts an issue ID and runs size review → child detection → enqueue with cycle detection. Splits oversized issues into smaller child issues, writing each to `.issues/` and returning the list for the parent orchestrator to enqueue.
+
+**When to use**: Standalone when you suspect an issue is too large and want to decompose it before implementation. Also invoked automatically by `rn-implement` when remediation fails.
+
+**Usage:**
+
+```bash
+# Standalone decomposition
+ll-loop run rn-decompose "<issue-id>"
+
+# Invoked by parent rn-implement with context
+ll-loop run rn-decompose "<issue-id>" \
+  --context parent_depth=1 \
+  --context run_dir=.loops/runs/rn-implement-20260604T130000/
+```
+
+**Output**: Creates child issue files in `.issues/` and returns their IDs for parent queue enqueuing.
+
+### `rn-remediate` — Iterative Deepening Remediation Sub-Loop
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+
+**Technique**: Sub-loop extracted from `rn-implement`. Runs an iterative deepening remediation cycle on a single issue: diagnose → remediate → re-assess → check convergence → loop until PASS, budget exhaustion, or STALLED. Terminates with `done` (issue implemented) or `failed` (escalate to parent for decomposition).
+
+**When to use**: Standalone when you want focused iterative remediation on a single issue. Also invoked automatically by `rn-implement` for each dequeued issue.
+
+**Usage:**
+
+```bash
+# Standalone remediation
+ll-loop run rn-remediate "<issue-id>"
+
+# With custom thresholds
+ll-loop run rn-remediate "<issue-id>" \
+  --context readiness_threshold=0.9 \
+  --context max_remediation_passes=5
+```
+
+**FSM flow:**
+
+```
+init → diagnose → remediate → re_assess → check_convergence
+  on_yes (PASS)    → done
+  on_no  (ITERATE) → diagnose (next pass)
+  on_stalled        → failed (escalate to decomposition)
+  on_error          → failed
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `readiness_threshold` | `0.8` | Minimum confidence to proceed with implementation |
+| `outcome_threshold` | `0.8` | Minimum confidence to accept implementation as done |
+| `max_remediation_passes` | `3` | Maximum remediation attempts before escalation |
+| `run_dir` | runner-injected | Per-run artifact directory |
+<!-- END TODO stub -->
 
 **Issue Management**
 

@@ -49,7 +49,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports: `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711) dataclasses; `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue(issue_id, *, limit, db)` (ENH-1711), `issue_effort(issue_id, *, db)`, `recent_issue_velocity(limit, *, db)` (ENH-1905) query functions. All functions return empty lists or `None` on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports: `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711) dataclasses; `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue(issue_id, *, limit, db)` (ENH-1711), `issue_effort(issue_id, *, db)`, `recent_issue_velocity(limit, *, db)` (ENH-1905), `lookup_session_metadata(session_id, *, db)` (ENH-1943), `conversation_turns(db_path, *, since, context_window)` (ENH-1942) query functions. All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -5981,6 +5981,8 @@ from little_loops.history_reader import (
     search,
     related_issue_events,
     sessions_for_issue,
+    lookup_session_metadata,
+    conversation_turns,
 )
 ```
 
@@ -6161,6 +6163,55 @@ Return sessions that co-occurred with *issue_id*'s active period.
 - `db` — path to the SQLite database (default: `.ll/history.db`)
 
 **Returns:** List of `SessionRef` instances ordered by `first_message_ts DESC`. Queries the `issue_sessions` VIEW (v5 schema migration, ENH-1711). Returns `[]` when the view is absent (pre-v5 schema), the issue has no recorded sessions, or the database is unavailable.
+
+<!-- TODO: update-docs stub — ENH-1943 / ENH-1942 — drafted 2026-06-04 -->
+### lookup_session_metadata
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+
+```python
+def lookup_session_metadata(
+    session_id: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> dict
+```
+
+Return session-quality metadata for a session ID (ENH-1943).
+
+**Parameters:**
+- `session_id` — the session UUID to query
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+
+**Returns:** `dict` with keys: `has_corrections` (bool), `issue_outcome` (str|None — transition value when an issue was closed in this session), `tool_count` (int), `files_modified` (int), `loop_outcome` (str|None — always None until `loop_events` gains a `session_id` column). Returns empty `{}` when the DB is missing, empty, or lacks relevant tables.
+
+**Used by:** `sft-corpus` loop (enrich state) to batch-join session-quality signals for SFT corpus filtering.
+
+### conversation_turns
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+
+```python
+def conversation_turns(
+    db_path: Path | str,
+    since: datetime | None = None,
+    context_window: int = 3,
+) -> list[list[tuple[str, str]]]
+```
+
+Return conversation turn-pair windows from `history.db` (ENH-1942).
+
+Queries `message_events` and `assistant_messages` (requires schema ≥ v11), pairs user messages with their assistant responses via temporal adjacency, and groups them into sliding windows of *context_window* turn-pairs each.
+
+**Parameters:**
+- `db_path` — path to `history.db`
+- `since` — only include turns where the user message timestamp is >= this value (optional)
+- `context_window` — number of (user, assistant) turn-pairs per output window (default: 3)
+
+**Returns:** List of conversation windows; each window is a `list[tuple[str, str]]` alternating between `("user", text)` and `("assistant", text)`. Returns `[]` when the database is missing, empty, predates schema v11 (no `assistant_messages` table), or when no turn-pairs match the *since* filter. Callers should fall back to JSONL parsing in that case.
+
+**Used by:** `ll-messages --sft-format` to extract training examples from the session DB instead of raw JSONL logs.
+<!-- END TODO stub -->
 
 ### issue_effort
 
