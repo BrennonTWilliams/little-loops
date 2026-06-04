@@ -143,6 +143,7 @@ def main_history_context() -> int:
         # --effort: print effort/velocity context and exit.
         if args.effort:
             from little_loops.config import BRConfig
+
             cfg = BRConfig(Path.cwd())
             fields = cfg.history.effort_fields
             effort = issue_effort(args.issue_id, db=args.db)
@@ -153,7 +154,7 @@ def main_history_context() -> int:
             print()
             for f in fields:
                 if f not in valid_fields:
-                    logger.warning("history_context: unknown effort field %r — skipping", f)
+                    logger.warning(f"history_context: unknown effort field {f!r} — skipping")
                     continue
                 val = effort.get(f)
                 if val is None:

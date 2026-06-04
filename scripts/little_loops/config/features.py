@@ -441,7 +441,9 @@ class AnalyticsCaptureConfig:
     def from_dict(cls, data: dict[str, Any]) -> AnalyticsCaptureConfig:
         """Create AnalyticsCaptureConfig from dictionary."""
         raw = data.get("correction_patterns", [])
-        correction_patterns = [p for p in raw if isinstance(p, str)] if isinstance(raw, list) else []
+        correction_patterns = (
+            [p for p in raw if isinstance(p, str)] if isinstance(raw, list) else []
+        )
         return cls(
             skills=data.get("skills", ["*"]),
             cli_commands=data.get("cli_commands", ["*"]),
@@ -751,9 +753,7 @@ class HistoryConfig:
     """
 
     velocity_window: int = 10
-    effort_fields: list[str] = field(
-        default_factory=lambda: ["session_count", "cycle_time_days"]
-    )
+    effort_fields: list[str] = field(default_factory=lambda: ["session_count", "cycle_time_days"])
     max_age_days: int | None = None
     planning_skills: list[str] = field(
         default_factory=lambda: ["create-sprint", "scope-epic", "manage-issue", "review-epic"]

@@ -14,7 +14,6 @@ from little_loops.config import (
     AutomationConfig,
     BRConfig,
     CaptureIssueConfig,
-    CompactionConfig,
     CategoryConfig,
     CliColorsConfig,
     CliColorsEdgeLabelsConfig,
@@ -23,6 +22,7 @@ from little_loops.config import (
     CliColorsTypeConfig,
     CliConfig,
     CommandsConfig,
+    CompactionConfig,
     ConfidenceGateConfig,
     DecisionsConfig,
     DependencyMappingConfig,
@@ -1241,7 +1241,9 @@ class TestAnalyticsCaptureConfig:
     def test_correction_patterns_malformed_mixed(self) -> None:
         from little_loops.config.features import AnalyticsCaptureConfig
 
-        cfg = AnalyticsCaptureConfig.from_dict({"correction_patterns": ["valid", 42, None, "also valid"]})
+        cfg = AnalyticsCaptureConfig.from_dict(
+            {"correction_patterns": ["valid", 42, None, "also valid"]}
+        )
         assert cfg.correction_patterns == ["valid", "also valid"]
 
 
@@ -2730,9 +2732,7 @@ class TestHistoryConfig:
         assert cfg.velocity_window == 10
         assert cfg.effort_fields == ["session_count", "cycle_time_days"]
         assert cfg.max_age_days is None
-        assert cfg.planning_skills == [
-            "create-sprint", "scope-epic", "manage-issue", "review-epic"
-        ]
+        assert cfg.planning_skills == ["create-sprint", "scope-epic", "manage-issue", "review-epic"]
         assert isinstance(cfg.session_digest, SessionDigestConfig)
         assert isinstance(cfg.evolution, EvolutionConfig)
         assert isinstance(cfg.go_no_go, GoNoGoConfig)
@@ -2837,7 +2837,10 @@ class TestBRConfigHistoryIntegration:
         assert h["max_age_days"] is None
         assert h["effort_fields"] == ["session_count", "cycle_time_days"]
         assert h["planning_skills"] == [
-            "create-sprint", "scope-epic", "manage-issue", "review-epic"
+            "create-sprint",
+            "scope-epic",
+            "manage-issue",
+            "review-epic",
         ]
         assert h["session_digest"]["enabled"] is False
         assert h["session_digest"]["days"] == 7
@@ -2860,6 +2863,5 @@ class TestBRConfigHistoryIntegration:
         assert h2.max_age_days == config.history.max_age_days
         assert h2.session_digest.enabled == config.history.session_digest.enabled
         assert (
-            h2.evolution.feedback_min_recurrence
-            == config.history.evolution.feedback_min_recurrence
+            h2.evolution.feedback_min_recurrence == config.history.evolution.feedback_min_recurrence
         )

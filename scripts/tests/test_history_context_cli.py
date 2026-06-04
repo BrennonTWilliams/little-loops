@@ -183,9 +183,7 @@ class TestProjectMode:
     def test_project_and_issue_id_mutually_exclusive(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         ensure_db(db)
-        with patch(
-            "sys.argv", ["ll-history-context", "--project", "--db", str(db), "ENH-1708"]
-        ):
+        with patch("sys.argv", ["ll-history-context", "--project", "--db", str(db), "ENH-1708"]):
             with pytest.raises(SystemExit):
                 main_history_context()
 
@@ -193,9 +191,7 @@ class TestProjectMode:
 class TestHistoryContextEffortFlag:
     """Tests for --effort flag in ll-history-context (ENH-1905)."""
 
-    def _setup_issue_session(
-        self, db: Path, issue_id: str, session_id: str, ts: str
-    ) -> None:
+    def _setup_issue_session(self, db: Path, issue_id: str, session_id: str, ts: str) -> None:
         conn = connect(db)
         try:
             conn.execute(

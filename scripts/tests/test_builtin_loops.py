@@ -62,7 +62,8 @@ class TestBuiltinLoopFiles:
             description_warnings = [
                 w
                 for w in warnings
-                if w.severity == ValidationSeverity.WARNING and "No 'description' field" in w.message
+                if w.severity == ValidationSeverity.WARNING
+                and "No 'description' field" in w.message
             ]
             assert not description_warnings, (
                 f"{loop_file.name}: produced description warning: "

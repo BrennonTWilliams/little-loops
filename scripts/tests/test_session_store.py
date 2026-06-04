@@ -274,7 +274,15 @@ class TestBackfill:
     def test_backfill_missing_sources_is_noop(self, tmp_path: Path) -> None:
         db = tmp_path / "session.db"
         counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no")
-        assert counts == {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0, "corrections": 0, "summaries": 0}
+        assert counts == {
+            "issues": 0,
+            "loops": 0,
+            "tools": 0,
+            "messages": 0,
+            "sessions": 0,
+            "corrections": 0,
+            "summaries": 0,
+        }
 
     def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
         jsonl = tmp_path / "session.jsonl"
@@ -1553,7 +1561,9 @@ class TestSchemaV10:
         ensure_db(db)
         conn = sqlite3.connect(str(db))
         try:
-            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
         finally:
             conn.close()
         assert "summary_nodes" in names
@@ -1583,7 +1593,9 @@ class TestSchemaV10:
             ).fetchone()
         finally:
             conn.close()
-        assert row is not None, "idx_summary_nodes_condensed_dedup index must exist after ensure_db()"
+        assert row is not None, (
+            "idx_summary_nodes_condensed_dedup index must exist after ensure_db()"
+        )
 
     def test_summary_nodes_parent_id_index_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1615,7 +1627,9 @@ class TestSchemaV10:
         conn = sqlite3.connect(str(db))
         try:
             version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
         finally:
             conn.close()
         assert int(version[0]) == 10
@@ -1704,8 +1718,7 @@ class TestCompactSession:
             ).fetchall()
             # Single-message fixture → single leaf → no condensed node → parent_id is NULL
             leaf_parent = conn.execute(
-                "SELECT parent_id FROM summary_nodes"
-                " WHERE kind='leaf' AND session_id=?",
+                "SELECT parent_id FROM summary_nodes WHERE kind='leaf' AND session_id=?",
                 (session_id,),
             ).fetchone()
         finally:
@@ -1739,8 +1752,7 @@ class TestCompactSession:
                 (session_id,),
             ).fetchone()["id"]
             leaf_parent_ids = conn.execute(
-                "SELECT parent_id FROM summary_nodes"
-                " WHERE kind='leaf' AND session_id=?",
+                "SELECT parent_id FROM summary_nodes WHERE kind='leaf' AND session_id=?",
                 (session_id,),
             ).fetchall()
         finally:
@@ -1840,9 +1852,7 @@ def _make_completed(
     returncode: int = 0, stdout: str = "", stderr: str = ""
 ) -> subprocess.CompletedProcess:
     """Create a subprocess.CompletedProcess mock result."""
-    return subprocess.CompletedProcess(
-        args=[], returncode=returncode, stdout=stdout, stderr=stderr
-    )
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 def _llm_response(result_text: str) -> str:
@@ -1888,9 +1898,7 @@ class TestSummarizeBlock:
     def test_level_1_accepts_smaller_summary(self) -> None:
         """Level 1: LLM returns a summary smaller than input — accepted immediately."""
         short_summary = "Short summary."
-        with patch(
-            "little_loops.session_store.subprocess.run"
-        ) as mock_run:
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
             mock_run.return_value = _make_completed(
                 returncode=0, stdout=_llm_response(short_summary)
             )
@@ -1903,9 +1911,7 @@ class TestSummarizeBlock:
         """Level 1 summary >= input size → escalates to level 2."""
         verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)  # longer than input
         short_summary = "Short bullet list."
-        with patch(
-            "little_loops.session_store.subprocess.run"
-        ) as mock_run:
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
             # Level 1 returns verbose (long), level 2 returns short
             mock_run.side_effect = [
                 _make_completed(returncode=0, stdout=_llm_response(verbose)),
@@ -1920,9 +1926,7 @@ class TestSummarizeBlock:
         verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
         medium = "Medium summary but still verbose." * 20  # verbose level 2
         # Both levels fail, fall through to truncation
-        with patch(
-            "little_loops.session_store.subprocess.run"
-        ) as mock_run:
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 _make_completed(returncode=0, stdout=_llm_response(verbose)),
                 _make_completed(returncode=0, stdout=_llm_response(medium)),
@@ -1955,12 +1959,8 @@ class TestSummarizeBlock:
 
     def test_level_3_truncation_when_nonzero_returncode(self) -> None:
         """LLM returns non-zero exit code → escalates → truncation."""
-        with patch(
-            "little_loops.session_store.subprocess.run"
-        ) as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=1, stderr="API error"
-            )
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(returncode=1, stderr="API error")
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         assert mock_run.call_count == 2  # both levels tried, both failed
         combined = "\n---\n".join(self.SHORT_INPUT)
@@ -1981,9 +1981,7 @@ class TestSummarizeBlock:
     def test_json_envelope_parsing(self) -> None:
         """The result field is extracted from the JSON envelope, not stored raw."""
         summary_text = "Extracted summary prose."
-        with patch(
-            "little_loops.session_store.subprocess.run"
-        ) as mock_run:
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
             mock_run.return_value = _make_completed(
                 returncode=0, stdout=_llm_response(summary_text)
             )
@@ -1994,15 +1992,9 @@ class TestSummarizeBlock:
 
     def test_model_and_timeout_wired_to_subprocess(self) -> None:
         """model and timeout params flow through to subprocess.run."""
-        with patch(
-            "little_loops.session_store.subprocess.run"
-        ) as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response("ok")
-            )
-            _summarize_block(
-                self.SHORT_INPUT, budget=256, model="haiku", timeout=30
-            )
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response("ok"))
+            _summarize_block(self.SHORT_INPUT, budget=256, model="haiku", timeout=30)
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["timeout"] == 30
         # model flows to build_blocking_json, not directly to subprocess.run;
@@ -2013,9 +2005,7 @@ class TestSummarizeBlock:
         """Escalation produces WARNING log messages."""
         verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
         short_summary = "Short."
-        with patch(
-            "little_loops.session_store.subprocess.run"
-        ) as mock_run:
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 _make_completed(returncode=0, stdout=_llm_response(verbose)),
                 _make_completed(returncode=0, stdout=_llm_response(short_summary)),
@@ -2027,20 +2017,20 @@ class TestSummarizeBlock:
     def test_multiple_messages_joined(self) -> None:
         """Multiple messages are joined with --- separator."""
         # Messages must exceed the 25-token short-circuit guard
-        messages = ["Message one with enough text to pass the guard threshold.",
-                     "Message two also has plenty of content for testing.",
-                     "Message three is similarly substantive in length."]
-        with patch(
-            "little_loops.session_store.subprocess.run"
-        ) as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response("short")
-            )
+        messages = [
+            "Message one with enough text to pass the guard threshold.",
+            "Message two also has plenty of content for testing.",
+            "Message three is similarly substantive in length.",
+        ]
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response("short"))
             _summarize_block(messages, budget=256)
-        # The subprocess.run call args are [inv.binary, *inv.args]
-        # inv.args includes ["--dangerously-skip-permissions", "--output-format", "json", "-p", prompt]
+        # The prompt text appears in the subprocess args regardless of host
+        # convention: Claude Code uses -p <prompt>, Codex appends directly, etc.
         cmd_args = mock_run.call_args[0][0]
-        prompt = cmd_args[cmd_args.index("-p") + 1]
+        prompt_args = [a for a in cmd_args if isinstance(a, str) and "Message one" in a]
+        assert len(prompt_args) == 1, f"Expected one arg containing the prompt, got {prompt_args}"
+        prompt = prompt_args[0]
         assert "Message one" in prompt
         assert "\n---\n" in prompt
         assert "Message three" in prompt

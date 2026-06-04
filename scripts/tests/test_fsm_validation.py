@@ -1894,7 +1894,8 @@ class TestRequiredInputsValidation:
         fsm = self._make_fsm(input_key="topic", required_inputs=[])
         all_errors = validate_fsm(fsm)
         guard_warnings = [
-            e for e in all_errors
+            e
+            for e in all_errors
             if e.severity == ValidationSeverity.WARNING and "required_inputs" in e.path
         ]
         assert len(guard_warnings) == 1
@@ -1904,7 +1905,8 @@ class TestRequiredInputsValidation:
         fsm = self._make_fsm(input_key="topic", required_inputs=["topic"])
         all_errors = validate_fsm(fsm)
         guard_warnings = [
-            e for e in all_errors
+            e
+            for e in all_errors
             if e.severity == ValidationSeverity.WARNING and "required_inputs" in e.path
         ]
         assert guard_warnings == []
@@ -1921,9 +1923,8 @@ class TestValidateFragmentBindings:
     ) -> FSMLoop:
         """Build an FSMLoop with one fragment state for validation testing."""
         from little_loops.fsm.schema import ParameterSpec
-        parsed_params = {
-            name: ParameterSpec.from_dict(spec) for name, spec in parameters.items()
-        }
+
+        parsed_params = {name: ParameterSpec.from_dict(spec) for name, spec in parameters.items()}
         return FSMLoop(
             name="test",
             initial="step",
@@ -1942,6 +1943,7 @@ class TestValidateFragmentBindings:
 
     def test_valid_bindings_no_errors(self, tmp_path: Path) -> None:
         from little_loops.fsm.validation import _validate_fragment_bindings
+
         fsm = self._make_fsm_with_fragment_state(
             "counter",
             bindings={"counter_key": "my_counter"},
@@ -1952,6 +1954,7 @@ class TestValidateFragmentBindings:
 
     def test_unknown_binding_key_flagged(self, tmp_path: Path) -> None:
         from little_loops.fsm.validation import _validate_fragment_bindings
+
         fsm = self._make_fsm_with_fragment_state(
             "counter",
             bindings={"counter_key": "ok", "unknown_param": "oops"},
@@ -1963,6 +1966,7 @@ class TestValidateFragmentBindings:
 
     def test_missing_required_param_flagged(self, tmp_path: Path) -> None:
         from little_loops.fsm.validation import _validate_fragment_bindings
+
         fsm = self._make_fsm_with_fragment_state(
             "counter",
             bindings={},  # counter_key required but not bound
@@ -1975,6 +1979,7 @@ class TestValidateFragmentBindings:
     def test_runner_injected_vars_not_flagged(self, tmp_path: Path) -> None:
         """run_dir, loop_name, started_at are runner-injected and should not be flagged."""
         from little_loops.fsm.validation import _validate_fragment_bindings
+
         fsm = self._make_fsm_with_fragment_state(
             "rubric_score",
             bindings={},  # run_dir NOT bound — but it's runner-injected
@@ -1985,6 +1990,7 @@ class TestValidateFragmentBindings:
 
     def test_type_mismatch_flagged(self, tmp_path: Path) -> None:
         from little_loops.fsm.validation import _validate_fragment_bindings
+
         fsm = self._make_fsm_with_fragment_state(
             "counter",
             bindings={"max_retries": "not_an_integer"},
@@ -1997,6 +2003,7 @@ class TestValidateFragmentBindings:
     def test_interpolated_value_skips_type_check(self, tmp_path: Path) -> None:
         """Values containing ${...} are skipped for type checking (resolved at runtime)."""
         from little_loops.fsm.validation import _validate_fragment_bindings
+
         fsm = self._make_fsm_with_fragment_state(
             "counter",
             bindings={"max_retries": "${context.some_value}"},
@@ -2008,6 +2015,7 @@ class TestValidateFragmentBindings:
     def test_state_without_fragment_parameters_skipped(self, tmp_path: Path) -> None:
         """States with no fragment_parameters are silently skipped."""
         from little_loops.fsm.validation import _validate_fragment_bindings
+
         fsm = FSMLoop(
             name="test",
             initial="step",

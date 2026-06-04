@@ -39,7 +39,9 @@ def _print_capture_section(capture: object) -> None:
     print(f"  {corr_sym}  corrections:          {'enabled' if corrections else 'disabled'}")
     fe_sym = _STATUS_SYMBOLS["full" if file_events else "unsupported"]
     print(f"  {fe_sym}  file_events:          {'enabled' if file_events else 'disabled'}")
-    print(f"  {full}  correction_patterns:  {correction_patterns if correction_patterns else '(none)'}")
+    print(
+        f"  {full}  correction_patterns:  {correction_patterns if correction_patterns else '(none)'}"
+    )
 
 
 def _print_issues_section(issues_cfg: object) -> None:

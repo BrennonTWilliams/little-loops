@@ -7218,6 +7218,7 @@ class TestFragmentParamBinding:
     ) -> StateConfig:
         """Build a StateConfig that looks like it came from a parameterized fragment."""
         from little_loops.fsm.schema import ParameterSpec
+
         parsed_params = {}
         if parameters:
             for name, spec in parameters.items():
@@ -7294,7 +7295,7 @@ class TestFragmentParamBinding:
             parameters={
                 "counter_key": {"type": "string", "required": True},
             },
-            action='echo ${param.counter_key}',
+            action="echo ${param.counter_key}",
             action_type="shell",
             next="done",
         )
@@ -7318,7 +7319,7 @@ class TestFragmentParamBinding:
             "counter",
             bindings={"counter_key": "${context.my_key}"},
             parameters={"counter_key": {"type": "string", "required": True}},
-            action='echo ${param.counter_key}',
+            action="echo ${param.counter_key}",
             action_type="shell",
             capture="out",
             next="done",

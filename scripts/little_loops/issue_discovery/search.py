@@ -258,7 +258,10 @@ def find_existing_issue(
                     issue_title = title_match.group(1)
                     issue_words = _extract_words(issue_title)
                     overlap = _calculate_word_overlap(title_words, issue_words)
-                    if overlap > config.history.capture_issue.dup_overlap_threshold and overlap > best_pass2_score:
+                    if (
+                        overlap > config.history.capture_issue.dup_overlap_threshold
+                        and overlap > best_pass2_score
+                    ):
                         best_pass2_score = overlap
                         best_pass2 = (
                             issue_path,

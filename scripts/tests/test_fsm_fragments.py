@@ -1765,7 +1765,10 @@ class TestFragmentParameterBindings:
 
     def test_with_bindings_become_fragment_bindings(self, tmp_path: Path) -> None:
         """with: on a fragment state is renamed to fragment_bindings."""
-        _lib_dir = self._write_lib(tmp_path, "test.yaml", """
+        _lib_dir = self._write_lib(
+            tmp_path,
+            "test.yaml",
+            """
 fragments:
   my_frag:
     parameters:
@@ -1774,7 +1777,8 @@ fragments:
         required: true
     action: echo ${param.key_name}
     action_type: shell
-""")
+""",
+        )
         raw = {
             "name": "test",
             "initial": "step",
@@ -1797,7 +1801,10 @@ fragments:
 
     def test_fragment_parameters_carried_through(self, tmp_path: Path) -> None:
         """Fragment parameters are stored in the merged state dict."""
-        _lib_dir = self._write_lib(tmp_path, "test.yaml", """
+        _lib_dir = self._write_lib(
+            tmp_path,
+            "test.yaml",
+            """
 fragments:
   counter:
     parameters:
@@ -1809,7 +1816,8 @@ fragments:
         default: 3
     action: echo ${param.counter_key}
     action_type: shell
-""")
+""",
+        )
         raw = {
             "name": "test",
             "initial": "step",
@@ -1833,12 +1841,16 @@ fragments:
 
     def test_no_fragment_bindings_without_with(self, tmp_path: Path) -> None:
         """Fragment state without with: has empty fragment_bindings."""
-        _lib_dir = self._write_lib(tmp_path, "test.yaml", """
+        _lib_dir = self._write_lib(
+            tmp_path,
+            "test.yaml",
+            """
 fragments:
   simple_frag:
     action: echo hello
     action_type: shell
-""")
+""",
+        )
         raw = {
             "name": "test",
             "initial": "step",
@@ -1859,6 +1871,7 @@ fragments:
     def test_retry_counter_has_parameters_in_real_lib(self) -> None:
         """retry_counter in lib/common.yaml has been migrated to use parameters:."""
         import yaml
+
         lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
         with open(lib_path) as f:
             data = yaml.safe_load(f)
@@ -1874,7 +1887,10 @@ fragments:
 
     def test_two_fragment_states_independent_bindings(self, tmp_path: Path) -> None:
         """Two states using same fragment get independent fragment_bindings."""
-        _lib_dir = self._write_lib(tmp_path, "test.yaml", """
+        _lib_dir = self._write_lib(
+            tmp_path,
+            "test.yaml",
+            """
 fragments:
   counter:
     parameters:
@@ -1883,7 +1899,8 @@ fragments:
         required: true
     action: echo ${param.counter_key}
     action_type: shell
-""")
+""",
+        )
         raw = {
             "name": "test",
             "initial": "step1",

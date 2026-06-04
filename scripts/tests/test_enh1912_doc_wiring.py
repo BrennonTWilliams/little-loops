@@ -8,6 +8,7 @@ Asserts that:
 4. LOOPS_GUIDE.md contains an orchestration row in the Common Loop Patterns table
 5. COMMANDS.md contains "orch-router" in the /ll:create-loop type enumeration
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -38,9 +39,7 @@ class TestSkillMdOrchEntries:
 
     def test_step_minus1_orch_router_type(self):
         content = SKILL_MD.read_text()
-        assert "orch-router" in content, (
-            "SKILL.md should reference the 'orch-router' type slug"
-        )
+        assert "orch-router" in content, "SKILL.md should reference the 'orch-router' type slug"
 
     def test_type_mapping_orch_router(self):
         content = SKILL_MD.read_text()

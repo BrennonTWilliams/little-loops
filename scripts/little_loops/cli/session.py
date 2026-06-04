@@ -150,9 +150,7 @@ Examples:
     )
     add_json_arg(expand_parser)
 
-    describe_parser = subparsers.add_parser(
-        "describe", help="Show metadata for a summary node"
-    )
+    describe_parser = subparsers.add_parser("describe", help="Show metadata for a summary node")
     describe_parser.add_argument(
         "node_id", type=int, metavar="NODE_ID", help="Summary node ID to describe"
     )

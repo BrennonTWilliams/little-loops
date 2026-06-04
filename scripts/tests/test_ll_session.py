@@ -598,7 +598,9 @@ class TestGrepExpandDescribe:
         assert result == 0
         assert "No matches" in out
 
-    def test_expand_returns_messages(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_expand_returns_messages(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         db, node_id = self._make_db_with_summary(tmp_path)
         with patch("sys.argv", ["ll-session", "--db", str(db), "expand", str(node_id)]):
             result = main_session()
@@ -627,7 +629,9 @@ class TestGrepExpandDescribe:
         assert result == 0
         assert "leaf" in out
 
-    def test_describe_missing_node(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_describe_missing_node(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         from little_loops.session_store import ensure_db
 
         db = tmp_path / "history.db"

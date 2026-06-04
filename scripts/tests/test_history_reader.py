@@ -593,8 +593,7 @@ class TestIssueEffort:
         db = tmp_path / "test.db"
         ensure_db(db)
         self._setup_issue_session_direct(
-            db, "ENH-1905", "sess-001",
-            "2026-01-10T10:00:00Z", "2026-01-10T10:00:00Z"
+            db, "ENH-1905", "sess-001", "2026-01-10T10:00:00Z", "2026-01-10T10:00:00Z"
         )
         result = issue_effort("ENH-1905", db=db)
         assert result is not None

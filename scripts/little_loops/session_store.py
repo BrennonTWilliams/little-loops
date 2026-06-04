@@ -987,9 +987,7 @@ def _backfill_messages(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int
     return count
 
 
-def mine_corrections_from_messages(
-    conn: sqlite3.Connection, config: dict | None = None
-) -> int:
+def mine_corrections_from_messages(conn: sqlite3.Connection, config: dict | None = None) -> int:
     """Scan ``message_events`` and insert matching rows into ``user_corrections``.
 
     Designed for both the one-time retroactive pass over existing rows and
@@ -1021,7 +1019,14 @@ def mine_corrections_from_messages(
             (ts, session_id, text),
         )
         if cursor.rowcount:
-            _index(conn, content=text, kind="correction", ref=session_id or "", anchor="backfill", ts=ts)
+            _index(
+                conn,
+                content=text,
+                kind="correction",
+                ref=session_id or "",
+                anchor="backfill",
+                ts=ts,
+            )
             count += 1
     return count
 
@@ -1084,9 +1089,7 @@ def _summarize_block(
             est_input,
         )
     else:
-        logger.warning(
-            "_summarize_block: level-1 LLM call failed; escalating to level 2"
-        )
+        logger.warning("_summarize_block: level-1 LLM call failed; escalating to level 2")
     level2_budget = max(budget // 2, 64)
     level2_prompt = (
         "Summarize these session messages as a compact bullet list. Be extremely terse: "
@@ -1106,9 +1109,7 @@ def _summarize_block(
             est_input,
         )
     else:
-        logger.warning(
-            "_summarize_block: level-2 LLM call failed; escalating to level 3"
-        )
+        logger.warning("_summarize_block: level-2 LLM call failed; escalating to level 3")
     # Truncation: min(budget * 4, 2048) chars. The 2048 cap (~512 tokens at 4 chars/token)
     # follows the LCM paper's level-3 constant, providing a strict convergence guarantee.
     max_chars = min(budget * 4, 2048)
@@ -1328,7 +1329,8 @@ def _compact_sessions(
     total = 0
     for row in rows:
         total += _compact_session_conn(
-            conn, row[0],
+            conn,
+            row[0],
             budget=compact_cfg.budget_tokens,
             model=compact_cfg.model,
             timeout=compact_cfg.timeout,
@@ -1357,7 +1359,8 @@ def compact_session(
     conn = connect(db)
     try:
         result = _compact_session_conn(
-            conn, session_id,
+            conn,
+            session_id,
             budget=compact_cfg.budget_tokens,
             model=compact_cfg.model,
             timeout=compact_cfg.timeout,
@@ -1427,8 +1430,13 @@ def backfill(
     loops_dir = loops_dir if loops_dir is not None else Path(".loops")
     conn = connect(db)
     counts: dict[str, int] = {
-        "issues": 0, "loops": 0, "tools": 0, "messages": 0,
-        "sessions": 0, "corrections": 0, "summaries": 0,
+        "issues": 0,
+        "loops": 0,
+        "tools": 0,
+        "messages": 0,
+        "sessions": 0,
+        "corrections": 0,
+        "summaries": 0,
     }
     try:
         if issues_dir.is_dir():

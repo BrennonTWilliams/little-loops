@@ -26,33 +26,23 @@ class TestEpic1707Frontmatter:
 
     def test_enh1909_present(self) -> None:
         content = EPIC_1707.read_text()
-        assert "ENH-1909" in content, (
-            "EPIC-1707 relates_to must include ENH-1909"
-        )
+        assert "ENH-1909" in content, "EPIC-1707 relates_to must include ENH-1909"
 
     def test_enh1911_present(self) -> None:
         content = EPIC_1707.read_text()
-        assert "ENH-1911" in content, (
-            "EPIC-1707 relates_to must include ENH-1911"
-        )
+        assert "ENH-1911" in content, "EPIC-1707 relates_to must include ENH-1911"
 
     def test_enh1913_present(self) -> None:
         content = EPIC_1707.read_text()
-        assert "ENH-1913" in content, (
-            "EPIC-1707 relates_to must include ENH-1913"
-        )
+        assert "ENH-1913" in content, "EPIC-1707 relates_to must include ENH-1913"
 
     def test_enh1914_present(self) -> None:
         content = EPIC_1707.read_text()
-        assert "ENH-1914" in content, (
-            "EPIC-1707 relates_to must include ENH-1914"
-        )
+        assert "ENH-1914" in content, "EPIC-1707 relates_to must include ENH-1914"
 
     def test_enh1916_present(self) -> None:
         content = EPIC_1707.read_text()
-        assert "ENH-1916" in content, (
-            "EPIC-1707 relates_to must include ENH-1916"
-        )
+        assert "ENH-1916" in content, "EPIC-1707 relates_to must include ENH-1916"
 
 
 class TestConfigureSkillMd:

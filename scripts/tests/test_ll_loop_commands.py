@@ -2935,7 +2935,9 @@ states:
         from unittest.mock import patch
 
         monkeypatch.chdir(required_input_loop.parent)
-        with patch.object(sys, "argv", ["ll-loop", "run", "--dry-run", "required-loop", "a nice description"]):
+        with patch.object(
+            sys, "argv", ["ll-loop", "run", "--dry-run", "required-loop", "a nice description"]
+        ):
             from little_loops.cli import main_loop
 
             result = main_loop()

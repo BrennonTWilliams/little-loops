@@ -380,7 +380,9 @@ class TestSessionStartProjectDigest:
         )
         db = in_tmp / ".ll" / "history.db"
         for i in range(20):
-            record_correction(db, f"sess-{i}", f"correction item {i} with some extra text here", "user")
+            record_correction(
+                db, f"sess-{i}", f"correction item {i} with some extra text here", "user"
+            )
 
         result = handle(_event())
         assert result.exit_code == 0
