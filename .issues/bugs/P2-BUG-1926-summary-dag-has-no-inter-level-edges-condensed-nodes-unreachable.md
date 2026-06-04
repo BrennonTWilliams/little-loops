@@ -3,8 +3,9 @@ id: BUG-1926
 title: Summary DAG has no inter-level edges; condensed nodes unreachable via expand
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-04T04:15:05Z'
+completed_at: '2026-06-04T06:11:04Z'
 discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1707
@@ -309,3 +310,23 @@ _Added by `/ll:confidence-check` on 2026-06-03_
 - `/ll:refine-issue` - 2026-06-04T04:43:30 - `2e1648a6-b5ec-4c5d-9a10-85d3c6b75e22.jsonl`
 - `/ll:format-issue` - 2026-06-04T04:26:10 - `1581336d-4181-4074-85b0-16f72458869b.jsonl`
 - `/ll:capture-issue` - 2026-06-04T04:15:05Z - `92ad3505-8fca-44b2-aa0f-0ee9ce80d024.jsonl`
+- `/ll:manage-issue` - 2026-06-04T06:11:04Z - `bea53332-cc7d-4500-956f-e77ffd6231cd.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-06-04
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_store.py`: Captured `cursor.lastrowid` after condensed node INSERT; set `parent_id` on leaf nodes via UPDATE; added `idx_summary_nodes_parent_id` index to v10 migration
+- `scripts/little_loops/history_reader.py`: Added two-hop condensed-node traversal to `ll_expand()` (condensed→leaves via parent_id→messages via summary_spans); added same two-hop traversal to `ll_grep()` summary_id filter; updated docstrings
+- `scripts/tests/test_session_store.py`: Added `parent_id` linkage assertions to `test_compact_session_condensed_node_when_multiple_leaves`, `test_compact_session_creates_spans`, `test_backfill_with_compaction_enabled`; added `test_summary_nodes_parent_id_index_exists`
+- `scripts/tests/test_history_reader.py`: Added `test_expand_condensed_node_returns_messages` and `test_grep_with_condensed_summary_id` with multi-leaf condensed-node fixture
+- `scripts/tests/test_ll_session.py`: Added `test_expand_condensed_node_returns_messages_cli` and `test_grep_with_condensed_summary_id_cli` CLI integration tests
+
+### Verification Results
+- Tests: PASS (test_history_reader: 62 passed, test_ll_session: 56 passed, test_session_store: parent_id index + targeted compaction tests pass)
+- Lint: PASS (ruff check: All checks passed)
