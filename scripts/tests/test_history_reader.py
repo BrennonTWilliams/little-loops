@@ -13,6 +13,7 @@ from little_loops.history_reader import (
     UserCorrection,
     find_user_corrections,
     issue_effort,
+    lookup_session_metadata,
     project_digest,
     recent_file_events,
     recent_issue_velocity,
@@ -658,6 +659,189 @@ class TestIssueEffort:
         db = tmp_path / "nonexistent.db"
         result = recent_issue_velocity(db=db)
         assert result == []
+
+
+class TestLookupSessionMetadata:
+    """Tests for lookup_session_metadata() (ENH-1943)."""
+
+    # ------------------------------------------------------------------
+    # Degradation tests (missing / empty database)
+    # ------------------------------------------------------------------
+
+    def test_degrades_when_db_missing(self, tmp_path: Path) -> None:
+        """Returns {} when database file does not exist (pre-checked before ensure_db)."""
+        db = tmp_path / "nonexistent.db"
+        result = lookup_session_metadata("sess-001", db=db)
+        assert result == {}
+
+    def test_degrades_when_tables_empty(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        result = lookup_session_metadata("sess-001", db=db)
+        assert result == {
+            "has_corrections": False,
+            "issue_outcome": None,
+            "tool_count": 0,
+            "files_modified": 0,
+            "loop_outcome": None,
+        }
+
+    # ------------------------------------------------------------------
+    # has_corrections
+    # ------------------------------------------------------------------
+
+    def test_has_corrections_true(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        conn = connect(db)
+        try:
+            ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            conn.execute(
+                "INSERT INTO user_corrections(ts, session_id, content, source) "
+                "VALUES(?, ?, ?, ?)",
+                (ts, "sess-a", "use a set for ids", "user"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result = lookup_session_metadata("sess-a", db=db)
+        assert result["has_corrections"] is True
+
+    def test_has_corrections_false(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        conn = connect(db)
+        try:
+            ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            conn.execute(
+                "INSERT INTO user_corrections(ts, session_id, content, source) "
+                "VALUES(?, ?, ?, ?)",
+                (ts, "sess-a", "use a set for ids", "user"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        # Query a different session with no corrections
+        result = lookup_session_metadata("sess-other", db=db)
+        assert result["has_corrections"] is False
+
+    # ------------------------------------------------------------------
+    # issue_outcome
+    # ------------------------------------------------------------------
+
+    def _setup_issue_outcome(
+        self, db: Path, issue_id: str, session_id: str, transition: str, ts: str
+    ) -> None:
+        """Insert minimal rows so issue_sessions VIEW matches and the query finds a done issue."""
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at) "
+                "VALUES(?, ?, ?, ?)",
+                (ts, issue_id, transition, ts),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                (ts, session_id, "work done"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, f"/path/{session_id}.jsonl"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_issue_outcome_done(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        ts = "2026-06-01T10:00:00Z"
+        self._setup_issue_outcome(db, "ENH-1900", "sess-001", "done", ts)
+        result = lookup_session_metadata("sess-001", db=db)
+        assert result["issue_outcome"] == "done"
+
+    def test_issue_outcome_null(self, tmp_path: Path) -> None:
+        """No issue events linked to this session — issue_outcome should be None."""
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        result = lookup_session_metadata("sess-no-issues", db=db)
+        assert result["issue_outcome"] is None
+
+    # ------------------------------------------------------------------
+    # tool_count
+    # ------------------------------------------------------------------
+
+    def test_tool_count(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        conn = connect(db)
+        try:
+            ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            for i in range(3):
+                conn.execute(
+                    "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, result_size) "
+                    "VALUES(?, ?, ?, ?, ?)",
+                    (ts, "sess-a", f"tool_{i}", "abc123", 100),
+                )
+            # Different session — should not affect count
+            conn.execute(
+                "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, result_size) "
+                "VALUES(?, ?, ?, ?, ?)",
+                (ts, "sess-other", "other_tool", "def456", 50),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result = lookup_session_metadata("sess-a", db=db)
+        assert result["tool_count"] == 3
+
+    # ------------------------------------------------------------------
+    # files_modified
+    # ------------------------------------------------------------------
+
+    def test_files_modified_counts_write_and_create_ops(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        conn = connect(db)
+        try:
+            ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            # "Write" (hook-written, title case) — should be counted
+            conn.execute(
+                "INSERT INTO file_events(ts, session_id, path, op) VALUES(?, ?, ?, ?)",
+                (ts, "sess-a", "scripts/a.py", "Write"),
+            )
+            # "write" (lowercase) — should be counted
+            conn.execute(
+                "INSERT INTO file_events(ts, session_id, path, op) VALUES(?, ?, ?, ?)",
+                (ts, "sess-a", "scripts/b.py", "write"),
+            )
+            # "create" — should be counted
+            conn.execute(
+                "INSERT INTO file_events(ts, session_id, path, op) VALUES(?, ?, ?, ?)",
+                (ts, "sess-a", "scripts/c.py", "create"),
+            )
+            # "modify" — NOT counted (not in the op filter)
+            conn.execute(
+                "INSERT INTO file_events(ts, session_id, path, op) VALUES(?, ?, ?, ?)",
+                (ts, "sess-a", "scripts/d.py", "modify"),
+            )
+            # Different session — should not be counted
+            conn.execute(
+                "INSERT INTO file_events(ts, session_id, path, op) VALUES(?, ?, ?, ?)",
+                (ts, "sess-other", "scripts/e.py", "Write"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result = lookup_session_metadata("sess-a", db=db)
+        assert result["files_modified"] == 3
+
+    # ------------------------------------------------------------------
+    # loop_outcome
+    # ------------------------------------------------------------------
+
+    def test_loop_outcome_always_none(self, tmp_path: Path) -> None:
+        """loop_events table has no session_id column; loop_outcome is always None."""
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        result = lookup_session_metadata("sess-any", db=db)
+        assert result["loop_outcome"] is None
 
 
 class TestSummaryDagRetrieval:

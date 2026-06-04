@@ -23,6 +23,7 @@ Public API:
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
     issue_effort(issue_id, ...) -> dict | None
     recent_issue_velocity(limit, ...) -> list[dict]
+    lookup_session_metadata(session_id, ...) -> dict
     ll_grep(pattern, ...) -> list[GrepResult]
     ll_expand(summary_id, ...) -> list[dict]
     ll_describe(node_id, ...) -> SummaryNode | None
@@ -428,6 +429,85 @@ def recent_issue_velocity(
         if effort is not None:
             result.append({"issue_id": row["issue_id"], **effort})
     return result
+
+
+def lookup_session_metadata(
+    session_id: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> dict:
+    """Return session-quality metadata dict for a session ID (ENH-1943).
+
+    Returns:
+        dict with keys: ``has_corrections`` (bool), ``issue_outcome`` (str|None),
+        ``tool_count`` (int), ``files_modified`` (int), ``loop_outcome`` (str|None).
+
+        ``loop_outcome`` is always ``None`` until ``loop_events`` gains a
+        ``session_id`` column (schema change out of scope).
+
+    Returns empty dict ``{}`` when DB is missing, empty, or lacks relevant tables.
+    """
+    db_path = Path(db)
+    if not db_path.exists():
+        return {}
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return {}
+    try:
+        # has_corrections: direct query on user_corrections
+        row = conn.execute(
+            "SELECT COUNT(*) > 0 AS has_corrections FROM user_corrections "
+            "WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        has_corrections = bool(row["has_corrections"]) if row else False
+
+        # issue_outcome: JOIN through issue_sessions VIEW (issue_events has no
+        # session_id column; migration v5 bridges via the VIEW)
+        row = conn.execute(
+            "SELECT ie.transition "
+            "FROM issue_sessions is2 "
+            "JOIN issue_events ie ON is2.issue_id = ie.issue_id "
+            "WHERE is2.session_id = ? AND ie.transition = 'done' "
+            "ORDER BY ie.ts DESC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        issue_outcome: str | None = row["transition"] if row else None
+
+        # tool_count: direct query on tool_events
+        row = conn.execute(
+            "SELECT COUNT(*) AS tool_count FROM tool_events WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        tool_count: int = row["tool_count"] if row else 0
+
+        # files_modified: direct query on file_events; op values include both
+        # hook-written tool names ('Write') and lowercase variants ('write', 'create')
+        row = conn.execute(
+            "SELECT COUNT(*) AS files_modified FROM file_events "
+            "WHERE session_id = ? AND op IN ('write', 'create', 'Write')",
+            (session_id,),
+        ).fetchone()
+        files_modified: int = row["files_modified"] if row else 0
+
+        # loop_outcome: loop_events has no session_id column; always None
+        loop_outcome: None = None
+
+    except sqlite3.Error:
+        logger.warning(
+            "history_reader: lookup_session_metadata query failed", exc_info=True
+        )
+        return {}
+    finally:
+        conn.close()
+
+    return {
+        "has_corrections": has_corrections,
+        "issue_outcome": issue_outcome,
+        "tool_count": tool_count,
+        "files_modified": files_modified,
+        "loop_outcome": loop_outcome,
+    }
 
 
 # ---------------------------------------------------------------------------

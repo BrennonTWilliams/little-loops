@@ -3,7 +3,8 @@ id: ENH-1943
 title: Add lookup_session_metadata() helper for history.db session-quality queries
 type: ENH
 priority: P3
-status: open
+status: done
+completed_at: '2026-06-04'
 parent: ENH-1941
 relates_to:
 - EPIC-1707
@@ -13,6 +14,12 @@ labels:
 - history-db
 - sft
 - corpus-quality
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1943: Add lookup_session_metadata() helper for history.db session-quality queries
@@ -20,6 +27,14 @@ labels:
 ## Summary
 
 Add a `lookup_session_metadata(session_id, *, db=DEFAULT_DB_PATH)` function that queries `history.db` for session-quality signals and returns a JSON-safe metadata dict. This is the data-access layer for ENH-1941's `sft-corpus` quality predicates.
+
+## Current Behavior
+
+Currently, each consumer that needs session-quality signals (issue outcomes, corrections, tool counts, file modifications) must query `history.db` independently. There is no single helper function that bundles these lookups together. Clients that need session metadata either write their own ad-hoc queries or skip quality filtering entirely.
+
+## Expected Behavior
+
+A single `lookup_session_metadata(session_id, *, db=DEFAULT_DB_PATH)` function centralizes all session-quality queries, returning a JSON-safe metadata dict. Consumers call one function instead of writing multiple independent queries. The function degrades gracefully (returns `{}`) when the database is missing, empty, or lacks relevant tables.
 
 ## Parent Issue
 
@@ -141,7 +156,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Risk**: Low — Additive only; degrades gracefully; no callers until ENH-1944
 - **Breaking Change**: No
 
+## Resolution
+
+Added `lookup_session_metadata()` to `history_reader.py` (following `issue_effort()` patterns) and 9 tests in a new `TestLookupSessionMetadata` class.
+
+### Changes
+- `scripts/little_loops/history_reader.py` — Added `lookup_session_metadata(session_id, *, db)` function (~60 lines). Pre-checks file existence to distinguish missing DB (`{}`) from empty tables (dict with falsy values). Queries `user_corrections`, `issue_sessions` VIEW, `tool_events`, and `file_events`. Returns `None` for `loop_outcome` (schema gap — `loop_events` has no `session_id` column).
+- `scripts/tests/test_history_reader.py` — Added `TestLookupSessionMetadata` class with 9 tests covering missing DB, empty tables, correction detection, issue outcome via VIEW JOIN, tool counts, file modification counts, and loop outcome graceful degradation.
+
+### Verification
+- `python -m pytest scripts/tests/test_history_reader.py::TestLookupSessionMetadata` — **9/9 passed**
+- `python -m pytest scripts/tests/test_history_reader.py` — **71/71 passed** (no regressions)
+- `ruff check` — **clean**
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-04T17:24:36 - `7d2afac2-78f1-4d4b-8763-8f4967ab976a.jsonl`
 - `/ll:wire-issue` - 2026-06-04T17:19:30 - `ee85b092-39e2-45cb-9f46-3d4c81808bfa.jsonl`
 - `/ll:refine-issue` - 2026-06-04T17:13:38 - `93ec1288-b079-4c05-92c9-6b19926f5cbc.jsonl`
 - `/ll:issue-size-review` - 2026-06-04T18:45:00Z - `ca366434-0e71-4ffe-883b-0f265ec672e1.jsonl`
+- `/ll:confidence-check` - 2026-06-04T19:20:00Z - `d788e31f-b49f-4295-9fad-32f2821cb49d.jsonl`
