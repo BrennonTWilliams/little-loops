@@ -121,7 +121,7 @@ This causes the template engine to emit the literal `${DEPTH:-0}` into the shell
 
 ## Implementation Steps
 
-1. Edit `loops/rn-implement.yaml` in the `dequeue_next` state action body
+1. Edit `scripts/little_loops/loops/rn-implement.yaml` in the `dequeue_next` state action body
 2. Change `DEPTH=${DEPTH:-0}` to `DEPTH=$${DEPTH:-0}` (double-dollar escape)
 3. Run `ll-loop validate rn-implement` to confirm no schema violations
 4. Run `ll-loop run rn-implement "<test-issue>"` to verify the fix reaches `check_depth` (or beyond)
@@ -130,14 +130,14 @@ This causes the template engine to emit the literal `${DEPTH:-0}` into the shell
 ## Integration Map
 
 ### Files to Modify
-- `loops/rn-implement.yaml` — `dequeue_next` state action body (line with `DEPTH=${DEPTH:-0}`)
+- `scripts/little_loops/loops/rn-implement.yaml` — `dequeue_next` state action body (line with `DEPTH=${DEPTH:-0}`)
 
 ### Dependent Files (Callers/Importers)
 - N/A — only the action body string changes; no external callers of this loop's internals
 
 ### Similar Patterns
-- `loops/rn-implement.yaml` `check_convergence` state: already uses `$${RUN_DIR}/pre_scores_$${ID}.json` escaping
-- `loops/*.yaml` (any other loops with shell action bodies containing `${VAR:-default}`): grep for `${[A-Z]\+:-` to audit
+- `scripts/little_loops/loops/rn-implement.yaml` `check_convergence` state: already uses `$${RUN_DIR}/pre_scores_$${ID}.json` escaping
+- `scripts/little_loops/loops/*.yaml` (any other loops with shell action bodies containing `${VAR:-default}`): grep for `${[A-Z]\+:-` to audit
 
 ### Tests
 - `ll-loop validate rn-implement` — schema and rule compliance
@@ -173,5 +173,6 @@ This causes the template engine to emit the literal `${DEPTH:-0}` into the shell
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-04T23:53:06 - `e57dc332-ecbc-4378-81de-b95d8a60456d.jsonl`
 - `/ll:format-issue` - 2026-06-04T23:46:31 - `b0170239-94d2-40df-a02e-460bfab5e99d.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:50:00 - `8826ca14-a9b9-4717-b939-4425b44d5d7c.jsonl`
