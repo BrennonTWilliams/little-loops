@@ -63,6 +63,9 @@ from the corpus instead of leaving it as a passive archive.
   ENH-1919 only provides the reusable extraction primitive FEAT-1309 consumes.
 - User-correction *text* mining into history.db — already shipped in ENH-1904;
   ENH-1922 covers the distinct *tool-failure* angle.
+- PII detection for telemetry data — already shipped as ENH-1885 under
+  [[EPIC-1880]]; consume `little_loops.pii` rather than building a separate
+  privacy filter.
 
 ## Implementation Order
 

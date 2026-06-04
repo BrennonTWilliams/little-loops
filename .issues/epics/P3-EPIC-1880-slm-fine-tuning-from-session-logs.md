@@ -67,6 +67,10 @@ Build the tooling needed to turn Claude Code session logs (`.jsonl` files under 
 
 - `scripts/little_loops/loops/examples-miner.yaml` — prompt-optimization corpus mining (different purpose)
 - `scripts/little_loops/loops/dataset-curation.yaml` — back-half reused via `loop:` handoff
+- [[EPIC-1918]] — sibling epic consuming the same `ll-logs` data layer for
+  telemetry. ENH-1919 (n-gram extraction) may enrich SFT corpora; FEAT-1920
+  (eval-export) could validate corpus quality. ENH-1885 (PII) is a shared
+  dependency both epics benefit from.
 
 ---
 
