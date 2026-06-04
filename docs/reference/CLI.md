@@ -1752,6 +1752,32 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830) |
 | `related` | Issue events for a given issue ID |
 | `path` | Resolve the JSONL file path for a session ID |
+| `grep` | Regex search over `message_events` with optional summary-node scope filtering |
+| `expand` | Return all `message_events` covered by a given summary node ID |
+| `describe` | Show metadata (level, block span, parent) for a summary node |
+
+**`grep` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `PATTERN` | Regex pattern (required, positional; case-insensitive) |
+| `--summary-id ID` | Restrict search to messages covered by this summary node ID |
+| `--limit N` | Maximum results (default: 50) |
+| `--json` | Output results as a JSON array |
+
+**`expand` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `SUMMARY_ID` | Summary node ID to expand (required, positional) |
+| `--json` | Output message events as a JSON array |
+
+**`describe` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `NODE_ID` | Summary node ID to describe (required, positional) |
+| `--json` | Output metadata as a JSON object |
 
 **`search` flags:**
 
@@ -1780,6 +1806,10 @@ ll-session recent --kind message --issue ENH-1710  # Messages from those session
 ll-session backfill                             # Seed the database from on-disk sources
 ll-session backfill --since 2026-01-01          # Incremental JSONL backfill since date
 ll-session path <session_id>                    # Resolve JSONL file path for a session ID
+ll-session grep "error"                         # Regex search over messages
+ll-session grep "traceback" --summary-id 5      # Search within a summary node's span
+ll-session expand 5                             # List messages covered by summary node 5
+ll-session describe 5                           # Show metadata for summary node 5
 ```
 
 ---

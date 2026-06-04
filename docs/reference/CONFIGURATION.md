@@ -1147,6 +1147,44 @@ The session store is a SQLite database with an FTS5 full-text index. `SQLiteTran
 
 See [API Reference → little_loops.transport](API.md#little_loopstransport) for the `Transport` Protocol and how to author custom transports.
 
+#### `history.compaction`
+
+<!-- TODO: update-docs stub — BUG-1928 / FEAT-1712 — drafted 2026-06-04 -->
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+
+LCM-style three-level compaction for `summary_nodes` (FEAT-1712). Controls whether `ll-session backfill` generates LLM summaries over `message_events` blocks and stores them as a summary DAG. **Disabled by default** to avoid background LLM calls without user opt-in.
+
+**Three-level LCM Algorithm 3 escalation:** When enabled, each block of message events is summarized progressively:
+
+1. **Level 1 — Normal LLM summary** (default, up to `budget_tokens`): A standard LLM call generates a concise summary of the message block. If the summary is within budget and converged, it stops here.
+2. **Level 2 — Aggressive bullet-point LLM**: If Level 1 produces more than one summary paragraph (or exceeds half the budget), a second LLM call condenses the output into tight bullet points.
+3. **Level 3 — Deterministic truncation**: If Level 2 still produces >1 paragraph (or the LLM is unavailable), the summarizer falls back to a deterministic character-based truncation — no LLM call. This guarantees termination without runaway costs.
+
+Each summary is stored as a node in `summary_nodes`. Condensed nodes (Levels 2–3) receive `parent_id` linkage back to their Level-1 source, forming a two-hop traversal path. `ll-session grep` and `ll-session expand` use this DAG to drill from summary context back to source messages.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `history.compaction.enabled` | `boolean` | `false` | Gate flag — set `true` to enable LLM summarization during backfill. |
+| `history.compaction.budget_tokens` | `integer` | `4096` | Token budget per summary node. |
+| `history.compaction.model` | `string\|null` | `null` | Model override for summary generation; `null` uses the session default. |
+| `history.compaction.timeout` | `integer` | `60` | Timeout in seconds for each LLM summarization call. |
+
+```json
+{
+  "history": {
+    "compaction": {
+      "enabled": true,
+      "budget_tokens": 4096,
+      "model": null,
+      "timeout": 60
+    }
+  }
+}
+```
+
+<!-- END TODO stub -->
+
 ---
 
 ## Manual Configuration

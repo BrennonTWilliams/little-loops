@@ -1254,7 +1254,9 @@ ll-loop run html-website-generator "museum landing page" \
 plan → generate → capture
                      ├─ CAPTURED → score
                      │              ├─ ALL_PASS → smoke_test
-                     │              │              ├─ SMOKE_PASS → done
+                     │              │              ├─ SMOKE_PASS → vision_gate
+                     │              │              │                ├─ PASS      → done
+                     │              │              │                └─ ITERATE   → generate (with critique)
                      │              │              └─ FAIL      → generate (with critique)
                      │              └─ ITERATE  → generate (with critique)
                      └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
@@ -1270,6 +1272,15 @@ plan → generate → capture
 | `functionality` | 1× | Can a user understand the site's purpose and complete the primary task within 5 seconds? |
 
 **Notes:**
+
+<!-- TODO: update-docs stub — vision_gate — drafted 2026-06-04 -->
+
+> **Stub**: `vision_gate` section auto-drafted by `/ll:update-docs`. Fill in details.
+
+- **`vision_gate` — optional external-vision aesthetic scoring** (added 2026-06): After `smoke_test` passes (functional sanity confirmed), the loop can route through `vision_gate`, which sends the screenshot to an independent vision model for aesthetic scoring against the same four criteria. This decouples visual-quality judgment from the host LLM's self-grade — the same anti-self-certification motive behind `smoke_test`, but for aesthetics rather than functionality. The state is a **no-op pass** unless `VISION_BASE_URL`, `VISION_MODEL`, and `VISION_API_KEY` environment variables are all set (graceful degradation). API errors, parse failures, and network issues also pass — the gate never blocks shipping a functionally-sound artifact. A per-run round cap (`.vision_rounds` in the run directory) bounds the refine/re-score ping-pong.
+
+<!-- END TODO stub -->
+
 - The HTML file embeds all CSS and JavaScript inline so it renders correctly under a `file://` URL without a web server.
 - If Playwright is unavailable (missing binary, permission error), the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the HTML source rather than a screenshot.
 - The loop runs up to 30 iterations with a 4-hour timeout (`max_iterations: 30`, `timeout: 14400`).
