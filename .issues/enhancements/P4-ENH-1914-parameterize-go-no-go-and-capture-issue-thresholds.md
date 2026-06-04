@@ -55,11 +55,15 @@ the **runtime reads** only — no `config-schema.json` edit.
 
 ## Implementation Steps
 
-1. Read `config.history.go_no_go.correction_penalty` (via `BRConfig`) in the
-   go-no-go Python path that applies the correction penalty; fall back to `-0.2`.
-2. Read `config.history.capture_issue.dup_overlap_threshold` in the
-   capture-issue history-dup check path; fall back to `0.7`.
-3. Replace the literal constants with the config-backed values.
+1. **`find_existing_issue()` in `scripts/little_loops/issue_discovery/search.py:261`**: Replace `if overlap > 0.7` with `if overlap > config.history.capture_issue.dup_overlap_threshold`. No signature change — `config: BRConfig` is already the first parameter; `config.history.capture_issue.dup_overlap_threshold` resolves via the already-wired `HistoryConfig.capture_issue` sub-object.
+
+2. **`skills/go-no-go/SKILL.md:145`**: Replace `-0.2` with `{{config.history.go_no_go.correction_penalty}}` and append `(default -0.2)` in the same sentence, following the `review-epic` pattern. Full sentence becomes: "Each matched correction is a `{{config.history.go_no_go.correction_penalty}}` (default -0.2) signal on the GO/NO-GO verdict confidence."
+
+3. **`skills/capture-issue/SKILL.md:216`**: Replace the `>70%` prose literal with `>{{config.history.capture_issue.dup_overlap_threshold}}` (default 0.7). Append `(default 0.7)` inline, consistent with the review-epic fallback note pattern.
+
+4. **`scripts/tests/test_issue_discovery.py:362`** (`TestFindExistingIssue`): Add `test_find_existing_issue_configurable_dup_threshold` — create a config with `history.capture_issue.dup_overlap_threshold: 0.9`, confirm a 0.75-overlap title match is rejected; then create a config with threshold 0.6, confirm the same 0.75-overlap match is accepted.
+
+5. **`scripts/tests/test_config.py:2749`** (`TestBRConfigHistoryIntegration`): Add `config.history.go_no_go.correction_penalty == -0.2` and `config.history.capture_issue.dup_overlap_threshold == 0.7` assertions to `test_history_defaults_on_absent`; add matching override assertions to `test_history_loads_from_config`.
 
 ## Integration Map
 
@@ -73,15 +77,39 @@ the **runtime reads** only — no `config-schema.json` edit.
 
 ### Similar Patterns
 - ENH-1913 declares the `history.*` config keys; follow the same `BRConfig` read pattern
+- `skills/capture-issue/SKILL.md:191` — already uses `{{config.issues.duplicate_detection.exact_threshold}}` and `{{config.issues.duplicate_detection.similar_threshold}}` template variables; same pattern applies for `{{config.history.capture_issue.dup_overlap_threshold}}`
+- `skills/review-epic/SKILL.md` — uses `{{config.commands.review_epic.stale_days}}` with explicit `(default 14)` fallback note in prose; follow this pattern for the penalty and threshold replacements
 
 ### Tests
-- TBD — unit tests for each modified path (verify fallback and config-override behavior)
+- `scripts/tests/test_issue_discovery.py:362` — `TestFindExistingIssue`: add `test_find_existing_issue_configurable_dup_threshold` verifying that `history.capture_issue.dup_overlap_threshold: 0.9` misses a 0.75-overlap match that the 0.7 default catches, and that `history.capture_issue.dup_overlap_threshold: 0.6` catches a 0.65-overlap match that the 0.7 default misses
+- `scripts/tests/test_config.py:2749` — `TestBRConfigHistoryIntegration.test_history_defaults_on_absent`: add `assert config.history.go_no_go.correction_penalty == -0.2` and `assert config.history.capture_issue.dup_overlap_threshold == 0.7`
+- `scripts/tests/test_config.py:2749` — `TestBRConfigHistoryIntegration.test_history_loads_from_config`: add assertions that setting `history.go_no_go.correction_penalty` and `history.capture_issue.dup_overlap_threshold` in ll-config.json propagates through `BRConfig.history`
 
 ### Documentation
 - N/A — no user-facing documentation changes
 
 ### Configuration
 - `.ll/ll-config.json` — users add `history.go_no_go.correction_penalty` or `history.capture_issue.dup_overlap_threshold` to tune
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Config infrastructure already in place (ENH-1913 is done):**
+- `scripts/little_loops/config/features.py:688` — `GoNoGoConfig` dataclass, field `correction_penalty: float = -0.2`, `from_dict` with fallback
+- `scripts/little_loops/config/features.py:702` — `CaptureIssueConfig` dataclass, field `dup_overlap_threshold: float = 0.7`, `from_dict` with fallback
+- `scripts/little_loops/config/features.py:716` — `HistoryConfig` includes `go_no_go: GoNoGoConfig` (line 733) and `capture_issue: CaptureIssueConfig` (line 734) sub-fields
+- `scripts/little_loops/config/core.py:227` — `BRConfig._parse_config()` wires `HistoryConfig.from_dict(self._raw_config.get("history", {}))`
+- `scripts/little_loops/config/core.py:320` — `BRConfig.history` property exposes the full `HistoryConfig`
+- `config-schema.json:1477` — schema declarations for both keys already present
+
+**No `ll-config get` CLI exists** — template variable injection (`{{config.*}}`) is the only established approach for parameterizing skill prose.
+
+**Test classes already covering the config layer (ENH-1913 added these):**
+- `scripts/tests/test_config.py:2667` — `TestGoNoGoConfig` (defaults + override)
+- `scripts/tests/test_config.py:2683` — `TestCaptureIssueConfig` (defaults + override)
+- `scripts/tests/test_config.py:2699` — `TestHistoryConfig` with `test_go_no_go_defaults` / `test_capture_issue_defaults`
+- `scripts/tests/test_config.py:2749` — `TestBRConfigHistoryIntegration` exists but lacks assertions for `go_no_go`/`capture_issue` sub-fields — add in step 5 of implementation
 
 ## Acceptance Criteria
 
@@ -111,6 +139,7 @@ the **runtime reads** only — no `config-schema.json` edit.
 - **Action**: The go-no-go approach requires either (a) having the skill prose call `ll-config` to read the threshold, or (b) exposing it via `ll-history-context` output, or (c) a different design. Update "Files to Modify" to reflect the actual paths before implementation.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-04T00:45:23 - `3ce6b5fc-b012-4951-b3ab-bb878fcf9d39.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:verify-issues` - 2026-06-03T21:38:03Z - `b03d2da2-37d4-4901-b030-76fe8b08f787.jsonl`
 - `/ll:format-issue` - 2026-06-03T21:43:44 - `94aee1f9-3b17-4da0-bc07-bb56977ac102.jsonl`
