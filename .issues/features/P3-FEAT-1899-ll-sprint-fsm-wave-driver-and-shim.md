@@ -151,7 +151,14 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 
 **Open** | Created: 2026-06-03 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's `ll-sprint execute` shim follows the canonical thin-shim pattern established by FEAT-1902 (`<cli> → ll-loop run <loop>`). Coordinate shim implementation approach with FEAT-1902 to avoid divergent patterns.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T19:54:00 - `2f12f6ef-94a2-4725-933e-626b1ef4cdff.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:47:17 - `6dbe3977-0d8f-47aa-b338-9f0b66da4be5.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`

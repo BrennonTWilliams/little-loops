@@ -131,7 +131,14 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 **Verdict: NEEDS_UPDATE** — Integration Map referenced `scripts/little_loops/auto_manager.py` which does not exist. `AutoManager` lives in `scripts/little_loops/issue_manager.py` (class at L988, `run()` at L1165). This has been corrected in the Integration Map. Also: FEAT-1901 prerequisite (Layer-0 CLI subcommands) is still open and unimplemented.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue defines the canonical thin-shim pattern for EPIC-1867 CLI migrations (`<cli> → ll-loop run <loop>`). FEAT-1899 (`ll-sprint execute`) should follow this pattern for consistency rather than implementing an independent shim approach.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T19:53:59 - `2f12f6ef-94a2-4725-933e-626b1ef4cdff.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:47:22 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
