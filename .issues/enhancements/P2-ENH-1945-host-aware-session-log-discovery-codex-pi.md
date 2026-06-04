@@ -5,14 +5,20 @@ type: ENH
 priority: P2
 status: open
 discovered_date: 2026-06-04
-captured_at: "2026-06-04T19:18:32Z"
+captured_at: '2026-06-04T19:18:32Z'
 discovered_by: capture-issue
 parent: EPIC-1707
 decision_needed: true
 labels:
-  - enh
-  - captured
-  - multi-host
+- enh
+- captured
+- multi-host
+confidence_score: 99
+outcome_confidence: 60
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-1945: Make session log discovery host-aware for Codex/OpenCode/Pi backfill
@@ -101,6 +107,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/session_store.py:1099` — `mine_corrections_from_messages()` scans `message_events`; no corrections mined for non-Claude-Code hosts
 - `scripts/little_loops/history_reader.py:933` — `project_digest()` consumes session data from multiple tables; all empty for non-Claude-Code hosts
 
+_Wiring pass added by `/ll:wire-issue` — transitive beneficiaries (use `append_session_log_entry` which defaults `session_jsonl=None` → auto-detects via `get_current_session_jsonl()`):_
+- `scripts/little_loops/fsm/executor.py:1089` — calls `get_current_session_jsonl()` for loop session logging; host-awareness enables FSM loops on non-Claude-Code hosts
+- `scripts/little_loops/parallel/orchestrator.py:37` — imports `append_session_log_entry`; session log entries from parallel workers will auto-resolve correctly for all hosts
+- `scripts/little_loops/issue_lifecycle.py:25` — imports `append_session_log_entry`; issue lifecycle logging works for all hosts
+- `scripts/little_loops/cli/issues/append_log.py:23` — imports `append_session_log_entry`; `ll-issues append-log` works for all hosts
+- `scripts/little_loops/issue_parser.py:62,577` — uses `parse_session_log`, `count_session_commands` which read session log entries; correct resolution benefits log-aware issue commands for all hosts
+- `scripts/little_loops/cli/issues/show.py:232` — uses `count_session_commands`, `parse_session_log`; correct resolution benefits `ll-issues show` for all hosts
+
 ### Similar Patterns
 
 - `resolve_host()` in `host_runner.py:751` already provides host detection — reuse its logic
@@ -123,15 +137,37 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_user_messages.py` — add test for `get_project_folder()` with `host="codex"` param
 - `scripts/tests/test_session_store.py` — add backfill tests with non-Claude-Code session directories
 - `scripts/tests/test_session_log.py` — test JSONL path resolution for Codex
+- `scripts/tests/test_hook_session_start.py` — add `LLHookEvent(host="codex", payload={"transcript_path": ...})` tests; verify `_run_backfill()` consumes `transcript_path` directly
+- `scripts/tests/test_ll_session.py` — add `--host codex` flag integration tests with mock Codex session dir
+- `scripts/tests/test_ll_logs.py` — add discover/extract tests with `~/.codex/sessions/...` alongside `~/.claude/projects/...`
+- `scripts/tests/test_cli.py` — add companion `ll-logs discover` tests with Codex session directories (currently hardcodes `~/.claude/projects/`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_assistant_messages.py` — existing backfill tests are Claude-Code-only; add round-trip test that creates JSONL in Codex session dir, runs `backfill()` with explicit `jsonl_files`, and verifies `message_events` populated
+- `scripts/tests/test_hook_intents.py` — already tests `LL_HOOK_HOST` dispatch; add `session_start` intent with `transcript_path` in Codex payload to verify dispatcher-to-handler round-trip
+- `scripts/tests/test_codex_adapter.py` — already tests adapter round-trips; verify `session-start.sh` stdin JSON includes `transcript_path` when present in Codex event payload
 
 ### Documentation
 
 - `docs/reference/HOST_COMPATIBILITY.md` — document host-specific session directories
 - `docs/reference/API.md` — update `get_project_folder()` signature docs
+- `docs/reference/CLI.md` — document new `--host` flag for `ll-session backfill`; broaden `ll-messages`/`ll-logs` descriptions from "Claude Code session logs" to host-agnostic language
+- `docs/reference/EVENT-SCHEMA.md:81` — update or qualify the statement "`session_start` — reads no payload keys; operates via `Path.cwd()`" since `_run_backfill()` will now consume `transcript_path` payload field for non-Claude-Code hosts
+- `docs/ARCHITECTURE.md:564,600,633,644,1192` — note that backfill/session_start behavior is now host-aware; update `transcript_path` consumption note at line 1192 to include SessionStart
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.claude/CLAUDE.md:65` — `ll-session` subcommand listing doesn't mention `--host`; add after implementation
+- `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:62-82` — describes `ll-messages` as extracting from "Claude Code session logs"; broaden to host-agnostic
+- `docs/guides/EXAMPLES_MINING_GUIDE.md:134` — same "Claude Code" phrasing
 
 ### Configuration
 
-- N/A (host detection is automatic via env/config)
+- Host detection is automatic via `LL_HOOK_HOST` env var (already set by adapters) and `orchestration.host_cli` config key (`config-schema.json:1312`). No new config keys needed.
+- `config-schema.json:1173` — `hooks.host.enum` values `["claude-code", "opencode", "codex"]`; no Pi value yet (deferred until FEAT-992). The `--host` auto-detection should read `hooks.host` as one source alongside `LL_HOOK_HOST` and `orchestration.host_cli`.
+- `scripts/little_loops/config/core.py:41` — add `CODEX_PROJECTS_DIR` constant alongside existing `CODEX_CONFIG_DIR` for Codex session directory probing
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `config-schema.json:1173` — `hooks.host` key is consumed for `--host` auto-detection (new consumption of existing key; no schema change needed)
 
 ## Implementation Steps
 
@@ -142,6 +178,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 5. Update `ll-logs discover` at `cli/logs.py:408` and `discover_all_projects()` at line 126 to scan host-specific session directories (not just `~/.claude/projects/`). Update `ll-messages extract` at `cli/messages.py:173` to pass host context.
 6. Add tests for each call site with mocked Codex/OpenCode session directories. Model after `test_host_runner.py` patterns: `isolated_env` fixture (line 40), `resolve_host(env={...})` explicit-env testing (line 54), `shutil.which` mocking (line 77). For `get_project_folder()` tests, extend `test_user_messages.py` with `host="codex"` and `host="opencode"` cases.
 7. Verify end-to-end: run backfill in a Codex project, confirm `message_events` / `sessions` / LCM DAG all populate correctly. Use `ll-session backfill --host codex` to test manual backfill, and verify `session_start` auto-backfill daemon via `test_hook_session_start.py` with a Codex payload including `transcript_path`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update host-specific error messages to be host-generic:
+   - `cli/session.py:306` — `"No Claude project folder found; cannot discover JSONL files."` → host-aware wording
+   - `cli/logs.py:246-247` — `"No Claude project folder found for: {cwd_path}"` and `"Expected: ~/.claude/projects/..."` → host-aware wording
+   - `cli/messages.py:176-177` — same pattern of Claude-Code-specific error messages
+9. Update `docs/reference/EVENT-SCHEMA.md:81` — remove or qualify the statement "`session_start` — reads no payload keys; operates via `Path.cwd()`" since `_run_backfill()` will now consume `transcript_path` from the payload for non-Claude-Code hosts.
+10. Update `docs/reference/CLI.md:1806-1807` — document the new `--host` flag for `ll-session backfill`; broaden `ll-messages`/`ll-logs` descriptions from "Claude Code session logs" to host-agnostic language.
+11. Update `docs/ARCHITECTURE.md:564,600,633,644` — note that backfill/session_start behavior is now host-aware.
+12. Update test fixtures for host-aware directory creation:
+    - `test_ll_logs.py:33,553` — `_make_project_dir()` hardcodes `~/.claude/projects/`; add Codex/OpenCode directory helpers
+    - `test_cli.py:2939,2958` — discover tests create only `~/.claude/projects/`; add companion tests with Codex session dirs
+    - `test_hook_session_start.py:31` — `_event()` helper creates `LLHookEvent` with empty payload; add `_codex_event()` variant with `transcript_path`
+13. Update `test_ll_session.py:483-499` — `test_since_calls_backfill_incremental` mocks `get_project_folder` on the CLI path; verify mock still works with updated import path or signature.
 
 ## Impact
 
@@ -170,7 +223,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-04_
+
+**Readiness Score**: 99/100 → PROCEED
+**Outcome Confidence**: 60/100 → MODERATE
+
+### Outcome Risk Factors
+- Codex session directory layout not fully confirmed — CLI probing paths (`ll-session backfill` without `--since`, `ll-logs discover`) need layout verification during implementation. The `transcript_path` mechanism eliminates this need for `session_start` and `session_log` paths.
+- 6 direct callers of `get_project_folder()` across 4 modules — each needs host-aware parameter threading. Missing any one creates a silent-failure gap for non-Claude-Code hosts. The callers are concentrated in `hooks/session_start.py`, `session_log.py`, `cli/session.py`, `cli/logs.py`, and `cli/messages.py`.
+- Host naming inconsistency between `_HOST_RUNNER_REGISTRY` (`"claude-code"`) and `LL_HOOK_HOST` defaults (`"claude"`) — needs resolution in `get_project_folder()` host parameter to prevent dispatch mismatches.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-04T23:30:00 - `e484df0a-bfc4-4607-bd41-973d4785157e.jsonl`
+- `/ll:wire-issue` - 2026-06-04T23:21:59 - `d827f3a5-6a61-49a6-9999-a9cdd389d50d.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:12:24 - `51a4f1e1-9f20-480f-843f-156ec1efd738.jsonl`
 
 - `/ll:capture-issue` - 2026-06-04T19:18:32Z - `15020717-6ee7-4d89-bd61-d70602429425.jsonl`

@@ -1,5 +1,6 @@
 ---
 captured_at: '2026-06-04T23:09:17Z'
+completed_at: '2026-06-04T23:28:53Z'
 discovered_date: 2026-06-04
 discovered_by: capture-issue
 confidence_score: 100
@@ -8,6 +9,7 @@ score_complexity: 25
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1950: dequeue_next pipeline fallback fails when depth_map.txt is missing
@@ -51,7 +53,7 @@ When `depth_map.txt` is missing or the issue has no depth entry, `DEPTH` should 
 
 ## Root Cause
 
-- **File**: `loops/rn-implement.yaml`
+- **File**: `scripts/little_loops/loops/rn-implement.yaml`
 - **Anchor**: state `dequeue_next`, action body lines 6–7
 - **Cause**: Bash pipeline `cmd1 | cmd2 || fallback` — the `||` operator applies to the exit status of the last command in the pipeline (`awk`), not the first (`grep`). Since `awk` on empty stdin exits 0, the fallback is unreachable when `grep` fails. This is a standard bash pitfall. The fix is to check `$PIPESTATUS[0]` or restructure to avoid relying on pipeline exit status for the grep result.
 
@@ -72,7 +74,7 @@ DEPTH=$(set -o pipefail; grep "^$CURRENT " "$DEPTH_MAP" 2>/dev/null | awk '{prin
 
 ## Implementation Steps
 
-1. Edit `loops/rn-implement.yaml` — replace the `DEPTH=$(grep ... | awk ... || echo "0")` line in `dequeue_next` with the two-line Option A pattern
+1. Edit `scripts/little_loops/loops/rn-implement.yaml` — replace the `DEPTH=$(grep ... | awk ... || echo "0")` line in `dequeue_next` with the two-line Option A pattern
 2. Verify the fix: `bash -c 'DEPTH=$(grep "^FOO " /nonexistent 2>/dev/null | awk '"'"'{print $2}'"'"'); DEPTH=${DEPTH:-0}; echo "[$DEPTH]"'` → outputs `[0]`
 3. Run `ll-loop validate rn-implement` to confirm no schema violations
 4. Run `ll-loop run rn-implement "<test-issue>"` to confirm `check_depth` receives numeric input
@@ -80,7 +82,7 @@ DEPTH=$(set -o pipefail; grep "^$CURRENT " "$DEPTH_MAP" 2>/dev/null | awk '{prin
 ## Integration Map
 
 ### Files to Modify
-- `loops/rn-implement.yaml` — `dequeue_next` state, action body
+- `scripts/little_loops/loops/rn-implement.yaml` — `dequeue_next` state, action body
 
 ### Dependent Files (Callers/Importers)
 - N/A (loop YAML, no code imports)
@@ -117,9 +119,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `loops`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-04T23:20:47 - `6c496b7a-95d9-436e-9b45-c5133f828bfc.jsonl`
 - `/ll:format-issue` - 2026-06-04T23:12:17 - `47aa587d-6c0f-4941-b880-b37184474217.jsonl`
 - `/ll:capture-issue` - 2026-06-04T23:09:17Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9de5a8f-5fed-40f9-b3a5-a5902a7ec3e8.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:14:15Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1c3059c-1426-42f0-8eec-cf5e5d2303ea.jsonl`
+- `/ll:manage-issue` - 2026-06-04T23:28:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb9b6c11-854a-4eb4-97ba-3bf5f6c2f6bc.jsonl`
+
+## Resolution
+
+**Applied fix**: Replaced the broken pipeline fallback `|| echo "0"` with `DEPTH=${DEPTH:-0}` in `rn-implement.yaml` dequeue_next state (Option A from proposed solutions). This is a standard bash idiom that correctly defaults DEPTH to "0" when the grep/awk pipeline produces empty output (missing depth_map.txt or issue not present).
+
+**Verification**:
+- Shell reproduction confirms both failure modes now produce `DEPTH=[0]`
+- `ll-loop validate rn-implement` passes (11 states, schema valid)
+- Full test suite: 9,858 passed, 0 failed
 
 ## Status
 
