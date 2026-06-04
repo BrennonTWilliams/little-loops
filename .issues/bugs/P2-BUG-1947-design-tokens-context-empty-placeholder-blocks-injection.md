@@ -5,6 +5,7 @@ status: open
 priority: P2
 type: BUG
 captured_at: '2026-06-04T19:27:13Z'
+completed_at: '2026-06-04T19:47:57Z'
 discovered_date: 2026-06-04
 discovered_by: capture-issue
 labels:
@@ -128,11 +129,21 @@ This handles all cases:
 - **Risk**: Low — Change is a strictly more permissive guard (injects when key absent OR empty, instead of only when absent); no existing behavior relies on empty-string blocking
 - **Breaking Change**: No
 
-## Related Key Documentation
+## Resolution
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+**Root cause**: Both `cmd_run()` (run.py:181) and `cmd_resume()` (lifecycle.py:496) used `"design_tokens_context" not in fsm.context` (key-existence check) instead of `not fsm.context.get("design_tokens_context")` (truthiness check). When a loop YAML declares `design_tokens_context: ""` as a placeholder, the key exists with an empty (falsy) value, so the guard silently skipped injection.
+
+**Fix**: Changed both guards from key-existence to truthiness check (`not fsm.context.get("design_tokens_context")`). This triggers injection when the key is absent OR empty.
+
+**Files changed**:
+- `scripts/little_loops/cli/loop/run.py:181` — `not in` → `.get()` truthiness
+- `scripts/little_loops/cli/loop/lifecycle.py:496` — identical fix
+- `scripts/tests/test_ll_loop_program_md.py:282-313` — updated test to mock `DesignTokens` with resolved values and assert populated content (previously only checked `is not None`, which passed for empty string)
+
+**Verification**: 3212 tests passed. Lint clean. Design tokens now populate in `fsm.context` when loop YAML declares empty placeholder.
 
 ## Session Log
+- `/ll:manage-issue` — 2026-06-04T19:47:57Z — `d108443a-ed61-4ba9-90b7-4f4436eedc57.jsonl`
 - `/ll:ready-issue` - 2026-06-04T19:43:11 - `822d0634-f7b8-4ecf-b681-7e977f1efd91.jsonl`
 - `/ll:confidence-check` - 2026-06-04T19:33:00Z - `~/.../fadecd00-e4da-4850-b02d-2cbaa7f00dda.jsonl`
 - `/ll:format-issue` - 2026-06-04T19:30:34 - `df78385a-9cc2-4216-80a0-d3a6661b1a81.jsonl`
@@ -140,4 +151,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-06-04 | Priority: P2
+**Done** | Created: 2026-06-04 | Completed: 2026-06-04 | Priority: P2

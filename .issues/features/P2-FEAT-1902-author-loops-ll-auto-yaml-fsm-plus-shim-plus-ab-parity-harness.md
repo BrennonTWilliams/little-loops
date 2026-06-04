@@ -8,7 +8,8 @@ captured_at: 2026-06-03T19:12:39Z
 discovered_date: 2026-06-03
 discovered_by: scope-epic
 parent: EPIC-1867
-relates_to: [FEAT-1901, FEAT-1899]
+relates_to: [FEAT-1901]
+blocked_by: [FEAT-1901]
 ---
 
 # FEAT-1902: Author loops/ll-auto.yaml FSM + ll-auto shim + A/B parity harness
@@ -131,6 +132,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Integration Map referenced `scripts/little_loops/auto_manager.py` which does not exist. `AutoManager` lives in `scripts/little_loops/issue_manager.py` (class at L988, `run()` at L1165). This has been corrected in the Integration Map. Also: FEAT-1901 prerequisite (Layer-0 CLI subcommands) is still open and unimplemented.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T19:47:22 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`

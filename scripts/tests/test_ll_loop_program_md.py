@@ -280,10 +280,18 @@ class TestCmdRunProgramMdInjection:
         assert run_dir.endswith("/"), "run_dir must end with /"
 
     def test_design_tokens_context_injected_into_context(self, tmp_path: Path) -> None:
-        """design_tokens_context is injected into fsm.context by cmd_run before dry_run returns."""
+        """design_tokens_context is injected into fsm.context by cmd_run before dry_run returns.
+
+        The test loop YAML declares ``design_tokens_context: ""`` (empty placeholder),
+        so the guard must evaluate value truthiness, not key existence, to trigger
+        injection. This test mocks load_design_tokens with a valid DesignTokens object
+        and render_as_prompt_context with a known string to verify the populated value
+        replaces the empty placeholder.
+        """
         from unittest.mock import patch
 
         from little_loops.cli.loop.run import cmd_run
+        from little_loops.design_tokens import DesignTokens
         from little_loops.fsm.validation import load_and_validate
         from little_loops.logger import Logger
 
@@ -296,6 +304,12 @@ class TestCmdRunProgramMdInjection:
         def fake_load_and_validate(path: Path):  # type: ignore[override]
             return fsm, []
 
+        mock_tokens = DesignTokens(
+            primitives={}, semantic={}, theme={}, resolved={"color.accent": "#ff0000"},
+            source_path=tmp_path / "tokens.json",
+        )
+        _expected_context = "**Design tokens** (resolved values):\n```\ncolor.accent: #ff0000\n```"
+
         with (
             patch(
                 "little_loops.fsm.validation.load_and_validate",
@@ -303,13 +317,14 @@ class TestCmdRunProgramMdInjection:
             ),
             patch(
                 "little_loops.design_tokens.load_design_tokens",
-                return_value=None,
+                return_value=mock_tokens,
             ),
         ):
             cmd_run("test-loop", args, loops_dir, logger)
 
-        assert fsm.context.get("design_tokens_context") is not None, (
-            "design_tokens_context must be injected into fsm.context by cmd_run"
+        assert fsm.context.get("design_tokens_context") == _expected_context, (
+            "design_tokens_context must be populated with rendered token context "
+            "when the loop YAML declares an empty placeholder"
         )
 
     def test_context_run_dir_not_overwritten_by_user_context(self, tmp_path: Path) -> None:

@@ -178,7 +178,7 @@ def cmd_run(
 
     _config = BRConfig(Path.cwd())
 
-    if "design_tokens_context" not in fsm.context:
+    if not fsm.context.get("design_tokens_context"):
         _tokens = load_design_tokens(_config)
         fsm.context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""
 

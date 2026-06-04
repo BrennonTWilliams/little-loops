@@ -9,6 +9,7 @@ discovered_date: 2026-06-03
 discovered_by: scope-epic
 parent: EPIC-1867
 relates_to: [FEAT-1901, FEAT-1902, FEAT-1899]
+blocked_by: [FEAT-1902, FEAT-1899]
 ---
 
 # ENH-1903: Document ll-parallel as canonical parallel substrate
@@ -25,8 +26,6 @@ Deliverables:
 - `docs/ARCHITECTURE.md`: add/update orchestration layer diagram showing
   Layer 0 (internal library + CLI subcommands), Layer 1 (FSM + `ll-auto` shim),
   Layer 2 (wave driver + `ll-sprint` shim), and Layer 3 (`ll-parallel`, unchanged).
-- Add one-release deprecation notice on `AutoManager.run()` pointing to
-  `ll-loop run ll-auto` as the replacement.
 - Reference `docs/research/ll-orchestrator-decomposition-plan-v0.2.md` from
   `docs/ARCHITECTURE.md` for the full decomposition rationale.
 
@@ -45,4 +44,5 @@ reflect the final implementation.
 **Open** | Created: 2026-06-03 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T19:47:23 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
 - `/ll:scope-epic` - 2026-06-03T19:12:39Z - `87e9f36b-36c2-4e9e-a0c8-3a57aa45d1f5.jsonl`

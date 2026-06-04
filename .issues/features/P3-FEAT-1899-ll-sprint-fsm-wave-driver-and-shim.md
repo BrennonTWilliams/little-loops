@@ -9,6 +9,7 @@ discovered_date: 2026-06-03
 discovered_by: scope-epic
 parent: EPIC-1867
 relates_to: [FEAT-1901, FEAT-1902]
+blocked_by: [FEAT-1901, FEAT-1902]
 labels: [feature, orchestration, fsm, sprint]
 ---
 
@@ -28,13 +29,13 @@ parallel waves. Deliverables:
 - Convert `ll-sprint` CLI to a thin shim over the FSM driver.
 - Pass `ll-loop validate ll-sprint` (MR-1/MR-3).
 
-Depends on FEAT-1897 (Layer 0 CLI subcommands) and FEAT-1898 (Layer-1 per-issue states to reuse).
+Depends on FEAT-1901 (Layer 0 CLI subcommands) and FEAT-1902 (Layer-1 per-issue states to reuse).
 
 ## Use Case
 
 **Who**: Developer running `ll-sprint` to execute a curated set of issues with dependency-aware ordering.
 
-**Context**: After Layer-1 per-issue states (FEAT-1898) are available, the sprint orchestrator needs a structured wave driver — dispatching sequential single-issue sub-waves and delegating parallel batches to `ParallelOrchestrator` — rather than embedding orchestration logic directly in the CLI.
+**Context**: After Layer-1 per-issue states (FEAT-1902) are available, the sprint orchestrator needs a structured wave driver — dispatching sequential single-issue sub-waves and delegating parallel batches to `ParallelOrchestrator` — rather than embedding orchestration logic directly in the CLI.
 
 **Goal**: Run `ll-sprint execute` and have dependency-ordered waves driven by a validated FSM loop that reuses Layer-1 states, with parallel batches automatically delegated to `ParallelOrchestrator`.
 
@@ -54,7 +55,7 @@ Depends on FEAT-1897 (Layer 0 CLI subcommands) and FEAT-1898 (Layer-1 per-issue 
 ## Motivation
 
 This feature completes the EPIC-1867 FSM decomposition at the sprint/wave level:
-- Reuses Layer-1 per-issue states (FEAT-1898) rather than duplicating per-issue orchestration logic in `ll-sprint`.
+- Reuses Layer-1 per-issue states (FEAT-1902) rather than duplicating per-issue orchestration logic in `ll-sprint`.
 - Enables `ll-loop validate` enforcement of meta-loop rules (MR-1/MR-3) on sprint execution.
 - Reduces `ll-sprint` to a thin shim, concentrating wave dispatch logic in a structured, testable FSM.
 - Unlocks parallel wave delegation to `ParallelOrchestrator` in a validated, observable way.
@@ -63,7 +64,7 @@ This feature completes the EPIC-1867 FSM decomposition at the sprint/wave level:
 
 - [ ] `ll-sprint plan --json` emits a valid ordered wave definition (list of waves with `issue_ids` and `mode: sequential|parallel`).
 - [ ] `loops/ll-sprint.yaml` FSM wave driver iterates over wave definitions and routes correctly to sequential vs. parallel dispatch states.
-- [ ] Sequential/contention sub-waves delegate to Layer-1 per-issue states from FEAT-1898.
+- [ ] Sequential/contention sub-waves delegate to Layer-1 per-issue states from FEAT-1902.
 - [ ] Parallel waves shell out to `ParallelOrchestrator`.
 - [ ] `ll-sprint execute` is a thin shim — no duplicated orchestration logic in the CLI.
 - [ ] `ll-loop validate ll-sprint` passes (MR-1 and MR-3).
@@ -76,7 +77,7 @@ This feature completes the EPIC-1867 FSM decomposition at the sprint/wave level:
 **Step 2 — Author `loops/ll-sprint.yaml`** following the meta-loop diagnosis-first shape (CLAUDE.md § Loop Authoring):
 - States: `load_plan` → `dispatch_wave` → `run_sequential` / `delegate_parallel` → `check_wave_complete` → `done`.
 - `dispatch_wave` routes on `mode` field from the wave definition.
-- `run_sequential` invokes Layer-1 per-issue FSM states from FEAT-1898.
+- `run_sequential` invokes Layer-1 per-issue FSM states from FEAT-1902.
 - `delegate_parallel` shells out to `ParallelOrchestrator`.
 - Every LLM-structured state paired with a non-LLM evaluator (`exit_code` or `convergence`) — MR-1.
 - All intermediate artifacts written under `${context.run_dir}/` — MR-3.
@@ -110,7 +111,7 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/parallel_orchestrator.py` — invoked by `delegate_parallel` state
-- FEAT-1898 Layer-1 per-issue loop YAML — referenced by `run_sequential` state
+- FEAT-1902 Layer-1 per-issue loop YAML — referenced by `run_sequential` state
 - `ll-sprint` CLI entry point (`scripts/little_loops/__main__.py` or equivalent)
 
 ### Similar Patterns
@@ -133,7 +134,7 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 
 1. Add `ll-sprint plan --json` subcommand to emit ordered wave definitions.
 2. Author `loops/ll-sprint.yaml` FSM wave driver with `load_plan`, `dispatch_wave`, `run_sequential`, `delegate_parallel`, `check_wave_complete`, `done` states.
-3. Wire Layer-1 per-issue states (FEAT-1898) into `run_sequential` state.
+3. Wire Layer-1 per-issue states (FEAT-1902) into `run_sequential` state.
 4. Wire `ParallelOrchestrator` into `delegate_parallel` state.
 5. Refactor `ll-sprint execute` to thin shim invoking `ll-loop run ll-sprint`.
 6. Run `ll-loop validate ll-sprint`; resolve any MR-1/MR-3 violations.
@@ -151,6 +152,7 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 **Open** | Created: 2026-06-03 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T19:47:17 - `6dbe3977-0d8f-47aa-b338-9f0b66da4be5.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:23:35 - `1f79d2d5-df37-42dc-a0f8-73e20acc795b.jsonl`
