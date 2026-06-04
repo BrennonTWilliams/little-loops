@@ -938,6 +938,7 @@ Steps 15, 17-21 and 13/14 can be done in parallel. Step 16 is the final gate.
 `loops`, `fsm`, `orchestration`, `recursion`, `planning`
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-04T13:45:03 - `3d0aca0d-4df4-4cf1-a945-a28a7892cf81.jsonl`
 - `/ll:refine-issue` - 2026-06-04T13:29:48 - `76d43d09-72c5-49f1-8090-a12a00a33d40.jsonl`
 - `/ll:format-issue` - 2026-06-04T13:15:38 - `bd7f5333-de62-45ce-8686-dca087a872b2.jsonl`
 - `/ll:capture-issue` - 2026-06-04T05:36:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e0ae204-dee8-4424-b3cd-529179a61766.jsonl`
