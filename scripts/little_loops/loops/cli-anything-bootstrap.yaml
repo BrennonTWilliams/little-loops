@@ -33,6 +33,7 @@ context:
   force_rebuild: "false" # set "true" to ignore an existing cache
   min_test_pass_rate: "0.85"
   min_help_coverage: "0.9"
+  max_refine_cycles: "5"
 
 states:
   init:
@@ -239,7 +240,7 @@ states:
 
       Step 5 — Report the final path to the operator and confirm setup.py (or pyproject.toml)
       exists at the cache path.
-    next: verify-cli
+    next: check-delegate-result
 
   verify-cli:
     # HARNESS: external evaluator #1 — does the generated CLI install cleanly under a
@@ -266,7 +267,11 @@ states:
         exit 1
       fi
 
-      CLI_NAME=$(ls "$VENV/bin" | grep -v -E '^(python|pip|activate|wheel)' | head -1)
+      CLI_NAME=$(ls "$VENV/bin" \
+        | grep -v -iE '^(python|pip|activate|wheel)' \
+        | grep -v -E '\.(ps1|csh|fish)$' \
+        | while read -r f; do [ -x "$VENV/bin/$f" ] && echo "$f"; done \
+        | head -1)
       if [ -z "$CLI_NAME" ]; then
         printf "install_rc=0\nhelp_coverage=0.0\nreason=NO_ENTRY_POINT\n" > "$RUN_DIR/verify-cli.txt"
         exit 1
@@ -363,7 +368,7 @@ states:
       type: output_contains
       pattern: "ALL_PASS"
     on_yes: publish-cache
-    on_no: delegate-refine
+    on_no: count-refine-cycle
     on_error: diagnose
 
   delegate-refine:
@@ -379,7 +384,19 @@ states:
 
       Wait for the skill to complete. If the skill is unavailable, write
       "CLI_ANYTHING_PLUGIN_MISSING" to ${captured.run_dir.output}/delegate-error.txt and stop.
-    next: verify-cli
+    next: check-delegate-result
+
+  check-delegate-result:
+    # HARNESS: guard state shared by delegate-bootstrap and delegate-refine. Routes to
+    # diagnose immediately if the delegate wrote CLI_ANYTHING_PLUGIN_MISSING, preventing
+    # entry into the verify→test→score refine cycle when no CLI was produced.
+    action_type: shell
+    action: |
+      test ! -f "${captured.run_dir.output}/delegate-error.txt"
+    evaluate:
+      type: exit_code
+    on_yes: verify-cli
+    on_no: diagnose
 
   publish-cache:
     # HARNESS: bootstrap accepted — write the manifest that marks this cache as ready.
@@ -455,6 +472,24 @@ states:
       Tell the operator they can now run the task loop with:
         ll-loop run <target_name>-task --input "<their goal in natural language>"
     terminal: true
+
+  count-refine-cycle:
+    # HARNESS: convergence guard — increments a per-run counter each time score-bootstrap
+    # routes ITERATE. Routes to delegate-refine while under the limit; routes to diagnose
+    # when stagnation is detected (no ALL_PASS after max_refine_cycles attempts).
+    action_type: shell
+    action: |
+      COUNTER_FILE="${captured.run_dir.output}/refine_count.txt"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      MAX="${context.max_refine_cycles}"
+      [ -z "$MAX" ] && MAX=5
+      [ "$COUNT" -ge "$MAX" ] && exit 1 || exit 0
+    evaluate:
+      type: exit_code
+    on_yes: delegate-refine
+    on_no: diagnose
 
   diagnose:
     action_type: prompt
