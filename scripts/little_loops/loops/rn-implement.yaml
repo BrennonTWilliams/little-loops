@@ -74,7 +74,7 @@ states:
         "${context.max_depth}" "${context.max_remediation_passes}" \
         > "$RUN_DIR/config.json"
 
-      echo "Queue seeded with $QUEUE_COUNT issue(s)"
+      echo "Queue seeded with $QUEUE_COUNT issue(s)" >&2
       echo "$RUN_DIR"
     capture: run_dir
     on_yes: dequeue_next
