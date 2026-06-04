@@ -1,7 +1,7 @@
 ---
 id: BUG-1947
 title: Design tokens context empty placeholder blocks injection
-status: open
+status: done
 priority: P2
 type: BUG
 captured_at: '2026-06-04T19:27:13Z'
