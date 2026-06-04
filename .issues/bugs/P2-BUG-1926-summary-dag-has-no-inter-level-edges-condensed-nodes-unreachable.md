@@ -16,10 +16,10 @@ labels:
 - session-store
 - context-management
 - captured
-decision_needed: true
-confidence_score: 95
-outcome_confidence: 71
-score_complexity: 10
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 21
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
@@ -78,6 +78,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 In `_compact_session_conn()` (`scripts/little_loops/session_store.py`, ~line 1132), after inserting the condensed node, add the missing linkage. Two implementation options:
 
 **Option A: `parent_id` back-link (recommended — simpler, single UPDATE)**
+
+> **Selected:** Option A — `parent_id` back-link; highest codebase fit (11/12 vs 5/12). One UPDATE, reuses purpose-built `parent_id` column that already has full read-side support.
 ```python
 # After the leaf-insert loop, add:
 condensed_id = cursor.lastrowid
@@ -146,6 +148,25 @@ def ll_expand(summary_id: int, *, db: Path | str = DEFAULT_DB_PATH) -> list[dict
 **`ll_grep()` at `history_reader.py:464-474`** — the `summary_id` filter path has the same gap. If `summary_id` points to a condensed node, the `JOIN summary_spans ss ON ss.message_event_id = me.id WHERE ss.summary_id = ?` returns no rows. Fix with the same two-hop pattern when `summary_id` is a condensed node.
 
 **`parent_id` index** — the column at `session_store.py:317` has no index. Add `CREATE INDEX IF NOT EXISTS idx_summary_nodes_parent_id ON summary_nodes(parent_id)` to the v10 migration (or a new v11 migration) so the `WHERE leaf.parent_id = ?` query doesn't table-scan. Without this index, every `ll_expand(condensed_id)` call scans all summary_nodes rows.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-04.
+
+**Selected**: Option A — `parent_id` back-link
+
+**Reasoning**: Option A leverages the purpose-built `parent_id` column on `summary_nodes` (`session_store.py:317`) which already has full read-side support in the `SummaryNode` dataclass (`history_reader.py:106`) and `ll_describe()` (`history_reader.py:551,568`). The `lastrowid` capture and UPDATE-after-INSERT patterns both exist in the same file (lines 1115 and 556). Option B would repurpose `summary_spans.message_event_id` for node→node edges, creating semantic ambiguity across all 3 read paths and contradicting the documented design intent in both the schema comment (`session_store.py:305-306`) and `ARCHITECTURE.md:562`. The `parent_id` column was created for exactly this purpose and is currently unused — this bug is the gap it was designed to fill.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A: `parent_id` back-link | 3/3 | 3/3 | 3/3 | 2/3 | **11/12** |
+| Option B: `summary_spans` rows | 1/3 | 1/3 | 2/3 | 1/3 | **5/12** |
+
+**Key evidence**:
+- **Option A**: `parent_id` column exists at `session_store.py:317` with FK to `summary_nodes(id)`; `lastrowid` capture pattern at line 1115 (same function); `UPDATE` + captured ID pattern at line 556 (same file); `ll_describe()` already reads and surfaces `parent_id` (3 lines); zero writes to `parent_id` today — this is the first use, exactly as designed.
+- **Option B**: `message_event_id` FK targets `message_events(id)` — inserting `summary_nodes.id` values creates semantic ambiguity; all 3 read paths hard-code `JOIN ... ON ss.message_event_id = me.id` against `message_events`; documented design intent scopes `summary_spans` to leaf→message linkage only; repurposing the column contradicts both the schema comment and `ARCHITECTURE.md`.
 
 ## Expected Behavior
 
@@ -280,7 +301,10 @@ _Added by `/ll:confidence-check` on 2026-06-03_
 - **Test gap for condensed-node traversal**: Existing `ll_expand`/`ll_grep` tests use single-leaf fixtures only. The 8 new tests enumerated in the Implementation Steps (spanning `test_session_store.py`, `test_history_reader.py`, and `test_ll_session.py`) are co-deliverables — implement them alongside the fix to close the coverage gap.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-04T05:09:26 - `817738ef-041a-4abf-9c02-5316ebb6a0fe.jsonl`
+- `/ll:decide-issue` - 2026-06-04T05:02:04 - `fbf58583-e671-4e96-8ee0-69f89f6369c2.jsonl`
 - `/ll:confidence-check` - 2026-06-03 - `c8a2cd54-95c1-4e49-9641-8490445ddeea.jsonl`
+- `/ll:confidence-check` - 2026-06-04T19:24:00 - `89e17d9b-7d91-497e-9480-aa3f158be3a0.jsonl`
 - `/ll:wire-issue` - 2026-06-04T04:52:34 - `e810a662-a9ca-4dbd-be16-bc9daca66935.jsonl`
 - `/ll:refine-issue` - 2026-06-04T04:43:30 - `2e1648a6-b5ec-4c5d-9a10-85d3c6b75e22.jsonl`
 - `/ll:format-issue` - 2026-06-04T04:26:10 - `1581336d-4181-4074-85b0-16f72458869b.jsonl`
