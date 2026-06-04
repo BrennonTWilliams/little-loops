@@ -10,6 +10,12 @@ labels:
 - loops
 - fsm
 - refactoring
+confidence_score: 100
+outcome_confidence: 72
+score_complexity: 15
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 12
 ---
 
 # ENH-1939: Extract rn-decompose sub-loop from rn-implement.yaml
@@ -79,9 +85,24 @@ parameters:
 
 **Key detail:** `enqueue_children` writes to `${run_dir}/queue.txt` via the `run_dir` parameter. This is the primary coupling point with the parent loop.
 
-**Terminal states:** `done` (children enqueued) and `failed` (no children found or error). Use `terminal: true` without actions.
+**Terminal states:** `done` (children enqueued) and `failed` (no children found or error). Use `terminal: true` without actions — bare terminals following the `rn-remediate.yaml` pattern (lines 420-424) and `implement-issue-chain.yaml` pattern (lines 85-89). The sub-loop does not own the queue or produce summary reports; the parent handles all post-termination actions.
 
-**Fragment imports:** `import: lib/common.yaml` for `with_rate_limit_handling` and `shell_exit`.
+**Routing contract** (from `fsm/executor.py:599-612`):
+
+| Child `terminated_by` | Child `final_state` | Parent route |
+|---|---|---|
+| `"terminal"` | `"done"` | `state.on_yes` (interpolated) |
+| `"terminal"` | anything other than `"done"` | `state.on_no` (interpolated) |
+| `"error"` | any | `state.on_error` (if set), else `state.on_no` |
+| anything else (max_iterations, timeout, signal) | any | `state.on_no` (interpolated) |
+
+**Sibling template:** `rn-remediate.yaml` (ENH-1938, ~24 states, ~280 lines) is the completed sibling extraction following this exact pattern. Key conventions followed:
+- `on_handoff: spawn` in top-level declarations (required for sub-loops that can be spawned as children)
+- `${captured.input.output}` in parent → `${context.issue_id}` in sub-loop
+- `${captured.run_dir.output}` → `${context.run_dir}` parameter
+- `on_error: skip_issue` in parent → `on_error: failed` in sub-loop (sub-loop doesn't manage queue)
+
+**Fragment imports:** `import: lib/common.yaml` for `with_rate_limit_handling` (line 61 in `common.yaml`: sets `max_rate_limit_retries: 3`, `rate_limit_backoff_base_seconds: 30`, `rate_limit_max_wait_seconds: 21600`, `rate_limit_long_wait_ladder: [300, 900, 1800, 3600]`) and `shell_exit` (line 15).
 
 ## API/Interface
 
@@ -108,31 +129,50 @@ parameters:
 - `failed` — no children found or error during decomposition
 
 **Sub-loop invocation** (by parent loops):
+
+The parent `rn-implement.yaml` will invoke `rn-decompose` via a new state replacing the current Phase 5 chain:
+
 ```yaml
 - name: run_decompose
   action_type: loop
   loop: rn-decompose
   with:
-    issue_id: ${issue_id}
-    parent_depth: ${parent_depth}
-    run_dir: ${run_dir}
-  on_done: continue_to_next_phase
-  on_failed: handle_decompose_failure
+    issue_id: ${captured.input.output}
+    parent_depth: ${captured.current_depth.output}
+    run_dir: ${captured.run_dir.output}
+  on_yes: dequeue_next        # done — children enqueued
+  on_no: skip_issue           # failed — no children or error
+  on_error: skip_issue
+```
+
+**Top-level declarations required** (from `rn-remediate.yaml` pattern):
+```yaml
+name: rn-decompose
+category: planning
+on_handoff: spawn        # REQUIRED for sub-loops that can be spawned as children
+import:
+  - lib/common.yaml
 ```
 
 ## Implementation Steps
 
-1. Create `scripts/little_loops/loops/rn-decompose.yaml` with the states listed above
+1. Create `scripts/little_loops/loops/rn-decompose.yaml` with the states listed above (header, parameters, context, states)
 2. Declare `parameters:` block with typed parameters (including `run_dir: {type: path, required: true}`)
-3. Terminal states `done` and `failed` with `terminal: true`
-4. Import `lib/common.yaml` for shared fragments
-5. Ensure `on_rate_limit_exhausted: rate_limit_diagnostic` carries over on `run_size_review`
-6. Move decomposition test classes from `test_rn_implement.py` to new `scripts/tests/test_rn_decompose.py`:
-   - `TestDecompositionChain`
-   - `TestCycleDetection`
-   (~15 tests, 2 classes)
-7. Run `ll-loop validate rn-decompose` — verify MR-1/MR-3/MR-4 compliance
-8. Run `python -m pytest scripts/tests/test_rn_decompose.py -v` to verify all moved tests pass
+3. Terminal states `done` and `failed` with `terminal: true` and no action body (bare terminal pattern from `rn-remediate.yaml:420-424`)
+4. Import `lib/common.yaml` for shared fragments (`with_rate_limit_handling` and `shell_exit`)
+5. Ensure `on_rate_limit_exhausted: rate_limit_diagnostic` carries over on `run_size_review` (BUG-1937 fix at `rn-implement.yaml:524`)
+6. Move decomposition test classes from `scripts/tests/test_rn_implement.py` to new `scripts/tests/test_rn_decompose.py`:
+   - `TestDecompositionChain` (line 158, ~12 tests)
+   - `TestCycleDetection` (line 249, ~3 tests)
+   - Follow test file structure from `scripts/tests/test_rn_remediate.py` (model: `_load_loop()` helper, `TestFSMHealth` class with MR-1/MR-3 checks)
+7. Update registry references:
+   - `scripts/tests/test_builtin_loops.py:127` — add `"rn-decompose"` to `test_expected_loops_exist` set
+   - `scripts/tests/test_fsm_fragments.py:1023` — add `"rn-decompose.yaml"` to `migration_targets`
+   - `scripts/little_loops/loops/README.md:53` — add `rn-decompose` entry to Planning table
+8. Run `ll-loop validate rn-decompose` — verify MR-1 (non-LLM evaluator pairing for `run_size_review`/`detect_children`), MR-3 (`${run_dir}/` not `.loops/tmp/`), MR-4 (complete routing) compliance
+9. Run `python -m pytest scripts/tests/test_rn_decompose.py -v` to verify all moved tests pass
+10. Run `python -m pytest scripts/tests/test_rn_implement.py -v` to verify remaining tests still pass after extraction
+11. Update `test_state_count_matches_expected` assertion in `scripts/tests/test_rn_implement.py:534` from `>= 31` to match new state count (~29 after removing 4 Phase 5 states + adding 1 sub-loop invocation state) _(added by `/ll:wire-issue`)_
 
 ## Success Metrics
 
@@ -163,9 +203,47 @@ parameters:
 - `scripts/tests/test_rn_decompose.py` — new test file (~15 tests)
 - `scripts/tests/test_rn_implement.py` — remove moved test classes
 
+### Callers (Transition Sources Into Phase 5)
+
+These 11 states in `rn-implement.yaml` currently transition to `snap_for_size_review`. After extraction, they will route to a new sub-loop invocation state instead:
+
+| Source State | Condition | Line |
+|---|---|---|
+| `diagnose` | `on_error` | 271 |
+| `route_d_implement` | `on_error` | 280 |
+| `route_d_decide` | `on_error` | 289 |
+| `route_d_wire` | `on_error` | 298 |
+| `route_d_refine` | `on_no` (no DECOMPOSE token match) | 306 |
+| `route_d_refine` | `on_error` | 307 |
+| `route_conv_pass` | `on_error` | 465 |
+| `route_conv_improved` | `on_no` (score not improved) | 473 |
+| `route_conv_improved` | `on_error` | 474 |
+| `check_remediation_budget` | `on_no` (budget exhausted) | 490 |
+| `check_remediation_budget` | `on_error` | 491 |
+
+### Transitions Out Of Phase 5
+
+After `enqueue_children` in the parent:
+| Source State | Condition | Route | Line |
+|---|---|---|---|
+| `enqueue_children` | `on_yes` (children enqueued) | `dequeue_next` | 650 |
+| `enqueue_children` | `on_no` (all cycle-filtered) | `dequeue_next` | 651 |
+| `enqueue_children` | `on_error` | `skip_issue` | 652 |
+
+After extraction, the parent's sub-loop invocation state routes on verdict:
+- `on_yes` (sub-loop terminal = `done`): `dequeue_next` (children successfully enqueued)
+- `on_no` (sub-loop terminal = `failed`): `skip_issue` (no children or error)
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — `_execute_sub_loop()` already handles sub-loop spawning; no changes needed
+- `scripts/little_loops/cli/loop/_helpers.py:840` — `resolve_loop_path()` resolves sub-loop name to file path; no changes needed but referenced during sub-loop loading
 - `loops/recursive-refine.yaml` — future adopter (out of scope for this issue; see ENH-1940 follow-up)
+
+### Registry Updates (Required for `ll-loop validate` and `ll-loop list`)
+
+- `scripts/tests/test_builtin_loops.py:127` — add `"rn-decompose"` to the `test_expected_loops_exist` hardcoded set
+- `scripts/tests/test_fsm_fragments.py:1023` — add `"rn-decompose.yaml"` to `migration_targets` (uses `shell_exit` and `with_rate_limit_handling` fragments)
+- `scripts/little_loops/loops/README.md:53` — add `rn-decompose` entry to the Planning table
 
 ### Similar Patterns
 - `loops/auto-refine-and-implement.yaml:43` — uses `with:` bindings pattern for sub-loop parameter passing
@@ -175,8 +253,17 @@ parameters:
 - `scripts/tests/test_rn_decompose.py` — new file: `TestDecompositionChain`, `TestCycleDetection` (~15 tests)
 - `scripts/tests/test_rn_implement.py` — remove `TestDecompositionChain`, `TestCycleDetection`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_rn_implement.py` — `TestValidation.test_state_count_matches_expected` (line 534): assertion `>= 31` must be updated to match new state count (~29 after removing 4 Phase 5 states + adding 1 sub-loop invocation state)
+
 ### Documentation
 - N/A — no docs reference decomposition pipeline internals
+
+_Wiring pass verified by `/ll:wire-issue`:_
+- Auto-discovery mechanisms (`is_runnable_loop`, `resolve_loop_path`, `glob("*.yaml")`) handle the new loop automatically — no CLI, config, or manifest changes required
+- No docs reference `rn-implement` or `rn-decompose` by name — no doc updates needed beyond `loops/README.md` (already listed)
+- All error messages and log labels are parameterized — no string coupling
+- Sub-loop spawning via `_execute_sub_loop()` works with no signature changes
 
 ### Configuration
 - N/A
@@ -187,6 +274,21 @@ parameters:
 - **Effort**: Small-Medium — ~120 lines of YAML extraction + ~15 tests moved
 - **Risk**: Low — structural extraction only; logic unchanged
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-04_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
+
+### Outcome Risk Factors
+- 11-caller routing fanout: 11 states in `rn-implement.yaml` currently route to `snap_for_size_review`; each must be updated to route to the new `run_decompose` sub-loop invocation state. Missing any single one creates a silent FSM dead-end (no `next:` fallback on those routes — the executor will halt). Mitigation: the issue's Integration Map enumerates all 11 callers with line numbers; verify with `grep -n "snap_for_size_review" rn-implement.yaml` after extraction to confirm count drops to zero.
+- 7-file change surface: spans new sub-loop YAML, parent loop modification (removal + invocation state), test extraction (2 classes, 15 tests), and 3 registry file updates. Mitigation: 5 of 7 changes are single-line mechanical edits (add string to set, add row to table, update assertion value).
+
 ## Session Log
+- `/ll:wire-issue` - 2026-06-04T16:15:50 - `bcfc447d-b1dd-4295-ac49-1d439378466c.jsonl`
+- `/ll:refine-issue` - 2026-06-04T16:05:54 - `214db9ba-5433-4b9b-858f-2ccd55dae46c.jsonl`
+- `/ll:format-issue` - 2026-06-04T15:41:22 - `98a1e26a-5644-47ed-84ba-2aaafa9a41b9.jsonl`
 - `/ll:format-issue` - 2026-06-04T15:39:21 - `33977a38-f68b-4829-b1a3-b80ab39ff8b9.jsonl`
 - `/ll:issue-size-review` - 2026-06-04T19:00:00 - `276841ec-408f-4aca-bf28-93f41fe70aae.jsonl`
+- `/ll:confidence-check` - 2026-06-04T16:20:19Z - `68b94b8a-1899-432b-87cc-38b132f2afa4.jsonl`
