@@ -1282,3 +1282,78 @@ Based on selections, update `.ll/ll-config.json`:
 - If "Disable" selected: set `analytics.enabled: false` (omit `capture` sub-object)
 - If "Keep current" selected: preserve existing `enabled` value
 - Map capture selections to `analytics.capture.*` fields (omit if matching schema defaults)
+
+## Area: history
+
+### Current Values
+
+```
+Current History Configuration
+------------------------------
+  velocity_window:                     {{config.history.velocity_window}}
+  effort_fields:                       {{config.history.effort_fields}}
+  max_age_days:                        {{config.history.max_age_days}}
+  planning_skills:                     {{config.history.planning_skills}}
+  session_digest.enabled:              {{config.history.session_digest.enabled}}
+  session_digest.days:                 {{config.history.session_digest.days}}
+  session_digest.char_cap:             {{config.history.session_digest.char_cap}}
+  session_digest.sections:             {{config.history.session_digest.sections}}
+  evolution.feedback_min_recurrence:   {{config.history.evolution.feedback_min_recurrence}}
+  evolution.bypass_min_count:          {{config.history.evolution.bypass_min_count}}
+  go_no_go.correction_penalty:         {{config.history.go_no_go.correction_penalty}}
+  capture_issue.dup_overlap_threshold: {{config.history.capture_issue.dup_overlap_threshold}}
+```
+
+### Round 1
+
+```yaml
+questions:
+  - header: "Session Digest"
+    question: "Enable session digest injection at session start? (current: {{config.history.session_digest.enabled}})"
+    options:
+      - label: "Enable (turn on)"
+        description: "Prepend a project-context summary to each new session from history.db (ENH-1907)"
+      - label: "Disable (turn off)"
+        description: "No session digest injection (default)"
+      - label: "Keep current ({{config.history.session_digest.enabled}})"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Velocity Window"
+    question: "How many recent issues to include when computing velocity? (current: {{config.history.velocity_window}})"
+    options:
+      - label: "10 (default)"
+        description: "Use last 10 completed issues for velocity computation"
+      - label: "Keep {{config.history.velocity_window}}"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Max Age"
+    question: "Maximum age in days for history entries? (current: {{config.history.max_age_days}})"
+    options:
+      - label: "null (no limit, default)"
+        description: "Include all history entries regardless of age"
+      - label: "90 days"
+        description: "Exclude entries older than 90 days"
+      - label: "Keep {{config.history.max_age_days}}"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Planning Skills"
+    question: "Which skill sessions are included in planning context queries? (current: {{config.history.planning_skills}})"
+    options:
+      - label: "Default (create-sprint, scope-epic, manage-issue, review-epic)"
+        description: "Keep default planning skill set"
+      - label: "Keep {{config.history.planning_skills}}"
+        description: "No change"
+    multiSelect: false
+```
+
+### Configuration Result
+
+Based on selections, update `.ll/ll-config.json`:
+- Map `session_digest.enabled` selection to `history.session_digest.enabled`
+- Map `velocity_window` selection to `history.velocity_window`
+- Map `max_age_days` selection to `history.max_age_days`
+- Map `planning_skills` selection to `history.planning_skills`
+- Omit sub-object keys if matching schema defaults

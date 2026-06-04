@@ -119,6 +119,8 @@ BRConfig(project_root: Path)
 | `events` | `EventsConfig` | Event transport/emission settings |
 | `decisions` | `DecisionsConfig` | Decisions and rules log configuration |
 | `learning_tests` | `LearningTestsConfig` | Learning test registry settings |
+| `analytics_capture` | `AnalyticsCaptureConfig` | Analytics capture sub-settings (see [CONFIGURATION.md#analytics](CONFIGURATION.md#analytics)) |
+| `history` | `HistoryConfig` | History.db consumer tuning (see [CONFIGURATION.md#history](CONFIGURATION.md#history)) |
 | `extensions` | `list[str]` | Extension module paths to load |
 | `repo_path` | `Path` | Resolved repository root path |
 | `issue_categories` | `list[str]` | List of category names |

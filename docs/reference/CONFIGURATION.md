@@ -469,6 +469,73 @@ Per-category gating for analytics writes (ENH-1840). All categories default to e
 }
 ```
 
+### `history`
+
+History.db read/consume configuration (ENH-1913). Single namespace owner for all `.ll/history.db`
+consumer tunables. The producer side (hooks, `SQLiteTransport`) is always active when analytics is
+enabled; these keys control how skills and CLI tools *read* that data.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `history.velocity_window` | `integer` | `10` | Number of recent issues to use when computing velocity (ENH-1905). |
+| `history.effort_fields` | `list[str]` | `["session_count", "cycle_time_days"]` | Fields extracted from history.db for effort reporting (ENH-1905). |
+| `history.max_age_days` | `integer\|null` | `null` | Maximum age in days for history entries; `null` = no limit (ENH-1905). |
+| `history.planning_skills` | `list[str]` | `["create-sprint", "scope-epic", "manage-issue", "review-epic"]` | Skill names whose sessions are included in planning context queries (ENH-1909). |
+
+#### `history.session_digest`
+
+Opt-in project-context snapshot injected at session start (ENH-1907). Queries `history.db` and
+prepends a `<project_context>` block to session context so every new session gets a "what's been
+happening lately" summary. Default: disabled. Run `ll-history-context --project` to preview.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `history.session_digest.enabled` | `boolean` | `false` | Gate flag — set `true` to enable injection. |
+| `history.session_digest.days` | `integer` | `7` | Freshness window in days; rows older than this are excluded. |
+| `history.session_digest.char_cap` | `integer` | `1200` | Hard character ceiling on the injected block. Truncates with `+N more`. |
+| `history.session_digest.sections` | `list[str]` | `[]` | Ordered list of section keys to render. Empty = all providers. Supported: `"touched_files"`, `"completed_issues"`, `"recurring_corrections"`. |
+
+#### `history.evolution`
+
+Feedback evolution configuration (ENH-1911). Controls which correction patterns surface in
+evolution analysis.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `history.evolution.feedback_min_recurrence` | `integer` | `2` | Minimum recurrence count for a correction to surface in evolution analysis. |
+| `history.evolution.bypass_min_count` | `integer` | `2` | Minimum bypass count threshold for evolution signal suppression. |
+
+#### `history.go_no_go`
+
+Go/no-go decision scoring configuration (ENH-1914).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `history.go_no_go.correction_penalty` | `number` | `-0.2` | Score penalty applied per correction event in go/no-go scoring. |
+
+#### `history.capture_issue`
+
+Capture-issue deduplication configuration (ENH-1914).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `history.capture_issue.dup_overlap_threshold` | `number` | `0.7` | Overlap ratio threshold above which a new issue is considered a duplicate. |
+
+**Example** — enable session digest and tighten velocity window:
+```json
+{
+  "history": {
+    "velocity_window": 5,
+    "max_age_days": 90,
+    "session_digest": {
+      "enabled": true,
+      "days": 7,
+      "char_cap": 1200
+    }
+  }
+}
+```
+
 ### `sprints`
 
 Sprint management settings (ll-sprint, `/ll:create-sprint`):
@@ -1084,35 +1151,6 @@ See [API Reference → little_loops.transport](API.md#little_loopstransport) for
 ## Manual Configuration
 
 The following fields are defined in `config-schema.json` but are not exposed through `/ll:init` or `/ll:configure`. To set them, edit `.ll/ll-config.json` directly. All have sensible defaults and rarely need changing.
-
-### `history.session_digest`
-
-Opt-in project-context snapshot injected at session start (ENH-1907). Queries `history.db` and prepends a `<project_context>` block to session context so every new session gets a "what's been happening lately" summary without manual surfacing. Default: disabled.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `history.session_digest.enabled` | `boolean` | `false` | Gate flag — set `true` to enable injection. Off by default while it bakes. |
-| `history.session_digest.days` | `integer` | `7` | Freshness window in days. Rows older than this are excluded. |
-| `history.session_digest.char_cap` | `integer` | `1200` | Hard character ceiling on the injected block. Truncates with `+N more`. |
-| `history.session_digest.sections` | `array[string]` | `[]` | Ordered list of section keys to render. Empty list = all providers at defaults. Supported keys: `"touched_files"`, `"completed_issues"`, `"recurring_corrections"`. |
-
-**Example:**
-```json
-{
-  "history": {
-    "session_digest": {
-      "enabled": true,
-      "days": 7,
-      "char_cap": 1200,
-      "sections": ["touched_files", "completed_issues", "recurring_corrections"]
-    }
-  }
-}
-```
-
-**Inspection:** Run `ll-history-context --project` to preview what would be injected for your current config without starting a session.
-
-**Safety design:** Opt-in gate (never active by default), hard `char_cap` (session context cannot be bloated beyond this), freshness window (stale rows excluded), graceful degradation (missing/empty DB → no block, no error, no startup delay).
 
 ### `scan.custom_agents`
 

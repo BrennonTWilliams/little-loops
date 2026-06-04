@@ -228,3 +228,24 @@ Analytics Configuration
 
 Edit: /ll:configure analytics
 ```
+
+## history --show
+
+```
+History Configuration
+---------------------
+  velocity_window:                       {{config.history.velocity_window}}                       (default: 10)
+  effort_fields:                         {{config.history.effort_fields}}                         (default: ["session_count", "cycle_time_days"])
+  max_age_days:                          {{config.history.max_age_days}}                          (default: null)
+  planning_skills:                       {{config.history.planning_skills}}                       (default: ["create-sprint", "scope-epic", "manage-issue", "review-epic"])
+  session_digest.enabled:                {{config.history.session_digest.enabled}}                (default: false)
+  session_digest.days:                   {{config.history.session_digest.days}}                   (default: 7)
+  session_digest.char_cap:               {{config.history.session_digest.char_cap}}               (default: 1200)
+  session_digest.sections:               {{config.history.session_digest.sections}}               (default: [])
+  evolution.feedback_min_recurrence:     {{config.history.evolution.feedback_min_recurrence}}     (default: 2)
+  evolution.bypass_min_count:            {{config.history.evolution.bypass_min_count}}            (default: 2)
+  go_no_go.correction_penalty:           {{config.history.go_no_go.correction_penalty}}           (default: -0.2)
+  capture_issue.dup_overlap_threshold:   {{config.history.capture_issue.dup_overlap_threshold}}   (default: 0.7)
+
+Edit: /ll:configure history
+```

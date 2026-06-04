@@ -11,7 +11,7 @@ allowed-tools:
   - Bash(pip:*)
 arguments:
   - name: area
-    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools|hooks|design-tokens|analytics|learning-tests|decisions (optional - prompts if omitted)"
+    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools|hooks|design-tokens|analytics|learning-tests|decisions|history (optional - prompts if omitted)"
     required: false
   - name: flags
     description: Optional flags (--list, --show, --reset)
@@ -115,6 +115,7 @@ Map argument names to config sections:
 | `learning-tests` | `learning_tests` | Learning test registry: enabled, stale_after_days, discoverability mode |
 | `decisions` | `decisions` | Decisions log: enabled, log_path, auto_generate |
 | `analytics` | `analytics` | Analytics capture: enabled, skills, corrections, file_events |
+| `history` | `history` | History.db consumer tuning |
 
 ---
 
@@ -146,6 +147,7 @@ Configuration Areas
   learning-tests [DEFAULT]    Learning test registry: enabled, stale_after_days, discoverability
   decisions      [DEFAULT]    Decisions log: enabled, log_path, auto_generate
   analytics      [DEFAULT]     Analytics capture: enabled, skills, corrections, file_events
+  history        [DEFAULT]     History.db consumer tuning
 
 Configure: /ll:configure <area>
 Show:      /ll:configure <area> --show
@@ -268,7 +270,7 @@ questions:
       - label: "design-tokens"
         description: "Design system token settings"
       - label: "More areas..."
-        description: "Show analytics, learning-tests, allowed-tools, hooks"
+        description: "Show analytics, history, learning-tests, decisions, allowed-tools, hooks"
 ```
 
 If "More areas..." selected again:
@@ -281,6 +283,20 @@ questions:
     options:
       - label: "analytics"
         description: "Analytics capture: enabled, skills, corrections, file_events"
+      - label: "history"
+        description: "History.db consumer tuning"
+      - label: "More areas..."
+        description: "Show learning-tests, decisions, allowed-tools, hooks"
+```
+
+If "More areas..." selected again:
+
+```yaml
+questions:
+  - question: "Which area do you want to configure?"
+    header: "Area"
+    multiSelect: false
+    options:
       - label: "learning-tests"
         description: "Learning test registry: enabled, stale_after_days, discoverability"
       - label: "decisions"
@@ -373,6 +389,7 @@ $ARGUMENTS
   - `analytics` - Analytics capture: enabled, skills, corrections, file_events
   - `learning-tests` - Learning test registry: enabled, stale_after_days, discoverability
   - `decisions` - Decisions log: enabled, log_path, auto_generate
+  - `history` - History.db consumer tuning
 
 - **flags** (optional): Command behavior flags
   - `--list` - Display all configuration areas with status
