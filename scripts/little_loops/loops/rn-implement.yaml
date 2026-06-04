@@ -94,7 +94,7 @@ states:
       # Read depth for this issue (from depth_map.txt or default 0)
       DEPTH_MAP="${captured.run_dir.output}/depth_map.txt"
       DEPTH=$(grep "^$CURRENT " "$DEPTH_MAP" 2>/dev/null | awk '{print $2}')
-      DEPTH=${DEPTH:-0}
+      DEPTH=$${DEPTH:-0}
       echo "$DEPTH" > "${captured.run_dir.output}/current_depth.txt"
 
       # Mark as visited

@@ -246,19 +246,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-04_
+_Added by `/ll:confidence-check` on 2026-06-04 (re-evaluated 2026-06-04T23:55:00)_
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 68/100 → MODERATE
 
 ### Outcome Risk Factors
 - Codex session directory layout not fully confirmed — CLI probing paths (`ll-session backfill` without `--since`, `ll-logs discover`) need layout verification during implementation. `transcript_path` eliminates this for `session_start`/`session_log` paths.
-- Host naming inconsistency between `_HOST_RUNNER_REGISTRY` (`"claude-code"`) and `LL_HOOK_HOST` defaults (`"claude"` for default) — needs resolution in `get_project_folder()` host parameter to prevent dispatch mismatches.
 - 7 test files need new host-aware test cases; the specific Codex/OpenCode backfill paths are currently untested, and existing `get_project_folder` mocks will need signature updates for the new `host` keyword parameter.
+
+_Note: Prior risk factor about host naming inconsistency removed — re-verification confirmed `_HOST_RUNNER_REGISTRY` keys and `LL_HOOK_HOST` defaults use identical `"claude-code"` convention; no discrepancy exists._
 
 ## Session Log
 - `/ll:refine-issue` - 2026-06-04T23:50:47 - `849453dc-052d-4d7f-89cc-55354ccfde5a.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:50:31 - `8826ca14-a9b9-4717-b939-4425b44d5d7c.jsonl`
+- `/ll:confidence-check` - 2026-06-04T23:55:00 - `2d527f2f-a26e-4fef-a416-cbfeb70ef7af.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:45:00 - `4627729e-f88a-487e-88f9-6298bfd77cbd.jsonl`
 - `/ll:decide-issue` - 2026-06-04T23:32:03 - `ab09a645-db24-4bab-bd83-45ebf6d1f4bf.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:30:00 - `e484df0a-bfc4-4607-bd41-973d4785157e.jsonl`

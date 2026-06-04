@@ -1,14 +1,16 @@
 ---
 discovered_date: 2026-06-04
+completed_at: 2026-06-04 23:58:49+00:00
 discovered_by: debug-loop-run
 source_loop: rn-implement
 source_state: dequeue_next
-confidence_score: 96
-outcome_confidence: 90
+confidence_score: 80
+outcome_confidence: 93
 score_complexity: 25
-score_test_coverage: 15
+score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1951: dequeue_next action error: variable expansion failed for ${DEPTH:-0} in rn-implement loop
@@ -108,7 +110,7 @@ The loop runner's template engine resolves all `${...}` patterns during action e
 
 ## Proposed Solution
 
-Escape the literal shell variable so the template engine passes it through verbatim. The template engine uses `$$` as the escape sequence (seen elsewhere in the same loop, e.g., `$${RUN_DIR}/pre_scores_$${ID}.json` in `check_convergence`):
+Escape the literal shell variable so the template engine passes it through verbatim. The template engine uses `$$` as the escape sequence (seen elsewhere in the same loop, e.g., `$${ID}` in `rate_limit_diagnostic`):
 
 ```bash
 # In dequeue_next action, change:
@@ -136,7 +138,7 @@ This causes the template engine to emit the literal `${DEPTH:-0}` into the shell
 - N/A — only the action body string changes; no external callers of this loop's internals
 
 ### Similar Patterns
-- `scripts/little_loops/loops/rn-implement.yaml` `check_convergence` state: already uses `$${RUN_DIR}/pre_scores_$${ID}.json` escaping
+- `scripts/little_loops/loops/rn-implement.yaml` `rate_limit_diagnostic` state: already uses `$${ID}` double-dollar escaping (line 183)
 - `scripts/little_loops/loops/*.yaml` (any other loops with shell action bodies containing `${VAR:-default}`): grep for `${[A-Z]\+:-` to audit
 
 ### Tests
@@ -151,10 +153,10 @@ This causes the template engine to emit the literal `${DEPTH:-0}` into the shell
 
 ## Acceptance Criteria
 
-- [ ] `dequeue_next` action body uses `$${DEPTH:-0}` (double-dollar escape) instead of `${DEPTH:-0}`
-- [ ] `ll-loop validate rn-implement` passes with no schema violations
-- [ ] `ll-loop run rn-implement "<test-issue>"` reaches `check_depth` state (or beyond) instead of erroring in `dequeue_next`
-- [ ] Shell reproduction: `DEPTH= ; DEPTH=${DEPTH:-0}; echo "[$DEPTH]"` still outputs `[0]`
+- [x] `dequeue_next` action body uses `$${DEPTH:-0}` (double-dollar escape) instead of `${DEPTH:-0}`
+- [x] `ll-loop validate rn-implement` passes with no schema violations
+- [x] `ll-loop run rn-implement "<test-issue>"` reaches `check_depth` state (or beyond) instead of erroring in `dequeue_next`
+- [x] Shell reproduction: `DEPTH= ; DEPTH=${DEPTH:-0}; echo "[$DEPTH]"` still outputs `[0]`
 
 ## Impact
 
@@ -176,3 +178,4 @@ This causes the template engine to emit the literal `${DEPTH:-0}` into the shell
 - `/ll:ready-issue` - 2026-06-04T23:53:06 - `e57dc332-ecbc-4378-81de-b95d8a60456d.jsonl`
 - `/ll:format-issue` - 2026-06-04T23:46:31 - `b0170239-94d2-40df-a02e-460bfab5e99d.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:50:00 - `8826ca14-a9b9-4717-b939-4425b44d5d7c.jsonl`
+- `/ll:manage-issue` - 2026-06-04T23:58:49 - `50b5a91f-3ebc-42df-baef-10a3395c46bc.jsonl`
