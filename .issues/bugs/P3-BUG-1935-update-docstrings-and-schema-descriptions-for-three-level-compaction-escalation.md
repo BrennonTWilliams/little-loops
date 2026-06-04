@@ -3,7 +3,7 @@ id: BUG-1935
 title: Update docstrings and schema descriptions for three-level compaction escalation
 type: BUG
 priority: P3
-status: open
+status: done
 testable: false
 parent: BUG-1928
 relates_to:
@@ -119,6 +119,25 @@ The canonical source at `session_store.py:1045` (`_summarize_block()` docstring)
 
 6. **Update `docs/ARCHITECTURE.md:562` v10 schema table row**: Change "LLM-generated (or truncation-fallback) summaries" to reflect the three-level escalation. Found during codebase research — the architecture documentation carried the same stale binary framing.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Fix already applied**: Commit `65fa9ebd` (`fix(docs): update docstrings and schema descriptions for three-level compaction escalation`) applied all six docstring/comment/schema updates. All locations now carry three-level LCM Algorithm 3 language derived from the canonical `_summarize_block()` docstring at `session_store.py:1046`.
+- **No remaining stale references**: A comprehensive search for binary-fallback language (`"LLM failure → truncation"`, `"truncation-fallback"`, `"two-level"`) across `scripts/`, `docs/`, and `config-schema.json` returned zero remaining stale locations.
+- **Internal helpers correctly defer**: `_compact_session_conn()` at `session_store.py:1226` and `_compact_sessions()` at `session_store.py:1315` do not repeat escalation language — they correctly delegate to `_summarize_block()`. No update needed.
+- **Additional test coverage found** (beyond what the issue listed):
+  - `scripts/tests/test_history_reader.py:667-685` — `_make_db_with_compact_session()` helper
+  - `scripts/tests/test_history_reader.py:779-800` — `_make_db_with_two_leaves()` helper for condensed node tests
+  - `scripts/tests/test_ll_session.py:534-550` — `compact_session` usage in session tests
+  - `scripts/tests/test_config.py:2770-2784` — `test_compaction_defaults()` and `test_compaction_override()`
+  - `scripts/tests/test_config_schema.py:302-317` — `test_history_compaction_in_schema()`
+- **Test-to-level mapping**: `TestSummarizeBlock` methods map 1:1 to the three escalation levels:
+  - `test_level_1_accepts_smaller_summary` → "Accepted only if output < input"
+  - `test_level_1_escalates_when_summary_not_smaller` → "Triggered when level-1 output is not smaller than input"
+  - `test_level_2_accepts_smaller_summary` → Level 2 acceptance + fall-through to level 3 when level 2 also fails
+  - `test_level_3_truncation_when_llm_fails` / `_when_timeout` / `_when_nonzero_returncode` → "Guaranteed to produce output"
+
 ## Acceptance Criteria
 
 - `compact_session()` docstring accurately describes the three-level LCM Algorithm 3 escalation chain
@@ -145,6 +164,7 @@ _Added by `/ll:confidence-check` on 2026-06-04_
 - **No automated docstring-validation tests**: Documentation-only changes have no test harness validating their accuracy against behavior. Mitigation: the canonical source (`_summarize_block()` docstring at line 1045) was already updated in BUG-1934, so all other sites are derivations of verified language.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-04T13:17:25 - `41fac8c3-64a6-405b-836b-b471d0afef3e.jsonl`
 - `/ll:format-issue` - 2026-06-04T13:09:20 - `82856f60-632c-4be7-8861-3cb93a5f2d7a.jsonl`
 - `/ll:wire-issue` - 2026-06-04T08:16:35 - `7798db91-aacc-4ddc-bf44-1ff88b579450.jsonl`
 - `/ll:refine-issue` - 2026-06-04T08:08:55 - `6096ff71-e430-4583-8b43-9df0c253ad76.jsonl`
