@@ -18,6 +18,21 @@ labels:
 
 Rewrite `scripts/little_loops/loops/rn-implement.yaml` as a thin queue orchestrator (~12 states, ~250 lines) that delegates per-issue work to `rn-remediate` and `rn-decompose` sub-loops. This is child 3 of 3 for decomposing the 32-state monolith and depends on ENH-1938 and ENH-1939 being completed first.
 
+## Current Behavior
+
+`rn-implement.yaml` is a 32-state, ~723-line monolith that handles all phases inline: foundation (init, queue management, depth tracking), diagnosis (gap analysis, readiness checks), refinement (remediation passes with dimensional routing), decomposition (issue breakdown for stalled cases), and terminal reporting. All logic lives in a single FSM loop file with no delegation to sub-loops. Orchestration concerns (queue management) and domain logic (remediation, decomposition) are tightly coupled.
+
+## Expected Behavior
+
+`rn-implement.yaml` should be a thin queue orchestrator (~12 states, ≤250 lines) that:
+- Manages queue lifecycle (init, dequeue, depth gate, skip)
+- Delegates per-issue remediation to `rn-remediate` sub-loop via `loop:` delegation state
+- Delegates per-issue decomposition to `rn-decompose` sub-loop on remediation stall
+- Handles rate-limit diagnostics (circuit shared across nesting levels)
+- Produces a summary report before terminal state (avoids terminal-state caveat where `done` summary action is skipped when reached via `on_yes` from a sub-loop)
+
+Domain logic (dimension routing, remediation passes, issue breakdown) lives in the delegated sub-loops created by ENH-1938 and ENH-1939.
+
 ## Parent Issue
 
 Decomposed from ENH-1936: Decompose rn-implement.yaml monolith into sub-loops
@@ -36,6 +51,14 @@ After `rn-remediate` and `rn-decompose` are extracted as standalone sub-loops (E
 - **Terminal state caveat**: The FSM executor calls `_finish("terminal")` immediately when routing to a terminal state **without entering it**. The parent's `done` state summary action (line 679 of current file) won't execute when reached via `on_yes` from a sub-loop. Solution: use a separate `report` state before `done` (as `rn-refine.yaml` does at lines 306-340).
 - **Verdict contract**: Child loop terminal state names determine parent routing — `done` → `on_yes`, any other terminal (e.g. `failed`) → `on_no`, error → `on_error` (fsm/executor.py:598-612). Both sub-loops use `done`/`failed` terminal states matching this contract.
 - **Rate-limit circuit**: Shared across all nesting levels (executor.py line 571-573), so parent doesn't need its own rate-limit states — sub-loops handle backoff internally.
+
+## Motivation
+
+This enhancement would:
+- **Reduce maintenance surface**: Collapse a 32-state monolith into a ~12-state orchestrator, making the loop easier to reason about, test, and modify independently from domain logic
+- **Enable independent iteration**: Remediation and decomposition logic can evolve in their own sub-loops without touching the queue orchestrator
+- **Complete the decomposition**: Final child of ENH-1936, delivering the architectural payoff of the 3-way split (orchestrator + remediate + decompose)
+- **Technical debt reduction**: Eliminates tight coupling between queue management and domain logic that makes the current monolith fragile to change
 
 ## Proposed Solution
 
@@ -106,6 +129,39 @@ states:
 8. Run full test suite: `python -m pytest scripts/tests/test_rn_implement.py scripts/tests/test_rn_remediate.py scripts/tests/test_rn_decompose.py -v`
 9. Audit `recursive-refine.yaml` for potential adoption of `rn-decompose` — document blockers (e.g. hardcoded `.loops/tmp/` paths vs `${run_dir}/`) as a follow-up issue
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/rn-implement.yaml` — main refactor target
+- `scripts/tests/test_rn_implement.py` — restructure remaining queue orchestration tests (~20-25 tests)
+- `scripts/tests/test_builtin_loops.py:127` — add `rn-remediate` and `rn-decompose` to expected built-in loop set
+- `scripts/tests/test_fsm_fragments.py:1023` — add both sub-loops to `migration_targets`
+- `scripts/little_loops/loops/README.md:53` — add entries in Planning table
+- `CONTRIBUTING.md` — update loop file count
+- `README.md` — update loop file count
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/recursive-refine.yaml` — may adopt `rn-decompose` in follow-up (out of scope here)
+
+### Tests
+- `scripts/tests/test_rn_implement.py` — restructure (remove phase 2-5 test classes, keep queue orchestration)
+- `scripts/tests/test_rn_remediate.py` — created by ENH-1938
+- `scripts/tests/test_rn_decompose.py` — created by ENH-1939
+- `scripts/tests/test_builtin_loops.py` — verify updated built-in set
+- `scripts/tests/test_fsm_fragments.py` — verify migration targets
+
+### Documentation
+- `scripts/little_loops/loops/README.md` — loop catalog entries
+- `CONTRIBUTING.md` — development setup counts
+- `README.md` — top-level counts
+
+### Configuration
+- N/A — no config changes
+
+## API/Interface
+
+N/A — No public API changes. This is a loop YAML refactor; the FSM executor's `loop:` delegation contract (`done` → `on_yes`, any other terminal → `on_no`, error → `on_error`) is unchanged and already documented in `fsm/executor.py:598-612`.
+
 ## Success Metrics
 
 - `rn-implement.yaml` reduced from 32 states / 723 lines to ≤12 states / ≤250 lines
@@ -134,5 +190,15 @@ states:
 - **Effort**: Medium — ~250 lines of YAML rewrite + registry updates + ~25 tests restructured
 - **Risk**: Low-Medium — terminal-state caveat requires careful handling; verify with smoke test
 
+## Related Key Documentation
+
+- [FSM Executor Loop Delegation](../docs/reference/API.md) — `loop:` delegation contract and terminal-state routing
+- [Loop Authoring Guidelines](../.claude/CLAUDE.md#loop-authoring) — meta-loop design rules (MR-1 through MR-4)
+- [ARCHITECTURE.md](../docs/ARCHITECTURE.md) — system design and loop execution model
+- [rn-remediate sub-loop](../.issues/enhancements/P3-ENH-1938-extract-rn-remediate-sub-loop.md) — dependency
+- [rn-decompose sub-loop](../.issues/enhancements/P3-ENH-1939-extract-rn-decompose-sub-loop.md) — dependency
+- [Parent: ENH-1936](../.issues/enhancements/P3-ENH-1936-decompose-rn-implement-yaml-into-sub-loops.md) — decomposition epic
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T15:42:15 - `18f9f806-d325-4dcd-a55b-47fb9b147452.jsonl`
 - `/ll:issue-size-review` - 2026-06-04T19:00:00 - `276841ec-408f-4aca-bf28-93f41fe70aae.jsonl`
