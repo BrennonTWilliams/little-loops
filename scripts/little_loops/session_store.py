@@ -72,7 +72,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill", "cli"})
 _KIND_TABLE = {
@@ -335,6 +335,25 @@ _MIGRATIONS: list[str] = [
         ON summary_nodes(session_id) WHERE kind = 'condensed';
     CREATE INDEX IF NOT EXISTS idx_summary_nodes_parent_id
         ON summary_nodes(parent_id);
+    """,
+    # v11 (ENH-1942): assistant_messages stores concatenated text blocks from
+    # assistant responses so the SFT pipeline can read conversation turn-pairs
+    # from the database instead of re-parsing JSONL. tool_use_count enables
+    # filter predicates (e.g. min_tool_invocations) without a JOIN.
+    # idx_assistant_messages_dedup mirrors v3's idx_issue_events_dedup pattern
+    # so INSERT OR IGNORE enforces idempotency during backfill.
+    """
+    CREATE TABLE IF NOT EXISTS assistant_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        tool_use_count INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_assistant_messages_session_ts
+        ON assistant_messages(session_id, ts);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_assistant_messages_dedup
+        ON assistant_messages(session_id, ts, content);
     """,
 ]
 
@@ -987,6 +1006,75 @@ def _backfill_messages(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int
     return count
 
 
+def _backfill_assistant_messages(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+    """Seed ``assistant_messages`` from assistant blocks in session JSONL files.
+
+    Mirrors :func:`_backfill_messages` but selects ``type == "assistant"`` records
+    and concatenates text blocks with ``"\\n\\n"`` — matching the output shape of
+    ``_extract_turn_pairs()`` in ``user_messages.py``. Also counts ``tool_use``
+    blocks and stores the count in ``tool_use_count`` so filter predicates like
+    ``min_tool_invocations`` (ENH-1941) can operate without a JOIN.
+
+    Idempotent: INSERT OR IGNORE prevents duplicate rows on repeated backfill.
+    Depends on the ``sessions`` table (v4 / ENH-1710) for the session_id→JSONL
+    mapping used by ``conversation_turns()`` to JOIN on session_id.
+    """
+    count = 0
+    for jsonl_file in jsonl_files:
+        try:
+            handle = jsonl_file.open(encoding="utf-8")
+        except OSError:
+            continue
+        session_id_from_file: str | None = None
+        with handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("type") != "assistant":
+                    continue
+                session_id = record.get("sessionId")
+                if session_id_from_file is None and session_id:
+                    session_id_from_file = str(session_id)
+                ts = str(record.get("timestamp") or "")
+                content = record.get("message", {}).get("content", [])
+                if not isinstance(content, list):
+                    continue
+                # Collect text blocks and count tool_use blocks
+                text_blocks: list[str] = []
+                tool_use_count = 0
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "text":
+                            txt = block.get("text", "").strip()
+                            if txt:
+                                text_blocks.append(txt)
+                        elif block.get("type") == "tool_use":
+                            tool_use_count += 1
+                if not text_blocks:
+                    continue
+                concatenated = "\n\n".join(text_blocks)
+                conn.execute(
+                    "INSERT OR IGNORE INTO assistant_messages(ts, session_id, content, tool_use_count)"
+                    " VALUES(?, ?, ?, ?)",
+                    (ts, str(session_id) if session_id else None, concatenated, tool_use_count),
+                )
+                _index(
+                    conn,
+                    content=concatenated[:512],
+                    kind="message",
+                    ref=str(session_id) if session_id else "",
+                    anchor=str(jsonl_file),
+                    ts=ts,
+                )
+                count += 1
+    return count
+
+
 def mine_corrections_from_messages(conn: sqlite3.Connection, config: dict | None = None) -> int:
     """Scan ``message_events`` and insert matching rows into ``user_corrections``.
 
@@ -1434,6 +1522,7 @@ def backfill(
         "loops": 0,
         "tools": 0,
         "messages": 0,
+        "assistant_messages": 0,
         "sessions": 0,
         "corrections": 0,
         "summaries": 0,
@@ -1446,6 +1535,7 @@ def backfill(
         if jsonl_files:
             counts["tools"] = _backfill_tool_events(conn, jsonl_files)
             counts["messages"] = _backfill_messages(conn, jsonl_files)
+            counts["assistant_messages"] = _backfill_assistant_messages(conn, jsonl_files)
             counts["sessions"] = _backfill_sessions(conn, jsonl_files)
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         counts["summaries"] = _compact_sessions(conn, config)
@@ -1475,7 +1565,7 @@ def backfill_incremental(
     logs a warning.
     """
     conn = connect(db)
-    counts: dict[str, int] = {"tools": 0, "messages": 0, "sessions": 0, "corrections": 0}
+    counts: dict[str, int] = {"tools": 0, "messages": 0, "assistant_messages": 0, "sessions": 0, "corrections": 0}
     try:
         if since_ts is None:
             row = conn.execute("SELECT value FROM meta WHERE key = 'last_backfill_ts'").fetchone()
@@ -1493,6 +1583,7 @@ def backfill_incremental(
             counts["sessions"] = _backfill_sessions(conn, filtered)
             counts["tools"] = _backfill_tool_events(conn, filtered)
             counts["messages"] = _backfill_messages(conn, filtered)
+            counts["assistant_messages"] = _backfill_assistant_messages(conn, filtered)
 
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         conn.execute(

@@ -3,8 +3,9 @@ id: ENH-1942
 title: Migrate EPIC-1880 SFT pipeline from JSONL to history.db via history_reader.py
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-04T18:00:00Z'
+completed_at: '2026-06-04'
 discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1880
@@ -327,7 +328,55 @@ ll-messages --sft-format chatml --reader jsonl   # JSONL only, current behavior
 ## Session Log
 - `/ll:format-issue` - 2026-06-04T16:20:03 - `a4889662-f1e9-4f9d-89d3-a64a71a5e8ae.jsonl`
 - `/ll:capture-issue` - 2026-06-04T18:00:00Z
+- `/ll:manage-issue` - 2026-06-04 - Completed implementation
 
 ---
 
-**Open** | Created: 2026-06-04 | Priority: P3
+## Resolution
+
+### Changes Made
+
+| File | Change |
+|------|--------|
+| `scripts/little_loops/session_store.py` | Schema v11 (`assistant_messages` table + dedup index), `_backfill_assistant_messages()`, wired into `backfill()` and `backfill_incremental()` |
+| `scripts/little_loops/history_reader.py` | `conversation_turns()` function with temporal-adjacency SQL pairing + graceful degradation |
+| `scripts/little_loops/user_messages.py` | `extract_conversation_turns()` DB-first delegation wrapper with `reader` param |
+| `scripts/little_loops/cli/messages.py` | `--reader {auto,db,jsonl}` flag on `ll-messages` |
+| `scripts/tests/test_assistant_messages.py` | 19 tests: migration, backfill, conversation turns, degradation |
+| `scripts/tests/test_session_store.py` | Updated 6 schema version assertions (10→11) |
+
+### Architecture
+
+```
+ll-messages --sft-format chatml --reader auto
+  └─ extract_conversation_turns(reader="auto")
+       ├─ try: history_reader.conversation_turns(db_path)  ← NEW DB path
+       │    └─ SELECT u.*, a.* FROM message_events u
+       │       JOIN assistant_messages a
+       │       WHERE a.ts BETWEEN u.ts AND next_user_ts   ← temporal adjacency
+       │    └─ returns [] if DB missing/empty/pre-v11      ← graceful degradation
+       └─ fallback: JSONL parsing (existing code)           ← preserved
+```
+
+### Verification
+
+- `test_assistant_messages.py` — **19/19 passed**
+- `test_session_store.py` — **all passed** (6 version tests updated)
+- `test_history_reader.py` — **all passed** (no regressions)
+- `test_user_messages.py` — **all passed** (no regressions)
+- Full test suite — **9809 passed, 5 skipped, 0 failures**
+- `ruff check` — **clean**
+
+### Success Metrics
+
+| Metric | Status |
+|--------|--------|
+| Schema v11 creates `assistant_messages` table + index | ✓ |
+| `_backfill_assistant_messages()` populates correctly | ✓ |
+| `conversation_turns()` returns correct turn-pair windows | ✓ |
+| Graceful degradation (missing DB → `[]`) | ✓ |
+| DB-first delegation in `extract_conversation_turns()` | ✓ |
+| `--reader` flag on `ll-messages` | ✓ |
+| No regressions (9809 tests) | ✓ |
+
+**Done** | Completed: 2026-06-04 | Priority: P3

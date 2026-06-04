@@ -50,6 +50,8 @@ Examples:
   %(prog)s --sft-format chatml --stdout
   %(prog)s --sft-format sharegpt --context-window 3 --since 2026-05-01 --stdout
   %(prog)s --sft-format alpaca --output data/sft/raw.jsonl
+  %(prog)s --sft-format chatml --reader db --stdout
+  %(prog)s --sft-format chatml --reader jsonl --stdout
 
 Pipeline with ll-workflows (use the conventional path so ll-workflows finds it automatically):
   %(prog)s --output .ll/workflow-analysis/step1-patterns.jsonl
@@ -138,6 +140,13 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
             type=int,
             default=3,
             help="Number of preceding messages to include as context in --examples-format or --sft-format (default: 3)",
+        )
+        parser.add_argument(
+            "--reader",
+            choices=["auto", "db", "jsonl"],
+            default="auto",
+            help="Data source for --sft-format: auto (DB first, JSONL fallback), "
+            "db (DB only, error if unavailable), jsonl (JSONL only) (default: auto)",
         )
 
         args = parser.parse_args()
@@ -244,6 +253,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
                 since=since,
                 context_window=args.context_window,
                 include_agent_sessions=not args.exclude_agents,
+                reader=args.reader,
             )
             if args.limit is not None:
                 windows = windows[: args.limit]

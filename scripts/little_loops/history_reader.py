@@ -24,6 +24,7 @@ Public API:
     issue_effort(issue_id, ...) -> dict | None
     recent_issue_velocity(limit, ...) -> list[dict]
     lookup_session_metadata(session_id, ...) -> dict
+    conversation_turns(db_path, ...) -> list[list[tuple[str, str]]]
     ll_grep(pattern, ...) -> list[GrepResult]
     ll_expand(summary_id, ...) -> list[dict]
     ll_describe(node_id, ...) -> SummaryNode | None
@@ -508,6 +509,119 @@ def lookup_session_metadata(
         "files_modified": files_modified,
         "loop_outcome": loop_outcome,
     }
+
+
+def conversation_turns(
+    db_path: Path | str,
+    since: datetime | None = None,
+    context_window: int = 3,
+) -> list[list[tuple[str, str]]]:
+    """Return conversation turn-pair windows from ``history.db`` (ENH-1942).
+
+    Queries ``message_events`` and ``assistant_messages``, pairs user messages
+    with their assistant responses via temporal adjacency (same algorithm as
+    ``_extract_turn_pairs()`` in ``user_messages.py``), and groups them into
+    sliding windows of *context_window* turn-pairs each.
+
+    Returns ``[]`` when the database is missing, empty, predates schema v11
+    (no ``assistant_messages`` table), or when no turn-pairs match the *since*
+    filter. Callers should fall back to JSONL parsing in that case.
+
+    Args:
+        db_path: Path to ``history.db``.
+        since: Only include turns where the user message timestamp is >= this value.
+        context_window: Number of (user, assistant) turn-pairs per output window.
+
+    Returns:
+        List of conversation windows; each window is a ``list[tuple[str, str]]``
+        alternating between ``("user", text)`` and ``("assistant", text)``.
+    """
+    db_path = Path(db_path)
+    if not db_path.exists():
+        return []
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        # Check that assistant_messages table exists (schema >= v11)
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'assistant_messages'"
+        ).fetchone()
+        if not row or row["n"] == 0:
+            return []
+
+        # Pair each user message with assistant messages between it and the
+        # NEXT user message (temporal-adjacency, matching _extract_turn_pairs).
+        # The subquery finds the next user message timestamp per session;
+        # COALESCE defaults to a far-future sentinel for the last message.
+        base_sql = (
+            "SELECT u.session_id, u.ts AS user_ts, u.content AS user_text, "
+            "a.content AS assistant_text "
+            "FROM message_events u "
+            "JOIN assistant_messages a ON a.session_id = u.session_id "
+            "AND a.ts > u.ts "
+            "AND a.ts < COALESCE("
+            "  (SELECT MIN(u2.ts) FROM message_events u2 "
+            "   WHERE u2.session_id = u.session_id AND u2.ts > u.ts), "
+            "  '9999-12-31'"
+            ") "
+        )
+        params: list[Any] = []
+        if since is not None:
+            base_sql += "WHERE u.ts >= ? "
+            params.append(since.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        base_sql += "ORDER BY u.session_id, u.ts, a.ts"
+
+        rows = conn.execute(base_sql, params or ()).fetchall()
+
+        if not rows:
+            return []
+
+        # Group assistant texts by user message.
+        # The SQL already only includes assistant messages between consecutive
+        # user messages, so simple grouping by (session_id, user_ts) suffices.
+        turn_pairs: list[tuple[str, str]] = []
+        current_key: tuple[str, str] | None = None
+        current_user: str = ""
+        assistant_texts: list[str] = []
+
+        for row_ in rows:
+            key = (row_["session_id"], row_["user_ts"])
+            if key != current_key:
+                if current_key is not None and assistant_texts:
+                    turn_pairs.append((current_user, "\n\n".join(assistant_texts)))
+                current_key = key
+                current_user = row_["user_text"]
+                assistant_texts = []
+            assistant_texts.append(row_["assistant_text"])
+
+        # Flush the final turn
+        if current_key is not None and assistant_texts:
+            turn_pairs.append((current_user, "\n\n".join(assistant_texts)))
+
+        # Emit sliding windows of context_window turn-pairs
+        windows: list[list[tuple[str, str]]] = []
+        n = len(turn_pairs)
+        if n == 0:
+            return []
+        for i in range(max(1, n - context_window + 1)):
+            window_pairs = turn_pairs[i : i + context_window]
+            window: list[tuple[str, str]] = []
+            for user_text, assistant_text in window_pairs:
+                window.append(("user", user_text))
+                window.append(("assistant", assistant_text))
+            windows.append(window)
+
+        return windows
+
+    except sqlite3.Error:
+        logger.warning(
+            "history_reader: conversation_turns query failed", exc_info=True
+        )
+        return []
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

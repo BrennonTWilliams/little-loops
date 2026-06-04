@@ -279,6 +279,7 @@ class TestBackfill:
             "loops": 0,
             "tools": 0,
             "messages": 0,
+            "assistant_messages": 0,
             "sessions": 0,
             "corrections": 0,
             "summaries": 0,
@@ -1100,7 +1101,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 10
+        assert SCHEMA_VERSION == 11
 
 
 class TestBackfillIncremental:
@@ -1417,8 +1418,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 10
-        assert int(row[0]) == 10
+        assert SCHEMA_VERSION == 11
+        assert int(row[0]) == 11
 
 
 class TestMineCorrectionsFromMessages:
@@ -1501,8 +1502,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 10
-        assert int(row[0]) == 10
+        assert SCHEMA_VERSION == 11
+        assert int(row[0]) == 11
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1553,8 +1554,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 10
-        assert int(row[0]) == 10
+        assert SCHEMA_VERSION == 11
+        assert int(row[0]) == 11
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1611,7 +1612,7 @@ class TestSchemaV10:
         assert row is not None, "idx_summary_nodes_parent_id index must exist after ensure_db()"
 
     def test_v9_to_v10_migration(self, tmp_path: Path) -> None:
-        """Manually bootstrap a v9 schema, then verify ensure_db() applies the v10 migration."""
+        """Manually bootstrap a v9 schema, then verify ensure_db() applies v10+v11 migrations."""
         db = tmp_path / "history.db"
         from little_loops.session_store import _MIGRATIONS
 
@@ -1632,9 +1633,10 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 10
+        assert int(version[0]) == 11
         assert "summary_nodes" in names
         assert "summary_spans" in names
+        assert "assistant_messages" in names
 
 
 class TestCompactSession:

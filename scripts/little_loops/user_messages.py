@@ -775,22 +775,64 @@ def extract_conversation_turns(
     since: datetime | None = None,
     context_window: int = 3,
     include_agent_sessions: bool = True,
+    reader: str = "auto",
 ) -> list[list[tuple[str, str]]]:
     """Extract conversation turns (user + assistant) from session logs.
 
-    Reads JSONL session files and extracts alternating user/assistant turn pairs,
-    grouping them into sliding windows of context_window turn-pairs each.
+    By default (``reader="auto"``), tries ``history.db`` first and falls back to
+    JSONL parsing when the database is missing, empty, or predates schema v11.
+    Use ``reader="db"`` to require DB-only (errors if unavailable) or
+    ``reader="jsonl"`` to skip the DB and use the existing JSONL path directly.
 
     Args:
         project_folder: Path to Claude project folder
         since: Only include turns from sessions containing messages after this datetime
         context_window: Number of (user, assistant) turn pairs per output window
         include_agent_sessions: Whether to include agent-*.jsonl files
+        reader: ``"auto"`` (DB-first, JSONL fallback), ``"db"`` (DB only),
+            or ``"jsonl"`` (JSONL only, current behavior)
 
     Returns:
         List of conversation windows; each window is a list of (role, content) tuples
         alternating between "user" and "assistant".
     """
+    from little_loops.history_reader import conversation_turns as db_conversation_turns
+
+    reader = reader.lower()
+
+    # -- DB path: try history_reader first, optionally fall back to JSONL --
+    if reader in ("auto", "db"):
+        db_path = Path(".ll/history.db")
+        windows = db_conversation_turns(
+            db_path=db_path,
+            since=since,
+            context_window=context_window,
+        )
+        if windows:
+            if not include_agent_sessions:
+                # DB results can't currently filter agent sessions;
+                # fall through to JSONL when filtering is needed.
+                pass
+            else:
+                return windows
+
+        if reader == "db":
+            # DB-only mode: error when DB returns nothing
+            raise RuntimeError(
+                "history.db missing or predates v11; "
+                "run `ll-session backfill` to migrate. "
+                "Use --reader jsonl for JSONL-only mode."
+            )
+
+        # auto mode: fall through to JSONL parsing below
+        if windows:
+            import logging
+            logging.getLogger(__name__).warning(
+                "history.db returned no results; falling back to JSONL parsing. "
+                "Run `ll-session backfill` to populate the database."
+            )
+
+    # -- JSONL path (fallback for "auto", direct for "jsonl") --
     windows: list[list[tuple[str, str]]] = []
 
     jsonl_files = list(project_folder.glob("*.jsonl"))
