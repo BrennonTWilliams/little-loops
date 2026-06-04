@@ -1,0 +1,230 @@
+name: rn-decompose
+category: planning
+description: |
+  Sub-loop for the issue decomposition pipeline (size review → child detection →
+  enqueue with cycle detection) extracted from rn-implement Phase 5. Accepts an
+  issue ID via parameters and runs decomposition to split large issues into child
+  issues. Terminates with done (children enqueued) or failed (no children found
+  or error).
+
+  Run standalone as: ll-loop run rn-decompose "<issue-id>"
+
+  Invoked by parent rn-implement via:
+    loop: rn-decompose
+    with:
+      issue_id: "${captured.input.output}"
+      parent_depth: "${captured.current_depth.output}"
+      run_dir: "${captured.run_dir.output}"
+    on_yes: dequeue_next
+    on_no: skip_issue
+    on_error: skip_issue
+initial: snap_for_size_review
+max_iterations: 100
+timeout: 3600
+on_handoff: spawn
+import:
+  - lib/common.yaml
+meta_self_eval_ok: false
+shared_state_ok: false
+partial_route_ok: true
+
+parameters:
+  issue_id:
+    type: string
+    required: true
+    description: "Issue ID to decompose (passed from parent's captured.input.output)"
+  parent_depth:
+    type: integer
+    required: false
+    description: "Current recursion depth (default: 0)"
+  run_dir:
+    type: path
+    required: true
+    description: "Parent loop's run directory for queue.txt coupling"
+
+context:
+  parent_depth: 0
+
+states:
+  # =========================================================================
+  # Phase 5: Decomposition Path (extracted from rn-implement.yaml)
+  # =========================================================================
+
+  snap_for_size_review:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+
+      # Capture current scores snapshot
+      ll-issues show "$ID" --json > "$RUN_DIR/size_review_snap_$${ID}.json" 2>/dev/null
+
+      # Also snapshot current issue ID list for child detection
+      ll-issues list --json 2>/dev/null | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in sorted(i['id'] for i in issues):
+          print(i)
+      " | sort > "$RUN_DIR/issues_before_$${ID}.txt"
+
+      echo "Snapshot captured for $ID"
+    next: run_size_review
+    on_error: failed
+
+  run_size_review:
+    fragment: with_rate_limit_handling
+    action: "/ll:issue-size-review ${context.issue_id} --auto"
+    action_type: slash_command
+    on_success: detect_children
+    on_error: failed
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  detect_children:
+    fragment: shell_exit
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      PARENT_DEPTH=$(cat "$${RUN_DIR}/current_depth.txt" 2>/dev/null || echo 0)
+
+      # Capture post-review issue ID list
+      ll-issues list --json 2>/dev/null | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in sorted(i['id'] for i in issues):
+          print(i)
+      " | sort > "$RUN_DIR/issues_after_$${ID}.txt"
+
+      # Diff: find new IDs (in after but not in before)
+      comm -13 "$RUN_DIR/issues_before_$${ID}.txt" \
+               "$RUN_DIR/issues_after_$${ID}.txt" \
+               > "$RUN_DIR/diff_$${ID}.txt" 2>/dev/null
+
+      # Filter by parent reference — only include children that reference this parent
+      PARENT_ID="$ID"
+      > "$RUN_DIR/children_$${ID}.txt"
+      while IFS= read -r child_id; do
+        [ -z "$child_id" ] && continue
+        CHILD_FILE=$(find .issues -name "*-$child_id-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+        if [ -n "$CHILD_FILE" ]; then
+          # Check for parent reference
+          if grep -q "parent:.*$PARENT_ID" "$CHILD_FILE" 2>/dev/null || \
+             grep -q "Decomposed from $PARENT_ID" "$CHILD_FILE" 2>/dev/null; then
+            echo "$child_id" >> "$RUN_DIR/children_$${ID}.txt"
+          fi
+        fi
+      done < "$RUN_DIR/diff_$${ID}.txt"
+
+      if [ -s "$RUN_DIR/children_$${ID}.txt" ]; then
+        CHILD_COUNT=$(wc -l < "$RUN_DIR/children_$${ID}.txt" | tr -d ' ')
+        echo "Found $CHILD_COUNT children for $ID"
+        exit 0
+      else
+        echo "No children found for $ID"
+        exit 1
+      fi
+    on_yes: enqueue_children
+    on_no: failed
+    on_error: failed
+
+  enqueue_children:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      PARENT_DEPTH=$(cat "$${RUN_DIR}/current_depth.txt" 2>/dev/null || echo 0)
+      CHILD_DEPTH=$((PARENT_DEPTH + 1))
+
+      # Cycle detection: build visited set from visited.txt and queue.txt
+      python3 -c "
+      import sys
+
+      run_dir = '$${RUN_DIR}'
+      visited = set()
+      for fname in ['visited.txt']:
+          p = f'{run_dir}/{fname}'
+          try:
+              with open(p) as f:
+                  visited.update(ln.strip() for ln in f if ln.strip())
+          except FileNotFoundError:
+              pass
+      # Also include current queue
+      try:
+          with open(f'{run_dir}/queue.txt') as f:
+              visited.update(ln.strip() for ln in f if ln.strip())
+      except FileNotFoundError:
+          pass
+
+      candidates = []
+      with open(f'{run_dir}/children_$${ID}.txt') as f:
+          for line in f:
+              cid = line.strip()
+              if cid:
+                  candidates.append(cid)
+
+      survivors = []
+      for cid in candidates:
+          if cid in visited:
+              with open(f'{run_dir}/cycles.txt', 'a') as cf:
+                  cf.write(f'{cid} (cycle detected, parent=$${ID})\n')
+              print(f'WARN: skipping cycle candidate {cid}', file=sys.stderr)
+          else:
+              survivors.append(cid)
+
+      with open(f'{run_dir}/children_$${ID}.txt', 'w') as f:
+          for cid in survivors:
+              f.write(cid + '\n')
+      "
+
+      if [ ! -s "$RUN_DIR/children_$${ID}.txt" ]; then
+        echo "All children were cycle-filtered"
+        exit 1
+      fi
+
+      # Depth-first prepend: children go BEFORE existing queue
+      CHILDREN=$(cat "$RUN_DIR/children_$${ID}.txt")
+      EXISTING=$(cat "$RUN_DIR/queue.txt" 2>/dev/null || true)
+      { echo "$CHILDREN"; echo "$EXISTING"; } \
+        | grep -v '^[[:space:]]*$' \
+        > "$RUN_DIR/queue.txt"
+
+      # Assign depth to each child
+      while IFS= read -r child; do
+        [ -z "$child" ] && continue
+        echo "$child $CHILD_DEPTH" >> "$RUN_DIR/depth_map.txt"
+        echo "$child" >> "$RUN_DIR/visited.txt"
+      done < "$RUN_DIR/children_$${ID}.txt"
+
+      # Mark parent as skipped (decomposed)
+      echo "$ID" >> "$RUN_DIR/skipped.txt"
+
+      # Increment decomposed count
+      DECOMP_COUNT=$(cat "$RUN_DIR/decomposed_count.txt" 2>/dev/null || echo 0)
+      echo $((DECOMP_COUNT + 1)) > "$RUN_DIR/decomposed_count.txt"
+
+      CHILD_COUNT=$(wc -l < "$RUN_DIR/children_$${ID}.txt" | tr -d ' ')
+      echo "Enqueued $CHILD_COUNT children for $ID (depth=$CHILD_DEPTH)"
+    on_yes: done
+    on_no: done
+    on_error: failed
+
+  # =========================================================================
+  # Diagnostic State
+  # =========================================================================
+
+  rate_limit_diagnostic:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID}" >> "${context.run_dir}/rate_limits.txt"
+      echo "[RATE_LIMIT] Skipping $ID due to rate limit exhaustion"
+    next: done
+
+  # =========================================================================
+  # Terminal States
+  # =========================================================================
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true

@@ -3,7 +3,8 @@ id: ENH-1939
 title: Extract rn-decompose sub-loop from rn-implement.yaml
 type: ENH
 priority: P3
-status: open
+status: done
+completed_at: 2026-06-04 16:41:34+00:00
 parent: ENH-1936
 labels:
 - enhancement
@@ -285,7 +286,36 @@ _Added by `/ll:confidence-check` on 2026-06-04_
 - 11-caller routing fanout: 11 states in `rn-implement.yaml` currently route to `snap_for_size_review`; each must be updated to route to the new `run_decompose` sub-loop invocation state. Missing any single one creates a silent FSM dead-end (no `next:` fallback on those routes — the executor will halt). Mitigation: the issue's Integration Map enumerates all 11 callers with line numbers; verify with `grep -n "snap_for_size_review" rn-implement.yaml` after extraction to confirm count drops to zero.
 - 7-file change surface: spans new sub-loop YAML, parent loop modification (removal + invocation state), test extraction (2 classes, 15 tests), and 3 registry file updates. Mitigation: 5 of 7 changes are single-line mechanical edits (add string to set, add row to table, update assertion value).
 
+## Resolution
+
+**Completed**: 2026-06-04 | **By**: manage-issue (automated)
+
+### Changes Made
+- Created `scripts/little_loops/loops/rn-decompose.yaml` — standalone sub-loop with 7 states (4 decomposition + rate_limit_diagnostic + 2 terminals), ~190 lines
+- Created `scripts/tests/test_rn_decompose.py` — 41 tests (18 decomposition chain + 3 cycle detection + 6 parameter/terminal/top-level + 7 FSM health)
+- Removed `TestDecompositionChain` and `TestCycleDetection` test classes from `scripts/tests/test_rn_implement.py`
+- Updated registry: `test_builtin_loops.py` (+rn-decompose, +rn-remediate), `test_fsm_fragments.py` (+rn-decompose.yaml, +rn-remediate.yaml), `loops/README.md` (+rn-decompose entry)
+
+### Verification
+- `ll-loop validate rn-decompose`: passed (7 states, valid FSM)
+- `test_rn_decompose.py`: 41/41 passed
+- `test_rn_implement.py`: 37/37 passed
+- `test_builtin_loops.py::test_expected_loops_exist`: passed
+- `test_fsm_fragments.py::test_builtin_loops_load_after_migration`: passed
+
+### Key Design Decisions
+- BUG-1937 handler (`on_rate_limit_exhausted: rate_limit_diagnostic`) preserved on `run_size_review`
+- Sub-loop routes errors to `failed` terminal (not `skip_issue`) — parent handles queue management
+- `enqueue_children` routes both `on_yes` and `on_no` to `done` (not `dequeue_next`) — sub-loop doesn't own the queue
+- Context variables use `${context.issue_id}` and `${context.run_dir}` (standalone sub-loop pattern)
+
+## Status
+
+**Open** | Created: 2026-06-04 | Priority: P3
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-04T16:41:34 - `e5f64792-d788-46ee-a001-23fa8b94e727.jsonl`
+- `/ll:ready-issue` - 2026-06-04T16:29:22 - `88c091a2-b56a-4e0c-88ca-1adcaa0b82d8.jsonl`
 - `/ll:wire-issue` - 2026-06-04T16:15:50 - `bcfc447d-b1dd-4295-ac49-1d439378466c.jsonl`
 - `/ll:refine-issue` - 2026-06-04T16:05:54 - `214db9ba-5433-4b9b-858f-2ccd55dae46c.jsonl`
 - `/ll:format-issue` - 2026-06-04T15:41:22 - `98a1e26a-5644-47ed-84ba-2aaafa9a41b9.jsonl`

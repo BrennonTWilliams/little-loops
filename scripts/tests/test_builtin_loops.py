@@ -125,6 +125,8 @@ class TestBuiltinLoopFiles:
             "rn-plan",
             "rn-plan-apo",
             "rn-implement",
+            "rn-decompose",
+            "rn-remediate",
             "rn-refine",
             "loop-specialist-eval",
             "hitl-compare",

@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
-import pytest
 import yaml
 
 from little_loops.fsm import is_runnable_loop
@@ -147,128 +142,6 @@ class TestDequeueAndDepthTracking:
         assert "depth_map.txt" in deq["action"]
         assert "current_depth.txt" in deq["action"]
 
-
-
-# ---------------------------------------------------------------------------
-# TestDecompositionChain — States: snap_for_size_review, run_size_review,
-#   detect_children, enqueue_children, skip_issue
-# ---------------------------------------------------------------------------
-
-
-class TestDecompositionChain:
-    """Tests for the decomposition path (size review → child detection → enqueue)."""
-
-    def test_snap_for_size_review_snapshots_issues(self) -> None:
-        """snap_for_size_review snapshots ll-issues list --json output."""
-        data = _load_loop()
-        snap = data["states"]["snap_for_size_review"]
-        action = snap["action"]
-        assert "ll-issues list --json" in action
-        assert "issues_before_" in action
-
-    def test_snap_for_size_review_routes_to_run_size_review(self) -> None:
-        """snap_for_size_review always transitions to run_size_review."""
-        data = _load_loop()
-        snap = data["states"]["snap_for_size_review"]
-        assert snap["next"] == "run_size_review"
-
-    def test_run_size_review_is_slash_command(self) -> None:
-        """run_size_review invokes /ll:issue-size-review as slash_command."""
-        data = _load_loop()
-        rsr = data["states"]["run_size_review"]
-        assert rsr["action_type"] == "slash_command"
-        assert "/ll:issue-size-review" in rsr["action"]
-
-    def test_run_size_review_wraps_with_rate_limit_handling(self) -> None:
-        """run_size_review uses with_rate_limit_handling fragment."""
-        data = _load_loop()
-        rsr = data["states"]["run_size_review"]
-        assert rsr.get("fragment") == "with_rate_limit_handling"
-
-    def test_detect_children_uses_comm_diff(self) -> None:
-        """detect_children uses comm -13 for pre/post diff."""
-        data = _load_loop()
-        dc = data["states"]["detect_children"]
-        action = dc["action"]
-        assert "comm -13" in action
-
-    def test_detect_children_filters_by_parent_reference(self) -> None:
-        """detect_children filters candidates by parent ref in issue files."""
-        data = _load_loop()
-        dc = data["states"]["detect_children"]
-        action = dc["action"]
-        assert "parent:" in action or "Decomposed from" in action
-
-    def test_detect_children_routes_yes_to_enqueue_children(self) -> None:
-        """detect_children routes to enqueue_children when children found."""
-        data = _load_loop()
-        dc = data["states"]["detect_children"]
-        assert dc["on_yes"] == "enqueue_children"
-
-    def test_detect_children_routes_no_to_skip_issue(self) -> None:
-        """detect_children routes to skip_issue when no children found."""
-        data = _load_loop()
-        dc = data["states"]["detect_children"]
-        assert dc["on_no"] == "skip_issue"
-
-    def test_enqueue_children_has_cycle_detection(self) -> None:
-        """enqueue_children performs cycle detection via Python visited set."""
-        data = _load_loop()
-        ec = data["states"]["enqueue_children"]
-        action = ec["action"]
-        assert "visited" in action.lower()
-        assert "cycles.txt" in action
-
-    def test_enqueue_children_prepends_depth_first(self) -> None:
-        """enqueue_children prepends children before existing queue (depth-first)."""
-        data = _load_loop()
-        ec = data["states"]["enqueue_children"]
-        action = ec["action"]
-        assert "echo \"$CHILDREN\"" in action
-        assert "echo \"$EXISTING\"" in action
-
-    def test_enqueue_children_routes_to_dequeue_next(self) -> None:
-        """enqueue_children routes to dequeue_next after enqueuing."""
-        data = _load_loop()
-        ec = data["states"]["enqueue_children"]
-        assert ec["on_yes"] == "dequeue_next"
-        assert ec["on_no"] == "dequeue_next"
-
-    def test_skip_issue_routes_to_dequeue_next(self) -> None:
-        """skip_issue always routes to dequeue_next."""
-        data = _load_loop()
-        si = data["states"]["skip_issue"]
-        assert si["next"] == "dequeue_next"
-
-
-# ---------------------------------------------------------------------------
-# TestCycleDetection — State: enqueue_children (cycle detection logic)
-# ---------------------------------------------------------------------------
-
-
-class TestCycleDetection:
-    """Tests for cycle detection in enqueue_children."""
-
-    def test_enqueue_children_checks_visited_before_enqueue(self) -> None:
-        """enqueue_children reads visited.txt before enqueuing candidates."""
-        data = _load_loop()
-        ec = data["states"]["enqueue_children"]
-        action = ec["action"]
-        assert "visited.txt" in action
-
-    def test_cycle_candidates_logged_to_cycles_txt(self) -> None:
-        """Cycle-detected IDs are logged to cycles.txt."""
-        data = _load_loop()
-        ec = data["states"]["enqueue_children"]
-        action = ec["action"]
-        assert "cycles.txt" in action
-
-    def test_enqueue_children_includes_queue_in_visited_set(self) -> None:
-        """enqueue_children builds visited set from visited.txt + queue.txt."""
-        data = _load_loop()
-        ec = data["states"]["enqueue_children"]
-        action = ec["action"]
-        assert "queue.txt" in action, "Must include current queue in visited set"
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +296,7 @@ class TestRoutingStructure:
             action = state.get("action", "")
             if isinstance(action, str):
                 assert ".loops/tmp/" not in action, (
-                    f"State '{name}' writes to .loops/tmp/ — use ${context.run_dir}/ instead"
+                    f"State '{name}' writes to .loops/tmp/ — use ${{context.run_dir}}/ instead"
                 )
 
     def test_mr1_non_llm_evaluators_present(self) -> None:
