@@ -329,6 +329,8 @@ _MIGRATIONS: list[str] = [
         ON summary_nodes(session_id, ts_start, ts_end) WHERE kind = 'leaf';
     CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_nodes_condensed_dedup
         ON summary_nodes(session_id) WHERE kind = 'condensed';
+    CREATE INDEX IF NOT EXISTS idx_summary_nodes_parent_id
+        ON summary_nodes(parent_id);
     """,
 ]
 
@@ -1129,12 +1131,19 @@ def _compact_session_conn(
     if len(all_leaves) >= 2:
         leaf_summaries = [r[1] for r in all_leaves]
         condensed_text = _summarize_block(leaf_summaries, budget)
-        conn.execute(
+        cursor = conn.execute(
             "INSERT OR IGNORE INTO summary_nodes"
             "(kind, content, tokens, session_id, ts_start, ts_end, created_at)"
             " VALUES('condensed', ?, ?, ?, NULL, NULL, ?)",
             (condensed_text, _est(condensed_text), session_id, now),
         )
+        if cursor.rowcount:
+            condensed_id = cursor.lastrowid
+            conn.execute(
+                "UPDATE summary_nodes SET parent_id = ?"
+                " WHERE session_id = ? AND kind = 'leaf' AND parent_id IS NULL",
+                (condensed_id, session_id),
+            )
 
     return new_leaves
 

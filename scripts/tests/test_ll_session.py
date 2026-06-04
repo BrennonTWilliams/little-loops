@@ -635,3 +635,61 @@ class TestGrepExpandDescribe:
         with patch("sys.argv", ["ll-session", "--db", str(db), "describe", "99999"]):
             result = main_session()
         assert result == 1
+
+    # -- helpers for condensed-node CLI tests ----------------------------------
+
+    def _make_db_with_condensed_node(self, tmp_path: Path) -> tuple[Path, int]:
+        """Bootstrap a DB with 30 messages compacted into ≥ 2 leaves + 1 condensed node."""
+        from little_loops.session_store import compact_session, connect
+
+        session_id = "sess-condensed"
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, str(tmp_path / f"{session_id}.jsonl")),
+            )
+            for i in range(30):
+                ts = f"2026-01-01T00:{i:02d}:00Z"
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (ts, session_id, f"Message number {i}. auth middleware FSM test."),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        compact_session(session_id, db, config=config)
+        conn = connect(db)
+        try:
+            condensed_id = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='condensed' AND session_id=?",
+                (session_id,),
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+        return db, condensed_id
+
+    def test_expand_condensed_node_returns_messages_cli(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db, condensed_id = self._make_db_with_condensed_node(tmp_path)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "expand", str(condensed_id)]):
+            result = main_session()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "auth" in out
+
+    def test_grep_with_condensed_summary_id_cli(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db, condensed_id = self._make_db_with_condensed_node(tmp_path)
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "grep", "--summary-id", str(condensed_id), "auth"],
+        ):
+            result = main_session()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "auth" in out

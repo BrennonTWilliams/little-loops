@@ -447,6 +447,10 @@ def ll_grep(
     Each result includes the summary_id and summary_kind of the leaf node covering the
     matched message (or None/None for messages not yet compacted). If *summary_id* is
     provided, restrict the search to messages covered by that specific node.
+
+    When *summary_id* is a condensed node (kind='condensed'), uses a two-hop traversal
+    (condensed → leaves via parent_id → message_events via summary_spans) so that
+    messages under all constituent leaves are searched.
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
@@ -462,16 +466,33 @@ def ll_grep(
     try:
         conn.create_function("regexp_match", 2, _regexp)
         if summary_id is not None:
-            rows = conn.execute(
-                "SELECT me.id, me.session_id, me.ts, me.content,"
-                " sn.id AS summary_id, sn.kind AS summary_kind"
-                " FROM message_events me"
-                " JOIN summary_spans ss ON ss.message_event_id = me.id"
-                " JOIN summary_nodes sn ON sn.id = ss.summary_id"
-                " WHERE ss.summary_id = ? AND regexp_match(?, me.content)"
-                " ORDER BY me.ts, me.id LIMIT ?",
-                (summary_id, pattern, limit),
-            ).fetchall()
+            # Check if this is a condensed node for two-hop traversal
+            kind_row = conn.execute(
+                "SELECT kind FROM summary_nodes WHERE id = ?", (summary_id,)
+            ).fetchone()
+            if kind_row and kind_row["kind"] == "condensed":
+                rows = conn.execute(
+                    "SELECT me.id, me.session_id, me.ts, me.content,"
+                    " sn.id AS summary_id, sn.kind AS summary_kind"
+                    " FROM message_events me"
+                    " JOIN summary_spans ss ON ss.message_event_id = me.id"
+                    " JOIN summary_nodes leaf ON leaf.id = ss.summary_id"
+                    " JOIN summary_nodes sn ON sn.id = leaf.id"
+                    " WHERE leaf.parent_id = ? AND regexp_match(?, me.content)"
+                    " ORDER BY me.ts, me.id LIMIT ?",
+                    (summary_id, pattern, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT me.id, me.session_id, me.ts, me.content,"
+                    " sn.id AS summary_id, sn.kind AS summary_kind"
+                    " FROM message_events me"
+                    " JOIN summary_spans ss ON ss.message_event_id = me.id"
+                    " JOIN summary_nodes sn ON sn.id = ss.summary_id"
+                    " WHERE ss.summary_id = ? AND regexp_match(?, me.content)"
+                    " ORDER BY me.ts, me.id LIMIT ?",
+                    (summary_id, pattern, limit),
+                ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT me.id, me.session_id, me.ts, me.content,"
@@ -507,7 +528,12 @@ def ll_expand(
     *,
     db: Path | str = DEFAULT_DB_PATH,
 ) -> list[dict]:
-    """Return the message_events covered by *summary_id* via summary_spans.
+    """Return the message_events covered by *summary_id*.
+
+    For ``kind='leaf'`` nodes, traverses ``summary_spans`` directly to
+    message_events. For ``kind='condensed'`` nodes, traverses a two-hop
+    path: ``condensed → leaves (via parent_id) → message_events (via
+    summary_spans)``.
 
     Returns dicts with keys ``id``, ``session_id``, ``ts``, ``content``.
     Empty list when the summary node does not exist or has no spans.
@@ -517,14 +543,34 @@ def ll_expand(
     if conn is None:
         return []
     try:
-        rows = conn.execute(
-            "SELECT me.id, me.session_id, me.ts, me.content"
-            " FROM message_events me"
-            " JOIN summary_spans ss ON ss.message_event_id = me.id"
-            " WHERE ss.summary_id = ?"
-            " ORDER BY me.ts, me.id",
-            (summary_id,),
-        ).fetchall()
+        # Check node kind to choose the correct traversal
+        kind_row = conn.execute(
+            "SELECT kind FROM summary_nodes WHERE id = ?", (summary_id,)
+        ).fetchone()
+        if kind_row is None:
+            return []
+
+        if kind_row["kind"] == "condensed":
+            # Two-hop: condensed → leaves (parent_id) → message_events (summary_spans)
+            rows = conn.execute(
+                "SELECT me.id, me.session_id, me.ts, me.content"
+                " FROM message_events me"
+                " JOIN summary_spans ss ON ss.message_event_id = me.id"
+                " JOIN summary_nodes leaf ON leaf.id = ss.summary_id"
+                " WHERE leaf.parent_id = ?"
+                " ORDER BY me.ts, me.id",
+                (summary_id,),
+            ).fetchall()
+        else:
+            # Leaf node (or unknown kind): direct summary_spans traversal
+            rows = conn.execute(
+                "SELECT me.id, me.session_id, me.ts, me.content"
+                " FROM message_events me"
+                " JOIN summary_spans ss ON ss.message_event_id = me.id"
+                " WHERE ss.summary_id = ?"
+                " ORDER BY me.ts, me.id",
+                (summary_id,),
+            ).fetchall()
     except sqlite3.Error:
         logger.warning("history_reader: ll_expand query failed", exc_info=True)
         return []

@@ -772,3 +772,61 @@ class TestSummaryDagRetrieval:
         from little_loops.history_reader import ll_describe
 
         assert ll_describe(1, db=tmp_path / "nonexistent.db") is None
+
+    # -- helpers for condensed-node tests --------------------------------------
+
+    def _make_db_with_condensed_node(self, tmp_path: Path) -> tuple[Path, int]:
+        """Bootstrap a DB with 30 messages compacted into ≥ 2 leaves + 1 condensed node."""
+        from little_loops.session_store import compact_session, connect
+
+        session_id = "dag-condensed"
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, str(tmp_path / f"{session_id}.jsonl")),
+            )
+            for i in range(30):
+                ts = f"2026-01-01T00:{i:02d}:00Z"
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (ts, session_id, f"Message number {i}. auth middleware FSM test."),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        compact_session(session_id, db, config=config)
+        conn = connect(db)
+        try:
+            condensed_id = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='condensed' AND session_id=?",
+                (session_id,),
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+        return db, condensed_id
+
+    def test_expand_condensed_node_returns_messages(self, tmp_path: Path) -> None:
+        """ll_expand(condensed_id) returns messages via two-hop traversal."""
+        from little_loops.history_reader import ll_expand
+
+        db, condensed_id = self._make_db_with_condensed_node(tmp_path)
+        messages = ll_expand(condensed_id, db=db)
+        assert len(messages) >= 1, (
+            f"Expected condensed node {condensed_id} to expand to messages, got empty list"
+        )
+        assert any("auth" in (m.get("content") or "") for m in messages)
+
+    def test_grep_with_condensed_summary_id(self, tmp_path: Path) -> None:
+        """ll_grep(pattern, summary_id=condensed_id) returns matching messages."""
+        from little_loops.history_reader import ll_grep
+
+        db, condensed_id = self._make_db_with_condensed_node(tmp_path)
+        results = ll_grep("FSM", summary_id=condensed_id, db=db)
+        assert len(results) >= 1, (
+            f"Expected grep with condensed summary_id {condensed_id} to find matches, "
+            f"got empty list"
+        )
+        assert any("FSM" in r.content for r in results)

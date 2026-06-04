@@ -1580,6 +1580,19 @@ class TestSchemaV10:
             conn.close()
         assert row is not None, "idx_summary_nodes_condensed_dedup index must exist after ensure_db()"
 
+    def test_summary_nodes_parent_id_index_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+                " AND name='idx_summary_nodes_parent_id'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "idx_summary_nodes_parent_id index must exist after ensure_db()"
+
     def test_v9_to_v10_migration(self, tmp_path: Path) -> None:
         """Manually bootstrap a v9 schema, then verify ensure_db() applies the v10 migration."""
         db = tmp_path / "history.db"
@@ -1683,9 +1696,17 @@ class TestCompactSession:
                 " WHERE sn.session_id=?",
                 (session_id,),
             ).fetchall()
+            # Single-message fixture → single leaf → no condensed node → parent_id is NULL
+            leaf_parent = conn.execute(
+                "SELECT parent_id FROM summary_nodes"
+                " WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchone()
         finally:
             conn.close()
         assert len(spans) >= 1
+        assert leaf_parent is not None
+        assert leaf_parent["parent_id"] is None
 
     def test_compact_session_condensed_node_when_multiple_leaves(self, tmp_path: Path) -> None:
         """A condensed node is created when a session has >= 2 leaf nodes."""
@@ -1706,10 +1727,24 @@ class TestCompactSession:
                 "SELECT COUNT(*) FROM summary_nodes WHERE kind='condensed' AND session_id=?",
                 (session_id,),
             ).fetchone()[0]
+            # Verify parent_id linkage: leaves should point to the condensed node
+            condensed_id = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='condensed' AND session_id=?",
+                (session_id,),
+            ).fetchone()["id"]
+            leaf_parent_ids = conn.execute(
+                "SELECT parent_id FROM summary_nodes"
+                " WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchall()
         finally:
             conn.close()
         assert leaf_count >= 2
         assert condensed_count == 1
+        assert all(row["parent_id"] == condensed_id for row in leaf_parent_ids), (
+            f"Expected all leaf nodes to have parent_id={condensed_id}, "
+            f"got {[row['parent_id'] for row in leaf_parent_ids]}"
+        )
 
     def test_compact_session_empty_session_is_noop(self, tmp_path: Path) -> None:
         """compact_session() returns 0 and inserts nothing for a session with no messages."""
@@ -1752,9 +1787,15 @@ class TestCompactSession:
                 "SELECT COUNT(*) FROM summary_nodes WHERE kind='leaf' AND session_id=?",
                 (session_id,),
             ).fetchone()[0]
+            # Single-block fixture (5 messages fit in 4096 tokens) → parent_id is NULL
+            parent_rows = conn.execute(
+                "SELECT parent_id FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchall()
         finally:
             conn.close()
         assert leaf_count >= 1
+        assert all(row["parent_id"] is None for row in parent_rows)
 
     def test_backfill_compaction_disabled_by_default(self, tmp_path: Path) -> None:
         """backfill() does not compact when config is absent (default disabled)."""
