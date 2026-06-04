@@ -55,7 +55,7 @@ Raw agents re-derive the same structural moves differently each run. The `ll-` C
 Harness-driven development is TDD's analog for agent-built software: define what "working" looks like first, then iterate until the harness passes. little-loops grades, writes, and improves the harness for you — removing the engineering tax that keeps most teams skipping evals entirely.
 
 **The harness grades:**
-- Six layered gate types (exit code through full agentic simulation), cheapest first — failures route back to execution, not forward
+- Eleven layered gate types (exit code through full agentic simulation), cheapest first — failures route back to execution, not forward
 - Stall detection catches the "already done" no-op that silently burns through iteration budgets
 
 **The harness writes itself:**
@@ -158,7 +158,7 @@ ll-loop run harness-optimize -b        # Score-gated hill climbing in the backgr
 
 - **28 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **9 specialized agents** — codebase analysis, quality assurance, automation, and research
-- **35 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
+- **63 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
 - **32 CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
 - **70 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
 - **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic

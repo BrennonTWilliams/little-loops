@@ -21,15 +21,36 @@ score_change_surface: 25
 
 ## Summary
 
-New FSM loop that extracts multi-turn conversations from Claude Code `.jsonl` session logs, converts them into SFT training format (ChatML / Alpaca / ShareGPT), applies quality filtering and deduplication, and produces a train/val/test split ready for fine-tuning a small language model.
+The `sft-corpus` FSM loop (`scripts/little_loops/loops/sft-corpus.yaml`) stages session transcripts, enriches them with `history.db` session-quality metadata via `lookup_session_metadata()` (ENH-1943), filters with four opt-in quality predicates (ENH-1944), and publishes a quality-gated SFT training corpus with rejection tracking. The loop exists and is functional; remaining work is end-to-end integration validation and switching the `stage` state to the DB-first ingestion path (`ll-messages --sft-format --reader db`) instead of raw `cat *.jsonl`.
+
+**Architecture**: `history.db` is the primary data source for quality metadata; raw JSONL is the graceful-degradation fallback (ENH-1942). The loop currently reads content from staged JSONL and joins metadata from `history.db` — the remaining gap is making the `stage` state use the DB-first path for content ingestion too.
 
 ## Current Behavior
 
-No dedicated pipeline exists for extracting SFT training data from Claude Code session logs. Practitioners must manually extract `.jsonl` logs, write custom conversion scripts for each target format (ChatML/Alpaca/ShareGPT), implement quality filtering and deduplication, and handle train/val/test splits — a multi-step process with no ll-native tooling.
+The `sft-corpus` loop exists at `scripts/little_loops/loops/sft-corpus.yaml` with four states:
+
+- **stage**: Collects session JSONL transcripts from `context.data_dir` into a raw corpus (currently uses `cat *.jsonl`; should use `ll-messages --sft-format --reader db`)
+- **enrich**: Batch-joins `history.db` session-quality metadata via `lookup_session_metadata()` (ENH-1943) — appends `has_corrections`, `issue_outcome`, `tool_count`, `files_modified` to each example
+- **filter predicate chain**: Four opt-in quality gates (`require_issue_outcome`, `exclude_user_corrections`, `min_tool_invocations`, `require_file_modifications`), each gated by a context flag (ENH-1944)
+- **publish**: Aggregates acceptance/rejection stats and writes `manifest.json` + `rejections.jsonl`
+
+Supporting infrastructure is all in place: `history_reader.conversation_turns()` (DB-based turn-pair extraction), `history_reader.lookup_session_metadata()` (quality-signal queries), `user_messages.extract_conversation_turns()` (DB-first delegation), `ll-messages --sft-format --reader auto|db|jsonl` (CLI flag). Tests pass: 19 tests in `test_assistant_messages.py`, full suite at 9809 passed.
+
+The loop does NOT yet use `ll-messages --sft-format --reader db` in its `stage` state for DB-first content ingestion — it cats raw JSONL instead. The dedup, split, format conversion, and `dataset-curation` handoff (Option B wiring) are not yet implemented in the loop YAML.
 
 ## Expected Behavior
 
-A runnable `sft-corpus` FSM loop handles the full pipeline from raw `.jsonl` session logs to a publishable SFT corpus, respecting all configured context keys (`sft_format`, `output_dir`, `max_turns`, `min_tokens`, `max_tokens`, `pii_action`, `val_ratio`, `test_ratio`). The back-half (filter → dedup → split → publish) delegates to `dataset-curation` via a `loop:` handoff.
+A runnable `sft-corpus` FSM loop handles the full pipeline from `history.db`-backed session data (with JSONL graceful-degradation fallback) to a publishable SFT corpus:
+
+1. **Ingest** (gap): `stage` state uses `ll-messages --sft-format chatml --reader db` for DB-first content extraction, falling back to JSONL if `history.db` is unavailable
+2. **Enrich** (done): `enrich` state batch-joins `history.db` session-quality metadata via `lookup_session_metadata()`
+3. **Filter** (done): Four opt-in quality predicates gated by context flags, with rejection tracking
+4. **Format conversion** (gap): SFT format conversion (ChatML/Alpaca/ShareGPT) — `SFTFormatter` exists but the loop doesn't call it yet
+5. **Dedup** (gap): Near-duplicate removal by Jaccard similarity via `text_utils.calculate_word_overlap()`
+6. **Split** (gap): Train/val/test split by source session
+7. **Publish** (partial): Manifest write is done; `dataset-curation` handoff via `loop:` with `with:` bindings (Option B) is not yet wired
+
+All configured context keys (`sft_format`, `output_dir`, `max_turns`, `min_tokens`, `max_tokens`, `pii_action`, `val_ratio`, `test_ratio`) should be respected.
 
 ## Motivation
 
@@ -44,13 +65,23 @@ A practitioner wants to fine-tune an SLM on Claude Code session data. They have 
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop run sft-corpus` ingests `.jsonl` files from `log_dir` and produces at least one output example
-- [ ] Output is valid for the configured `sft_format` (`chatml`, `alpaca`, or `sharegpt`)
-- [ ] Examples outside `[min_tokens, max_tokens]` token range are discarded by the `filter` state
-- [ ] Near-duplicate conversations (same fingerprint) produce only one output example after `dedup`
+- [x] `ll-loop run sft-corpus` ingests session data and produces at least one output example (loop exists, runs; content source is staged JSONL — see gap below)
+- [x] `ll-loop validate sft-corpus` reports no ERRORs
+- [ ] Output is valid for the configured `sft_format` (`chatml`, `alpaca`, or `sharegpt`) — SFTFormatter exists but loop doesn't invoke it yet
+- [x] Examples are filtered by quality predicates from `history.db` (`require_issue_outcome`, `exclude_user_corrections`, `min_tool_invocations`, `require_file_modifications`) — all four implemented with rejection tracking
+- [ ] Token length filtering (`[min_tokens, max_tokens]`) — not yet implemented in loop
+- [ ] Near-duplicate conversations (same fingerprint) produce only one output example after `dedup` — `text_utils.calculate_word_overlap()` exists but loop hasn't wired it
 - [ ] `split` state writes separate `train`/`val`/`test` files at configured ratios
-- [ ] Back-half delegates to `dataset-curation` loop via `loop:` handoff (no reimplementation of quality/distribute/validate/publish)
+- [ ] Back-half delegates to `dataset-curation` loop via `loop:` handoff (Option B wiring with `with:` bindings not yet done)
 - [ ] Harvest sentinel is updated after each successful `publish` run, enabling incremental re-runs
+- [ ] `stage` state uses `ll-messages --sft-format --reader db` for DB-first content ingestion (currently uses raw `cat *.jsonl`)
+
+**Remaining gaps (5 items)**:
+1. DB-first content ingestion in `stage` state (`--reader db` instead of `cat *.jsonl`)
+2. SFT format conversion via `SFTFormatter` in the loop
+3. Token-length filtering
+4. Dedup via Jaccard similarity
+5. Train/val/test split + `dataset-curation` handoff wiring
 
 ## Implementation Steps
 
@@ -78,18 +109,21 @@ Pipe the curated back-half (filter → dedup → split) through `dataset-curatio
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-**Critical: `ingest` + `convert` collapse into one shell action (ENH-1827 `status: done`)**
+**Critical: `ingest` + `convert` collapse into one shell action (ENH-1827 + ENH-1942 `status: done`)**
 
-`ll-messages --sft-format` already handles both phases:
+`ll-messages --sft-format` already handles both phases, now with DB-first ingestion:
 
 ```bash
-# harvest state (action_type: shell)
+# harvest state (action_type: shell) — DB-first with JSONL fallback
 SINCE_ARG=""; [ -f sft-corpus.last_harvested ] && SINCE_ARG="--since $(cat sft-corpus.last_harvested)"
 ll-messages --sft-format ${context.sft_format} \
+  --reader auto \
   --context-window ${context.max_turns} \
   $SINCE_ARG \
   --output ${context.output_dir}/raw.jsonl
 ```
+
+`--reader auto` (default) tries `history.db` first via `history_reader.conversation_turns()`, falls back to JSONL parsing. `--reader db` errors if DB unavailable; `--reader jsonl` uses the pre-ENH-1942 path. The loop's `stage` state currently uses `cat *.jsonl` instead of this command — this is the primary remaining gap.
 
 **Harvest sentinel pattern** (from `examples-miner.yaml:harvest/publish`):
 - Read: `[ -f sft-corpus.last_harvested ] && SINCE_ARG="--since $(cat sft-corpus.last_harvested)"`
@@ -214,7 +248,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/README.md` — add `sft-corpus` to "Data & Testing" table (line 114) [Agent 2 finding]
 
 ### New Files
-- `scripts/little_loops/loops/sft-corpus.yaml` — primary deliverable (new FSM loop)
+- `scripts/little_loops/loops/sft-corpus.yaml` — ✅ already exists; primary deliverable (extant FSM loop, needs 5 remaining gaps filled)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/dataset-curation.yaml` — invoked as back-half via `loop:` handoff
@@ -227,17 +261,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/sft_formatter.py:to_chatml()` (L7) — converts `list[tuple[str,str]]` → `{"messages": [...]}`
 - `scripts/little_loops/sft_formatter.py:to_alpaca()` (L20) — first user turn → instruction, last assistant → output
 - `scripts/little_loops/sft_formatter.py:to_sharegpt()` (L39) — maps user→human, assistant→gpt
-- `scripts/little_loops/user_messages.py:extract_conversation_turns()` (L765) — sliding-window extraction from `.jsonl` logs with `since` filter; returns `list[list[tuple[str,str]]]`
-- `scripts/little_loops/cli/messages.py:main_messages()` — `ll-messages --sft-format <fmt> --context-window N --since DATE --stdout` already combines ingest + format conversion (ENH-1827 `status: done`)
+- `scripts/little_loops/user_messages.py:extract_conversation_turns()` (L773) — **now DB-first**: tries `history_reader.conversation_turns()` (queries `message_events JOIN assistant_messages`), falls back to JSONL parsing. Returns `list[list[tuple[str,str]]]`. `reader` param controls behavior (`auto|db|jsonl`).
+- `scripts/little_loops/history_reader.py:conversation_turns()` (L511) — direct DB query for turn-pair windows; returns `[]` on missing/empty/pre-v11 DB
+- `scripts/little_loops/history_reader.py:lookup_session_metadata()` (L435) — returns `dict` with `has_corrections`, `issue_outcome`, `tool_count`, `files_modified` per session; degrades to `{}` on missing DB
+- `scripts/little_loops/cli/messages.py:main_messages()` — `ll-messages --sft-format <fmt> --reader auto --context-window N --since DATE --stdout` already combines ingest + format conversion with DB-first fallback (ENH-1827 + ENH-1942 `status: done`)
 - `scripts/little_loops/text_utils.py:calculate_word_overlap()` — Jaccard similarity for near-duplicate detection (not hashlib); existing dedup pattern in the codebase
 
 **Loop handoff context key mismatch (see Proposed Solution / decision_needed):**
 - `dataset-curation.yaml` reads from `context.data_dir`; `sft-corpus` writes to `context.output_dir` — these are different keys; binding strategy is the implementation decision
 
-**`extract_conversation_turns()` exact signature** (`user_messages.py:L765`):
+**`extract_conversation_turns()` exact signature** (`user_messages.py:L773`):
 - `project_folder: Path` — directory path, not individual file (e.g., `Path("~/.claude/projects").expanduser()`)
-- `since: datetime | None = None`, `context_window: int = 3`, `include_agent_sessions: bool = True`
+- `since: datetime | None = None`, `context_window: int = 3`, `include_agent_sessions: bool = True`, `reader: str = "auto"` (new: `auto|db|jsonl`)
 - Returns `list[list[tuple[str, str]]]`; `since` filter is **per-turn, not per-file** — all `.jsonl` files are fully scanned regardless of the sentinel; only output turns are dropped.
+- **DB-first**: tries `history_reader.conversation_turns(db_path)` first; falls back to JSONL parsing if DB returns `[]`. `reader="db"` errors on unavailable DB; `reader="jsonl"` skips DB entirely.
 - Already called by `ll-messages --sft-format`; the `harvest` shell state does not need to invoke it directly.
 
 **`to_alpaca()` turn requirement**: Requires ≥1 user turn and ≥1 assistant turn; a single-turn window leaves `output` empty. The `filter` state must discard examples with `len(turns) < 2` when `sft_format == "alpaca"`.
@@ -278,9 +315,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Impact
 
 - **Priority**: P3 — Useful for SLM practitioners; not blocking core ll workflows
-- **Effort**: Large — New 6-phase FSM loop with format conversion, PII handling, and `dataset-curation` handoff
-- **Risk**: Low — New YAML artifact only; no changes to existing scripts, loops, or APIs
+- **Effort**: Small (remaining) — Loop YAML already exists; 5 remaining gaps are each ~10-30 line additions to `sft-corpus.yaml`
+- **Risk**: Low — Loop file exists and validates cleanly; all dependencies (`history_reader`, `SFTFormatter`, `text_utils`, `ll-messages`) are done
 - **Breaking Change**: No
+- **Depends on**: ENH-1942 (done), ENH-1943 (done), ENH-1944 (done), ENH-1827 (done)
 
 ## Related
 
@@ -294,11 +332,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-06-04_
+_Updated by `/ll:verify-issues` on 2026-06-04 (re-reviewed same day after epic alignment audit)_
 
-**Verdict: OUTDATED** — The sft-corpus FSM loop already exists at `scripts/little_loops/loops/sft-corpus.yaml` with states for stage→enrich→filter→dedup→split→publish. Supporting infrastructure is also in place: `scripts/little_loops/sft_formatter.py` (SFT format conversion), `scripts/tests/test_loops_sft_corpus.py` (loop tests). Recent commits (32e83855, 293b2c43) show active development adding enrich and quality predicate states.
+**Verdict: UPDATED** — Issue now reflects current reality. The loop exists at `scripts/little_loops/loops/sft-corpus.yaml` with `stage → enrich → filter → publish` states. Supporting infrastructure is complete: `history_reader.conversation_turns()` + `lookup_session_metadata()`, schema v11 `assistant_messages` table, DB-first delegation in `extract_conversation_turns()`, `ll-messages --reader` flag. All 6 sibling children of EPIC-1880 are `done`.
 
-The "Current Behavior" section claiming "No dedicated pipeline exists" is **false** — the pipeline exists and is functional. Acceptance criteria checkboxes are all unchecked despite substantial implementation. The issue should be updated to reflect current state: check off completed criteria, update Current Behavior to describe what the loop currently does, and capture remaining gaps (if any) as their current status.
+**5 gaps remain** (see Acceptance Criteria):
+1. DB-first content ingestion in `stage` state (`ll-messages --sft-format --reader db` instead of `cat *.jsonl`)
+2. SFT format conversion via `SFTFormatter` (exists but loop doesn't call it)
+3. Token-length filtering (`min_tokens`/`max_tokens`)
+4. Dedup via Jaccard similarity (`text_utils.calculate_word_overlap()`)
+5. Train/val/test split + `dataset-curation` handoff (Option B wiring)
+
+These are well-scoped, each touching only the `sft-corpus.yaml` loop file. The `history.db` migration (ENH-1942) and quality predicates (ENH-1943/1944) removed the complexity of dual-source joins — all remaining gaps operate on the enriched JSONL stream within the loop.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-04T18:41:57 - `18003f27-33de-416c-b594-e351d9d60c9d.jsonl`

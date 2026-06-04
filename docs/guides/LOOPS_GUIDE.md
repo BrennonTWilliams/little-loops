@@ -3366,7 +3366,7 @@ Local `fragments:` definitions override any imported fragment with the same name
 
 ### Built-in Libraries
 
-Six libraries ship with little-loops, all in `scripts/little_loops/loops/lib/`:
+Seven libraries ship with little-loops, all in `scripts/little_loops/loops/lib/`:
 
 #### `lib/common.yaml` — type-pattern fragments
 
