@@ -49,7 +49,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports: `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711) dataclasses; `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue(issue_id, *, limit, db)` (ENH-1711) query functions. All functions return empty lists on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports: `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711) dataclasses; `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue(issue_id, *, limit, db)` (ENH-1711), `issue_effort(issue_id, *, db)`, `recent_issue_velocity(limit, *, db)` (ENH-1905) query functions. All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -3520,6 +3520,7 @@ Entry point for `ll-history-context` command. Query `.ll/history.db` for user co
 - `ISSUE_ID` — Issue ID to query (required positional argument)
 - `--file PATH` — Also include recent file events for this path (optional)
 - `--db PATH` — Path to the session database (default: `.ll/history.db`)
+- `--effort` — Output a `## Effort Context` block with per-issue session count and cycle time (ENH-1905)
 
 **Behavior:**
 - Calls `find_user_corrections(topic=issue_id)` and `search(query=issue_id, kind="correction")` with deduplication
@@ -6154,6 +6155,42 @@ Return sessions that co-occurred with *issue_id*'s active period.
 - `db` — path to the SQLite database (default: `.ll/history.db`)
 
 **Returns:** List of `SessionRef` instances ordered by `first_message_ts DESC`. Queries the `issue_sessions` VIEW (v5 schema migration, ENH-1711). Returns `[]` when the view is absent (pre-v5 schema), the issue has no recorded sessions, or the database is unavailable.
+
+### issue_effort
+
+```python
+def issue_effort(
+    issue_id: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> dict | None
+```
+
+Return per-issue effort: session count and cycle time (ENH-1905).
+
+**Parameters:**
+- `issue_id` — the issue identifier (e.g., `"ENH-1905"`)
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+
+**Returns:** `{"session_count": int, "cycle_time_days": float | None}` or `None` when the DB is absent or the issue has no recorded sessions. Uses a direct aggregate query over `issue_sessions` (no LIMIT cap) for accurate `cycle_time_days` across many sessions.
+
+### recent_issue_velocity
+
+```python
+def recent_issue_velocity(
+    limit: int = 10,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Return effort data for recently completed issues (ENH-1905).
+
+**Parameters:**
+- `limit` — maximum number of recently completed issues to include (default: 10, configurable via `history.velocity_window`)
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+
+**Returns:** List of `{"issue_id": str, "session_count": int, "cycle_time_days": float | None}` dicts ordered by `completed_at DESC`. Returns `[]` when the DB is absent or no completed issues exist.
 
 ### SectionProvider
 

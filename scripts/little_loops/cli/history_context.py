@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import logging
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,6 +30,7 @@ from little_loops.history_reader import (
     SearchResult,
     UserCorrection,
     find_user_corrections,
+    issue_effort,
     project_digest,
     recent_file_events,
     render_project_context,
@@ -36,6 +38,8 @@ from little_loops.history_reader import (
 )
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+
+logger = logging.getLogger(__name__)
 
 _MAX_ROWS = 5
 
@@ -83,6 +87,12 @@ Examples:
         metavar="PATH",
         help="Path to the session database (default: .ll/history.db)",
     )
+    parser.add_argument(
+        "--effort",
+        action="store_true",
+        default=False,
+        help="Include effort/velocity context (session count and cycle time)",
+    )
     return parser
 
 
@@ -128,6 +138,28 @@ def main_history_context() -> int:
             block = render_project_context(digest, char_cap=_sd.char_cap, days=_sd.days)
             if block:
                 print(block)
+            return 0
+
+        # --effort: print effort/velocity context and exit.
+        if args.effort:
+            from little_loops.config import BRConfig
+            cfg = BRConfig(Path.cwd())
+            fields = cfg.history.effort_fields
+            effort = issue_effort(args.issue_id, db=args.db)
+            if effort is None:
+                return 0
+            valid_fields = {"session_count", "cycle_time_days"}
+            print("## Effort Context")
+            print()
+            for f in fields:
+                if f not in valid_fields:
+                    logger.warning("history_context: unknown effort field %r — skipping", f)
+                    continue
+                val = effort.get(f)
+                if val is None:
+                    print(f"- {f}: n/a")
+                else:
+                    print(f"- {f}: {val}")
             return 0
 
         cutoff = (datetime.now(UTC) - timedelta(days=STALE_DAYS_DEFAULT)).strftime(

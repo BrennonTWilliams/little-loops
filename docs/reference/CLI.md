@@ -1796,8 +1796,11 @@ Pass `--project` instead of an issue ID to print the project-wide context digest
 | `--project` | Print the project-wide context digest (dry-run of session-start injection). |
 | `--file PATH` | Also include recent file events for this path (issue-mode only) |
 | `--db PATH` | Path to the session database (default: `.ll/history.db`) |
+| `--effort` | Output a `## Effort Context` block with per-issue session count and cycle time (ENH-1905) |
 
 **Output cap:** At most 5 rows are rendered in issue mode. Project mode respects `history.session_digest.char_cap` (default 1200 chars).
+
+**Effort Context block:** When `--effort` is passed, a `## Effort Context` section is appended after the `## Historical Context` block (or emitted alone when no corrections/FTS matches exist). It includes the session count and cycle time (first-to-last session span in days) for the queried issue, plus a velocity table of recently completed issues drawn from `recent_issue_velocity()`. Returns empty output when the DB is absent or the issue has no recorded sessions.
 
 **Examples:**
 ```bash

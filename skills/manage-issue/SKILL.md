@@ -3,6 +3,7 @@ description: Use when asked to implement an issue end-to-end or start implementi
 argument-hint: "[type] [action] [issue-id]"
 allowed-tools:
   - Bash(git:*)
+  - Bash(ll-history-context:*)
 arguments:
   - name: issue_type
     description: Type of issue (bug|feature|enhancement|epic). Note: epic issues are coordination containers — manage-issue surfaces them but redirects to child issues for implementation.
@@ -103,6 +104,8 @@ Spawn these agents in parallel using the Task tool:
 1. **codebase-locator** - Find all related files
 2. **codebase-analyzer** - Understand current implementation
 3. **codebase-pattern-finder** - Find similar patterns and reusable code
+
+Also fetch effort context: `EFFORT=$(ll-history-context {{issue_id}} --effort 2>/dev/null || true)`. If non-empty, include session count and cycle time in the plan preamble under "## Historical Effort".
 
 **CRITICAL**: Wait for ALL sub-agent tasks to complete before proceeding to planning.
 

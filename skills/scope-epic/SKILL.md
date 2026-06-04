@@ -12,6 +12,7 @@ allowed-tools:
   - Grep
   - AskUserQuestion
   - Bash(ll-issues:*, git:*)
+  - Bash(ll-history-context:*)
 arguments:
   - name: theme
     description: Natural-language theme or goal description to decompose into an EPIC + children
@@ -92,6 +93,15 @@ Decompose the theme into one EPIC summary and 3–8 child issue proposals. Each 
 MIN_CHILDREN = {{config.epics.scope.min_children}}  (default 3)
 MAX_CHILDREN = {{config.epics.scope.max_children}}  (default 8)
 ```
+
+To calibrate child-issue size estimates, fetch recent velocity:
+
+```bash
+EFFORT=$(ll-history-context PARENT_ISSUE_ID --effort 2>/dev/null || true)
+```
+
+If `$EFFORT` is non-empty, use session count and cycle time from historical data
+to calibrate child issue size and complexity estimates.
 
 **LLM Decomposition — produce a structured JSON array:**
 

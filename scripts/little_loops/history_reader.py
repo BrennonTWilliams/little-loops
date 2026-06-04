@@ -19,6 +19,8 @@ Public API:
     search(query, ...) -> list[SearchResult]
     related_issue_events(issue_id, ...) -> list[IssueEvent]
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
+    issue_effort(issue_id, ...) -> dict | None
+    recent_issue_velocity(limit, ...) -> list[dict]
     project_digest(db_path, ...) -> ProjectDigest
     render_project_context(digest, ...) -> str
 """
@@ -324,6 +326,75 @@ def sessions_for_issue(
     finally:
         conn.close()
     return [_row_to_dataclass(row, SessionRef) for row in rows]
+
+
+def issue_effort(
+    issue_id: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> dict | None:
+    """Per-issue effort: session_count and cycle_time_days (first→last session).
+
+    Returns None when the DB is absent, no sessions exist for the issue, or a
+    query error occurs. Does NOT reuse sessions_for_issue() to avoid the LIMIT=20
+    cap which would produce incorrect cycle_time_days for issues with >20 sessions.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS session_count, MIN(first_message_ts) AS first_ts, "
+            "MAX(last_message_ts) AS last_ts FROM issue_sessions WHERE issue_id = ?",
+            (issue_id,),
+        ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: issue_effort query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None or row["session_count"] == 0:
+        return None
+    cycle: float | None = None
+    if row["first_ts"] and row["last_ts"]:
+        delta = datetime.fromisoformat(row["last_ts"]) - datetime.fromisoformat(row["first_ts"])
+        cycle = delta.total_seconds() / 86400
+    return {"session_count": row["session_count"], "cycle_time_days": cycle}
+
+
+def recent_issue_velocity(
+    limit: int = 10,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Effort data for recently completed issues; empty list when DB has no data.
+
+    Queries issue_events for recently-completed issues (non-NULL completed_at),
+    then calls issue_effort() for each to produce per-issue effort dicts.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT issue_id FROM issue_events "
+            "WHERE completed_at IS NOT NULL "
+            "ORDER BY completed_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_issue_velocity query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    result = []
+    for row in rows:
+        effort = issue_effort(row["issue_id"], db=db)
+        if effort is not None:
+            result.append({"issue_id": row["issue_id"], **effort})
+    return result
 
 
 # ---------------------------------------------------------------------------

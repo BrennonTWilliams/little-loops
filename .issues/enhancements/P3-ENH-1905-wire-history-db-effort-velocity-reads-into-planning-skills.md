@@ -3,9 +3,10 @@ id: ENH-1905
 title: Wire history.db effort/velocity reads into planning skills
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-03
 captured_at: '2026-06-03T19:50:05Z'
+completed_at: '2026-06-04T01:10:09Z'
 discovered_by: capture-issue
 parent: EPIC-1707
 relates_to:
@@ -346,6 +347,7 @@ _Last updated by `/ll:confidence-check` on 2026-06-03 (confirmed post-wire-issue
 - Implementation ordering: Python backend (`history_reader.py` + `history_context.py`) must be complete and tested before skill wiring can be end-to-end verified; recommended sequence: Python functions → CLI `--effort` flag → config reads via `BRConfig().history` → skill wiring (4 skills + Codex stub) → doc updates
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-04T00:52:22 - `3ce6b5fc-b012-4951-b3ab-bb878fcf9d39.jsonl`
 - `/ll:confidence-check` - 2026-06-03T00:00:00Z - `4995fa04-e682-4d6b-abb1-22c65bd6ef20.jsonl`
 - `/ll:wire-issue` - 2026-06-04T00:22:03 - `d1eaa95b-b80b-42c6-b2d9-258fd9ca6ff0.jsonl`
 - `/ll:refine-issue` - 2026-06-04T00:16:06 - `27d9ab17-d520-4d96-8957-0da168836cea.jsonl`

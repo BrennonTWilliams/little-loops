@@ -12,10 +12,12 @@ from little_loops.history_reader import (
     SessionRef,
     UserCorrection,
     find_user_corrections,
+    issue_effort,
     project_digest,
     recent_file_events,
     related_issue_events,
     render_project_context,
+    recent_issue_velocity,
     search,
     sessions_for_issue,
 )
@@ -539,3 +541,121 @@ class TestProjectDigest:
         assert len(block) <= 200
         assert "<project_context>" in block
         assert "</project_context>" in block
+
+
+class TestIssueEffort:
+    """Tests for issue_effort() and recent_issue_velocity() (ENH-1905)."""
+
+    def _setup_issue_session_direct(
+        self,
+        db: Path,
+        issue_id: str,
+        session_id: str,
+        first_ts: str,
+        last_ts: str,
+    ) -> None:
+        """Insert minimal rows so the issue_sessions view returns a match."""
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at, completed_at) "
+                "VALUES(?, ?, ?, ?, ?)",
+                (first_ts, issue_id, "open", first_ts, None),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                (first_ts, session_id, "work start"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                (last_ts, session_id, "work end"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, f"/path/{session_id}.jsonl"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_issue_effort_missing_db_returns_none(self, tmp_path: Path) -> None:
+        db = tmp_path / "nonexistent.db"
+        result = issue_effort("ENH-9999", db=db)
+        assert result is None
+
+    def test_issue_effort_empty_db_returns_none(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        result = issue_effort("ENH-9999", db=db)
+        assert result is None
+
+    def test_issue_effort_single_session_returns_zero_cycle(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        self._setup_issue_session_direct(
+            db, "ENH-1905", "sess-001",
+            "2026-01-10T10:00:00Z", "2026-01-10T10:00:00Z"
+        )
+        result = issue_effort("ENH-1905", db=db)
+        assert result is not None
+        assert result["session_count"] == 1
+        assert result["cycle_time_days"] == 0.0
+
+    def test_issue_effort_multi_session_correct_cycle(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        # Insert a single issue_events row covering the full window (NULL completed_at
+        # so both sessions' messages fall within the view's JOIN condition).
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at, completed_at) "
+                "VALUES(?, ?, ?, ?, ?)",
+                ("2026-01-10T00:00:00Z", "ENH-1905", "open", "2026-01-10T00:00:00Z", None),
+            )
+            # Session A: messages on 2026-01-10
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("sess-a", "/path/sess-a.jsonl"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-10T00:00:00Z", "sess-a", "work start"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-10T12:00:00Z", "sess-a", "work end"),
+            )
+            # Session B: messages on 2026-01-12
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("sess-b", "/path/sess-b.jsonl"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-12T00:00:00Z", "sess-b", "more work"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-12T12:00:00Z", "sess-b", "done"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result = issue_effort("ENH-1905", db=db)
+        assert result is not None
+        assert result["session_count"] == 2
+        # cycle: from 2026-01-10T00:00:00 to 2026-01-12T12:00:00 = 2.5 days
+        assert result["cycle_time_days"] is not None
+        assert abs(result["cycle_time_days"] - 2.5) < 0.01
+
+    def test_recent_issue_velocity_empty_db_returns_empty_list(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        result = recent_issue_velocity(db=db)
+        assert result == []
+
+    def test_recent_issue_velocity_missing_db_returns_empty_list(self, tmp_path: Path) -> None:
+        db = tmp_path / "nonexistent.db"
+        result = recent_issue_velocity(db=db)
+        assert result == []

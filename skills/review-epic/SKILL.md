@@ -7,6 +7,7 @@ allowed-tools:
   - Read
   - Bash(ll-issues:*)
   - Bash(git:*)
+  - Bash(ll-history-context:*)
 
 arguments:
   - name: epic_id
@@ -113,6 +114,15 @@ Compute:
 ---
 
 ## Step 4: Stall Detection (Non-LLM)
+
+For each child issue, fetch effort context to surface in the health report:
+
+```bash
+EFFORT=$(ll-history-context CHILD_ISSUE_ID --effort 2>/dev/null || true)
+```
+
+If `$EFFORT` is non-empty, include session count and cycle time in the health report
+alongside the child issue's status.
 
 For each child with status `open`, `in_progress`, or `blocked`:
 

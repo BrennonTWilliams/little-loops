@@ -188,3 +188,62 @@ class TestProjectMode:
         ):
             with pytest.raises(SystemExit):
                 main_history_context()
+
+
+class TestHistoryContextEffortFlag:
+    """Tests for --effort flag in ll-history-context (ENH-1905)."""
+
+    def _setup_issue_session(
+        self, db: Path, issue_id: str, session_id: str, ts: str
+    ) -> None:
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at, completed_at) "
+                "VALUES(?, ?, ?, ?, ?)",
+                (ts, issue_id, "open", ts, None),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                (ts, session_id, "working on it"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, f"/path/{session_id}.jsonl"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_effort_flag_accepted_with_sessions(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._setup_issue_session(db, "ENH-1905", "sess-001", "2026-01-10T10:00:00Z")
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-1905", "--effort"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "## Effort Context" in out
+
+    def test_effort_flag_empty_db_returns_zero_empty_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-9999", "--effort"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert out.strip() == ""
+
+    def test_effort_flag_missing_db_returns_zero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "nonexistent.db"
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-1905", "--effort"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert out.strip() == ""
