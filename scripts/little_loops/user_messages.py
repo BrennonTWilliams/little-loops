@@ -803,18 +803,18 @@ def extract_conversation_turns(
     # -- DB path: try history_reader first, optionally fall back to JSONL --
     if reader in ("auto", "db"):
         db_path = Path(".ll/history.db")
-        windows = db_conversation_turns(
+        db_windows = db_conversation_turns(
             db_path=db_path,
             since=since,
             context_window=context_window,
         )
-        if windows:
+        if db_windows:
             if not include_agent_sessions:
                 # DB results can't currently filter agent sessions;
                 # fall through to JSONL when filtering is needed.
                 pass
             else:
-                return windows
+                return db_windows
 
         if reader == "db":
             # DB-only mode: error when DB returns nothing
@@ -825,8 +825,9 @@ def extract_conversation_turns(
             )
 
         # auto mode: fall through to JSONL parsing below
-        if windows:
+        if db_windows:
             import logging
+
             logging.getLogger(__name__).warning(
                 "history.db returned no results; falling back to JSONL parsing. "
                 "Run `ll-session backfill` to populate the database."

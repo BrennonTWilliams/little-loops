@@ -696,8 +696,7 @@ class TestLookupSessionMetadata:
         try:
             ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             conn.execute(
-                "INSERT INTO user_corrections(ts, session_id, content, source) "
-                "VALUES(?, ?, ?, ?)",
+                "INSERT INTO user_corrections(ts, session_id, content, source) VALUES(?, ?, ?, ?)",
                 (ts, "sess-a", "use a set for ids", "user"),
             )
             conn.commit()
@@ -712,8 +711,7 @@ class TestLookupSessionMetadata:
         try:
             ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             conn.execute(
-                "INSERT INTO user_corrections(ts, session_id, content, source) "
-                "VALUES(?, ?, ?, ?)",
+                "INSERT INTO user_corrections(ts, session_id, content, source) VALUES(?, ?, ?, ?)",
                 (ts, "sess-a", "use a set for ids", "user"),
             )
             conn.commit()

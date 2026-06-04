@@ -7,9 +7,7 @@ from pathlib import Path
 
 def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     """Run a bash script in the given working directory, capturing output."""
-    return subprocess.run(
-        ["bash", "-c", script], cwd=cwd, capture_output=True, text=True
-    )
+    return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
 
 
 # ---------------------------------------------------------------------------

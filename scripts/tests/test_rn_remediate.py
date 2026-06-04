@@ -393,10 +393,8 @@ class TestReassessAndConvergence:
         # Check that bare PASS doesn't appear as a standalone echo
         lines = [ln.strip() for ln in action.split("\n")]
         for line in lines:
-            if line.startswith('echo "') and 'PASS' in line:
-                assert "CONVERGED" in line, (
-                    f"Line uses bare PASS without CONVERGED_ prefix: {line}"
-                )
+            if line.startswith('echo "') and "PASS" in line:
+                assert "CONVERGED" in line, f"Line uses bare PASS without CONVERGED_ prefix: {line}"
 
     def test_check_convergence_computes_total_delta(self) -> None:
         """check_convergence computes TOTAL_DELTA from 4 score deltas."""
@@ -642,8 +640,15 @@ class TestFSMHealth:
         data = _load_loop()
         state_names = set(data["states"].keys())
 
-        routing_keys = ("next", "on_yes", "on_no", "on_error", "on_success", "on_failure",
-                        "on_rate_limit_exhausted")
+        routing_keys = (
+            "next",
+            "on_yes",
+            "on_no",
+            "on_error",
+            "on_success",
+            "on_failure",
+            "on_rate_limit_exhausted",
+        )
         reachable: set[str] = set()
         queue = ["assess"]
         while queue:
@@ -664,8 +669,15 @@ class TestFSMHealth:
         """Every state referenced in routing exists in the states dict."""
         data = _load_loop()
         state_names = set(data["states"].keys())
-        routing_keys = ("next", "on_yes", "on_no", "on_error", "on_success", "on_failure",
-                        "on_rate_limit_exhausted")
+        routing_keys = (
+            "next",
+            "on_yes",
+            "on_no",
+            "on_error",
+            "on_success",
+            "on_failure",
+            "on_rate_limit_exhausted",
+        )
         for name, state in data["states"].items():
             for key in routing_keys:
                 target = state.get(key)
@@ -684,8 +696,7 @@ class TestFSMHealth:
             if "next" in state:
                 continue
             has_route = any(
-                k in state
-                for k in ("on_yes", "on_no", "on_success", "on_failure", "on_error")
+                k in state for k in ("on_yes", "on_no", "on_success", "on_failure", "on_error")
             )
             assert has_route, f"Non-terminal state '{name}' has no routing"
 

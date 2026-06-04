@@ -56,8 +56,8 @@ class TestInitAndInputValidation:
         """init state shell script checks for empty input."""
         data = _load_loop()
         init = data["states"]["init"]
-        assert '${context.input}' in init["action"]
-        assert ' -z ' in init["action"]  # empty check
+        assert "${context.input}" in init["action"]
+        assert " -z " in init["action"]  # empty check
 
     def test_init_state_routes_on_yes_no_error(self) -> None:
         """init routes to dequeue_next on success, failed on failure."""
@@ -123,9 +123,7 @@ class TestDequeueAndDepthTracking:
         assert cd["on_yes"] == "run_remediation", (
             "on_yes (depth < max) should go to run_remediation"
         )
-        assert cd["on_no"] == "mark_depth_capped", (
-            "on_no (depth >= max) should cap"
-        )
+        assert cd["on_no"] == "mark_depth_capped", "on_no (depth >= max) should cap"
 
     def test_check_depth_captures_current_depth(self) -> None:
         """check_depth captures the raw depth value for sub-loop delegation."""
@@ -179,7 +177,8 @@ class TestRateLimitAndErrorHandling:
         """Orchestrator delegates all LLM actions to sub-loops — no inline slash_command states."""
         data = _load_loop()
         slash_states = [
-            name for name, state in data["states"].items()
+            name
+            for name, state in data["states"].items()
             if state.get("action_type") == "slash_command"
         ]
         assert len(slash_states) == 0, (
@@ -351,9 +350,7 @@ class TestReportAndTerminal:
         )
         # No routing keys on a bare terminal
         for key in ("next", "on_yes", "on_no", "on_error", "on_success", "on_failure"):
-            assert key not in done, (
-                f"Bare terminal done must not have '{key}' routing"
-            )
+            assert key not in done, f"Bare terminal done must not have '{key}' routing"
 
 
 # ---------------------------------------------------------------------------
@@ -380,8 +377,15 @@ class TestRoutingStructure:
         """Every state referenced in routing exists in the states dict."""
         data = _load_loop()
         state_names = set(data["states"].keys())
-        routing_keys = ("next", "on_yes", "on_no", "on_error", "on_success", "on_failure",
-                        "on_rate_limit_exhausted")
+        routing_keys = (
+            "next",
+            "on_yes",
+            "on_no",
+            "on_error",
+            "on_success",
+            "on_failure",
+            "on_rate_limit_exhausted",
+        )
         for name, state in data["states"].items():
             for key in routing_keys:
                 target = state.get(key)
@@ -397,8 +401,15 @@ class TestRoutingStructure:
         state_names = set(data["states"].keys())
 
         # Build reachability graph
-        routing_keys = ("next", "on_yes", "on_no", "on_error", "on_success", "on_failure",
-                        "on_rate_limit_exhausted")
+        routing_keys = (
+            "next",
+            "on_yes",
+            "on_no",
+            "on_error",
+            "on_success",
+            "on_failure",
+            "on_rate_limit_exhausted",
+        )
         reachable = set()
         queue = ["init"]
         while queue:
@@ -493,8 +504,7 @@ class TestValidation:
                 continue
             # Must have at least one conditional routing target
             has_route = any(
-                k in state
-                for k in ("on_yes", "on_no", "on_success", "on_failure", "on_error")
+                k in state for k in ("on_yes", "on_no", "on_success", "on_failure", "on_error")
             )
             assert has_route, f"Non-terminal state '{name}' has no routing"
 
@@ -526,9 +536,5 @@ class TestValidation:
         """rn-implement orchestrator has ≤14 states (down from 32-state monolith)."""
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 14, (
-            f"Expected ≤14 states in orchestrator, got {state_count}"
-        )
-        assert state_count >= 10, (
-            f"Expected ≥10 states in orchestrator, got {state_count}"
-        )
+        assert state_count <= 14, f"Expected ≤14 states in orchestrator, got {state_count}"
+        assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"

@@ -1565,7 +1565,13 @@ def backfill_incremental(
     logs a warning.
     """
     conn = connect(db)
-    counts: dict[str, int] = {"tools": 0, "messages": 0, "assistant_messages": 0, "sessions": 0, "corrections": 0}
+    counts: dict[str, int] = {
+        "tools": 0,
+        "messages": 0,
+        "assistant_messages": 0,
+        "sessions": 0,
+        "corrections": 0,
+    }
     try:
         if since_ts is None:
             row = conn.execute("SELECT value FROM meta WHERE key = 'last_backfill_ts'").fetchone()

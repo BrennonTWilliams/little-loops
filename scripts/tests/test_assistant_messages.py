@@ -198,14 +198,12 @@ class TestBackfillAssistantMessages:
                 "type": "assistant",
                 "sessionId": "s4",
                 "timestamp": "2026-06-01T10:00:05Z",
-                "message": {
-                    "content": [
-                        {"type": "tool_use", "name": "Bash", "input": {}}
-                    ]
-                },
+                "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {}}]},
             }
         )
-        jsonl.write_text(_user_record("s4", "2026-06-01T10:00:00Z", "run cmd") + record + "\n", encoding="utf-8")
+        jsonl.write_text(
+            _user_record("s4", "2026-06-01T10:00:00Z", "run cmd") + record + "\n", encoding="utf-8"
+        )
         db = tmp_path / "test.db"
         counts = backfill(
             db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]

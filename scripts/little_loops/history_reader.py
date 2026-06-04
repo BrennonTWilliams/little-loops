@@ -457,8 +457,7 @@ def lookup_session_metadata(
     try:
         # has_corrections: direct query on user_corrections
         row = conn.execute(
-            "SELECT COUNT(*) > 0 AS has_corrections FROM user_corrections "
-            "WHERE session_id = ?",
+            "SELECT COUNT(*) > 0 AS has_corrections FROM user_corrections WHERE session_id = ?",
             (session_id,),
         ).fetchone()
         has_corrections = bool(row["has_corrections"]) if row else False
@@ -495,9 +494,7 @@ def lookup_session_metadata(
         loop_outcome: None = None
 
     except sqlite3.Error:
-        logger.warning(
-            "history_reader: lookup_session_metadata query failed", exc_info=True
-        )
+        logger.warning("history_reader: lookup_session_metadata query failed", exc_info=True)
         return {}
     finally:
         conn.close()
@@ -616,9 +613,7 @@ def conversation_turns(
         return windows
 
     except sqlite3.Error:
-        logger.warning(
-            "history_reader: conversation_turns query failed", exc_info=True
-        )
+        logger.warning("history_reader: conversation_turns query failed", exc_info=True)
         return []
     finally:
         conn.close()

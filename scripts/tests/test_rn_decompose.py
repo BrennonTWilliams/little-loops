@@ -340,8 +340,13 @@ class TestFSMHealth:
         data = _load_loop()
         state_names = set(data["states"].keys())
         routing_keys = (
-            "next", "on_yes", "on_no", "on_error", "on_success",
-            "on_failure", "on_rate_limit_exhausted",
+            "next",
+            "on_yes",
+            "on_no",
+            "on_error",
+            "on_success",
+            "on_failure",
+            "on_rate_limit_exhausted",
         )
         reachable: set[str] = set()
         queue = [data["initial"]]
@@ -363,8 +368,13 @@ class TestFSMHealth:
         data = _load_loop()
         state_names = set(data["states"].keys())
         routing_keys = (
-            "next", "on_yes", "on_no", "on_error", "on_success",
-            "on_failure", "on_rate_limit_exhausted",
+            "next",
+            "on_yes",
+            "on_no",
+            "on_error",
+            "on_success",
+            "on_failure",
+            "on_rate_limit_exhausted",
         )
         for name, state in data["states"].items():
             for key in routing_keys:
@@ -383,7 +393,6 @@ class TestFSMHealth:
             if "next" in state:
                 continue
             has_route = any(
-                k in state
-                for k in ("on_yes", "on_no", "on_success", "on_failure", "on_error")
+                k in state for k in ("on_yes", "on_no", "on_success", "on_failure", "on_error")
             )
             assert has_route, f"State '{name}' is a dead-end (no outgoing routes)"
