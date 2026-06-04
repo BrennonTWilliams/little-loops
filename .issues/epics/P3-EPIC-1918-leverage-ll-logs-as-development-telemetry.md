@@ -8,7 +8,7 @@ captured_at: "2026-06-04T02:27:34Z"
 discovered_date: "2026-06-04"
 discovered_by: capture-issue
 labels: [epic, captured, ll-logs, telemetry, observability]
-relates_to: [ENH-1919, FEAT-1920, ENH-1921, ENH-1922, ENH-1923, ENH-1924, FEAT-1309, ENH-1904]
+relates_to: [ENH-1919, FEAT-1920, ENH-1921, ENH-1922, ENH-1923, ENH-1924, FEAT-1309, ENH-1904, FEAT-1925]
 ---
 
 # EPIC-1918: Leverage ll-logs as a development telemetry layer
@@ -45,6 +45,7 @@ from the corpus instead of leaving it as a passive archive.
 - **ENH-1922** — `ll-logs scan-failures`: mine failed `ll-*` tool calls from interactive sessions → auto-file bugs
 - **ENH-1923** — Dead-skill detection: cross-reference catalog vs. logs for never-invoked skills (feeds find-dead-code)
 - **ENH-1924** — `ll-logs diff`: compare two sessions to spot behavioral regressions after a prompt/config change
+- **FEAT-1925** — `ll-logs-telemetry-digest` FSM loop: orchestrates all EPIC-1918 subcommands into a single periodic digest run
 
 ## Scope
 
