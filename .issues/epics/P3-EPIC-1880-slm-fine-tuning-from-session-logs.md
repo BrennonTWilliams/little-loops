@@ -7,8 +7,8 @@ status: open
 captured_at: '2026-06-02T00:00:00Z'
 discovered_date: '2026-06-02'
 discovered_by: review-epic
-relates_to: [FEAT-1826, ENH-1827, ENH-1885, ENH-1886, ENH-1941, ENH-1942, ENH-1943, ENH-1944]
-children: [ENH-1942, ENH-1827, ENH-1885, ENH-1886, ENH-1941, FEAT-1826, ENH-1943, ENH-1944]
+relates_to: [FEAT-1826, ENH-1827, ENH-1885, ENH-1886, ENH-1941, ENH-1942, ENH-1943, ENH-1944, ENH-1948, ENH-1949]
+children: [ENH-1942, ENH-1827, ENH-1885, ENH-1886, ENH-1941, FEAT-1826, ENH-1943, ENH-1944, ENH-1948, ENH-1949]
 labels:
   - epic
   - sft
@@ -34,6 +34,8 @@ Build the tooling needed to turn Claude Code session data (stored in `history.db
 | ENH-1943 | `lookup_session_metadata()` helper in `history_reader.py` (grandchild of EPIC via ENH-1941) | ✅ done |
 | ENH-1944 | `enrich` state + 4 quality predicates in `sft-corpus.yaml` (grandchild of EPIC via ENH-1941) | ✅ done |
 | FEAT-1826 | `sft-corpus` FSM loop: full pipeline from staged transcripts to quality-gated corpus | 🔧 open (loop exists, issue outdated) |
+| ENH-1948 | Wire PII detection into `sft-corpus.yaml` filter chain (ENH-1885 follow-on) | 📋 open |
+| ENH-1949 | Add `parameters:` block to `dataset-curation.yaml` for `with:` binding validation | 📋 open |
 
 ## Motivation
 
@@ -49,6 +51,8 @@ Build the tooling needed to turn Claude Code session data (stored in `history.db
 - **ENH-1943** — `lookup_session_metadata()` helper in `history_reader.py` (grandchild via ENH-1941) ✅ done
 - **ENH-1944** — `enrich` state + 4 quality predicates in `sft-corpus.yaml` (grandchild via ENH-1941) ✅ done
 - **FEAT-1826** — `sft-corpus` FSM loop: `stage → enrich → filter → publish` pipeline 🔧 open (loop exists at `scripts/little_loops/loops/sft-corpus.yaml`; issue outdated — see Verification Notes)
+- **ENH-1948** — Wire PII detection into `sft-corpus.yaml` filter chain: adds `pii_action` context key + `check_pii`/`reject_pii` states, following the 4 existing quality-predicate patterns. Depends on ENH-1885 (done). 📋 open
+- **ENH-1949** — Add `parameters:` block to `dataset-curation.yaml` for `with:` binding validation: non-breaking YAML addition (3 params, `required: false` with matching defaults) enabling `_validate_with_bindings()` contract enforcement when `sft-corpus` hands off via `loop:` + `with:`. 📋 open
 
 ## Scope
 
@@ -64,7 +68,7 @@ Build the tooling needed to turn Claude Code session data (stored in `history.db
 
 ### Out of Scope
 
-- `dataset-curation` changes — reused as-is via `loop:` handoff
+- `dataset-curation` behavioral changes — reused as-is via `loop:` handoff (exception: non-breaking `parameters:` block for `with:` contract validation, ENH-1949)
 - Publishing to HuggingFace Hub or other registries — handled by `dataset-curation`'s publish state
 - Training orchestration (Axolotl, LLaMA-Factory, torchtune) — out of scope; this epic produces the corpus only
 
