@@ -137,11 +137,12 @@ ENH-1911 (Quantified evolution triggers from history) is `relates_to` this EPIC,
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-05-31_
+_Added by `/ll:verify-issues` on 2026-06-04 (updated from 2026-05-31)_
 
-**Verdict: NEEDS_UPDATE** — Verification note claiming consumer wiring is absent is outdated. ll-history-context is now wired into confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, and create-sprint skills. Core remaining work: ENH-1909 (configurable planning_skills injection) is still open.
+**Verdict: NEEDS_UPDATE** — The Summary still says "the initial 3-skill consumer wiring (ENH-1847: refine-issue, ready-issue, confidence-check) is done." This understates current coverage: ll-history-context is now wired into 7 skills (confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, create-sprint), and ENH-1946 (bookkeeping fix for ENH-1839 in children list) is now `done`. Core remaining work: ENH-1909 (configurable planning_skills injection) remains open; ENH-1945 (host-aware session log discovery) is a new child.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T19:41:59 - `91cbc815-1372-4330-acd7-d11674c584ed.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T04:34:25 - `e1e6b264-2dd0-4d92-92be-102681aa7fbc.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `aeb556c4-3814-4aa1-9bd0-5b4a91c2087e.jsonl`

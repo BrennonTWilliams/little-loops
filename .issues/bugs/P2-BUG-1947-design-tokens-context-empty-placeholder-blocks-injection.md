@@ -133,6 +133,7 @@ This handles all cases:
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-04T19:43:11 - `822d0634-f7b8-4ecf-b681-7e977f1efd91.jsonl`
 - `/ll:confidence-check` - 2026-06-04T19:33:00Z - `~/.../fadecd00-e4da-4850-b02d-2cbaa7f00dda.jsonl`
 - `/ll:format-issue` - 2026-06-04T19:30:34 - `df78385a-9cc2-4216-80a0-d3a6661b1a81.jsonl`
 - `/ll:capture-issue` — 2026-06-04T19:27:13Z — `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

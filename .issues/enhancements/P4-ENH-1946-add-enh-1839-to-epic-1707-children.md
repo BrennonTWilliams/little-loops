@@ -3,7 +3,7 @@ id: ENH-1946
 title: Add ENH-1839 to EPIC-1707 children list
 type: ENH
 priority: P4
-status: open
+status: done
 discovered_date: 2026-06-04
 captured_at: "2026-06-04T19:18:32Z"
 discovered_by: capture-issue
@@ -89,10 +89,17 @@ Minor bookkeeping gap found during the EPIC-1707 multi-host alignment review. Do
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-04_
+
+**Verdict: RESOLVED** — ENH-1839 is already present in EPIC-1707 in both `relates_to:` (line 13) and `## Children` (line 90). No changes needed to the EPIC file. Closing this as `done`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T19:41:58 - `549cc05b-db59-49a8-b518-40c9b961231e.jsonl`
 
 - `/ll:capture-issue` - 2026-06-04T19:18:32Z - `15020717-6ee7-4d89-bd61-d70602429425.jsonl`
 
 ---
 
-**Open** | Created: 2026-06-04 | Priority: P4
+**Done** | Created: 2026-06-04 | Priority: P4
