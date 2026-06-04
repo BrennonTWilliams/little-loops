@@ -26,8 +26,8 @@ score_test_coverage: 20
 score_ambiguity: 22
 score_change_surface: 18
 implementation_order_risk: true
-blocked_by:
-- ENH-1913
+decision_needed: false
+blocked_by: []
 ---
 
 # ENH-1905: Wire history.db effort/velocity reads into planning skills
@@ -146,6 +146,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_history_context_cli.py` — primary CLI test file for `main_history_context()`; extend with a new `TestHistoryContextEffortFlag` class covering: `--effort` accepted without error, output includes `## Effort Context` when sessions exist, empty stdout when no sessions, exit 0 when DB missing. Uses `patch("sys.argv", [..., "--effort", ...])` + `capsys` pattern matching existing `TestHistoryContextWithMatches`.
+- `scripts/tests/test_enh1905_doc_wiring.py` — beyond `allowed-tools` frontmatter checks, add `test_api_documents_issue_effort` and `test_api_documents_recent_issue_velocity` methods asserting `docs/reference/API.md` contains those function names; follow `test_enh1753_doc_wiring.py` precedent (which gates `sessions_for_issue` API docs)
 
 ### Documentation
 - `docs/reference/API.md` — update `history_reader` module docs with new functions; add `### issue_effort` and `### recent_issue_velocity` subsections at line 5964+; update module-overview table inline exports description (line 52); add `--effort` flag row to `### main_history_context` Flags table (line 3519–3529)
@@ -153,6 +154,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md` — `### ll-history-context` flags table (line 1789–1795): add `--effort ISSUE_ID` flag row and `## Effort Context` output description
 - `docs/ARCHITECTURE.md` — Read Path flowchart `SK` node (line 622): expand to include `create-sprint`, `scope-epic`, `manage-issue`, `review-epic` alongside existing refinement skills; Components table `history_reader.py` row (line 636): update function count from 5 to 7
+- `CHANGELOG.md` — add release entry documenting `--effort` flag in `ll-history-context` and the four planning skill wirings (release-time update; via `ll:manage-release`)
 
 ### Configuration
 - N/A — no new configuration required
@@ -194,11 +196,113 @@ _Added by `/ll:refine-issue` — concrete file references from codebase analysis
 
 6. **`skills/review-epic/SKILL.md`** — add `Bash(ll-history-context:*)` to `allowed-tools` (currently has `Read`, `Bash(ll-issues:*)`, `Bash(git:*)`); inject guard in `## Step 2: Load EPIC and Resolve Children` or `## Step 3: Compute Progress Aggregates`; surface session counts and cycle times in the health report.
 
-7. ~~**`config-schema.json`**~~ — **Deferred to ENH-1913** (history namespace owner). The three config keys (`history.velocity_window`, `history.effort_fields`, `history.max_age_days`) are declared in ENH-1913's API table. After ENH-1913 lands, `history_reader.py` and `history_context.py` read these keys via `ll-config.json` and fall back to the defaults described in the API/Interface section; no schema edit is needed in this issue.
+7. ~~**`config-schema.json`**~~ — **ENH-1913 has landed** (`status: done`, `completed_at: 2026-06-04T00:05:41Z`). The three config keys are live. In `main_history_context()`, read them via:
+   ```python
+   from little_loops.config import BRConfig
+   cfg = BRConfig()
+   limit = cfg.history.velocity_window  # default 10
+   fields = cfg.history.effort_fields   # default ["session_count", "cycle_time_days"]
+   ```
+   When formatting `## Effort Context`, iterate over `fields`; for any field not in `{"session_count", "cycle_time_days"}`, call `logger.warning("history_context: unknown effort field %r — skipping", f)` and skip it. No schema edit needed in this issue.
 
 8. **`scripts/tests/test_history_reader.py`** — add test cases for `issue_effort()` and `recent_issue_velocity()`: empty-DB returns `None`/`[]`; single-session returns `cycle_time_days=0.0`; multi-session returns correct day delta.
 
 9. **`scripts/tests/test_enh1905_doc_wiring.py`** (new file) — create following `scripts/tests/test_enh1888_doc_wiring.py`; validate `commands/create-sprint.md`, `skills/scope-epic/SKILL.md`, `skills/manage-issue/SKILL.md`, `skills/review-epic/SKILL.md` each contain `Bash(ll-history-context:*)` in `allowed-tools`.
+
+### Codebase Research Findings (Second Pass)
+
+_Added by `/ll:refine-issue` — direct code inspection; resolves ambiguity in pass 1 guidance:_
+
+**`issue_effort()` must NOT reuse `sessions_for_issue()`** — that helper applies `LIMIT=20`. For issues with >20 sessions, the top-20 rows would miss the oldest session, producing an incorrect `cycle_time_days`. Use a direct aggregate query:
+
+```sql
+SELECT COUNT(*) AS session_count,
+       MIN(first_message_ts) AS first_ts,
+       MAX(last_message_ts) AS last_ts
+FROM issue_sessions WHERE issue_id = ?
+```
+
+Return `None` when `session_count == 0`. Compute `cycle_time_days` as `(last_ts - first_ts).total_seconds() / 86400` after parsing ISO-8601 strings via `datetime.fromisoformat()`. Full skeleton (mirrors `sessions_for_issue()` at line 265):
+
+```python
+def issue_effort(issue_id: str, *, db: Path | str = DEFAULT_DB_PATH) -> dict | None:
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS session_count, MIN(first_message_ts) AS first_ts, "
+            "MAX(last_message_ts) AS last_ts FROM issue_sessions WHERE issue_id = ?",
+            (issue_id,),
+        ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: issue_effort query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None or row["session_count"] == 0:
+        return None
+    cycle: float | None = None
+    if row["first_ts"] and row["last_ts"]:
+        delta = datetime.fromisoformat(row["last_ts"]) - datetime.fromisoformat(row["first_ts"])
+        cycle = delta.total_seconds() / 86400
+    return {"session_count": row["session_count"], "cycle_time_days": cycle}
+```
+
+**`recent_issue_velocity()` outer SQL** — query `issue_events` for the completion filter, then call `issue_effort()` per issue:
+
+```sql
+SELECT DISTINCT issue_id FROM issue_events
+WHERE completed_at IS NOT NULL
+ORDER BY completed_at DESC LIMIT ?
+```
+
+Use `_connect_readonly()` for this outer query; `issue_effort()` manages its own connection.
+
+**`--effort` argparse pattern** — add after `--db` in `_build_parser()` (`history_context.py` line 59):
+
+```python
+parser.add_argument(
+    "--effort",
+    action="store_true",
+    default=False,
+    help="Include effort/velocity context (session count and cycle time)",
+)
+```
+
+Usage: positional arg first — `ll-history-context ENH-1905 --effort`.
+
+**Test argv for `TestHistoryContextEffortFlag`** (model after `TestHistoryContextWithMatches`):
+
+```python
+with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-1905", "--effort"]):
+    result = main_history_context()
+assert result == 0
+assert "## Effort Context" in capsys.readouterr().out
+```
+
+**`skills/ll-create-sprint/SKILL.md` currently has NO `allowed-tools` key** — step 13 must create the entire section, not append to an existing one. Model the addition after `skills/ll-go-no-go/SKILL.md` frontmatter (which similarly was a stub that received `allowed-tools` in the ENH-1888 wiring pass).
+
+### Codebase Research Findings (Third Pass)
+
+_Added by `/ll:refine-issue` — ENH-1913 status verification and config read path:_
+
+**ENH-1913 is `done` (`completed_at: 2026-06-04T00:05:41Z`)** — `blocked_by` cleared. All three config keys (`history.velocity_window`, `history.effort_fields`, `history.max_age_days`) are live in `config-schema.json:1406–1503` and `scripts/little_loops/config/features.py:HistoryConfig` (line 716).
+
+**`BRConfig().history` read path** (unblocked; ready for `history_context.py`):
+- Import: `from little_loops.config import BRConfig` (re-exported at `config/__init__.py:28`)
+- `BRConfig().history.velocity_window` → `int`, default `10`
+- `BRConfig().history.effort_fields` → `list[str]`, default `["session_count", "cycle_time_days"]`
+- `BRConfig().history.max_age_days` → `int | None`, default `None`
+
+**`effort_fields` validation location**: validate in `main_history_context()`, NOT in `history_reader.py`. Known valid MVP fields: `{"session_count", "cycle_time_days"}`. For any unknown field, log `logger.warning("history_context: unknown effort field %r — skipping", f)` and continue. This matches the forward-compatibility requirement in the API/Interface section.
+
+**`issue_sessions` VIEW columns confirmed** (`session_store.py:229`): `issue_id`, `session_id`, `jsonl_path`, `first_message_ts`, `last_message_ts` — one row per `(issue_id, session_id)`. `MIN(first_message_ts)` / `MAX(last_message_ts)` across all rows for an issue gives earliest session start → latest session end, which is the correct cycle-time window.
+
+**`history.planning_skills` config key** exists in schema at `config-schema.json:1406`, default `["create-sprint", "scope-epic", "manage-issue", "review-epic"]`. ENH-1905 does NOT read this key — it is ENH-1909's config gate for skill-selection. Hard-wire the four skills in this issue.
+
+**`skills/ll-create-sprint/SKILL.md` confirmed**: has no `allowed-tools` block (only `name`, `description`, `metadata` in frontmatter). Step 13 must create the entire `allowed-tools` section, modeled after `skills/ll-go-no-go/SKILL.md:1–20`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -209,10 +313,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 11. Update `docs/ARCHITECTURE.md` — expand Read Path flowchart `SK` node to include planning skills (`create-sprint`, `scope-epic`, `manage-issue`, `review-epic`); update Components table `history_reader.py` row function count from 5 to 7
 12. Update `.claude/CLAUDE.md` — update `ll-history-context` bullet in `## CLI Tools` section to mention `--effort` flag
 13. Update `skills/ll-create-sprint/SKILL.md` — add `allowed-tools` frontmatter with `Bash(ll-history-context:*)` to match ENH-1847 mirror pattern for Codex bridge stubs
+14. Extend `test_enh1905_doc_wiring.py` — add `test_api_documents_issue_effort` and `test_api_documents_recent_issue_velocity` methods asserting those function names appear in `docs/reference/API.md`; follow `test_enh1753_doc_wiring.py` pattern
+15. Update `CHANGELOG.md` at release time — add entry for `--effort` flag in `ll-history-context` and planning skill history context wiring (via `ll:manage-release`)
 
 ## Scope Boundaries
 
-- **In scope**: Adding `issue_effort()` / `recent_issue_velocity()` reads to `history_reader.py`; CLI exposure via `ll-history-context`; wiring the four planning skills with graceful-degradation guards; adding `history.velocity_window`, `history.effort_fields`, and `history.max_age_days` config keys to `config-schema.json` so users can tune the rubric without code changes.
+- **In scope**: Adding `issue_effort()` / `recent_issue_velocity()` reads to `history_reader.py`; CLI exposure via `ll-history-context`; wiring the four planning skills with graceful-degradation guards; reading the `history.velocity_window`, `history.effort_fields`, and `history.max_age_days` config keys via `BRConfig().history` (added to `config-schema.json` by ENH-1913, which has landed).
 - **Out of scope**: New session data collection (handled by ENH-1904); UI/visualization of effort data; changes to how `issue_sessions` view is populated; backfilling historical data; configuring which skills receive history context (tracked in ENH-1909).
 
 ## Impact
@@ -230,16 +336,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Last updated by `/ll:confidence-check` on 2026-06-03 (re-check after wire-issue pass)_
+_Last updated by `/ll:confidence-check` on 2026-06-03 (confirmed post-wire-issue; ENH-1913 + ENH-1904 both done)_
 
 **Readiness Score**: 96/100 → PROCEED
 **Outcome Confidence**: 74/100 → MODERATE
 
 ### Outcome Risk Factors
-- Broad file surface across 15 sites (wire-issue pass added Codex bridge stub, CLI.md, ARCHITECTURE.md, CLAUDE.md to the original 11 sites) — tick off sites in order using `test_enh1905_doc_wiring.py` assertions as a completeness gate
-- Implementation ordering: Python backend (`history_reader.py` + `history_context.py`) must be complete and tested before skill wiring can be end-to-end verified; recommended sequence: Python functions → CLI `--effort` flag → config-schema.json → skill wiring (4 skills + Codex stub) → doc updates
+- Broad file surface across 15 sites (wire-issue pass added Codex bridge stub, CLI.md, ARCHITECTURE.md, CLAUDE.md to the original 11 sites) — use `test_enh1905_doc_wiring.py` assertions as a completeness gate; tick off sites in sequence rather than all at once
+- Implementation ordering: Python backend (`history_reader.py` + `history_context.py`) must be complete and tested before skill wiring can be end-to-end verified; recommended sequence: Python functions → CLI `--effort` flag → config reads via `BRConfig().history` → skill wiring (4 skills + Codex stub) → doc updates
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-03T00:00:00Z - `4995fa04-e682-4d6b-abb1-22c65bd6ef20.jsonl`
+- `/ll:wire-issue` - 2026-06-04T00:22:03 - `d1eaa95b-b80b-42c6-b2d9-258fd9ca6ff0.jsonl`
+- `/ll:refine-issue` - 2026-06-04T00:16:06 - `27d9ab17-d520-4d96-8957-0da168836cea.jsonl`
+- `/ll:refine-issue` - 2026-06-03T23:55:28 - `aa87de99-5965-418d-b42c-7afc5a40e2f3.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T21:52:58 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:confidence-check` - 2026-06-03T21:30:00Z - `05f0b8cd-d4c6-444a-8f99-5505d4cea6e9.jsonl`

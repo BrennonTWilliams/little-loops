@@ -14,6 +14,7 @@ labels:
   - captured
   - history-db
   - configurability
+decision_needed: false
 ---
 
 # ENH-1907: Project-Context Snapshot at Session Start
@@ -208,11 +209,13 @@ Config keys added to `config-schema.json` under `history.session_digest`:
 - `enabled` (bool, default `false`) — fixed safety gate
 - `days` (int, default `7`) — global freshness window
 - `char_cap` (int, default `1200`) — fixed hot-path safety ceiling
-- `sections` (array, ordered) — each entry `{ "name": str, "max": int }`;
-  render order = list order; omit a section to suppress it; default = all v1
-  providers at their `default_cap`. New history-derived providers (ENH-1905
-  effort/velocity, ENH-1911 evolution triggers) become additional entries here
-  with no formatter/schema change.
+- `sections` (array of **string**, ordered) — each entry is the section-name
+  key (e.g. `"touched_files"`); render order = list order; omit a section to
+  suppress it; default = `[]` (all providers at their `default_cap`).
+  **Note**: ENH-1913 landed the schema as `array[string]` (not `array[{name,
+  max}]`). Per-section `max` is not config-tunable in v1 — it comes from
+  `SectionProvider.default_cap`. The Python API (`list[str] | None`) matches
+  the landed schema.
 
 ```jsonc
 "history": {
@@ -247,22 +250,73 @@ Config keys added to `config-schema.json` under `history.session_digest`:
 
 ### Tests
 
-- `scripts/tests/test_history_reader.py` — `project_digest` cases: populated DB,
+- `scripts/tests/test_history_reader.py` — add class `TestProjectDigest`: populated DB,
   empty tables, stale-only rows (>window), `char_cap` truncation, **section
   selection/ordering** (custom `sections` list reorders blocks; omitted section
   is absent; `sections: []` → empty digest), and per-section `max` capping.
-- `scripts/tests/test_hooks_integration.py` — extend session-start coverage:
+- `scripts/tests/test_hook_session_start.py` — add class `TestSessionStartProjectDigest`: extend session-start coverage:
   gate off → no block; gate on + populated DB → `<project_context>` present and
-  under the cap; gate on + missing/empty DB → no block, exit 0.
-- CLI test — `ll-history-context --project` prints the same block the hook would
-  inject for a given config (and nothing on empty/stale DB, exit 0).
+  under the cap; gate on + missing/empty DB → no block, exit 0; digest error does not block startup.
+- `scripts/tests/test_history_context_cli.py` — add class `TestProjectMode`: `--project` prints the same block
+  the hook would inject for a given config (nothing on empty/stale DB, exit 0); mutual-exclusion cases
+  (`--project` + `issue_id` = error; no args = error).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_history_context_cli.py::TestArgumentParsing.test_missing_issue_id_exits` — **will break** when
+  `issue_id` becomes `nargs="?"`: once `issue_id` is optional, bare `ll-history-context` no longer exits via argparse.
+  The CLI must add a mutual-exclusion guard (`parser.error()` when neither `--project` nor `issue_id` is given) so
+  this test still asserts `SystemExit`. Update the test to cover the new guard semantics. [Agent 2 + 3 finding]
 
 ### Documentation
 
 - `docs/ARCHITECTURE.md` — add the session-start digest to the history.db
   producer→consumer flow (coordinate with ENH-1753).
-- `docs/reference/API.md` — document `project_digest`.
+- `docs/reference/API.md` — document `project_digest`, `render_project_context`, `SectionProvider`, `SECTION_PROVIDERS`, `ProjectDigest` in the `## little_loops.history_reader` section and the module overview table.
 - `docs/reference/CONFIGURATION.md` — document `history.session_digest.*`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `### ll-history-context` section (line ~1785) currently documents `ISSUE_ID` as a
+  **required** positional argument and shows no `--project` flag. After this change `ISSUE_ID` becomes optional
+  and `--project` is a new flag; update the flag table and description accordingly. [Agent 2 finding]
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/hooks/__init__.py` — dispatch table registers `session_start.handle` (line ~84); no change needed, but confirms the hook wiring path. [Agent 1 finding]
+- `scripts/little_loops/config/features.py` — defines `SessionDigestConfig`, `HistoryConfig`, and `feature_enabled()`; `session_start.py` currently imports only from `config.core` — a new import (`feature_enabled` or `HistoryConfig`) must be added to `session_start.py` as part of Step 3. [Agent 2 finding]
+- `scripts/little_loops/cli/__init__.py` — exports `main_history_context` (line 54); already wired, no change needed. [Agent 1 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Config infrastructure (ENH-1913 complete — already in place):**
+- `scripts/little_loops/config/features.py` — `SessionDigestConfig` (lines ~652–668) and `HistoryConfig` (lines ~716–751) are fully implemented. Access in `session_start.py` via either:
+  - `feature_enabled(merged_config, "history.session_digest.enabled")` from `little_loops.config.features` (existing dict-path gate pattern used by `user_prompt_submit.py` and `post_tool_use.py`)
+  - `HistoryConfig.from_dict(merged_config.get("history", {}))` to get a typed `HistoryConfig` object with `.session_digest.enabled`, `.session_digest.days`, etc.
+- `scripts/little_loops/config/core.py` — `BRConfig.history` property returns `HistoryConfig`; `_history` field initialized in `_parse_config()`
+
+**`history_reader.py` helpers to reuse:**
+- `_connect_readonly(db_path: Path) -> sqlite3.Connection | None` — opens read-only URI connection, `PRAGMA query_only = ON`; returns `None` on any `sqlite3.Error` — callers must check `if conn is None: return []`
+- `_stale_cutoff(days: int) -> str` — returns ISO-8601 string; note: `STALE_DAYS_DEFAULT = 30` is the module constant but `project_digest()` should accept `days` from config (default 7, not 30)
+- `_row_to_dataclass(row, dc)` — maps `sqlite3.Row` → dataclass by field name intersection
+
+**Schema discrepancy — critical for `project_digest()` API:**
+- The landed `config-schema.json` (ENH-1913) defines `history.session_digest.sections` as `"array" of "string"` items (plain section-name keys like `"touched_files"`), NOT the `{ "name": str, "max": int }` object shape proposed in this issue's API section.
+- Consequence: the `sections` parameter in `project_digest(db_path, *, days, sections)` should be `list[str] | None` (section name keys), and per-section `max` must come from `SectionProvider.default_cap` only (not config-tunable per-section in v1). The `SectionSpec` alias in the issue's API spec collapses to `str`.
+- `SessionDigestConfig.sections: list[str]` (default `[]`) reflects this — the dataclass is already correct for the landed schema.
+
+**`session_start.py::handle()` wiring location:**
+- Insert the project digest call after Phase 3b (backfill daemon thread start, lines ~114–137) and before Phase 4 (stdout payload composition). This ordering ensures the digest reads already-persisted rows from the previous session (before this session's backfill writes new rows).
+- Gate check: `if not feature_enabled(merged_config, "history.session_digest.enabled"): pass` — already follows the `contextlib.suppress(Exception)` best-effort pattern used by Phase 3b.
+- Output wiring: append the rendered `<project_context>` block to `stdout_payload` before the `LLHookResult` is built. Plain stdout is the established pattern (no JSON `hookSpecificOutput` wrapper needed — Claude Code ingests plain stdout as session context at `SessionStart`).
+
+**`ll-history-context` CLI restructuring for `--project` mode:**
+- `scripts/little_loops/cli/history_context.py::_build_parser()` — `issue_id` is currently a positional required argument (`parser.add_argument("issue_id", ...)`). Adding `--project` requires making it optional: change to `parser.add_argument("issue_id", nargs="?", default=None, ...)` and add mutually exclusive validation (`--project` requires no `issue_id`; no `--project` requires `issue_id`).
+- Existing test patterns for the `--project` mode live in `scripts/tests/test_history_context_cli.py` (classes `TestHistoryContextDBMissing`, `TestHistoryContextStaleRows`, `TestDeduplication` as models for the new `TestProjectMode` class).
+
+**Existing `issue_events` data available for `completed_issues` section:**
+- `related_issue_events(issue_id, ...)` is per-issue (exact `issue_id =` match). The project-wide `completed_issues` section needs a new query: `SELECT ts, issue_id, transition, issue_type, priority FROM issue_events WHERE transition IN ('done', 'cancelled') AND ts >= ? ORDER BY ts DESC LIMIT ?` — no `WHERE issue_id = ?` filter.
 
 ## Implementation Steps
 
@@ -270,12 +324,21 @@ Config keys added to `config-schema.json` under `history.session_digest`:
    and order-aware `render_project_context()` in `history_reader.py` with
    degradation + cap; unit-test in isolation (incl. section ordering/omission).
 2. ~~Add the `history.session_digest` config block to `config-schema.json`.~~ **Deferred to ENH-1913** (history namespace owner). The `history.session_digest` schema object is declared in ENH-1913; after it lands, wire runtime reads of these keys here using `ll-config.json` defaults.
-3. Wire the gated call into `session_start.py::handle()`; suppress all errors.
+3. Wire the gated call into `session_start.py::handle()` — insert after Phase 3b (backfill daemon thread start) and before Phase 4 (stdout payload composition); gate via `feature_enabled(merged_config, "history.session_digest.enabled")`; wrap in `contextlib.suppress(Exception)`; append rendered block to the string that becomes `stdout_payload` (plain stdout pattern — no JSON envelope needed).
 4. Add the `ll-history-context --project` inspection mode + its test.
-5. Add session-start integration tests (gate on/off, populated/empty/stale).
+5. Add session-start integration tests (gate on/off, populated/empty/stale) in `test_hook_session_start.py::TestSessionStartProjectDigest`.
 6. Doc sweep (ARCHITECTURE / API / CONFIGURATION) — document the section
    registry as the extension point future history-derived consumers register
    into.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Add mutual-exclusion guard to `_build_parser()` in `history_context.py`: after `nargs="?"` change, call `parser.error()` when neither `--project` nor `issue_id` is provided — preserves existing `test_missing_issue_id_exits` semantics with updated intent.
+8. Update `test_history_context_cli.py::TestArgumentParsing.test_missing_issue_id_exits` to cover the new mutual-exclusion guard (bare invocation still raises `SystemExit`, but via guard not argparse).
+9. Update `docs/reference/CLI.md` § `### ll-history-context` — mark `ISSUE_ID` as optional, add `--project` flag row to the flag table.
+10. Add new import to `session_start.py`: `feature_enabled` from `little_loops.config.features` (or `HistoryConfig` — pick one consistent with Step 3).
 
 ## Impact
 
@@ -307,6 +370,8 @@ Config keys added to `config-schema.json` under `history.session_digest`:
 `captured`, `history-db`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-04T00:00:00 - `auto`
+- `/ll:refine-issue` - 2026-06-04T00:17:25 - `783a6b2a-5259-46fe-b4d0-26a6a354c40d.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T21:52:58 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:57:40 - `eac7b3fc-572a-4d81-b23d-2d9c91efa16d.jsonl`
