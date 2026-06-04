@@ -3,7 +3,7 @@ id: ENH-1938
 title: Extract rn-remediate sub-loop from rn-implement.yaml
 type: ENH
 priority: P3
-status: open
+status: done
 parent: ENH-1936
 labels:
 - enhancement
@@ -12,6 +12,13 @@ labels:
 - refactoring
 decision_needed: false
 refine_count: 1
+completed_at: 2026-06-04 15:59:06+00:00
+confidence_score: 95
+outcome_confidence: 87
+score_complexity: 21
+score_test_coverage: 21
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # ENH-1938: Extract rn-remediate sub-loop from rn-implement.yaml
@@ -23,6 +30,14 @@ Extract Phase 2–4 states from `scripts/little_loops/loops/rn-implement.yaml` i
 ## Parent Issue
 
 Decomposed from ENH-1936: Decompose rn-implement.yaml monolith into sub-loops
+
+## Current Behavior
+
+`rn-implement.yaml` is a 32-state, ~700-line monolithic FSM loop with all four phases embedded inline in a single file. Phases 2–4 (Diagnosis, Remediation, Convergence) span lines 148–494 and are tightly coupled to parent orchestration states — `implement` routes to `dequeue_next` (queue management), `check_remediation_budget` routes to `snap_for_size_review` (decomposition), and `assess` routes to `skip_issue` on error. There is no standalone sub-loop for the remediation cycle; every change to the remediation logic requires modifying the monolith, and the phases cannot be tested, run, or iterated on independently.
+
+## Expected Behavior
+
+Phases 2–4 are extracted into a standalone `rn-remediate.yaml` sub-loop (~15 operational states, ~280 lines) with a typed parameter contract (`issue_id`, `readiness_threshold`, `outcome_threshold`, `max_remediation_passes`). The sub-loop can run independently via `ll-loop run rn-remediate` and is invoked by the parent loop via `loop: rn-remediate` with `with:` bindings. Terminal states `done` and `failed` use bare `terminal: true` to signal back to the parent via the standard sub-loop verdict contract (`done` → `on_yes`, `failed` → `on_no`). Parent orchestration concerns (queue management, decomposition fan-out) remain in the parent loop (ENH-1940). Corresponding test classes move to `test_rn_remediate.py`, and the extracted loop passes `ll-loop validate` with zero MR-1/MR-3/MR-4 errors.
 
 ## Context
 
@@ -91,6 +106,29 @@ run_remediation:
   - `TestReassessAndConvergence` (line 459, ~17 tests) — covers `re_assess`, `verify_re_assess_scores`, `check_convergence`, `route_conv_*`
   - `TestRemediationBudget` (line 580, ~7 tests) — covers `check_remediation_budget`
 
+### Tests (additional structural coverage)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The 6 extracted test classes cover state-specific behavior (~66 tests). The following structural/validation tests should also be included in `test_rn_remediate.py` to give the standalone sub-loop the same coverage depth as sibling `rn-*` test files:
+
+- `test_parameters_block_has_required_fields` — validates `parameters:` block declares `issue_id`, `readiness_threshold`, `outcome_threshold`, `max_remediation_passes`
+- `test_parameters_issue_id_is_required_string` — `issue_id`: type string, required true, no default
+- `test_parameters_thresholds_have_defaults` — readiness_threshold default 85, outcome_threshold default 75, max_remediation_passes default 3
+- `test_done_terminal_is_bare` — `done` has `terminal: true` with no action body (follow `oracles/implement-issue-chain.yaml:85–89`)
+- `test_failed_terminal_is_bare` — `failed` has `terminal: true` with no action body
+- `test_imports_lib_common_yaml` — top-level `import: [lib/common.yaml]` declared
+- `test_on_handoff_is_spawn` — sub-loop declares `on_handoff: spawn`
+- `test_name_is_rn_remediate` — top-level `name: rn-remediate`
+- `test_fsm_validates_without_errors` — full `validate_fsm()` pass (no ERROR-severity results)
+- `test_mr1_non_llm_evaluators_present` — all LLM-invoking states paired with non-LLM evaluators (`exit_code`, `output_contains`)
+- `test_mr3_run_dir_used_for_writes` — states use `${context.run_dir}/` not `.loops/tmp/` for file writes
+- `test_all_states_reachable_from_initial` — every operational state reachable from `assess`
+
+_Test pattern_: Use module-level `_load_loop()` helper (matching `test_rn_implement.py` pattern), not a pytest fixture. Path: `LOOPS_DIR / "rn-remediate.yaml"`.
+
+_Placement note_: Placing `rn-remediate.yaml` at top-level `loops/` will cause `test_builtin_loops.py:test_expected_loops_exist` (`expected_builtin_loops` set at line 127) to fail until `"rn-remediate"` is added (deferred to ENH-1940). The sweeping auto-discovery tests (`test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`) will pass immediately. To avoid this interim failure, consider placing under `loops/oracles/` — but the issue specifies top-level placement.
+
 ### Registry Updates (deferred to ENH-1940)
 - `scripts/tests/test_builtin_loops.py:127` — add `"rn-remediate"` to `expected_builtin_loops` set
 - `scripts/tests/test_fsm_fragments.py:1023` — add `"rn-remediate.yaml"` to `migration_targets` list
@@ -158,6 +196,17 @@ parameters:
 7. Run `python -m pytest scripts/tests/test_rn_remediate.py -v` to verify all moved tests pass
 8. **Deferred to ENH-1940**: Update loop registries (`test_builtin_loops.py:127`, `test_fsm_fragments.py:1023`, `README.md:53`, `CONTRIBUTING.md:122`)
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These structural and validation coverage gaps were identified by wiring analysis and should be included in the test file:_
+
+9. Add structural/validation tests to `test_rn_remediate.py` (see Integration Map → Tests for full list):
+   - Parameter contract validation: `test_parameters_block_has_required_fields`, `test_parameters_issue_id_is_required_string`, `test_parameters_thresholds_have_defaults`
+   - Terminal state shape: `test_done_terminal_is_bare`, `test_failed_terminal_is_bare`
+   - Top-level declarations: `test_imports_lib_common_yaml`, `test_on_handoff_is_spawn`, `test_name_is_rn_remediate`
+   - FSM health: `test_fsm_validates_without_errors`, `test_mr1_non_llm_evaluators_present`, `test_mr3_run_dir_used_for_writes`, `test_all_states_reachable_from_initial`
+10. Verify `test_expected_loops_exist` in `test_builtin_loops.py` is aware of the interim failure window — if `rn-remediate.yaml` is placed at top-level `loops/`, that test fails until ENH-1940 adds it to `expected_builtin_loops`. Either place under `loops/oracles/` or document the expected interim failure.
+
 ### Terminal State Transition Mapping
 
 When extracting, redirect these parent-only targets to sub-loop terminals:
@@ -209,6 +258,13 @@ When extracting, redirect these parent-only targets to sub-loop terminals:
 - **Effort**: Medium — ~280 lines of YAML extraction + ~85 tests moved
 - **Risk**: Low — structural extraction only; logic unchanged
 
+## Status
+
+**Open** | Created: 2026-06-04 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-04T15:47:59 - `11488fc6-47f2-4cf0-b483-9795475068c9.jsonl`
+- `/ll:wire-issue` - 2026-06-04T15:41:45 - `7a91b5ce-92bf-4f7b-a91a-d34075304344.jsonl`
 - `/ll:refine-issue` - 2026-06-04T15:34:51 - `1dbc5211-a219-41e0-8b8d-9f6d3d67845d.jsonl`
 - `/ll:issue-size-review` - 2026-06-04T19:00:00 - `276841ec-408f-4aca-bf28-93f41fe70aae.jsonl`
+- `/ll:confidence-check` - 2026-06-04T15:45:10 - `3a3b2b58-f1f5-46af-9e47-95030de2135a.jsonl`

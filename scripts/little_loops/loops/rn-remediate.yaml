@@ -1,0 +1,424 @@
+name: rn-remediate
+category: planning
+description: |
+  Sub-loop for the iterative deepening remediation cycle (diagnose → remediate →
+  re_assess → check_convergence) extracted from rn-implement. Accepts an issue ID
+  via parameters and runs the remediation loop until PASS, budget exhaustion,
+  or STALLED. Terminates with done (issue implemented) or failed (escalate to
+  parent for decomposition).
+
+  Run standalone as: ll-loop run rn-remediate "<issue-id>"
+
+  Invoked by parent rn-implement via:
+    loop: rn-remediate
+    with:
+      issue_id: "${captured.input.output}"
+      readiness_threshold: "${context.readiness_threshold}"
+      outcome_threshold: "${context.outcome_threshold}"
+      max_remediation_passes: "${context.max_remediation_passes}"
+    on_yes: dequeue_next
+    on_no: snap_for_size_review
+initial: assess
+max_iterations: 100
+timeout: 14400
+on_handoff: spawn
+import:
+  - lib/common.yaml
+meta_self_eval_ok: false
+shared_state_ok: false
+partial_route_ok: true
+
+parameters:
+  issue_id:
+    type: string
+    required: true
+    description: "Issue ID to remediate (passed from parent's captured.input.output)"
+  readiness_threshold:
+    type: integer
+    required: false
+    description: "Confidence score threshold for readiness gate (default: 85)"
+  outcome_threshold:
+    type: integer
+    required: false
+    description: "Outcome confidence threshold (default: 75)"
+  max_remediation_passes:
+    type: integer
+    required: false
+    description: "Max remediation iterations before escalation to decomposition (default: 3)"
+
+context:
+  readiness_threshold: 85
+  outcome_threshold: 75
+  max_remediation_passes: 3
+
+states:
+  # =========================================================================
+  # Phase 1: Assessment Bridge — Confidence Check & Gate Chain
+  # =========================================================================
+
+  assess:
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${context.issue_id} --auto"
+    action_type: slash_command
+    on_success: verify_scores_persisted
+    on_error: failed
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  verify_scores_persisted:
+    fragment: retry_counter
+    action: |
+      ID="${context.issue_id}"
+      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -z "$ISSUE_FILE" ]; then
+        echo "ERROR: Issue file not found for $ID"
+        exit 1
+      fi
+      CONFIDENCE=$(grep '^confidence_score:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      OUTCOME=$(grep '^outcome_confidence:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      if [ -z "$CONFIDENCE" ] || [ -z "$OUTCOME" ]; then
+        echo "ERROR: confidence_score or outcome_confidence missing for $ID"
+        exit 1
+      fi
+      # Write pre-scores
+      ll-issues show "$ID" --json > "${context.run_dir}/pre_scores_$${ID}.json" 2>/dev/null
+      echo "Scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
+    with:
+      counter_key: "verify_scores_${context.issue_id}"
+      max_retries: 1
+    on_yes: check_readiness
+    on_no: failed
+    on_error: failed
+
+  check_readiness:
+    fragment: shell_exit
+    action: |
+      ID="${context.issue_id}"
+      # Use check-readiness with threshold overrides
+      READY=$(ll-issues check-readiness "$ID" 2>&1; echo $?)
+      echo "$READY"
+      # Check exit code: 0 = ready, 1 = not ready
+      ll-issues check-readiness "$ID" 2>/dev/null
+    on_yes: implement
+    on_no: check_outcome
+    on_error: check_outcome
+
+  check_outcome:
+    fragment: shell_exit
+    action: |
+      ID="${context.issue_id}"
+      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -z "$ISSUE_FILE" ]; then
+        echo "ERROR: Issue file not found for $ID"
+        exit 1
+      fi
+      OUTCOME=$(grep '^outcome_confidence:' "$ISSUE_FILE" | head -1 | awk '{print $2}' | tr -d "'\"")
+      THRESHOLD="${context.outcome_threshold}"
+      if [ -n "$OUTCOME" ] && [ "$OUTCOME" -ge "$THRESHOLD" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    on_yes: diagnose
+    on_no: check_decision_needed
+    on_error: check_decision_needed
+
+  check_decision_needed:
+    fragment: shell_exit
+    action: "ll-issues check-flag ${context.issue_id} decision_needed"
+    on_yes: decide
+    on_no: diagnose
+    on_error: diagnose
+
+  # =========================================================================
+  # Phase 2: Dimensional Diagnosis & Token Routing
+  # =========================================================================
+
+  diagnose:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      READINESS_THRESHOLD="${context.readiness_threshold}"
+      OUTCOME_THRESHOLD="${context.outcome_threshold}"
+
+      # Fetch scores via ll-issues show --json
+      SCORES_JSON=$(ll-issues show "$ID" --json 2>/dev/null)
+      if [ -z "$SCORES_JSON" ]; then
+        echo "ERROR: ll-issues show --json returned empty for $ID"
+        echo "DECOMPOSE"
+        exit 0
+      fi
+
+      # Parse scores (use JSON keys: confidence, outcome, not frontmatter names)
+      CONFIDENCE=$(echo "$SCORES_JSON" | jq -r '.confidence // 0' 2>/dev/null)
+      OUTCOME=$(echo "$SCORES_JSON" | jq -r '.outcome // 0' 2>/dev/null)
+      COMPLEXITY=$(echo "$SCORES_JSON" | jq -r '.score_complexity // 0' 2>/dev/null)
+      AMBIGUITY=$(echo "$SCORES_JSON" | jq -r '.score_ambiguity // 0' 2>/dev/null)
+      CHANGE_SURFACE=$(echo "$SCORES_JSON" | jq -r '.score_change_surface // 0' 2>/dev/null)
+      DECISION_NEEDED=$(echo "$SCORES_JSON" | jq -r '.decision_needed // "false"' 2>/dev/null)
+      MISSING_ARTIFACTS=$(echo "$SCORES_JSON" | jq -r '.missing_artifacts // "false"' 2>/dev/null)
+
+      # Log scores for diagnostics
+      printf '{"id":"%s","confidence":%s,"outcome":%s,"complexity":%s,"ambiguity":%s,"change_surface":%s,"decision_needed":"%s","missing_artifacts":"%s"}\n' \
+        "$ID" "$CONFIDENCE" "$OUTCOME" "$COMPLEXITY" "$AMBIGUITY" "$CHANGE_SURFACE" "$DECISION_NEEDED" "$MISSING_ARTIFACTS" \
+        > "$RUN_DIR/diagnosis_$${ID}.json"
+
+      # Priority-ordered routing (first match wins)
+      if [ "$CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
+        echo "IMPLEMENT"
+      elif [ "$DECISION_NEEDED" = "true" ]; then
+        echo "DECIDE"
+      elif [ "$AMBIGUITY" -ge 15 ]; then
+        echo "WIRE"
+      elif [ "$COMPLEXITY" -ge 15 ] || [ "$CONFIDENCE" -lt 50 ]; then
+        echo "REFINE"
+      elif [ "$CHANGE_SURFACE" -ge 15 ]; then
+        echo "DECOMPOSE"
+      else
+        echo "REFINE"
+      fi
+    capture: diagnosis
+    next: route_d_implement
+    on_error: failed
+
+  route_d_implement:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "IMPLEMENT"
+    on_yes: implement
+    on_no: route_d_decide
+    on_error: failed
+
+  route_d_decide:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "DECIDE"
+    on_yes: decide
+    on_no: route_d_wire
+    on_error: failed
+
+  route_d_wire:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "WIRE"
+    on_yes: wire
+    on_no: route_d_refine
+    on_error: failed
+
+  route_d_refine:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "REFINE"
+    on_yes: refine
+    on_no: failed
+    on_error: failed
+
+  # =========================================================================
+  # Phase 3: Remediation Actions
+  # =========================================================================
+
+  implement:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      ll-auto --only "$ID" 2>&1
+      EXIT_CODE=$?
+      if [ $EXIT_CODE -eq 0 ]; then
+        COUNT=$(cat "${context.run_dir}/implemented_count.txt" 2>/dev/null || echo 0)
+        echo $((COUNT + 1)) > "${context.run_dir}/implemented_count.txt"
+      else
+        echo "Implement failed for $ID (exit=$EXIT_CODE)" >> "${context.run_dir}/failures.txt"
+      fi
+      exit $EXIT_CODE
+    on_yes: done
+    on_no: failed
+    on_error: failed
+
+  decide:
+    fragment: with_rate_limit_handling
+    action: "/ll:decide-issue ${context.issue_id} --auto"
+    action_type: slash_command
+    on_success: re_assess
+    on_error: re_assess
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  wire:
+    fragment: with_rate_limit_handling
+    action: "/ll:wire-issue ${context.issue_id} --auto"
+    action_type: slash_command
+    on_success: refine
+    on_error: refine
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  refine:
+    fragment: with_rate_limit_handling
+    action: "/ll:refine-issue ${context.issue_id} --auto --full-rewrite"
+    action_type: slash_command
+    on_success: re_assess
+    on_error: failed
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  # =========================================================================
+  # Phase 4: Re-Assessment & Convergence
+  # =========================================================================
+
+  re_assess:
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${context.issue_id} --auto"
+    action_type: slash_command
+    on_success: verify_re_assess_scores
+    on_error: failed
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  verify_re_assess_scores:
+    fragment: retry_counter
+    action: |
+      ID="${context.issue_id}"
+      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -z "$ISSUE_FILE" ]; then
+        echo "ERROR: Issue file not found for $ID"
+        exit 1
+      fi
+      CONFIDENCE=$(grep '^confidence_score:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      OUTCOME=$(grep '^outcome_confidence:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      if [ -z "$CONFIDENCE" ] || [ -z "$OUTCOME" ]; then
+        echo "ERROR: confidence_score or outcome_confidence missing for $ID after re_assess"
+        exit 1
+      fi
+      # Write post-scores
+      ll-issues show "$ID" --json > "${context.run_dir}/post_scores_$${ID}.json" 2>/dev/null
+      echo "Post-scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
+    with:
+      counter_key: "verify_re_scores_${context.issue_id}"
+      max_retries: 1
+    on_yes: check_convergence
+    on_no: failed
+    on_error: failed
+
+  check_convergence:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      READINESS_THRESHOLD="${context.readiness_threshold}"
+      OUTCOME_THRESHOLD="${context.outcome_threshold}"
+
+      PRE="$${RUN_DIR}/pre_scores_$${ID}.json"
+      POST="$${RUN_DIR}/post_scores_$${ID}.json"
+
+      if [ ! -f "$PRE" ]; then
+        echo "ERROR: Pre-scores file not found: $PRE"
+        echo "CONVERGED_STALLED"
+        exit 0
+      fi
+      if [ ! -f "$POST" ]; then
+        echo "ERROR: Post-scores file not found: $POST"
+        echo "CONVERGED_STALLED"
+        exit 0
+      fi
+
+      # Parse pre/post scores (use JSON keys: confidence, outcome)
+      PRE_CONFIDENCE=$(jq -r '.confidence // 0' "$PRE" 2>/dev/null)
+      PRE_OUTCOME=$(jq -r '.outcome // 0' "$PRE" 2>/dev/null)
+      PRE_COMPLEXITY=$(jq -r '.score_complexity // 0' "$PRE" 2>/dev/null)
+      PRE_AMBIGUITY=$(jq -r '.score_ambiguity // 0' "$PRE" 2>/dev/null)
+
+      POST_CONFIDENCE=$(jq -r '.confidence // 0' "$POST" 2>/dev/null)
+      POST_OUTCOME=$(jq -r '.outcome // 0' "$POST" 2>/dev/null)
+      POST_COMPLEXITY=$(jq -r '.score_complexity // 0' "$POST" 2>/dev/null)
+      POST_AMBIGUITY=$(jq -r '.score_ambiguity // 0' "$POST" 2>/dev/null)
+
+      # Compute deltas
+      DELTA_CONFIDENCE=$((POST_CONFIDENCE - PRE_CONFIDENCE))
+      DELTA_OUTCOME=$((POST_OUTCOME - PRE_OUTCOME))
+      # For complexity/ambiguity, improvement means score went DOWN, so invert delta
+      DELTA_COMPLEXITY=$((PRE_COMPLEXITY - POST_COMPLEXITY))
+      DELTA_AMBIGUITY=$((PRE_AMBIGUITY - POST_AMBIGUITY))
+
+      # Total improvement: sum of all deltas (positive = improved)
+      TOTAL_DELTA=$((DELTA_CONFIDENCE + DELTA_OUTCOME + DELTA_COMPLEXITY + DELTA_AMBIGUITY))
+
+      # Increment remediation counter
+      REM_COUNTER_FILE="$${RUN_DIR}/remediation_count_$${ID}.txt"
+      REM_COUNT=$(cat "$REM_COUNTER_FILE" 2>/dev/null || echo 0)
+      REM_COUNT=$((REM_COUNT + 1))
+      echo "$REM_COUNT" > "$REM_COUNTER_FILE"
+
+      # Log convergence data
+      printf '{"id":"%s","pre_confidence":%s,"post_confidence":%s,"pre_outcome":%s,"post_outcome":%s,"delta_confidence":%s,"delta_outcome":%s,"delta_complexity":%s,"delta_ambiguity":%s,"total_delta":%s}\n' \
+        "$ID" "$PRE_CONFIDENCE" "$POST_CONFIDENCE" "$PRE_OUTCOME" "$POST_OUTCOME" \
+        "$DELTA_CONFIDENCE" "$DELTA_OUTCOME" "$DELTA_COMPLEXITY" "$DELTA_AMBIGUITY" "$TOTAL_DELTA" \
+        > "$RUN_DIR/convergence_$${ID}.json"
+
+      # Convergence rules (first match wins)
+      if [ "$POST_CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$POST_OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
+        echo "CONVERGED_PASS"
+      elif [ "$TOTAL_DELTA" -le 2 ]; then
+        echo "CONVERGED_STALLED"
+      else
+        echo "CONVERGED_IMPROVED"
+      fi
+    capture: convergence_result
+    next: route_conv_pass
+    on_error: route_conv_pass
+
+  route_conv_pass:
+    evaluate:
+      type: output_contains
+      source: "${captured.convergence_result.output}"
+      pattern: "CONVERGED_PASS"
+    on_yes: implement
+    on_no: route_conv_improved
+    on_error: failed
+
+  route_conv_improved:
+    evaluate:
+      type: output_contains
+      source: "${captured.convergence_result.output}"
+      pattern: "CONVERGED_IMPROVED"
+    on_yes: check_remediation_budget
+    on_no: failed
+    on_error: failed
+
+  check_remediation_budget:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      MAX_PASSES="${context.max_remediation_passes}"
+      REM_COUNTER_FILE="$${RUN_DIR}/remediation_count_$${ID}.txt"
+      REM_COUNT=$(cat "$REM_COUNTER_FILE" 2>/dev/null || echo 0)
+      echo "$REM_COUNT"
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_remediation_passes}"
+    on_yes: diagnose
+    on_no: failed
+    on_error: failed
+
+  # =========================================================================
+  # Diagnostic State
+  # =========================================================================
+
+  rate_limit_diagnostic:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID}" >> "${context.run_dir}/rate_limits.txt"
+      echo "[RATE_LIMIT] Skipping $ID due to rate limit exhaustion"
+    next: done
+
+  # =========================================================================
+  # Terminal States
+  # =========================================================================
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true

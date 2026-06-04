@@ -7,7 +7,7 @@ status: open
 captured_at: '2026-06-02T00:00:00Z'
 discovered_date: '2026-06-02'
 discovered_by: review-epic
-relates_to: [FEAT-1826, ENH-1827, ENH-1885, ENH-1886]
+relates_to: [FEAT-1826, ENH-1827, ENH-1885, ENH-1886, ENH-1941]
 labels:
   - epic
   - sft
@@ -37,6 +37,7 @@ Build the tooling needed to turn Claude Code session logs (`.jsonl` files under 
 - **ENH-1827** — `ll-messages --sft-format` flag: one-off ingest path and alternate input for the loop
 - **ENH-1885** — PII detection utility (`little_loops.pii`) to back `pii_action` filter in the loop
 - **ENH-1886** — File-level mtime pre-filter in `extract_conversation_turns()` for faster incremental harvest
+- **ENH-1941** — Integrate history.db session-quality signals into sft-corpus filtering
 
 ## Scope
 
