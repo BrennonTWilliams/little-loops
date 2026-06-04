@@ -136,4 +136,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-06-04 | Priority: P2
+**Done** | Created: 2026-06-04 | Priority: P2
