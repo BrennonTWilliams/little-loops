@@ -1680,6 +1680,7 @@ class TestCompactSession:
         finally:
             conn.close()
         # Idempotency: second run adds zero new rows
+        assert len(leaf_rows) >= 1  # leaves from first run still present
         assert len(condensed_rows) <= 1  # at most one condensed per session
 
     def test_compact_session_creates_spans(self, tmp_path: Path) -> None:

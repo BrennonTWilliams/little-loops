@@ -15,9 +15,9 @@ from little_loops.history_reader import (
     issue_effort,
     project_digest,
     recent_file_events,
+    recent_issue_velocity,
     related_issue_events,
     render_project_context,
-    recent_issue_velocity,
     search,
     sessions_for_issue,
 )
