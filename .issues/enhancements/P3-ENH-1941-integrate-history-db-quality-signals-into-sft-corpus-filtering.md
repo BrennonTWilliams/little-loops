@@ -68,6 +68,13 @@ context:
 
 When `history.db` is missing, empty, or lacks the relevant tables, these predicates degrade to no-ops (pass-through) — following the EPIC-1707 graceful-degradation pattern established in `history_reader.py`.
 
+## Success Metrics
+
+- **Corpus quality**: Sessions with `issue_outcome=done` + `has_corrections=false` + `files_modified>0` should represent >80% of the filtered corpus (vs. 0% filtering today)
+- **Filter precision**: Each predicate independently drops only the sessions it claims to target — `require_issue_outcome` should not drop sessions that closed an issue, `exclude_user_corrections` should not drop sessions with zero corrections
+- **Graceful degradation**: Pipeline completes successfully (no crashes, no empty corpus) when `history.db` is missing or empty — verified by test
+- **Rejection transparency**: Every dropped example has a `rejected_by` annotation identifying which predicate(s) rejected it
+
 ## Implementation Steps
 
 1. **Add a `lookup_session_metadata()` helper** — new function (or inline shell) that takes a session ID and queries `history.db` via `ll-history-context` or direct SQLite, returning a JSON metadata dict: `{"has_corrections": bool, "issue_outcome": str|null, "tool_count": int, "files_modified": int, "loop_outcome": str|null}`. Degrades to empty dict when DB is absent.
@@ -88,6 +95,27 @@ When `history.db` is missing, empty, or lacks the relevant tables, these predica
    - Test graceful degradation when `history.db` is missing
    - Test that each predicate drops the correct examples
    - Test that predicate=false means pass-through
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/sft-corpus.yaml` — add `enrich` state and extend `filter` state predicates
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/history_reader.py` — existing read API used by the new `lookup_session_metadata()` helper
+- `scripts/little_loops/cli/ll_history_context.py` — CLI alternative for metadata lookup (ENH-1846)
+
+### Similar Patterns
+- Graceful-degradation pattern in `history_reader.py` (EPIC-1707) — replicate in `lookup_session_metadata()`
+
+### Tests
+- `scripts/tests/test_loops_sft_corpus.py` — add tests for enrichment + filter predicates + degradation (FEAT-1826)
+
+### Documentation
+- N/A — no public API changes
+
+### Configuration
+- `sft-corpus.yaml` context block — four new optional keys with pass-through defaults
 
 ## API / Interface
 
@@ -145,6 +173,7 @@ The resulting corpus contains only conversations where: an issue was closed, the
 `enhancement`, `sft`, `history-db`, `corpus-quality`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T16:01:00 - `5329f937-a419-47c6-b537-332549e1fb53.jsonl`
 - `/ll:capture-issue` - 2026-06-04T15:57:41Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
 ---
