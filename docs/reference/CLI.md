@@ -1786,21 +1786,26 @@ ll-session path <session_id>                    # Resolve JSONL file path for a 
 
 Query `.ll/history.db` for user corrections and FTS5 matches related to an issue ID and print a ready-to-inject `## Historical Context` markdown block. Returns empty output (exit 0) when the DB is missing, has no matches, or all rows are stale (>30 days old).
 
+Pass `--project` instead of an issue ID to print the project-wide context digest that `session_start` would inject (dry-run / config-tuning mode, ENH-1907).
+
 **Flags:**
 
 | Flag | Description |
 |------|-------------|
-| `ISSUE_ID` | Issue ID to query (required, e.g. `ENH-1708`) |
-| `--file PATH` | Also include recent file events for this path |
+| `ISSUE_ID` | Issue ID to query (optional, e.g. `ENH-1708`). Mutually exclusive with `--project`. |
+| `--project` | Print the project-wide context digest (dry-run of session-start injection). |
+| `--file PATH` | Also include recent file events for this path (issue-mode only) |
 | `--db PATH` | Path to the session database (default: `.ll/history.db`) |
 
-**Output cap:** At most 5 rows are rendered even when more matches exist.
+**Output cap:** At most 5 rows are rendered in issue mode. Project mode respects `history.session_digest.char_cap` (default 1200 chars).
 
 **Examples:**
 ```bash
 ll-history-context ENH-1708                        # Corrections matching the issue ID
 ll-history-context ENH-1708 --file src/foo.py      # Also include recent file events
 ll-history-context ENH-9999                        # Returns empty output when no matches
+ll-history-context --project                        # Print project-wide digest (dry-run)
+ll-history-context --project --db .ll/history.db   # Use a specific DB path
 ```
 
 ---

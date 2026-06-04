@@ -38,6 +38,7 @@ from typing import Any
 import yaml
 
 from little_loops.config.core import deep_merge, resolve_config_path
+from little_loops.config.features import feature_enabled
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
     # 3b. Bootstrap the unified session store (FEAT-1112). Best-effort and only
     # for initialized projects — uninitialized projects (no config) are a no-op
     # so the hook never creates a stray .ll/ directory.
+    _project_context_block = ""
     if config_path is not None:
         with contextlib.suppress(Exception):
             from little_loops.session_store import ensure_db
@@ -136,6 +138,24 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
         threading.Thread(target=_run_backfill, daemon=True).start()
 
+        # ENH-1907: Inject project-context digest (best-effort, opt-in).
+        # Runs after the backfill thread launches so the digest reflects only
+        # already-persisted rows from prior sessions, not this session's backfill.
+        with contextlib.suppress(Exception):
+            if feature_enabled(merged_config, "history.session_digest.enabled"):
+                from little_loops.config.features import HistoryConfig
+                from little_loops.history_reader import project_digest, render_project_context
+
+                _hist = HistoryConfig.from_dict(merged_config.get("history", {}))
+                _sd = _hist.session_digest
+                # Convert empty sections list to None so the default config renders
+                # all providers; a non-empty list restricts/orders the output.
+                _sections = _sd.sections if _sd.sections else None
+                _digest = project_digest(_db_path, days=_sd.days, sections=_sections)
+                _project_context_block = render_project_context(
+                    _digest, char_cap=_sd.char_cap, days=_sd.days
+                )
+
     # 4. Compose the rendered stdout payload.
     if config_path is not None and not overrides_applied:
         # Match bash: preserve original on-disk formatting when no overrides.
@@ -147,6 +167,13 @@ def handle(event: LLHookEvent) -> LLHookResult:
         stdout_payload = json.dumps(merged_config, indent=2)
     else:
         stdout_payload = None
+
+    # Append project-context block (ENH-1907) if populated.
+    if _project_context_block:
+        if stdout_payload is not None:
+            stdout_payload = stdout_payload + "\n\n" + _project_context_block
+        else:
+            stdout_payload = _project_context_block
 
     # 5. Compose feedback (stderr).
     if config_path is not None:

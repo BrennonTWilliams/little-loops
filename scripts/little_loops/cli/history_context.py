@@ -5,8 +5,13 @@ issue ID and prints a ready-to-inject ``## Historical Context`` markdown block.
 Returns empty output when the DB is missing, has no matches, or all rows are
 stale.
 
+Pass ``--project`` instead of an issue ID to print the project-wide context
+digest that the session-start hook would inject (inspection / config-tuning
+dry-run, ENH-1907).
+
 Usage:
     ll-history-context <issue_id> [--file <path>] [--db <path>]
+    ll-history-context --project [--db <path>]
 """
 
 from __future__ import annotations
@@ -18,12 +23,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.config.core import resolve_config_path
 from little_loops.history_reader import (
     STALE_DAYS_DEFAULT,
     SearchResult,
     UserCorrection,
     find_user_corrections,
+    project_digest,
     recent_file_events,
+    render_project_context,
     search,
 )
 from little_loops.logger import Logger
@@ -46,9 +54,22 @@ Examples:
   %(prog)s ENH-1708                        # Corrections matching the issue ID
   %(prog)s ENH-1708 --file src/foo.py      # Also include recent file events
   %(prog)s ENH-1708 --db custom/history.db # Use a non-default database
+  %(prog)s --project                        # Print project-wide context digest
 """,
     )
-    parser.add_argument("issue_id", metavar="ISSUE_ID", help="Issue ID to query (e.g. ENH-1708)")
+    parser.add_argument(
+        "issue_id",
+        metavar="ISSUE_ID",
+        nargs="?",
+        default=None,
+        help="Issue ID to query (e.g. ENH-1708). Mutually exclusive with --project.",
+    )
+    parser.add_argument(
+        "--project",
+        action="store_true",
+        default=False,
+        help="Print the project-wide context digest (dry-run of session-start injection).",
+    )
     parser.add_argument(
         "--file",
         metavar="PATH",
@@ -77,6 +98,37 @@ def main_history_context() -> int:
 
         parser = _build_parser()
         args = parser.parse_args()
+
+        # Mutual-exclusion guard: require exactly one of issue_id or --project.
+        if args.project and args.issue_id:
+            parser.error("--project and ISSUE_ID are mutually exclusive")
+        if not args.project and not args.issue_id:
+            parser.error("one of ISSUE_ID or --project is required")
+
+        # --project: print the project-wide digest dry-run and exit.
+        if args.project:
+            from little_loops.config.features import HistoryConfig
+
+            cwd = Path.cwd()
+            config_path = resolve_config_path(cwd)
+            if config_path is not None:
+                import json
+
+                try:
+                    merged = json.loads(config_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    merged = {}
+            else:
+                merged = {}
+
+            _hist = HistoryConfig.from_dict(merged.get("history", {}))
+            _sd = _hist.session_digest
+            _sections = _sd.sections if _sd.sections else None
+            digest = project_digest(args.db, days=_sd.days, sections=_sections)
+            block = render_project_context(digest, char_cap=_sd.char_cap, days=_sd.days)
+            if block:
+                print(block)
+            return 0
 
         cutoff = (datetime.now(UTC) - timedelta(days=STALE_DAYS_DEFAULT)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"

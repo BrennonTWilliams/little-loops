@@ -334,3 +334,76 @@ class TestSessionStartBackfillThread:
 
         assert result.exit_code == 0
         assert any("backfill" in r.message.lower() for r in caplog.records)
+
+
+class TestSessionStartProjectDigest:
+    """Tests for gated project-context digest injection (ENH-1907)."""
+
+    def test_gate_off_no_project_context_block(self, in_tmp: Path) -> None:
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"session_digest": {"enabled": False}}})
+        )
+        result = handle(_event())
+        assert result.exit_code == 0
+        assert "<project_context>" not in (result.stdout or "")
+
+    def test_gate_on_empty_db_no_block(self, in_tmp: Path) -> None:
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"session_digest": {"enabled": True}}})
+        )
+        result = handle(_event())
+        assert result.exit_code == 0
+        assert "<project_context>" not in (result.stdout or "")
+
+    def test_gate_on_populated_db_block_present(self, in_tmp: Path) -> None:
+        from little_loops.session_store import record_correction
+
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"session_digest": {"enabled": True}}})
+        )
+        db = in_tmp / ".ll" / "history.db"
+        record_correction(db, "sess-1", "no Co-Authored-By trailers", "user")
+
+        result = handle(_event())
+        assert result.exit_code == 0
+        assert "<project_context>" in (result.stdout or "")
+
+    def test_gate_on_block_respects_char_cap(self, in_tmp: Path) -> None:
+        from little_loops.session_store import record_correction
+
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"session_digest": {"enabled": True, "char_cap": 300}}})
+        )
+        db = in_tmp / ".ll" / "history.db"
+        for i in range(20):
+            record_correction(db, f"sess-{i}", f"correction item {i} with some extra text here", "user")
+
+        result = handle(_event())
+        assert result.exit_code == 0
+        stdout = result.stdout or ""
+        if "<project_context>" in stdout:
+            start = stdout.index("<project_context>")
+            end = stdout.index("</project_context>") + len("</project_context>")
+            block = stdout[start:end]
+            assert len(block) <= 300
+
+    def test_digest_failure_does_not_block_startup(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"session_digest": {"enabled": True}}})
+        )
+        import little_loops.history_reader as hr
+
+        def _raise(*a: object, **kw: object) -> None:
+            raise RuntimeError("simulated digest failure")
+
+        monkeypatch.setattr(hr, "project_digest", _raise)
+
+        result = handle(_event())
+        assert result.exit_code == 0

@@ -2,19 +2,34 @@
 id: ENH-1907
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-03
-captured_at: "2026-06-03T19:54:05Z"
+captured_at: '2026-06-03T19:54:05Z'
+completed_at: '2026-06-04T00:47:01Z'
 discovered_by: capture-issue
 parent: EPIC-1707
-relates_to: [ENH-1752, ENH-1846, ENH-1847, FEAT-1263, ENH-1830, ENH-1905, ENH-1909, ENH-1911]
+relates_to:
+- ENH-1752
+- ENH-1846
+- ENH-1847
+- FEAT-1263
+- ENH-1830
+- ENH-1905
+- ENH-1909
+- ENH-1911
 blocked_by:
 - ENH-1913
 labels:
-  - captured
-  - history-db
-  - configurability
+- captured
+- history-db
+- configurability
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-1907: Project-Context Snapshot at Session Start
@@ -369,7 +384,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `captured`, `history-db`
 
+## Resolution
+
+Implemented via workflow:
+
+1. **`history_reader.py`**: Added `SectionProvider` (frozen dataclass), `ProjectDigest` dataclass, three v1 section providers (`touched_files`, `completed_issues`, `recurring_corrections`) with query + render functions, `SECTION_PROVIDERS` registry, `project_digest()` aggregation, and `render_project_context()` with hard char-cap truncation.
+2. **`session_start.py`**: Added `feature_enabled` import; gated `project_digest` + `render_project_context` call after Phase 3b (backfill thread launch), wrapped in `contextlib.suppress(Exception)`; appended rendered block to `stdout_payload`.
+3. **`cli/history_context.py`**: Made `issue_id` optional (`nargs="?"`), added `--project` flag, mutual-exclusion guard, and `--project` branch calling `project_digest` + `render_project_context` for dry-run inspection.
+4. **Tests**: 13 tests in `TestProjectDigest`, 5 in `TestSessionStartProjectDigest`, 4 in `TestProjectMode`, updated `test_missing_issue_id_exits` comment.
+5. **Docs**: Updated `ARCHITECTURE.md` (read-path flowchart + components table), `API.md` (new types/functions), `CONFIGURATION.md` (`history.session_digest.*`), `CLI.md` (`--project` flag).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-04T00:47:01 - `auto`
+- `/ll:ready-issue` - 2026-06-04T00:28:31 - `8a3dbce6-fa16-4468-9201-91655b6a471f.jsonl`
+- `/ll:confidence-check` - 2026-06-03T00:00:00 - `a96a647c-4a09-47e3-b299-433c3979600a.jsonl`
 - `/ll:wire-issue` - 2026-06-04T00:00:00 - `auto`
 - `/ll:refine-issue` - 2026-06-04T00:17:25 - `783a6b2a-5259-46fe-b4d0-26a6a354c40d.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`

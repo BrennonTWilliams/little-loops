@@ -1085,6 +1085,35 @@ See [API Reference → little_loops.transport](API.md#little_loopstransport) for
 
 The following fields are defined in `config-schema.json` but are not exposed through `/ll:init` or `/ll:configure`. To set them, edit `.ll/ll-config.json` directly. All have sensible defaults and rarely need changing.
 
+### `history.session_digest`
+
+Opt-in project-context snapshot injected at session start (ENH-1907). Queries `history.db` and prepends a `<project_context>` block to session context so every new session gets a "what's been happening lately" summary without manual surfacing. Default: disabled.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `history.session_digest.enabled` | `boolean` | `false` | Gate flag — set `true` to enable injection. Off by default while it bakes. |
+| `history.session_digest.days` | `integer` | `7` | Freshness window in days. Rows older than this are excluded. |
+| `history.session_digest.char_cap` | `integer` | `1200` | Hard character ceiling on the injected block. Truncates with `+N more`. |
+| `history.session_digest.sections` | `array[string]` | `[]` | Ordered list of section keys to render. Empty list = all providers at defaults. Supported keys: `"touched_files"`, `"completed_issues"`, `"recurring_corrections"`. |
+
+**Example:**
+```json
+{
+  "history": {
+    "session_digest": {
+      "enabled": true,
+      "days": 7,
+      "char_cap": 1200,
+      "sections": ["touched_files", "completed_issues", "recurring_corrections"]
+    }
+  }
+}
+```
+
+**Inspection:** Run `ll-history-context --project` to preview what would be injected for your current config without starting a session.
+
+**Safety design:** Opt-in gate (never active by default), hard `char_cap` (session context cannot be bloated beyond this), freshness window (stale rows excluded), graceful degradation (missing/empty DB → no block, no error, no startup delay).
+
 ### `scan.custom_agents`
 
 Custom scanning agent names to include during `/ll:scan-codebase`:

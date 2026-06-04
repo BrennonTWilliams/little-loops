@@ -6155,6 +6155,67 @@ Return sessions that co-occurred with *issue_id*'s active period.
 
 **Returns:** List of `SessionRef` instances ordered by `first_message_ts DESC`. Queries the `issue_sessions` VIEW (v5 schema migration, ENH-1711). Returns `[]` when the view is absent (pre-v5 schema), the issue has no recorded sessions, or the database is unavailable.
 
+### SectionProvider
+
+Config-addressable digest section with query and render logic (ENH-1907). The three v1 providers (`touched_files`, `completed_issues`, `recurring_corrections`) are registered in `SECTION_PROVIDERS`.
+
+```python
+@dataclass(frozen=True)
+class SectionProvider:
+    name: str           # config-addressable key (e.g. "touched_files")
+    query: Callable     # (conn, *, cutoff: str, cap: int) -> list
+    default_cap: int    # max rows returned by this provider
+    render: Callable    # (rows: list) -> list[str]  markdown lines
+```
+
+### ProjectDigest
+
+Aggregated project-context snapshot from `history.db` (ENH-1907).
+
+```python
+@dataclass
+class ProjectDigest:
+    sections: list[tuple[str, list[str]]]  # [(name, markdown_lines), ...]
+    days: int = 7
+
+    @property
+    def empty(self) -> bool: ...
+```
+
+### SECTION_PROVIDERS
+
+Registry of v1 section providers. Keys: `"touched_files"`, `"completed_issues"`, `"recurring_corrections"`. Future providers (effort/velocity, evolution triggers) register here without requiring a formatter rewrite.
+
+```python
+SECTION_PROVIDERS: dict[str, SectionProvider]
+```
+
+### project_digest
+
+```python
+def project_digest(
+    db_path: Path,
+    *,
+    days: int = 7,
+    sections: list[str] | None = None,
+) -> ProjectDigest
+```
+
+Aggregate a project-wide context snapshot from `history.db`. Returns a `ProjectDigest` with `.empty == True` on missing/empty/stale DB. `sections=None` or `sections=[]` renders all registered providers in registry order; a non-empty list restricts and orders the output. Degrades gracefully — never raises.
+
+### render_project_context
+
+```python
+def render_project_context(
+    digest: ProjectDigest,
+    *,
+    char_cap: int = 1200,
+    days: int | None = None,
+) -> str
+```
+
+Render a `<project_context>` block from *digest*, capped at *char_cap* chars. Returns `""` when the digest is empty. Truncates with a `+N more` tail when content would exceed *char_cap*.
+
 ---
 
 ## little_loops.hooks

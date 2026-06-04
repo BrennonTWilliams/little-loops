@@ -16,6 +16,8 @@ class TestArgumentParsing:
     """Argparse unit tests via sys.argv, no filesystem."""
 
     def test_missing_issue_id_exits(self) -> None:
+        # issue_id is now nargs="?", so argparse no longer rejects bare invocation;
+        # the mutual-exclusion guard in main_history_context() raises SystemExit instead.
         with patch("sys.argv", ["ll-history-context"]):
             with pytest.raises(SystemExit):
                 main_history_context()
@@ -140,3 +142,49 @@ class TestDeduplication:
         out = capsys.readouterr().out
         count = out.count("dedup test content")
         assert count == 1, f"Expected 1 occurrence of deduped content, got {count}"
+
+
+class TestProjectMode:
+    """Tests for ll-history-context --project (ENH-1907)."""
+
+    def test_project_flag_prints_block_when_populated(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        record_correction(db, "sess-1", "no Co-Authored-By trailers please", "user")
+        with patch("sys.argv", ["ll-history-context", "--project", "--db", str(db)]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "<project_context>" in out
+        assert "</project_context>" in out
+
+    def test_project_flag_empty_db_no_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-history-context", "--project", "--db", str(db)]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert out.strip() == ""
+
+    def test_project_flag_missing_db_returns_zero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "nonexistent.db"
+        with patch("sys.argv", ["ll-history-context", "--project", "--db", str(db)]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert out.strip() == ""
+
+    def test_project_and_issue_id_mutually_exclusive(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch(
+            "sys.argv", ["ll-history-context", "--project", "--db", str(db), "ENH-1708"]
+        ):
+            with pytest.raises(SystemExit):
+                main_history_context()

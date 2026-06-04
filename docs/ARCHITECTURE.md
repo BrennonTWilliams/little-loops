@@ -621,6 +621,7 @@ flowchart TB
     HR --> HC["ll-history-context CLI<br/>find_user_corrections + recent_file_events<br/>→ ## Historical Context block"]
     HR --> LS["ll-session CLI<br/>search + related_issue_events<br/>+ sessions_for_issue"]
     HR --> SK["Skills<br/>refine-issue / ready-issue<br/>/ confidence-check"]
+    HR --> SS2["session_start hook<br/>project_digest → render_project_context<br/>→ &lt;project_context&gt; block (ENH-1907)"]
 ```
 
 ### Components
@@ -634,10 +635,11 @@ flowchart TB
 | `post_tool_use` hook | `hooks/post_tool_use.py` | Writes `tool_events` / `file_events` per call |
 | `user_prompt_submit` hook | `hooks/user_prompt_submit.py` | Writes `user_corrections` / `skill_events` via `is_correction()` heuristic |
 | `cli_event_context()` | `session_store.py` | Context manager that records `ll-` CLI entry-point invocations to `cli_events` (ENH-1849) |
-| `history_reader.py` | `history_reader.py` | Public read API: 5 query functions, 5 dataclasses |
-| `ll-history-context` CLI | `cli/history_context.py` | Primary consumer: renders `## Historical Context` block |
+| `history_reader.py` | `history_reader.py` | Public read API: 5 query functions, 5 dataclasses, `project_digest` / `render_project_context` (ENH-1907) |
+| `ll-history-context` CLI | `cli/history_context.py` | Primary consumer: `## Historical Context` block (issue mode) + project digest dry-run (`--project`) |
 | `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions |
 | Skills | `commands/refine-issue.md` etc. | Call `ll-history-context` for agent context injection |
+| `session_start` hook | `hooks/session_start.py` | Ambient consumer: injects `<project_context>` block at session start (opt-in, ENH-1907) |
 
 ### Decisions Log: `.ll/decisions.yaml`
 
