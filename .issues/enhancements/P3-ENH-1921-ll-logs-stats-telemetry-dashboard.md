@@ -101,6 +101,15 @@ Out of scope:
 
 - `docs/reference/API.md` (ll-logs, ll-ctx-stats)
 
+
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-1922 owns the per-invocation failure-classification layer (detection of nonzero exits, tracebacks, and correction signals) atop ENH-1919's shared extractor. ENH-1921 aggregates failure/correction rates from ENH-1922's classified output rather than re-implementing failure detection. ENH-1919's shared extractor provides the raw event stream without classification.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T05:19:22 - `cd123288-5c07-482f-b424-1eebfea29b6e.jsonl`
 - `/ll:format-issue` - 2026-06-04T03:09:55 - `9b934de1-4aab-4e21-b930-1823687cb2b1.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

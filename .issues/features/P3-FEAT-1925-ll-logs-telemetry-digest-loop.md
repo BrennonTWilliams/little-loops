@@ -299,5 +299,14 @@ timeout: 3600
 - [ ] `commit_if_needed` never commits when no new `.issues/` files were created
 - [ ] All artifacts written under `${context.run_dir}/`, not `.loops/tmp/`
 
+
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-1920 (eval-export) and ENH-1924 (diff) are intentionally excluded from this loop's orchestration. They are on-demand developer tools triggered by specific workflows (replay testing of prompt changes, session behavioral regression comparison) — not periodic batch-telemetry signals. The loop covers the four batch-telemetry subcommands: `stats` (ENH-1921), `scan-failures` (ENH-1922), `sequences` (ENH-1919), and dead-skill detection (ENH-1923).
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T05:19:22 - `8b34820d-ae67-4c39-b57a-ea2b07021501.jsonl`
 - `/ll:capture-issue` - 2026-06-04T03:04:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/551af427-6235-4491-aaed-0867dd5fc912.jsonl`

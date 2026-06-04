@@ -30,11 +30,11 @@ records but is never extracted as structured sequence data.
 
 ## Expected Behavior
 
-`ll-logs sequences [--project DIR|--all] [--min-len N] [--min-count M] [--window-days D] [--json]`
+`ll-logs sequences [--project DIR|--all] [--min-len N] [--min-count M] [--top N] [--window-days D] [--json]`
 walks the extracted `logs/**/*.jsonl` (or raw `~/.claude/projects/`) and emits
 ranked n-grams of ll invocations: the chain, occurrence count, and per-edge
-transition frequency. Default `--min-len 2`, surfacing the chains most worth
-turning into loops.
+transition frequency. Default `--min-len 2`. `--top N` limits output to the
+top N chains by frequency.
 
 ## Motivation
 
@@ -82,7 +82,7 @@ stream, then count n-grams within `--window-days`. Emit text + `--json`.
 
 ## API/Interface
 
-`ll-logs sequences` — new subcommand; JSON schema: `[{chain: [str], count: int, edges: [{from, to, freq}]}]`.
+`ll-logs sequences` — new subcommand; JSON schema: `[{chain: [str], count: int, edges: [{from, to, freq}]}]`. Supports `--top N` to limit output to top N chains by frequency.
 
 ## Scope Boundaries
 
@@ -109,5 +109,6 @@ captured, ll-logs, loop-suggester
 **Open** | Created: 2026-06-04 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T05:19:16 - `cd123288-5c07-482f-b424-1eebfea29b6e.jsonl`
 - `/ll:format-issue` - 2026-06-04T03:07:47 - `f957d413-8388-4582-b04a-6c037cc6e22e.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`
