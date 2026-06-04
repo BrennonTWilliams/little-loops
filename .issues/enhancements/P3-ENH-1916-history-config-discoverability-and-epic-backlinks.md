@@ -42,18 +42,44 @@ principle only. Two concrete gaps from the EPIC-1707 audit:
 
 ## Implementation Steps
 
-1. **Bidirectional linking**: update EPIC-1707's `relates_to` to include
-   ENH-1909, ENH-1911, ENH-1913 (A), ENH-1914 (E), ENH-1915 (F). (The new
-   children created by capture already add themselves; this step covers the
-   pre-existing 1909/1911 gap and verifies consistency.)
-2. **Config reference**: add a single consolidated `## Configuration` table
-   (in docs or the epic) listing every `history.*` and `analytics.*` key, its
-   default, and meaning.
-3. **`/ll:configure` coverage**: confirm the `configure` skill (`skills/configure/`)
-   surfaces the new `history.*` keys. If it enumerates sections dynamically from
-   `config-schema.json`, ENH-1913 adding the `history` object is sufficient; if
-   it hardcodes a section list, add `history` to that list or the keys stay
-   undiscoverable through the tool.
+1. **Patch EPIC-1707 `relates_to`** — Edit `.issues/epics/P2-EPIC-1707-history-db-as-agent-context-layer.md`
+   frontmatter line 13: append ENH-1909 and ENH-1911 to the existing inline list (ENH-1913,
+   1914, 1915, 1916 are already present). Run `ll-deps validate` to confirm no new cycles and
+   that all referenced IDs resolve.
+
+2. **Author `### \`history\`` section in CONFIGURATION.md** — Insert after the `### \`analytics\``
+   section at `docs/reference/CONFIGURATION.md:437`, following the exact same structure:
+   - One-paragraph description with `(ENH-1913)` parenthetical
+   - 4-column `| Key | Type | Default | Description |` table for the 4 flat keys
+     (`velocity_window`, `effort_fields`, `max_age_days`, `planning_skills`) pulled
+     from `config-schema.json:1406–1450`
+   - Sub-object tables for `session_digest`, `evolution`, `go_no_go`, `capture_issue`
+     pulled from `config-schema.json:1451–1503`
+   - A minimal JSON example block
+   - Remove the orphan `### \`history.session_digest\`` entry from `## Manual Configuration`
+     (currently `docs/reference/CONFIGURATION.md:1088–1115`) or fold it into the new section.
+
+3. **Add `history` area to `skills/configure/SKILL.md`** — The skill is **fully hardcoded**;
+   it does NOT read `config-schema.json` dynamically. Four edits are required:
+   - Add a row to the `## Area Mapping` table: `| history | history | History.db consumer tuning |`
+   - Append `|history` to the `argument-hint` frontmatter pipe-separated string
+   - Add `history` entry to the `## Mode: --list` example output block
+   - Add `history` to the `## Arguments` list and to one of the five interactive picker pages
+
+4. **Add `## Area: history` interactive flow to `skills/configure/areas.md`** — Model after
+   `## Area: analytics` (line 1216). Include a "Current Values" display block and Round 1
+   questions for the most commonly tuned keys: `history.velocity_window`,
+   `history.max_age_days`, `history.planning_skills`, `history.session_digest.enabled`.
+   Defaults come from `config-schema.json:1406–1503` and `HistoryConfig` dataclass
+   (`scripts/little_loops/config/features.py:716`).
+
+5. **Add `## history --show` template to `skills/configure/show-output.md`** — Model after
+   `## analytics --show` (line 218). Render all `history.*` flat keys and sub-object keys
+   with their defaults from `config-schema.json:1406–1503`.
+
+6. **Validate**: `ll-deps validate` (EPIC-1707 edges + no cycles); `/ll:configure --list`
+   (confirms `history` appears in output); `/ll:configure history --show` (confirms all keys
+   display correctly).
 
 ## Acceptance Criteria
 
@@ -80,20 +106,39 @@ N/A — No public API changes. This issue modifies issue metadata (frontmatter l
 ## Integration Map
 
 ### Files to Modify
-- `.issues/epics/P2-EPIC-1707-history-db-as-agent-context-layer.md` — add ENH-1909, ENH-1911, ENH-1913, ENH-1914, ENH-1915, ENH-1916 to `relates_to`
-- `docs/` or epic body — add consolidated `## Configuration` table for `history.*` / `analytics.*` keys
-- `skills/configure/SKILL.md` (or equivalent) — verify `history` namespace is surfaced
+- `.issues/epics/P2-EPIC-1707-history-db-as-agent-context-layer.md:13` — append ENH-1909, ENH-1911
+  to `relates_to` inline list (ENH-1913/1914/1915/1916 already present; only 1909 and 1911 are missing)
+- `docs/reference/CONFIGURATION.md:437` — insert `### \`history\`` section after `### \`analytics\``;
+  remove orphan `### \`history.session_digest\`` from `## Manual Configuration` (line 1088)
+- `skills/configure/SKILL.md` — add `history` to `## Area Mapping` table, `argument-hint`
+  frontmatter, `## Mode: --list` output block, `## Arguments` list, and one picker page
+- `skills/configure/areas.md` — add `## Area: history` section after `## Area: analytics` (line 1216)
+- `skills/configure/show-output.md` — add `## history --show` section after `## analytics --show` (line 218)
+
+### Read-Only References
+- `config-schema.json:1406–1503` — complete `history.*` key names, types, defaults, descriptions
+  (authoritative source for all table content; do not invent defaults)
+- `config-schema.json:1365–1404` — `analytics.*` section (reference implementation pattern to follow)
+- `scripts/little_loops/config/features.py` at `HistoryConfig` (line 716) — dataclass field names
+  and sub-config types (`SessionDigestConfig`, `EvolutionConfig`, `GoNoGoConfig`, `CaptureIssueConfig`)
+- `docs/reference/CONFIGURATION.md:437–470` — `analytics` section template (4-column table + JSON block)
 
 ### Dependent Files (Callers/Importers)
-- `config-schema.json` — source of truth for `history` object keys (must exist; ENH-1913 prerequisite)
-- `scripts/little_loops/configure*.py` (if config skill hardcodes sections) — add `history` to section list
+- `scripts/little_loops/cli/deps.py` at `_load_issues` (line 15) — reads `relates_to` from frontmatter
+  via `find_issues()` → `IssueInfo`; used to validate EPIC-1707 edge additions
+- `scripts/little_loops/issue_parser.py` at `IssueInfo.relates_to` (line 253) — frontmatter field;
+  accepts inline YAML flow sequences `[ID1, ID2, ...]`
+- `scripts/little_loops/dependency_mapper/analysis.py` at `validate_dependencies` (line 473) —
+  broken-ref detection logic run by `ll-deps validate`
 
 ### Tests
-- `ll-deps` run: validates new EPIC-1707 edges, no cycles
-- Manual: `/ll:configure` session confirms `history.*` keys appear
+- `ll-deps validate` — run after Step 1; confirms EPIC-1707 edges resolve and no cycles introduced
+- `/ll:configure --list` — run after Steps 3–5; confirms `history` appears in area list
+- `/ll:configure history --show` — run after Step 5; confirms all keys render with correct defaults
 
 ### Documentation
-- Config reference table (new) — enumerate every `history.*` / `analytics.*` key with default + description
+- `docs/reference/CONFIGURATION.md` — primary target; `### \`history\`` section (new)
+  must enumerate all 8 key groups with type, default, and description per `config-schema.json:1406–1503`
 
 ## Dependencies
 
@@ -101,6 +146,7 @@ N/A — No public API changes. This issue modifies issue metadata (frontmatter l
   to surface it).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-04T01:45:37 - `72f74a0c-52e6-45fa-b827-ed29f633c353.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T21:44:12 - `39a37568-d7a7-42c9-8508-05b4e238e1ce.jsonl`
