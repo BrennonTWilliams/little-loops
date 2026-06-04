@@ -2763,6 +2763,8 @@ class TestBRConfigHistoryIntegration:
         assert config.history.max_age_days is None
         assert config.history.session_digest.enabled is False
         assert config.history.evolution.feedback_min_recurrence == 2
+        assert config.history.go_no_go.correction_penalty == -0.2
+        assert config.history.capture_issue.dup_overlap_threshold == 0.7
 
     def test_history_loads_from_config(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -2772,6 +2774,8 @@ class TestBRConfigHistoryIntegration:
             "velocity_window": 15,
             "max_age_days": 60,
             "session_digest": {"enabled": True, "days": 14},
+            "go_no_go": {"correction_penalty": -0.5},
+            "capture_issue": {"dup_overlap_threshold": 0.9},
         }
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
@@ -2779,6 +2783,8 @@ class TestBRConfigHistoryIntegration:
         assert config.history.max_age_days == 60
         assert config.history.session_digest.enabled is True
         assert config.history.session_digest.days == 14
+        assert config.history.go_no_go.correction_penalty == -0.5
+        assert config.history.capture_issue.dup_overlap_threshold == 0.9
 
     def test_history_to_dict_round_trip(self, temp_project_dir: Path) -> None:
         config = BRConfig(temp_project_dir)

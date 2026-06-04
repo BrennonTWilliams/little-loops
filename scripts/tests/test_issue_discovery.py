@@ -413,6 +413,51 @@ class TestFindExistingIssue:
         if match.issue_path and "ENH-002" in str(match.issue_path):
             assert match.is_completed is True
 
+    def test_find_existing_issue_configurable_dup_threshold(
+        self, temp_project_dir: Path, sample_config_with_enh: dict[str, Any]
+    ) -> None:
+        """Overlap threshold from config gates Pass 2 title matching."""
+        import json
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Issue title: words = {auth, token, refresh, validation} (4 words, no stop words)
+        (bugs_dir / "P2-BUG-099-auth-token.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-099: Auth token refresh validation\n"
+        )
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+
+        # Query words = {auth, token, refresh, validation, extra, duplicate} (6 words)
+        # Jaccard overlap = 4/6 ≈ 0.667
+
+        # High threshold (0.9): overlap 0.667 < 0.9 → no Pass 2 match → should_create=True
+        sample_config_with_enh["history"] = {"capture_issue": {"dup_overlap_threshold": 0.9}}
+        config_path.write_text(json.dumps(sample_config_with_enh))
+        config = BRConfig(temp_project_dir)
+        match_high = find_existing_issue(
+            config,
+            finding_type="BUG",
+            file_path="",
+            finding_title="Auth token refresh validation extra duplicate",
+            finding_content="unrelated xyz content",
+        )
+        assert match_high.should_create is True
+
+        # Low threshold (0.6): overlap 0.667 > 0.6 → Pass 2 match → should_create=False
+        sample_config_with_enh["history"] = {"capture_issue": {"dup_overlap_threshold": 0.6}}
+        config_path.write_text(json.dumps(sample_config_with_enh))
+        config = BRConfig(temp_project_dir)
+        match_low = find_existing_issue(
+            config,
+            finding_type="BUG",
+            file_path="",
+            finding_title="Auth token refresh validation extra duplicate",
+            finding_content="unrelated xyz content",
+        )
+        assert match_low.should_create is False
+
 
 class TestReopenIssue:
     """Tests for reopen_issue function (frontmatter-based, ENH-1418)."""

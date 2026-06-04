@@ -213,7 +213,7 @@ KEYWORDS=$(echo "<title>" | tr '[:upper:]' '[:lower:]' | grep -oE '\b[a-z]{3,}\b
 HIST_DUPES=$(ll-session search --fts "$KEYWORDS" --kind issue --limit 5 2>/dev/null || true)
 ```
 
-If results include issues with `status: done` or `status: deferred` and >70% title word overlap with the new issue title, surface a warning before writing the file:
+If results include issues with `status: done` or `status: deferred` and >`{{config.history.capture_issue.dup_overlap_threshold}}` (default 0.7) title word overlap with the new issue title, surface a warning before writing the file:
 
 ```
 Warning: Similar closed issue found: [ID] ([status]) — closed/deferred [N] days ago

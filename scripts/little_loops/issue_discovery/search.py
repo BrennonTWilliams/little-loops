@@ -182,7 +182,7 @@ def find_existing_issue(
 
     Uses a multi-pass approach:
     1. Exact file path match in Location sections
-    2. Title word overlap (>70% = likely duplicate)
+    2. Title word overlap (> dup_overlap_threshold (default 0.7) = likely duplicate)
     3. Content overlap analysis
 
     For matches to completed issues, performs regression analysis to determine
@@ -258,7 +258,7 @@ def find_existing_issue(
                     issue_title = title_match.group(1)
                     issue_words = _extract_words(issue_title)
                     overlap = _calculate_word_overlap(title_words, issue_words)
-                    if overlap > 0.7 and overlap > best_pass2_score:
+                    if overlap > config.history.capture_issue.dup_overlap_threshold and overlap > best_pass2_score:
                         best_pass2_score = overlap
                         best_pass2 = (
                             issue_path,
