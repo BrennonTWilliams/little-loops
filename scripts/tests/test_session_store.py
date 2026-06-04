@@ -1243,6 +1243,18 @@ class TestIsCorrectionHeuristic:
     def test_true_negatives(self, text: str) -> None:
         assert not is_correction(text), f"expected non-correction: {text!r}"
 
+    def test_extra_patterns_fire(self) -> None:
+        assert is_correction("not quite what I wanted", extra_patterns=["not quite"])
+
+    def test_extra_patterns_do_not_replace_builtins(self) -> None:
+        assert is_correction("no, that's wrong", extra_patterns=["not quite"])
+
+    def test_extra_patterns_empty(self) -> None:
+        assert is_correction("no, don't do that", extra_patterns=[]) == is_correction(
+            "no, don't do that"
+        )
+        assert not is_correction("sounds good", extra_patterns=[])
+
 
 class TestRecordCorrection:
     """ENH-1831: record_correction() DB write round-trip."""

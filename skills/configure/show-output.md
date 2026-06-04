@@ -223,8 +223,9 @@ Analytics Configuration
   enabled:              {{config.analytics.enabled}}              (default: false)
   capture.skills:       {{config.analytics.capture.skills}}       (default: ["*"])
   capture.cli_commands: {{config.analytics.capture.cli_commands}} (default: ["*"])
-  capture.corrections:  {{config.analytics.capture.corrections}}  (default: true)
-  capture.file_events:  {{config.analytics.capture.file_events}}  (default: true)
+  capture.corrections:        {{config.analytics.capture.corrections}}         (default: true)
+  capture.file_events:        {{config.analytics.capture.file_events}}         (default: true)
+  capture.correction_patterns: {{config.analytics.capture.correction_patterns}} (default: [])
 
 Edit: /ll:configure analytics
 ```

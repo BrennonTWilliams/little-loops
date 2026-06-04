@@ -456,6 +456,7 @@ Per-category gating for analytics writes (ENH-1840). All categories default to e
 | `analytics.capture.cli_commands` | `list[str]` | `["*"]` | CLI command names whose invocations are recorded. `["*"]` captures all. |
 | `analytics.capture.corrections` | `bool` | `true` | Record user correction events into `user_corrections`. |
 | `analytics.capture.file_events` | `bool` | `true` | Record file-read/write events into `file_events`. When `false`, `ll-ctx-stats` will not have per-file byte data. |
+| `analytics.capture.correction_patterns` | `list[str]` | `[]` | Additional regex patterns appended to the built-in correction detector. Built-ins always remain active; absent config leaves behavior unchanged. Patterns are raw regex strings. |
 
 **Example** — disable file-event recording:
 ```json

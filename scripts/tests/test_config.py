@@ -1191,6 +1191,7 @@ class TestAnalyticsCaptureConfig:
         assert cfg.cli_commands == ["*"]
         assert cfg.corrections is True
         assert cfg.file_events is True
+        assert cfg.correction_patterns == []
 
     def test_skills_override(self) -> None:
         from little_loops.config.features import AnalyticsCaptureConfig
@@ -1217,6 +1218,30 @@ class TestAnalyticsCaptureConfig:
 
         cfg = AnalyticsCaptureConfig.from_dict({"file_events": False})
         assert cfg.file_events is False
+
+    def test_correction_patterns_default(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({})
+        assert cfg.correction_patterns == []
+
+    def test_correction_patterns_set(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({"correction_patterns": ["not quite", "try again"]})
+        assert cfg.correction_patterns == ["not quite", "try again"]
+
+    def test_correction_patterns_malformed_non_list(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({"correction_patterns": "not quite"})
+        assert cfg.correction_patterns == []
+
+    def test_correction_patterns_malformed_mixed(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({"correction_patterns": ["valid", 42, None, "also valid"]})
+        assert cfg.correction_patterns == ["valid", "also valid"]
 
 
 class TestBRConfigAliases:

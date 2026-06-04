@@ -663,7 +663,7 @@ flowchart TB
 2. **Phrase-internal patterns** (`_PHRASE_RE`) — Mid-sentence signals: "instead", "you missed", "should be" (guarded against false-positive affirmatives like "should be fine"), "wrong approach", "remember that", "always use", "never use", "from now on", "I meant … not". (ENH-1887)
 3. **Explicit escape hatch** (`_REMEMBER_RE`) — A message beginning with `!remember` is always classified as a correction regardless of phrasing. (ENH-1887)
 
-Any match across the three sets records the message as a correction. Consumers (`refine-issue`, `ready-issue`, `confidence-check`, `go-no-go`) retrieve these rows via `ll-history-context` to surface prior corrections as context before generating a response.
+Any match across the three sets records the message as a correction. A fourth mechanism is available via the optional `extra_patterns` argument to `is_correction()`: user-configured raw regex phrases from `analytics.capture.correction_patterns` are compiled and evaluated as an additional `search()` pass. The three module-level pattern sets remain the built-in base and are never replaced. Consumers (`refine-issue`, `ready-issue`, `confidence-check`, `go-no-go`) retrieve these rows via `ll-history-context` to surface prior corrections as context before generating a response.
 
 ### Graceful-Degradation Contract
 

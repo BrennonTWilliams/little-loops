@@ -191,6 +191,34 @@ class TestUserPromptSubmitWithSessionStore:
             "record_correction must write when capture.corrections is explicitly true"
         )
 
+    def test_custom_correction_pattern_writes_db(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_config(
+            tmp_path,
+            analytics_enabled=True,
+            analytics_capture={"corrections": True, "correction_patterns": ["not quite"]},
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = handle(
+            _event(
+                {"prompt": "not quite what I wanted", "session_id": "sess-cp1"},
+                cwd=str(tmp_path),
+            )
+        )
+        assert result.exit_code == 0
+
+        db_path = tmp_path / ".ll" / "history.db"
+        assert db_path.is_file(), "handler must create history.db on custom pattern match"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute("SELECT content FROM user_corrections").fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "custom correction_patterns phrase must write to user_corrections"
+        assert "not quite" in row[0]
+
 
 class TestUserPromptSubmitSkillWrite:
     """ENH-1833: skill invocation write path (gated on analytics.enabled)."""

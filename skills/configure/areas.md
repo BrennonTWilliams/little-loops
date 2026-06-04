@@ -1278,7 +1278,7 @@ questions:
 
 Based on selections, update `.ll/ll-config.json`:
 
-- If "Enable" selected: set `analytics.enabled: true` and write full `capture` sub-object with all four fields
+- If "Enable" selected: set `analytics.enabled: true` and write full `capture` sub-object with all five fields (`skills`, `cli_commands`, `corrections`, `file_events`, `correction_patterns`)
 - If "Disable" selected: set `analytics.enabled: false` (omit `capture` sub-object)
 - If "Keep current" selected: preserve existing `enabled` value
 - Map capture selections to `analytics.capture.*` fields (omit if matching schema defaults)

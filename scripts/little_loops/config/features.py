@@ -435,15 +435,19 @@ class AnalyticsCaptureConfig:
     cli_commands: list[str] = field(default_factory=lambda: ["*"])
     corrections: bool = True
     file_events: bool = True
+    correction_patterns: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AnalyticsCaptureConfig:
         """Create AnalyticsCaptureConfig from dictionary."""
+        raw = data.get("correction_patterns", [])
+        correction_patterns = [p for p in raw if isinstance(p, str)] if isinstance(raw, list) else []
         return cls(
             skills=data.get("skills", ["*"]),
             cli_commands=data.get("cli_commands", ["*"]),
             corrections=data.get("corrections", True),
             file_events=data.get("file_events", True),
+            correction_patterns=correction_patterns,
         )
 
 

@@ -68,10 +68,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
     config = _load_config(cwd)
 
     if config is not None and feature_enabled(config, "analytics.enabled"):
-        if is_correction(user_prompt):
-            capture = AnalyticsCaptureConfig.from_dict(
-                config.get("analytics", {}).get("capture", {})
-            )
+        capture = AnalyticsCaptureConfig.from_dict(
+            config.get("analytics", {}).get("capture", {})
+        )
+        if is_correction(user_prompt, extra_patterns=capture.correction_patterns):
             if capture.corrections:
                 session_id = event.payload.get("session_id") or event.session_id
                 with contextlib.suppress(Exception):

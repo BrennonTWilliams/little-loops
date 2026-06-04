@@ -621,6 +621,7 @@ class BRConfig:
                     "cli_commands": list(self._analytics_capture.cli_commands),
                     "corrections": self._analytics_capture.corrections,
                     "file_events": self._analytics_capture.file_events,
+                    "correction_patterns": list(self._analytics_capture.correction_patterns),
                 },
             },
             "events": {

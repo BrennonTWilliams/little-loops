@@ -333,6 +333,11 @@ class TestConfigSchema:
         assert capture_props["file_events"]["type"] == "boolean"
         assert capture_props["file_events"]["default"] is True
 
+        assert "correction_patterns" in capture_props
+        assert capture_props["correction_patterns"]["type"] == "array"
+        assert capture_props["correction_patterns"]["items"]["type"] == "string"
+        assert capture_props["correction_patterns"]["default"] == []
+
     def test_hooks_in_schema(self) -> None:
         """hooks block must be declared in config-schema.json with a host enum.
 

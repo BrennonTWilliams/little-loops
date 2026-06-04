@@ -1396,6 +1396,12 @@
               "type": "boolean",
               "default": true,
               "description": "Whether to capture file-operation events."
+            },
+            "correction_patterns": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": [],
+              "description": "Additional regex patterns appended to the built-in correction detector. Built-ins always remain active. Patterns are raw regex strings (same style as _PHRASE_RE)."
             }
           },
           "additionalProperties": false

@@ -32,12 +32,14 @@ def _print_capture_section(capture: object) -> None:
     cli_commands = getattr(capture, "cli_commands", ["*"])
     corrections = getattr(capture, "corrections", True)
     file_events = getattr(capture, "file_events", True)
-    print(f"  {full}  skills:        {skills}")
-    print(f"  {full}  cli_commands:  {cli_commands}")
+    correction_patterns = getattr(capture, "correction_patterns", [])
+    print(f"  {full}  skills:               {skills}")
+    print(f"  {full}  cli_commands:         {cli_commands}")
     corr_sym = _STATUS_SYMBOLS["full" if corrections else "unsupported"]
-    print(f"  {corr_sym}  corrections:   {'enabled' if corrections else 'disabled'}")
+    print(f"  {corr_sym}  corrections:          {'enabled' if corrections else 'disabled'}")
     fe_sym = _STATUS_SYMBOLS["full" if file_events else "unsupported"]
-    print(f"  {fe_sym}  file_events:   {'enabled' if file_events else 'disabled'}")
+    print(f"  {fe_sym}  file_events:          {'enabled' if file_events else 'disabled'}")
+    print(f"  {full}  correction_patterns:  {correction_patterns if correction_patterns else '(none)'}")
 
 
 def _print_issues_section(issues_cfg: object) -> None:

@@ -41,7 +41,7 @@ import re
 import sqlite3
 import threading
 import time
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -120,10 +120,31 @@ _PHRASE_RE = re.compile(
 _REMEMBER_RE = re.compile(r"^!remember\b", re.IGNORECASE)
 
 
-def is_correction(text: str) -> bool:
-    """Return True if *text* matches a known user-correction signal."""
+def is_correction(text: str, extra_patterns: Sequence[str] = ()) -> bool:
+    """Return True if *text* matches a known user-correction signal.
+
+    ``extra_patterns`` are raw regex strings appended to the built-in set
+    (``analytics.capture.correction_patterns``). Built-ins always remain active.
+    Invalid patterns are skipped with a warning.
+    """
     t = text[:512]
-    return bool(_REMEMBER_RE.match(t) or _CORRECTION_RE.match(t) or _PHRASE_RE.search(t))
+    _extra_re: re.Pattern[str] | None = None
+    if extra_patterns:
+        parts: list[str] = []
+        for p in extra_patterns:
+            try:
+                re.compile(p, re.IGNORECASE)
+                parts.append(f"(?:{p})")
+            except re.error:
+                logger.warning("is_correction: skipping invalid extra_pattern %r", p)
+        if parts:
+            _extra_re = re.compile("|".join(parts), re.IGNORECASE)
+    return bool(
+        _REMEMBER_RE.match(t)
+        or _CORRECTION_RE.match(t)
+        or _PHRASE_RE.search(t)
+        or (_extra_re and _extra_re.search(t))
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -940,17 +961,19 @@ def mine_corrections_from_messages(
 
     Returns the count of newly inserted correction rows.
     """
+    extra_patterns: list[str] = []
     if config is not None:
         from little_loops.config.features import AnalyticsCaptureConfig
 
         capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
         if not capture.corrections:
             return 0
+        extra_patterns = capture.correction_patterns
 
     count = 0
     rows = conn.execute("SELECT ts, session_id, content FROM message_events").fetchall()
     for ts, session_id, content in rows:
-        if not content or not is_correction(content):
+        if not content or not is_correction(content, extra_patterns=extra_patterns):
             continue
         text = content[:512]
         cursor = conn.execute(
