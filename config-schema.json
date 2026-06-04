@@ -1506,7 +1506,7 @@
         },
         "compaction": {
           "type": "object",
-          "description": "LCM-style compaction configuration for summary_nodes (FEAT-1712). Controls whether backfill() generates LLM summaries over message_events blocks.",
+          "description": "LCM-style compaction configuration for summary_nodes (FEAT-1712). Controls a three-level LCM Algorithm 3 summarization pipeline (normal LLM → aggressive bullet-point LLM → deterministic truncation) over message_events blocks, with guaranteed convergence.",
           "properties": {
             "enabled": {
               "type": "boolean",
@@ -1526,7 +1526,7 @@
             "timeout": {
               "type": "integer",
               "default": 60,
-              "description": "Timeout in seconds for each LLM compaction call. On timeout, falls back to deterministic truncation."
+              "description": "Timeout in seconds for each LLM compaction call. On timeout, escalation proceeds through remaining levels, ultimately to deterministic truncation."
             }
           },
           "additionalProperties": false

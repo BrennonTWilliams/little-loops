@@ -720,8 +720,9 @@ class CaptureIssueConfig:
 class CompactionConfig:
     """LCM-style compaction configuration for summary_nodes (FEAT-1712).
 
-    Controls whether backfill() generates LLM summaries (or truncation fallbacks)
-    over message_events blocks. Disabled by default to avoid background LLM calls
+    Controls whether backfill() generates LLM summaries over message_events blocks
+    via three-level LCM Algorithm 3 escalation (normal → aggressive bullet-point →
+    deterministic truncation). Disabled by default to avoid background LLM calls
     without user opt-in.
     """
 

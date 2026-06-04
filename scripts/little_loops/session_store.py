@@ -303,7 +303,8 @@ _MIGRATIONS: list[str] = [
         ON user_corrections(session_id, content);
     """,
     # v10 (FEAT-1712): LCM-style hierarchical summary DAG over session history.
-    # summary_nodes holds LLM-generated (or truncation-fallback) summaries at two
+    # summary_nodes holds LLM-generated summaries (via three-level LCM Algorithm 3
+    # escalation: normal → aggressive bullet-point → deterministic truncation) at two
     # levels: 'leaf' nodes cover a fixed token-budget block of message_events;
     # 'condensed' nodes summarise a session's leaves. summary_spans links summary
     # nodes back to the originating message_events rows for lossless drill-down.
@@ -1344,8 +1345,10 @@ def compact_session(
     """Summarize message_events for one session into summary_nodes and summary_spans.
 
     Idempotent: repeated calls do not create duplicate nodes (INSERT OR IGNORE +
-    partial unique indexes). On LLM failure, falls back to deterministic truncation
-    so a leaf node is always produced. Returns the count of new leaf nodes created.
+    partial unique indexes). Uses LCM Algorithm 3 three-level escalation (level 1:
+    normal LLM summary → level 2: aggressive bullet-point LLM summary → level 3:
+    deterministic truncation) so a leaf node is always produced. Returns the count
+    of new leaf nodes created.
     """
     from little_loops.config.features import CompactionConfig
 
