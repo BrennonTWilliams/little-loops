@@ -3,20 +3,21 @@ id: ENH-1948
 title: Wire PII detection into sft-corpus.yaml filter chain
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-04T20:01:37Z'
+completed_at: '2026-06-04T21:55:00Z'
 discovered_date: '2026-06-04'
 discovered_by: capture-issue
 relates_to:
-  - EPIC-1880
-  - ENH-1885
-  - FEAT-1826
+- EPIC-1880
+- ENH-1885
+- FEAT-1826
 labels:
-  - epic: EPIC-1880
-  - enhancement
-  - sft
-  - pii
-  - loop
+- epic: EPIC-1880
+- enhancement
+- sft
+- pii
+- loop
 ---
 
 # ENH-1948: Wire PII detection into sft-corpus.yaml filter chain
@@ -162,8 +163,24 @@ N/A — No public API changes. This enhancement only modifies the `sft-corpus.ya
 ## Session Log
 - `/ll:format-issue` - 2026-06-04T20:09:28 - `4351963c-953f-4d5b-bad4-b310cea71f8f.jsonl`
 - `/ll:capture-issue` - 2026-06-04T20:01:37Z - `b0ca5e28-1c3f-4a31-b1d5-f67d60516393.jsonl`
+- `/ll:manage-issue` - 2026-06-04T21:55:00Z - `<current-session>`
+
+---
+## Resolution
+
+**Completed**: Added `pii_action` context key (`"flag"` default), `check_pii` predicate state (flag/redact/discard dispatch), and `reject_pii` rejection state to `sft-corpus.yaml`. Updated routing so the filter chain flows `check_files` → `check_pii` → `publish` (and `reject_files` → `check_pii`, `reject_pii` → `publish`). Added 16 tests across 4 test classes covering flag, redact, discard, and default behaviors. All 33 sft-corpus tests pass, `ll-loop validate sft-corpus` exits 0, auto-validation passes.
+
+### Changes Made
+- `scripts/little_loops/loops/sft-corpus.yaml` — added `pii_action: "flag"` context key, `check_pii` state (34 lines), `reject_pii` state (18 lines), routing updates
+- `scripts/tests/test_loops_sft_corpus.py` — added 16 PII tests: `TestPiiFlagPassthrough` (3), `TestPiiRedact` (6), `TestPiiDiscard` (4), `TestPiiDefaultBehavior` (3)
+
+### Verification
+- `ll-loop validate sft-corpus` → valid (14 states), exit 0
+- `python -m pytest scripts/tests/test_loops_sft_corpus.py` → 33 passed
+- `python -m pytest scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles::test_all_validate_as_valid_fsm` → passed
+- `ruff check scripts/tests/test_loops_sft_corpus.py` → all checks passed
 
 ---
 ## Status
 
-**Open** | Created: 2026-06-04 | Priority: P4
+**Done** | Created: 2026-06-04 | Priority: P4
