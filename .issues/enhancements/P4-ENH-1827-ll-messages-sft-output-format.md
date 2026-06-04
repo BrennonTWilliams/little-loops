@@ -15,6 +15,10 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+labels:
+  - epic: EPIC-1880
+  - sft
+  - cli
 ---
 
 # ENH-1827: Add --sft-format flag to ll-messages CLI

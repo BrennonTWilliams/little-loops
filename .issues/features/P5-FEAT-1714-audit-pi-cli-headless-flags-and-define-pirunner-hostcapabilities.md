@@ -112,6 +112,12 @@ fallback strategies (e.g. tool allowlist via temp config file like
 - `.issues/features/P5-FEAT-1480-pi-adapter-wire-pirunner-and-host-runner-tests.md` —
   add `## Codebase Research Notes` section referencing this audit's
   output so the wiring PR can cite specific verified flags
+- `docs/reference/HOST_COMPATIBILITY.md` — add Pi rows for CLI-flag capabilities.
+  **Coordination note (from `/ll:audit-issue-conflicts` 2026-06-04):** Land this
+  issue's `HOST_COMPATIBILITY.md` changes first, then rebase FEAT-1715's hook-event
+  parity rows on top. FEAT-1715 will add hook-event rows to the same Pi column;
+  the row-type split (CLI flags here, hook events there) prevents overlap within
+  the column.
 
 ### Reference Files (Read-Only)
 - `scripts/little_loops/host_runner.py:215-302` — `ClaudeCodeRunner`
@@ -161,6 +167,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:19 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:44:02 - `6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`

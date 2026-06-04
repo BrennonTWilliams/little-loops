@@ -35,9 +35,10 @@ Layer the following onto `loop-composer.yaml` (or fork to `loop-composer-adaptiv
    - `CONTINUE` — verdict was a false alarm; proceed with the original plan.
    - `REPLAN_TAIL` — discard steps after the failing one; re-emit a new tail plan.
    - `ABORT` — goal is unreachable; emit failure summary and exit.
+   **Design note (added by `/ll:audit-issue-conflicts` on 2026-06-04):** Extract `reassess` as a reusable fragment in `loops/lib/composer.yaml` (alongside the shared states from FEAT-1808 § Design Constraint) so FEAT-1810 (`goal-cluster`) can consume it for per-batch verdict gates without forking. The fragment should accept `{goal, plan, completed_steps, failing_verdict}` as input and return `{decision, new_tail_plan, reason}` as output.
 3. **Bounded re-plan budget.** Hard limit on re-plan invocations per run (e.g. `${context.max_replans}` default 2). Each re-plan increments a counter; on exhaustion → `ABORT`.
-4. **Step-output checkpointing.** Each completed sub-loop's output is persisted to `.loops/tmp/composer-checkpoints/step-<N>.json` so re-plans have full context without re-running upstream steps. Tail re-plans MUST consume these checkpoints in their prompt.
-5. **Plan-version log.** Every plan version (v1 from initial decompose, v2 from first re-plan, …) is written to `.loops/tmp/composer-plans/v<N>.json` for post-mortem auditing.
+4. **Step-output checkpointing.** Each completed sub-loop's output is persisted to `${context.run_dir}/checkpoints/step-<N>.json` so re-plans have full context without re-running upstream steps. Tail re-plans MUST consume these checkpoints in their prompt.
+5. **Plan-version log.** Every plan version (v1 from initial decompose, v2 from first re-plan, …) is written to `${context.run_dir}/plans/v<N>.json` for post-mortem auditing.
 
 **Non-obvious design constraints:**
 - **Upstream steps are immutable.** Re-planning ONLY mutates the unexecuted tail. A re-plan that wants to undo a completed step must explicitly emit a compensating step (e.g. a revert/cleanup loop) rather than rewriting history. This keeps the audit trail straight.
@@ -68,7 +69,12 @@ Per `.claude/CLAUDE.md` § Loop Authoring, any loop that mutates other harness a
 
 ## Open Questions
 
-1. **Fork vs. flag.** Is adaptive a separate loop file or a `context.adaptive=true` switch on FEAT-1808? Fork is cleaner for users; flag avoids duplication. Pattern-finder pass during design should compare both shapes.
+1. **Fork vs. flag.** ✅ **RESOLVED** (2026-06-04 by `/ll:audit-issue-conflicts`): Fragment approach.
+   Shared states (`discover_loops`, `validate_plan`, `present_plan`) live in
+   `loops/lib/composer.yaml` as reusable fragments. `loop-composer.yaml` and
+   `loop-composer-adaptive.yaml` are separate top-level loops that both reference
+   the shared lib. See FEAT-1808 § "Design Constraint: Extension Points for FEAT-1809"
+   for the full contract.
 2. **Re-plan loop budget interaction with `max_iterations`.** The composer's `max_iterations` and `max_replans` need a sane combined cap so re-plans can't multiply iteration count uncontrolled.
 3. **Compensating steps.** Should the adaptive composer have a vocabulary of "undo" loops (e.g. revert-last-commit) it can emit during re-plan? Probably out of scope for the MVP — flag for post-mortem after first real run.
 
@@ -77,6 +83,7 @@ Per `.claude/CLAUDE.md` § Loop Authoring, any loop that mutates other harness a
 FEAT-1808 must ship before this. Implementing adaptive without the static planner under it is a leaky abstraction.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T19:55:12 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:43 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`

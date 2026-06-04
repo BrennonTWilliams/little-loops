@@ -37,7 +37,7 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 7. **`present_result`** — emit structured JSON: `{plan, step_results, success, summary}`.
 
 **Key design choices that need calling out:**
-- **Plan is inspectable.** A pure-shell executor walks a YAML/JSON manifest. The plan is logged, dumped to `.loops/tmp/loop-composer-plan.json`, and survives re-runs. This is the deliberate *non*-reactive choice — see FEAT-1809 for the reactive variant.
+- **Plan is inspectable.** A pure-shell executor walks a YAML/JSON manifest. The plan is logged, dumped to `${context.run_dir}/composer-plan.json`, and survives re-runs. This is the deliberate *non*-reactive choice — see FEAT-1809 for the reactive variant.
 - **Sequential MVP, DAG semantics in the schema.** Plan entries carry `depends_on:` from day 1 even though the executor walks them in topo order; this leaves room for parallel fan-out without a plan-format change.
 - **`loop-router` as the universal leaf.** The composer's prompt is biased toward emitting `loop-router` nodes when the model is uncertain about loop choice. This pushes uncertainty to the routing layer where it already has a confidence/HITL gate, instead of duplicating that logic at the composer level.
 - **State interpolation between steps.** Step N+1's `input` string can reference `${plan_state.step_3.output}` so plans can express "feed step 3's output into step 5". This is the load-bearing part — without it, the composer is just a fancy `ll-sprint`.
@@ -72,6 +72,38 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 
 - **FEAT-1809 (adaptive composer)** — natural v2 evolution: same plan-then-execute spine but adds re-plan-on-failure. Start with this issue (1808), graduate to 1809 once the static planner is solid.
 - **FEAT-1810 (goal-cluster orchestrator)** — different input shape (a *list* of goals, e.g. a sprint), not a single goal. Composer might dispatch goal-cluster as a child, or vice versa. Worth checking before either lands.
+  - **Routing guard (added by `/ll:audit-issue-conflicts` on 2026-06-04):** Encode a dispatch rule in the `loop-router` catalog so `loop-composer` and `goal-cluster` are not both presented as candidates for the same ambiguous input. `loop-composer` MUST NOT call `goal-cluster` as a child; `goal-cluster` MAY call `loop-composer` for an individual oversized goal. Add an allowlist/blocklist guard at the `discover_loops` state that enforces this when the loop catalog is loaded.
+- **FEAT-1806 (market strategy loop)** — blocked by this issue; may become a composer plan template rather than a standalone loop YAML once this ships.
+  - **Post-implementation checklist (added by `/ll:audit-issue-conflicts` on 2026-06-04):** After FEAT-1808 ships, evaluate FEAT-1806 for re-expression as a `loop-composer` plan template (saved JSON plan: scan → model → analyze → generate → simulate → recommend). If viable: (a) add a deprecation note to FEAT-1806 recommending the template approach, (b) update FEAT-1806's `blocked_by` to reference the composer plan template if it becomes the preferred implementation path.
+
+## Design Constraint: Extension Points for FEAT-1809
+
+**Decision** (resolved by `/ll:audit-issue-conflicts` on 2026-06-04): The fork-vs-flag
+question (FEAT-1809 Open Question 1) is resolved in favor of the **Fragment** approach.
+
+FEAT-1808 implementation MUST include:
+
+1. **Shared lib fragment** at `scripts/little_loops/loops/lib/composer.yaml` containing:
+   - `discover_loops` — catalog discovery (reused from `loop-router`)
+   - `validate_plan` — plan parsing, cycle detection, node-cap enforcement
+   - `present_plan` — HITL gate shell action
+   These states MUST be `reusable: true` so both `loop-composer.yaml` and
+   `loop-composer-adaptive.yaml` reference them via `loop: lib/composer.yaml#<state>`.
+
+2. **Verdict-gate hook pattern** at the `execute_plan` exit point: after each sub-loop
+   step completes, a verdict struct `{success, confidence, terminal_state}` is captured
+   to `${context.plan_state}`. FEAT-1809 layers onto this by adding a `reassess` state
+   that reads `${context.plan_state.last_verdict}` and routes to CONTINUE/REPLAN_TAIL/ABORT.
+   FEAT-1808 does NOT implement the reassess logic — it only captures and forwards
+   the verdict struct so FEAT-1809 has a clean injection point.
+
+3. **Checkpoint persistence** at `${context.run_dir}/checkpoints/step-<N>.json` so
+   FEAT-1809's re-plan can consume completed step outputs without re-running upstream
+   states. FEAT-1808 writes checkpoints but doesn't read them (no re-plan path);
+   FEAT-1809 adds the read path.
+
+This constraint resolves FEAT-1809 Open Question 1 and ensures FEAT-1808 does not
+ship with a monolithic design that FEAT-1809 would need to fork.
 
 ## Verification Notes
 
@@ -80,6 +112,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — MR-3 violation in FSM design section: artifact path `.loops/tmp/loop-composer-plan.json` must be changed to `${context.run_dir}/loop-composer-plan.json` before the loop YAML is created. Fix this before implementation to avoid `ll-loop validate` MR-3 WARNING.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-04T19:55:12 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T15:34:39 - `6a79563f-0323-4d72-9ccb-855c43c698c9.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
@@ -106,5 +140,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Note** (added by `/ll:audit-issue-conflicts`): Routing decision rule to prevent circular dispatch with FEAT-1810 (`goal-cluster`): a single natural-language goal → `loop-composer` (this issue); a pre-enumerated list of goals → `goal-cluster` (FEAT-1810). `goal-cluster` MAY call `loop-composer` as a child for an individual oversized goal, but `loop-composer` MUST NOT call `goal-cluster`. Encode this as a routing guard in the `loop-router` catalog so the two loops are not both presented as candidates for the same ambiguous input.
 
 **Note** (added by `/ll:audit-issue-conflicts`): FEAT-1798 (Variant C specialist-role harness template) and this issue serve distinct use cases. FEAT-1798 generates a static fixed FSM for users who know their workflow phases in advance ("Plan → Research → Implement → Report, ship now"). This issue (`loop-composer`) is for users who need the workflow decomposed from a natural-language goal at runtime. These are complementary, not competing: once this issue ships, the Variant C template (FEAT-1798) should include a comment pointing users toward `loop-composer` when their goal is too open-ended for a fixed template. FEAT-1798 already has `blocked_by: [FEAT-1808]` to capture this ordering.
+
+**Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): Shared integration test requirement with FEAT-1810. Both issues must include a test that verifies `loop-router`'s catalog discovery never returns both `loop-composer` and `goal-cluster` as candidates for the same input: single-goal input must route to composer only; multi-goal input must route to cluster only. Add to FEAT-1808's test plan: `test_loop_router_catalog_exclusivity` in `scripts/tests/test_loop_composer.py`.
 
 **Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): Extension-point requirement for FEAT-1809 compatibility. FEAT-1808's current spec describes a monolithic `loop-composer.yaml` with no extension points, but FEAT-1809 (adaptive re-plan variant) needs to layer onto it. The fork-vs-flag question (FEAT-1809 Open Question 1) MUST be resolved before FEAT-1808 implementation begins. At minimum, FEAT-1808 MUST expose extension points — shared fragments in `loops/lib/composer.yaml` (already referenced in the proposed solution) and a strategy/hook pattern for the verdict-gate/reassess step — so FEAT-1809 can add adaptive behavior without forking the entire loop file. FEAT-1808 already has `blocks: [FEAT-1809]` capturing the ordering dependency; this note adds the design constraint that the ordering alone doesn't capture.

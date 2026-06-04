@@ -15,6 +15,12 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+labels:
+  - epic: EPIC-1880
+  - featured
+  - loop
+  - sft
+  - fine-tuning
 ---
 
 # FEAT-1826: sft-corpus FSM loop for SLM fine-tuning from session logs

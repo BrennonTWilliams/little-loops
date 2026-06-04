@@ -15,6 +15,10 @@ score_complexity: 19
 score_test_coverage: 22
 score_ambiguity: 22
 score_change_surface: 25
+labels:
+  - epic: EPIC-1880
+  - sft
+  - pii
 ---
 
 # ENH-1885: Add PII detection utility for SFT corpus filtering

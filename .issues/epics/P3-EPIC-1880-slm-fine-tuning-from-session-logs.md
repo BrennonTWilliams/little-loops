@@ -8,6 +8,7 @@ captured_at: '2026-06-02T00:00:00Z'
 discovered_date: '2026-06-02'
 discovered_by: review-epic
 relates_to: [FEAT-1826, ENH-1827, ENH-1885, ENH-1886, ENH-1941, ENH-1942, ENH-1943, ENH-1944]
+children: [ENH-1942, ENH-1827, ENH-1885, ENH-1886, ENH-1941, FEAT-1826, ENH-1943, ENH-1944]
 labels:
   - epic
   - sft

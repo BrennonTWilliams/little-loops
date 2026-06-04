@@ -16,6 +16,10 @@ score_complexity: 25
 score_test_coverage: 20
 score_ambiguity: 25
 score_change_surface: 25
+labels:
+  - epic: EPIC-1880
+  - sft
+  - performance
 ---
 
 # ENH-1886: File-level mtime pre-filter in `extract_conversation_turns()` for incremental harvesting

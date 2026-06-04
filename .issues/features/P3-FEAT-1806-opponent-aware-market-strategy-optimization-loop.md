@@ -173,6 +173,7 @@ states:
 - [ ] Structured output schemas enforce valid strategy artifacts at each LLM state
 - [ ] Non-LLM evaluator is paired with at least one LLM-structured state per MR-1
 - [ ] Convergence or max-iterations terminates the loop cleanly (no infinite oscillation)
+- [ ] **Decision gate (from `/ll:audit-issue-conflicts` 2026-06-04)**: Before writing any loop YAML, a decision must be recorded (in this issue or a `decisions.yaml` entry) on whether `market-strategy-optimize` ships as a standalone bespoke YAML or as a `loop-composer` plan template. If the latter, this issue's scope changes from "create a new loop YAML" to "create a saved plan template for loop-composer." Do not implement until FEAT-1808 has shipped and the decision is resolved.
 
 ## Use Case
 
@@ -252,6 +253,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Integration Map had incorrect paths: `loops/builtin/` does not exist (correct path is `scripts/little_loops/loops/`), and `scripts/little_loops/ll_loop.py` does not exist (loop discovery is in `scripts/little_loops/cli/loop/_helpers.py` via `get_builtin_loops_dir()`). Both paths have been corrected. Blocked by FEAT-1808 which is still open.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-04T19:55:07 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
@@ -265,6 +268,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): Once FEAT-1808 (`loop-composer`) ships, evaluate whether this loop is better implemented as a loop-composer plan template (a saved JSON plan that invokes the relevant analysis loops in sequence: scan → model → analyze → generate → simulate → recommend) rather than a bespoke FSM YAML. If implemented before FEAT-1808 as a standalone YAML, include a comment that it can be re-expressed as a loop-composer plan template once FEAT-1808 is available.
+
+**Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): Once FEAT-1810 (`goal-cluster`) ships, evaluate whether market-strategy batch analysis (multi-competitor scans, multi-market positioning) is better expressed as goal-cluster input batches rather than inline iteration within the FSM. The cluster's shared-context propagation and cross-batch synthesis may be a cleaner fit for competitive-intelligence aggregation than a monolithic loop.
 
 ---
 

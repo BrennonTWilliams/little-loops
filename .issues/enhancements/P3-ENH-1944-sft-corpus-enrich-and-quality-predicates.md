@@ -12,6 +12,7 @@ relates_to:
 - ENH-1943
 - FEAT-1826
 labels:
+- epic: EPIC-1880
 - enhancement
 - sft
 - history-db

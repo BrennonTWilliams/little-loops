@@ -13,7 +13,7 @@ depends_on: [FEAT-1714]
 
 ## Summary
 
-Implement `PiRunner.build_*` methods in `host_runner.py` (replacing the `HostNotConfigured` stubs), update `HostCapabilities` to reflect Pi's actual capability set, and write the associated host runner and hook-intents tests.
+Implement `PiRunner.build_*` methods in `host_runner.py` (replacing the `HostNotConfigured` stubs), apply `HostCapabilities` as determined by FEAT-1714's Pi CLI flag audit (do not independently evaluate), and write the associated host runner and hook-intents tests.
 
 ## Parent Issue
 
@@ -28,11 +28,12 @@ Decomposed from FEAT-1477: Pi Adapter — Python Backend: Config, Host Runner, S
 
 ## Proposed Solution
 
-### Step 1: Confirm CodexRunner Template
+### Step 1: Consume FEAT-1714 Audit
 
-Review `CodexRunner` at `host_runner.py` lines 270–418 as the direct template. Note:
-- `CodexRunner.capabilities` at lines 300–305: `HostCapabilities(streaming=True, permission_skip=True, agent_select=False, tool_allowlist=False)` — evaluate against Pi's CLI flags before copying
-- Run `pi --help` first to verify Pi CLI supports streaming JSON output and a bypass-approvals flag before setting `HostCapabilities` identically to Codex
+FEAT-1714's research note provides the definitive mapping from Pi CLI flags to `HostCapabilities` fields. Import this mapping verbatim — do not independently re-audit Pi's CLI flags. The audit output (research note) is the single source of truth for Pi's capability surface.
+
+- `CodexRunner.capabilities` at lines 300–305 provides the `HostCapabilities` shape template; FEAT-1714's audit determines which flags to set for Pi
+- If FEAT-1714's audit is incomplete or the research note is not yet written, block this step until FEAT-1714 is done
 
 ### Step 2: Wire PiRunner
 
@@ -104,6 +105,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `test_ll_hook_host_env_var_propagates_pi` test in `test_hook_intents.py` tests the **Python-side host routing** — that the intent dispatcher reads `LL_HOOK_HOST=pi` and routes correctly. FEAT-1478's sentinel-file test in `test_pi_adapter.py` verifies the **TypeScript adapter** sets `LL_HOOK_HOST=pi` before spawning Python. Both tests are needed, but their assertions must be non-overlapping to avoid redundancy: this issue asserts Python routing behavior; FEAT-1478 asserts env-var propagation from the TypeScript layer.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:19 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`

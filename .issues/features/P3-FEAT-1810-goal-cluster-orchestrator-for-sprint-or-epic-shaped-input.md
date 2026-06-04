@@ -83,7 +83,9 @@ The actual user pain is often sprint-shaped, not single-goal-shaped. `ll-sprint`
 ## Relationship to Sibling Issues
 
 - **FEAT-1808 (loop-composer)** — composer takes *one* goal and produces a DAG of loops; cluster takes *many* goals and produces batched loop calls. Cluster might internally dispatch composer for any goal that's itself too large for one loop. Worth designing the boundary explicitly before either lands.
+  - **Routing guard (added by `/ll:audit-issue-conflicts` on 2026-06-04):** Encode a dispatch allowlist in the `load_goals` or `dedup_and_batch` state: when a single goal within the cluster is too large for one loop, `goal-cluster` is permitted to dispatch `loop-composer` as a child. The reverse (`loop-composer` → `goal-cluster`) is blocked. Ensure `loop-router` catalog respects this guard so the two loops are not both presented for ambiguous multi-goal input. Coordinate with FEAT-1808's matching guard.
 - **FEAT-1809 (adaptive composer)** — cluster could borrow the `reassess` pattern for per-batch verdict gates ("this batch failed, re-plan the remaining batches").
+  - **Coordination note (added by `/ll:audit-issue-conflicts` on 2026-06-04):** FEAT-1809's `reassess` state is being designed as a reusable fragment in `loops/lib/composer.yaml` (see FEAT-1809 § Proposed Solution §2 design note). When implementing `goal-cluster`'s per-batch verdict gates, consume this fragment rather than re-implementing. The fragment accepts `{goal, plan, completed_steps, failing_verdict}` and returns `{decision, new_tail_plan, reason}` — directly applicable to batch-failure re-planning.
 - **FEAT-1737 (EPIC as sprint argument)** — direct overlap on the EPIC-loader piece; coordinate or share code.
 
 ## Verification Notes
@@ -93,6 +95,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Integration Map references non-existent paths: `scripts/little_loops/ll_sprint/sprint_loader.py` and `scripts/little_loops/ll_sprint/runner.py`. Sprint runner code is actually at `scripts/little_loops/sprint.py` and `scripts/little_loops/cli/sprint/run.py`. Correct these before implementation.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-04T19:55:12 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:43 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
@@ -112,3 +116,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): Routing decision rule to prevent circular dispatch with FEAT-1808 (`loop-composer`): a pre-enumerated list of goals → `goal-cluster` (this issue); a single natural-language goal → `loop-composer` (FEAT-1808). `goal-cluster` MAY call `loop-composer` as a child for an individual goal that is itself too large for one loop, but `loop-composer` MUST NOT call `goal-cluster`. Encode this constraint as a routing guard in the `loop-router` catalog so the two loops are not both presented as candidates for the same ambiguous input.
+
+**Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): Shared integration test requirement with FEAT-1808. Both issues must include a test that verifies `loop-router`'s catalog discovery never returns both `loop-composer` and `goal-cluster` as candidates for the same input: single-goal input must route to composer only; multi-goal input must route to cluster only. Add to FEAT-1810's test plan: `test_loop_router_catalog_exclusivity` in `scripts/tests/test_goal_cluster.py`.
+
+**Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): After EPIC-1811 orchestration loops ship, ensure `goal-cluster`'s `load_goals` input shapes and batch API are general enough that domain-specific loops (FEAT-1806 market-strategy, future analysis loops) can be re-expressed as cluster input batches. The cluster's dedup/batching + shared-context propagation is the orchestration-layer primitive most likely to absorb standalone domain loops. Design the `goal_text` schema and `hints` mechanism with this forward-compatibility in mind.
