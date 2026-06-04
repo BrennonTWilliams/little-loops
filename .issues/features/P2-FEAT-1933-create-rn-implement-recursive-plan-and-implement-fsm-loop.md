@@ -4,10 +4,22 @@ title: Create rn-implement recursive plan-and-implement FSM loop
 type: FEAT
 priority: P2
 status: open
-captured_at: "2026-06-04T05:36:57Z"
+captured_at: '2026-06-04T05:36:57Z'
 discovered_date: 2026-06-04
 discovered_by: capture-issue
-labels: [loops, fsm, orchestration, recursion, planning]
+labels:
+- loops
+- fsm
+- orchestration
+- recursion
+- planning
+decision_needed: true
+confidence_score: 98
+outcome_confidence: 76
+score_complexity: 16
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # FEAT-1933: Create rn-implement recursive plan-and-implement FSM loop
@@ -40,7 +52,7 @@ unused for routing decisions.
 
 ## Expected Behavior
 
-A 25-state FSM loop (22 active + 2 terminal + 1 diagnostic) with:
+A 31-state FSM loop (26 active + 2 terminal + 1 diagnostic + 2 convergence routers; includes 6 router states for multi-way token dispatch) with:
 
 - **Iterative deepening**: `diagnose → remediate → re_assess → check_convergence` loop that re-enters
   the remediation cycle until PASS, budget exhaustion, or STALLED
@@ -141,11 +153,11 @@ The plan sets `max_remediation_passes: 3` in the loop's context block. This is i
 lower than `max_refine_count` because each remediation pass should be a targeted response to
 dimensional diagnosis, not a brute-force rewrite loop.
 
-### State Machine: All 25 States Enumerated
+### State Machine: All 31 States Enumerated
 
-The 25 states, numbered with their roles:
+The 31 states, numbered with their roles:
 
-**Active workflow states (22):**
+**Active workflow states (26):**
 
 | # | State | Role |
 |---|-------|------|
@@ -154,16 +166,22 @@ The 25 states, numbered with their roles:
 | 3 | `assess` | Run `/ll:confidence-check <id> --auto`, write pre-scores to `${context.run_dir}/pre_scores_<id>.json` |
 | 4 | `verify_scores_persisted` | Shell: parse issue frontmatter, confirm `confidence_score` and `outcome_confidence` fields exist; retry assess once on failure |
 | 5 | `check_readiness` | Shell: `ll-issues check-readiness <id>` (exit-code evaluator); readiness ≥ threshold AND outcome ≥ threshold → `implement` |
-| 6 | `check_outcome` | Shell: `ll-issues check-readiness <id> --outcome-only`; outcome passes but readiness fails → `diagnose` |
+| 6 | `check_outcome` | Shell: inline jq reads `outcome_confidence` from frontmatter, compares to `outcome_threshold` (note: no `--outcome-only` flag exists on `check-readiness` — `check_readiness.py:14-53` only takes `--readiness`/`--outcome` threshold overrides); outcome passes but readiness fails → `diagnose` |
 | 7 | `check_decision_needed` | Shell: `ll-issues check-flag <id> decision_needed`; → `decide` if true, else → `diagnose` |
-| 8 | `diagnose` | **Dimensional routing core**: Shell script reads `ll-issues show <id> --json`, extracts 5 scores, applies routing matrix (see below), outputs token |
+| 8 | `diagnose` | **Dimensional routing core**: Shell script reads `ll-issues show <id> --json`, extracts 5 scores, applies routing matrix, outputs token, captures as `diagnosis` |
+| 8a | `route_d_implement` | Router: `output_contains` with `source: "${captured.diagnosis.output}"`, `pattern: "IMPLEMENT"` → `implement`; on_no → `route_d_decide` |
+| 8b | `route_d_decide` | Router: `output_contains`, `pattern: "DECIDE"` → `decide`; on_no → `route_d_wire` |
+| 8c | `route_d_wire` | Router: `output_contains`, `pattern: "WIRE"` → `wire`; on_no → `route_d_refine` |
+| 8d | `route_d_refine` | Router: `output_contains`, `pattern: "REFINE"` → `refine`; on_no → `snap_for_size_review` (DECOMPOSE fallthrough) |
 | 9 | `implement` | Run `/ll:manage-issue <id> --auto` (or `ll-auto --only <id>`), then → `dequeue_next` |
 | 10 | `decide` | Run `/ll:decide-issue <id> --auto`, mark decision_applied, → `re_assess` (not implement — must re-check) |
 | 11 | `wire` | Run `/ll:wire-issue <id> --auto`, → `refine` (always chain: wiring may reveal gaps) |
 | 12 | `refine` | Run `/ll:refine-issue <id> --auto --full-rewrite`, increment refine counter, → `re_assess` |
 | 13 | `re_assess` | Run `/ll:confidence-check <id> --auto`, write post-scores to `${context.run_dir}/post_scores_<id>.json`, → `verify_re_assess_scores` |
 | 14 | `verify_re_assess_scores` | Shell: confirm post-scores persisted; retry re_assess once on failure; → `check_convergence` |
-| 15 | `check_convergence` | Shell: diff pre/post scores, increment remediation counter, output PASS/IMPROVED/STALLED (non-LLM output_contains evaluator) |
+| 15 | `check_convergence` | Shell: diff pre/post scores, increment remediation counter, output CONVERGED_PASS/CONVERGED_IMPROVED/CONVERGED_STALLED, capture as `convergence_result` |
+| 15a | `route_conv_pass` | Router: `output_contains` with `source: "${captured.convergence_result.output}"`, `pattern: "CONVERGED_PASS"` → `implement`; on_no → `route_conv_improved` |
+| 15b | `route_conv_improved` | Router: `output_contains`, `pattern: "CONVERGED_IMPROVED"` → `check_remediation_budget`; on_no → `snap_for_size_review` (STALLED fallthrough) |
 | 16 | `check_remediation_budget` | Shell: compare remediation counter to `max_remediation_passes` (non-LLM output_numeric evaluator) |
 | 17 | `snap_for_size_review` | Shell: capture current issue state (scores + artifacts) to `${context.run_dir}/size_review_snap_<id>.json` |
 | 18 | `run_size_review` | Run `/ll:issue-size-review <id> --auto`, → `detect_children` |
@@ -213,50 +231,59 @@ check_decision_needed
   → [decision_needed == true] decide → re_assess → verify_re_assess_scores → check_convergence
   → [decision_needed == false] diagnose
 
-diagnose (outputs one of 5 tokens)
-  → IMPLEMENT: implement → dequeue_next
-  → DECIDE: decide → re_assess → verify_re_assess_scores → check_convergence
-  → WIRE: wire → refine → re_assess → verify_re_assess_scores → check_convergence
-  → REFINE: refine → re_assess → verify_re_assess_scores → check_convergence
-  → DECOMPOSE: snap_for_size_review → run_size_review → detect_children
+diagnose → route_d_implement → route_d_decide → route_d_wire → route_d_refine
+  (chained binary routers; first match wins)
+  → IMPLEMENT match: implement → dequeue_next
+  → DECIDE match: decide → re_assess → verify_re_assess_scores → check_convergence
+  → WIRE match: wire → refine → re_assess → verify_re_assess_scores → check_convergence
+  → REFINE match: refine → re_assess → verify_re_assess_scores → check_convergence
+  → DECOMPOSE (no match / error): snap_for_size_review → run_size_review → detect_children
        → [children found] enqueue_children → dequeue_next
        → [no children] skip_issue → dequeue_next
-  → [no token / error] snap_for_size_review (fallthrough to decomposition)
 
-check_convergence
-  → PASS: implement → dequeue_next
-  → IMPROVED: check_remediation_budget
+check_convergence → route_conv_pass → route_conv_improved
+  (chained binary routers; first match wins)
+  → CONVERGED_PASS: implement → dequeue_next
+  → CONVERGED_IMPROVED: check_remediation_budget
        → [passes < max] diagnose (re-enter deepening loop)
        → [passes ≥ max] snap_for_size_review (budget exhausted, try decomposition)
-  → STALLED: snap_for_size_review (no improvement, try decomposition)
+  → CONVERGED_STALLED (no match): snap_for_size_review (no improvement, try decomposition)
 ```
 
 ### Dimensional Diagnosis Routing Matrix
 
-The `diagnose` state reads scores from `ll-issues show <id> --json` and parses these fields
-(note: these are the actual JSON field names, not aliases):
+The `diagnose` state reads scores from `ll-issues show <id> --json` and parses these fields.
+**Verified against `show.py:_parse_card_fields()` (line 246–286)**: The JSON output uses
+`confidence` and `outcome` as keys (not `confidence_score` / `outcome_confidence` — those
+are the frontmatter field names, not the JSON serialization keys).
 
-- `confidence_score` (0–100)
-- `outcome_confidence` (0–100)
+JSON keys from `ll-issues show <id> --json`:
+
+- `confidence` (0–100) — serialized from frontmatter `confidence_score` at `show.py:252`
+- `outcome` (0–100) — serialized from frontmatter `outcome_confidence` at `show.py:253`
 - `score_complexity` (0–25)
 - `score_ambiguity` (0–25)
 - `score_change_surface` (0–25)
 - `score_test_coverage` (0–25, informational — not used in routing but logged)
-- `decision_needed` (boolean)
-- `missing_artifacts` (list of strings)
+- `decision_needed` (boolean, string `"true"`/`"false"`)
+- `missing_artifacts` (string `"true"`/`"false"` — boolean serialized as lowercase string)
+
+**Important**: Frontmatter uses `confidence_score` / `outcome_confidence`; `--json` uses
+`confidence` / `outcome`. The diagnostic shell script MUST use the JSON keys, not the
+frontmatter names.
 
 Routing logic (pseudocode):
 
 ```bash
-# Read scores from JSON
+# Read scores from JSON (NOTE: JSON keys differ from frontmatter names)
 SCORES=$(ll-issues show "$ISSUE_ID" --json)
-CONFIDENCE=$(echo "$SCORES" | jq -r '.confidence_score // 0')
-OUTCOME=$(echo "$SCORES" | jq -r '.outcome_confidence // 0')
+CONFIDENCE=$(echo "$SCORES" | jq -r '.confidence // 0')           # JSON key: confidence
+OUTCOME=$(echo "$SCORES" | jq -r '.outcome // 0')                 # JSON key: outcome
 COMPLEXITY=$(echo "$SCORES" | jq -r '.score_complexity // 0')
 AMBIGUITY=$(echo "$SCORES" | jq -r '.score_ambiguity // 0')
 CHANGE_SURFACE=$(echo "$SCORES" | jq -r '.score_change_surface // 0')
 DECISION_NEEDED=$(echo "$SCORES" | jq -r '.decision_needed // false')
-MISSING_ARTIFACTS=$(echo "$SCORES" | jq -r '.missing_artifacts // []')
+MISSING_ARTIFACTS=$(echo "$SCORES" | jq -r '.missing_artifacts // false')
 
 # Priority-ordered routing (first match wins)
 if [ "$CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
@@ -299,19 +326,45 @@ TOTAL_DELTA=$((delta_confidence + delta_outcome - delta_complexity - delta_ambig
 
 # PASS: confidence and outcome both meet thresholds
 if [ "$post_confidence" -ge "$READINESS_THRESHOLD" ] && [ "$post_outcome" -ge "$OUTCOME_THRESHOLD" ]; then
-  echo "PASS"
+  echo "CONVERGED_PASS"
 # STALLED: no meaningful improvement (total delta ≤ 2)
 elif [ "$TOTAL_DELTA" -le 2 ]; then
-  echo "STALLED"
+  echo "CONVERGED_STALLED"
 # IMPROVED: meaningful progress but thresholds not yet met
 else
-  echo "IMPROVED"
+  echo "CONVERGED_IMPROVED"
 fi
 ```
 
-This script is evaluated with a non-LLM `output_contains` evaluator (one route each for
-PASS/IMPROVED/STALLED), paired with an `llm_structured` check_semantic for the MR-1
-requirement. The numeric gate prevents the LLM from hallucinating convergence.
+**Token naming**: Uses `CONVERGED_PASS` / `CONVERGED_IMPROVED` / `CONVERGED_STALLED`
+compound tokens instead of bare `PASS` / `IMPROVED` / `STALLED`. The
+`test_no_bare_pass_token_in_output_contains` regression guard
+(`test_builtin_loops.py:145-163`) forbids bare `"PASS"` as an `output_contains`
+pattern because scoring annotations (e.g., `"design_quality: 8/10 — PASS"`)
+contain the substring "PASS" and would produce false-positive matches.
+
+**Multi-way routing**: `output_contains` is a binary evaluator — it supports only
+`on_yes`/`on_no`. Three-way convergence routing therefore requires TWO chained
+router states (following the `rn-refine.yaml` pattern at lines 129-148):
+
+1. `check_convergence` — shell script outputs token, captured as
+   `convergence_result`
+2. `route_conv_pass` — `output_contains` with `source:
+   "${captured.convergence_result.output}"`, `pattern: "CONVERGED_PASS"`;
+   on_yes → `implement`, on_no → `route_conv_improved`
+3. `route_conv_improved` — `output_contains` with `pattern:
+   "CONVERGED_IMPROVED"`; on_yes → `check_remediation_budget`, on_no →
+   `snap_for_size_review` (STALLED fallthrough)
+
+Similarly, the `diagnose` state's 5-way routing requires four chained router
+states (`route_d_implement`, `route_d_decide`, `route_d_wire`,
+`route_d_refine`) with DECOMPOSE as the terminal fallthrough. Each catches
+one token and passes unmatched output to the next.
+
+**Revised state count**: 31 states (26 active + 2 terminal + 1 diagnostic +
+2 convergence routers). The original 25-state count treated multi-way routing
+as a single `output_contains` state, but `output_contains` is binary — each
+extra route branch adds a router state.
 
 ### Edge Case Handling (Complete)
 
@@ -358,6 +411,44 @@ is standard in autodev and recursive-refine and should be carried forward.
 The only integration point is `test_builtin_loops.py` where the expected-set addition is
 additive. Autodev continues to work unchanged.
 
+### Codebase Research Verification
+
+_Added by `/ll:refine-issue --full-rewrite` — verified against actual code on 2026-06-04:_
+
+#### Verified Claims
+
+| Claim | Verification | Source |
+|-------|-------------|--------|
+| `ll-issues show --json` field names | JSON keys are `confidence` and `outcome` (NOT `confidence_score` / `outcome_confidence`) | `show.py:252-253` — `_parse_card_fields()` serializes frontmatter `confidence_score` → JSON key `confidence` |
+| `output_contains` is binary | Supports only `on_yes`/`on_no`; multi-way routing needs chained router states | `validation.py:68` — evaluator schema; `rn-refine.yaml:129-148` — chained router pattern |
+| Bare `PASS` token forbidden | `test_no_bare_pass_token_in_output_contains` (`test_builtin_loops.py:145-163`) asserts pattern ≠ `"PASS"` | Compound tokens (`CONVERGED_PASS`) avoid substring collisions with scoring annotations |
+| `check-readiness` flags | Takes `--readiness` and `--outcome` as threshold overrides; no `--outcome-only` flag exists | `check_readiness.py:14-53` |
+| `check-flag` behavior | Exit 0 if frontmatter field equals `"true"` (case-insensitive); exit 1 otherwise | `check_flag.py:13-33` |
+| `ll-issues list --json` format | Standard JSON array; used by autodev for child detection via `comm -13` pre/post diff | `autodev.yaml:77,331` |
+| Frontmatter field names | `confidence_score` and `outcome_confidence` in `.md` frontmatter (these differ from JSON keys) | `check_readiness.py:50-51`; `show.py:252-253` |
+| `convergence_gate` fragment | Single-dimension numeric convergence with `direction: maximize`; inappropriate for multi-dim comparison | `lib/common.yaml:118-129` |
+| `queue_pop` fragment | Adds `evaluate: {type: exit_code}`; caller must supply the `head -1`/`tail -n +2`/`mv` shell script | `lib/common.yaml:131-139` |
+| `with_rate_limit_handling` fragment | Two-tier (short 3-retry + long 6hr ladder); requires `on_rate_limit_exhausted` from caller | `lib/common.yaml:61-74` |
+| `retry_counter` fragment | `output_numeric` evaluator with `operator: lt` against `param.max_retries` | `lib/common.yaml:23-45` |
+| MR-1 compliance | Non-LLM evaluator (`exit_code`, `output_contains`, `output_numeric`) must pair with `check_semantic` (`llm_structured`) for meta-loops | `validation.py:1034` — `_validate_meta_loop_evaluation` |
+| MR-3 compliance | Temp files under `${context.run_dir}/` only; `.loops/tmp/` writes flagged as WARNING | `validation.py:103-105` — `_SHARED_TMP_PATH_RE` |
+| Sub-loop context passthrough | `context_passthrough: true` forwards `captured.input.output` as sub-loop's `context.input` | `autodev.yaml:104-105` |
+
+#### Corrections Applied
+
+1. **JSON field names**: Fixed `.confidence_score` → `.confidence`, `.outcome_confidence` → `.outcome` in diagnose pseudocode
+2. **Convergence tokens**: Changed bare `PASS`/`IMPROVED`/`STALLED` → `CONVERGED_PASS`/`CONVERGED_IMPROVED`/`CONVERGED_STALLED`
+3. **Multi-way routing**: Documented that `output_contains` is binary; 3-way convergence needs 2 chained router states; 5-way diagnose needs 4 chained router states; revised state count 25 → 31
+4. **`--outcome-only` flag**: Confirmed nonexistent — Step 4's `check_outcome` state must use inline `jq` frontmatter check instead
+5. **`missing_artifacts` in JSON**: Field is serialized as lowercase string `"true"`/`"false"` (not a list), per `show.py:277-279`
+
+#### Pattern Confirmations
+
+- **Chained router pattern** (`rn-refine.yaml:105-148`): `classify_research` captures output → `route_files` checks NEEDS_FILES → `route_web` checks NEEDS_WEB → fallthrough. This is the pattern rn-implement uses for both the diagnose (5 tokens) and convergence (3 tokens) routing chains.
+- **Queue pop + inflight sentinel** (`autodev.yaml:56-92`): `head -1`/`tail -n +2`/`mv` idiom, captured as `input` for downstream states. Also writes current ID to inflight sentinel for crash recovery.
+- **Child detection via `ll-issues list --json` diff** (`autodev.yaml:324-361`): `comm -13` pre/post snapshots, `grep "Decomposed from $PARENT"` filter for parent reference validation.
+- **Depth-first enqueuing** (`recursive-refine.yaml:261-324`): `{ echo "$CHILDREN"; echo "$EXISTING"; }` prepend pattern, with cycle detection via visited-set file.
+
 ## Use Case
 
 **Who**: A developer or CI automation running `ll-loop run rn-implement "EPIC-1811"`
@@ -380,15 +471,17 @@ remediation attempts.
 ## Acceptance Criteria
 
 - [ ] `loops/rn-implement.yaml` passes `ll-loop validate` (MR-1 and MR-3 clean)
-- [ ] All 25 states have correct routing (verified by `TestRoutingStructure` — test parses
+- [ ] All 31 states have correct routing (verified by `TestRoutingStructure` — test parses
   every `route:` and `next:` key, confirms no dead-end states, no unreachable states)
-- [ ] `diagnose` state correctly outputs all 5 tokens for their respective score combinations:
-  IMPLEMENT (both thresholds met), DECIDE (decision_needed=true), WIRE (ambiguity≥15),
-  REFINE (complexity≥15 or confidence<50), DECOMPOSE (change_surface≥15 or fallthrough)
-- [ ] `check_convergence` correctly outputs PASS/IMPROVED/STALLED for:
-  - PASS: both scores at/above thresholds
-  - IMPROVED: total_delta > 2, thresholds not yet met
-  - STALLED: total_delta ≤ 2, thresholds not yet met
+- [ ] `diagnose` state correctly outputs all 5 tokens for their respective score combinations,
+  and the 4 chained router states (8a–8d) dispatch correctly: IMPLEMENT (both thresholds met),
+  DECIDE (decision_needed=true), WIRE (ambiguity≥15), REFINE (complexity≥15 or confidence<50),
+  DECOMPOSE (change_surface≥15 or fallthrough)
+- [ ] `check_convergence` correctly outputs CONVERGED_PASS/CONVERGED_IMPROVED/CONVERGED_STALLED
+  for known pre/post score deltas, and the 2 chained router states (15a–15b) dispatch correctly:
+  - CONVERGED_PASS: both scores at/above thresholds
+  - CONVERGED_IMPROVED: total_delta > 2, thresholds not yet met
+  - CONVERGED_STALLED: total_delta ≤ 2, thresholds not yet met
 - [ ] `check_remediation_budget` gates at `max_remediation_passes` → route to decomposition;
   under budget → route back to `diagnose`
 - [ ] Depth tracking: child depth = parent+1 written to queue entries; enqueuing skipped
@@ -425,6 +518,23 @@ context.outcome_threshold    # Loop-context default 75 (overrides config-schema 
 
 # No new config keys required for MVP. A commands.rn_implement section can be added
 # post-MVP to tune the diagnose routing matrix thresholds without editing the YAML.
+
+# JSON field name mapping (verified against show.py:246-286):
+# ┌──────────────────────────┬─────────────────────────┐
+# │ Frontmatter field         │ JSON key (--json)       │
+# ├──────────────────────────┼─────────────────────────┤
+# │ confidence_score          │ confidence              │
+# │ outcome_confidence        │ outcome                 │
+# │ score_complexity          │ score_complexity        │
+# │ score_ambiguity           │ score_ambiguity         │
+# │ score_change_surface      │ score_change_surface    │
+# │ score_test_coverage       │ score_test_coverage     │
+# │ decision_needed           │ decision_needed         │
+# │ missing_artifacts         │ missing_artifacts       │
+# └──────────────────────────┴─────────────────────────┘
+# Note: confidence_score and outcome_confidence are the ONLY fields where
+# the JSON key differs from the frontmatter name. The diagnose shell script
+# must use .confidence and .outcome (not .confidence_score / .outcome_confidence).
 ```
 
 ### State Actions — Corrected Skill/Command Classification
@@ -460,6 +570,18 @@ autodev uses successfully (e.g., `autodev.yaml:216` for confidence-check).
 ### Dependent Files (Callers/Importers)
 - N/A (new loop, no existing callers)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- Auto-discovery confirmed: loops are loaded via `rglob("*.yaml")` filtered by `is_runnable_loop()`
+  in `scripts/little_loops/fsm/validation.py:1525`. No explicit registration site exists — creating
+  the YAML file is sufficient for runtime discovery. All loop resolution paths (`resolve_loop_path()`
+  in `cli/loop/_helpers.py:840`, `cmd_list()` in `cli/loop/info.py:53`, `cmd_install()` in
+  `cli/loop/config_cmds.py:43`, `load_loop()` in `cli/loop/_helpers.py:864`) use glob-based
+  discovery. [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/cli/loop/next_loop.py` line 152-153 — `_PARAM_RESOLVERS` dict currently
+  only contains `"autodev"`. Adding `"rn-implement"` with a resolver for auto-resolving open issue
+  IDs would enable `ll-loop next-loop` to suggest rn-implement with pre-filled inputs. Optional
+  for MVP, but should be added before Phase 3 (opt-in) rollout. [Agent 2 finding]
+
 ### Similar Patterns (Source Material)
 - `scripts/little_loops/loops/recursive-refine.yaml` — Depth tracking (`max_depth: 3` at line 28),
   visited-set file pattern (`recursive-refine-visited.txt`), queue-based processing
@@ -484,9 +606,35 @@ autodev uses successfully (e.g., `autodev.yaml:216` for confidence-check).
 - **EDIT** `scripts/tests/test_builtin_loops.py` — register `"rn-implement"` in
   `test_expected_loops_exist` expected set
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_fragments.py` — `TestBuiltinLoopMigration.test_builtin_loops_load_after_migration`
+  (line 999-1023) has a hardcoded `migration_targets` list of built-in loops that use the `shell_exit`
+  fragment. Since rn-implement imports `shell_exit` from `lib/common.yaml`, `"rn-implement.yaml"` must be
+  added to this list or the test will fail when it validates all migration-target loops [Agent 1 finding]
+- Auto-cover confirmation: the `builtin_loops` fixture in `test_builtin_loops.py` (line 28) uses
+  `rglob("*.yaml")` filtered by `is_runnable_loop()`, so all 6 parametrized structural tests
+  (`test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`, `test_all_have_description_field`,
+  `test_no_bare_pass_token_in_output_contains`, `test_no_bare_bash_variable_in_shell_actions`,
+  `test_all_failure_terminals_have_diagnostic_action`) will automatically exercise rn-implement
+  once the YAML is created. No additional registration in these tests is needed [Agent 3 finding]
+- `scripts/tests/test_fsm_flow.py::TestBuiltinLoopRegression.test_all_builtin_loops_still_load`
+  (line 325) also auto-covers via `glob("*.yaml")` [Agent 3 finding]
+
 ### Documentation
 - **EDIT** `docs/guides/LOOPS_GUIDE.md` — add rn-implement entry to Planning table and full
   section after autodev
+- **EDIT** `scripts/little_loops/loops/README.md` — add rn-implement row to Planning category
+  table (authoritative built-in loops catalog)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `README.md` — update "71 FSM loops" to "72 FSM loops" (line 163); `ll-verify-docs` checks
+  this count against actual runnable loops and will flag a mismatch [Agent 2 finding]
+- `CONTRIBUTING.md` — update "61 YAML files" to "62 YAML files" (line 122); `ll-verify-docs`
+  checks this count and will flag a mismatch [Agent 2 finding]
+- `CHANGELOG.md` — record new loop addition (convention for all prior loop additions,
+  e.g., rn-refine at line 270, rn-plan at line 331) [Agent 2 finding]
+- `scripts/little_loops/loops/README.md` — add rn-implement entry to Planning table (line 46-52);
+  this is the authoritative catalog of built-in loops [Agent 1 finding]
 
 ### Configuration
 - Reads existing config keys: `commands.confidence_gate.readiness_threshold`,
@@ -718,7 +866,17 @@ Test class scopes:
 - Run full test suite: `python -m pytest scripts/tests/ -x` — no regressions
 - Dependencies: steps 1–15
 
-### Dependency Graph
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+17. Update `scripts/little_loops/loops/README.md` — add `| rn-implement | Recursive plan-and-implement with iterative deepening, dimensional routing, and convergence detection | <inputs> |` row to the Planning category table (lines 46-52). This is the authoritative built-in loops catalog. [Agent 1 finding]
+18. Update `README.md` line 163 — increment "71 FSM loops" to "72 FSM loops". `ll-verify-docs` checks this count against actual runnable loops and will fail on mismatch. [Agent 2 finding]
+19. Update `CONTRIBUTING.md` line 122 — increment "61 YAML files" to "62 YAML files" (or whatever the actual count becomes after creation). `ll-verify-docs` checks this count and will fail on mismatch. [Agent 2 finding]
+20. Update `scripts/tests/test_fsm_fragments.py` line 999-1023 — add `"rn-implement.yaml"` to the `migration_targets` list in `TestBuiltinLoopMigration.test_builtin_loops_load_after_migration`. rn-implement imports `shell_exit` from `lib/common.yaml`, so it must be in this list. [Agent 1 + Agent 3 finding]
+21. Add CHANGELOG entry — record the new loop addition following convention (see prior loop additions: rn-refine at ~line 270, rn-plan at ~line 331). [Agent 2 finding]
+
+### Dependency Graph (updated)
 
 ```
 Step 1 (skeleton)
@@ -736,10 +894,15 @@ Step 1 (skeleton)
 ├─ Step 13 (test_rn_implement.py) ── depends on: 1-12
 ├─ Step 14 (test_builtin_loops.py) ── depends on: 13
 ├─ Step 15 (LOOPS_GUIDE.md) ── depends on: 1
-└─ Step 16 (validate + dry-run) ── depends on: 13, 14
+├─ Step 17 (loops/README.md) ── depends on: 1
+├─ Step 18 (README.md count) ── depends on: 1
+├─ Step 19 (CONTRIBUTING.md count) ── depends on: 1
+├─ Step 20 (test_fsm_fragments.py) ── depends on: 1, 7
+├─ Step 21 (CHANGELOG.md) ── depends on: 1
+└─ Step 16 (validate + dry-run) ── depends on: 13, 14, 17, 18, 19, 20
 ```
 
-Steps 15 and 13/14 can be done in parallel. Step 16 is the final gate.
+Steps 15, 17-21 and 13/14 can be done in parallel. Step 16 is the final gate.
 
 ## Impact
 
@@ -775,8 +938,13 @@ Steps 15 and 13/14 can be done in parallel. Step 16 is the final gate.
 `loops`, `fsm`, `orchestration`, `recursion`, `planning`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-04T13:29:48 - `76d43d09-72c5-49f1-8090-a12a00a33d40.jsonl`
+- `/ll:format-issue` - 2026-06-04T13:15:38 - `bd7f5333-de62-45ce-8686-dca087a872b2.jsonl`
 - `/ll:capture-issue` - 2026-06-04T05:36:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e0ae204-dee8-4424-b3cd-529179a61766.jsonl`
 - `rn-refine` iteration - 2026-06-04T01:26:14Z - plan improved: added 25-state enumeration, dimensional diagnosis pseudocode, convergence shell script, edge case handling table, operational concerns (phased rollout, failure recovery, monitoring), 16 granular implementation steps with dependency graph, corrected skill/command classification, fixed score field names and threshold defaults, resolved sub-loop delegation decision, clarified rn-refine pattern vs. dimensions distinction
+- `/ll:refine-issue --full-rewrite --auto` - 2026-06-04 - codebase research verification: fixed JSON field names (confidence_score→confidence, outcome_confidence→outcome) per show.py:252-253; renamed convergence tokens to compound forms (CONVERGED_PASS/IMPROVED/STALLED) to avoid test_no_bare_pass_token_in_output_contains collision; documented chained-router approach for multi-way output_contains routing (3-way→2 router states, 5-way→4 router states); revised state count 25→31; added Codebase Research Verification subsection with 14 verified claims table, 5 corrections, 3 pattern confirmations; confirmed no --outcome-only flag on check-readiness; set decision_needed: true (2+ implementation options)
+- `/ll:wire-issue --auto` - 2026-06-04 - 3-agent wiring research: confirmed auto-discovery (no explicit registration needed); found 5 missing files: loops/README.md (Planning table entry), README.md (loop count 71→72), CONTRIBUTING.md (YAML count 61→62), CHANGELOG.md (new loop entry), test_fsm_fragments.py (migration targets list); added 5 Wiring Phase implementation steps (17-21); confirmed 6 auto-cover tests in test_builtin_loops.py will validate rn-implement automatically
+- `/ll:confidence-check` - 2026-06-04T13:45:00Z - `1a8126ae-a53d-43ef-8d42-82478292edad.jsonl`
 
 ---
 
