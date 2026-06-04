@@ -22,6 +22,7 @@ context:
   exclude_user_corrections: false       # drop sessions with user corrections
   min_tool_invocations: 0               # drop sessions below this tool-call count
   require_file_modifications: false     # drop sessions with zero file modifications
+  pii_action: "flag"                    # flag | redact | discard — PII handling mode
 states:
 
   # -------------------------------------------------------------------
@@ -235,7 +236,7 @@ states:
       type: output_numeric
       operator: ge
       target: 1
-    on_yes: publish
+    on_yes: check_pii
     on_no: reject_files
 
   reject_files:
@@ -255,6 +256,63 @@ states:
       with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
           f.write(json.dumps(entry) + '\n')
       print('rejected: require_file_modifications')
+      "
+    next: check_pii
+
+  # --- Predicate 5: pii_action ---
+  check_pii:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, sys
+      sys.path.insert(0, "scripts")
+      from little_loops.pii import apply_pii_action
+
+      action = "${context.pii_action}"
+
+      with open("${captured.enrich_output.output}") as f:
+          example = json.loads(f.readline())
+
+      if action in ("flag", "redact"):
+          result = apply_pii_action(example, action)
+          with open("${captured.enrich_output.output}", "w") as f:
+              json.dump(result, f)
+          print(1)
+      elif action == "discard":
+          result = apply_pii_action(example, action)
+          if result is None:
+              print(0)
+          else:
+              with open("${captured.enrich_output.output}", "w") as f:
+                  json.dump(result, f)
+              print(1)
+      else:
+          print(1)  # unknown action: safe pass-through
+      PYEOF
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 1
+    on_yes: publish
+    on_no: reject_pii
+
+  reject_pii:
+    action_type: shell
+    action: |
+      python3 -c "
+      import json, os
+      from datetime import datetime, timezone
+      out_dir = '${context.output_dir}'
+      os.makedirs(out_dir, exist_ok=True)
+      entry = {
+          'path': '${captured.enrich_output.output}',
+          'score': 0,
+          'reason': 'pii_detected',
+          'timestamp': datetime.now(timezone.utc).isoformat()
+      }
+      with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
+          f.write(json.dumps(entry) + '\n')
+      print('rejected: pii_detected')
       "
     next: publish
 

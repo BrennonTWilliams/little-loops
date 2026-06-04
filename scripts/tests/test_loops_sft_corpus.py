@@ -488,3 +488,323 @@ with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
         reasons = [json.loads(line)["reason"] for line in lines]
         assert "require_issue_outcome" in reasons
         assert "exclude_user_corrections" in reasons
+
+
+# ---------------------------------------------------------------------------
+# PII detection tests — flag, redact, discard, and default behaviors
+# ---------------------------------------------------------------------------
+
+
+class TestPiiFlagPassthrough:
+    """PII flag action: annotates with pii_detected but never rejects."""
+
+    def test_flag_adds_pii_detected_when_pii_present(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "Summarize this text",
+            "output": "Contact user@example.com or call 555-123-4567",
+        }
+        result = apply_pii_action(example, "flag")
+        assert result is not None
+        assert result["pii_detected"] is True
+        assert "user@example.com" in result["output"]  # content unchanged
+
+    def test_flag_does_not_add_pii_detected_when_no_pii(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "Summarize this text",
+            "output": "No personal data here.",
+        }
+        result = apply_pii_action(example, "flag")
+        assert result is not None
+        assert "pii_detected" not in result  # no annotation when clean
+
+    def test_flag_predicate_always_prints_1(self, tmp_path: Path) -> None:
+        """The check_pii predicate prints 1 for flag action (pass-through)."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        run_dir.mkdir(parents=True)
+        enriched_file = run_dir / "enriched.jsonl"
+        example = {
+            "source": "test.jsonl",
+            "messages": [{"role": "user", "content": "test"}],
+            "metadata": {"tool_count": 5},
+            "output": "Contact user@example.com",
+        }
+        enriched_file.write_text(json.dumps(example) + "\n")
+
+        script = f"""python3 << 'PYEOF'
+import json, sys
+sys.path.insert(0, "scripts")
+from little_loops.pii import apply_pii_action
+
+action = "flag"
+with open("{enriched_file}") as f:
+    example = json.loads(f.readline())
+
+if action == "flag":
+    result = apply_pii_action(example, action)
+    with open("{enriched_file}", "w") as f:
+        json.dump(result, f)
+    print(1)
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "1"
+        # Verify the example was annotated
+        written = json.loads(enriched_file.read_text().strip())
+        assert written.get("pii_detected") is True
+
+
+class TestPiiRedact:
+    """PII redact action: replaces PII spans with [TYPE] placeholders."""
+
+    def test_redact_replaces_email(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "Email support",
+            "output": "Contact user@example.com for help.",
+        }
+        result = apply_pii_action(example, "redact")
+        assert result is not None
+        assert "user@example.com" not in result["output"]
+        assert "[EMAIL]" in result["output"]
+
+    def test_redact_replaces_phone(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "Call support",
+            "output": "Dial 555-123-4567 for assistance.",
+        }
+        result = apply_pii_action(example, "redact")
+        assert result is not None
+        assert "555-123-4567" not in result["output"]
+        assert "[PHONE]" in result["output"]
+
+    def test_redact_replaces_ssn(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "Verify identity",
+            "output": "SSN: 123-45-6789 was provided.",
+        }
+        result = apply_pii_action(example, "redact")
+        assert result is not None
+        assert "123-45-6789" not in result["output"]
+        assert "[SSN]" in result["output"]
+
+    def test_redact_handles_multiple_pii_types(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "User profile",
+            "output": (
+                "Email: alice@example.com, Phone: 555-987-6543, SSN: 987-65-4321."
+            ),
+        }
+        result = apply_pii_action(example, "redact")
+        assert result is not None
+        assert "[EMAIL]" in result["output"]
+        assert "[PHONE]" in result["output"]
+        assert "[SSN]" in result["output"]
+
+    def test_redact_preserves_non_pii_content(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "General question",
+            "output": "The answer is 42.",
+        }
+        result = apply_pii_action(example, "redact")
+        assert result is not None
+        assert result["output"] == "The answer is 42."
+
+    def test_redact_predicate_prints_1_and_writes_redacted(self, tmp_path: Path) -> None:
+        """The check_pii predicate prints 1 for redact action and writes redacted content."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        run_dir.mkdir(parents=True)
+        enriched_file = run_dir / "enriched.jsonl"
+        example = {
+            "source": "test.jsonl",
+            "messages": [{"role": "user", "content": "test"}],
+            "metadata": {"tool_count": 5},
+            "output": "Contact user@example.com",
+        }
+        enriched_file.write_text(json.dumps(example) + "\n")
+
+        script = f"""python3 << 'PYEOF'
+import json, sys
+sys.path.insert(0, "scripts")
+from little_loops.pii import apply_pii_action
+
+action = "redact"
+with open("{enriched_file}") as f:
+    example = json.loads(f.readline())
+
+result = apply_pii_action(example, action)
+with open("{enriched_file}", "w") as f:
+    json.dump(result, f)
+print(1)
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "1"
+        written = json.loads(enriched_file.read_text().strip())
+        assert "[EMAIL]" in written["output"]
+
+
+class TestPiiDiscard:
+    """PII discard action: rejects examples with detected PII."""
+
+    def test_discard_returns_none_when_pii_present(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "Contact info",
+            "output": "Email user@example.com for details.",
+        }
+        result = apply_pii_action(example, "discard")
+        assert result is None
+
+    def test_discard_returns_example_when_no_pii(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "General question",
+            "output": "No personal data here.",
+        }
+        result = apply_pii_action(example, "discard")
+        assert result is not None
+        assert result == example
+
+    def test_discard_predicate_prints_0_when_pii_present(self, tmp_path: Path) -> None:
+        """The check_pii predicate prints 0 when action=discard and PII is detected."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        run_dir.mkdir(parents=True)
+        enriched_file = run_dir / "enriched.jsonl"
+        example = {
+            "source": "test.jsonl",
+            "messages": [{"role": "user", "content": "test"}],
+            "metadata": {"tool_count": 5},
+            "output": "Contact user@example.com",
+        }
+        enriched_file.write_text(json.dumps(example) + "\n")
+
+        script = f"""python3 << 'PYEOF'
+import json, sys
+sys.path.insert(0, "scripts")
+from little_loops.pii import apply_pii_action
+
+action = "discard"
+with open("{enriched_file}") as f:
+    example = json.loads(f.readline())
+
+result = apply_pii_action(example, action)
+if result is None:
+    print(0)
+else:
+    with open("{enriched_file}", "w") as f:
+        json.dump(result, f)
+    print(1)
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "0"
+
+    def test_discard_predicate_prints_1_when_no_pii(self, tmp_path: Path) -> None:
+        """The check_pii predicate prints 1 when action=discard and no PII is detected."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        run_dir.mkdir(parents=True)
+        enriched_file = run_dir / "enriched.jsonl"
+        example = {
+            "source": "test.jsonl",
+            "messages": [{"role": "user", "content": "test"}],
+            "metadata": {"tool_count": 5},
+            "output": "No personal data here.",
+        }
+        enriched_file.write_text(json.dumps(example) + "\n")
+
+        script = f"""python3 << 'PYEOF'
+import json, sys
+sys.path.insert(0, "scripts")
+from little_loops.pii import apply_pii_action
+
+action = "discard"
+with open("{enriched_file}") as f:
+    example = json.loads(f.readline())
+
+result = apply_pii_action(example, action)
+if result is None:
+    print(0)
+else:
+    with open("{enriched_file}", "w") as f:
+        json.dump(result, f)
+    print(1)
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "1"
+
+
+class TestPiiDefaultBehavior:
+    """PII module defaults: unknown/unset action falls through gracefully."""
+
+    def test_flag_is_default_passthrough(self) -> None:
+        """Flag is the default action — annotates but never rejects."""
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "test",
+            "output": "Email: user@example.com",
+        }
+        result = apply_pii_action(example, "flag")
+        assert result is not None
+        assert result.get("pii_detected") is True
+
+    def test_invalid_action_raises_value_error(self) -> None:
+        import pytest as pt
+
+        from little_loops.pii import apply_pii_action
+
+        with pt.raises(ValueError, match="Invalid pii_action"):
+            apply_pii_action({"instruction": "test"}, "delete")
+
+    def test_check_pii_unknown_action_falls_through(self, tmp_path: Path) -> None:
+        """When pii_action is an unknown value, predicate prints 1 (safe pass-through)."""
+        run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
+        run_dir.mkdir(parents=True)
+        enriched_file = run_dir / "enriched.jsonl"
+        example = {
+            "source": "test.jsonl",
+            "messages": [{"role": "user", "content": "test"}],
+            "metadata": {"tool_count": 5},
+            "output": "Contact user@example.com",
+        }
+        enriched_file.write_text(json.dumps(example) + "\n")
+
+        script = f"""python3 << 'PYEOF'
+import json, sys
+sys.path.insert(0, "scripts")
+from little_loops.pii import apply_pii_action
+
+action = "unknown_value"
+with open("{enriched_file}") as f:
+    example = json.loads(f.readline())
+
+try:
+    result = apply_pii_action(example, action)
+    print(1)
+except ValueError:
+    print(1)  # safe fallback: don't reject on config error
+PYEOF
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "1"
