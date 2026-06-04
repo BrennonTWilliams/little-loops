@@ -13,9 +13,10 @@ labels:
   - harness
   - hitl
   - loops
-relates_to: [FEAT-1545, FEAT-1613]
+parent: EPIC-1929
+relates_to: [FEAT-1545, FEAT-1613, FEAT-1930, FEAT-1931, FEAT-1932]
 decision_needed: false
-decision: Option A — hardcoded dispatch following the mcp_tool pattern. Simpler single-file executor change, follows existing conventions. Extension-based path (Option B) deferred as future refactor.
+decision: Option A — hardcoded dispatch following the mcp_tool pattern. Simpler single-file executor change, follows existing conventions. Extension-based path (Option B) deferred as future refactor. Note: transport is now delegated to the CommunicationAdapter protocol (FEAT-1930); the executor calls adapter.send_alert() / adapter.await_response() rather than hardcoding terminal I/O.
 ---
 
 # FEAT-1794: HITL interrupt FSM state type (`action_type: human_approval`)
@@ -129,19 +130,28 @@ deadlock.
 
 ## Proposed Solution
 
-TBD — requires investigation of:
-- Notification surface: PushNotification vs PushNotification + IM
-  adapter chain. The existing host_runner / hook adapter layer is the
-  natural place to plug this in.
+**Updated 2026-06-04**: This issue is now a child of EPIC-1929 (Async HITL
+Communication Adapter Framework). Transport is delegated to the
+`CommunicationAdapter` protocol (FEAT-1930); the executor calls
+`adapter.send_alert()` and `adapter.await_response()` rather than hardcoding
+terminal I/O. This issue owns the FSM side: schema, dispatch, routing, timeout,
+and event emission — not the transport implementations (FEAT-1931 terminal,
+FEAT-1932 PushNotification).
+
+Original investigation items (resolved by EPIC-1929 decomposition):
+- ~~Notification surface: PushNotification vs PushNotification + IM
+  adapter chain.~~ → Delegated to CommunicationAdapter protocol (FEAT-1930)
+  and individual adapters (FEAT-1931, FEAT-1932).
 - Wait semantics: blocking poll on a file/socket vs the existing event
-  bus subscribe. The runner already journals events; a `human_response`
-  event type may be the cleanest signal.
+  bus subscribe. → The adapter protocol's `await_response()` abstracts this;
+  each adapter chooses its mechanism.
 - Headless mode: `LL_HOST_CLI=codex` / non-interactive contexts need a
-  safe default (probably `on_timeout: on_no` with a short timeout and a
-  loud log).
+  safe default. → Still relevant; the FSM state checks
+  `adapter.supports_async()` and host interactivity to decide whether to
+  warn/fallback.
 - Schema rules: `ll-loop validate` should warn if a `human_approval`
   state has no `timeout:` AND the loop is referenced by ll-auto /
-  ll-sprint (where unattended deadlock is a real risk).
+  ll-sprint. → Still relevant; validator change is in this issue's scope.
 
 ### Codebase Research Findings
 
@@ -273,11 +283,11 @@ accept the default.
    - Alternative: use `extra_routes` (`schema.py:389`) for `on_edit`/`on_timeout` to avoid schema changes — unrecognized `on_*` keys are already captured there.
 2. **Validator** (`fsm/validation.py:374`): In `_validate_state_action()`, add: require `on_yes`/`on_no` when `action_type == "human_approval"`; WARNING if no `timeout` is set; add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness at line 78 (it IS a non-LLM evaluator per MR-1).
 3. **Executor dispatch** (`fsm/executor.py`): Add `"human_approval"` to `_action_mode()` (line 1280, before the heuristic fallthrough). In `_execute_state()` (line 772), add a dispatch branch before the generic action path at line 831 — follow the learning-state dispatch pattern at line 797: `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`.
-4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render prompt with `${captured.*}` interpolation, emit `human_approval_request` event via `self._emit()` (existing pattern at line 1339), block on response using `_interruptible_sleep()`-style polling (existing pattern at line 1463), route based on verdict/timeout. Terminal-only notification for v1.
+4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render prompt with `${captured.*}` interpolation, resolve the active `CommunicationAdapter` from config + extension registry (FEAT-1930), call `adapter.send_alert()` to deliver the prompt, call `adapter.await_response()` to block for verdict (using `_interruptible_sleep()`-style polling, existing pattern at line 1463), route based on verdict/timeout. The executor never imports a specific adapter — it only calls the protocol methods.
 5. **Host capability** (`host_runner.py:74`): Add `interactive: bool` flag to `HostCapabilities`. Set based on `sys.stdin.isatty()` (existing pattern in `hooks/__init__.py:111`). In the HITL handler, if not interactive, short-circuit to `on_timeout`/`on_no`.
 6. **Tests**: Add `TestActionTypeHumanApproval` in `test_fsm_executor.py` (model after `TestActionTypeMcpTool` at line 401) — mock event callback, verify approve/reject/edit/timeout routing. Add `TestHumanApprovalSchema` in `test_fsm_schema.py` (model after `TestMcpToolSchema` at line 1801). Add timeout-warning test in `test_fsm_validation.py`.
 7. **Docs**: Add HITL phase section to `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`; document `human_approval` action_type and new routing fields in `skills/create-loop/reference.md:415`; add example loop under `loops/examples/`.
-8. **v2 scope** (defer): PushNotification integration (does not exist today), IM adapter (Slack/Telegram), multi-user approval quorum.
+8. **EPIC-1929 siblings** (separate issues, not in this FEAT's scope): Terminal adapter (FEAT-1931), PushNotification adapter (FEAT-1932), future adapters (Slack, Telegram, webhook).
 
 ## Impact
 
