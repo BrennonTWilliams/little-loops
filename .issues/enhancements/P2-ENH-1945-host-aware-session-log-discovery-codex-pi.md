@@ -97,7 +97,7 @@ Decided by `/ll:decide-issue` on 2026-06-04.
 
 **Key evidence**:
 - **Option A**: `_config_candidates(project_root, *, host: str | None, state_dir: str | None)` at `config/core.py:74` is a near-line-for-line precedent — same keyword-only `host` parameter, same string-equality branching, same docstring extension-point convention. `resolve_config_path()` at `config/core.py:99` already demonstrates the `os.environ.get("LL_HOOK_HOST")` auto-detection pattern. All 6 call sites pass only `cwd` and are unaffected by a keyword-only parameter addition.
-- **Option B**: No existing pattern of creating a new wrapper solely to avoid modifying a backward-compatible function. `_config_candidates()` was modified to accept `host` rather than wrapped — proving the codebase convention is to add parameters, not wrappers. 23 test patches across 5 files would need mock-target migration. `discover_all_projects()` at `cli/logs.py:140` hardcodes `~/.claude/projects/` and wouldn't benefit from any wrapper — it needs a separate fix either way.
+- **Option B**: No existing pattern of creating a new wrapper solely to avoid modifying a backward-compatible function. `_config_candidates()` was modified to accept `host` rather than wrapped — proving the codebase convention is to add parameters, not wrappers. 23 test patches across 5 files would need mock-target migration. `discover_all_projects()` at `cli/logs.py:126` hardcodes `~/.claude/projects/` and wouldn't benefit from any wrapper — it needs a separate fix either way.
 
 ### Codebase Research Findings
 
@@ -120,7 +120,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/cli/logs.py:244,254` — `ll-logs discover` calls `get_project_folder()`; also `discover_all_projects()` at line 140 hardcodes `~/.claude/projects/` iteration
+- `scripts/little_loops/cli/logs.py:244,254` — `ll-logs discover` calls `get_project_folder()`; also `discover_all_projects()` at line 126 hardcodes `~/.claude/projects/` iteration
 - `scripts/little_loops/cli/messages.py:173` — `ll-messages extract` calls `get_project_folder()`
 - `scripts/little_loops/user_messages.py:14-16` — internal `extract_user_messages()` docstring references
 - `scripts/little_loops/session_store.py:1503,1535` — `backfill()` defaults `jsonl_files=None`, guard skips JSONL entirely when None; full backfill (no `--since`) also fails for non-Claude-Code hosts
@@ -147,10 +147,10 @@ _Wiring pass added by `/ll:wire-issue` — transitive beneficiaries (use `append
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- **Verified**: All line numbers in the issue match actual code (355-381, 304, 132, 75, 244, 254, 173)
-- **Additional hardcoding**: `discover_all_projects()` at `cli/logs.py:140` also hardcodes `~/.claude/projects/` iteration — `ll-logs discover` is also Claude-Code-only
+- **Verified**: All line numbers in the issue match actual code (355-381, 304, 132, 75, 244, 254, 173) at time of prior refinement pass. **2026-06-04 re-verification pass**: `discover_all_projects()` is at line 126 (was 140 in earlier research); all other line numbers confirmed current.
+- **Additional hardcoding**: `discover_all_projects()` at `cli/logs.py:126` also hardcodes `~/.claude/projects/` iteration — `ll-logs discover` is also Claude-Code-only
 - **Full-backfill gap**: `backfill()` in `session_store.py:1503` defaults `jsonl_files=None`, and the guard at line 1535 (`if jsonl_files:`) skips JSONL backfill entirely when `None`. So even full backfill (no `--since`) produces zero `message_events`/`sessions` for non-Claude-Code hosts
-- **Host naming inconsistency**: `_HOST_RUNNER_REGISTRY` keys use `"claude-code"` (with hyphen) while `LL_HOOK_HOST` uses `"claude"` for the default and `"codex"` for Codex. The `get_project_folder()` host parameter should use the `host_runner.py` registry names (`"claude-code"`, `"codex"`, `"opencode"`, `"pi"`) for consistency with `resolve_host().name`
+- **Host naming verified consistent**: Re-verification on 2026-06-04 confirmed `_HOST_RUNNER_REGISTRY` keys (`"claude-code"`, `"codex"`, `"opencode"`, `"pi"`), `LL_HOOK_HOST` adapter values (`"codex"`, `"opencode"`), and `resolve_host().name` all use identical string conventions. The dispatcher at `hooks/__init__.py:125` defaults `LL_HOOK_HOST` to `"claude-code"` (not `"claude"`). The earlier concern about a `"claude"`/`"claude-code"` mismatch was unfounded — no such discrepancy exists in the codebase. The `get_project_folder()` host parameter should use these registry names for consistency with `resolve_host().name`.
 - **Failure table**: 16 distinct call sites fail silently for non-Claude-Code hosts — including LCM summary DAG leaf nodes (`_compact_session_conn()` at `session_store.py:1323` queries `message_events` which is empty), correction mining (`mine_corrections_from_messages()` at `session_store.py:1099`), and project digest (all SECTION_PROVIDERS consuming session data)
 
 ### Tests
@@ -257,6 +257,8 @@ _Added by `/ll:confidence-check` on 2026-06-04_
 - 7 test files need new host-aware test cases; the specific Codex/OpenCode backfill paths are currently untested, and existing `get_project_folder` mocks will need signature updates for the new `host` keyword parameter.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-04T23:50:47 - `849453dc-052d-4d7f-89cc-55354ccfde5a.jsonl`
+- `/ll:refine-issue` - 2026-06-04T23:50:31 - `8826ca14-a9b9-4717-b939-4425b44d5d7c.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:45:00 - `4627729e-f88a-487e-88f9-6298bfd77cbd.jsonl`
 - `/ll:decide-issue` - 2026-06-04T23:32:03 - `ab09a645-db24-4bab-bd83-45ebf6d1f4bf.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:30:00 - `e484df0a-bfc4-4607-bd41-973d4785157e.jsonl`
