@@ -20,6 +20,22 @@ initial: ingest
 max_iterations: 50
 timeout: 7200               # 2-hour wall clock limit
 on_handoff: spawn
+parameters:
+  data_dir:
+    type: string
+    default: "data/raw"
+    description: "Directory containing raw data items to curate"
+    required: false
+  output_dir:
+    type: string
+    default: "data/curated"
+    description: "Output directory for curated dataset and manifest"
+    required: false
+  schema_path:
+    type: string
+    default: "schemas/dataset.json"
+    description: "Path to JSON Schema for validation"
+    required: false
 context:
   quality_threshold: 70     # minimum item score (0-100) to pass quality gate
   min_per_category: 2       # minimum items per category for balanced distribution

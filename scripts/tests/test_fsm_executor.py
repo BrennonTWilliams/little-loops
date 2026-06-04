@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from little_loops.fsm.evaluators import EvaluationResult
 from little_loops.fsm.executor import (
     ActionResult,
@@ -25,6 +27,7 @@ from little_loops.fsm.schema import (
     RouteConfig,
     StateConfig,
 )
+from little_loops.fsm.validation import load_and_validate
 
 
 @dataclass
@@ -6509,6 +6512,39 @@ class TestSubLoopWithBindings:
         assert result.final_state == "success"
         assert "run_child" in executor.captured
         assert "result" in executor.captured["run_child"]
+
+    def test_load_and_validate_catches_misspelled_with_key(
+        self, tmp_path: Path
+    ) -> None:
+        """Misspelled with: key against child parameters produces a ValidationError."""
+        # Write child with parameters block
+        child_yaml = tmp_path / "child.yaml"
+        child_yaml.write_text(
+            "name: child\n"
+            "initial: step\n"
+            "parameters:\n"
+            "  data_dir:\n    type: string\n    required: false\n"
+            "states:\n"
+            "  step:\n    action: echo ok\n    next: done\n"
+            "  done:\n    terminal: true\n"
+        )
+        # Write parent that references child with misspelled with: key
+        parent_yaml = tmp_path / "parent.yaml"
+        parent_yaml.write_text(
+            "name: parent\n"
+            "initial: run_child\n"
+            "states:\n"
+            "  run_child:\n"
+            "    loop: child\n"
+            "    with:\n"
+            "      data_dirr: oops  # misspelled — should be data_dir\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        # load_and_validate should raise ValueError about the unknown key
+        with pytest.raises(ValueError, match="data_dirr"):
+            load_and_validate(parent_yaml)
 
 
 class TestThrottling:
