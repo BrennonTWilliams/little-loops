@@ -1402,6 +1402,104 @@
         }
       },
       "additionalProperties": false
+    },
+    "history": {
+      "type": "object",
+      "description": "History.db read/consume configuration (ENH-1913). Single namespace owner for all history.db consumer tunables.",
+      "properties": {
+        "velocity_window": {
+          "type": "integer",
+          "default": 10,
+          "description": "Number of recent issues to use when computing velocity (ENH-1905)."
+        },
+        "effort_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["session_count", "cycle_time_days"],
+          "description": "Fields extracted from history.db for effort reporting (ENH-1905)."
+        },
+        "max_age_days": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "Maximum age in days for history entries; null = no limit (ENH-1905)."
+        },
+        "planning_skills": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["create-sprint", "scope-epic", "manage-issue", "review-epic"],
+          "description": "Skill names whose sessions are included in planning context queries (ENH-1909)."
+        },
+        "session_digest": {
+          "type": "object",
+          "description": "Session digest injection configuration (ENH-1907).",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable session digest injection into skill prompts."
+            },
+            "days": {
+              "type": "integer",
+              "default": 7,
+              "description": "Number of days of session history to include in digests."
+            },
+            "char_cap": {
+              "type": "integer",
+              "default": 1200,
+              "description": "Maximum characters for the digest block."
+            },
+            "sections": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": [],
+              "description": "Ordered list of digest section providers to include. Empty list = all v1 providers."
+            }
+          },
+          "additionalProperties": false
+        },
+        "evolution": {
+          "type": "object",
+          "description": "Feedback evolution configuration (ENH-1911).",
+          "properties": {
+            "feedback_min_recurrence": {
+              "type": "integer",
+              "default": 2,
+              "description": "Minimum recurrence count for a correction to surface in evolution analysis."
+            },
+            "bypass_min_count": {
+              "type": "integer",
+              "default": 2,
+              "description": "Minimum bypass count threshold for evolution signal suppression."
+            }
+          },
+          "additionalProperties": false
+        },
+        "go_no_go": {
+          "type": "object",
+          "description": "Go/no-go decision configuration (ENH-1914).",
+          "properties": {
+            "correction_penalty": {
+              "type": "number",
+              "default": -0.2,
+              "description": "Score penalty applied per correction event in go/no-go scoring."
+            }
+          },
+          "additionalProperties": false
+        },
+        "capture_issue": {
+          "type": "object",
+          "description": "Capture-issue deduplication configuration (ENH-1914).",
+          "properties": {
+            "dup_overlap_threshold": {
+              "type": "number",
+              "default": 0.7,
+              "description": "Overlap ratio threshold above which a new issue is considered a duplicate."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

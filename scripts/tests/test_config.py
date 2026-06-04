@@ -13,6 +13,7 @@ from little_loops.config import (
     REQUIRED_CATEGORIES,
     AutomationConfig,
     BRConfig,
+    CaptureIssueConfig,
     CategoryConfig,
     CliColorsConfig,
     CliColorsEdgeLabelsConfig,
@@ -27,7 +28,10 @@ from little_loops.config import (
     DesignTokensConfig,
     DuplicateDetectionConfig,
     EventsConfig,
+    EvolutionConfig,
     GitHubSyncConfig,
+    GoNoGoConfig,
+    HistoryConfig,
     IssuesConfig,
     LearningTestsConfig,
     LoopsConfig,
@@ -41,6 +45,7 @@ from little_loops.config import (
     RecursiveRefineConfig,
     ScanConfig,
     ScoringWeightsConfig,
+    SessionDigestConfig,
     SocketEventsConfig,
     SprintsConfig,
     SyncConfig,
@@ -2615,3 +2620,194 @@ class TestBRConfigAnalyticsCaptureIntegration:
         assert result["analytics"]["capture"]["corrections"] is False
         assert result["analytics"]["capture"]["cli_commands"] == ["*"]
         assert result["analytics"]["capture"]["file_events"] is True
+
+
+class TestSessionDigestConfig:
+    """Unit tests for SessionDigestConfig.from_dict (ENH-1913)."""
+
+    def test_defaults(self) -> None:
+        cfg = SessionDigestConfig.from_dict({})
+        assert cfg.enabled is False
+        assert cfg.days == 7
+        assert cfg.char_cap == 1200
+        assert cfg.sections == []
+
+    def test_per_key_override(self) -> None:
+        cfg = SessionDigestConfig.from_dict(
+            {"enabled": True, "days": 14, "char_cap": 800, "sections": ["corrections"]}
+        )
+        assert cfg.enabled is True
+        assert cfg.days == 14
+        assert cfg.char_cap == 800
+        assert cfg.sections == ["corrections"]
+
+    def test_unknown_key_ignored(self) -> None:
+        cfg = SessionDigestConfig.from_dict({"unknown_key": "value"})
+        assert cfg.enabled is False
+
+
+class TestEvolutionConfig:
+    """Unit tests for EvolutionConfig.from_dict (ENH-1913)."""
+
+    def test_defaults(self) -> None:
+        cfg = EvolutionConfig.from_dict({})
+        assert cfg.feedback_min_recurrence == 2
+        assert cfg.bypass_min_count == 2
+
+    def test_per_key_override(self) -> None:
+        cfg = EvolutionConfig.from_dict({"feedback_min_recurrence": 5, "bypass_min_count": 3})
+        assert cfg.feedback_min_recurrence == 5
+        assert cfg.bypass_min_count == 3
+
+    def test_unknown_key_ignored(self) -> None:
+        cfg = EvolutionConfig.from_dict({"unknown_key": "value"})
+        assert cfg.feedback_min_recurrence == 2
+
+
+class TestGoNoGoConfig:
+    """Unit tests for GoNoGoConfig.from_dict (ENH-1913)."""
+
+    def test_defaults(self) -> None:
+        cfg = GoNoGoConfig.from_dict({})
+        assert cfg.correction_penalty == -0.2
+
+    def test_per_key_override(self) -> None:
+        cfg = GoNoGoConfig.from_dict({"correction_penalty": -0.5})
+        assert cfg.correction_penalty == -0.5
+
+    def test_unknown_key_ignored(self) -> None:
+        cfg = GoNoGoConfig.from_dict({"unknown_key": "value"})
+        assert cfg.correction_penalty == -0.2
+
+
+class TestCaptureIssueConfig:
+    """Unit tests for CaptureIssueConfig.from_dict (ENH-1913)."""
+
+    def test_defaults(self) -> None:
+        cfg = CaptureIssueConfig.from_dict({})
+        assert cfg.dup_overlap_threshold == 0.7
+
+    def test_per_key_override(self) -> None:
+        cfg = CaptureIssueConfig.from_dict({"dup_overlap_threshold": 0.9})
+        assert cfg.dup_overlap_threshold == 0.9
+
+    def test_unknown_key_ignored(self) -> None:
+        cfg = CaptureIssueConfig.from_dict({"unknown_key": "value"})
+        assert cfg.dup_overlap_threshold == 0.7
+
+
+class TestHistoryConfig:
+    """Unit tests for HistoryConfig.from_dict (ENH-1913)."""
+
+    def test_defaults(self) -> None:
+        cfg = HistoryConfig.from_dict({})
+        assert cfg.velocity_window == 10
+        assert cfg.effort_fields == ["session_count", "cycle_time_days"]
+        assert cfg.max_age_days is None
+        assert cfg.planning_skills == [
+            "create-sprint", "scope-epic", "manage-issue", "review-epic"
+        ]
+        assert isinstance(cfg.session_digest, SessionDigestConfig)
+        assert isinstance(cfg.evolution, EvolutionConfig)
+        assert isinstance(cfg.go_no_go, GoNoGoConfig)
+        assert isinstance(cfg.capture_issue, CaptureIssueConfig)
+
+    def test_flat_key_override(self) -> None:
+        cfg = HistoryConfig.from_dict({"velocity_window": 20, "max_age_days": 30})
+        assert cfg.velocity_window == 20
+        assert cfg.max_age_days == 30
+        assert cfg.effort_fields == ["session_count", "cycle_time_days"]
+
+    def test_nested_sub_object_defaults(self) -> None:
+        cfg = HistoryConfig.from_dict({"session_digest": {}})
+        assert cfg.session_digest.enabled is False
+        assert cfg.session_digest.days == 7
+
+    def test_nested_sub_object_override(self) -> None:
+        cfg = HistoryConfig.from_dict({"session_digest": {"enabled": True, "days": 14}})
+        assert cfg.session_digest.enabled is True
+        assert cfg.session_digest.days == 14
+
+    def test_evolution_defaults(self) -> None:
+        cfg = HistoryConfig.from_dict({})
+        assert cfg.evolution.feedback_min_recurrence == 2
+        assert cfg.evolution.bypass_min_count == 2
+
+    def test_go_no_go_defaults(self) -> None:
+        cfg = HistoryConfig.from_dict({})
+        assert cfg.go_no_go.correction_penalty == -0.2
+
+    def test_capture_issue_defaults(self) -> None:
+        cfg = HistoryConfig.from_dict({})
+        assert cfg.capture_issue.dup_overlap_threshold == 0.7
+
+    def test_unknown_key_ignored(self) -> None:
+        cfg = HistoryConfig.from_dict({"unknown_key": "value"})
+        assert cfg.velocity_window == 10
+
+
+class TestBRConfigHistoryIntegration:
+    """Integration tests for BRConfig.history property (ENH-1913)."""
+
+    def test_history_property_exists(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert hasattr(config, "history")
+
+    def test_history_returns_history_config(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert isinstance(config.history, HistoryConfig)
+
+    def test_history_defaults_on_absent(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert config.history.velocity_window == 10
+        assert config.history.max_age_days is None
+        assert config.history.session_digest.enabled is False
+        assert config.history.evolution.feedback_min_recurrence == 2
+
+    def test_history_loads_from_config(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        sample_config["history"] = {
+            "velocity_window": 15,
+            "max_age_days": 60,
+            "session_digest": {"enabled": True, "days": 14},
+        }
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+        assert config.history.velocity_window == 15
+        assert config.history.max_age_days == 60
+        assert config.history.session_digest.enabled is True
+        assert config.history.session_digest.days == 14
+
+    def test_history_to_dict_round_trip(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        assert "history" in d
+        h = d["history"]
+        assert h["velocity_window"] == 10
+        assert h["max_age_days"] is None
+        assert h["effort_fields"] == ["session_count", "cycle_time_days"]
+        assert h["planning_skills"] == [
+            "create-sprint", "scope-epic", "manage-issue", "review-epic"
+        ]
+        assert h["session_digest"]["enabled"] is False
+        assert h["session_digest"]["days"] == 7
+        assert h["session_digest"]["char_cap"] == 1200
+        assert h["session_digest"]["sections"] == []
+        assert h["evolution"]["feedback_min_recurrence"] == 2
+        assert h["evolution"]["bypass_min_count"] == 2
+        assert h["go_no_go"]["correction_penalty"] == -0.2
+        assert h["capture_issue"]["dup_overlap_threshold"] == 0.7
+
+    def test_history_round_trip_from_dict(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        h2 = HistoryConfig.from_dict(d["history"])
+        assert h2.velocity_window == config.history.velocity_window
+        assert h2.max_age_days == config.history.max_age_days
+        assert h2.session_digest.enabled == config.history.session_digest.enabled
+        assert (
+            h2.evolution.feedback_min_recurrence
+            == config.history.evolution.feedback_min_recurrence
+        )

@@ -646,3 +646,106 @@ class EventsConfig:
             webhook=WebhookEventsConfig.from_dict(data.get("webhook", {})),
             sqlite=SqliteEventsConfig.from_dict(data.get("sqlite", {})),
         )
+
+
+@dataclass
+class SessionDigestConfig:
+    """Session digest injection configuration (ENH-1907)."""
+
+    enabled: bool = False
+    days: int = 7
+    char_cap: int = 1200
+    sections: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SessionDigestConfig:
+        """Create SessionDigestConfig from dictionary."""
+        return cls(
+            enabled=data.get("enabled", False),
+            days=data.get("days", 7),
+            char_cap=data.get("char_cap", 1200),
+            sections=data.get("sections", []),
+        )
+
+
+@dataclass
+class EvolutionConfig:
+    """Feedback evolution configuration (ENH-1911)."""
+
+    feedback_min_recurrence: int = 2
+    bypass_min_count: int = 2
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvolutionConfig:
+        """Create EvolutionConfig from dictionary."""
+        return cls(
+            feedback_min_recurrence=data.get("feedback_min_recurrence", 2),
+            bypass_min_count=data.get("bypass_min_count", 2),
+        )
+
+
+@dataclass
+class GoNoGoConfig:
+    """Go/no-go history configuration (ENH-1914)."""
+
+    correction_penalty: float = -0.2
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GoNoGoConfig:
+        """Create GoNoGoConfig from dictionary."""
+        return cls(
+            correction_penalty=data.get("correction_penalty", -0.2),
+        )
+
+
+@dataclass
+class CaptureIssueConfig:
+    """Capture-issue history configuration (ENH-1914)."""
+
+    dup_overlap_threshold: float = 0.7
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CaptureIssueConfig:
+        """Create CaptureIssueConfig from dictionary."""
+        return cls(
+            dup_overlap_threshold=data.get("dup_overlap_threshold", 0.7),
+        )
+
+
+@dataclass
+class HistoryConfig:
+    """History read/consume configuration (ENH-1913).
+
+    Single, consistent foundation for .ll/history.db read/consume configurability.
+    Owns the complete history.* namespace; consumers wire runtime + CLI only.
+    """
+
+    velocity_window: int = 10
+    effort_fields: list[str] = field(
+        default_factory=lambda: ["session_count", "cycle_time_days"]
+    )
+    max_age_days: int | None = None
+    planning_skills: list[str] = field(
+        default_factory=lambda: ["create-sprint", "scope-epic", "manage-issue", "review-epic"]
+    )
+    session_digest: SessionDigestConfig = field(default_factory=SessionDigestConfig)
+    evolution: EvolutionConfig = field(default_factory=EvolutionConfig)
+    go_no_go: GoNoGoConfig = field(default_factory=GoNoGoConfig)
+    capture_issue: CaptureIssueConfig = field(default_factory=CaptureIssueConfig)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HistoryConfig:
+        """Create HistoryConfig from dictionary. Lenient: ignores unknown keys, never raises."""
+        return cls(
+            velocity_window=data.get("velocity_window", 10),
+            effort_fields=data.get("effort_fields", ["session_count", "cycle_time_days"]),
+            max_age_days=data.get("max_age_days", None),
+            planning_skills=data.get(
+                "planning_skills",
+                ["create-sprint", "scope-epic", "manage-issue", "review-epic"],
+            ),
+            session_digest=SessionDigestConfig.from_dict(data.get("session_digest", {})),
+            evolution=EvolutionConfig.from_dict(data.get("evolution", {})),
+            go_no_go=GoNoGoConfig.from_dict(data.get("go_no_go", {})),
+            capture_issue=CaptureIssueConfig.from_dict(data.get("capture_issue", {})),
+        )

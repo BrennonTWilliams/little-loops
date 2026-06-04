@@ -271,6 +271,35 @@ class TestConfigSchema:
         assert enabled["type"] == "boolean"
         assert enabled["default"] is False
 
+    def test_history_in_schema(self) -> None:
+        """history block must be declared in config-schema.json (ENH-1913).
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing 'history' will be rejected unless the property is
+        declared here. This block is the sole owner of the history.* namespace.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "history" in data["properties"], (
+            "history is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        history = data["properties"]["history"]
+        assert history["type"] == "object"
+        assert history.get("additionalProperties") is False
+        assert "velocity_window" in history["properties"]
+        assert history["properties"]["velocity_window"]["type"] == "integer"
+        assert history["properties"]["velocity_window"]["default"] == 10
+        assert "max_age_days" in history["properties"]
+        assert "null" in history["properties"]["max_age_days"]["type"]
+        assert history["properties"]["max_age_days"]["default"] is None
+        assert "session_digest" in history["properties"]
+        assert history["properties"]["session_digest"]["type"] == "object"
+        assert history["properties"]["session_digest"].get("additionalProperties") is False
+        assert "evolution" in history["properties"]
+        assert history["properties"]["evolution"].get("additionalProperties") is False
+        assert "go_no_go" in history["properties"]
+        assert "capture_issue" in history["properties"]
+
     def test_analytics_capture_in_schema(self) -> None:
         """analytics.capture sub-object must be declared so additionalProperties: false
         doesn't silently reject it (ENH-1840)."""

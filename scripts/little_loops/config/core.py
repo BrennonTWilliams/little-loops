@@ -25,6 +25,7 @@ from little_loops.config.features import (
     DecisionsConfig,
     DesignTokensConfig,
     EventsConfig,
+    HistoryConfig,
     IssuesConfig,
     LearningTestsConfig,
     LoopsConfig,
@@ -223,6 +224,7 @@ class BRConfig:
         self._analytics_capture = AnalyticsCaptureConfig.from_dict(
             self._raw_config.get("analytics", {}).get("capture", {})
         )
+        self._history = HistoryConfig.from_dict(self._raw_config.get("history", {}))
 
     @property
     def project(self) -> ProjectConfig:
@@ -313,6 +315,11 @@ class BRConfig:
     def analytics_capture(self) -> AnalyticsCaptureConfig:
         """Get analytics capture configuration."""
         return self._analytics_capture
+
+    @property
+    def history(self) -> HistoryConfig:
+        """Get history read/consume configuration."""
+        return self._history
 
     @property
     def extensions(self) -> list[str]:
@@ -630,6 +637,28 @@ class BRConfig:
                     "url": self._events.webhook.url,
                     "batch_ms": self._events.webhook.batch_ms,
                     "headers": dict(self._events.webhook.headers),
+                },
+            },
+            "history": {
+                "velocity_window": self._history.velocity_window,
+                "effort_fields": list(self._history.effort_fields),
+                "max_age_days": self._history.max_age_days,
+                "planning_skills": list(self._history.planning_skills),
+                "session_digest": {
+                    "enabled": self._history.session_digest.enabled,
+                    "days": self._history.session_digest.days,
+                    "char_cap": self._history.session_digest.char_cap,
+                    "sections": list(self._history.session_digest.sections),
+                },
+                "evolution": {
+                    "feedback_min_recurrence": self._history.evolution.feedback_min_recurrence,
+                    "bypass_min_count": self._history.evolution.bypass_min_count,
+                },
+                "go_no_go": {
+                    "correction_penalty": self._history.go_no_go.correction_penalty,
+                },
+                "capture_issue": {
+                    "dup_overlap_threshold": self._history.capture_issue.dup_overlap_threshold,
                 },
             },
             "sync": {
