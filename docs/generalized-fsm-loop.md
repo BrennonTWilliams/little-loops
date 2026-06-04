@@ -1927,6 +1927,7 @@ What kind of automation loop do you want to create?
   ○ Maintain constraints
   ○ Drive a metric toward a target
   ○ Run a sequence of steps
+  ○ Route / compose / supervise other loops
   ○ Other...
 
 > Fix until clean

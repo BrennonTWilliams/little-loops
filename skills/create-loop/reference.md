@@ -1109,6 +1109,30 @@ Max iterations: 10
 Sub-loops: lint-fix, test-suite
 ```
 
+### Orchestration (Router)
+```
+States: classify, score, dispatch, review, done
+Initial: classify
+
+Transitions:
+  classify:
+    - on_yes -> score
+    - on_no -> done
+    - on_error -> done
+  score:
+    - next -> dispatch
+  dispatch:
+    - on_yes -> review
+    - on_no -> review
+    - on_error -> review
+  review:
+    - on_yes -> done
+    - on_no -> classify
+  done: [terminal]
+```
+
+The `dispatch` state uses dynamic loop interpolation: `loop: "${captured.chosen.output}"`. Clone the built-in via `ll-loop install loop-router`.
+
 ---
 
 ## RL Loop State Structures

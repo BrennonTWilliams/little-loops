@@ -1549,6 +1549,95 @@ states:
 
 ---
 
+## Orchestration Loops
+
+If user selected any of the three Orch loop types, follow the steps below for that type.
+
+The **Router** shape can be created via the wizard; **Composer** and **Supervisor** shapes are forthcoming under EPIC-1811 (FEAT-1808, FEAT-1809).
+
+---
+
+### Orch Router Questions
+
+If user selected "Orch: Router (dynamic dispatch)":
+
+#### Step O1 — Goal Classification Prompt
+
+Ask:
+
+```yaml
+questions:
+  - question: "What kind of goals will this router classify?"
+    header: "Goal domain"
+    multiSelect: false
+    options:
+      - label: "Any natural language goal (Recommended)"
+        description: "Use loop-router.yaml as-is — it classifies any goal against all available loops"
+      - label: "Custom domain"
+        description: "Specify a narrower goal domain to constrain candidate loops"
+```
+
+#### Step O2 — Dispatch Confidence
+
+Ask:
+
+```yaml
+questions:
+  - question: "What confidence threshold should trigger automatic dispatch (no human confirmation)?"
+    header: "Auto-dispatch threshold"
+    multiSelect: false
+    options:
+      - label: "0.7 (Recommended)"
+        description: "Auto-dispatch when confidence ≥ 0.7; prompt for confirmation below"
+      - label: "0.9"
+        description: "High confidence required before auto-dispatch"
+      - label: "0.5"
+        description: "Aggressive auto-dispatch — fewer confirmation prompts"
+      - label: "Never auto-dispatch"
+        description: "Always prompt for human confirmation before dispatching"
+```
+
+#### Orch Router YAML Generation
+
+Variables:
+- `<goal_domain>` — the goal domain description from O1 (or "any natural language goal")
+- `<confidence_threshold>` — numeric threshold from O2 (or `"0.7"` if "Never auto-dispatch", set `auto: "false"`)
+
+**Recommended approach — clone the built-in:**
+```
+ll-loop install loop-router
+```
+Then customize the `context:` block:
+```yaml
+context:
+  auto: "true"              # set to "false" if "Never auto-dispatch" selected
+  confidence_threshold: "<confidence_threshold>"
+  exclude: ""               # comma-separated loop names to exclude from the catalog
+```
+
+The `dispatch` state uses dynamic loop interpolation:
+```yaml
+dispatch:
+  loop: "${captured.chosen.output}"
+  timeout: 3600
+  with:
+    input: "${captured.derived_params.output}"
+  capture: sub_loop_output
+  on_yes: review
+  on_no: review
+  on_error: review
+```
+
+### Orch Composer and Supervisor
+
+These shapes are forthcoming under EPIC-1811:
+- **Composer** (FEAT-1808): Decomposes a goal into a sequence of sub-loops connected via `depends_on` in a DAG structure.
+- **Supervisor** (FEAT-1809): Runs a loop, monitors outcomes, and re-plans the sub-loop sequence on failure via a `reassess` gate.
+
+When FEAT-1808 and FEAT-1809 reach `done`, this section will be expanded with full wizard flows for each shape. In the meantime, direct users to EPIC-1811 for status.
+
+---
+
 ## RL Loops
 
 If user selected any of the three RL loop types, follow the steps below for that type.

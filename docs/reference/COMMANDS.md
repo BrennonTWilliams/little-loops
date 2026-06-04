@@ -546,7 +546,7 @@ Create FSM loop configurations — interactively or from a natural language desc
 - `description` — Natural language description of the loop. When provided, the skill infers loop type and parameters, shows a confirmation summary, and jumps directly to YAML preview — skipping the guided wizard.
 
 **Workflow (no args — interactive):**
-1. Select loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence, harness, RL variants, meta-optimize)
+1. Select loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence, harness, RL variants, meta-optimize, orch-router)
 2. Configure type-specific parameters
 3. Name and preview the FSM YAML
 4. Save to `.loops/<name>.yaml` and validate
@@ -563,6 +563,7 @@ Create FSM loop configurations — interactively or from a natural language desc
 /ll:create-loop reduce lint errors to zero using ruff check, max 8 iterations
 /ll:create-loop harness the refine-issue skill and iterate until the issue is implementation-ready
 /ll:create-loop maintain tests passing and types clean, call it quality-guardian
+/ll:create-loop route a goal to the right loop for this project
 ```
 
 **See also:** `docs/generalized-fsm-loop.md` for FSM schema details.

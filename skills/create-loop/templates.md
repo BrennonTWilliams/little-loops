@@ -20,6 +20,8 @@ questions:
         description: "Wrap any skill with evaluate-iterate. Pattern: execute → check → advance → done"
       - label: "Optimize a harness (meta-loop)"
         description: "Score-gated hill-climbing on a harness artifact. Pattern: diagnose → baseline → propose → apply → score → gate → commit/revert → done"
+      - label: "Route / compose / supervise other loops"
+        description: "Dispatch a goal to the best-fit existing loop, or compose a sequence of loops. Pattern: classify → score → dispatch → review → done"
 ```
 
 **After template selection**: Continue to Step 0.2 (Template Customization), then skip to Step 4 (Preview and Confirm) with template-populated configuration.
@@ -445,6 +447,24 @@ Error: scorer is required for meta-optimize loops.
 ```
 
 **Apply substitutions:** Replace `{{targets}}`, `{{scorer}}`, `{{target_score}}`, `{{tasks_dir}}`, `{{diagnose_action_type}}` (`shell` or `prompt`), `{{diagnose_action}}`, `{{max_iterations}}` (default 30), `{{loop_name}}` (auto-suggest: `optimize-<artifact-basename>`), `{{description}}`.
+
+### For "Route / compose / supervise other loops"
+
+```yaml
+questions:
+  - question: "Which orchestration shape fits your use case?"
+    header: "Orch shape"
+    multiSelect: false
+    options:
+      - label: "Router — dispatch goal to best-fit loop (Recommended)"
+        description: "Classifies a natural language goal, scores candidate loops, dispatches to the winner"
+      - label: "Composer — decompose goal into a DAG of sub-loops"
+        description: "Forthcoming — see EPIC-1811 (FEAT-1808)"
+      - label: "Supervisor — run loop, reassess on failure, re-plan"
+        description: "Forthcoming — see EPIC-1811 (FEAT-1809)"
+```
+
+**Apply substitutions:** For the Router shape, clone `loop-router.yaml` via `ll-loop install loop-router` and customize context knobs (`auto`, `confidence_threshold`, `exclude`). Composer and Supervisor shapes are not yet available — see EPIC-1811.
 
 ---
 

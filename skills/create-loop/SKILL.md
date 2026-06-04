@@ -45,6 +45,7 @@ Read the description and infer the following fields:
 - "generate", "score", "RLHF", "quality", "candidate" → `rl-rlhf`
 - "policy", "act", "observe", "reward", "agent" → `rl-policy`
 - "optimize", "meta", "improve loop", "improve skill", "improve command" → `meta-optimize`
+- "route", "dispatch", "compose", "orchestrate", "supervisor", "router" → `orch-router`
 
 **Key parameters** — extract as many as possible from the description:
 - Check/fix command (e.g., "run pytest", "run mypy", "run ruff")
@@ -144,6 +145,12 @@ questions:
         description: "Agent acts, observes reward, improves policy toward a target. Best for: environment interaction, agent training simulations, adaptive automation."
       - label: "Optimize a harness (meta-loop)"
         description: "Iteratively improve a loop YAML, skill, agent, or command using an external scorer. Generates diagnosis-first scaffolding required for meta-loops (SHOR-compliant)."
+      - label: "Orch: Router (dynamic dispatch)"
+        description: "Classify a goal and dispatch to the best-fit existing loop. Pattern: classify → score → dispatch → review → done"
+      - label: "Orch: Composer (goal → DAG)"
+        description: "Decompose a goal into a sequence of sub-loops run via depends_on. Forthcoming — see EPIC-1811."
+      - label: "Orch: Supervisor (adaptive re-plan)"
+        description: "Run a loop, reassess on failure, re-plan the sub-loop sequence. Forthcoming — see EPIC-1811."
 ```
 
 **Type Mapping:**
@@ -158,6 +165,9 @@ questions:
 - "RL: RLHF-style (generate → score → refine)" -> `rl-rlhf` type (states: generate, score, refine, done)
 - "RL: Policy iteration (act → observe → improve)" -> `rl-policy` type (states: act, observe, score, improve, done)
 - "Optimize a harness (meta-loop)" -> `meta-optimize` type (states: diagnose, baseline, propose, apply, score, gate, commit_or_revert, done)
+- "Orch: Router (dynamic dispatch)" -> `orch-router` type (states: classify, score, dispatch, review, done)
+- "Orch: Composer (goal → DAG)" -> `orch-composer` type — forthcoming (EPIC-1811)
+- "Orch: Supervisor (adaptive re-plan)" -> `orch-supervisor` type — forthcoming (EPIC-1811)
 
 ### Step 2: Type-Specific Questions
 
