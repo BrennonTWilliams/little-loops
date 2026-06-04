@@ -12,7 +12,12 @@ import pytest
 import yaml
 
 from little_loops.fsm import is_runnable_loop
-from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+from little_loops.fsm.validation import (
+    ValidationSeverity,
+    _validate_partial_route_dead_end,
+    load_and_validate,
+    validate_fsm,
+)
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 
@@ -210,6 +215,27 @@ class TestBuiltinLoopFiles:
             assert not diagnose.get("terminal", False), (
                 f"{loop_file.name}: 'diagnose' state must not be terminal"
             )
+
+
+class TestMR4BuiltinFalsePositives:
+    """MR-4 (ENH-1917): verify no false positives on known built-in loops."""
+
+    def test_generator_evaluator_no_mr4_warnings(self) -> None:
+        """generator-evaluator oracle has no MR-4 partial-route dead-end warnings.
+
+        The generate state's fix (yes/no/partial → evaluate) must pass clean —
+        the loop is the root-cause origin of ENH-1917, so this is a regression guard.
+        test_all_validate_as_valid_fsm only checks ERROR severity; this test asserts
+        no MR-4 WARNINGs specifically.
+        """
+        loop_file = BUILTIN_LOOPS_DIR / "oracles" / "generator-evaluator.yaml"
+        assert loop_file.exists(), f"generator-evaluator.yaml not found at {loop_file}"
+        fsm, _ = load_and_validate(loop_file)
+        errors = _validate_partial_route_dead_end(fsm)
+        assert errors == [], (
+            f"generator-evaluator.yaml produced unexpected MR-4 warnings: "
+            f"{[e.message for e in errors]}"
+        )
 
 
 class TestBuiltinLoopResolution:

@@ -1,14 +1,22 @@
 ---
-status: open
+status: done
 discovered_date: 2026-06-04
 discovered_by: capture-issue
 captured_at: '2026-06-04T00:59:01Z'
-relates_to: [ENH-1819]
+completed_at: '2026-06-04T01:48:16Z'
+relates_to:
+- ENH-1819
 labels:
 - validation
 - loop-authoring
 - harness
 - captured
+confidence_score: 98
+outcome_confidence: 84
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # P2-ENH-1917: ll-loop validate warning for prompt states that route only on_yes (silent partial/no dead-end)
@@ -97,9 +105,14 @@ verdict is intentional.
   The existing shorthand-vs-route check lives here (~line 598, `has_shorthand`/
   `has_route`); the MR-1/MR-3 meta-rule checks and their suppression handling
   live in the same module (~lines 1037–1276). The new rule sits alongside them.
-- `scripts/little_loops/fsm/schema.py` — register the `partial_route_ok`
-  top-level loop key next to the existing `meta_self_eval_ok` / `shared_state_ok`
-  flags (line 145–146).
+- `scripts/little_loops/fsm/schema.py` — register `partial_route_ok: bool = False`
+  in the `FSMLoop` dataclass (lines 968–969, next to `meta_self_eval_ok` /
+  `shared_state_ok`); also add the `to_dict()` emission guard (~line 1034) and the
+  `from_dict()` read (~line 1090), following the identical 3-site pattern of the
+  existing flags.
+- `scripts/little_loops/fsm/validation.py` — additionally register `partial_route_ok`
+  in `KNOWN_TOP_LEVEL_KEYS` (lines 119–153) so the key does not produce an "Unknown
+  top-level key" warning on loops that use it.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — `_route` (line 1294). No change, but
@@ -119,9 +132,33 @@ verdict is intentional.
 - `scripts/tests/test_builtin_loops.py` — assert no new false positives across
   all built-in loops (the `generator-evaluator` fix should pass clean).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_schema.py` — add `TestPartialRouteOk` class (3 round-trip
+  serialization tests: `partial_route_ok=True` round-trips in `to_dict()`/`from_dict()`;
+  `partial_route_ok=False` omitted from `to_dict()`; `from_dict()` without the key
+  defaults to `False`). Mirror the `TestSharedStateOk` pattern at lines 3087–3122.
+  Also add `test_partial_route_ok_recognized_as_top_level_key` (YAML round-trip via
+  `load_and_validate()`, no "Unknown top-level" warning). [Agent 2 + 3 finding]
+
 ### Documentation
 - `.claude/CLAUDE.md` § Loop Authoring — add the new rule and `partial_route_ok`
   suppression note, consistent with the existing MR-1/MR-3 entries.
+- `skills/review-loop/reference.md` — add MR-4 to the rule-code table (MR-1 and
+  MR-2 are listed; MR-3 was added after `reference.md` was last updated and is
+  missing; add both MR-3 and MR-4 for completeness).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `ll-loop validate` section currently lists only MR-1
+  and MR-2 bullet entries; add MR-3 (`shared_state_ok: true`) and MR-4
+  (`partial_route_ok: true`) bullets; update the suppression sentence to name all
+  four flags. [Agent 2 finding]
+- `docs/reference/API.md` — two locations: (1) `#### FSMLoop` pseudocode block
+  currently lists `meta_self_eval_ok` but omits `shared_state_ok` and
+  `partial_route_ok` — add both; (2) `#### validate_fsm` "Checks performed"
+  bullet list ends at MR-2 — add MR-3 and MR-4 entries. [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` — `## Beyond the Basics` section documents MR-1
+  and MR-3 in paragraph form; add a parallel MR-4 paragraph after the MR-3
+  entry (around line 1621). [Agent 2 finding]
 
 ### Configuration
 - N/A — `partial_route_ok` is a per-loop YAML top-level key (registered in
@@ -129,25 +166,37 @@ verdict is intentional.
 
 ## Implementation Steps
 
-1. Locate the validator that owns the existing route/`on_error` and MR-1/MR-3
-   checks (`scripts/little_loops/fsm/validation.py`, the module feeding
-   `ll-loop validate`).
-2. Add a per-state predicate implementing the 3 conditions above. Reuse the
-   existing logic that decides whether a state gets the default LLM judge (the
-   same determination `_route`/executor uses) rather than re-deriving it.
-3. Emit a WARNING-severity finding naming the state and missing verdict routes;
-   wire the `partial_route_ok` top-level suppression.
-4. Tests: add a fixture loop with an `on_yes`-only prompt state and assert the
-   warning fires; assert it does NOT fire when `next:`, a full `route:` with
-   default, or `on_no`+`on_partial` are present, and when suppressed.
-5. Run `ll-loop validate` across all built-in loops and confirm no false
-   positives on existing well-formed loops (the generator-evaluator fix should
-   now pass clean).
+1. In `scripts/little_loops/fsm/validation.py`, add `_validate_partial_route_dead_end(fsm: FSMLoop) -> list[ValidationError]` following the MR-3 pattern (`_validate_artifact_isolation`, lines 1253–1283): early-return on `fsm.partial_route_ok`, iterate per-state, emit `ValidationSeverity.WARNING` at `path=f"states.{state_name}"`.
+
+2. **Default-judge detection** — replicate `_action_mode()` from `executor.py:1390` (do not call it; it is runtime code). A state is LLM-judged when:
+   - `state.evaluate is None` AND (`state.action_type in ("prompt", "slash_command")` OR `state.action_type is None and state.action.startswith("/")`)
+   - OR `state.evaluate is not None and state.evaluate.type in ("llm_structured", "check_semantic")`
+
+3. **Dead-end condition** — after confirming a state is LLM-judged AND uses shorthand routing (`state.route is None AND state.next is None`), flag it when `state.on_yes is not None and (state.on_no is None or state.on_partial is None)`. States with `on_no` AND `on_partial` both set, or with `state.next`, or with a full `route:` table, are safe.
+
+4. Wire the new rule into `validate_fsm()` (lines 985–1001) with `errors.extend(_validate_partial_route_dead_end(fsm))` after the existing `_validate_harness_multimodal_evaluator_blind_spot` call.
+
+5. Register `partial_route_ok` in `schema.py` `FSMLoop` dataclass (lines 968–969), `to_dict()` (~line 1034), and `from_dict()` (~line 1090); add to `KNOWN_TOP_LEVEL_KEYS` in `validation.py` (lines 119–153).
+
+6. Tests in `scripts/tests/test_fsm_validation.py` — create `TestPartialRouteDeadEnd` using `make_state()` (line 40) and the `TestArtifactIsolation` class as a structural template. Required cases: fires on `prompt` state with `on_yes`-only; does NOT fire when `on_no`+`on_partial` both set; does NOT fire when `next:` present; does NOT fire when full `route:` table present; does NOT fire for a non-LLM evaluator (e.g. `exit_code`); suppressed by `partial_route_ok: true`; wired into `validate_fsm()`.
+
+7. Add a dedicated false-positive test for `generator-evaluator.yaml` in `test_builtin_loops.py` — call `_validate_partial_route_dead_end(fsm)` directly and assert `errors == []` (note: `test_all_validate_as_valid_fsm` only checks ERROR severity and will not catch WARNING false positives).
+
+8. Update `.claude/CLAUDE.md` § Loop Authoring and `skills/review-loop/reference.md` with the MR-4 rule entry.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. Add `TestPartialRouteOk` class to `scripts/tests/test_fsm_schema.py` — 3 round-trip serialization tests for `partial_route_ok` (mirror `TestSharedStateOk` at lines 3087–3122); also add `test_partial_route_ok_recognized_as_top_level_key` via `load_and_validate()`.
+10. Update `docs/reference/CLI.md` — add MR-3 and MR-4 bullet entries under `ll-loop validate`; update the suppression sentence to include `partial_route_ok: true`.
+11. Update `docs/reference/API.md` — (a) add `partial_route_ok: bool = False` and `shared_state_ok: bool = False` to the `FSMLoop` pseudocode block; (b) add MR-3 and MR-4 bullets to the `validate_fsm` "Checks performed" list.
+12. Update `docs/guides/LOOPS_GUIDE.md` — add MR-4 paragraph after the MR-3 entry in `## Beyond the Basics`.
 
 ## API/Interface
 
-- New validation rule code (e.g. `VR-?`/`MR-?` per the existing scheme) surfaced
-  by `ll-loop validate`.
+- **Rule code: MR-4** (MR-3 is the most recently added meta-rule; MR-4 is next
+  in the series). Surfaced by `ll-loop validate` alongside MR-1 through MR-3.
 - New optional top-level loop key `partial_route_ok: true` to suppress.
 - No change to FSM runtime routing semantics (this is static validation only).
   Runtime diagnostics for unmapped verdicts were considered and deferred (not
@@ -199,11 +248,29 @@ verdict is intentional.
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-04T01:36:30 - `2633bc25-92d3-4316-ad8f-a1cc361132fd.jsonl`
+- `/ll:wire-issue` - 2026-06-04T01:31:35 - `b13525d6-c98d-4ecb-8272-c015b59a2e9d.jsonl`
+- `/ll:refine-issue` - 2026-06-04T01:24:59 - `c4f4893e-57f1-4b73-b183-061e7162680d.jsonl`
 - `/ll:format-issue` - 2026-06-04T01:06:14 - `757f3c54-d01d-4dee-a981-dcb7ddf1804c.jsonl`
 - `/ll:capture-issue` - 2026-06-04T00:59:01Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/401066ef-7fde-4c47-a6e9-bf52970f6eab.jsonl`
 
 ---
 
+## Resolution
+
+- **Implemented**: 2026-06-04
+- **Changes**:
+  - `scripts/little_loops/fsm/schema.py` — added `partial_route_ok: bool = False` field with `to_dict()`/`from_dict()` round-trip support
+  - `scripts/little_loops/fsm/validation.py` — added `_is_llm_judged()` helper, `_validate_partial_route_dead_end()` rule (MR-4, WARNING severity), wired into `validate_fsm()`, added `partial_route_ok` to `KNOWN_TOP_LEVEL_KEYS`
+  - `scripts/tests/test_fsm_validation.py` — added `TestPartialRouteDeadEnd` class (14 tests)
+  - `scripts/tests/test_fsm_schema.py` — added `TestPartialRouteOk` class (3 round-trip tests)
+  - `scripts/tests/test_builtin_loops.py` — added `TestMR4BuiltinFalsePositives` class (regression guard for `generator-evaluator.yaml`)
+  - `.claude/CLAUDE.md` — added MR-4 entry to Loop Authoring section
+  - `skills/review-loop/reference.md` — added MR-3 and MR-4 to rule-code table
+  - `docs/reference/CLI.md` — added MR-3 and MR-4 bullet entries under `ll-loop validate`
+  - `docs/reference/API.md` — added `shared_state_ok`/`partial_route_ok` to `FSMLoop` pseudocode; added MR-3 and MR-4 to `validate_fsm` checks list
+  - `docs/guides/LOOPS_GUIDE.md` — added MR-4 paragraph after MR-3 entry
+
 ## Status
 
-- **Current**: open
+- **Current**: done

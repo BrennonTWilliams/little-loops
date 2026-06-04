@@ -4074,6 +4074,8 @@ class FSMLoop:
     targets: list[TargetFileSpec] = []  # Per-FSM-state targeting spec for harness-optimize APO (ENH-1552)
     circuit: CircuitConfig | None = None  # Top-level safety knobs; currently the stall detector (FEAT-1637)
     meta_self_eval_ok: bool = False       # Suppress MR-1/MR-2 meta-loop lint rules (ENH-1665)
+    shared_state_ok: bool = False         # Suppress MR-3 artifact-isolation lint rule
+    partial_route_ok: bool = False        # Suppress MR-4 partial-route dead-end lint rule (ENH-1917)
     imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
 
@@ -4680,6 +4682,8 @@ Validate FSM structure and return list of errors.
 - Warns (WARNING) when a failure-named terminal state (e.g. `failed`, `error`, `aborted`) has no predecessor state with a diagnostic action
 - **MR-1 (ERROR)**: meta-loop (writes harness artifacts or imports `lib/benchmark.yaml`) must have at least one non-LLM evaluator; suppress with `meta_self_eval_ok: true` (ENH-1665)
 - **MR-2 (WARNING)**: meta-loop should reference a captured baseline value in a later evaluator (measure→propose→apply→re-measure spine); suppress with `meta_self_eval_ok: true` (ENH-1665)
+- **MR-3 (WARNING)**: loop writes intermediate artifacts to shared `.loops/tmp/` instead of `${context.run_dir}/`; suppress with `shared_state_ok: true`
+- **MR-4 (WARNING)**: LLM-judged state maps `on_yes` but has no route for `no`/`partial` verdicts with no `next:` or `route:` table — dead-ends the loop; suppress with `partial_route_ok: true` (ENH-1917)
 
 **Example:**
 ```python

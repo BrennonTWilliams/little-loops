@@ -29,6 +29,7 @@ from little_loops.fsm.validation import (
     _validate_input_key_without_guard,
     _validate_meta_loop_evaluation,
     _validate_parameters,
+    _validate_partial_route_dead_end,
     _validate_progress_paths_isolation,
     _validate_state_action,
     _validate_zero_retry_counter,
@@ -1119,6 +1120,190 @@ class TestArtifactIsolation:
             "states:\n"
             "  work:\n"
             "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
+
+class TestPartialRouteDeadEnd:
+    """MR-4 (ENH-1917): LLM-judged states with only on_yes have a partial/no dead-end."""
+
+    def _prompt_fsm(
+        self,
+        *,
+        on_yes: str | None = "done",
+        on_no: str | None = None,
+        on_partial: str | None = None,
+        next_state: str | None = None,
+        action_type: str | None = "prompt",
+        partial_route_ok: bool = False,
+        with_route: bool = False,
+    ) -> FSMLoop:
+        state_kwargs: dict = {
+            "action": "Do something",
+            "on_error": "failed",
+        }
+        if action_type is not None:
+            state_kwargs["action_type"] = action_type
+        if on_yes is not None:
+            state_kwargs["on_yes"] = on_yes
+        if on_no is not None:
+            state_kwargs["on_no"] = on_no
+        if on_partial is not None:
+            state_kwargs["on_partial"] = on_partial
+        if next_state is not None:
+            state_kwargs["next"] = next_state
+        if with_route:
+            from little_loops.fsm.schema import RouteConfig
+
+            state_kwargs.pop("on_yes", None)
+            state_kwargs["route"] = RouteConfig(routes={"yes": "done"}, default="done")
+        return FSMLoop(
+            name="test-loop",
+            initial="generate",
+            states={
+                "generate": make_state(**state_kwargs),
+                "done": make_state(terminal=True),
+                "failed": make_state(terminal=True),
+            },
+            partial_route_ok=partial_route_ok,
+        )
+
+    # --- positive controls ---
+
+    def test_mr4_fires_for_on_yes_only_prompt_state(self) -> None:
+        """MR-4 WARNING fires when a prompt state has only on_yes with no on_no/on_partial."""
+        fsm = self._prompt_fsm()
+        errors = _validate_partial_route_dead_end(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "generate" in errors[0].message
+        assert "ENH-1917" in errors[0].message
+        assert errors[0].path == "states.generate"
+
+    def test_mr4_fires_when_on_partial_missing(self) -> None:
+        """MR-4 fires when on_no is set but on_partial is missing."""
+        fsm = self._prompt_fsm(on_no="generate")
+        errors = _validate_partial_route_dead_end(fsm)
+        assert len(errors) == 1
+        assert "`partial`" in errors[0].message
+
+    def test_mr4_fires_when_on_no_missing(self) -> None:
+        """MR-4 fires when on_partial is set but on_no is missing."""
+        fsm = self._prompt_fsm(on_partial="generate")
+        errors = _validate_partial_route_dead_end(fsm)
+        assert len(errors) == 1
+        assert "`no`" in errors[0].message
+
+    def test_mr4_fires_for_slash_command_action_type(self) -> None:
+        """MR-4 fires for slash_command action_type, not just prompt."""
+        fsm = self._prompt_fsm(action_type="slash_command")
+        errors = _validate_partial_route_dead_end(fsm)
+        assert len(errors) == 1
+
+    def test_mr4_fires_for_implicit_prompt_via_slash_prefix(self) -> None:
+        """MR-4 fires for a /slash action with no explicit action_type."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="run",
+            states={
+                "run": make_state(action="/ll:some-skill", on_yes="done", on_error="failed"),
+                "done": make_state(terminal=True),
+                "failed": make_state(terminal=True),
+            },
+        )
+        errors = _validate_partial_route_dead_end(fsm)
+        assert len(errors) == 1
+
+    # --- negative controls ---
+
+    def test_mr4_does_not_fire_when_on_no_and_on_partial_both_set(self) -> None:
+        """No warning when both on_no and on_partial are mapped."""
+        fsm = self._prompt_fsm(on_no="generate", on_partial="generate")
+        errors = _validate_partial_route_dead_end(fsm)
+        assert errors == []
+
+    def test_mr4_does_not_fire_when_next_present(self) -> None:
+        """No warning when next: provides an unconditional handoff."""
+        fsm = self._prompt_fsm(on_yes=None, next_state="done")
+        errors = _validate_partial_route_dead_end(fsm)
+        assert errors == []
+
+    def test_mr4_does_not_fire_for_full_route_table(self) -> None:
+        """No warning when a full route: table (with default) is used."""
+        fsm = self._prompt_fsm(with_route=True)
+        errors = _validate_partial_route_dead_end(fsm)
+        assert errors == []
+
+    def test_mr4_does_not_fire_for_non_llm_evaluator(self) -> None:
+        """No warning when the state uses a deterministic exit_code evaluator."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="build",
+            states={
+                "build": make_state(
+                    action="make",
+                    action_type="shell",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_error="failed",
+                ),
+                "done": make_state(terminal=True),
+                "failed": make_state(terminal=True),
+            },
+        )
+        errors = _validate_partial_route_dead_end(fsm)
+        assert errors == []
+
+    def test_mr4_does_not_fire_when_on_yes_absent(self) -> None:
+        """No warning when on_yes is not set at all (nothing to flag)."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="run",
+            states={
+                "run": make_state(action="Do something", action_type="prompt", on_no="run"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_partial_route_dead_end(fsm)
+        assert errors == []
+
+    # --- suppression ---
+
+    def test_mr4_suppressed_by_partial_route_ok(self) -> None:
+        """partial_route_ok: true suppresses MR-4 entirely."""
+        fsm = self._prompt_fsm(partial_route_ok=True)
+        errors = _validate_partial_route_dead_end(fsm)
+        assert errors == []
+
+    # --- wiring ---
+
+    def test_mr4_runs_via_validate_fsm(self) -> None:
+        """validate_fsm() wires in MR-4 (end-to-end, not just direct call)."""
+        fsm = self._prompt_fsm()
+        errors = validate_fsm(fsm)
+        mr4 = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING and "ENH-1917" in e.message
+        ]
+        assert len(mr4) == 1
+
+    def test_partial_route_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level partial_route_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop where dead-ending on non-yes is intentional\n"
+            "initial: run\n"
+            "partial_route_ok: true\n"
+            "states:\n"
+            "  run:\n"
+            "    action: /ll:do-thing\n"
             "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"

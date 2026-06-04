@@ -144,6 +144,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "circuit",
         "meta_self_eval_ok",
         "shared_state_ok",
+        "partial_route_ok",
         "import",
         "fragments",
         "from",
@@ -992,6 +993,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_harness_multimodal_evaluator_blind_spot(fsm))
 
+    errors.extend(_validate_partial_route_dead_end(fsm))
+
     errors.extend(_validate_zero_retry_counter(fsm))
 
     errors.extend(_validate_on_max_iterations(fsm, defined_states))
@@ -1277,6 +1280,69 @@ def _validate_artifact_isolation(fsm: FSMLoop) -> list[ValidationError]:
                     "top-level if cross-run sharing is intentional."
                 ),
                 path=f"states.{state_name}.action",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+    return errors
+
+
+def _is_llm_judged(state: StateConfig) -> bool:
+    """Return True if this state will be graded by the default LLM judge.
+
+    Mirrors the action-mode detection in executor._action_mode() (not imported
+    here because that is runtime code). A state is LLM-judged when:
+    - it has no explicit evaluate block AND its action is a prompt or slash_command, OR
+    - it has an explicit evaluate block of type llm_structured or check_semantic.
+    """
+    if state.evaluate is None:
+        # Heuristic: explicit action_type wins; fall back to leading "/" on action string.
+        action_type = state.action_type
+        if action_type in ("prompt", "slash_command"):
+            return True
+        if action_type is None and state.action and state.action.lstrip().startswith("/"):
+            return True
+        return False
+    return state.evaluate.type in ("llm_structured", "check_semantic")
+
+
+def _validate_partial_route_dead_end(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-4: LLM-judged states with only on_yes have a partial/no dead-end.
+
+    A state gated by the default LLM judge can receive yes/no/partial verdicts.
+    If only on_yes is mapped (and no on_no, on_partial, next, or route table with
+    a default exist), a partial or no verdict returns None from _route and silently
+    terminates the loop — the parent treats this as failed.
+
+    Suppressed by `partial_route_ok: true` at the loop top-level for the rare
+    case where dead-ending on a non-yes verdict is intentional.
+    """
+    if fsm.partial_route_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if not _is_llm_judged(state):
+            continue
+        # States with an unconditional next: or a full route: table are safe.
+        if state.next is not None or state.route is not None:
+            continue
+        # Only flag when on_yes is set but at least one of on_no/on_partial is missing.
+        if state.on_yes is None:
+            continue
+        missing = [v for v in ("no", "partial") if getattr(state, f"on_{v}") is None]
+        if not missing:
+            continue
+        unrouted = " or ".join(f"`{v}`" for v in missing)
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] LLM-judged prompt routes only on_yes; "
+                    f"a {unrouted} verdict has no route and will dead-end the loop "
+                    "(parent reads this as failed). Add on_no/on_partial, use `next:` "
+                    "for an unconditional handoff, or a `route:` table with a default. "
+                    "Set `partial_route_ok: true` at the loop top-level to suppress "
+                    "if intentional. (ENH-1917)"
+                ),
+                path=f"states.{state_name}",
                 severity=ValidationSeverity.WARNING,
             )
         )

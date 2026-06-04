@@ -39,6 +39,8 @@ These are surfaced by running `ll-loop validate <name>`. The review skill presen
 | V-17 | Missing top-level `description:` field | Warning |
 | MR-1 | Meta-loop (writes harness artifacts or imports `lib/benchmark.yaml`) has no non-LLM evaluator; suppress with `meta_self_eval_ok: true` (ENH-1665) | Error |
 | MR-2 | Meta-loop lacks measure→propose→apply→re-measure spine: no captured baseline referenced in any evaluator; suppress with `meta_self_eval_ok: true` (ENH-1665) | Warning |
+| MR-3 | Loop writes intermediate artifacts to shared `.loops/tmp/` instead of `${context.run_dir}/`; suppress with `shared_state_ok: true` | Warning |
+| MR-4 | LLM-judged state maps `on_yes` but has no route for `no`/`partial` verdicts — dead-ends the loop (parent reads as failed); suppress with `partial_route_ok: true` (ENH-1917) | Warning |
 
 ---
 

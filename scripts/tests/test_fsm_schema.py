@@ -3122,6 +3122,44 @@ class TestSharedStateOk:
         assert fsm.shared_state_ok is False
 
 
+class TestPartialRouteOk:
+    """MR-4 (ENH-1917): partial_route_ok field round-trip serialization."""
+
+    def test_partial_route_ok_true_round_trips(self) -> None:
+        """partial_route_ok=True is present in to_dict() and restored by from_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            partial_route_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("partial_route_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.partial_route_ok is True
+
+    def test_partial_route_ok_false_omitted_from_dict(self) -> None:
+        """partial_route_ok=False (default) is omitted from to_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "partial_route_ok" not in d
+
+    def test_partial_route_ok_defaults_false(self) -> None:
+        """FSMLoop.from_dict() without partial_route_ok defaults to False."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+            }
+        )
+        assert fsm.partial_route_ok is False
+
+
 class TestContractSchema:
     """Tests for contract evaluator type in EvaluateConfig schema."""
 

@@ -128,6 +128,14 @@ the rare case where you have a justified reason. See ENH-1665.
 `shared_state_ok: true` at the loop top-level to suppress the check when
 cross-run sharing is intentional.
 
+`ll-loop validate` enforces rule 4 as WARNING severity (rule MR-4). An
+LLM-judged state (action_type: prompt/slash_command, or an explicit
+check_semantic/llm_structured evaluator) that sets `on_yes` but omits
+`on_no` or `on_partial` — with no `next:` or full `route:` table — silently
+dead-ends when the judge returns `no` or `partial`. Use
+`partial_route_ok: true` at the loop top-level to suppress the check when
+dead-ending on a non-yes verdict is intentional. See ENH-1917.
+
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.
