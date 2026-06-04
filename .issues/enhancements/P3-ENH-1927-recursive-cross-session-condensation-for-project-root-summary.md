@@ -37,6 +37,30 @@ This enhancement depends on [[BUG-1926]] (inter-level edges must exist before hi
 
 After compaction, the DAG has a navigable apex: condensed session nodes roll up (recursively, by token budget) into one or more higher-order condensed nodes, terminating in a single project-root summary. Traversal from the root reaches any session's leaves and originals.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/session_store.py` — `_compact_sessions()` and `_compact_session_conn()` (cross-session condensation pass, dedup index revision)
+- `scripts/little_loops/session_store.py` — `summary_nodes` table schema (add `level`/`depth` column, revise `idx_summary_nodes_condensed_dedup`)
+- `scripts/little_loops/history.py` — DAG traversal entry point (start from root, descend)
+
+### Dependent Files (Callers/Importers)
+- TBD — use grep to find references: `grep -r "_compact_sessions\|_compact_session_conn\|summary_nodes" scripts/`
+
+### Similar Patterns
+- TBD — search for consistency: `grep -r "condensed\|compaction\|summary" scripts/`
+
+### Tests
+- `scripts/tests/test_session_store.py` — add idempotency tests for cross-session condensation
+- `scripts/tests/test_history.py` — add root-to-leaf traversal tests
+
+### Documentation
+- `docs/reference/API.md` — update session store section with new schema and condensation behavior
+- `docs/ARCHITECTURE.md` — update DAG structure description
+
+### Configuration
+- N/A
+
 ## Implementation Steps
 
 1. After per-session condensed nodes exist, add a cross-session condensation pass (likely in `_compact_sessions()`, which already iterates all sessions) that groups condensed nodes by token budget and emits higher-order `condensed` nodes, recursing until a single root remains.
@@ -56,6 +80,17 @@ After compaction, the DAG has a navigable apex: condensed session nodes roll up 
 - Re-running compaction is idempotent (no duplicate root/higher-order nodes).
 - `ll-history` can answer a cross-session question by descending from the root.
 
+## Scope Boundaries
+
+- **In scope**: Cross-session condensation pass (`_compact_sessions()`), recursive higher-order condensation terminated by a single project-root summary node, schema migration for `level`/`depth` column and revised dedup index, `ll-history` DAG traversal from the root.
+- **Out of scope**: Changes to per-session compaction logic (FEAT-1712), inter-level edge fixes (BUG-1926), condensation content/quality tuning, changes to the `backfill()` entry-point signature.
+
+## Success Metrics
+
+- **Root node exists**: After compaction on ≥2 sessions, exactly one root summary node with `depth` = max (or `session_id IS NULL` as the apex).
+- **Idempotency**: Re-running compaction produces zero net changes (no duplicate root/higher-order nodes, no orphan condensed nodes).
+- **Traversal reachability**: From the root, `ll-history` can reach every leaf/original node across all condensed sessions within 3 hops (root → higher-order → session-condensed → leaf).
+
 ## Impact
 
 - **Who benefits**: agents/users running month-scale cross-session queries — the EPIC-1707 headline use case.
@@ -64,9 +99,8 @@ After compaction, the DAG has a navigable apex: condensed session nodes roll up 
 
 ## Status
 
----
-
 open
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T04:27:34 - `950150ed-ad92-423e-bdeb-698213762597.jsonl`
 - `/ll:capture-issue` - 2026-06-04T04:15:05Z - `92ad3505-8fca-44b2-aa0f-0ee9ce80d024.jsonl`
