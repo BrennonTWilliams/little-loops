@@ -50,6 +50,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `rn-plan` | Recursive-N planning loop — builds a structured plan from scratch with iterative rubric-driven refinement | `task` (natural language description) |
 | `rn-refine` | Recursive-N refinement loop — improves an existing plan document using the same rubric cycle | `plan_file` (path to `.md`) |
 | `rn-plan-apo` | Plan-quality gradient optimization for the `rn-plan` recursive planner — refines the planning prompt via text gradient until `target_plan_quality` is reached | `target_plan_quality` |
+| `rn-implement` | Recursive plan-and-implement with iterative deepening, dimensional routing, and convergence detection | `<issue-id>` (single or comma-separated list) |
 
 ## Research & Knowledge
 

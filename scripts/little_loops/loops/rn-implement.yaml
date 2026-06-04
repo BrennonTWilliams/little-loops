@@ -1,0 +1,722 @@
+name: rn-implement
+category: planning
+description: |
+  Recursive plan-and-implement FSM with iterative deepening, dimensional
+  routing, and convergence detection. Combines patterns from recursive-refine
+  (depth tracking, cycle detection, decomposition trees), rn-refine
+  (iterative deepening, dimensional analysis, convergence detection), and
+  autodev (interleaved implementation, inflight tracking, run isolation).
+
+  Run as: ll-loop run rn-implement "<issue-id>"
+
+  Key features:
+  - Iterative deepening: diagnose → remediate → re_assess → check_convergence
+    loop that re-enters the remediation cycle until PASS, budget exhaustion,
+    or STALLED.
+  - Dimensional diagnosis: Token-based routing (IMPLEMENT/DECIDE/WIRE/REFINE/
+    DECOMPOSE) driven by confidence-check dimensional scores.
+  - Multi-pass wire↔refine: Wire always chains into refine, which chains into
+    re_assess, creating a closed feedback loop.
+  - Convergence check: PASS/IMPROVED/STALLED routing with remediation budget
+    gating, using a custom shell script for multi-dimensional score comparison.
+  - Depth-bounded recursion: max_depth cap (default 3), depth-first child
+    enqueuing, cycle detection via a visited-set file mechanism.
+  - Run isolation: All temp files under ${context.run_dir}/ (MR-3 compliant).
+  - Non-LLM gates: check_convergence and check_remediation_budget use shell/
+    output_numeric evaluators paired with LLM semantic checks (MR-1 compliant).
+initial: init
+max_iterations: 500
+timeout: 28800
+on_handoff: spawn
+context:
+  readiness_threshold: 85
+  outcome_threshold: 75
+  max_depth: 3
+  max_remediation_passes: 3
+import:
+  - lib/common.yaml
+meta_self_eval_ok: false
+shared_state_ok: false
+partial_route_ok: true
+
+states:
+  # =========================================================================
+  # Phase 1: Foundation — Init, Queue Management, Assessment Chain
+  # =========================================================================
+
+  init:
+    action_type: shell
+    action: |
+      INPUT="${context.input}"
+      if [ -z "$INPUT" ]; then
+        echo "ERROR: No input provided. Pass an issue ID as argument."
+        exit 1
+      fi
+      RUN_DIR="${context.run_dir}"
+      mkdir -p "$RUN_DIR"
+
+      # Seed queue with input (support comma-separated list)
+      echo "$INPUT" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' > "$RUN_DIR/queue.txt"
+      QUEUE_COUNT=$(wc -l < "$RUN_DIR/queue.txt" | tr -d ' ')
+      if [ "$QUEUE_COUNT" -eq 0 ]; then
+        echo "ERROR: No valid issue IDs parsed from input: $INPUT"
+        exit 1
+      fi
+
+      # Initialize tracking files
+      : > "$RUN_DIR/visited.txt"
+      : > "$RUN_DIR/depth_capped.txt"
+      : > "$RUN_DIR/skipped.txt"
+      : > "$RUN_DIR/cycles.txt"
+      : > "$RUN_DIR/rate_limits.txt"
+      : > "$RUN_DIR/failures.txt"
+      : > "$RUN_DIR/timeouts.txt"
+
+      # Initialize counters
+      echo "0" > "$RUN_DIR/dequeue_count.txt"
+      echo "0" > "$RUN_DIR/implemented_count.txt"
+      echo "0" > "$RUN_DIR/decomposed_count.txt"
+
+      # Write config snapshot
+      printf '{"readiness_threshold":%s,"outcome_threshold":%s,"max_depth":%s,"max_remediation_passes":%s}\n' \
+        "${context.readiness_threshold}" "${context.outcome_threshold}" \
+        "${context.max_depth}" "${context.max_remediation_passes}" \
+        > "$RUN_DIR/config.json"
+
+      echo "Queue seeded with $QUEUE_COUNT issue(s)"
+      echo "$RUN_DIR"
+    capture: run_dir
+    on_yes: dequeue_next
+    on_no: failed
+    on_error: failed
+
+  dequeue_next:
+    fragment: queue_pop
+    action: |
+      QUEUE="${captured.run_dir.output}/queue.txt"
+      if [ ! -f "$QUEUE" ] || [ ! -s "$QUEUE" ]; then
+        exit 1
+      fi
+      CURRENT=$(head -1 "$QUEUE")
+      tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
+
+      # Read depth for this issue (from depth_map.txt or default 0)
+      DEPTH_MAP="${captured.run_dir.output}/depth_map.txt"
+      DEPTH=$(grep "^$CURRENT " "$DEPTH_MAP" 2>/dev/null | awk '{print $2}' || echo "0")
+      echo "$DEPTH" > "${captured.run_dir.output}/current_depth.txt"
+
+      # Mark as visited
+      echo "$CURRENT" >> "${captured.run_dir.output}/visited.txt"
+
+      # Increment dequeue count
+      COUNT=$(cat "${captured.run_dir.output}/dequeue_count.txt" 2>/dev/null || echo 0)
+      echo $((COUNT + 1)) > "${captured.run_dir.output}/dequeue_count.txt"
+
+      echo "$CURRENT"
+    capture: input
+    on_yes: check_depth
+    on_no: done
+    on_error: done
+
+  check_depth:
+    action_type: shell
+    action: |
+      DEPTH=$(cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0)
+      MAX_DEPTH="${context.max_depth}"
+      if [ "$DEPTH" -ge "$MAX_DEPTH" ]; then
+        echo "1"
+      else
+        echo "0"
+      fi
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 1
+    on_yes: assess
+    on_no: mark_depth_capped
+    on_error: assess
+
+  mark_depth_capped:
+    action_type: shell
+    action: |
+      CURRENT="${captured.input.output}"
+      DEPTH=$(cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0)
+      echo "$CURRENT (depth=$DEPTH)" >> "${captured.run_dir.output}/depth_capped.txt"
+      echo "[DEPTH_CAPPED] $CURRENT (depth=$DEPTH)"
+    next: dequeue_next
+
+  assess:
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${captured.input.output} --auto"
+    action_type: slash_command
+    on_success: verify_scores_persisted
+    on_error: skip_issue
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  verify_scores_persisted:
+    fragment: retry_counter
+    action: |
+      ID="${captured.input.output}"
+      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -z "$ISSUE_FILE" ]; then
+        echo "ERROR: Issue file not found for $ID"
+        exit 1
+      fi
+      CONFIDENCE=$(grep '^confidence_score:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      OUTCOME=$(grep '^outcome_confidence:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      if [ -z "$CONFIDENCE" ] || [ -z "$OUTCOME" ]; then
+        echo "ERROR: confidence_score or outcome_confidence missing for $ID"
+        exit 1
+      fi
+      # Write pre-scores
+      ll-issues show "$ID" --json > "${captured.run_dir.output}/pre_scores_$${ID}.json" 2>/dev/null
+      echo "Scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
+    with:
+      counter_key: "verify_scores_${captured.input.output}"
+      max_retries: 1
+    on_yes: check_readiness
+    on_no: failed
+    on_error: failed
+
+  check_readiness:
+    fragment: shell_exit
+    action: |
+      ID="${captured.input.output}"
+      # Use check-readiness with threshold overrides
+      READY=$(ll-issues check-readiness "$ID" 2>&1; echo $?)
+      echo "$READY"
+      # Check exit code: 0 = ready, 1 = not ready
+      ll-issues check-readiness "$ID" 2>/dev/null
+    on_yes: implement
+    on_no: check_outcome
+    on_error: check_outcome
+
+  check_outcome:
+    fragment: shell_exit
+    action: |
+      ID="${captured.input.output}"
+      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -z "$ISSUE_FILE" ]; then
+        echo "ERROR: Issue file not found for $ID"
+        exit 1
+      fi
+      OUTCOME=$(grep '^outcome_confidence:' "$ISSUE_FILE" | head -1 | awk '{print $2}' | tr -d "'\"")
+      THRESHOLD="${context.outcome_threshold}"
+      if [ -n "$OUTCOME" ] && [ "$OUTCOME" -ge "$THRESHOLD" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    on_yes: diagnose
+    on_no: check_decision_needed
+    on_error: check_decision_needed
+
+  check_decision_needed:
+    fragment: shell_exit
+    action: "ll-issues check-flag ${captured.input.output} decision_needed"
+    on_yes: decide
+    on_no: diagnose
+    on_error: diagnose
+
+  # =========================================================================
+  # Phase 2: Dimensional Diagnosis & Token Routing
+  # =========================================================================
+
+  diagnose:
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      READINESS_THRESHOLD="${context.readiness_threshold}"
+      OUTCOME_THRESHOLD="${context.outcome_threshold}"
+
+      # Fetch scores via ll-issues show --json
+      SCORES_JSON=$(ll-issues show "$ID" --json 2>/dev/null)
+      if [ -z "$SCORES_JSON" ]; then
+        echo "ERROR: ll-issues show --json returned empty for $ID"
+        echo "DECOMPOSE"
+        exit 0
+      fi
+
+      # Parse scores (use JSON keys: confidence, outcome, not frontmatter names)
+      CONFIDENCE=$(echo "$SCORES_JSON" | jq -r '.confidence // 0' 2>/dev/null)
+      OUTCOME=$(echo "$SCORES_JSON" | jq -r '.outcome // 0' 2>/dev/null)
+      COMPLEXITY=$(echo "$SCORES_JSON" | jq -r '.score_complexity // 0' 2>/dev/null)
+      AMBIGUITY=$(echo "$SCORES_JSON" | jq -r '.score_ambiguity // 0' 2>/dev/null)
+      CHANGE_SURFACE=$(echo "$SCORES_JSON" | jq -r '.score_change_surface // 0' 2>/dev/null)
+      DECISION_NEEDED=$(echo "$SCORES_JSON" | jq -r '.decision_needed // "false"' 2>/dev/null)
+      MISSING_ARTIFACTS=$(echo "$SCORES_JSON" | jq -r '.missing_artifacts // "false"' 2>/dev/null)
+
+      # Log scores for diagnostics
+      printf '{"id":"%s","confidence":%s,"outcome":%s,"complexity":%s,"ambiguity":%s,"change_surface":%s,"decision_needed":"%s","missing_artifacts":"%s"}\n' \
+        "$ID" "$CONFIDENCE" "$OUTCOME" "$COMPLEXITY" "$AMBIGUITY" "$CHANGE_SURFACE" "$DECISION_NEEDED" "$MISSING_ARTIFACTS" \
+        > "$RUN_DIR/diagnosis_$${ID}.json"
+
+      # Priority-ordered routing (first match wins)
+      if [ "$CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
+        echo "IMPLEMENT"
+      elif [ "$DECISION_NEEDED" = "true" ]; then
+        echo "DECIDE"
+      elif [ "$AMBIGUITY" -ge 15 ]; then
+        echo "WIRE"
+      elif [ "$COMPLEXITY" -ge 15 ] || [ "$CONFIDENCE" -lt 50 ]; then
+        echo "REFINE"
+      elif [ "$CHANGE_SURFACE" -ge 15 ]; then
+        echo "DECOMPOSE"
+      else
+        echo "REFINE"
+      fi
+    capture: diagnosis
+    next: route_d_implement
+    on_error: snap_for_size_review
+
+  route_d_implement:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "IMPLEMENT"
+    on_yes: implement
+    on_no: route_d_decide
+    on_error: snap_for_size_review
+
+  route_d_decide:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "DECIDE"
+    on_yes: decide
+    on_no: route_d_wire
+    on_error: snap_for_size_review
+
+  route_d_wire:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "WIRE"
+    on_yes: wire
+    on_no: route_d_refine
+    on_error: snap_for_size_review
+
+  route_d_refine:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "REFINE"
+    on_yes: refine
+    on_no: snap_for_size_review
+    on_error: snap_for_size_review
+
+  # =========================================================================
+  # Phase 3: Remediation Actions
+  # =========================================================================
+
+  implement:
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      ll-auto --only "$ID" 2>&1
+      EXIT_CODE=$?
+      if [ $EXIT_CODE -eq 0 ]; then
+        COUNT=$(cat "${captured.run_dir.output}/implemented_count.txt" 2>/dev/null || echo 0)
+        echo $((COUNT + 1)) > "${captured.run_dir.output}/implemented_count.txt"
+      else
+        echo "Implement failed for $ID (exit=$EXIT_CODE)" >> "${captured.run_dir.output}/failures.txt"
+      fi
+      exit $EXIT_CODE
+    on_yes: dequeue_next
+    on_no: skip_issue
+    on_error: skip_issue
+
+  decide:
+    fragment: with_rate_limit_handling
+    action: "/ll:decide-issue ${captured.input.output} --auto"
+    action_type: slash_command
+    on_success: re_assess
+    on_error: re_assess
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  wire:
+    fragment: with_rate_limit_handling
+    action: "/ll:wire-issue ${captured.input.output} --auto"
+    action_type: slash_command
+    on_success: refine
+    on_error: refine
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  refine:
+    fragment: with_rate_limit_handling
+    action: "/ll:refine-issue ${captured.input.output} --auto --full-rewrite"
+    action_type: slash_command
+    on_success: re_assess
+    on_error: skip_issue
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  # =========================================================================
+  # Phase 4: Re-Assessment & Convergence
+  # =========================================================================
+
+  re_assess:
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${captured.input.output} --auto"
+    action_type: slash_command
+    on_success: verify_re_assess_scores
+    on_error: skip_issue
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  verify_re_assess_scores:
+    fragment: retry_counter
+    action: |
+      ID="${captured.input.output}"
+      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -z "$ISSUE_FILE" ]; then
+        echo "ERROR: Issue file not found for $ID"
+        exit 1
+      fi
+      CONFIDENCE=$(grep '^confidence_score:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      OUTCOME=$(grep '^outcome_confidence:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      if [ -z "$CONFIDENCE" ] || [ -z "$OUTCOME" ]; then
+        echo "ERROR: confidence_score or outcome_confidence missing for $ID after re_assess"
+        exit 1
+      fi
+      # Write post-scores
+      ll-issues show "$ID" --json > "${captured.run_dir.output}/post_scores_$${ID}.json" 2>/dev/null
+      echo "Post-scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
+    with:
+      counter_key: "verify_re_scores_${captured.input.output}"
+      max_retries: 1
+    on_yes: check_convergence
+    on_no: failed
+    on_error: failed
+
+  check_convergence:
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      READINESS_THRESHOLD="${context.readiness_threshold}"
+      OUTCOME_THRESHOLD="${context.outcome_threshold}"
+
+      PRE="$${RUN_DIR}/pre_scores_$${ID}.json"
+      POST="$${RUN_DIR}/post_scores_$${ID}.json"
+
+      if [ ! -f "$PRE" ]; then
+        echo "ERROR: Pre-scores file not found: $PRE"
+        echo "CONVERGED_STALLED"
+        exit 0
+      fi
+      if [ ! -f "$POST" ]; then
+        echo "ERROR: Post-scores file not found: $POST"
+        echo "CONVERGED_STALLED"
+        exit 0
+      fi
+
+      # Parse pre/post scores (use JSON keys: confidence, outcome)
+      PRE_CONFIDENCE=$(jq -r '.confidence // 0' "$PRE" 2>/dev/null)
+      PRE_OUTCOME=$(jq -r '.outcome // 0' "$PRE" 2>/dev/null)
+      PRE_COMPLEXITY=$(jq -r '.score_complexity // 0' "$PRE" 2>/dev/null)
+      PRE_AMBIGUITY=$(jq -r '.score_ambiguity // 0' "$PRE" 2>/dev/null)
+
+      POST_CONFIDENCE=$(jq -r '.confidence // 0' "$POST" 2>/dev/null)
+      POST_OUTCOME=$(jq -r '.outcome // 0' "$POST" 2>/dev/null)
+      POST_COMPLEXITY=$(jq -r '.score_complexity // 0' "$POST" 2>/dev/null)
+      POST_AMBIGUITY=$(jq -r '.score_ambiguity // 0' "$POST" 2>/dev/null)
+
+      # Compute deltas
+      DELTA_CONFIDENCE=$((POST_CONFIDENCE - PRE_CONFIDENCE))
+      DELTA_OUTCOME=$((POST_OUTCOME - PRE_OUTCOME))
+      # For complexity/ambiguity, improvement means score went DOWN, so invert delta
+      DELTA_COMPLEXITY=$((PRE_COMPLEXITY - POST_COMPLEXITY))
+      DELTA_AMBIGUITY=$((PRE_AMBIGUITY - POST_AMBIGUITY))
+
+      # Total improvement: sum of all deltas (positive = improved)
+      TOTAL_DELTA=$((DELTA_CONFIDENCE + DELTA_OUTCOME + DELTA_COMPLEXITY + DELTA_AMBIGUITY))
+
+      # Increment remediation counter
+      REM_COUNTER_FILE="$${RUN_DIR}/remediation_count_$${ID}.txt"
+      REM_COUNT=$(cat "$REM_COUNTER_FILE" 2>/dev/null || echo 0)
+      REM_COUNT=$((REM_COUNT + 1))
+      echo "$REM_COUNT" > "$REM_COUNTER_FILE"
+
+      # Log convergence data
+      printf '{"id":"%s","pre_confidence":%s,"post_confidence":%s,"pre_outcome":%s,"post_outcome":%s,"delta_confidence":%s,"delta_outcome":%s,"delta_complexity":%s,"delta_ambiguity":%s,"total_delta":%s}\n' \
+        "$ID" "$PRE_CONFIDENCE" "$POST_CONFIDENCE" "$PRE_OUTCOME" "$POST_OUTCOME" \
+        "$DELTA_CONFIDENCE" "$DELTA_OUTCOME" "$DELTA_COMPLEXITY" "$DELTA_AMBIGUITY" "$TOTAL_DELTA" \
+        > "$RUN_DIR/convergence_$${ID}.json"
+
+      # Convergence rules (first match wins)
+      if [ "$POST_CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$POST_OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
+        echo "CONVERGED_PASS"
+      elif [ "$TOTAL_DELTA" -le 2 ]; then
+        echo "CONVERGED_STALLED"
+      else
+        echo "CONVERGED_IMPROVED"
+      fi
+    capture: convergence_result
+    next: route_conv_pass
+    on_error: route_conv_pass
+
+  route_conv_pass:
+    evaluate:
+      type: output_contains
+      source: "${captured.convergence_result.output}"
+      pattern: "CONVERGED_PASS"
+    on_yes: implement
+    on_no: route_conv_improved
+    on_error: snap_for_size_review
+
+  route_conv_improved:
+    evaluate:
+      type: output_contains
+      source: "${captured.convergence_result.output}"
+      pattern: "CONVERGED_IMPROVED"
+    on_yes: check_remediation_budget
+    on_no: snap_for_size_review
+    on_error: snap_for_size_review
+
+  check_remediation_budget:
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      MAX_PASSES="${context.max_remediation_passes}"
+      REM_COUNTER_FILE="$${RUN_DIR}/remediation_count_$${ID}.txt"
+      REM_COUNT=$(cat "$REM_COUNTER_FILE" 2>/dev/null || echo 0)
+      echo "$REM_COUNT"
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_remediation_passes}"
+    on_yes: diagnose
+    on_no: snap_for_size_review
+    on_error: snap_for_size_review
+
+  # =========================================================================
+  # Phase 5: Decomposition Path
+  # =========================================================================
+
+  snap_for_size_review:
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"
+
+      # Capture current scores snapshot
+      ll-issues show "$ID" --json > "$RUN_DIR/size_review_snap_$${ID}.json" 2>/dev/null
+
+      # Also snapshot current issue ID list for child detection
+      ll-issues list --json 2>/dev/null | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in sorted(i['id'] for i in issues):
+          print(i)
+      " | sort > "$RUN_DIR/issues_before_$${ID}.txt"
+
+      echo "Snapshot captured for $ID"
+    next: run_size_review
+    on_error: skip_issue
+
+  run_size_review:
+    fragment: with_rate_limit_handling
+    action: "/ll:issue-size-review ${captured.input.output} --auto"
+    action_type: slash_command
+    on_success: detect_children
+    on_error: skip_issue
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  detect_children:
+    fragment: shell_exit
+    action: |
+      ID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      PARENT_DEPTH=$(cat "$${RUN_DIR}/current_depth.txt" 2>/dev/null || echo 0)
+
+      # Capture post-review issue ID list
+      ll-issues list --json 2>/dev/null | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in sorted(i['id'] for i in issues):
+          print(i)
+      " | sort > "$RUN_DIR/issues_after_$${ID}.txt"
+
+      # Diff: find new IDs (in after but not in before)
+      comm -13 "$RUN_DIR/issues_before_$${ID}.txt" \
+               "$RUN_DIR/issues_after_$${ID}.txt" \
+               > "$RUN_DIR/diff_$${ID}.txt" 2>/dev/null
+
+      # Filter by parent reference — only include children that reference this parent
+      PARENT_ID="$ID"
+      > "$RUN_DIR/children_$${ID}.txt"
+      while IFS= read -r child_id; do
+        [ -z "$child_id" ] && continue
+        CHILD_FILE=$(find .issues -name "*-$child_id-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+        if [ -n "$CHILD_FILE" ]; then
+          # Check for parent reference
+          if grep -q "parent:.*$PARENT_ID" "$CHILD_FILE" 2>/dev/null || \
+             grep -q "Decomposed from $PARENT_ID" "$CHILD_FILE" 2>/dev/null; then
+            echo "$child_id" >> "$RUN_DIR/children_$${ID}.txt"
+          fi
+        fi
+      done < "$RUN_DIR/diff_$${ID}.txt"
+
+      if [ -s "$RUN_DIR/children_$${ID}.txt" ]; then
+        CHILD_COUNT=$(wc -l < "$RUN_DIR/children_$${ID}.txt" | tr -d ' ')
+        echo "Found $CHILD_COUNT children for $ID"
+        exit 0
+      else
+        echo "No children found for $ID"
+        exit 1
+      fi
+    on_yes: enqueue_children
+    on_no: skip_issue
+    on_error: skip_issue
+
+  enqueue_children:
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      PARENT_DEPTH=$(cat "$${RUN_DIR}/current_depth.txt" 2>/dev/null || echo 0)
+      CHILD_DEPTH=$((PARENT_DEPTH + 1))
+
+      # Cycle detection: build visited set from visited.txt and queue.txt
+      python3 -c "
+      import sys
+
+      run_dir = '$${RUN_DIR}'
+      visited = set()
+      for fname in ['visited.txt']:
+          p = f'{run_dir}/{fname}'
+          try:
+              with open(p) as f:
+                  visited.update(ln.strip() for ln in f if ln.strip())
+          except FileNotFoundError:
+              pass
+      # Also include current queue
+      try:
+          with open(f'{run_dir}/queue.txt') as f:
+              visited.update(ln.strip() for ln in f if ln.strip())
+      except FileNotFoundError:
+          pass
+
+      candidates = []
+      with open(f'{run_dir}/children_$${ID}.txt') as f:
+          for line in f:
+              cid = line.strip()
+              if cid:
+                  candidates.append(cid)
+
+      survivors = []
+      for cid in candidates:
+          if cid in visited:
+              with open(f'{run_dir}/cycles.txt', 'a') as cf:
+                  cf.write(f'{cid} (cycle detected, parent=$${ID})\n')
+              print(f'WARN: skipping cycle candidate {cid}', file=sys.stderr)
+          else:
+              survivors.append(cid)
+
+      with open(f'{run_dir}/children_$${ID}.txt', 'w') as f:
+          for cid in survivors:
+              f.write(cid + '\n')
+      "
+
+      if [ ! -s "$RUN_DIR/children_$${ID}.txt" ]; then
+        echo "All children were cycle-filtered"
+        exit 1
+      fi
+
+      # Depth-first prepend: children go BEFORE existing queue
+      CHILDREN=$(cat "$RUN_DIR/children_$${ID}.txt")
+      EXISTING=$(cat "$RUN_DIR/queue.txt" 2>/dev/null || true)
+      { echo "$CHILDREN"; echo "$EXISTING"; } \
+        | grep -v '^[[:space:]]*$' \
+        > "$RUN_DIR/queue.txt"
+
+      # Assign depth to each child
+      while IFS= read -r child; do
+        [ -z "$child" ] && continue
+        echo "$child $CHILD_DEPTH" >> "$RUN_DIR/depth_map.txt"
+        echo "$child" >> "$RUN_DIR/visited.txt"
+      done < "$RUN_DIR/children_$${ID}.txt"
+
+      # Mark parent as skipped (decomposed)
+      echo "$ID" >> "$RUN_DIR/skipped.txt"
+
+      # Increment decomposed count
+      DECOMP_COUNT=$(cat "$RUN_DIR/decomposed_count.txt" 2>/dev/null || echo 0)
+      echo $((DECOMP_COUNT + 1)) > "$RUN_DIR/decomposed_count.txt"
+
+      CHILD_COUNT=$(wc -l < "$RUN_DIR/children_$${ID}.txt" | tr -d ' ')
+      echo "Enqueued $CHILD_COUNT children for $ID (depth=$CHILD_DEPTH)"
+    on_yes: dequeue_next
+    on_no: dequeue_next
+    on_error: skip_issue
+
+  # =========================================================================
+  # Phase 6: Skip & Diagnostic States
+  # =========================================================================
+
+  skip_issue:
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      REASON="${1:-unknown}"
+      echo "$ID" >> "${captured.run_dir.output}/skipped.txt"
+      echo "[SKIP] $ID — $REASON"
+    next: dequeue_next
+
+  rate_limit_diagnostic:
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID}" >> "${captured.run_dir.output}/rate_limits.txt"
+      echo "[RATE_LIMIT] Skipping $ID due to rate limit exhaustion"
+    next: dequeue_next
+
+  # =========================================================================
+  # Terminal States
+  # =========================================================================
+
+  done:
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      DEQUEUE_COUNT=$(cat "$RUN_DIR/dequeue_count.txt" 2>/dev/null || echo 0)
+      IMPLEMENTED=$(cat "$RUN_DIR/implemented_count.txt" 2>/dev/null || echo 0)
+      DECOMPOSED=$(cat "$RUN_DIR/decomposed_count.txt" 2>/dev/null || echo 0)
+      SKIPPED=$(wc -l < "$RUN_DIR/skipped.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      DEPTH_CAPPED=$(wc -l < "$RUN_DIR/depth_capped.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      FAILURES=$(wc -l < "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
+
+      printf '{\n'
+      printf '  "total_processed": %s,\n' "$DEQUEUE_COUNT"
+      printf '  "implemented": %s,\n' "$IMPLEMENTED"
+      printf '  "decomposed": %s,\n' "$DECOMPOSED"
+      printf '  "skipped": %s,\n' "$SKIPPED"
+      printf '  "depth_capped": %s,\n' "$DEPTH_CAPPED"
+      printf '  "failed": %s\n' "$FAILURES"
+      printf '}\n' > "$RUN_DIR/summary.json"
+
+      echo "=== rn-implement Complete ==="
+      echo "  Processed: $DEQUEUE_COUNT | Implemented: $IMPLEMENTED | Decomposed: $DECOMPOSED"
+      echo "  Skipped: $SKIPPED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES"
+      echo "  Summary written to: $RUN_DIR/summary.json"
+    terminal: true
+
+  failed:
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      ID="${captured.input.output:-unknown}"
+      ERROR="${1:-unrecoverable error}"
+      TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+      # Write error details
+      printf '{"error":"%s","failed_state":"%s","issue_id":"%s","timestamp":"%s"}\n' \
+        "$ERROR" "failed" "$ID" "$TIMESTAMP" > "$RUN_DIR/error.json"
+
+      # Write checkpoint for potential resume
+      printf '{"queue":"%s/queue.txt","visited":"%s/visited.txt","depth_map":"%s/depth_map.txt"}\n' \
+        "$RUN_DIR" "$RUN_DIR" "$RUN_DIR" > "$RUN_DIR/checkpoint.json"
+
+      echo "[FAILED] $ERROR — checkpoint written to $RUN_DIR/checkpoint.json"
+    terminal: true

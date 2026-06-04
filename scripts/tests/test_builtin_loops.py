@@ -124,6 +124,7 @@ class TestBuiltinLoopFiles:
             "svg-textgrad",
             "rn-plan",
             "rn-plan-apo",
+            "rn-implement",
             "rn-refine",
             "loop-specialist-eval",
             "hitl-compare",

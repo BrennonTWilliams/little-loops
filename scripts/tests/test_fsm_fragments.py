@@ -1020,6 +1020,7 @@ class TestBuiltinLoopMigration:
             "auto-refine-and-implement.yaml",
             "sprint-refine-and-implement.yaml",
             "incremental-refactor.yaml",
+            "rn-implement.yaml",
         ]
         for loop_name in migration_targets:
             path = loops_dir / loop_name
