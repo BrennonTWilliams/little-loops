@@ -116,6 +116,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | Loop | Description |
 |---|---|
 | `dataset-curation` | Ingest raw data, quality-gate each item, fix or reject, balance distribution, validate schema, and publish |
+| `sft-corpus` | Stage session transcripts, enrich with history.db session-quality metadata, filter by opt-in quality predicates, track rejections, and publish SFT training corpus |
 | `prompt-regression-test` | CI for prompts: run a prompt suite against an LLM endpoint, score outputs against expected results, compare to baseline, and flag regressions |
 
 ## Greenfield & Eval-Driven

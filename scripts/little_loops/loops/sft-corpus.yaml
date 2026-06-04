@@ -1,0 +1,314 @@
+# SFT corpus pipeline: stage session transcripts → enrich with history.db session-quality
+# metadata → filter by quality predicates → publish SFT training corpus.
+#
+# Usage:    ll-loop run sft-corpus
+# Validate: ll-loop validate sft-corpus
+
+name: sft-corpus
+category: data
+description: |
+  Stage session JSONL transcripts from ${context.data_dir}, batch-join history.db
+  session-quality metadata (issue outcome, user corrections, tool count, file
+  modifications) via lookup_session_metadata(), filter with four opt-in quality
+  predicates, track rejections, and publish a quality-gated SFT training corpus.
+initial: stage
+max_iterations: 30
+timeout: 3600               # 1-hour wall clock limit
+on_handoff: spawn
+context:
+  data_dir: "data/sessions"             # directory with session UUID.jsonl files
+  output_dir: "data/corpus"             # final corpus + rejections output directory
+  require_issue_outcome: false          # drop sessions where no issue was closed
+  exclude_user_corrections: false       # drop sessions with user corrections
+  min_tool_invocations: 0               # drop sessions below this tool-call count
+  require_file_modifications: false     # drop sessions with zero file modifications
+states:
+
+  # -------------------------------------------------------------------
+  # Stage: collect session JSONL files into a raw corpus
+  # -------------------------------------------------------------------
+  stage:
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      DATA_DIR="${context.data_dir}"
+      OUTPUT="$DIR/raw.jsonl"
+      if [ -d "$DATA_DIR" ]; then
+        cat "$DATA_DIR"/*.jsonl > "$OUTPUT" 2>/dev/null || touch "$OUTPUT"
+      else
+        touch "$OUTPUT"
+      fi
+      echo "$OUTPUT"
+    capture: stage_output
+    next: enrich
+
+  # -------------------------------------------------------------------
+  # Enrich: batch-join history.db session-quality metadata
+  # -------------------------------------------------------------------
+  enrich:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, sys
+      from pathlib import Path
+      sys.path.insert(0, "scripts")
+      from little_loops.history_reader import lookup_session_metadata
+
+      run_dir = Path("${context.run_dir}")
+      input_file = Path("${captured.stage_output.output}").resolve()
+      output_file = run_dir / "enriched.jsonl"
+
+      with open(input_file) as f_in, open(output_file, "w") as f_out:
+          for line in f_in:
+              line = line.strip()
+              if not line:
+                  continue
+              example = json.loads(line)
+              source = example.get("source", "")
+              session_id = Path(source).stem if source else ""
+              if session_id:
+                  metadata = lookup_session_metadata(session_id)
+              else:
+                  metadata = {}
+              example["metadata"] = {
+                  "has_corrections": metadata.get("has_corrections", False),
+                  "issue_outcome": metadata.get("issue_outcome"),
+                  "tool_count": metadata.get("tool_count", 0),
+                  "files_modified": metadata.get("files_modified", 0),
+              }
+              f_out.write(json.dumps(example) + "\n")
+      print(str(output_file))
+      PYEOF
+    capture: enrich_output
+    next: check_issue_outcome
+
+  # -------------------------------------------------------------------
+  # Filter predicate chain — each check is gated by a context flag.
+  # When the flag is false/0, the check passes through (prints 1).
+  # When enabled, the check runs the predicate and routes to reject on failure.
+  # Rejection states append to rejections.jsonl then continue the chain.
+  # -------------------------------------------------------------------
+
+  # --- Predicate 1: require_issue_outcome ---
+  check_issue_outcome:
+    action_type: shell
+    action: |
+      python3 -c "
+      import json
+      enabled = '${context.require_issue_outcome}'.lower() == 'true'
+      if not enabled:
+          print(1)
+          exit()
+      with open('${captured.enrich_output.output}') as f:
+          ex = json.loads(f.readline())
+      outcome = ex.get('metadata', {}).get('issue_outcome')
+      print(1 if outcome == 'done' else 0)
+      "
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 1
+    on_yes: check_corrections
+    on_no: reject_issue_outcome
+
+  reject_issue_outcome:
+    action_type: shell
+    action: |
+      python3 -c "
+      import json, os
+      from datetime import datetime, timezone
+      out_dir = '${context.output_dir}'
+      os.makedirs(out_dir, exist_ok=True)
+      entry = {
+          'path': '${captured.enrich_output.output}',
+          'score': 0,
+          'reason': 'require_issue_outcome',
+          'timestamp': datetime.now(timezone.utc).isoformat()
+      }
+      with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
+          f.write(json.dumps(entry) + '\n')
+      print('rejected: require_issue_outcome')
+      "
+    next: check_corrections
+
+  # --- Predicate 2: exclude_user_corrections ---
+  check_corrections:
+    action_type: shell
+    action: |
+      python3 -c "
+      import json
+      enabled = '${context.exclude_user_corrections}'.lower() == 'true'
+      if not enabled:
+          print(0)
+          exit()
+      with open('${captured.enrich_output.output}') as f:
+          ex = json.loads(f.readline())
+      has_corrections = ex.get('metadata', {}).get('has_corrections', False)
+      print(1 if has_corrections else 0)
+      "
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 0
+    on_yes: check_tools
+    on_no: reject_corrections
+
+  reject_corrections:
+    action_type: shell
+    action: |
+      python3 -c "
+      import json, os
+      from datetime import datetime, timezone
+      out_dir = '${context.output_dir}'
+      os.makedirs(out_dir, exist_ok=True)
+      entry = {
+          'path': '${captured.enrich_output.output}',
+          'score': 0,
+          'reason': 'exclude_user_corrections',
+          'timestamp': datetime.now(timezone.utc).isoformat()
+      }
+      with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
+          f.write(json.dumps(entry) + '\n')
+      print('rejected: exclude_user_corrections')
+      "
+    next: check_tools
+
+  # --- Predicate 3: min_tool_invocations ---
+  check_tools:
+    action_type: shell
+    action: |
+      python3 -c "
+      import json
+      min_tools = '${context.min_tool_invocations}'
+      if min_tools == '0' or min_tools == '':
+          print(int(min_tools) if min_tools.isdigit() else 0)
+          exit()
+      with open('${captured.enrich_output.output}') as f:
+          ex = json.loads(f.readline())
+      tool_count = ex.get('metadata', {}).get('tool_count', 0)
+      print(tool_count)
+      "
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: "${context.min_tool_invocations}"
+    on_yes: check_files
+    on_no: reject_tools
+
+  reject_tools:
+    action_type: shell
+    action: |
+      python3 -c "
+      import json, os
+      from datetime import datetime, timezone
+      out_dir = '${context.output_dir}'
+      os.makedirs(out_dir, exist_ok=True)
+      entry = {
+          'path': '${captured.enrich_output.output}',
+          'score': 0,
+          'reason': 'min_tool_invocations',
+          'timestamp': datetime.now(timezone.utc).isoformat()
+      }
+      with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
+          f.write(json.dumps(entry) + '\n')
+      print('rejected: min_tool_invocations')
+      "
+    next: check_files
+
+  # --- Predicate 4: require_file_modifications ---
+  check_files:
+    action_type: shell
+    action: |
+      python3 -c "
+      import json
+      enabled = '${context.require_file_modifications}'.lower() == 'true'
+      if not enabled:
+          print(1)
+          exit()
+      with open('${captured.enrich_output.output}') as f:
+          ex = json.loads(f.readline())
+      files_modified = ex.get('metadata', {}).get('files_modified', 0)
+      print(files_modified)
+      "
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: 1
+    on_yes: publish
+    on_no: reject_files
+
+  reject_files:
+    action_type: shell
+    action: |
+      python3 -c "
+      import json, os
+      from datetime import datetime, timezone
+      out_dir = '${context.output_dir}'
+      os.makedirs(out_dir, exist_ok=True)
+      entry = {
+          'path': '${captured.enrich_output.output}',
+          'score': 0,
+          'reason': 'require_file_modifications',
+          'timestamp': datetime.now(timezone.utc).isoformat()
+      }
+      with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
+          f.write(json.dumps(entry) + '\n')
+      print('rejected: require_file_modifications')
+      "
+    next: publish
+
+  # -------------------------------------------------------------------
+  # Publish: aggregate stats and write final corpus
+  # -------------------------------------------------------------------
+  publish:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os
+      from pathlib import Path
+
+      out_dir = Path("${context.output_dir}")
+      out_dir.mkdir(parents=True, exist_ok=True)
+      enriched_file = Path("${captured.enrich_output.output}")
+
+      # Count enriched examples and rejections
+      total = 0
+      if enriched_file.exists():
+          with open(enriched_file) as f:
+              total = sum(1 for line in f if line.strip())
+
+      rejections_file = out_dir / "rejections.jsonl"
+      rejected = 0
+      rejection_reasons = {}
+      if rejections_file.exists():
+          with open(rejections_file) as f:
+              for line in f:
+                  if line.strip():
+                      rejected += 1
+                      entry = json.loads(line)
+                      reason = entry.get("reason", "unknown")
+                      rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+
+      accepted = total - rejected
+
+      # Write manifest
+      manifest = {
+          "total_enriched": total,
+          "accepted": accepted,
+          "rejected": rejected,
+          "rejection_reasons": rejection_reasons,
+      }
+      with open(out_dir / "manifest.json", "w") as f:
+          json.dump(manifest, f, indent=2)
+
+      print(f"PUBLISHED={accepted}")
+      PYEOF
+    capture: publish_result
+    next: done
+
+  # -------------------------------------------------------------------
+  # Terminal
+  # -------------------------------------------------------------------
+  done:
+    terminal: true

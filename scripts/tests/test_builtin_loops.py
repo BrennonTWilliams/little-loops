@@ -116,6 +116,7 @@ class TestBuiltinLoopFiles:
             "auto-refine-and-implement",
             "autodev",
             "scan-and-implement",
+            "sft-corpus",
             "recursive-refine",
             "html-anything",
             "html-website-generator",
