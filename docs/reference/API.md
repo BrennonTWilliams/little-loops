@@ -6164,10 +6164,7 @@ Return sessions that co-occurred with *issue_id*'s active period.
 
 **Returns:** List of `SessionRef` instances ordered by `first_message_ts DESC`. Queries the `issue_sessions` VIEW (v5 schema migration, ENH-1711). Returns `[]` when the view is absent (pre-v5 schema), the issue has no recorded sessions, or the database is unavailable.
 
-<!-- TODO: update-docs stub — ENH-1943 / ENH-1942 — drafted 2026-06-04 -->
 ### lookup_session_metadata
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
 
 ```python
 def lookup_session_metadata(
@@ -6183,13 +6180,11 @@ Return session-quality metadata for a session ID (ENH-1943).
 - `session_id` — the session UUID to query
 - `db` — path to the SQLite database (default: `.ll/history.db`)
 
-**Returns:** `dict` with keys: `has_corrections` (bool), `issue_outcome` (str|None — transition value when an issue was closed in this session), `tool_count` (int), `files_modified` (int), `loop_outcome` (str|None — always None until `loop_events` gains a `session_id` column). Returns empty `{}` when the DB is missing, empty, or lacks relevant tables.
+**Returns:** `dict` with keys `has_corrections` (bool), `issue_outcome` (str|None), `tool_count` (int), `files_modified` (int), and `loop_outcome` (None). `issue_outcome` is the transition value when an issue was closed in this session; `None` if no issue was closed. `loop_outcome` is always `None` — `loop_events` has no `session_id` column, so loop outcomes cannot be joined to sessions without a schema change. Returns empty `{}` when the DB is missing, empty, lacks relevant tables, or any query raises a SQL error. All computed fields default to their zero values when the session ID has no matching rows.
 
 **Used by:** `sft-corpus` loop (enrich state) to batch-join session-quality signals for SFT corpus filtering.
 
 ### conversation_turns
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
 
 ```python
 def conversation_turns(
@@ -6201,17 +6196,22 @@ def conversation_turns(
 
 Return conversation turn-pair windows from `history.db` (ENH-1942).
 
-Queries `message_events` and `assistant_messages` (requires schema ≥ v11), pairs user messages with their assistant responses via temporal adjacency, and groups them into sliding windows of *context_window* turn-pairs each.
+Queries `message_events` and `assistant_messages` (requires schema ≥ v11), pairs user messages with their assistant responses via temporal adjacency, and groups them into sliding windows of `context_window` turn-pairs each.
 
 **Parameters:**
 - `db_path` — path to `history.db`
 - `since` — only include turns where the user message timestamp is >= this value (optional)
 - `context_window` — number of (user, assistant) turn-pairs per output window (default: 3)
 
-**Returns:** List of conversation windows; each window is a `list[tuple[str, str]]` alternating between `("user", text)` and `("assistant", text)`. Returns `[]` when the database is missing, empty, predates schema v11 (no `assistant_messages` table), or when no turn-pairs match the *since* filter. Callers should fall back to JSONL parsing in that case.
+**Returns:** List of conversation windows; each window is a `list[tuple[str, str]]` alternating between `("user", text)` and `("assistant", text)`. Returns `[]` when the database is missing, empty, predates schema v11 (no `assistant_messages` table), no turn-pairs match the `since` filter, or any query raises a SQL error.
 
-**Used by:** `ll-messages --sft-format` to extract training examples from the session DB instead of raw JSONL logs.
-<!-- END TODO stub -->
+**Temporal adjacency pairing:** Each assistant message (from `assistant_messages`) is paired with the immediately preceding user message in the same session. Assistant messages that fall between user message A and user message B are assigned to user message A. Multiple assistant messages following a single user message are joined with `"\n\n"`.
+
+**Sliding windows:** N turn-pairs produce `max(1, N - context_window + 1)` output windows. A single turn-pair session still produces 1 window (of 1 pair). Windows are emitted in chronological order, each covering `context_window` consecutive turn-pairs; adjacent windows overlap by `context_window - 1` pairs.
+
+**Relationship to `extract_conversation_turns()`:** This function is the DB query path; `extract_conversation_turns()` in `user_messages.py` calls this function first (DB-first, `reader="auto"` mode) and falls back to `_extract_turn_pairs()` (JSONL parsing) when the DB is unavailable or returns no results. The temporal adjacency algorithm is identical in both paths; only the data source differs (SQLite vs. JSONL log files).
+
+**Used by:** `extract_conversation_turns()` in `user_messages.py`, which is called by `ll-messages --sft-format` to extract training examples from either the session DB or raw JSONL logs.
 
 ### issue_effort
 

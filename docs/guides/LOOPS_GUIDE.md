@@ -557,57 +557,77 @@ init             (shell: validate plan_file exists, copy to run_dir/plan.md)
 - **In-place update**: On completion, the loop overwrites the **original** plan file (the path passed to `ll-loop run rn-refine`) with the refined content. No manual copy from `.loops/` is needed. The `plan.md` under the run directory is kept as a working-copy reference you can diff against or delete.
 - **Report state**: Prints `diff` commands comparing the original file against the working copy, so you can review changes before discarding the reference copy.
 
-<!-- TODO: update-docs stub — FEAT-1933 / ENH-1936 / ENH-1938 / ENH-1939 / ENH-1940 — drafted 2026-06-04 -->
 ### `rn-implement` — Queue Orchestrator for Recursive Plan-and-Implement
 
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+**Technique**: Queue orchestrator that manages a depth-bounded issue queue. Accepts an issue ID (or comma-separated list), initialises tracking files, then loops: dequeue an issue → depth gate → delegate remediation to `rn-remediate` → on failure, delegate decomposition to `rn-decompose` → enqueue children with cycle detection → repeat until queue is empty or `max_iterations` is exhausted. Domain logic (diagnosis, dimensional routing, convergence detection) lives in the delegated sub-loops — `rn-implement` is a pure orchestrator with no LLM calls of its own.
 
-**Technique**: Queue orchestrator that manages a depth-bounded issue queue. Accepts an issue ID, initialises the queue, then loops: dequeue an issue → depth gate → delegate remediation to `rn-remediate` → on failure, delegate decomposition to `rn-decompose` → enqueue children with cycle detection → repeat until queue is empty or `max_iterations` is exhausted. Domain logic (diagnosis, dimensional routing, convergence detection) lives in the delegated sub-loops.
-
-**When to use**: When an issue is too large for a single implementation pass and needs recursive decomposition — the issue is split into children, each child is independently remediated, and any child that still fails is further decomposed. This replaces the old monolithic implementation approach with a structured divide-and-conquer strategy.
+**When to use**: When an issue is too large for a single implementation pass and needs recursive decomposition — the issue is split into children, each child is independently remediated, and any child that still fails is further decomposed. This replaces the old monolithic implementation approach with a structured divide-and-conquer strategy. Accepts a comma-separated list of issue IDs for multi-issue seed queues.
 
 **Usage:**
 
 ```bash
+# Single issue
 ll-loop run rn-implement "<issue-id>"
+
+# Multiple seed issues
+ll-loop run rn-implement "FEAT-1808,ENH-1842"
 ```
 
 **Sub-loop delegation:**
 
-| Sub-loop | Role | Invoked when |
-|----------|------|-------------|
-| `rn-remediate` | Diagnose → remediate → converge on a single issue | Every dequeued issue |
-| `rn-decompose` | Size review → child detection → enqueue with cycle detection | Remediation fails or stalls |
-
-**FSM flow:**
-
-```
-init → dequeue → depth_gate → run_remediate
-  on_yes (PASS)          → dequeue_next
-  on_no  (FAIL/STALLED)  → run_decompose
-    on_yes (children enqueued) → dequeue_next
-    on_no  (no children found) → skip_issue
-  on_error               → skip_issue
-→ report → done
-```
+| Sub-loop | Role | Route | Invoked when |
+|----------|------|-------|-------------|
+| `rn-remediate` | Diagnose → remediate → converge on a single issue | `on_success→dequeue_next`, `on_failure→run_decomposition` | Every dequeued issue |
+| `rn-decompose` | Size review → child detection → enqueue with cycle detection | `on_success→dequeue_next`, `on_failure→skip_issue` | Remediation fails or stalls |
 
 **Context variables:**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `max_depth` | `3` | Maximum decomposition depth (prevents infinite recursion) |
-| `readiness_threshold` | `0.8` | Confidence threshold for issue readiness |
-| `outcome_threshold` | `0.8` | Confidence threshold for implementation success |
+| `readiness_threshold` | `85` | Confidence score threshold for readiness gate (int, 0–100) |
+| `outcome_threshold` | `75` | Outcome confidence threshold for implementation success (int, 0–100) |
+| `max_depth` | `3` | Maximum decomposition depth; issues at or beyond this depth are capped |
 | `max_remediation_passes` | `3` | Maximum remediation attempts per issue before escalation to decomposition |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-implement-{timestamp}/`) |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-implement-{timestamp}/`); created automatically before the `init` state |
 
-See individual sub-loop sections below for their context variables and FSM flows.
+**Output artifacts** (written to `${context.run_dir}`):
+
+| File | Description |
+|------|-------------|
+| `queue.txt` | Active issue queue (one ID per line) |
+| `visited.txt` | Set of all enqueued IDs for cycle detection |
+| `depth_map.txt` | Per-issue depth assignments (`<ID> <depth>`) |
+| `depth_capped.txt` | Issues skipped due to max_depth cap |
+| `skipped.txt` | Issues skipped (decomposition failure, errors) |
+| `summary.json` | Final run summary (processed, implemented, decomposed, skipped, depth-capped) |
+
+**FSM flow:**
+
+```
+init               (shell: seed queue from comma-separated input, init tracking files)
+  → dequeue_next   (fragment: queue_pop — pop head of queue, mark visited, increment counter)
+    → check_depth  (evaluate: output_numeric lt max_depth)
+      on_yes → run_remediation
+      on_no  → mark_depth_capped → dequeue_next
+    → run_remediation   (sub-loop: rn-remediate, max_rate_limit_retries: 3)
+      on_success (PASS)             → dequeue_next
+      on_failure (FAIL/STALLED)     → run_decomposition
+      on_error                      → skip_issue
+      on_rate_limit_exhausted       → rate_limit_diagnostic
+    → run_decomposition  (sub-loop: rn-decompose, max_rate_limit_retries: 3)
+      on_success (children enqueued) → dequeue_next
+      on_failure (no children)       → skip_issue
+      on_error                       → skip_issue
+  → skip_issue               (shell: append to skipped.txt) → dequeue_next
+  → rate_limit_diagnostic    (shell: log ISO timestamp + ID) → dequeue_next
+  → report (shell: write summary.json + human-readable summary) → done
+```
+
+**Notes**: The `report` state writes summary JSON before transitioning to the bare `done` terminal anchor (actions on terminal states are skipped by the runner). Sub-loop delegation uses `on_success`/`on_failure` routing (not `on_yes`/`on_no`), matching the composable-sub-loop convention. `max_iterations: 500`, `timeout: 28800`, `on_handoff: spawn`. See individual sub-loop sections below for their context variables and FSM flows.
 
 ### `rn-decompose` — Issue Decomposition Sub-Loop
 
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
-
-**Technique**: Sub-loop extracted from `rn-implement` Phase 5. Accepts an issue ID and runs size review → child detection → enqueue with cycle detection. Splits oversized issues into smaller child issues, writing each to `.issues/` and returning the list for the parent orchestrator to enqueue.
+**Technique**: Sub-loop that splits oversized issues into smaller child issues via a snapshot-before/snapshot-after pattern. Snapshots the active issue ID list before `/ll:issue-size-review --auto`, then diffs the post-review list with `comm -13` to detect net-new children. Each candidate is verified to contain an explicit `parent:` frontmatter reference or `"Decomposed from <PARENT_ID>"` body line before acceptance. Children that survive cycle detection are prepended depth-first to the parent orchestrator's queue.
 
 **When to use**: Standalone when you suspect an issue is too large and want to decompose it before implementation. Also invoked automatically by `rn-implement` when remediation fails.
 
@@ -623,13 +643,48 @@ ll-loop run rn-decompose "<issue-id>" \
   --context run_dir=.loops/runs/rn-implement-20260604T130000/
 ```
 
-**Output**: Creates child issue files in `.issues/` and returns their IDs for parent queue enqueuing.
+**Parameters** (populated by parent sub-loop caller via `with:`):
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `issue_id` | yes | — | Issue ID to decompose |
+| `parent_depth` | no | `0` | Current recursion depth (inherited from parent's `current_depth`) |
+| `run_dir` | yes | — | Parent loop's run directory for queue.txt coupling |
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `parent_depth` | `0` | Current recursion depth (overridden by parameter when invoked from parent) |
+
+**Output artifacts** (written within `${context.run_dir}`):
+
+| File | Description |
+|------|-------------|
+| `issues_before_<ID>.txt` | Pre-review snapshot of active issue IDs (sorted) |
+| `issues_after_<ID>.txt` | Post-review snapshot of active issue IDs (sorted) |
+| `diff_<ID>.txt` | Net-new IDs from `comm -13` |
+| `children_<ID>.txt` | Filtered children (parent-verified, cycle-cleared) |
+
+**FSM flow:**
+
+```
+snap_for_size_review  (shell: snapshot current scores and pre-review ID list)
+  → run_size_review   (fragment: with_rate_limit_handling, /ll:issue-size-review --auto)
+    → detect_children (shell: comm -13 diff pre/post ID lists, filter by parent: reference)
+      on_yes (children found) → enqueue_children
+      on_no  (no children)    → failed
+    → enqueue_children  (shell: cycle detection via visited.txt + queue.txt union, depth-first prepend, write depth_map)
+      → done
+    → rate_limit_diagnostic → done
+  → failed
+```
+
+**Notes**: Child detection is a two-step filter: (1) `comm -13` identifies net-new IDs created during size review, (2) each candidate's issue file must contain an explicit `parent:` frontmatter reference or `"Decomposed from <PARENT_ID>"` body line to avoid picking up unrelated concurrently-created issues. Cycle detection checks candidates against the union of `visited.txt` and `queue.txt`; cycle candidates are logged to `cycles.txt` and filtered out. Depth-first prepend means children are inserted at the head of the queue before existing entries, so the tree is explored depth-first. The parent is recorded as skipped (decomposed) in `skipped.txt`. `max_iterations: 100`, `timeout: 3600`, `on_handoff: spawn`.
 
 ### `rn-remediate` — Iterative Deepening Remediation Sub-Loop
 
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
-
-**Technique**: Sub-loop extracted from `rn-implement`. Runs an iterative deepening remediation cycle on a single issue: diagnose → remediate → re-assess → check convergence → loop until PASS, budget exhaustion, or STALLED. Terminates with `done` (issue implemented) or `failed` (escalate to parent for decomposition).
+**Technique**: Sub-loop running a 5-phase iterative deepening remediation cycle on a single issue. (1) **Assessment Bridge** — run confidence check and gate on scores; (2) **Dimensional Diagnosis** — parse all scores via `ll-issues show --json` and emit a diagnosis token routing to the appropriate remediation action; (3) **Remediation Actions** — execute the prescribed action (implement, decide, wire, refine); (4) **Re-Assessment** — re-run confidence check; (5) **Convergence Check** — compute 4-dimension deltas from pre/post score snapshots (confidence, outcome, complexity↓, ambiguity↓) and decide whether to pass, iterate, or stall. Terminates with `done` (issue implemented) or `failed` (escalate to parent for decomposition).
 
 **When to use**: Standalone when you want focused iterative remediation on a single issue. Also invoked automatically by `rn-implement` for each dequeued issue.
 
@@ -641,29 +696,66 @@ ll-loop run rn-remediate "<issue-id>"
 
 # With custom thresholds
 ll-loop run rn-remediate "<issue-id>" \
-  --context readiness_threshold=0.9 \
+  --context readiness_threshold=90 \
   --context max_remediation_passes=5
 ```
 
-**FSM flow:**
+**Parameters** (populated by parent sub-loop caller via `with:`):
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `issue_id` | yes | — | Issue ID to remediate |
+| `readiness_threshold` | no | `85` | Confidence score threshold for readiness gate (int, 0–100) |
+| `outcome_threshold` | no | `75` | Outcome confidence threshold (int, 0–100) |
+| `max_remediation_passes` | no | `3` | Max remediation iterations before escalation to decomposition |
+
+**Dimensional diagnosis routing** — the `diagnose` state parses scores and emits one of five tokens:
+
+| Token | Trigger condition | Routes to | Description |
+|-------|-------------------|-----------|-------------|
+| `IMPLEMENT` | confidence ≥ readiness AND outcome ≥ outcome | `implement` | Both thresholds met; proceed to implementation |
+| `DECIDE` | `decision_needed` flag is true | `decide` | Issue has decision-needed; run `/ll:decide-issue` |
+| `WIRE` | `ambiguity ≥ 15` | `wire` | Ambiguity too high; run `/ll:wire-issue` |
+| `REFINE` | `complexity ≥ 15` OR `confidence < 50` | `refine` | Complexity or low confidence; run `/ll:refine-issue` |
+| `DECOMPOSE` | `change_surface ≥ 15` | `failed` (falls through) | Surface area too large; escalate to parent for decomposition |
+
+**Convergence delta computation** — the `check_convergence` state computes four deltas from pre/post score snapshots:
+
+| Delta | Formula | Direction |
+|-------|---------|-----------|
+| `delta_confidence` | post − pre | positive = improved |
+| `delta_outcome` | post − pre | positive = improved |
+| `delta_complexity` | pre − post | inverted (lower complexity = improved) |
+| `delta_ambiguity` | pre − post | inverted (lower ambiguity = improved) |
+
+Convergence rules (first match wins): both scores at or above thresholds → `CONVERGED_PASS` → `implement`; `total_delta ≤ 2` → `CONVERGED_STALLED` → `failed`; otherwise → `CONVERGED_IMPROVED` → check remediation budget (under budget → re-enter `diagnose`; exhausted → `failed`).
+
+**FSM flow** (abbreviated — 23 states across 5 phases):
 
 ```
-init → diagnose → remediate → re_assess → check_convergence
-  on_yes (PASS)    → done
-  on_no  (ITERATE) → diagnose (next pass)
-  on_stalled        → failed (escalate to decomposition)
-  on_error          → failed
+Phase 1 — Assessment Bridge:
+  assess → verify_scores_persisted → check_readiness → check_outcome → check_decision_needed
+    (readiness passes → implement; decision_needed → decide; otherwise → diagnose)
+
+Phase 2 — Dimensional Diagnosis:
+  diagnose → route_d_implement → route_d_decide → route_d_wire → route_d_refine
+    (first-matching token routes to corresponding action; DECOMPOSE falls through to failed)
+
+Phase 3 — Remediation Actions:
+  implement (shell: ll-auto --only) → done
+  decide    (slash_command: /ll:decide-issue --auto) → re_assess
+  wire      (slash_command: /ll:wire-issue --auto) → refine
+  refine    (slash_command: /ll:refine-issue --auto --full-rewrite) → re_assess
+
+Phase 4 — Re-Assessment:
+  re_assess → verify_re_assess_scores → check_convergence
+
+Phase 5 — Convergence:
+  check_convergence → route_conv_pass → route_conv_improved → check_remediation_budget
+    (PASS → implement; IMPROVED + under budget → diagnose; STALLED or budget exhausted → failed)
 ```
 
-**Context variables:**
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `readiness_threshold` | `0.8` | Minimum confidence to proceed with implementation |
-| `outcome_threshold` | `0.8` | Minimum confidence to accept implementation as done |
-| `max_remediation_passes` | `3` | Maximum remediation attempts before escalation |
-| `run_dir` | runner-injected | Per-run artifact directory |
-<!-- END TODO stub -->
+**Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > DECOMPOSE). The `DECOMPOSE` token is a terminal diagnosis — it falls through the routing chain to `failed`, signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_iterations: 100`, `timeout: 14400`, `on_handoff: spawn`.
 
 **Issue Management**
 
