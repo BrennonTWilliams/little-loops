@@ -661,6 +661,12 @@ class BRConfig:
                 "capture_issue": {
                     "dup_overlap_threshold": self._history.capture_issue.dup_overlap_threshold,
                 },
+                "compaction": {
+                    "enabled": self._history.compaction.enabled,
+                    "budget_tokens": self._history.compaction.budget_tokens,
+                    "model": self._history.compaction.model,
+                    "timeout": self._history.compaction.timeout,
+                },
             },
             "sync": {
                 "enabled": self._sync.enabled,

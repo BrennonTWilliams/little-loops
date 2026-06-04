@@ -14,6 +14,7 @@ from little_loops.config import (
     AutomationConfig,
     BRConfig,
     CaptureIssueConfig,
+    CompactionConfig,
     CategoryConfig,
     CliColorsConfig,
     CliColorsEdgeLabelsConfig,
@@ -2766,6 +2767,22 @@ class TestHistoryConfig:
         cfg = HistoryConfig.from_dict({})
         assert cfg.capture_issue.dup_overlap_threshold == 0.7
 
+    def test_compaction_defaults(self) -> None:
+        cfg = HistoryConfig.from_dict({})
+        assert isinstance(cfg.compaction, CompactionConfig)
+        assert cfg.compaction.enabled is False
+        assert cfg.compaction.budget_tokens == 4096
+        assert cfg.compaction.model is None
+        assert cfg.compaction.timeout == 60
+
+    def test_compaction_override(self) -> None:
+        cfg = HistoryConfig.from_dict(
+            {"compaction": {"enabled": True, "budget_tokens": 2048, "timeout": 30}}
+        )
+        assert cfg.compaction.enabled is True
+        assert cfg.compaction.budget_tokens == 2048
+        assert cfg.compaction.timeout == 30
+
     def test_unknown_key_ignored(self) -> None:
         cfg = HistoryConfig.from_dict({"unknown_key": "value"})
         assert cfg.velocity_window == 10
@@ -2830,6 +2847,10 @@ class TestBRConfigHistoryIntegration:
         assert h["evolution"]["bypass_min_count"] == 2
         assert h["go_no_go"]["correction_penalty"] == -0.2
         assert h["capture_issue"]["dup_overlap_threshold"] == 0.7
+        assert h["compaction"]["enabled"] is False
+        assert h["compaction"]["budget_tokens"] == 4096
+        assert h["compaction"]["model"] is None
+        assert h["compaction"]["timeout"] == 60
 
     def test_history_round_trip_from_dict(self, temp_project_dir: Path) -> None:
         config = BRConfig(temp_project_dir)

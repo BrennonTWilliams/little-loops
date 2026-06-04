@@ -9,6 +9,10 @@ Subcommands:
     recent   most recent rows for an event kind (tool, file, issue, loop, correction, message, skill, cli)
     backfill seed the database from existing on-disk sources
     related  issue events for a given issue ID
+    path     resolve JSONL file path for a session ID
+    grep     regex search over message_events with covering summary node context
+    expand   return message_events covered by a summary node
+    describe metadata for a summary node
 """
 
 from __future__ import annotations
@@ -20,7 +24,13 @@ from typing import Any
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.cli_args import add_json_arg
-from little_loops.history_reader import related_issue_events, sessions_for_issue
+from little_loops.history_reader import (
+    ll_describe,
+    ll_expand,
+    ll_grep,
+    related_issue_events,
+    sessions_for_issue,
+)
 from little_loops.history_reader import search as history_search
 from little_loops.logger import Logger
 from little_loops.session_store import (
@@ -48,6 +58,9 @@ Examples:
   %(prog)s recent --kind loop                     # Recent loop events
   %(prog)s related BUG-1759                       # Events for a specific issue
   %(prog)s backfill                               # Seed the database from on-disk sources
+  %(prog)s grep "auth middleware"                 # Regex search over message_events
+  %(prog)s expand 42                              # Messages covered by summary node 42
+  %(prog)s describe 42                            # Metadata for summary node 42
 """,
     )
     parser.add_argument(
@@ -112,6 +125,38 @@ Examples:
         default=None,
         help="Only process JSONL files modified after DATE (ISO 8601 or YYYY-MM-DD); uses incremental mode",
     )
+
+    grep_parser = subparsers.add_parser(
+        "grep", help="Regex search over message_events with summary node context"
+    )
+    grep_parser.add_argument("pattern", metavar="PATTERN", help="Regex pattern (case-insensitive)")
+    grep_parser.add_argument(
+        "--summary-id",
+        type=int,
+        default=None,
+        metavar="ID",
+        help="Restrict search to messages covered by this summary node ID",
+    )
+    grep_parser.add_argument(
+        "--limit", type=int, default=50, metavar="N", help="Maximum results (default: 50)"
+    )
+    add_json_arg(grep_parser)
+
+    expand_parser = subparsers.add_parser(
+        "expand", help="Return message_events covered by a summary node"
+    )
+    expand_parser.add_argument(
+        "summary_id", type=int, metavar="SUMMARY_ID", help="Summary node ID to expand"
+    )
+    add_json_arg(expand_parser)
+
+    describe_parser = subparsers.add_parser(
+        "describe", help="Show metadata for a summary node"
+    )
+    describe_parser.add_argument(
+        "node_id", type=int, metavar="NODE_ID", help="Summary node ID to describe"
+    )
+    add_json_arg(describe_parser)
 
     return parser
 
@@ -279,8 +324,59 @@ def main_session() -> int:
                 f"Backfilled {total} rows "
                 f"(issues={counts['issues']}, loops={counts['loops']}, "
                 f"tools={counts['tools']}, messages={counts.get('messages', 0)}, "
-                f"sessions={counts.get('sessions', 0)}, corrections={counts.get('corrections', 0)})"
+                f"sessions={counts.get('sessions', 0)}, corrections={counts.get('corrections', 0)}, "
+                f"summaries={counts.get('summaries', 0)})"
             )
+            return 0
+
+        if args.command == "grep":
+            grep_results = ll_grep(
+                args.pattern,
+                summary_id=args.summary_id,
+                limit=args.limit,
+                db=args.db,
+            )
+            if args.json:
+                from dataclasses import asdict
+
+                print_json([asdict(r) for r in grep_results])
+                return 0
+            if not grep_results:
+                print("No matches.")
+                return 0
+            for gr in grep_results:
+                node_info = f"  [node {gr.summary_id}/{gr.summary_kind}]" if gr.summary_id else ""
+                snippet = gr.content[:120].replace("\n", " ")
+                print(f"{gr.ts}  {snippet}{node_info}")
+            return 0
+
+        if args.command == "expand":
+            messages = ll_expand(args.summary_id, db=args.db)
+            if args.json:
+                print_json(messages)
+                return 0
+            if not messages:
+                print(f"No messages found for summary node {args.summary_id}.")
+                return 0
+            for m in messages:
+                snippet = (m.get("content") or "")[:120].replace("\n", " ")
+                print(f"{m.get('ts', '')}  {snippet}")
+            return 0
+
+        if args.command == "describe":
+            node = ll_describe(args.node_id, db=args.db)
+            if node is None:
+                print(f"Summary node {args.node_id} not found.")
+                return 1
+            if args.json:
+                from dataclasses import asdict
+
+                print_json(asdict(node))
+                return 0
+            print(f"id={node.id}  kind={node.kind}  session={node.session_id}")
+            print(f"ts_start={node.ts_start}  ts_end={node.ts_end}")
+            print(f"tokens={node.tokens}  created_at={node.created_at}")
+            print(f"content: {node.content[:200]}")
             return 0
 
         return 1

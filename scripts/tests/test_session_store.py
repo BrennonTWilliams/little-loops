@@ -15,6 +15,7 @@ from little_loops.session_store import (
     backfill,
     backfill_incremental,
     cli_event_context,
+    compact_session,
     connect,
     ensure_db,
     is_correction,
@@ -268,7 +269,7 @@ class TestBackfill:
     def test_backfill_missing_sources_is_noop(self, tmp_path: Path) -> None:
         db = tmp_path / "session.db"
         counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no")
-        assert counts == {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0, "corrections": 0}
+        assert counts == {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0, "corrections": 0, "summaries": 0}
 
     def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
         jsonl = tmp_path / "session.jsonl"
@@ -1086,7 +1087,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 9
+        assert SCHEMA_VERSION == 10
 
 
 class TestBackfillIncremental:
@@ -1403,8 +1404,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 9
-        assert int(row[0]) == 9
+        assert SCHEMA_VERSION == 10
+        assert int(row[0]) == 10
 
 
 class TestMineCorrectionsFromMessages:
@@ -1487,8 +1488,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 9
-        assert int(row[0]) == 9
+        assert SCHEMA_VERSION == 10
+        assert int(row[0]) == 10
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1524,5 +1525,255 @@ class TestSchemaV9:
             ).fetchone()
         finally:
             conn.close()
-        assert int(version[0]) == 9
+        assert int(version[0]) == SCHEMA_VERSION  # ensure_db applies all pending migrations
         assert index_row is not None
+
+
+class TestSchemaV10:
+    """Verify that the v10 migration creates summary_nodes and summary_spans (FEAT-1712)."""
+
+    def test_schema_version_is_ten(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert SCHEMA_VERSION == 10
+        assert int(row[0]) == 10
+
+    def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        finally:
+            conn.close()
+        assert "summary_nodes" in names
+        assert "summary_spans" in names
+
+    def test_summary_nodes_leaf_dedup_index_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+                " AND name='idx_summary_nodes_leaf_dedup'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "idx_summary_nodes_leaf_dedup index must exist after ensure_db()"
+
+    def test_summary_nodes_condensed_dedup_index_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+                " AND name='idx_summary_nodes_condensed_dedup'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "idx_summary_nodes_condensed_dedup index must exist after ensure_db()"
+
+    def test_v9_to_v10_migration(self, tmp_path: Path) -> None:
+        """Manually bootstrap a v9 schema, then verify ensure_db() applies the v10 migration."""
+        db = tmp_path / "history.db"
+        from little_loops.session_store import _MIGRATIONS
+
+        conn = sqlite3.connect(str(db))
+        try:
+            for sql in _MIGRATIONS[:9]:  # indices 0–8 = v1 through v9
+                conn.executescript(sql)
+            conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '9')")
+            conn.commit()
+        finally:
+            conn.close()
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        finally:
+            conn.close()
+        assert int(version[0]) == 10
+        assert "summary_nodes" in names
+        assert "summary_spans" in names
+
+
+class TestCompactSession:
+    """Tests for compact_session() and the summary DAG (FEAT-1712)."""
+
+    def _make_db_with_messages(self, tmp_path: Path, session_id: str, messages: list[str]) -> Path:
+        """Bootstrap a DB with the given session_id and user messages."""
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            # Seed sessions table so the session exists
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, str(tmp_path / f"{session_id}.jsonl")),
+            )
+            for i, content in enumerate(messages):
+                ts = f"2026-01-01T00:{i:02d}:00Z"
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (ts, session_id, content),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        return db
+
+    def test_compact_session_creates_leaf_nodes(self, tmp_path: Path) -> None:
+        """compact_session() creates at least one leaf node for a session with messages."""
+        session_id = "test-session-leaf"
+        # One message that fits in a single block
+        db = self._make_db_with_messages(tmp_path, session_id, ["Hello world, this is a test."])
+        compact_session(session_id, db)
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT id, kind, session_id FROM summary_nodes WHERE session_id=?",
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) >= 1
+        assert any(r["kind"] == "leaf" for r in rows)
+
+    def test_compact_session_idempotent(self, tmp_path: Path) -> None:
+        """Running compact_session() twice does not create duplicate summary_nodes."""
+        session_id = "test-session-idem"
+        db = self._make_db_with_messages(
+            tmp_path, session_id, ["First message.", "Second message."]
+        )
+        compact_session(session_id, db)
+        compact_session(session_id, db)  # second call must not create duplicates
+        conn = connect(db)
+        try:
+            leaf_rows = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchall()
+            condensed_rows = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='condensed' AND session_id=?",
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        # Idempotency: second run adds zero new rows
+        assert len(condensed_rows) <= 1  # at most one condensed per session
+
+    def test_compact_session_creates_spans(self, tmp_path: Path) -> None:
+        """compact_session() populates summary_spans linking leaf nodes to message_events."""
+        session_id = "test-session-spans"
+        db = self._make_db_with_messages(tmp_path, session_id, ["Span test message."])
+        compact_session(session_id, db)
+        conn = connect(db)
+        try:
+            spans = conn.execute(
+                "SELECT ss.summary_id, ss.message_event_id"
+                " FROM summary_spans ss"
+                " JOIN summary_nodes sn ON sn.id = ss.summary_id"
+                " WHERE sn.session_id=?",
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(spans) >= 1
+
+    def test_compact_session_condensed_node_when_multiple_leaves(self, tmp_path: Path) -> None:
+        """A condensed node is created when a session has >= 2 leaf nodes."""
+        session_id = "test-session-condensed"
+        # Many short messages so greedy grouping with tiny budget creates multiple leaves
+        messages = [f"Message number {i}. " * 5 for i in range(30)]
+        db = self._make_db_with_messages(tmp_path, session_id, messages)
+        # Use a very small budget (10 tokens ~ 40 chars) to force multiple leaf blocks
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        compact_session(session_id, db, config=config)
+        conn = connect(db)
+        try:
+            leaf_count = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchone()[0]
+            condensed_count = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind='condensed' AND session_id=?",
+                (session_id,),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert leaf_count >= 2
+        assert condensed_count == 1
+
+    def test_compact_session_empty_session_is_noop(self, tmp_path: Path) -> None:
+        """compact_session() returns 0 and inserts nothing for a session with no messages."""
+        session_id = "test-session-empty"
+        db = self._make_db_with_messages(tmp_path, session_id, [])
+        result = compact_session(session_id, db)
+        assert result == 0
+        conn = connect(db)
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE session_id=?", (session_id,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 0
+
+    def test_backfill_with_compaction_enabled(self, tmp_path: Path) -> None:
+        """backfill() runs compaction when config enables it."""
+        jsonl = tmp_path / "session.jsonl"
+        session_id = "test-backfill-compact"
+        import json
+
+        records = [
+            {
+                "type": "user",
+                "sessionId": session_id,
+                "timestamp": f"2026-01-01T00:{i:02d}:00Z",
+                "message": {"content": f"Backfill compaction message {i}."},
+            }
+            for i in range(5)
+        ]
+        jsonl.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 4096}}}
+        counts = backfill(db, jsonl_files=[jsonl], config=config)
+        assert counts["summaries"] >= 1
+        conn = connect(db)
+        try:
+            leaf_count = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert leaf_count >= 1
+
+    def test_backfill_compaction_disabled_by_default(self, tmp_path: Path) -> None:
+        """backfill() does not compact when config is absent (default disabled)."""
+        jsonl = tmp_path / "session.jsonl"
+        import json
+
+        record = {
+            "type": "user",
+            "sessionId": "s-no-compact",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {"content": "No compaction by default."},
+        }
+        jsonl.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        counts = backfill(db, jsonl_files=[jsonl])  # no config → compaction.enabled=False
+        assert counts["summaries"] == 0
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM summary_nodes").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 0

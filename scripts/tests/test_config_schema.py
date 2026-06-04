@@ -299,6 +299,22 @@ class TestConfigSchema:
         assert history["properties"]["evolution"].get("additionalProperties") is False
         assert "go_no_go" in history["properties"]
         assert "capture_issue" in history["properties"]
+        assert "compaction" in history["properties"]
+
+    def test_history_compaction_in_schema(self) -> None:
+        """history.compaction must be declared (FEAT-1712); additionalProperties: false rejects it otherwise."""
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        compaction = data["properties"]["history"]["properties"]["compaction"]
+        assert compaction["type"] == "object"
+        assert compaction.get("additionalProperties") is False
+        assert "enabled" in compaction["properties"]
+        assert compaction["properties"]["enabled"]["type"] == "boolean"
+        assert compaction["properties"]["enabled"]["default"] is False
+        assert "budget_tokens" in compaction["properties"]
+        assert compaction["properties"]["budget_tokens"]["default"] == 4096
+        assert "model" in compaction["properties"]
+        assert "null" in compaction["properties"]["model"]["type"]
+        assert "timeout" in compaction["properties"]
 
     def test_analytics_capture_in_schema(self) -> None:
         """analytics.capture sub-object must be declared so additionalProperties: false

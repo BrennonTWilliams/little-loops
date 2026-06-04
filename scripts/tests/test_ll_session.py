@@ -524,3 +524,114 @@ class TestBackfillSinceFlag:
                 result = main_session()
         assert result == 0
         assert mock_backfill.called
+
+
+class TestGrepExpandDescribe:
+    """Tests for the grep, expand, and describe subcommands (FEAT-1712)."""
+
+    def _make_db_with_summary(self, tmp_path: Path) -> tuple[Path, int]:
+        """Bootstrap a DB with one message + one summary node; returns (db_path, node_id)."""
+        from little_loops.session_store import compact_session, connect
+
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("sess-1", str(tmp_path / "sess-1.jsonl")),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-01T00:00:00Z", "sess-1", "auth middleware test message"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        compact_session("sess-1", db)
+        conn = connect(db)
+        try:
+            node_id = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='leaf' AND session_id='sess-1'"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+        return db, node_id
+
+    def test_grep_argument_parsing(self) -> None:
+        with patch("sys.argv", ["ll-session", "grep", "auth middleware"]):
+            args = _parse_args()
+        assert args.command == "grep"
+        assert args.pattern == "auth middleware"
+        assert args.summary_id is None
+        assert args.limit == 50
+
+    def test_grep_with_summary_id_flag(self) -> None:
+        with patch("sys.argv", ["ll-session", "grep", "auth", "--summary-id", "7"]):
+            args = _parse_args()
+        assert args.summary_id == 7
+
+    def test_expand_argument_parsing(self) -> None:
+        with patch("sys.argv", ["ll-session", "expand", "42"]):
+            args = _parse_args()
+        assert args.command == "expand"
+        assert args.summary_id == 42
+
+    def test_describe_argument_parsing(self) -> None:
+        with patch("sys.argv", ["ll-session", "describe", "99"]):
+            args = _parse_args()
+        assert args.command == "describe"
+        assert args.node_id == 99
+
+    def test_grep_finds_message(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db, _ = self._make_db_with_summary(tmp_path)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "grep", "auth"]):
+            result = main_session()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "auth" in out
+
+    def test_grep_no_match(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db, _ = self._make_db_with_summary(tmp_path)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "grep", "ZZZNOMATCH"]):
+            result = main_session()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "No matches" in out
+
+    def test_expand_returns_messages(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db, node_id = self._make_db_with_summary(tmp_path)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "expand", str(node_id)]):
+            result = main_session()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "auth" in out
+
+    def test_expand_missing_node(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        from little_loops.session_store import ensure_db
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "expand", "99999"]):
+            result = main_session()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "No messages" in out
+
+    def test_describe_returns_node_metadata(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db, node_id = self._make_db_with_summary(tmp_path)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "describe", str(node_id)]):
+            result = main_session()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "leaf" in out
+
+    def test_describe_missing_node(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        from little_loops.session_store import ensure_db
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "describe", "99999"]):
+            result = main_session()
+        assert result == 1

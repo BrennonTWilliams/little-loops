@@ -24,6 +24,7 @@ Public API:
     backfill(db,...):            populate the database from existing on-disk sources
     backfill_incremental(db,...): incremental JSONL-only backfill filtered by mtime
     mine_corrections_from_messages(conn,...): scan message_events and insert corrections
+    compact_session(session_id,...): summarize one session into summary_nodes/summary_spans
     search(db,...):              FTS5 full-text query with BM25 ranking
     recent(db,...):              recent rows for a given event kind
     is_correction(text):         return True if text matches a user-correction signal
@@ -56,6 +57,7 @@ __all__ = [
     "backfill",
     "backfill_incremental",
     "mine_corrections_from_messages",
+    "compact_session",
     "search",
     "recent",
     "is_correction",
@@ -67,7 +69,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill", "cli"})
 _KIND_TABLE = {
@@ -296,6 +298,37 @@ _MIGRATIONS: list[str] = [
     """
     CREATE UNIQUE INDEX IF NOT EXISTS idx_corrections_dedup
         ON user_corrections(session_id, content);
+    """,
+    # v10 (FEAT-1712): LCM-style hierarchical summary DAG over session history.
+    # summary_nodes holds LLM-generated (or truncation-fallback) summaries at two
+    # levels: 'leaf' nodes cover a fixed token-budget block of message_events;
+    # 'condensed' nodes summarise a session's leaves. summary_spans links summary
+    # nodes back to the originating message_events rows for lossless drill-down.
+    # FK references are decorative (no PRAGMA foreign_keys; integrity enforced at
+    # the application layer by compact_session's insert ordering + INSERT OR IGNORE).
+    # Partial unique indexes prevent duplicate leaf and condensed nodes per session
+    # across repeated backfill() calls (idempotency via INSERT OR IGNORE).
+    """
+    CREATE TABLE IF NOT EXISTS summary_nodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        content TEXT NOT NULL,
+        tokens INTEGER,
+        parent_id INTEGER REFERENCES summary_nodes(id),
+        session_id TEXT,
+        ts_start TEXT,
+        ts_end TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS summary_spans (
+        summary_id INTEGER REFERENCES summary_nodes(id),
+        message_event_id INTEGER REFERENCES message_events(id),
+        PRIMARY KEY (summary_id, message_event_id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_nodes_leaf_dedup
+        ON summary_nodes(session_id, ts_start, ts_end) WHERE kind = 'leaf';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_nodes_condensed_dedup
+        ON summary_nodes(session_id) WHERE kind = 'condensed';
     """,
 ]
 
@@ -987,6 +1020,173 @@ def mine_corrections_from_messages(
     return count
 
 
+# ---------------------------------------------------------------------------
+# Compaction — LCM-style summary DAG (FEAT-1712)
+# ---------------------------------------------------------------------------
+
+
+def _summarize_block(messages: list[str], budget: int) -> str:
+    """Call the host LLM for a plain-prose summary; fall back to deterministic truncation."""
+    import subprocess
+
+    block_text = "\n---\n".join(messages)
+    prompt = (
+        "Summarize these session messages concisely (2-3 paragraphs), capturing key topics, "
+        "decisions, and outcomes:\n\n" + block_text
+    )
+    try:
+        from little_loops.host_runner import resolve_host
+
+        inv = resolve_host().build_blocking_json(prompt=prompt)
+        proc = subprocess.run(
+            [inv.binary, *inv.args],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip()
+    except Exception:
+        pass
+    # Deterministic truncation fallback (LCM Algorithm 3, level 3 convergence guarantee).
+    max_chars = budget * 4
+    return block_text[:max_chars]
+
+
+def _compact_session_conn(
+    conn: sqlite3.Connection,
+    session_id: str,
+    budget: int = 4096,
+) -> int:
+    """Compact one session using an existing connection. Returns new leaf node count.
+
+    Greedy single-pass block grouping: token estimate ``len(s) // 4``. Each block
+    gets one ``leaf`` summary_node; if the session accumulates ≥ 2 leaves a single
+    ``condensed`` node is inserted (or silently skipped if one already exists via
+    ``INSERT OR IGNORE`` + ``idx_summary_nodes_condensed_dedup``). Leaf dedup is
+    handled by ``idx_summary_nodes_leaf_dedup`` on ``(session_id, ts_start, ts_end)``.
+    """
+    rows = conn.execute(
+        "SELECT id, ts, content FROM message_events WHERE session_id = ? ORDER BY ts, id",
+        (session_id,),
+    ).fetchall()
+
+    if not rows:
+        return 0
+
+    def _est(s: str) -> int:
+        return len(s) // 4
+
+    # Greedy block accumulation
+    blocks: list[list[tuple[int, str, str]]] = []
+    current: list[tuple[int, str, str]] = []
+    current_tokens = 0
+
+    for row in rows:
+        msg_id, ts, content = row[0], row[1], row[2] or ""
+        tok = _est(content)
+        if current_tokens + tok > budget and current:
+            blocks.append(current)
+            current = [(msg_id, ts, content)]
+            current_tokens = tok
+        else:
+            current.append((msg_id, ts, content))
+            current_tokens += tok
+    if current:
+        blocks.append(current)
+
+    now = _now()
+    new_leaves = 0
+
+    for block in blocks:
+        ts_start = block[0][1]
+        ts_end = block[-1][1]
+        msg_ids = [r[0] for r in block]
+        contents = [r[2] for r in block]
+
+        summary = _summarize_block(contents, budget)
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO summary_nodes"
+            "(kind, content, tokens, session_id, ts_start, ts_end, created_at)"
+            " VALUES('leaf', ?, ?, ?, ?, ?, ?)",
+            (summary, _est(summary), session_id, ts_start, ts_end, now),
+        )
+        if cursor.rowcount:
+            leaf_id = cursor.lastrowid
+            conn.executemany(
+                "INSERT OR IGNORE INTO summary_spans(summary_id, message_event_id) VALUES(?, ?)",
+                [(leaf_id, mid) for mid in msg_ids],
+            )
+            new_leaves += 1
+
+    # Condensed node: one per session, summarises all leaves.
+    all_leaves = conn.execute(
+        "SELECT id, content FROM summary_nodes"
+        " WHERE kind='leaf' AND session_id=? ORDER BY ts_start",
+        (session_id,),
+    ).fetchall()
+
+    if len(all_leaves) >= 2:
+        leaf_summaries = [r[1] for r in all_leaves]
+        condensed_text = _summarize_block(leaf_summaries, budget)
+        conn.execute(
+            "INSERT OR IGNORE INTO summary_nodes"
+            "(kind, content, tokens, session_id, ts_start, ts_end, created_at)"
+            " VALUES('condensed', ?, ?, ?, NULL, NULL, ?)",
+            (condensed_text, _est(condensed_text), session_id, now),
+        )
+
+    return new_leaves
+
+
+def _compact_sessions(
+    conn: sqlite3.Connection,
+    config: dict | None = None,
+) -> int:
+    """Compact all sessions in the sessions table; returns total new leaf nodes created.
+
+    Gated by ``history.compaction.enabled`` (default ``false``). Skips silently when
+    disabled so backfill() callers that omit config are unaffected.
+    """
+    from little_loops.config.features import CompactionConfig
+
+    raw = config.get("history", {}).get("compaction", {}) if config else {}
+    compact_cfg = CompactionConfig.from_dict(raw)
+    if not compact_cfg.enabled:
+        return 0
+
+    rows = conn.execute("SELECT session_id FROM sessions").fetchall()
+    total = 0
+    for row in rows:
+        total += _compact_session_conn(conn, row[0], budget=compact_cfg.budget_tokens)
+    return total
+
+
+def compact_session(
+    session_id: str,
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    config: dict | None = None,
+) -> int:
+    """Summarize message_events for one session into summary_nodes and summary_spans.
+
+    Idempotent: repeated calls do not create duplicate nodes (INSERT OR IGNORE +
+    partial unique indexes). On LLM failure, falls back to deterministic truncation
+    so a leaf node is always produced. Returns the count of new leaf nodes created.
+    """
+    from little_loops.config.features import CompactionConfig
+
+    raw = config.get("history", {}).get("compaction", {}) if config else {}
+    compact_cfg = CompactionConfig.from_dict(raw)
+    conn = connect(db)
+    try:
+        result = _compact_session_conn(conn, session_id, budget=compact_cfg.budget_tokens)
+        conn.commit()
+    finally:
+        conn.close()
+    return result
+
+
 def _backfill_sessions(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
     """Seed ``sessions`` table by mapping each JSONL file to its session_id.
 
@@ -1045,7 +1245,10 @@ def backfill(
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")
     loops_dir = loops_dir if loops_dir is not None else Path(".loops")
     conn = connect(db)
-    counts: dict[str, int] = {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0, "corrections": 0}
+    counts: dict[str, int] = {
+        "issues": 0, "loops": 0, "tools": 0, "messages": 0,
+        "sessions": 0, "corrections": 0, "summaries": 0,
+    }
     try:
         if issues_dir.is_dir():
             counts["issues"] = _backfill_issues(conn, issues_dir)
@@ -1056,6 +1259,7 @@ def backfill(
             counts["messages"] = _backfill_messages(conn, jsonl_files)
             counts["sessions"] = _backfill_sessions(conn, jsonl_files)
         counts["corrections"] = mine_corrections_from_messages(conn, config)
+        counts["summaries"] = _compact_sessions(conn, config)
         conn.commit()
     finally:
         conn.close()

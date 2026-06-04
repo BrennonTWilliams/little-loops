@@ -659,3 +659,116 @@ class TestIssueEffort:
         db = tmp_path / "nonexistent.db"
         result = recent_issue_velocity(db=db)
         assert result == []
+
+
+class TestSummaryDagRetrieval:
+    """Tests for ll_grep, ll_expand, ll_describe (FEAT-1712)."""
+
+    def _make_db_with_compact_session(self, tmp_path: Path) -> tuple[Path, int]:
+        """Bootstrap a DB with one message and one compacted leaf node."""
+        from little_loops.session_store import compact_session, connect
+
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("dag-sess", str(tmp_path / "dag-sess.jsonl")),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-01T00:00:00Z", "dag-sess", "architectural decision about FSM runner"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        compact_session("dag-sess", db)
+        conn = connect(db)
+        try:
+            node_id = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='leaf' AND session_id='dag-sess'"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+        return db, node_id
+
+    def test_ll_grep_finds_matching_messages(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_grep
+
+        db, _ = self._make_db_with_compact_session(tmp_path)
+        results = ll_grep("FSM", db=db)
+        assert len(results) >= 1
+        assert any("FSM" in r.content for r in results)
+
+    def test_ll_grep_no_match_returns_empty(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_grep
+
+        db, _ = self._make_db_with_compact_session(tmp_path)
+        results = ll_grep("ZZZNOMATCH", db=db)
+        assert results == []
+
+    def test_ll_grep_attaches_summary_node_context(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_grep
+
+        db, node_id = self._make_db_with_compact_session(tmp_path)
+        results = ll_grep("FSM", db=db)
+        assert results[0].summary_id == node_id
+        assert results[0].summary_kind == "leaf"
+
+    def test_ll_grep_with_summary_id_filter(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_grep
+
+        db, node_id = self._make_db_with_compact_session(tmp_path)
+        results = ll_grep("FSM", summary_id=node_id, db=db)
+        assert len(results) >= 1
+
+    def test_ll_grep_missing_db_returns_empty(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_grep
+
+        results = ll_grep("anything", db=tmp_path / "nonexistent.db")
+        assert results == []
+
+    def test_ll_expand_returns_covered_messages(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_expand
+
+        db, node_id = self._make_db_with_compact_session(tmp_path)
+        messages = ll_expand(node_id, db=db)
+        assert len(messages) >= 1
+        assert any("FSM" in (m.get("content") or "") for m in messages)
+
+    def test_ll_expand_nonexistent_node_returns_empty(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_expand
+        from little_loops.session_store import ensure_db
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        assert ll_expand(99999, db=db) == []
+
+    def test_ll_expand_missing_db_returns_empty(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_expand
+
+        assert ll_expand(1, db=tmp_path / "nonexistent.db") == []
+
+    def test_ll_describe_returns_node_metadata(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_describe
+
+        db, node_id = self._make_db_with_compact_session(tmp_path)
+        node = ll_describe(node_id, db=db)
+        assert node is not None
+        assert node.id == node_id
+        assert node.kind == "leaf"
+        assert node.session_id == "dag-sess"
+        assert node.content  # non-empty summary or truncation
+
+    def test_ll_describe_nonexistent_node_returns_none(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_describe
+        from little_loops.session_store import ensure_db
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        assert ll_describe(99999, db=db) is None
+
+    def test_ll_describe_missing_db_returns_none(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import ll_describe
+
+        assert ll_describe(1, db=tmp_path / "nonexistent.db") is None

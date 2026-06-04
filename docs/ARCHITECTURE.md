@@ -559,6 +559,7 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v7 | `skill_events` | Records `/ll:` skill invocations at dispatch time via the `user_prompt_submit` hook; enables `ll-session recent --kind skill` and FTS search with `kind='skill'` (ENH-1833) |
 | v8 | `cli_events` | Records `ll-` CLI invocations via `cli_event_context()` in `session_store.py`; enables `ll-session recent --kind cli` (ENH-1848) |
 | v9 | `idx_corrections_dedup` | Unique index on `user_corrections(session_id, content)` enabling idempotent `INSERT OR IGNORE` during correction mining; `backfill()` and `backfill_incremental()` call `mine_corrections_from_messages()` to retroactively populate corrections from `message_events` (ENH-1904) |
+| v10 | `summary_nodes`, `summary_spans` | LCM-style hierarchical summary DAG (FEAT-1712): `summary_nodes` stores LLM-generated (or truncation-fallback) leaf and condensed summaries over `message_events` blocks; `summary_spans` links each node back to its source messages for lossless drill-down. Enables `ll-session grep`, `ll-session expand`, and `ll-session describe`. Compaction is opt-in via `history.compaction.enabled` in `ll-config.json`. |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 
@@ -603,7 +604,7 @@ sequenceDiagram
     participant ST as SQLiteTransport
     participant DB as history.db
 
-    SS->>DB: ensure_db() — bootstrap schema (v1–v9)
+    SS->>DB: ensure_db() — bootstrap schema (v1–v10)
     SS-->>DB: backfill_incremental() in background thread
     PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
     UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
@@ -628,16 +629,17 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v9 migrations) at session start |
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v10 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
+| `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712) |
 | `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
 | `EventBus.emit()` | `events.py` | Dispatches events to registered transports |
 | `post_tool_use` hook | `hooks/post_tool_use.py` | Writes `tool_events` / `file_events` per call |
 | `user_prompt_submit` hook | `hooks/user_prompt_submit.py` | Writes `user_corrections` / `skill_events` via `is_correction()` heuristic |
 | `cli_event_context()` | `session_store.py` | Context manager that records `ll-` CLI entry-point invocations to `cli_events` (ENH-1849) |
-| `history_reader.py` | `history_reader.py` | Public read API: 7 query functions, 5 dataclasses, `project_digest` / `render_project_context` (ENH-1907) |
+| `history_reader.py` | `history_reader.py` | Public read API: 10 query functions, 7 dataclasses, `ll_grep` / `ll_expand` / `ll_describe` (FEAT-1712), `project_digest` / `render_project_context` (ENH-1907) |
 | `ll-history-context` CLI | `cli/history_context.py` | Primary consumer: `## Historical Context` block (issue mode) + project digest dry-run (`--project`) |
-| `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions |
+| `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions, `grep`/`expand`/`describe` (FEAT-1712) |
 | Skills | `commands/refine-issue.md` etc. | Call `ll-history-context` for agent context injection |
 | `session_start` hook | `hooks/session_start.py` | Ambient consumer: injects `<project_context>` block at session start (opt-in, ENH-1907) |
 
@@ -672,7 +674,7 @@ Any match across the three sets records the message as a correction. A fourth me
 - All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
 - `SQLiteTransport.send()` is a no-op when `self._conn is None`
 
-> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v9) and CLI transport-wiring table.
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v10) and CLI transport-wiring table.
 
 ---
 

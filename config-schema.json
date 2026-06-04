@@ -1503,6 +1503,33 @@
             }
           },
           "additionalProperties": false
+        },
+        "compaction": {
+          "type": "object",
+          "description": "LCM-style compaction configuration for summary_nodes (FEAT-1712). Controls whether backfill() generates LLM summaries over message_events blocks.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable LLM-based session compaction during backfill. Disabled by default to avoid background LLM calls without opt-in."
+            },
+            "budget_tokens": {
+              "type": "integer",
+              "default": 4096,
+              "description": "Token budget per summary leaf block. Token estimate: len(content) // 4."
+            },
+            "model": {
+              "type": ["string", "null"],
+              "default": null,
+              "description": "Model override for compaction LLM calls. Null means use the host default."
+            },
+            "timeout": {
+              "type": "integer",
+              "default": 60,
+              "description": "Timeout in seconds for each LLM compaction call. On timeout, falls back to deterministic truncation."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

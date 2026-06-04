@@ -3,8 +3,9 @@ id: FEAT-1712
 title: LCM-style hierarchical summary DAG over session history
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-26T01:31:23Z'
+completed_at: '2026-06-04T04:04:16Z'
 discovered_date: '2026-05-26'
 discovered_by: capture-issue
 relates_to:
@@ -300,7 +301,7 @@ Decided by `/ll:confidence-check` on 2026-06-03 (resolving the third open questi
 | Enable `foreign_keys = ON` + WAL globally | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
 
 **Key evidence**:
-- Decorative: `connect()`/`ensure_db()` (`session_store.py:362,376`) call bare `sqlite3.connect()`; no existing test asserts FK enforcement; `INSERT OR IGNORE` + dedup index is the universal integrity pattern across all `_backfill_*` functions
+- Decorative: `connect()`/`ensure_db()` (`session_store.py:370,330`) call bare `sqlite3.connect()`; no existing test asserts FK enforcement; `INSERT OR IGNORE` + dedup index is the universal integrity pattern across all `_backfill_*` functions
 - Enforce: per-connection pragma must be re-set on every connection; turning it on retroactively could surface insert-ordering violations in existing write paths that have never run under FK enforcement
 
 ## Confidence Check Notes
@@ -328,6 +329,7 @@ _Added by `/ll:confidence-check` on 2026-06-03; revised same day after resolving
 open
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-04T03:37:37 - `f489d57d-0d69-4d74-aa5a-1d0efd1ae8e6.jsonl`
 - `/ll:confidence-check` - 2026-06-03T00:00:00 - `9fef4b9d-8625-4d9d-bbfe-e80b3b41de49.jsonl`
 - `/ll:wire-issue` - 2026-06-04T02:58:34 - `c800cb86-9c2d-4ca5-9d7f-f62db6d3e2cc.jsonl`
 - `/ll:decide-issue` - 2026-06-04T02:50:10 - `3adfb92d-1176-4e1a-8596-011438501f76.jsonl`

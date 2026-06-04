@@ -11,6 +11,8 @@ Public API:
     SearchResult:     dataclass for FTS5 search results
     IssueEvent:       dataclass for issue event rows
     SessionRef:       dataclass for issue_sessions view rows (ENH-1711)
+    SummaryNode:      dataclass for summary_nodes rows (FEAT-1712)
+    GrepResult:       dataclass for ll_grep results with summary context (FEAT-1712)
     SectionProvider:  config-addressable digest section (ENH-1907)
     ProjectDigest:    aggregated project-context snapshot (ENH-1907)
     SECTION_PROVIDERS: registry of v1 section providers (ENH-1907)
@@ -21,6 +23,9 @@ Public API:
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
     issue_effort(issue_id, ...) -> dict | None
     recent_issue_velocity(limit, ...) -> list[dict]
+    ll_grep(pattern, ...) -> list[GrepResult]
+    ll_expand(summary_id, ...) -> list[dict]
+    ll_describe(node_id, ...) -> SummaryNode | None
     project_digest(db_path, ...) -> ProjectDigest
     render_project_context(digest, ...) -> str
 """
@@ -28,6 +33,7 @@ Public API:
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -94,6 +100,33 @@ class SessionRef:
     jsonl_path: str | None
     first_message_ts: str | None
     last_message_ts: str | None
+
+
+@dataclass
+class SummaryNode:
+    """A summary_nodes row from the LCM-style compaction DAG (FEAT-1712)."""
+
+    id: int
+    kind: str
+    content: str
+    tokens: int | None
+    parent_id: int | None
+    session_id: str | None
+    ts_start: str | None
+    ts_end: str | None
+    created_at: str
+
+
+@dataclass
+class GrepResult:
+    """A message_event regex match with its covering summary node context (FEAT-1712)."""
+
+    message_event_id: int
+    session_id: str | None
+    ts: str
+    content: str
+    summary_id: int | None
+    summary_kind: str | None
 
 
 @dataclass(frozen=True)
@@ -395,6 +428,149 @@ def recent_issue_velocity(
         if effort is not None:
             result.append({"issue_id": row["issue_id"], **effort})
     return result
+
+
+# ---------------------------------------------------------------------------
+# Summary DAG retrieval (FEAT-1712)
+# ---------------------------------------------------------------------------
+
+
+def ll_grep(
+    pattern: str,
+    *,
+    summary_id: int | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[GrepResult]:
+    """Regex search over message_events, with covering summary node context.
+
+    Each result includes the summary_id and summary_kind of the leaf node covering the
+    matched message (or None/None for messages not yet compacted). If *summary_id* is
+    provided, restrict the search to messages covered by that specific node.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+
+    def _regexp(pat: str, val: str | None) -> bool:
+        try:
+            return bool(re.search(pat, val or "", re.IGNORECASE))
+        except re.error:
+            return False
+
+    try:
+        conn.create_function("regexp_match", 2, _regexp)
+        if summary_id is not None:
+            rows = conn.execute(
+                "SELECT me.id, me.session_id, me.ts, me.content,"
+                " sn.id AS summary_id, sn.kind AS summary_kind"
+                " FROM message_events me"
+                " JOIN summary_spans ss ON ss.message_event_id = me.id"
+                " JOIN summary_nodes sn ON sn.id = ss.summary_id"
+                " WHERE ss.summary_id = ? AND regexp_match(?, me.content)"
+                " ORDER BY me.ts, me.id LIMIT ?",
+                (summary_id, pattern, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT me.id, me.session_id, me.ts, me.content,"
+                " sn.id AS summary_id, sn.kind AS summary_kind"
+                " FROM message_events me"
+                " LEFT JOIN summary_spans ss ON ss.message_event_id = me.id"
+                " LEFT JOIN summary_nodes sn ON sn.id = ss.summary_id"
+                " WHERE regexp_match(?, me.content)"
+                " ORDER BY me.ts, me.id LIMIT ?",
+                (pattern, limit),
+            ).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: ll_grep query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+
+    return [
+        GrepResult(
+            message_event_id=row["id"],
+            session_id=row["session_id"],
+            ts=row["ts"],
+            content=row["content"] or "",
+            summary_id=row["summary_id"],
+            summary_kind=row["summary_kind"],
+        )
+        for row in rows
+    ]
+
+
+def ll_expand(
+    summary_id: int,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Return the message_events covered by *summary_id* via summary_spans.
+
+    Returns dicts with keys ``id``, ``session_id``, ``ts``, ``content``.
+    Empty list when the summary node does not exist or has no spans.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT me.id, me.session_id, me.ts, me.content"
+            " FROM message_events me"
+            " JOIN summary_spans ss ON ss.message_event_id = me.id"
+            " WHERE ss.summary_id = ?"
+            " ORDER BY me.ts, me.id",
+            (summary_id,),
+        ).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: ll_expand query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [dict(row) for row in rows]
+
+
+def ll_describe(
+    node_id: int,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> SummaryNode | None:
+    """Return metadata for a summary_nodes row.
+
+    Returns ``None`` when the node does not exist or the database is unavailable.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT id, kind, content, tokens, parent_id, session_id,"
+            " ts_start, ts_end, created_at"
+            " FROM summary_nodes WHERE id = ?",
+            (node_id,),
+        ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: ll_describe query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    return SummaryNode(
+        id=row["id"],
+        kind=row["kind"],
+        content=row["content"],
+        tokens=row["tokens"],
+        parent_id=row["parent_id"],
+        session_id=row["session_id"],
+        ts_start=row["ts_start"],
+        ts_end=row["ts_end"],
+        created_at=row["created_at"],
+    )
 
 
 # ---------------------------------------------------------------------------

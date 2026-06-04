@@ -717,6 +717,31 @@ class CaptureIssueConfig:
 
 
 @dataclass
+class CompactionConfig:
+    """LCM-style compaction configuration for summary_nodes (FEAT-1712).
+
+    Controls whether backfill() generates LLM summaries (or truncation fallbacks)
+    over message_events blocks. Disabled by default to avoid background LLM calls
+    without user opt-in.
+    """
+
+    enabled: bool = False
+    budget_tokens: int = 4096
+    model: str | None = None
+    timeout: int = 60
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CompactionConfig:
+        """Create CompactionConfig from dictionary. Lenient: ignores unknown keys."""
+        return cls(
+            enabled=data.get("enabled", False),
+            budget_tokens=data.get("budget_tokens", 4096),
+            model=data.get("model", None),
+            timeout=data.get("timeout", 60),
+        )
+
+
+@dataclass
 class HistoryConfig:
     """History read/consume configuration (ENH-1913).
 
@@ -736,6 +761,7 @@ class HistoryConfig:
     evolution: EvolutionConfig = field(default_factory=EvolutionConfig)
     go_no_go: GoNoGoConfig = field(default_factory=GoNoGoConfig)
     capture_issue: CaptureIssueConfig = field(default_factory=CaptureIssueConfig)
+    compaction: CompactionConfig = field(default_factory=CompactionConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> HistoryConfig:
@@ -752,4 +778,5 @@ class HistoryConfig:
             evolution=EvolutionConfig.from_dict(data.get("evolution", {})),
             go_no_go=GoNoGoConfig.from_dict(data.get("go_no_go", {})),
             capture_issue=CaptureIssueConfig.from_dict(data.get("capture_issue", {})),
+            compaction=CompactionConfig.from_dict(data.get("compaction", {})),
         )
