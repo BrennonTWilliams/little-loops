@@ -8,6 +8,7 @@ discovered_date: 2026-06-04
 captured_at: "2026-06-04T19:18:32Z"
 discovered_by: capture-issue
 parent: EPIC-1707
+decision_needed: true
 labels:
   - enh
   - captured
@@ -71,6 +72,16 @@ Create a new function that wraps `get_project_folder()` for the "given a CWD, fi
 
 **Recommendation**: Option A — fewer new functions, direct fix at the root, and the `host` parameter is backward-compatible (defaults to `"claude"`).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Host parameter pattern**: `_config_candidates(project_root, *, host: str | None, state_dir: str | None)` at `config/core.py:74` is the best model for `get_project_folder(cwd, *, host: str | None)`. It uses keyword-only `host` parameter, defaults `None` to preserve backward compatibility, and branches on string equality (`host == "codex"`).
+- **Host naming alignment**: The `host` parameter should accept the `_HOST_RUNNER_REGISTRY` key names (`"claude-code"`, `"codex"`, `"opencode"`, `"pi"`) to match `resolve_host().name`. For backward compatibility, `host=None` should default to `"claude-code"`. Use `os.environ.get("LL_HOOK_HOST", "claude-code")` as the auto-detection fallback, matching the dispatcher at `hooks/__init__.py:125`.
+- **Codex session directory layout**: Codex provides `transcript_path` in hook payloads (absolute path to session JSONL) — this is the primary mechanism for `session_start` and `session_log`. For CLI tools (`ll-session backfill`, `ll-logs discover`) where no hook payload exists, the Codex session directory must be probed directly. Research suggests Codex stores sessions under `~/.codex/` with `CODEX_HOME` env override (per FEAT-957), but the exact layout needs verification during implementation. A `CODEX_PROJECTS_DIR` constant (like the `CODEX_CONFIG_DIR = ".codex"` at `config/core.py:41`) could centralize the path prefix.
+- **`transcript_path` consumption precedent**: `pre_compact.handle()` at `hooks/pre_compact.py:55` already reads `transcript_path = payload.get("transcript_path") or ""`. Step 3 of implementation should follow this exact pattern instead of probing the directory — when the payload has `transcript_path`, use it directly (no directory probing needed for that session).
+- **`del event` blocker**: `session_start.handle()` at line 80 explicitly discards the event with `del event` and the comment "SessionStart consumes no payload fields today." This line must be removed or guarded so `_run_backfill()` can read `event.payload.transcript_path`.
+
 ## Integration Map
 
 ### Files to Modify
@@ -82,14 +93,30 @@ Create a new function that wraps `get_project_folder()` for the "given a CWD, fi
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/cli/logs.py:244,254` — `ll-logs discover` calls `get_project_folder()`
+- `scripts/little_loops/cli/logs.py:244,254` — `ll-logs discover` calls `get_project_folder()`; also `discover_all_projects()` at line 140 hardcodes `~/.claude/projects/` iteration
 - `scripts/little_loops/cli/messages.py:173` — `ll-messages extract` calls `get_project_folder()`
 - `scripts/little_loops/user_messages.py:14-16` — internal `extract_user_messages()` docstring references
+- `scripts/little_loops/session_store.py:1503,1535` — `backfill()` defaults `jsonl_files=None`, guard skips JSONL entirely when None; full backfill (no `--since`) also fails for non-Claude-Code hosts
+- `scripts/little_loops/session_store.py:1323` — `_compact_session_conn()` queries `message_events` (LCM DAG leaf nodes); empty when backfill didn't run
+- `scripts/little_loops/session_store.py:1099` — `mine_corrections_from_messages()` scans `message_events`; no corrections mined for non-Claude-Code hosts
+- `scripts/little_loops/history_reader.py:933` — `project_digest()` consumes session data from multiple tables; all empty for non-Claude-Code hosts
 
 ### Similar Patterns
 
-- `resolve_host()` in `host_runner.py` already provides host detection — reuse its logic
-- `hooks/adapters/codex/` already parses `transcript_path` from the Codex payload envelope
+- `resolve_host()` in `host_runner.py:751` already provides host detection — reuse its logic
+- `_config_candidates()` in `config/core.py:74` — accepts `host: str | None` parameter and branches on `host == "codex"`; the closest existing pattern for adding a `host` parameter to `get_project_folder()`; docstring at line 88 explicitly notes "Future hosts (e.g. FEAT-992 Pi) add a new branch here"
+- `pre_compact.handle()` at `hooks/pre_compact.py:55` — already consumes `transcript_path` from Codex hook payloads (`transcript_path = payload.get("transcript_path") or ""`); proves the data flows through the adapter and dispatcher correctly; the only missing link is `session_start.handle()` consuming it
+- `hooks/adapters/codex/` adapter scripts set `export LL_HOOK_HOST=codex` — the Python dispatcher at `hooks/__init__.py:125` reads this as `os.environ.get("LL_HOOK_HOST", "claude-code")`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Verified**: All line numbers in the issue match actual code (355-381, 304, 132, 75, 244, 254, 173)
+- **Additional hardcoding**: `discover_all_projects()` at `cli/logs.py:140` also hardcodes `~/.claude/projects/` iteration — `ll-logs discover` is also Claude-Code-only
+- **Full-backfill gap**: `backfill()` in `session_store.py:1503` defaults `jsonl_files=None`, and the guard at line 1535 (`if jsonl_files:`) skips JSONL backfill entirely when `None`. So even full backfill (no `--since`) produces zero `message_events`/`sessions` for non-Claude-Code hosts
+- **Host naming inconsistency**: `_HOST_RUNNER_REGISTRY` keys use `"claude-code"` (with hyphen) while `LL_HOOK_HOST` uses `"claude"` for the default and `"codex"` for Codex. The `get_project_folder()` host parameter should use the `host_runner.py` registry names (`"claude-code"`, `"codex"`, `"opencode"`, `"pi"`) for consistency with `resolve_host().name`
+- **Failure table**: 16 distinct call sites fail silently for non-Claude-Code hosts — including LCM summary DAG leaf nodes (`_compact_session_conn()` at `session_store.py:1323` queries `message_events` which is empty), correction mining (`mine_corrections_from_messages()` at `session_store.py:1099`), and project digest (all SECTION_PROVIDERS consuming session data)
 
 ### Tests
 
@@ -108,13 +135,13 @@ Create a new function that wraps `get_project_folder()` for the "given a CWD, fi
 
 ## Implementation Steps
 
-1. Add `host` parameter to `get_project_folder()` and implement host-specific path resolution for Codex and OpenCode session directories.
-2. Update `ll-session backfill` to accept `--host` flag (default auto-detect from `LL_HOOK_HOST` env / `orchestration.host_cli` config).
-3. Update `session_start._run_backfill()` to consume `transcript_path` from hook payload when available.
-4. Update `session_log.get_current_session_jsonl()` to resolve paths for non-Claude-Code hosts.
-5. Update `ll-logs discover` and `ll-messages extract` to pass host context.
-6. Add tests for each call site with mocked Codex/OpenCode session directories.
-7. Verify end-to-end: run backfill in a Codex project, confirm `message_events` / `sessions` / LCM DAG all populate correctly.
+1. Add `host` parameter to `get_project_folder(cwd, *, host: str | None = None)` following the `_config_candidates()` pattern at `config/core.py:74`. Implement host-specific helpers for `"codex"` and `"opencode"` session directories. Use `os.environ.get("LL_HOOK_HOST", "claude-code")` for auto-detection when `host=None`. Add a `CODEX_PROJECTS_DIR` constant alongside `CODEX_CONFIG_DIR` at `config/core.py:41`.
+2. Update `ll-session backfill` at `cli/session.py:290` to accept `--host` flag (default auto-detect from `LL_HOOK_HOST` env / `orchestration.host_cli` config). Also fix full-backfill mode (line 319): pass discovered `jsonl_files` to `backfill()` so JSONL backfill works even without `--since`.
+3. Update `session_start._run_backfill()` at `hooks/session_start.py:127` to consume `transcript_path` from the hook payload when available, following the exact pattern at `pre_compact.py:55` (`transcript_path = payload.get("transcript_path") or ""`). Remove or guard `del event` at line 80 so the payload is accessible. When `transcript_path` is present, backfill that specific file directly rather than probing the directory.
+4. Update `session_log.get_current_session_jsonl()` at `session_log.py:63` to resolve paths for non-Claude-Code hosts. Pass host context through to `get_project_folder()`.
+5. Update `ll-logs discover` at `cli/logs.py:408` and `discover_all_projects()` at line 126 to scan host-specific session directories (not just `~/.claude/projects/`). Update `ll-messages extract` at `cli/messages.py:173` to pass host context.
+6. Add tests for each call site with mocked Codex/OpenCode session directories. Model after `test_host_runner.py` patterns: `isolated_env` fixture (line 40), `resolve_host(env={...})` explicit-env testing (line 54), `shutil.which` mocking (line 77). For `get_project_folder()` tests, extend `test_user_messages.py` with `host="codex"` and `host="opencode"` cases.
+7. Verify end-to-end: run backfill in a Codex project, confirm `message_events` / `sessions` / LCM DAG all populate correctly. Use `ll-session backfill --host codex` to test manual backfill, and verify `session_start` auto-backfill daemon via `test_hook_session_start.py` with a Codex payload including `transcript_path`.
 
 ## Impact
 
@@ -144,6 +171,7 @@ Create a new function that wraps `get_project_folder()` for the "given a CWD, fi
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-04T23:12:24 - `51a4f1e1-9f20-480f-843f-156ec1efd738.jsonl`
 
 - `/ll:capture-issue` - 2026-06-04T19:18:32Z - `15020717-6ee7-4d89-bd61-d70602429425.jsonl`
 
