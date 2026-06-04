@@ -4,7 +4,7 @@ title: Add lookup_session_metadata() helper for history.db session-quality queri
 type: ENH
 priority: P3
 status: done
-completed_at: '2026-06-04'
+completed_at: 2026-06-04T17:32:14Z
 parent: ENH-1941
 relates_to:
 - EPIC-1707
@@ -161,13 +161,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 Added `lookup_session_metadata()` to `history_reader.py` (following `issue_effort()` patterns) and 9 tests in a new `TestLookupSessionMetadata` class.
 
 ### Changes
-- `scripts/little_loops/history_reader.py` — Added `lookup_session_metadata(session_id, *, db)` function (~60 lines). Pre-checks file existence to distinguish missing DB (`{}`) from empty tables (dict with falsy values). Queries `user_corrections`, `issue_sessions` VIEW, `tool_events`, and `file_events`. Returns `None` for `loop_outcome` (schema gap — `loop_events` has no `session_id` column).
-- `scripts/tests/test_history_reader.py` — Added `TestLookupSessionMetadata` class with 9 tests covering missing DB, empty tables, correction detection, issue outcome via VIEW JOIN, tool counts, file modification counts, and loop outcome graceful degradation.
+- `scripts/little_loops/history_reader.py` — Added `lookup_session_metadata(session_id, *, db)` function (~60 lines). Uses the standard `_connect_readonly()` pattern (which calls `ensure_db()` to auto-create the DB on first access, matching all other query functions). Queries `user_corrections`, `issue_sessions` VIEW, `tool_events`, and `file_events`. Returns `None` for `loop_outcome` (schema gap — `loop_events` has no `session_id` column). Returns `{}` on query failure; returns dict with falsy defaults when DB/tables are empty.
+- `scripts/tests/test_history_reader.py` — Added `TestLookupSessionMetadata` class with 9 tests covering missing/empty DB degradation, correction detection, issue outcome via VIEW JOIN, tool counts, file modification counts (Write/write/create ops), and loop outcome graceful degradation. Added `lookup_session_metadata` to imports.
 
 ### Verification
 - `python -m pytest scripts/tests/test_history_reader.py::TestLookupSessionMetadata` — **9/9 passed**
 - `python -m pytest scripts/tests/test_history_reader.py` — **71/71 passed** (no regressions)
 - `ruff check` — **clean**
+- `python -m mypy scripts/little_loops/history_reader.py` — **clean**
 
 ## Session Log
 - `/ll:ready-issue` - 2026-06-04T17:24:36 - `7d2afac2-78f1-4d4b-8763-8f4967ab976a.jsonl`
@@ -175,3 +176,4 @@ Added `lookup_session_metadata()` to `history_reader.py` (following `issue_effor
 - `/ll:refine-issue` - 2026-06-04T17:13:38 - `93ec1288-b079-4c05-92c9-6b19926f5cbc.jsonl`
 - `/ll:issue-size-review` - 2026-06-04T18:45:00Z - `ca366434-0e71-4ffe-883b-0f265ec672e1.jsonl`
 - `/ll:confidence-check` - 2026-06-04T19:20:00Z - `d788e31f-b49f-4295-9fad-32f2821cb49d.jsonl`
+- `/ll:manage-issue` - 2026-06-04T17:32:14Z - `4b51b8db-3211-4280-9825-21c709c1de10.jsonl`
