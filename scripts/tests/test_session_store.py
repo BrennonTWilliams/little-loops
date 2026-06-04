@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
+import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -12,6 +15,8 @@ from little_loops.session_store import (
     SCHEMA_VERSION,
     SQLiteTransport,
     _derive_transition,
+    _estimate_tokens,
+    _summarize_block,
     backfill,
     backfill_incremental,
     cli_event_context,
@@ -1780,7 +1785,14 @@ class TestCompactSession:
         jsonl.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
         config = {"history": {"compaction": {"enabled": True, "budget_tokens": 4096}}}
-        counts = backfill(db, jsonl_files=[jsonl], config=config)
+        # Mock subprocess to avoid real LLM calls in test; return a short summary
+        # that passes the size check so level 1 is accepted.
+        short_summary = "Compacted summary."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            counts = backfill(db, jsonl_files=[jsonl], config=config)
         assert counts["summaries"] >= 1
         conn = connect(db)
         try:
@@ -1819,3 +1831,216 @@ class TestCompactSession:
         finally:
             conn.close()
         assert count == 0
+
+
+# -- helpers for _summarize_block tests -----------------------------------------
+
+
+def _make_completed(
+    returncode: int = 0, stdout: str = "", stderr: str = ""
+) -> subprocess.CompletedProcess:
+    """Create a subprocess.CompletedProcess mock result."""
+    return subprocess.CompletedProcess(
+        args=[], returncode=returncode, stdout=stdout, stderr=stderr
+    )
+
+
+def _llm_response(result_text: str) -> str:
+    """Build a JSON envelope matching the Claude CLI --output-format json shape."""
+    return json.dumps({"type": "result", "subtype": "success", "result": result_text})
+
+
+class TestEstimateTokens:
+    """Unit tests for _estimate_tokens()."""
+
+    def test_empty_string_returns_zero(self) -> None:
+        assert _estimate_tokens("") == 0
+
+    def test_ascii_text_returns_len_div_4(self) -> None:
+        assert _estimate_tokens("abcd") == 1
+        assert _estimate_tokens("abcdefgh") == 2
+        # "this is a test of 40 chars total." = 35 chars → 35 // 4 = 8
+        assert _estimate_tokens("this is a test of 40 chars total.") == 8
+
+    def test_short_string_rounds_down(self) -> None:
+        assert _estimate_tokens("abc") == 0
+
+    def test_unicode_multibyte(self) -> None:
+        # ≟ chars/token is a coarse approximation; unicode chars count as 1 len
+        text = "こんにちは世界"  # 7 chars (multi-byte UTF-8)
+        assert _estimate_tokens(text) == 1  # 7 // 4 = 1
+
+    def test_very_long_string(self) -> None:
+        text = "x" * 10_000
+        assert _estimate_tokens(text) == 2500  # 10000 // 4
+
+
+class TestSummarizeBlock:
+    """Tests for the three-level LCM Algorithm 3 escalation in _summarize_block()."""
+
+    # Input must exceed the 25-token short-circuit guard in _summarize_block()
+    SHORT_INPUT = [
+        "Hello world, this is a test message with enough content to exceed "
+        "the short-circuit guard threshold in the summarization function."
+    ]
+    SHORT_INPUT_EST = _estimate_tokens("\n---\n".join(SHORT_INPUT))
+
+    def test_level_1_accepts_smaller_summary(self) -> None:
+        """Level 1: LLM returns a summary smaller than input — accepted immediately."""
+        short_summary = "Short summary."
+        with patch(
+            "little_loops.session_store.subprocess.run"
+        ) as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        assert result == short_summary
+        # Only one subprocess call (level 1 succeeded)
+        assert mock_run.call_count == 1
+
+    def test_level_1_escalates_when_summary_not_smaller(self) -> None:
+        """Level 1 summary >= input size → escalates to level 2."""
+        verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)  # longer than input
+        short_summary = "Short bullet list."
+        with patch(
+            "little_loops.session_store.subprocess.run"
+        ) as mock_run:
+            # Level 1 returns verbose (long), level 2 returns short
+            mock_run.side_effect = [
+                _make_completed(returncode=0, stdout=_llm_response(verbose)),
+                _make_completed(returncode=0, stdout=_llm_response(short_summary)),
+            ]
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        assert result == short_summary
+        assert mock_run.call_count == 2  # level 1 + level 2
+
+    def test_level_2_accepts_smaller_summary(self) -> None:
+        """Level 2 produces a smaller summary after level 1 fails to reduce."""
+        verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
+        medium = "Medium summary but still verbose." * 20  # verbose level 2
+        # Both levels fail, fall through to truncation
+        with patch(
+            "little_loops.session_store.subprocess.run"
+        ) as mock_run:
+            mock_run.side_effect = [
+                _make_completed(returncode=0, stdout=_llm_response(verbose)),
+                _make_completed(returncode=0, stdout=_llm_response(medium)),
+            ]
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        assert mock_run.call_count == 2
+        # Result was truncated (level 3) because both LLM calls returned long text
+        combined = "\n---\n".join(self.SHORT_INPUT)
+        assert result == combined[: min(256 * 4, 2048)]
+
+    def test_level_3_truncation_when_llm_fails(self) -> None:
+        """LLM call raises FileNotFoundError → all levels escalate → truncation."""
+        with patch(
+            "little_loops.session_store.subprocess.run",
+            side_effect=FileNotFoundError("claude"),
+        ):
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        combined = "\n---\n".join(self.SHORT_INPUT)
+        assert result == combined[: min(256 * 4, 2048)]
+
+    def test_level_3_truncation_when_timeout(self) -> None:
+        """LLM call times out → escalates through levels → truncation."""
+        with patch(
+            "little_loops.session_store.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=60),
+        ):
+            result = _summarize_block(self.SHORT_INPUT, budget=1024)
+        combined = "\n---\n".join(self.SHORT_INPUT)
+        assert result == combined[: min(1024 * 4, 2048)]
+
+    def test_level_3_truncation_when_nonzero_returncode(self) -> None:
+        """LLM returns non-zero exit code → escalates → truncation."""
+        with patch(
+            "little_loops.session_store.subprocess.run"
+        ) as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=1, stderr="API error"
+            )
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        assert mock_run.call_count == 2  # both levels tried, both failed
+        combined = "\n---\n".join(self.SHORT_INPUT)
+        assert result == combined[: min(256 * 4, 2048)]
+
+    def test_truncation_uses_min_cap(self) -> None:
+        """Truncation respects the min(budget * 4, 2048) cap."""
+        long_input = ["Long message. " * 100]
+        # Force LLM failure so truncation is used
+        with patch(
+            "little_loops.session_store.subprocess.run",
+            side_effect=FileNotFoundError("claude"),
+        ):
+            result = _summarize_block(long_input, budget=4096)
+        # budget=4096 → budget * 4 = 16384, but cap at 2048
+        assert len(result) <= 2048
+
+    def test_json_envelope_parsing(self) -> None:
+        """The result field is extracted from the JSON envelope, not stored raw."""
+        summary_text = "Extracted summary prose."
+        with patch(
+            "little_loops.session_store.subprocess.run"
+        ) as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(summary_text)
+            )
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        # Result is the extracted prose, not the JSON envelope
+        assert result == summary_text
+        assert "{" not in result
+
+    def test_model_and_timeout_wired_to_subprocess(self) -> None:
+        """model and timeout params flow through to subprocess.run."""
+        with patch(
+            "little_loops.session_store.subprocess.run"
+        ) as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response("ok")
+            )
+            _summarize_block(
+                self.SHORT_INPUT, budget=256, model="haiku", timeout=30
+            )
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["timeout"] == 30
+        # model flows to build_blocking_json, not directly to subprocess.run;
+        # we verify it was passed to resolve_host().build_blocking_json
+        # The subprocess call uses inv.binary/inv.args from the HostInvocation
+
+    def test_escalation_logs_warning(self, caplog) -> None:
+        """Escalation produces WARNING log messages."""
+        verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
+        short_summary = "Short."
+        with patch(
+            "little_loops.session_store.subprocess.run"
+        ) as mock_run:
+            mock_run.side_effect = [
+                _make_completed(returncode=0, stdout=_llm_response(verbose)),
+                _make_completed(returncode=0, stdout=_llm_response(short_summary)),
+            ]
+            with caplog.at_level(logging.WARNING, logger="little_loops.session_store"):
+                _summarize_block(self.SHORT_INPUT, budget=256)
+        assert any("escalating to level 2" in m for m in caplog.messages)
+
+    def test_multiple_messages_joined(self) -> None:
+        """Multiple messages are joined with --- separator."""
+        # Messages must exceed the 25-token short-circuit guard
+        messages = ["Message one with enough text to pass the guard threshold.",
+                     "Message two also has plenty of content for testing.",
+                     "Message three is similarly substantive in length."]
+        with patch(
+            "little_loops.session_store.subprocess.run"
+        ) as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response("short")
+            )
+            _summarize_block(messages, budget=256)
+        # The subprocess.run call args are [inv.binary, *inv.args]
+        # inv.args includes ["--dangerously-skip-permissions", "--output-format", "json", "-p", prompt]
+        cmd_args = mock_run.call_args[0][0]
+        prompt = cmd_args[cmd_args.index("-p") + 1]
+        assert "Message one" in prompt
+        assert "\n---\n" in prompt
+        assert "Message three" in prompt

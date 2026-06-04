@@ -40,6 +40,7 @@ import json
 import logging
 import re
 import sqlite3
+import subprocess
 import threading
 import time
 from collections.abc import Generator, Sequence
@@ -47,6 +48,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from little_loops.host_runner import resolve_host
 
 __all__ = [
     "DEFAULT_DB_PATH",
@@ -1027,38 +1030,197 @@ def mine_corrections_from_messages(
 # ---------------------------------------------------------------------------
 
 
-def _summarize_block(messages: list[str], budget: int) -> str:
-    """Call the host LLM for a plain-prose summary; fall back to deterministic truncation."""
-    import subprocess
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate using the LCM convention: 4 characters per token."""
+    return len(text) // 4
+
+
+def _summarize_block(
+    messages: list[str],
+    budget: int,
+    *,
+    model: str | None = None,
+    timeout: int = 60,
+) -> str:
+    """Summarize block_text to fit within budget tokens, with convergence guarantee.
+
+    LCM Algorithm 3 three-level escalation:
+
+    1. **Level 1**: Normal LLM summary (preserve details), target = budget.
+       Accepted only if ``_estimate_tokens(result) < _estimate_tokens(input)``.
+    2. **Level 2**: Aggressive bullet-point LLM summary at ``budget // 2``.
+       Triggered when level-1 output is not smaller than input.
+    3. **Level 3**: Deterministic truncation — ``min(budget * 4, 2048)`` characters.
+       Guaranteed to produce output ≤ input by construction.
+    Escalations are logged at WARNING level for operator visibility.
+    """
 
     block_text = "\n---\n".join(messages)
-    prompt = (
-        "Summarize these session messages concisely (2-3 paragraphs), capturing key topics, "
-        "decisions, and outcomes:\n\n" + block_text
-    )
-    try:
-        from little_loops.host_runner import resolve_host
 
-        inv = resolve_host().build_blocking_json(prompt=prompt)
+    est_input = _estimate_tokens(block_text)
+
+    # Short-circuit: for very small inputs an LLM summary cannot be meaningfully
+    # smaller than the input — skip directly to deterministic truncation.
+    if est_input < 25:
+        return block_text[: min(budget * 4, 2048)]
+
+    # -- Level 1: normal prose summary -------------------------------------------------
+    level1_prompt = (
+        "Summarize these session messages concisely (2-3 paragraphs), capturing key "
+        "topics, decisions, and outcomes. Target approximately "
+        f"{budget} tokens:\n\n" + block_text
+    )
+    result = _call_llm_for_summary(level1_prompt, model=model, timeout=timeout)
+    if result and _estimate_tokens(result) < est_input:
+        return result
+
+    # -- Level 2: aggressive bullet-point summary at half budget -----------------------
+    if result:
+        logger.warning(
+            "_summarize_block: level-1 summary not smaller than input "
+            "(est_output=%d >= est_input=%d); escalating to level 2",
+            _estimate_tokens(result),
+            est_input,
+        )
+    else:
+        logger.warning(
+            "_summarize_block: level-1 LLM call failed; escalating to level 2"
+        )
+    level2_budget = max(budget // 2, 64)
+    level2_prompt = (
+        "Summarize these session messages as a compact bullet list. Be extremely terse: "
+        "one line per key point, no preamble or commentary. Target approximately "
+        f"{level2_budget} tokens:\n\n" + block_text
+    )
+    result = _call_llm_for_summary(level2_prompt, model=model, timeout=timeout)
+    if result and _estimate_tokens(result) < est_input:
+        return result
+
+    # -- Level 3: deterministic truncation (guaranteed convergence) --------------------
+    if result:
+        logger.warning(
+            "_summarize_block: level-2 summary not smaller than input "
+            "(est_output=%d >= est_input=%d); escalating to level 3",
+            _estimate_tokens(result),
+            est_input,
+        )
+    else:
+        logger.warning(
+            "_summarize_block: level-2 LLM call failed; escalating to level 3"
+        )
+    # Truncation: min(budget * 4, 2048) chars. The 2048 cap (~512 tokens at 4 chars/token)
+    # follows the LCM paper's level-3 constant, providing a strict convergence guarantee.
+    max_chars = min(budget * 4, 2048)
+    return block_text[:max_chars]
+
+
+def _call_llm_for_summary(
+    prompt: str,
+    *,
+    model: str | None = None,
+    timeout: int = 60,
+) -> str | None:
+    """Call the host LLM for a summary and extract the prose ``result`` field.
+
+    Returns the extracted prose string on success, or ``None`` if the LLM call
+    failed or produced an unparseable response (allowing escalation logic to
+    fall through to the next level).
+    """
+
+    try:
+        inv = resolve_host().build_blocking_json(prompt=prompt, model=model)
         proc = subprocess.run(
             [inv.binary, *inv.args],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=timeout,
         )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return proc.stdout.strip()
-    except Exception:
-        pass
-    # Deterministic truncation fallback (LCM Algorithm 3, level 3 convergence guarantee).
-    max_chars = budget * 4
-    return block_text[:max_chars]
+    except subprocess.TimeoutExpired:
+        logger.warning("_call_llm_for_summary: LLM call timed out after %ds", timeout)
+        return None
+    except FileNotFoundError:
+        logger.error(
+            "_call_llm_for_summary: %s CLI not found. Install the active host CLI "
+            "(see LL_HOST_CLI).",
+            inv.binary,
+        )
+        return None
+
+    if proc.returncode != 0:
+        stderr_preview = proc.stderr.strip()[:200] if proc.stderr else "(no stderr)"
+        logger.error(
+            "_call_llm_for_summary: %s CLI returned exit code %d (stderr: %s)",
+            inv.binary,
+            proc.returncode,
+            stderr_preview,
+        )
+        return None
+
+    if not proc.stdout.strip():
+        stderr_info = proc.stderr.strip()[:200] if proc.stderr else ""
+        logger.error(
+            "_call_llm_for_summary: %s CLI returned empty stdout on exit 0"
+            + (f" (stderr: {stderr_info})" if stderr_info else "")
+        )
+        return None
+
+    # Parse the JSON envelope and extract the 'result' field — see
+    # evaluate_llm_structured() at fsm/evaluators.py:832-880 for the
+    # canonical envelope-parsing pattern.
+    try:
+        stdout = proc.stdout.strip()
+        try:
+            envelope = json.loads(stdout)
+        except json.JSONDecodeError:
+            # Try JSONL: take the last non-empty line
+            lines = [line for line in stdout.split("\n") if line.strip()]
+            if not lines:
+                raise
+            envelope = json.loads(lines[-1])
+
+        # Check for structured-output retry exhaustion or legacy is_error
+        if envelope.get("subtype") == "error_max_structured_output_retries":
+            logger.error(
+                "_call_llm_for_summary: %s CLI could not produce valid output after retries",
+                inv.binary,
+            )
+            return None
+        if envelope.get("is_error", False):
+            err_text = str(envelope.get("result", "") or "")[:200]
+            logger.error(
+                "_call_llm_for_summary: %s CLI reported error: %s",
+                inv.binary,
+                err_text,
+            )
+            return None
+
+        # Extract the result field (plain prose; no --json-schema here)
+        result = envelope.get("result", "")
+        if not result:
+            logger.error(
+                "_call_llm_for_summary: empty result field in %s CLI response",
+                inv.binary,
+            )
+            return None
+        return str(result)
+
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        raw_preview = proc.stdout[:300] if proc.stdout else "(empty)"
+        logger.error(
+            "_call_llm_for_summary: failed to parse LLM response: %s (raw: %s)",
+            e,
+            raw_preview,
+        )
+        return None
 
 
 def _compact_session_conn(
     conn: sqlite3.Connection,
     session_id: str,
     budget: int = 4096,
+    *,
+    model: str | None = None,
+    timeout: int = 60,
 ) -> int:
     """Compact one session using an existing connection. Returns new leaf node count.
 
@@ -1076,9 +1238,6 @@ def _compact_session_conn(
     if not rows:
         return 0
 
-    def _est(s: str) -> int:
-        return len(s) // 4
-
     # Greedy block accumulation
     blocks: list[list[tuple[int, str, str]]] = []
     current: list[tuple[int, str, str]] = []
@@ -1086,7 +1245,7 @@ def _compact_session_conn(
 
     for row in rows:
         msg_id, ts, content = row[0], row[1], row[2] or ""
-        tok = _est(content)
+        tok = _estimate_tokens(content)
         if current_tokens + tok > budget and current:
             blocks.append(current)
             current = [(msg_id, ts, content)]
@@ -1106,12 +1265,12 @@ def _compact_session_conn(
         msg_ids = [r[0] for r in block]
         contents = [r[2] for r in block]
 
-        summary = _summarize_block(contents, budget)
+        summary = _summarize_block(contents, budget, model=model, timeout=timeout)
         cursor = conn.execute(
             "INSERT OR IGNORE INTO summary_nodes"
             "(kind, content, tokens, session_id, ts_start, ts_end, created_at)"
             " VALUES('leaf', ?, ?, ?, ?, ?, ?)",
-            (summary, _est(summary), session_id, ts_start, ts_end, now),
+            (summary, _estimate_tokens(summary), session_id, ts_start, ts_end, now),
         )
         if cursor.rowcount:
             leaf_id = cursor.lastrowid
@@ -1130,12 +1289,12 @@ def _compact_session_conn(
 
     if len(all_leaves) >= 2:
         leaf_summaries = [r[1] for r in all_leaves]
-        condensed_text = _summarize_block(leaf_summaries, budget)
+        condensed_text = _summarize_block(leaf_summaries, budget, model=model, timeout=timeout)
         cursor = conn.execute(
             "INSERT OR IGNORE INTO summary_nodes"
             "(kind, content, tokens, session_id, ts_start, ts_end, created_at)"
             " VALUES('condensed', ?, ?, ?, NULL, NULL, ?)",
-            (condensed_text, _est(condensed_text), session_id, now),
+            (condensed_text, _estimate_tokens(condensed_text), session_id, now),
         )
         if cursor.rowcount:
             condensed_id = cursor.lastrowid
@@ -1167,7 +1326,12 @@ def _compact_sessions(
     rows = conn.execute("SELECT session_id FROM sessions").fetchall()
     total = 0
     for row in rows:
-        total += _compact_session_conn(conn, row[0], budget=compact_cfg.budget_tokens)
+        total += _compact_session_conn(
+            conn, row[0],
+            budget=compact_cfg.budget_tokens,
+            model=compact_cfg.model,
+            timeout=compact_cfg.timeout,
+        )
     return total
 
 
@@ -1189,7 +1353,12 @@ def compact_session(
     compact_cfg = CompactionConfig.from_dict(raw)
     conn = connect(db)
     try:
-        result = _compact_session_conn(conn, session_id, budget=compact_cfg.budget_tokens)
+        result = _compact_session_conn(
+            conn, session_id,
+            budget=compact_cfg.budget_tokens,
+            model=compact_cfg.model,
+            timeout=compact_cfg.timeout,
+        )
         conn.commit()
     finally:
         conn.close()

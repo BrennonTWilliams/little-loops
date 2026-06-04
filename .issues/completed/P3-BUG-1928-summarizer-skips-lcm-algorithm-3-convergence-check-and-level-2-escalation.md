@@ -3,7 +3,7 @@ id: BUG-1928
 title: Summarizer skips LCM Algorithm 3 convergence check and level-2 escalation
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-04T04:15:05Z'
 discovered_date: '2026-06-04'
 discovered_by: capture-issue
@@ -135,6 +135,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Related bugs**: BUG-1926 (summary DAG has no inter-level edges) and ENH-1927 (recursive cross-session condensation) touch adjacent code in `_compact_session_conn()`. Coordinate with those fixes to avoid merge conflicts in the `_compact_session_conn()` function body.
 
+**JSON envelope extraction pattern** (research refresh 2026-06-04): The canonical codebase pattern for extracting prose text from `build_blocking_json()` JSON-wrapped output is `evaluate_llm_structured()` at `fsm/evaluators.py:832-880` — it parses `json.loads(stdout)`, extracts `envelope["result"]` for prose text, and handles `is_error`/`subtype` fields. A simpler variant is at `parallel/worker_pool.py:595-600` which extracts `data["modelUsage"]`. If the JSON envelope concern is addressed in this fix, follow the `evaluate_llm_structured()` pattern: parse the envelope, extract `result` as the prose summary, and store only the prose text (not the full JSON wrapper) in `summary_nodes.content`.
+
+**Model/timeout wiring pattern** (research refresh 2026-06-04): The canonical pattern for passing `model` and `timeout` to `build_blocking_json()` is `evaluate_llm_structured()` at `fsm/evaluators.py:741-909`. It receives `model` and `timeout` as function parameters, passes `model` to `build_blocking_json(prompt=..., model=model)`, and uses `timeout` in `subprocess.run(timeout=...)`. It also distinguishes exception types: `subprocess.TimeoutExpired` → `verdict="error"` with `timeout=True`, `FileNotFoundError` → `verdict="error"` with host-missing details, and non-zero returncode → `verdict="error"` with stderr. This is the pattern to follow when wiring `CompactionConfig.model` and `CompactionConfig.timeout` through `_summarize_block()`.
+
+**Test class reference corrected** (research refresh 2026-06-04): The test class at `test_history_reader.py:664` is `TestSummaryDagRetrieval` (not `TestDAGFeatures` as previously referenced — a prior rename). It contains 10 tests (not 9). All references throughout this issue have been updated.
+
 ## Implementation Steps
 
 1. **Promote `_est` to module-level** (`session_store.py`): extract `_est(s) = len(s) // 4` from the `_compact_session_conn()` closure (line 1077) into `_estimate_tokens(text: str) -> int` at module scope, so `_summarize_block()` can use it for size comparison.
@@ -156,9 +162,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 10. **Consider wiring `CompactionConfig.model` and `timeout`** (`config/features.py:720-741`): these fields are declared but ignored by `_summarize_block()`. The level-2 call is a second `build_blocking_json()` invocation — consider passing `model=compact_cfg.model` and using `timeout` from config rather than the hardcoded 60s. This can be done in this fix or deferred to a follow-up enhancement. [Agent 2 finding]
 
-11. **Verify `TestDAGFeatures`** (`test_history_reader.py:664-759`): 9 integration tests that call `compact_session()` and then exercise `ll_grep`/`ll_expand`/`ll_describe`. Run `python -m pytest scripts/tests/test_history_reader.py::TestDAGFeatures -v` after the fix to confirm no regression. These tests pass today via truncation fallback; they should still pass with the three-level chain. [Agent 3 finding]
+11. **Verify `TestSummaryDagRetrieval`** (`test_history_reader.py:664-763`): 10 integration tests that call `compact_session()` and then exercise `ll_grep`/`ll_expand`/`ll_describe`. Run `python -m pytest scripts/tests/test_history_reader.py::TestSummaryDagRetrieval -v` after the fix to confirm no regression. These tests pass today via truncation fallback; they should still pass with the three-level chain. [Agent 3 finding]
 
 12. **Verify `TestGrepExpandDescribe`** (`test_ll_session.py:529-560`): integration test that bootstraps via `compact_session()`. Run `python -m pytest scripts/tests/test_ll_session.py::TestGrepExpandDescribe -v` after the fix. [Agent 3 finding]
+
+_Wiring pass added by `/ll:wire-issue` (2026-06-04, run 2):_
+
+13. **Add `_estimate_tokens` unit tests** (`test_session_store.py`): the promoted module-level function needs dedicated tests. Cover: empty string → 0, ASCII text → `len(s)//4`, multi-byte Unicode → `len(s)//4` (char-based, not byte-based), very long string, and verify the heuristic is consistent with its previous local-closure behavior. [Agent 3 finding]
+
+14. **Verify indirect backfill consumers** — run these test files to confirm no regression from the `_summarize_block` restructure (they call `backfill()` for test setup but don't assert on compaction):
+    - `python -m pytest scripts/tests/test_issue_history_cli.py -v`
+    - `python -m pytest scripts/tests/test_workflow_sequence_analyzer.py -v`
+    - `python -m pytest scripts/tests/test_issue_history_parsing.py -v`
+    [Agent 1 finding]
+
+15. **Smoke test `ll-session backfill` CLI** (`cli/session.py:321`): after the fix, run `ll-session backfill <db>` to confirm the CLI entry point still works end-to-end. [Agent 1 finding]
+
+16. **Update `config-schema.json:1507-1509`** — top-level `compaction` object description: broaden to mention three-level escalation and convergence guarantee, consistent with the updated `timeout` (line 1529) and `budget_tokens` (line 1519) descriptions. [Agent 2 finding]
+
+17. **Smoke test DAG readers** (`cli/session.py:332-367`, `history_reader.py:106-122`): if JSON envelope stripping is implemented, run `ll-session grep`, `ll-session expand`, `ll-session describe` against a compacted DB to confirm readers handle the plain-prose content format (they should — the `content` field is already `str` typed). [Agent 2 finding]
 
 ## Integration Map
 
@@ -177,7 +199,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_session.py:534, 550` — `TestGrepExpandDescribe._make_db_with_summary()` calls `compact_session("sess-1", db)` to bootstrap a test DB with summary DAG data; exercises the changed code path via the public API [Agent 1 finding]
-- `scripts/tests/test_history_reader.py:667-685` — `_make_db_with_compact_session()` helper calls `compact_session()` to seed summary DAG data for `TestDAGFeatures` (9 tests); exercises the changed code path via the public API [Agent 1 finding]
+- `scripts/tests/test_history_reader.py:667-685` — `_make_db_with_compact_session()` helper calls `compact_session()` to seed summary DAG data for `TestSummaryDagRetrieval` (10 tests); exercises the changed code path via the public API [Agent 1 finding]
+
+_Wiring pass added by `/ll:wire-issue` (2026-06-04, run 2):_
+- `scripts/little_loops/cli/session.py:38-39, 321` — `ll-session backfill` CLI subcommand imports and calls `backfill()`, which triggers the full compaction chain (`_compact_sessions()` → `_compact_session_conn()` → `_summarize_block()`). Primary user-facing entry point for compaction. [Agent 1 finding]
+- `scripts/little_loops/history_reader.py:106-122` — `SummaryNode` dataclass and `GrepResult` consume `summary_nodes.content`. If JSON envelope stripping is implemented, stored content format changes (plain prose instead of JSON-wrapped) — readers benefit transparently but smoke test is warranted. [Agent 2 finding]
+- `scripts/little_loops/cli/session.py:332-367` — grep/expand/describe command handlers consume DAG output from `summary_nodes`. Same content-format consideration as above. [Agent 2 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/fsm/evaluators.py:351-413` — `evaluate_convergence()` implements size-comparison logic (`current < previous` for `minimize` direction) that mirrors the needed `est(summary) < est(input)` check
@@ -194,11 +221,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Verify existing `TestCompactSession` tests (lines 1608-1779) still pass after the three-level restructure
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_history_reader.py:664-759` — `TestDAGFeatures` class (9 tests) exercises the summary DAG via `compact_session()`: `ll_grep`, `ll_expand`, `ll_describe` on compacted DB state. These integration tests will exercise the new three-level escalation path implicitly when `compact_session()` is called. Should still pass since they don't assert on summary content size. [Agent 3 finding]
+- `scripts/tests/test_history_reader.py:664-763` — `TestSummaryDagRetrieval` class (10 tests) exercises the summary DAG via `compact_session()`: `ll_grep`, `ll_expand`, `ll_describe` on compacted DB state. These integration tests will exercise the new three-level escalation path implicitly when `compact_session()` is called. Should still pass since they don't assert on summary content size. [Agent 3 finding]
 - `scripts/tests/test_ll_session.py:529-560` — `TestGrepExpandDescribe` class bootstraps test DB via `compact_session()` then exercises CLI argument parsing against compacted state. Same implicit coverage as TestDAGFeatures. [Agent 3 finding]
 - `scripts/tests/test_config.py:2770-2784` — `test_compaction_defaults()` and `test_compaction_override()` assert `CompactionConfig` field defaults and dict round-trip. No change expected unless `_summarize_block` adds new config fields. [Agent 3 finding]
 - `scripts/tests/test_config_schema.py:304-317` — `test_history_compaction_in_schema` validates `history.compaction` in `config-schema.json`. No change expected unless new config keys are added. [Agent 3 finding]
 - `scripts/tests/test_cli_harness.py:39-42` — `_make_completed()` helper: returns `subprocess.CompletedProcess(args=[], returncode=..., stdout=..., stderr=...)`. This is the cleanest pattern to model new `TestSummarizeBlock` mocks after (simpler than `mock_popen` fixture). [Agent 3 finding]
+
+_Wiring pass added by `/ll:wire-issue` (2026-06-04, run 2):_
+- `scripts/tests/test_issue_history_cli.py:160` — lazy-imports `backfill()` for test data population (seeds DB before CLI tests). Exercises the changed code path indirectly via `backfill()`. Should still pass since backfill's public contract is unchanged. [Agent 1 finding]
+- `scripts/tests/test_workflow_sequence_analyzer.py:471` — lazy-imports `backfill()` for test data population. Same indirect coverage as above. [Agent 1 finding]
+- `scripts/tests/test_issue_history_parsing.py:448, 463` — lazy-imports `backfill()` for test data population. Same indirect coverage as above. [Agent 1 finding]
+- `scripts/tests/test_session_store.py` — `_estimate_tokens()` (promoted from local `_est` closure) needs dedicated unit tests. No existing tests cover token estimation. Test: verify `len(s) // 4` heuristic with empty strings, ASCII, multi-byte, and very long strings. [Agent 3 finding]
 
 ### Documentation
 - `scripts/little_loops/session_store.py:1051` — misleading comment: `# Deterministic truncation fallback (LCM Algorithm 3, level 3 convergence guarantee).` — implies three-level escalation exists when only level 3 is implemented. Update to describe the actual three-level chain after the fix.
@@ -212,6 +245,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/session_store.py:303-305` — v10 migration comment: "summary_nodes holds LLM-generated (or truncation-fallback) summaries at two levels" — After the fix, the fallback chain is three levels (normal → aggressive → truncation), not binary. Update wording if "truncation-fallback" is no longer the only fallback. [Agent 2 finding]
 - `config-schema.json:1519` — `budget_tokens` description: "Token estimate: len(content) // 4." — If `_estimate_tokens` is promoted to a named module-level function, the schema description could reference it for traceability rather than embedding the formula. No required change; the formula stays the same. [Agent 2 finding]
 - `config-schema.json:1529` — `timeout` description: "On timeout, falls back to deterministic truncation." — After the fix, a timeout during level 1 still triggers level 2 (another LLM call at half budget), and only a timeout during level 2 falls through to truncation. The description should broaden to "falls back through escalation levels, ultimately to deterministic truncation" or similar. [Agent 2 finding]
+
+_Wiring pass added by `/ll:wire-issue` (2026-06-04, run 2):_
+- `CONTRIBUTING.md:246` — directory structure line lists `backfill` and `compact_session` as key components of `session_store.py`. If the compaction algorithm description changes substantively, this line could be updated. Minor; no change likely needed unless the function's role expands. [Agent 1 finding]
+- `docs/ARCHITECTURE.md:634` — Components table entry for `compact_session()`: "LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712)." Could optionally mention three-level escalation for completeness, but not strictly required. [Agent 2 finding]
+- `config-schema.json:1507-1509` — top-level `compaction` object description: "LCM-style compaction configuration for summary_nodes (FEAT-1712). Controls whether backfill() generates LLM summaries over message_events blocks." Underspecified — does not mention the three-level escalation or convergence guarantee. Consider broadening to match the updated timeout/budget_tokens descriptions. [Agent 2 finding]
 
 ### Configuration
 - N/A — no config changes; `history.compaction.enabled` already exists and gates this code path
@@ -245,6 +283,7 @@ open
 
 _Added by `/ll:confidence-check` on 2026-06-03 (first pass)_
 _Updated by `/ll:confidence-check` on 2026-06-04 (second pass — after /ll:decide-issue resolved truncation target)_
+_Refreshed by `/ll:confidence-check` on 2026-06-04 (third pass — scores stable; wire-issue run 2 + refine-issue added detail, no risk-profile change)_
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 67/100 → MODERATE
@@ -257,6 +296,8 @@ _Updated by `/ll:confidence-check` on 2026-06-04 (second pass — after /ll:deci
 - **Tests are co-deliverables**: No existing unit tests directly exercise `_summarize_block()`'s LLM summary path with mocked LLM responses. The 7 `TestCompactSession` tests exercise only the truncation fallback. Implement tests first so they can catch regressions in the escalation chain.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-04T06:51:10 - `18d7466f-34f1-4c94-abcf-073d0da53184.jsonl`
+- `/ll:refine-issue` - 2026-06-04T06:41:13 - `90de3465-77c9-467e-bed4-2b866e19ef36.jsonl`
 - `/ll:confidence-check` - 2026-06-04T04:54:10Z - `c9729c4b-54b6-4ae7-8a82-b1ca9672132f.jsonl`
 - `/ll:decide-issue` - 2026-06-04T04:50:33 - `d9414c61-e3ab-47cb-8c0b-1852437a4c47.jsonl`
 - `/ll:confidence-check` - 2026-06-03T23:00:00 - `7505d766-6968-4a69-851e-c64aff006bcb.jsonl`
@@ -264,3 +305,20 @@ _Updated by `/ll:confidence-check` on 2026-06-04 (second pass — after /ll:deci
 - `/ll:refine-issue` - 2026-06-04T04:37:49 - `433923b9-97cc-4e7b-8b6e-3c892d62246e.jsonl`
 - `/ll:format-issue` - 2026-06-04T04:25:50 - `ebd660b4-d823-4604-938b-3e6221250f5e.jsonl`
 - `/ll:capture-issue` - 2026-06-04T04:15:05Z - `92ad3505-8fca-44b2-aa0f-0ee9ce80d024.jsonl`
+- `/ll:confidence-check` - 2026-06-04T05:15:00Z - `28938baa-6ff0-4dbe-b0f5-f89f231b3630.jsonl`
+- `/ll:issue-size-review` - 2026-06-04T08:56:00Z - `f4ca78cf-649f-4e81-a544-c9b72f755584.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-06-04
+- **Reason**: Issue too large for single session (score: 11/11 — Very Large)
+
+### Decomposed Into
+- BUG-1934: Implement three-level LCM Algorithm 3 escalation in `_summarize_block()`
+- BUG-1935: Update docstrings and schema descriptions for three-level compaction escalation
+
+### Deferred
+- Step 10 (wire `CompactionConfig.model` and `timeout`): Explicitly optional per issue text — "This can be done in this fix or deferred to a follow-up enhancement."
