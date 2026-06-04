@@ -4,8 +4,8 @@ title: Summarizer skips LCM Algorithm 3 convergence check and level-2 escalation
 type: BUG
 priority: P3
 status: open
-captured_at: "2026-06-04T04:15:05Z"
-discovered_date: "2026-06-04"
+captured_at: '2026-06-04T04:15:05Z'
+discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1707
 relates_to:
@@ -16,6 +16,15 @@ labels:
 - session-store
 - context-management
 - captured
+confidence_score: 100
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 25
+decision_needed: false
+implementation_order_risk: true
+size: Very Large
 ---
 
 # BUG-1928: Summarizer skips LCM Algorithm 3 convergence check and level-2 escalation
@@ -135,6 +144,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 5. **Add `TestSummarizeBlock` test class** (`test_session_store.py`): mock `subprocess.run` (following the pattern in `test_subprocess_mocks.py:38-68`) to return a verbose "summary" longer than input. Assert `_summarize_block()` escalates to level 2, then level 3, and the returned output is strictly smaller than input by token count.
 6. **Verify existing compaction tests**: run `python -m pytest scripts/tests/test_session_store.py::TestCompactSession -v` and confirm all 7 existing tests still pass.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. **Update `compact_session()` docstring** (`session_store.py:1174`): change "On LLM failure, falls back to deterministic truncation so a leaf node is always produced" to describe the actual three-level chain (level 1 → level 2 aggressive → level 3 truncation). [Agent 2 finding]
+
+8. **Update v10 migration comment** (`session_store.py:303-305`): the phrase "LLM-generated (or truncation-fallback) summaries" is a binary description. Consider broadening to reflect the three-level escalation now enforced. Minor; only needed if the wording feels misleading. [Agent 2 finding]
+
+9. **Update `config-schema.json:1529` timeout description**: "On timeout, falls back to deterministic truncation" → broaden to "On timeout, escalation proceeds through remaining levels, ultimately to deterministic truncation" so the schema matches the three-level behavior. [Agent 2 finding]
+
+10. **Consider wiring `CompactionConfig.model` and `timeout`** (`config/features.py:720-741`): these fields are declared but ignored by `_summarize_block()`. The level-2 call is a second `build_blocking_json()` invocation — consider passing `model=compact_cfg.model` and using `timeout` from config rather than the hardcoded 60s. This can be done in this fix or deferred to a follow-up enhancement. [Agent 2 finding]
+
+11. **Verify `TestDAGFeatures`** (`test_history_reader.py:664-759`): 9 integration tests that call `compact_session()` and then exercise `ll_grep`/`ll_expand`/`ll_describe`. Run `python -m pytest scripts/tests/test_history_reader.py::TestDAGFeatures -v` after the fix to confirm no regression. These tests pass today via truncation fallback; they should still pass with the three-level chain. [Agent 3 finding]
+
+12. **Verify `TestGrepExpandDescribe`** (`test_ll_session.py:529-560`): integration test that bootstraps via `compact_session()`. Run `python -m pytest scripts/tests/test_ll_session.py::TestGrepExpandDescribe -v` after the fix. [Agent 3 finding]
+
 ## Integration Map
 
 ### Files to Modify
@@ -150,6 +175,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/session_store.py:1269` — `backfill_incremental()` does **not** wire compaction (no `_compact_sessions()` call)
 - No external callers exist — `_summarize_block()` is module-private, called only from `_compact_session_conn()`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_session.py:534, 550` — `TestGrepExpandDescribe._make_db_with_summary()` calls `compact_session("sess-1", db)` to bootstrap a test DB with summary DAG data; exercises the changed code path via the public API [Agent 1 finding]
+- `scripts/tests/test_history_reader.py:667-685` — `_make_db_with_compact_session()` helper calls `compact_session()` to seed summary DAG data for `TestDAGFeatures` (9 tests); exercises the changed code path via the public API [Agent 1 finding]
+
 ### Similar Patterns
 - `scripts/little_loops/fsm/evaluators.py:351-413` — `evaluate_convergence()` implements size-comparison logic (`current < previous` for `minimize` direction) that mirrors the needed `est(summary) < est(input)` check
 - `scripts/little_loops/fsm/evaluators.py:416-508` — `evaluate_diff_stall()` implements counter-based multi-step escalation (track iterations, escalate when threshold reached) — a pattern for the level-1→level-2→level-3 chain
@@ -164,6 +193,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_subprocess_mocks.py:69-77` — `_patch_resolve_host` autouse fixture patches `resolve_host` to return `ClaudeCodeRunner()` — may be needed if the host binary isn't on PATH in CI
 - Verify existing `TestCompactSession` tests (lines 1608-1779) still pass after the three-level restructure
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_history_reader.py:664-759` — `TestDAGFeatures` class (9 tests) exercises the summary DAG via `compact_session()`: `ll_grep`, `ll_expand`, `ll_describe` on compacted DB state. These integration tests will exercise the new three-level escalation path implicitly when `compact_session()` is called. Should still pass since they don't assert on summary content size. [Agent 3 finding]
+- `scripts/tests/test_ll_session.py:529-560` — `TestGrepExpandDescribe` class bootstraps test DB via `compact_session()` then exercises CLI argument parsing against compacted state. Same implicit coverage as TestDAGFeatures. [Agent 3 finding]
+- `scripts/tests/test_config.py:2770-2784` — `test_compaction_defaults()` and `test_compaction_override()` assert `CompactionConfig` field defaults and dict round-trip. No change expected unless `_summarize_block` adds new config fields. [Agent 3 finding]
+- `scripts/tests/test_config_schema.py:304-317` — `test_history_compaction_in_schema` validates `history.compaction` in `config-schema.json`. No change expected unless new config keys are added. [Agent 3 finding]
+- `scripts/tests/test_cli_harness.py:39-42` — `_make_completed()` helper: returns `subprocess.CompletedProcess(args=[], returncode=..., stdout=..., stderr=...)`. This is the cleanest pattern to model new `TestSummarizeBlock` mocks after (simpler than `mock_popen` fixture). [Agent 3 finding]
+
 ### Documentation
 - `scripts/little_loops/session_store.py:1051` — misleading comment: `# Deterministic truncation fallback (LCM Algorithm 3, level 3 convergence guarantee).` — implies three-level escalation exists when only level 3 is implemented. Update to describe the actual three-level chain after the fix.
 - `scripts/little_loops/session_store.py:1024` — section comment: `# Compaction -- LCM-style summary DAG (FEAT-1712)` — may need update to reflect the enforced convergence guarantee
@@ -171,8 +207,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `docs/ARCHITECTURE.md:562` — documents v10 schema (summary_nodes, summary_spans) and LCM-style summary DAG — no update needed unless architecture docs describe the compaction algorithm in detail
 - `docs/research/LCM-Lossless-Context-Management.md` — LCM paper reference describing Algorithm 3 escalation — no update needed
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store.py:1174` — `compact_session()` docstring: "On LLM failure, falls back to deterministic truncation so a leaf node is always produced." — After the three-level fix, this should describe level-2 aggressive escalation before truncation. [Agent 2 finding]
+- `scripts/little_loops/session_store.py:303-305` — v10 migration comment: "summary_nodes holds LLM-generated (or truncation-fallback) summaries at two levels" — After the fix, the fallback chain is three levels (normal → aggressive → truncation), not binary. Update wording if "truncation-fallback" is no longer the only fallback. [Agent 2 finding]
+- `config-schema.json:1519` — `budget_tokens` description: "Token estimate: len(content) // 4." — If `_estimate_tokens` is promoted to a named module-level function, the schema description could reference it for traceability rather than embedding the formula. No required change; the formula stays the same. [Agent 2 finding]
+- `config-schema.json:1529` — `timeout` description: "On timeout, falls back to deterministic truncation." — After the fix, a timeout during level 1 still triggers level 2 (another LLM call at half budget), and only a timeout during level 2 falls through to truncation. The description should broaden to "falls back through escalation levels, ultimately to deterministic truncation" or similar. [Agent 2 finding]
+
 ### Configuration
 - N/A — no config changes; `history.compaction.enabled` already exists and gates this code path
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config/features.py:720-741` — `CompactionConfig.model` (line 730) and `CompactionConfig.timeout` (line 731) are declared but never read by `_summarize_block()`. The fix's level-2 call is a second LLM invocation; consider wiring these config fields through `build_blocking_json(model=..., timeout=...)` so the level-2 call respects configured model/timeout rather than hardcoding. [Agent 2 finding]
+- `scripts/little_loops/config/core.py:664-669` — `ConfigDefaults.to_dict()` serializes compaction fields. No change needed unless new config keys are added to `CompactionConfig`. [Agent 2 finding]
 
 ## API/Interface
 
@@ -195,7 +241,26 @@ Internal only (`_summarize_block`); no public surface change. Update the FEAT-17
 
 open
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-03 (first pass)_
+_Updated by `/ll:confidence-check` on 2026-06-04 (second pass — after /ll:decide-issue resolved truncation target)_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Concerns
+- **Test coverage gap**: No existing unit tests directly exercise `_summarize_block()`'s LLM summary path. The 7 `TestCompactSession` tests exercise only the truncation fallback (LLM call fails in test env → truncation). `TestSummarizeBlock` is a co-deliverable — write tests first (mocking `subprocess.run` with `_make_completed()` pattern from `test_cli_harness.py:39-42`) to validate the three-level escalation chain, then implement.
+
+### Outcome Risk Factors
+- **Moderate per-site complexity**: The `_summarize_block()` restructure replaces a single try/except block with a three-level size-gated chain — new prompt construction (`aggressive-bullet` at `budget // 2`), `_estimate_tokens()` extraction from local closure to module scope (shared state between `_summarize_block()` and `_compact_session_conn()`), and size comparison gating at each level. Not a mechanical substitution.
+- **Tests are co-deliverables**: No existing unit tests directly exercise `_summarize_block()`'s LLM summary path with mocked LLM responses. The 7 `TestCompactSession` tests exercise only the truncation fallback. Implement tests first so they can catch regressions in the escalation chain.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-04T04:54:10Z - `c9729c4b-54b6-4ae7-8a82-b1ca9672132f.jsonl`
+- `/ll:decide-issue` - 2026-06-04T04:50:33 - `d9414c61-e3ab-47cb-8c0b-1852437a4c47.jsonl`
+- `/ll:confidence-check` - 2026-06-03T23:00:00 - `7505d766-6968-4a69-851e-c64aff006bcb.jsonl`
+- `/ll:wire-issue` - 2026-06-03T22:00:00 - `c2fb2e8c-a2ce-47f6-a4af-30a8556ed5e5.jsonl`
 - `/ll:refine-issue` - 2026-06-04T04:37:49 - `433923b9-97cc-4e7b-8b6e-3c892d62246e.jsonl`
 - `/ll:format-issue` - 2026-06-04T04:25:50 - `ebd660b4-d823-4604-938b-3e6221250f5e.jsonl`
 - `/ll:capture-issue` - 2026-06-04T04:15:05Z - `92ad3505-8fca-44b2-aa0f-0ee9ce80d024.jsonl`
