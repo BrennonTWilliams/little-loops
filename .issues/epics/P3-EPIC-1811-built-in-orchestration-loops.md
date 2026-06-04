@@ -6,7 +6,8 @@ priority: P3
 status: open
 discovered_date: 2026-05-30
 discovered_by: link-epics
-relates_to: [FEAT-1808, FEAT-1809, FEAT-1810, FEAT-1806, FEAT-1807]
+labels: [epic, loops, orchestration, built-in]
+relates_to: [FEAT-1808, FEAT-1809, FEAT-1810, FEAT-1806, FEAT-1807, ENH-1912, EPIC-1694]
 ---
 
 # EPIC-1811: Built-in Orchestration Loops
@@ -61,7 +62,7 @@ When this epic is done, users can:
 - **FEAT-1809** — Adaptive `loop-composer` — Re-plan-on-Failure Variant
 - **FEAT-1810** — `goal-cluster` — Multi-Goal Orchestrator for Sprint- or EPIC-Shaped Input
 - **FEAT-1806** — Opponent-Aware Market Strategy Optimization Loop
-- **FEAT-1807** — Adversarial-Redesign Figure Loop with AutoFigure
+- ✅ **FEAT-1807** — Adversarial-Redesign Figure Loop with AutoFigure
 
 ## Verification Notes
 
