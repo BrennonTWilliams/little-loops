@@ -3,7 +3,7 @@ id: ENH-1955
 title: N-level DAG traversal and CLI for project-root summary
 type: ENH
 priority: P3
-status: open
+status: done
 parent: ENH-1927
 relates_to:
 - FEAT-1712
@@ -92,5 +92,41 @@ This child covers the reader-side generalization of DAG traversal and the CLI/do
 - Existing 2-level traversal behavior is preserved (no regression for single-session condensed queries)
 - Documentation reflects N-level DAG structure (not "two-hop")
 
+## Resolution
+
+Generalized the hard-coded two-hop DAG traversal in `ll_expand()` and `ll_grep()` to N levels using a SQLite recursive CTE (`WITH RECURSIVE`), added `ll-history root` subcommand for project-root summary display, and updated documentation to reflect N-level DAG structure.
+
+### Implementation
+
+- **Core traversal** (`history_reader.py`): Replaced the `kind='condensed'` branch in both `ll_expand()` and `ll_grep()` with a single recursive CTE path that works uniformly for leaf nodes (CTE = 1 row, direct span join) and condensed nodes at any depth (CTE descends through intermediate nodes to reach leaves). The `kind` check and two-branch `if/else` are removed — one query handles everything.
+- **CLI** (`cli/history.py`): Added `ll-history root` subcommand with `--expand`, `--limit`, and `--json` flags. Finds the project-root node as the condensed node with `session_id IS NULL AND parent_id IS NULL` with the highest `level`.
+- **Tests**: 5 new tests across `test_history_reader.py` (3: root expansion, intermediate node expansion, multi-level grep) and `test_ll_session.py` (2: CLI expand/grep with multi-level DAG).
+
+### Design Decision
+
+Chose a recursive CTE over iterative Python loops because:
+- Single SQL round-trip vs. N+1 queries
+- SQLite fully supports `WITH RECURSIVE`
+- The approach naturally handles both leaf and condensed nodes uniformly
+- No precedent for recursive CTEs in the codebase, but tree traversal is already Python-based (`dependency_graph.py:272` Kahn's algorithm) — the CTE keeps traversal logic in the DB layer where the data lives
+
+### Files Modified (7 files, +310/-45)
+
+| File | Change |
+|------|--------|
+| `scripts/little_loops/history_reader.py:628-760` | Replaced two-hop traversal with recursive CTE in `ll_grep()` and `ll_expand()` |
+| `scripts/little_loops/cli/history.py:204-222,307-353` | Added `root` subparser and command handler |
+| `scripts/tests/test_history_reader.py:1016-1112` | 3 new multi-level DAG tests |
+| `scripts/tests/test_ll_session.py:702-814` | 2 new CLI multi-level DAG tests |
+| `docs/reference/CLI.md:1499-1517,1773-1774` | Documented `ll-history root` and updated expand/grep descriptions |
+| `docs/reference/CONFIGURATION.md:1160` | "two-hop traversal" → "N-level DAG traversal" |
+| `CONTRIBUTING.md:246` | "v1–v10 migrations" → "v1–v12 migrations" |
+
+### Verification
+- ✓ All 9,871 tests passed (0 failures)
+- ✓ Ruff linting: clean
+- ✓ MyPy type checking: clean
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-05T01:50:00Z - implementation and verification session
 - `/ll:issue-size-review` - 2026-06-04T19:28:00Z - `8b66735f-5337-46b3-ba3c-44648e5faca2.jsonl`
