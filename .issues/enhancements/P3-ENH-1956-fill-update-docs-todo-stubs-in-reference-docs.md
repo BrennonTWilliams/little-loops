@@ -40,7 +40,7 @@ The implementing features are all `done` — the code has shipped but the docume
 |------|---------|--------|
 | 654 | ENH-1412/ENH-1413 — Confidence-Check Score Rubrics | ENH-1412 ✓, ENH-1413 ✓ |
 | 4172 | dd260362 — `max_edge_revisits` per-edge cycle detection | FEAT-1637 ✓ |
-| 5297 | FEAT-1285 — `little_loops.learning_tests` module | pending verification |
+| 5308 | FEAT-1285 — `little_loops.learning_tests` module | pending verification |
 
 ### CLI.md (2 stubs)
 
@@ -53,7 +53,7 @@ The implementing features are all `done` — the code has shipped but the docume
 
 | Line | Feature | Status |
 |------|---------|--------|
-| 597 | ENH-1768 — Multi-Profile System for design tokens | ENH-1768 ✓ |
+| 597 | ENH-1768 — Multi-Profile System for design tokens | ENH-1768 ✓; **missing END marker** |
 | 633 | ENH-1836 — Auto-scaffolding built-in design token profiles | ENH-1836 ✓ |
 | 670 | ENH-1769 — W3C DTCG `$value` format support | ENH-1769 ✓ |
 
@@ -61,24 +61,38 @@ The implementing features are all `done` — the code has shipped but the docume
 
 | Line | Feature | Status |
 |------|---------|--------|
-| 196 | `sft-corpus` — states not yet exercised | recent |
+| 196 | `sft-corpus` — states not yet exercised | recent; **missing END marker** |
 
 ## Proposed Solution
 
-For each stub:
-1. Read the implementing issue's feature description and acceptance criteria
-2. Read the source code for the feature
-3. Fill the stub with complete documentation (description, examples, tables)
-4. Remove the `<!-- TODO: update-docs stub -->` markers
+~~For each stub:~~
+~~1. Read the implementing issue's feature description and acceptance criteria~~
+~~2. Read the source code for the feature~~
+~~3. Fill the stub with complete documentation (description, examples, tables)~~
+~~4. Remove the `<!-- TODO: update-docs stub -->` markers~~
 
-Alternatively, run `/ll:update-docs --fix` which is designed to do this automatically.
+**Updated (2026-06-05)**: Steps 1-3 are already done — all 9 stubs have been filled with complete content. The remaining work:
+
+1. Remove the `<!-- TODO: update-docs stub — ... -->` and `<!-- END TODO stub -->` wrapper comments from all 9 locations
+2. Add the two missing `<!-- END TODO stub -->` markers (CONFIGURATION.md ENH-1768, loops.md sft-corpus) — or just remove the opening markers, which is simpler
+3. Verify no stub content was accidentally lost during unwrapping
+
+Alternatively, run `/ll:update-docs --fix` which may handle marker removal automatically.
 
 ## Implementation Steps
 
-1. Fill API.md stubs (3) — start with oldest (FEAT-1285, 40 days)
-2. Fill CLI.md stubs (2) — both recent, implementer context likely fresh
-3. Fill CONFIGURATION.md stubs (3) — all design-token related, can be done together
-4. Fill loops.md stub (1) — sft-corpus reference
+~~1. Fill API.md stubs (3) — start with oldest (FEAT-1285, 40 days)~~
+~~2. Fill CLI.md stubs (2) — both recent, implementer context likely fresh~~
+~~3. Fill CONFIGURATION.md stubs (3) — all design-token related, can be done together~~
+~~4. Fill loops.md stub (1) — sft-corpus reference~~
+~~5. Verify with `/ll:verify-docs`~~
+
+**Updated (2026-06-05)**: Content filling is done. Revised steps:
+
+1. Remove TODO stub markers from API.md (3 stubs: lines 654-674, 4172-4185, 5308-5433)
+2. Remove TODO stub markers from CLI.md (2 stubs: lines 460-475, 477-507)
+3. Remove TODO stub markers from CONFIGURATION.md (3 stubs: lines 597, 633-647, 670-691) — note ENH-1768 at 597 has no END marker
+4. Remove TODO stub marker from loops.md (line 196) — no END marker present
 5. Verify with `/ll:verify-docs`
 
 ## Integration Map
@@ -98,7 +112,7 @@ Alternatively, run `/ll:update-docs --fix` which is designed to do this automati
 ## Impact
 
 - **Priority**: P3 — Documentation gap; features work but aren't documented
-- **Effort**: Medium — 9 stubs across 4 files, each requires codebase research
+- **Effort**: Low — 9 stubs across 4 files, content already written; just remove wrapper markers
 - **Risk**: Low — documentation-only, no code changes
 - **Breaking Change**: No
 
@@ -111,16 +125,32 @@ Alternatively, run `/ll:update-docs --fix` which is designed to do this automati
 
 ## Verification Notes
 
-**Verdict**: VALID — 2026-06-05T21:00:23
+**Verdict**: NEEDS_UPDATE — 2026-06-05 (re-verified)
+
+### What's Changed Since Filing
+
+The issue's central claim — that 9 documentation stubs are empty placeholders needing content — is **outdated**. All 9 stubs have been populated with substantial content (descriptions, tables, examples, code snippets). The remaining work is much smaller:
+
+1. **Remove TODO stub markers**: All 9 stubs still have their `<!-- TODO: update-docs stub ... -->` and `<!-- END TODO stub -->` wrapper comments despite the content being filled. These markers should be unwrapped.
+2. **Two stubs missing END markers**: CONFIGURATION.md ENH-1768 (line 597) and loops.md sft-corpus (line 196) lack closing `<!-- END TODO stub -->` markers — these were likely never added when content was filled.
+3. **Line number correction**: FEAT-1285 stub in API.md is at line 5308, not 5297 as stated in the issue.
+
+### Verified Claims
+
+- All 4 doc files exist and contain the stub markers ✓
+- All 9 referenced feature/enhancement issues are `Completed`/`done` ✓
+- FEAT-1637 commit dd260362 exists in git history (per-edge cycle detection) ✓
+- Content quality: all stubs have complete documentation with examples, tables, and cross-references ✓
+
+### Original Verification (2026-06-05T21:00:23)
 
 - Issue describes a planned feature/enhancement that has not yet been implemented
 - Referenced files and directories verified to exist (where applicable)
-- No claims about current code behavior are contradicted by the codebase
-- Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 ## Status
 
 **Open** | Created: 2026-06-04 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T22:39:51 - `ae6caec5-fde4-4de8-88b8-3e9ec6696e94.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
