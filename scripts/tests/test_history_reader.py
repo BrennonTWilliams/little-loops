@@ -939,6 +939,7 @@ class TestSummaryDagRetrieval:
         assert node.id == node_id
         assert node.kind == "leaf"
         assert node.session_id == "dag-sess"
+        assert node.level == 0
         assert node.content  # non-empty summary or truncation
 
     def test_ll_describe_nonexistent_node_returns_none(self, tmp_path: Path) -> None:

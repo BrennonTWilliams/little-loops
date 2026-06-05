@@ -560,6 +560,8 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v8 | `cli_events` | Records `ll-` CLI invocations via `cli_event_context()` in `session_store.py`; enables `ll-session recent --kind cli` (ENH-1848) |
 | v9 | `idx_corrections_dedup` | Unique index on `user_corrections(session_id, content)` enabling idempotent `INSERT OR IGNORE` during correction mining; `backfill()` and `backfill_incremental()` call `mine_corrections_from_messages()` to retroactively populate corrections from `message_events` (ENH-1904) |
 | v10 | `summary_nodes`, `summary_spans` | LCM-style hierarchical summary DAG (FEAT-1712): `summary_nodes` stores three-level LCM Algorithm 3 summaries (normal LLM → aggressive bullet-point LLM → deterministic truncation) as leaf and condensed nodes over `message_events` blocks; `summary_spans` links each node back to its source messages for lossless drill-down. Enables `ll-session grep`, `ll-session expand`, and `ll-session describe`. Compaction is opt-in via `history.compaction.enabled` in `ll-config.json`. |
+| v11 | `assistant_messages` | Stores concatenated text blocks from assistant responses so the SFT pipeline can read conversation turn-pairs from the database instead of re-parsing JSONL (ENH-1942). Includes `tool_use_count` for filter predicates and `idx_assistant_messages_dedup` for idempotent backfill. |
+| v12 | `summary_nodes.level`, `idx_summary_nodes_cross_dedup` | Adds `level INTEGER DEFAULT 0` column to `summary_nodes` for N-level DAG traversal (0 = leaf/per-session condensed, 1+ = cross-session condensed, max = root) and a cross-session dedup index `idx_summary_nodes_cross_dedup` on `(level, ts_start, ts_end) WHERE kind='condensed' AND session_id IS NULL` (ENH-1953). |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 
@@ -604,7 +606,7 @@ sequenceDiagram
     participant ST as SQLiteTransport
     participant DB as history.db
 
-    SS->>DB: ensure_db() — bootstrap schema (v1–v10)
+    SS->>DB: ensure_db() — bootstrap schema (v1–v12)
     SS-->>DB: backfill_incremental() in background thread
     PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
     UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
@@ -629,7 +631,7 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v10 migrations) at session start |
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v12 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
 | `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712) |
 | `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
@@ -674,7 +676,7 @@ Any match across the three sets records the message as a correction. A fourth me
 - All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
 - `SQLiteTransport.send()` is a no-op when `self._conn is None`
 
-> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v10) and CLI transport-wiring table.
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v12) and CLI transport-wiring table.
 
 ---
 

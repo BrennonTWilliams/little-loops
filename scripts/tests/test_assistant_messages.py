@@ -84,8 +84,8 @@ class TestAssistantMessagesMigration:
         finally:
             conn.close()
 
-    def test_schema_version_is_11(self) -> None:
-        assert SCHEMA_VERSION == 11
+    def test_schema_version_is_12(self) -> None:
+        assert SCHEMA_VERSION == 12
 
     def test_upgrade_from_v10_preserves_data(self, tmp_path: Path) -> None:
         """Simulate v10 → v11 upgrade: existing tables survive the migration."""

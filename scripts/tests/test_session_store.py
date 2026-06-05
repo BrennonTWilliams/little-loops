@@ -1101,7 +1101,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 11
+        assert SCHEMA_VERSION == 12
 
 
 class TestBackfillIncremental:
@@ -1418,8 +1418,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 11
-        assert int(row[0]) == 11
+        assert SCHEMA_VERSION == 12
+        assert int(row[0]) == 12
 
 
 class TestMineCorrectionsFromMessages:
@@ -1502,8 +1502,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 11
-        assert int(row[0]) == 11
+        assert SCHEMA_VERSION == 12
+        assert int(row[0]) == 12
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1554,8 +1554,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 11
-        assert int(row[0]) == 11
+        assert SCHEMA_VERSION == 12
+        assert int(row[0]) == 12
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1633,10 +1633,84 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 11
+        assert int(version[0]) == 12
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
+
+
+class TestSchemaV12:
+    """Verify that the v12 migration adds level column and cross-session dedup index (ENH-1953)."""
+
+    def test_schema_version_is_twelve(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert SCHEMA_VERSION == 12
+        assert int(row[0]) == 12
+
+    def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info('summary_nodes')")}
+        finally:
+            conn.close()
+        assert "level" in cols
+
+    def test_cross_dedup_index_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+                " AND name='idx_summary_nodes_cross_dedup'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "idx_summary_nodes_cross_dedup index must exist after ensure_db()"
+
+    def test_v11_to_v12_migration(self, tmp_path: Path) -> None:
+        """Bootstrap v11 schema, insert a row, migrate to v12, verify level=0 preserved."""
+        db = tmp_path / "history.db"
+        from little_loops.session_store import _MIGRATIONS
+
+        conn = sqlite3.connect(str(db))
+        try:
+            for sql in _MIGRATIONS[:11]:  # v1–v11
+                conn.executescript(sql)
+            conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '11')")
+            # Insert a row to verify data preservation through ALTER TABLE ADD COLUMN
+            conn.execute(
+                "INSERT INTO summary_nodes(kind, content, tokens, session_id, ts_start, ts_end, created_at)"
+                " VALUES('condensed', 'pre-migration test', 100, 's-test', NULL, NULL, '2026-01-01T00:00:00Z')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            cols = {r[1] for r in conn.execute("PRAGMA table_info('summary_nodes')")}
+            index_row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+                " AND name='idx_summary_nodes_cross_dedup'"
+            ).fetchone()
+            # Verify data preserved with level=0 (DEFAULT)
+            row = conn.execute("SELECT level FROM summary_nodes WHERE kind='condensed'").fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == SCHEMA_VERSION
+        assert "level" in cols
+        assert index_row is not None
+        assert row is not None and row[0] == 0
 
 
 class TestCompactSession:

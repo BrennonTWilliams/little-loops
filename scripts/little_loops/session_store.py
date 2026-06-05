@@ -72,7 +72,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill", "cli"})
 _KIND_TABLE = {
@@ -302,16 +302,20 @@ _MIGRATIONS: list[str] = [
     CREATE UNIQUE INDEX IF NOT EXISTS idx_corrections_dedup
         ON user_corrections(session_id, content);
     """,
-    # v10 (FEAT-1712): LCM-style hierarchical summary DAG over session history.
-    # summary_nodes holds LLM-generated summaries (via three-level LCM Algorithm 3
-    # escalation: normal → aggressive bullet-point → deterministic truncation) at two
-    # levels: 'leaf' nodes cover a fixed token-budget block of message_events;
-    # 'condensed' nodes summarise a session's leaves. summary_spans links summary
-    # nodes back to the originating message_events rows for lossless drill-down.
+    # v10 (FEAT-1712, v12 ENH-1953): LCM-style hierarchical summary DAG over
+    # session history. summary_nodes holds LLM-generated summaries (via three-level
+    # LCM Algorithm 3 escalation: normal → aggressive bullet-point → deterministic
+    # truncation) at multiple levels: 'leaf' nodes cover a fixed token-budget block
+    # of message_events; 'condensed' nodes summarise a session's leaves (level 0,
+    # per-session) or cross-session nodes (level 1+, session_id IS NULL); the root
+    # node sits at the maximum level. summary_spans links summary nodes back to the
+    # originating message_events rows for lossless drill-down.
     # FK references are decorative (no PRAGMA foreign_keys; integrity enforced at
     # the application layer by compact_session's insert ordering + INSERT OR IGNORE).
     # Partial unique indexes prevent duplicate leaf and condensed nodes per session
-    # across repeated backfill() calls (idempotency via INSERT OR IGNORE).
+    # (idx_summary_nodes_condensed_dedup) and duplicate cross-session nodes
+    # (idx_summary_nodes_cross_dedup, added in v12) across repeated backfill() calls
+    # (idempotency via INSERT OR IGNORE).
     """
     CREATE TABLE IF NOT EXISTS summary_nodes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -354,6 +358,18 @@ _MIGRATIONS: list[str] = [
         ON assistant_messages(session_id, ts);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_assistant_messages_dedup
         ON assistant_messages(session_id, ts, content);
+    """,
+    # v12 (ENH-1953): add level column to summary_nodes for N-level DAG
+    # traversal and a cross-session dedup index. level 0 = leaf/per-session
+    # condensed, 1+ = cross-session condensed, max = root.
+    # idx_summary_nodes_cross_dedup prevents duplicate cross-session condensed
+    # nodes where session_id IS NULL (the existing idx_summary_nodes_condensed_dedup
+    # only covers per-session rows and is unchanged).
+    """
+    ALTER TABLE summary_nodes ADD COLUMN level INTEGER DEFAULT 0;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_nodes_cross_dedup
+        ON summary_nodes(level, ts_start, ts_end)
+        WHERE kind='condensed' AND session_id IS NULL;
     """,
 ]
 

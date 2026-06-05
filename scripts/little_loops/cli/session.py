@@ -371,7 +371,7 @@ def main_session() -> int:
 
                 print_json(asdict(node))
                 return 0
-            print(f"id={node.id}  kind={node.kind}  session={node.session_id}")
+            print(f"id={node.id}  kind={node.kind}  level={node.level}  session={node.session_id}")
             print(f"ts_start={node.ts_start}  ts_end={node.ts_end}")
             print(f"tokens={node.tokens}  created_at={node.created_at}")
             print(f"content: {node.content[:200]}")

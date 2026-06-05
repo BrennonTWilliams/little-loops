@@ -117,6 +117,7 @@ class SummaryNode:
     ts_start: str | None
     ts_end: str | None
     created_at: str
+    level: int | None
 
 
 @dataclass
@@ -784,7 +785,7 @@ def ll_describe(
     try:
         row = conn.execute(
             "SELECT id, kind, content, tokens, parent_id, session_id,"
-            " ts_start, ts_end, created_at"
+            " ts_start, ts_end, created_at, level"
             " FROM summary_nodes WHERE id = ?",
             (node_id,),
         ).fetchone()
@@ -805,6 +806,7 @@ def ll_describe(
         ts_start=row["ts_start"],
         ts_end=row["ts_end"],
         created_at=row["created_at"],
+        level=row["level"],
     )
 
 
