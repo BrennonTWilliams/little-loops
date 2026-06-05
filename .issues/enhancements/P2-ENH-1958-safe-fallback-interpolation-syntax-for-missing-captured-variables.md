@@ -2,8 +2,8 @@
 id: ENH-1958
 type: ENH
 priority: P2
-status: open
-captured_at: "2026-06-05T18:05:10Z"
+status: done
+captured_at: '2026-06-05T18:05:10Z'
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1962

@@ -1955,6 +1955,13 @@ Use `${namespace.path}` in action strings, evaluator configs, and routing target
 
 Escape literal `${` with `$${`. Bash parameter expansion operators (`:-`, `:+`, `[@]`, etc.) inside `$${...}` blocks are supported and pass through unchanged — e.g., `$${DEPTH:-0}` reaches the shell as `${DEPTH:-0}`.
 
+**Safe interpolation** prevents crashes when referencing variables from potentially-skipped states. Two forms are supported:
+
+- **`:default=` suffix**: `${captured.selected_step.output:default=No step was selected}` — returns the default string when the path is missing, or the actual value when it exists.
+- **`?` suffix**: `${captured.selected_step.output?}` — returns empty string when the path is missing, or the actual value when it exists.
+
+Works across all namespaces (`context`, `captured`, `prev`, `result`, `state`, `loop`, `env`, `param`). Unsuffixed `${...}` references continue to raise `InterpolationError` on missing paths (backward compatible). The two suffixes are mutually exclusive — using both on the same reference raises an error.
+
 ### Capture
 
 Store a state's action output for use in later states:

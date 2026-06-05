@@ -530,3 +530,230 @@ class TestParamNamespace:
         ctx = InterpolationContext()
         with pytest.raises(InterpolationError):
             interpolate("${param.anything}", ctx)
+
+
+class TestSafeInterpolation:
+    """Tests for :default= and ? fallback interpolation syntax (ENH-1958)."""
+
+    # ── :default= suffix ──────────────────────────────────────────────
+
+    def test_default_suffix_uses_fallback_when_missing(self) -> None:
+        """${captured.missing:default=fallback} returns the default string."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate("${captured.missing:default=fallback}", ctx)
+        assert result == "fallback"
+
+    def test_default_suffix_returns_actual_when_present(self) -> None:
+        """${captured.present:default=fb} returns the actual value when it exists."""
+        ctx = InterpolationContext(
+            captured={"present": {"output": "real value"}}
+        )
+        result = interpolate("${captured.present.output:default=fb}", ctx)
+        assert result == "real value"
+
+    def test_default_suffix_in_context_namespace(self) -> None:
+        """${context.missing:default=N/A} in context namespace."""
+        ctx = InterpolationContext(context={})
+        result = interpolate("${context.missing:default=N/A}", ctx)
+        assert result == "N/A"
+
+    def test_default_suffix_in_env_namespace(self) -> None:
+        """${env.MISSING_VAR:default=off} returns default when env var unset."""
+        ctx = InterpolationContext()
+        with mock.patch.dict(os.environ, {}, clear=True):
+            result = interpolate("${env.NONEXISTENT_VAR_12345:default=off}", ctx)
+            assert result == "off"
+
+    def test_default_suffix_in_state_namespace(self) -> None:
+        """${state.unknown:default=default_name} returns default for unknown state prop."""
+        ctx = InterpolationContext()
+        result = interpolate("${state.unknown:default=default_name}", ctx)
+        assert result == "default_name"
+
+    def test_default_suffix_in_loop_namespace(self) -> None:
+        """${loop.unknown:default=n/a} returns default for unknown loop prop."""
+        ctx = InterpolationContext()
+        result = interpolate("${loop.unknown:default=n/a}", ctx)
+        assert result == "n/a"
+
+    def test_default_suffix_empty_string(self) -> None:
+        """${captured.x:default=} returns empty string as default."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate("Value: [${captured.x:default=}]", ctx)
+        assert result == "Value: []"
+
+    def test_default_suffix_with_special_chars(self) -> None:
+        """Default value can contain spaces, dashes, and special chars."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate("${captured.x:default=no step -- see plan}", ctx)
+        assert result == "no step -- see plan"
+
+    def test_default_suffix_with_question_mark_in_default(self) -> None:
+        """A ? inside a default value is treated literally (not as nullable)."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate("${captured.x:default=are you sure?}", ctx)
+        assert result == "are you sure?"
+
+    def test_default_suffix_nested_path_missing(self) -> None:
+        """Default kicks in for a missing nested path within an existing captured key."""
+        ctx = InterpolationContext(
+            captured={"selected_step": {"exit_code": 0}}
+        )
+        result = interpolate("${captured.selected_step.output:default=no output}", ctx)
+        assert result == "no output"
+
+    # ── ? (nullable) suffix ───────────────────────────────────────────
+
+    def test_nullable_suffix_returns_empty_when_missing(self) -> None:
+        """${captured.missing?} returns empty string when path missing."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate("${captured.missing?}", ctx)
+        assert result == ""
+
+    def test_nullable_suffix_returns_actual_when_present(self) -> None:
+        """${captured.present.output?} returns actual value when it exists."""
+        ctx = InterpolationContext(
+            captured={"present": {"output": "real value"}}
+        )
+        result = interpolate("${captured.present.output?}", ctx)
+        assert result == "real value"
+
+    def test_nullable_suffix_in_context_namespace(self) -> None:
+        """${context.missing?} returns empty in context namespace."""
+        ctx = InterpolationContext(context={})
+        result = interpolate("${context.missing?}", ctx)
+        assert result == ""
+
+    def test_nullable_suffix_in_env_namespace(self) -> None:
+        """${env.MISSING?} returns empty for unset env var."""
+        ctx = InterpolationContext()
+        with mock.patch.dict(os.environ, {}, clear=True):
+            result = interpolate("${env.NONEXISTENT_VAR_12345?}", ctx)
+            assert result == ""
+
+    def test_nullable_suffix_nested_path_missing(self) -> None:
+        """Nullable kicks in for a missing nested path within an existing key."""
+        ctx = InterpolationContext(
+            captured={"selected_step": {"exit_code": 0}}
+        )
+        result = interpolate("${captured.selected_step.output?}", ctx)
+        assert result == ""
+
+    # ── Backward compatibility (unsuffixed stays strict) ──────────────
+
+    def test_no_suffix_still_raises_on_missing_captured(self) -> None:
+        """${captured.missing} without suffix still raises InterpolationError."""
+        ctx = InterpolationContext(captured={})
+        with pytest.raises(InterpolationError, match="Path 'missing' not found"):
+            interpolate("${captured.missing}", ctx)
+
+    def test_no_suffix_still_raises_on_missing_context(self) -> None:
+        """${context.missing} without suffix still raises."""
+        ctx = InterpolationContext(context={})
+        with pytest.raises(InterpolationError, match="Path 'missing' not found"):
+            interpolate("${context.missing}", ctx)
+
+    def test_no_suffix_still_raises_on_unknown_namespace(self) -> None:
+        """${unknown.x} without suffix still raises for unknown namespace."""
+        ctx = InterpolationContext()
+        with pytest.raises(InterpolationError, match="Unknown namespace"):
+            interpolate("${unknown.x}", ctx)
+
+    def test_no_suffix_still_raises_on_invalid_format(self) -> None:
+        """${varname} (no namespace.path) still raises even with suffix."""
+        ctx = InterpolationContext()
+        # The suffix parsing happens AFTER the namespace.path check,
+        # so ${varname?} = "${varname?}" without dot still fails format check
+        with pytest.raises(InterpolationError, match="expected namespace.path"):
+            interpolate("${varname?}", ctx)
+
+    # ── Mixed patterns ────────────────────────────────────────────────
+
+    def test_mixed_safe_and_unsafe_in_one_string(self) -> None:
+        """A safe var and an existing var coexist in one template."""
+        ctx = InterpolationContext(
+            context={"real_var": "hello"},
+            captured={},
+        )
+        result = interpolate(
+            "X=${captured.a:default=N/A} Y=${context.real_var}", ctx
+        )
+        assert result == "X=N/A Y=hello"
+
+    def test_multiple_defaults_in_one_string(self) -> None:
+        """Multiple :default= references in one template all resolve."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate(
+            "A=${captured.x:default=1} B=${captured.y:default=2}", ctx
+        )
+        assert result == "A=1 B=2"
+
+    def test_multiple_nullable_in_one_string(self) -> None:
+        """Multiple ? references in one template all resolve to empty."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate(
+            "[${captured.x?}][${captured.y?}]", ctx
+        )
+        assert result == "[][]"
+
+    def test_mixed_default_and_nullable(self) -> None:
+        """Mixing :default= and ? forms in one template works independently."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate(
+            "A=${captured.x:default=got} B=${captured.y?}", ctx
+        )
+        assert result == "A=got B="
+
+    # ── Edge cases and error conditions ───────────────────────────────
+
+    def test_default_and_nullable_together_raises(self) -> None:
+        """Using both ? and :default= together raises InterpolationError."""
+        ctx = InterpolationContext(captured={})
+        with pytest.raises(InterpolationError, match="mutually exclusive"):
+            interpolate("${captured.x?:default=fallback}", ctx)
+
+    def test_default_suffix_prevents_error_when_prev_is_none(self) -> None:
+        """${prev.output:default=none} avoids crash when prev is None."""
+        ctx = InterpolationContext(prev=None)
+        result = interpolate("${prev.output:default=none}", ctx)
+        assert result == "none"
+
+    def test_nullable_suffix_prevents_error_when_prev_is_none(self) -> None:
+        """${prev.output?} returns empty when prev is None."""
+        ctx = InterpolationContext(prev=None)
+        result = interpolate("${prev.output?}", ctx)
+        assert result == ""
+
+    def test_default_suffix_prevents_error_when_result_is_none(self) -> None:
+        """${result.verdict:default=unknown} avoids crash when result is None."""
+        ctx = InterpolationContext(result=None)
+        result = interpolate("${result.verdict:default=unknown}", ctx)
+        assert result == "unknown"
+
+    def test_escape_still_works_with_default_syntax(self) -> None:
+        """$${captured.x:default=fallback} passes through as literal."""
+        ctx = InterpolationContext()
+        result = interpolate("$${captured.x:default=fallback}", ctx)
+        assert result == "${captured.x:default=fallback}"
+
+    def test_escape_still_works_with_nullable_syntax(self) -> None:
+        """$${captured.x?} passes through as literal."""
+        ctx = InterpolationContext()
+        result = interpolate("$${captured.x?}", ctx)
+        assert result == "${captured.x?}"
+
+    # ── interpolate_dict compatibility ────────────────────────────────
+
+    def test_default_suffix_in_interpolate_dict(self) -> None:
+        """:default= works inside interpolate_dict."""
+        ctx = InterpolationContext(captured={})
+        obj = {"summary": "${captured.x:default=no data}"}
+        result = interpolate_dict(obj, ctx)
+        assert result == {"summary": "no data"}
+
+    def test_nullable_suffix_in_interpolate_dict(self) -> None:
+        """? suffix works inside interpolate_dict."""
+        ctx = InterpolationContext(captured={})
+        obj = {"summary": "${captured.x?}"}
+        result = interpolate_dict(obj, ctx)
+        assert result == {"summary": ""}

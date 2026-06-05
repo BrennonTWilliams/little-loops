@@ -1108,11 +1108,14 @@ ${env.PATH}
 | Rule | Behavior |
 |------|----------|
 | **Timing** | Resolved at runtime, just before use |
-| **Undefined variable** | Loop terminates with error |
+| **Undefined variable** | Loop terminates with error (unsuffixed `${...}` references only) |
 | **Empty value** | Interpolates as empty string |
+| **Safe interpolation — `:default=`** | `${namespace.path:default=value}` returns the default string when the path is missing, and the actual value otherwise. Works across all namespaces. |
+| **Safe interpolation — `?`** | `${namespace.path?}` returns empty string when the path is missing, and the actual value otherwise. Shorthand for `:default=` |
 | **Escaping** | Use `$${` for literal `${`; bash parameter expansion operators (`:-`, `:+`, `[@]`, etc.) inside `$${...}` pass through unchanged to the shell |
 | **Bash default values** | `${var:-default}` syntax is resolved by the interpolation engine at runtime — if `var` is defined and non-empty its value is used; if absent or empty, `default` is substituted. Use this for optional context variables. |
 | **Nesting** | Not supported |
+| **Suffix mutual exclusion** | `:default=` and `?` cannot be combined on the same reference. `:default=` is parsed first, so a `?` inside a default value is literal (e.g., `${captured.x:default=ready?}` → `"ready?"`). |
 
 ---
 

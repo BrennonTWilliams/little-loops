@@ -4696,6 +4696,17 @@ result = interpolate("Use $${context.var} syntax", ctx)
 # Bash parameter expansion operators inside $${ } pass through unchanged
 result = interpolate("printf '$${DEPTH:-0}'", ctx)
 # Returns: "printf '${DEPTH:-0}'"  (bash evaluates ${DEPTH:-0} at runtime)
+
+# Safe interpolation — :default= returns fallback on missing path
+result = interpolate("${captured.missing:default=fallback}", ctx)
+# Returns: "fallback"
+
+# Safe interpolation — ? returns empty string on missing path
+result = interpolate("${captured.missing?}", ctx)
+# Returns: ""
+
+# Unsuffixed references still raise InterpolationError on missing paths
+# interpolate("${captured.missing}", ctx)  → InterpolationError
 ```
 
 #### interpolate_dict

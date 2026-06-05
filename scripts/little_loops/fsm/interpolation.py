@@ -220,6 +220,26 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
 
     def replace_var(match: re.Match[str]) -> str:
         full_path = match.group(1)
+
+        # Parse optional fallback suffixes
+        #   ${namespace.path:default=value} → use "value" on missing path
+        #   ${namespace.path?}              → use "" on missing path
+        default_value: str | None = None
+        nullable = False
+
+        # Check for :default= first (so ? inside a default value is literal)
+        if ":default=" in full_path:
+            var_part, default_value = full_path.split(":default=", 1)
+            if var_part.endswith("?"):
+                raise InterpolationError(
+                    f"Ambiguous suffix: ${{{full_path}}} "
+                    "(?:default=... and ? are mutually exclusive)"
+                )
+            full_path = var_part
+        elif full_path.endswith("?"):
+            nullable = True
+            full_path = full_path[:-1]
+
         if full_path == "messages":
             # Bare ${messages} is shorthand for the full message log
             namespace, path = "messages", ""
@@ -229,11 +249,18 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
             )
         else:
             namespace, path = full_path.split(".", 1)
-        value = ctx.resolve(namespace, path)
-        # Convert to string, handling empty values
-        if value is None:
-            return ""
-        return str(value)
+
+        try:
+            value = ctx.resolve(namespace, path)
+            if value is None:
+                return ""
+            return str(value)
+        except InterpolationError:
+            if default_value is not None:
+                return default_value
+            if nullable:
+                return ""
+            raise
 
     result = VARIABLE_PATTERN.sub(replace_var, result)
 
