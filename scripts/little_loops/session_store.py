@@ -1474,7 +1474,10 @@ def _compact_sessions(
 
         for row in condensed:
             node_id, content, tokens, sess_id = (
-                row[0], row[1], row[2] or 0, row[3],
+                row[0],
+                row[1],
+                row[2] or 0,
+                row[3],
             )
             if current_tokens + tokens > compact_cfg.budget_tokens and current:
                 groups.append(current)
@@ -1491,8 +1494,10 @@ def _compact_sessions(
             contents = [g[1] for g in group]
 
             summary = _summarize_block(
-                contents, compact_cfg.budget_tokens,
-                model=compact_cfg.model, timeout=compact_cfg.timeout,
+                contents,
+                compact_cfg.budget_tokens,
+                model=compact_cfg.model,
+                timeout=compact_cfg.timeout,
             )
 
             # Compute ts_start/ts_end for the dedup index.
@@ -1515,8 +1520,7 @@ def _compact_sessions(
             else:
                 ph = ",".join(["?"] * len(member_ids))
                 ts_row = conn.execute(
-                    f"SELECT MIN(ts_start), MAX(ts_end) FROM summary_nodes"
-                    f" WHERE id IN ({ph})",
+                    f"SELECT MIN(ts_start), MAX(ts_end) FROM summary_nodes WHERE id IN ({ph})",
                     member_ids,
                 ).fetchone()
                 ts_start = ts_row[0] if ts_row else None

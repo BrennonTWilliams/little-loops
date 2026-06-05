@@ -1012,3 +1012,123 @@ class TestSummaryDagRetrieval:
             f"got empty list"
         )
         assert any("FSM" in r.content for r in results)
+
+    # -- multi-level DAG tests (ENH-1955) ---------------------------------------
+
+    def _make_db_with_multi_level_dag(self, tmp_path: Path) -> tuple[Path, int, int, int]:
+        """Build a 3-level DAG: leaf (L0) → cross-session condensed (L1) → root (L2).
+
+        Returns (db_path, root_id, l1_node_id, leaf_a_id).
+        """
+        from datetime import UTC, datetime
+
+        from little_loops.session_store import connect, ensure_db
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            # Two sessions
+            for sid in ("sess-a", "sess-b"):
+                conn.execute(
+                    "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                    (sid, str(tmp_path / f"{sid}.jsonl")),
+                )
+            # 5 messages per session
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (f"2026-01-01T00:{i:02d}:00Z", "sess-a", f"Session A message {i} about FSM"),
+                )
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (f"2026-01-01T00:{i:02d}:00Z", "sess-b", f"Session B message {i} about auth"),
+                )
+
+            # Per-session leaf nodes (level 0)
+            conn.execute(
+                "INSERT INTO summary_nodes(kind, content, tokens, session_id, level, created_at)"
+                " VALUES('leaf', 'Leaf A summary', 100, 'sess-a', 0, ?)",
+                (now,),
+            )
+            leaf_a = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+            conn.execute(
+                "INSERT INTO summary_nodes(kind, content, tokens, session_id, level, created_at)"
+                " VALUES('leaf', 'Leaf B summary', 100, 'sess-b', 0, ?)",
+                (now,),
+            )
+            leaf_b = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+            # Link leaves to messages
+            for row in conn.execute(
+                "SELECT id FROM message_events WHERE session_id='sess-a'"
+            ).fetchall():
+                conn.execute(
+                    "INSERT INTO summary_spans(summary_id, message_event_id) VALUES(?, ?)",
+                    (leaf_a, row["id"]),
+                )
+            for row in conn.execute(
+                "SELECT id FROM message_events WHERE session_id='sess-b'"
+            ).fetchall():
+                conn.execute(
+                    "INSERT INTO summary_spans(summary_id, message_event_id) VALUES(?, ?)",
+                    (leaf_b, row["id"]),
+                )
+
+            # Level-1 cross-session condensed node
+            conn.execute(
+                "INSERT INTO summary_nodes(kind, content, tokens, session_id, level, created_at)"
+                " VALUES('condensed', 'L1 cross-session summary', 200, NULL, 1, ?)",
+                (now,),
+            )
+            l1_node = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute("UPDATE summary_nodes SET parent_id=? WHERE id=?", (l1_node, leaf_a))
+            conn.execute("UPDATE summary_nodes SET parent_id=? WHERE id=?", (l1_node, leaf_b))
+
+            # Level-2 root node
+            conn.execute(
+                "INSERT INTO summary_nodes(kind, content, tokens, session_id, level, created_at)"
+                " VALUES('condensed', 'Root project summary', 300, NULL, 2, ?)",
+                (now,),
+            )
+            root_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute("UPDATE summary_nodes SET parent_id=? WHERE id=?", (root_id, l1_node))
+
+            conn.commit()
+        finally:
+            conn.close()
+        return db, root_id, l1_node, leaf_a
+
+    def test_expand_root_node_returns_all_messages(self, tmp_path: Path) -> None:
+        """ll_expand on a 3-level root node returns messages from all descendant leaves."""
+        from little_loops.history_reader import ll_expand
+
+        db, root_id, _, _ = self._make_db_with_multi_level_dag(tmp_path)
+        messages = ll_expand(root_id, db=db)
+        assert len(messages) == 10, (
+            f"Expected 10 messages from root (5 sess-a + 5 sess-b), got {len(messages)}"
+        )
+        contents = " ".join(m.get("content", "") for m in messages)
+        assert "FSM" in contents
+        assert "auth" in contents
+
+    def test_expand_intermediate_condensed_node(self, tmp_path: Path) -> None:
+        """ll_expand on an L1 condensed node returns messages from its leaf children."""
+        from little_loops.history_reader import ll_expand
+
+        db, _, l1_id, _ = self._make_db_with_multi_level_dag(tmp_path)
+        messages = ll_expand(l1_id, db=db)
+        assert len(messages) == 10, f"Expected 10 messages from L1 node, got {len(messages)}"
+
+    def test_grep_with_multi_level_summary_id(self, tmp_path: Path) -> None:
+        """ll_grep with a 3-level root summary_id searches across all descendant leaves."""
+        from little_loops.history_reader import ll_grep
+
+        db, root_id, _, _ = self._make_db_with_multi_level_dag(tmp_path)
+        # Root scope: 5 messages match FSM (sess-a), 5 match auth (sess-b)
+        fsm_results = ll_grep("FSM", summary_id=root_id, db=db)
+        assert len(fsm_results) == 5, f"Expected 5 FSM matches via root, got {len(fsm_results)}"
+        auth_results = ll_grep("auth", summary_id=root_id, db=db)
+        assert len(auth_results) == 5, f"Expected 5 auth matches via root, got {len(auth_results)}"

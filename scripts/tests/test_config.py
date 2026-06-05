@@ -2880,5 +2880,7 @@ class TestBRConfigHistoryIntegration:
             h2.evolution.feedback_min_recurrence == config.history.evolution.feedback_min_recurrence
         )
         assert h2.compaction.enabled == config.history.compaction.enabled
-        assert h2.compaction.cross_session_enabled == config.history.compaction.cross_session_enabled
+        assert (
+            h2.compaction.cross_session_enabled == config.history.compaction.cross_session_enabled
+        )
         assert h2.compaction.max_level == config.history.compaction.max_level

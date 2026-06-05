@@ -1157,7 +1157,7 @@ LCM-style three-level compaction for `summary_nodes` (FEAT-1712). Controls wheth
 2. **Level 2 — Aggressive bullet-point LLM**: If Level 1 produces more than one summary paragraph (or exceeds half the budget), a second LLM call condenses the output into tight bullet points.
 3. **Level 3 — Deterministic truncation**: If Level 2 still produces >1 paragraph (or the LLM is unavailable), the summarizer falls back to a deterministic character-based truncation — no LLM call. This guarantees termination without runaway costs.
 
-Each summary is stored as a node in `summary_nodes`. Condensed nodes (Levels 2–3) receive `parent_id` linkage back to their Level-1 source, forming a two-hop traversal path. `ll-session grep` and `ll-session expand` use this DAG to drill from summary context back to source messages.
+Each summary is stored as a node in `summary_nodes`. Condensed nodes receive `parent_id` linkage back to their source leaves, forming an N-level DAG traversal path. `ll-session grep` and `ll-session expand` use a recursive CTE to drill from any condensed node (at any depth) through descendant leaves back to source messages.
 
 **Cross-session recursive condensation (ENH-1954):** When `cross_session_enabled` is `true` (default), the compaction pass recurses over existing condensed nodes level by level after per-session compaction finishes. At each level, condensed nodes are grouped by token budget (same greedy algorithm as per-session block accumulation), summarised, and inserted as higher-order condensed nodes (`session_id=NULL`, `level=1+`). Recursion continues until exactly one project-root summary node remains — providing a single, top-level summary of the entire project's session history. Set `max_level` to cap the recursion depth.
 

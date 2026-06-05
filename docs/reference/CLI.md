@@ -1498,6 +1498,24 @@ ll-history sessions ENH-1710              # Sessions that touched ENH-1710
 ll-history sessions ENH-1710 --json       # JSON output
 ```
 
+#### `ll-history root`
+
+Show the project-root summary node — the top-level condensed node that covers all sessions in the project (ENH-1955). Requires `ll-session backfill` with compaction and cross-session condensation enabled.
+
+| Flag | Description |
+|------|-------------|
+| `--expand` | Expand and display all messages under the root node |
+| `--limit N` | Maximum messages to show with `--expand` (default: 20) |
+| `--json` / `-j` | Output root node metadata + message count as JSON |
+
+**Examples:**
+```bash
+ll-history root                  # Show root node metadata
+ll-history root --expand         # Show metadata + first 20 messages
+ll-history root --expand --limit 5  # Show metadata + first 5 messages
+ll-history root --json           # JSON output
+```
+
 ---
 
 ### ll-workflows
@@ -1752,8 +1770,8 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830) |
 | `related` | Issue events for a given issue ID |
 | `path` | Resolve the JSONL file path for a session ID |
-| `grep` | Regex search over `message_events` with optional summary-node scope filtering |
-| `expand` | Return all `message_events` covered by a given summary node ID |
+| `grep` | Regex search over `message_events` with optional summary-node scope filtering; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |
+| `expand` | Return all `message_events` covered by a given summary node ID; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |
 | `describe` | Show metadata (level, block span, parent) for a summary node |
 
 **`grep` flags:**

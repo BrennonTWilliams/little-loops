@@ -697,3 +697,109 @@ class TestGrepExpandDescribe:
         out = capsys.readouterr().out
         assert result == 0
         assert "auth" in out
+
+    # -- multi-level DAG CLI tests (ENH-1955) -----------------------------------
+
+    def _make_db_with_multi_level_dag(self, tmp_path: Path) -> tuple[Path, int]:
+        """Build a 3-level DAG and return (db_path, root_id)."""
+        from datetime import UTC, datetime
+
+        from little_loops.session_store import connect, ensure_db
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            for sid in ("sess-a", "sess-b"):
+                conn.execute(
+                    "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                    (sid, str(tmp_path / f"{sid}.jsonl")),
+                )
+            for i in range(3):
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (f"2026-01-01T00:{i:02d}:00Z", "sess-a", f"CLI test A msg {i} FSM"),
+                )
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (f"2026-01-01T00:{i:02d}:00Z", "sess-b", f"CLI test B msg {i} auth"),
+                )
+
+            # Leaf A
+            conn.execute(
+                "INSERT INTO summary_nodes(kind, content, tokens, session_id, level, created_at)"
+                " VALUES('leaf', 'Leaf A', 50, 'sess-a', 0, ?)",
+                (now,),
+            )
+            leaf_a = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            for row in conn.execute(
+                "SELECT id FROM message_events WHERE session_id='sess-a'"
+            ).fetchall():
+                conn.execute(
+                    "INSERT INTO summary_spans(summary_id, message_event_id) VALUES(?, ?)",
+                    (leaf_a, row["id"]),
+                )
+
+            # Leaf B
+            conn.execute(
+                "INSERT INTO summary_nodes(kind, content, tokens, session_id, level, created_at)"
+                " VALUES('leaf', 'Leaf B', 50, 'sess-b', 0, ?)",
+                (now,),
+            )
+            leaf_b = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            for row in conn.execute(
+                "SELECT id FROM message_events WHERE session_id='sess-b'"
+            ).fetchall():
+                conn.execute(
+                    "INSERT INTO summary_spans(summary_id, message_event_id) VALUES(?, ?)",
+                    (leaf_b, row["id"]),
+                )
+
+            # L1 condensed
+            conn.execute(
+                "INSERT INTO summary_nodes(kind, content, tokens, session_id, level, created_at)"
+                " VALUES('condensed', 'L1 summary', 100, NULL, 1, ?)",
+                (now,),
+            )
+            l1 = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute("UPDATE summary_nodes SET parent_id=? WHERE id=?", (l1, leaf_a))
+            conn.execute("UPDATE summary_nodes SET parent_id=? WHERE id=?", (l1, leaf_b))
+
+            # L2 root
+            conn.execute(
+                "INSERT INTO summary_nodes(kind, content, tokens, session_id, level, created_at)"
+                " VALUES('condensed', 'Root summary', 150, NULL, 2, ?)",
+                (now,),
+            )
+            root_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute("UPDATE summary_nodes SET parent_id=? WHERE id=?", (root_id, l1))
+
+            conn.commit()
+        finally:
+            conn.close()
+        return db, root_id
+
+    def test_expand_root_node_n_levels_cli(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db, root_id = self._make_db_with_multi_level_dag(tmp_path)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "expand", str(root_id)]):
+            result = main_session()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "FSM" in out
+        assert "auth" in out
+
+    def test_grep_with_multi_level_summary_id_cli(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db, root_id = self._make_db_with_multi_level_dag(tmp_path)
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "grep", "--summary-id", str(root_id), "FSM"],
+        ):
+            result = main_session()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "FSM" in out

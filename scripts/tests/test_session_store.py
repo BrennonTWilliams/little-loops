@@ -1920,12 +1920,9 @@ class TestCompactSession:
             conn.close()
         assert count == 0
 
-
     # -- cross-session condensation tests (ENH-1954) -------------------------------
 
-    def _make_multi_session_db(
-        self, tmp_path: Path, sessions: list[tuple[str, list[str]]]
-    ) -> Path:
+    def _make_multi_session_db(self, tmp_path: Path, sessions: list[tuple[str, list[str]]]) -> Path:
         """Bootstrap a DB with multiple sessions, each with messages."""
         db = tmp_path / "history.db"
         conn = connect(db)
@@ -2036,13 +2033,12 @@ class TestCompactSession:
         # (since with 2 sessions, each level groups into a single node)
         for row in cross_session:
             assert row["cnt"] <= 1, (
-                f"Duplicate cross-session nodes at level {row['level']}: "
-                f"found {row['cnt']}"
+                f"Duplicate cross-session nodes at level {row['level']}: found {row['cnt']}"
             )
 
     def test_cross_session_condensation_parent_id_links_existing(self, tmp_path: Path) -> None:
         """Re-running _compact_sessions sets parent_id on existing per-session condensed nodes."""
-        from little_loops.session_store import _compact_sessions, _compact_session_conn
+        from little_loops.session_store import _compact_sessions
 
         sessions = [
             (f"cross-link-sess-{i}", [f"Link msg {j} in s{i}. " * 5 for j in range(30)])
@@ -2112,8 +2108,7 @@ class TestCompactSession:
         conn = connect(db)
         try:
             cross_session = conn.execute(
-                "SELECT COUNT(*) FROM summary_nodes"
-                " WHERE kind='condensed' AND session_id IS NULL"
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind='condensed' AND session_id IS NULL"
             ).fetchone()[0]
             per_session = conn.execute(
                 "SELECT COUNT(*) FROM summary_nodes"

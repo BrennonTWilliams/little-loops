@@ -602,9 +602,7 @@ class TestPiiRedact:
 
         example = {
             "instruction": "User profile",
-            "output": (
-                "Email: alice@example.com, Phone: 555-987-6543, SSN: 987-65-4321."
-            ),
+            "output": ("Email: alice@example.com, Phone: 555-987-6543, SSN: 987-65-4321."),
         }
         result = apply_pii_action(example, "redact")
         assert result is not None
@@ -959,7 +957,9 @@ with open('{enriched_file}') as f:
                 },
                 {
                     "source": "sess-2.jsonl",
-                    "messages": [{"role": "user", "content": "hello world how are you doing today"}],
+                    "messages": [
+                        {"role": "user", "content": "hello world how are you doing today"}
+                    ],
                 },
             ],
         )
@@ -1022,12 +1022,8 @@ class TestDedup:
             ]
         }
 
-        words1 = extract_words(
-            " ".join(m["content"] for m in example["messages"])
-        )
-        words2 = extract_words(
-            " ".join(m["content"] for m in example["messages"])
-        )
+        words1 = extract_words(" ".join(m["content"] for m in example["messages"]))
+        words2 = extract_words(" ".join(m["content"] for m in example["messages"]))
 
         similarity = calculate_word_overlap(words1, words2)
         assert similarity > 0.9  # identical → high similarity
@@ -1049,12 +1045,8 @@ class TestDedup:
             ]
         }
 
-        words1 = extract_words(
-            " ".join(m["content"] for m in ex1["messages"])
-        )
-        words2 = extract_words(
-            " ".join(m["content"] for m in ex2["messages"])
-        )
+        words1 = extract_words(" ".join(m["content"] for m in ex1["messages"]))
+        words2 = extract_words(" ".join(m["content"] for m in ex2["messages"]))
 
         similarity = calculate_word_overlap(words1, words2)
         assert similarity < 0.5  # different topics → low similarity
@@ -1146,9 +1138,7 @@ PYEOF
                 {"role": "user", "content": "hello world"},
             ]
         }
-        words = extract_words(
-            " ".join(m["content"] for m in ex["messages"])
-        )
+        words = extract_words(" ".join(m["content"] for m in ex["messages"]))
         # No crash, self-comparison would be 1.0 but we skip self
         similarity = calculate_word_overlap(words, words)
         assert similarity == 1.0  # identical to itself
@@ -1167,10 +1157,12 @@ class TestSplit:
         run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
         examples = []
         for i in range(10):
-            examples.append({
-                "source": f"sess-{i}.jsonl",
-                "messages": [{"role": "user", "content": f"message {i}"}],
-            })
+            examples.append(
+                {
+                    "source": f"sess-{i}.jsonl",
+                    "messages": [{"role": "user", "content": f"message {i}"}],
+                }
+            )
         enriched_file = _make_enriched_batch(run_dir, examples)
 
         script = f"""python3 << 'PYEOF'

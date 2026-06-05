@@ -6513,9 +6513,7 @@ class TestSubLoopWithBindings:
         assert "run_child" in executor.captured
         assert "result" in executor.captured["run_child"]
 
-    def test_load_and_validate_catches_misspelled_with_key(
-        self, tmp_path: Path
-    ) -> None:
+    def test_load_and_validate_catches_misspelled_with_key(self, tmp_path: Path) -> None:
         """Misspelled with: key against child parameters produces a ValidationError."""
         # Write child with parameters block
         child_yaml = tmp_path / "child.yaml"

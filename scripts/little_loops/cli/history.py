@@ -201,6 +201,25 @@ Examples:
         )
         add_json_arg(sessions_parser)
 
+        # root subcommand (ENH-1955)
+        root_parser = subparsers.add_parser(
+            "root",
+            help="Show the project-root summary node (top-level condensed view)",
+        )
+        root_parser.add_argument(
+            "--expand",
+            action="store_true",
+            help="Expand and display all messages under the root node",
+        )
+        root_parser.add_argument(
+            "--limit",
+            type=int,
+            default=20,
+            metavar="N",
+            help="Maximum messages to show with --expand (default: 20)",
+        )
+        add_json_arg(root_parser)
+
         add_config_arg(parser)
 
         args = parser.parse_args()
@@ -286,6 +305,67 @@ Examples:
                 for r in refs:
                     path = r.jsonl_path or "(no path)"
                     print(f"{r.session_id}  {path}")
+            return 0
+
+        if args.command == "root":
+            from little_loops.history_reader import ll_describe, ll_expand
+            from little_loops.session_store import DEFAULT_DB_PATH as _SS_DB
+
+            db_path = project_root / _SS_DB
+            conn = None
+            try:
+                import sqlite3
+
+                conn = sqlite3.connect(str(db_path))
+                conn.row_factory = sqlite3.Row
+                root_row = conn.execute(
+                    "SELECT id FROM summary_nodes"
+                    " WHERE session_id IS NULL AND parent_id IS NULL"
+                    " ORDER BY level DESC LIMIT 1"
+                ).fetchone()
+            except sqlite3.Error:
+                root_row = None
+            finally:
+                if conn:
+                    conn.close()
+
+            if root_row is None:
+                print("No project-root summary node found.")
+                print("Run 'll-session backfill' with compaction enabled to generate one.")
+                return 1
+
+            root_id = root_row["id"]
+            node = ll_describe(root_id, db=db_path)
+            if node is None:
+                print(f"Root summary node {root_id} metadata not found.")
+                return 1
+
+            if args.json:
+                messages = ll_expand(root_id, db=db_path) if args.expand else []
+                from dataclasses import asdict
+
+                print_json(
+                    {
+                        "node": asdict(node),
+                        "message_count": len(messages),
+                        "messages": [dict(m) for m in messages[: args.limit]]
+                        if args.expand
+                        else [],
+                    }
+                )
+            else:
+                print(f"id={node.id}  kind={node.kind}  level={node.level}")
+                print(f"ts_start={node.ts_start}  ts_end={node.ts_end}")
+                print(f"tokens={node.tokens}  created_at={node.created_at}")
+                if node.content:
+                    print(f"content: {node.content[:300]}")
+
+                if args.expand:
+                    messages = ll_expand(root_id, db=db_path)
+                    print(f"\n--- {len(messages)} messages covered ---")
+                    for m in messages[: args.limit]:
+                        snippet = (m.get("content") or "")[:120].replace("\n", " ")
+                        print(f"{m.get('ts', '')}  {snippet}")
             return 0
 
         if args.command == "export":

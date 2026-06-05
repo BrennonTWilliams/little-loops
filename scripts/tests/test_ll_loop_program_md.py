@@ -305,7 +305,10 @@ class TestCmdRunProgramMdInjection:
             return fsm, []
 
         mock_tokens = DesignTokens(
-            primitives={}, semantic={}, theme={}, resolved={"color.accent": "#ff0000"},
+            primitives={},
+            semantic={},
+            theme={},
+            resolved={"color.accent": "#ff0000"},
             source_path=tmp_path / "tokens.json",
         )
         _expected_context = "**Design tokens** (resolved values):\n```\ncolor.accent: #ff0000\n```"

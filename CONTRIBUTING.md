@@ -243,7 +243,7 @@ little-loops/
         │   ├── formatting.py    #   Report and graph formatting
         │   └── operations.py    #   File mutation operations
         ├── session_log.py       # Session log linking for issues
-        ├── session_store.py     # Write-side session persistence (SQLiteTransport, ensure_db, backfill, compact_session, v1–v10 migrations)
+        ├── session_store.py     # Write-side session persistence (SQLiteTransport, ensure_db, backfill, compact_session, v1–v12 migrations)
         ├── history_reader.py    # Typed read-only query API for .ll/history.db (8 query functions, 7 dataclasses)
         ├── file_utils.py        # Shared file I/O utilities (atomic writes)
         ├── user_messages.py     # User message extraction
