@@ -547,6 +547,440 @@ class TestIsLlRelevantAssistantBash:
         assert _is_ll_relevant(record) is False
 
 
+class TestArgumentParsingSequences:
+    """Argparse unit tests for the sequences subcommand."""
+
+    def test_sequences_subcommand(self) -> None:
+        """sequences subcommand sets command to 'sequences'."""
+        with patch("sys.argv", ["ll-logs", "sequences", "--all"]):
+            args = _parse_args()
+        assert args.command == "sequences"
+
+    def test_sequences_default_min_len(self) -> None:
+        """sequences --min-len defaults to 2."""
+        with patch("sys.argv", ["ll-logs", "sequences", "--all"]):
+            args = _parse_args()
+        assert args.min_len == 2
+
+    def test_sequences_min_len_override(self) -> None:
+        """sequences --min-len 3 sets min_len to 3."""
+        with patch("sys.argv", ["ll-logs", "sequences", "--all", "--min-len", "3"]):
+            args = _parse_args()
+        assert args.min_len == 3
+
+    def test_sequences_min_count_default(self) -> None:
+        """sequences --min-count defaults to 1."""
+        with patch("sys.argv", ["ll-logs", "sequences", "--all"]):
+            args = _parse_args()
+        assert args.min_count == 1
+
+    def test_sequences_top_none_by_default(self) -> None:
+        """sequences --top defaults to None."""
+        with patch("sys.argv", ["ll-logs", "sequences", "--all"]):
+            args = _parse_args()
+        assert args.top is None
+
+    def test_sequences_window_days_none_by_default(self) -> None:
+        """sequences --window-days defaults to None."""
+        with patch("sys.argv", ["ll-logs", "sequences", "--all"]):
+            args = _parse_args()
+        assert args.window_days is None
+
+    def test_sequences_json_flag(self) -> None:
+        """sequences --json sets json=True."""
+        with patch("sys.argv", ["ll-logs", "sequences", "--all", "--json"]):
+            args = _parse_args()
+        assert args.json is True
+
+    def test_sequences_project_and_all_mutually_exclusive(self) -> None:
+        """sequences requires --project or --all (mutually exclusive)."""
+        with patch("sys.argv", ["ll-logs", "sequences"]):
+            with patch("sys.stderr", new_callable=lambda: None):
+                try:
+                    _parse_args()
+                except SystemExit:
+                    pass  # argparse exits on missing required arg
+
+
+class TestSequences:
+    """Integration tests for the sequences subcommand."""
+
+    def _make_project_dir(
+        self,
+        claude_projects: Path,
+        home: Path,
+        subpath: str,
+        records: list[dict],
+        session_id: str = "session-abc",
+    ) -> Path:
+        """Create a mock claude project dir with JSONL content."""
+        project_path = home / subpath
+        project_path.mkdir(parents=True, exist_ok=True)
+
+        encoded = str(project_path.resolve()).replace("/", "-")
+        proj_dir = claude_projects / encoded
+        proj_dir.mkdir(parents=True, exist_ok=True)
+
+        if records:
+            jsonl_file = proj_dir / "session.jsonl"
+            with open(jsonl_file, "w") as f:
+                for record in records:
+                    if "sessionId" not in record:
+                        record = {**record, "sessionId": session_id}
+                    if "cwd" not in record:
+                        record = {**record, "cwd": str(project_path)}
+                    f.write(json.dumps(record) + "\n")
+
+        return project_path
+
+    def _assistant_bash_record(self, command: str, session_id: str = "sess-1") -> dict:
+        return {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "name": "Bash", "input": {"command": command}},
+                ],
+            },
+            "sessionId": session_id,
+        }
+
+    def _queue_record(self, content: str, session_id: str = "sess-1") -> dict:
+        return {
+            "type": "queue-operation",
+            "operation": "enqueue",
+            "content": content,
+            "sessionId": session_id,
+        }
+
+    def test_sequences_basic_ngram_counting(self, capsys) -> None:
+        """sequences counts n-grams from ll-* Bash invocations across sessions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            # Two sessions, each with a chain of ll-* invocations
+            session_a = "sess-a"
+            session_b = "sess-b"
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-issues list", session_a),
+                    self._assistant_bash_record("ll-history sessions", session_a),
+                    self._assistant_bash_record("ll-issues list", session_b),
+                    self._assistant_bash_record("ll-history sessions", session_b),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            # Should find the bigram ll-issues → ll-history (appears in both sessions)
+            assert "ll-issues" in captured.out
+            assert "ll-history" in captured.out
+
+    def test_sequences_min_len_filter(self, capsys) -> None:
+        """sequences --min-len 3 only outputs trigrams and longer."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-refine-issue", "s1"),
+                    self._assistant_bash_record("ll-wire-issue", "s1"),
+                    self._assistant_bash_record("ll-ready-issue", "s1"),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--min-len", "3"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            # Should show a trigram
+            assert "ll-refine-issue" in captured.out
+            assert "ll-wire-issue" in captured.out
+            assert "ll-ready-issue" in captured.out
+
+    def test_sequences_min_count_filter(self, capsys) -> None:
+        """sequences --min-count 2 only shows chains occurring at least twice."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-issues list", "s1"),
+                    self._assistant_bash_record("ll-issues show", "s1"),
+                    self._assistant_bash_record("ll-issues list", "s2"),
+                    self._assistant_bash_record("ll-issues show", "s2"),
+                    self._assistant_bash_record("ll-auto --dry-run", "s3"),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--min-count", "2"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            # The ll-issues → ll-issues bigram should appear (from s1 and s2)
+            assert "ll-issues" in captured.out
+            # ll-auto should not appear (only in s3)
+            assert "ll-auto" not in captured.out
+
+    def test_sequences_top_limit(self, capsys) -> None:
+        """sequences --top 1 outputs only the single most frequent chain."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            records = []
+            # Session a: chain A→B (3 times)
+            for _ in range(3):
+                records.append(self._assistant_bash_record("ll-issues list", "sa"))
+                records.append(self._assistant_bash_record("ll-history sessions", "sa"))
+            # Session b: chain C→D (1 time)
+            records.append(self._assistant_bash_record("ll-auto --dry-run", "sb"))
+            records.append(self._assistant_bash_record("ll-deps check", "sb"))
+
+            project_path = self._make_project_dir(claude_projects, home, "myproject", records)
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--top", "1"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            # The most frequent chain should be the A→B bigram (3 occurrences)
+            out = captured.out
+            # count=3 should appear (the freq count for the most common chain)
+            assert "3" in out
+
+    def test_sequences_window_days_filter(self, capsys) -> None:
+        """sequences --window-days filters records to within N days of latest."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    {**self._assistant_bash_record("ll-issues list", "s1"), "timestamp": "2026-06-01T10:00:00Z"},
+                    {**self._assistant_bash_record("ll-issues show", "s1"), "timestamp": "2026-06-01T10:01:00Z"},
+                    {**self._assistant_bash_record("ll-old-command", "s2"), "timestamp": "2020-01-01T00:00:00Z"},
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--window-days", "10"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            # Should include recent records
+            assert "ll-issues" in captured.out
+            # Old records outside window should be excluded
+            assert "ll-old-command" not in captured.out
+
+    def test_sequences_json_output(self, capsys) -> None:
+        """sequences --json outputs valid JSON matching expected schema."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-issues list", "s1"),
+                    self._assistant_bash_record("ll-issues show", "s1"),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--json"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            data = json.loads(capsys.readouterr().out)
+            assert isinstance(data, list)
+            for item in data:
+                assert "chain" in item
+                assert "count" in item
+                assert "edges" in item
+                assert isinstance(item["chain"], list)
+                assert isinstance(item["count"], int)
+                assert isinstance(item["edges"], list)
+                for edge in item["edges"]:
+                    assert "from" in edge
+                    assert "to" in edge
+                    assert "freq" in edge
+
+    def test_sequences_project_not_found_returns_1(self) -> None:
+        """sequences --project with no matching claude folder returns 1."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            home.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+            nonexistent = Path(tmpdir) / "nosuchproject"
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--project", str(nonexistent)]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+            assert result == 1
+
+    def test_sequences_empty_project_no_matches(self, capsys) -> None:
+        """sequences with no matching records exits 0 with empty output."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            # Records with no ll-* Bash invocations
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [self._assistant_bash_record("git status", "s1")],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+
+    def test_sequences_includes_queue_operations(self, capsys) -> None:
+        """sequences detects queue-operation enqueue records with /ll: content."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._queue_record("/ll:manage-issue bug fix", "s1"),
+                    self._assistant_bash_record("ll-issues list", "s1"),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            # Should detect manage-issue from queue-operation record
+            assert "manage-issue" in captured.out
+
+    def test_sequences_all_mode(self, capsys) -> None:
+        """sequences --all processes all projects with ll activity."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            # Each session needs ≥2 events for n-grams with default min-len=2
+            path_a = self._make_project_dir(
+                claude_projects, home, "proj_a",
+                [
+                    self._assistant_bash_record("ll-issues list", "sa"),
+                    self._assistant_bash_record("ll-issues show", "sa"),
+                ],
+            )
+            path_b = self._make_project_dir(
+                claude_projects, home, "proj_b",
+                [
+                    self._assistant_bash_record("ll-history sessions", "sb"),
+                    self._assistant_bash_record("ll-history context", "sb"),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "sequences", "--all"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            assert "ll-issues" in captured.out
+            assert "ll-history" in captured.out
+
+
 class TestExtract:
     """Integration tests for the extract subcommand."""
 

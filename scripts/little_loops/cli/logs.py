@@ -1,4 +1,4 @@
-"""ll-logs: Discover and extract ll-relevant JSONL entries from ~/.claude/projects/."""
+"""ll-logs: Discover, extract, analyze log entries from ~/.claude/projects/."""
 
 from __future__ import annotations
 
@@ -8,6 +8,9 @@ import re
 import shutil
 import sys
 import time
+from collections import Counter
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from little_loops.cli.loop.info import (  # private symbol: cross-module coupling; verify signature on upgrade
@@ -197,6 +200,330 @@ def _cmd_matches(record: dict, cmd: str) -> bool:
                 if cmd in command:
                     return True
     return False
+
+
+_LL_BASH_RE = re.compile(r"\b(ll-[\w-]+)")
+_QUEUE_SKILL_RE = re.compile(r"^/ll:(\S+)")
+_COMMAND_NAME_SKILL_RE = re.compile(r"<command-name>/ll:(\S+)")
+
+
+@dataclass
+class InvocationEvent:
+    """A single ll invocation event extracted from a JSONL record."""
+
+    tool_name: str
+    timestamp: str
+    session_id: str
+
+
+def _extract_ll_event_streams(
+    project_folder: Path, *, window_days: int | None = None
+) -> dict[str, list[InvocationEvent]]:
+    """Extract per-session ordered ll-invocation event streams from JSONL files.
+
+    Walks JSONL files (skipping ``agent-*``), filters to records with ll activity,
+    extracts the tool/skill name, and returns a dict mapping ``sessionId`` to a
+    timestamp-sorted list of ``InvocationEvent``.
+
+    Args:
+        project_folder: Path to the claude project session directory.
+        window_days: If set, filter records to within N days of the latest record.
+
+    Returns:
+        Dict of ``{session_id: [InvocationEvent, ...]}`` with events sorted by timestamp.
+    """
+    events_by_session: dict[str, list[InvocationEvent]] = {}
+
+    jsonl_files = [
+        f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")
+    ]
+    if not jsonl_files:
+        return events_by_session
+
+    # Collect all raw events first for window-days filtering
+    all_events: list[InvocationEvent] = []
+    latest_ts: str | None = None
+
+    for jsonl_file in jsonl_files:
+        try:
+            with open(jsonl_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    tool_name = _extract_tool_name(record)
+                    if tool_name is None:
+                        continue
+
+                    ts = record.get("timestamp", "")
+                    sid = record.get("sessionId", "")
+
+                    evt = InvocationEvent(tool_name=tool_name, timestamp=ts, session_id=sid)
+                    all_events.append(evt)
+
+                    if ts and (latest_ts is None or ts > latest_ts):
+                        latest_ts = ts
+        except OSError:
+            continue
+
+    # Apply window-days filter
+    if window_days is not None and latest_ts:
+        cutoff = _parse_iso_timestamp(latest_ts) - timedelta(days=window_days)
+        all_events = [e for e in all_events if _parse_iso_timestamp(e.timestamp) >= cutoff]
+
+    # Bucket by session and sort
+    for evt in all_events:
+        events_by_session.setdefault(evt.session_id, []).append(evt)
+
+    for session_id in events_by_session:
+        events_by_session[session_id].sort(key=lambda e: e.timestamp)
+
+    return events_by_session
+
+
+def _extract_tool_name(record: dict) -> str | None:
+    """Extract the ll tool/skill name from a JSONL record.
+
+    Detects three signal types (matching ``_is_ll_relevant``):
+    (a) queue-operation enqueue with ``/ll:<name>`` → skill name
+    (b) user records with ``<command-name>/ll:<name>`` → skill name
+    (c) assistant Bash tool-use invoking ``ll-<tool>`` → CLI tool name
+    """
+    record_type = record.get("type")
+
+    # (a) queue-operation enqueue
+    if record_type == "queue-operation" and record.get("operation") == "enqueue":
+        content = record.get("content", "")
+        if isinstance(content, str) and content.startswith("/ll:"):
+            m = _QUEUE_SKILL_RE.match(content)
+            if m:
+                return m.group(1)
+
+    # (b) user records with <command-name>/ll: pattern
+    if record_type == "user":
+        message = record.get("message", {})
+        if not isinstance(message, dict):
+            return None
+        content = message.get("content")
+        text = ""
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    text = block.get("text", "")
+                    if text:
+                        break
+        if text:
+            m = _COMMAND_NAME_SKILL_RE.search(text)
+            if m:
+                # Extract skill name, stripping trailing </command-name> if present
+                name = m.group(1)
+                if name.endswith("</command-name>"):
+                    name = name[: -len("</command-name>")]
+                return name
+
+    # (c) assistant Bash tool-use invoking ll-<tool>
+    if record_type == "assistant":
+        message = record.get("message", {})
+        content = message.get("content", [])
+        if isinstance(content, list):
+            for block in content:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_use"
+                    and block.get("name") == "Bash"
+                ):
+                    cmd = block.get("input", {}).get("command", "")
+                    m = _LL_BASH_RE.search(cmd)
+                    if m:
+                        return m.group(1)
+
+    return None
+
+
+def _parse_iso_timestamp(ts: str) -> datetime:
+    """Parse an ISO 8601 timestamp string to a timezone-aware datetime.
+
+    Handles both ``Z``-suffixed and ``+00:00`` offset formats. Returns
+    ``datetime.min`` with UTC tzinfo for unparseable input.
+    """
+    if not ts:
+        return datetime.min.replace(tzinfo=UTC)
+    try:
+        # Handle Z suffix
+        if ts.endswith("Z"):
+            ts = ts[:-1] + "+00:00"
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+    except (ValueError, TypeError):
+        return datetime.min.replace(tzinfo=UTC)
+
+
+@dataclass
+class Edge:
+    """A transition edge within an n-gram chain."""
+
+    from_: str
+    to: str
+    freq: float
+
+
+@dataclass
+class ChainResult:
+    """An n-gram chain with occurrence count and per-edge transition frequencies."""
+
+    chain: list[str]
+    count: int
+    edges: list[Edge]
+
+    def to_dict(self) -> dict:
+        return {
+            "chain": self.chain,
+            "count": self.count,
+            "edges": [
+                {"from": e.from_, "to": e.to, "freq": e.freq} for e in self.edges
+            ],
+        }
+
+
+def _count_ngrams(
+    events_by_session: dict[str, list[InvocationEvent]],
+    min_len: int = 2,
+) -> Counter:
+    """Count n-grams across per-session event streams.
+
+    Args:
+        events_by_session: Per-session ordered event streams.
+        min_len: Minimum n-gram length (window size).
+
+    Returns:
+        Counter mapping ``(tool_1, tool_2, ...)`` tuples to occurrence counts.
+    """
+    counter: Counter = Counter()
+    for events in events_by_session.values():
+        names = [e.tool_name for e in events]
+        # For chains shorter than min_len, still consider them as single n-grams
+        # but note: min_len is the minimum, so we use range(min_len, len(names)+1)
+        for n in range(min_len, len(names) + 1):
+            for i in range(len(names) - n + 1):
+                ngram = tuple(names[i: i + n])
+                counter[ngram] += 1
+    return counter
+
+
+def _build_chain_results(
+    counter: Counter,
+    min_count: int = 1,
+    top: int | None = None,
+) -> list[ChainResult]:
+    """Build ranked ``ChainResult`` list from n-gram counter.
+
+    Args:
+        counter: n-gram counter from ``_count_ngrams``.
+        min_count: Minimum occurrence count to include.
+        top: If set, limit to top N chains by frequency.
+
+    Returns:
+        List of ``ChainResult`` sorted by count descending.
+    """
+    results: list[ChainResult] = []
+    for ngram, count in counter.most_common():
+        if count < min_count:
+            continue
+        edges = _compute_edges(ngram, counter)
+        results.append(ChainResult(chain=list(ngram), count=count, edges=edges))
+
+    if top is not None:
+        results = results[:top]
+
+    return results
+
+
+def _compute_edges(ngram: tuple[str, ...], counter: Counter) -> list[Edge]:
+    """Compute per-edge transition frequencies for an n-gram chain.
+
+    For each adjacent pair ``(from, to)`` in the chain, computes the frequency
+    as the proportion of times ``from → to`` appears out of all transitions
+    originating from ``from`` across the entire corpus.
+    """
+    edges: list[Edge] = []
+    # Build a transition counter for all pairs in the corpus
+    all_transitions: Counter = Counter()
+    out_degree: Counter = Counter()
+    for ngram_key, count in counter.items():
+        for i in range(len(ngram_key) - 1):
+            pair = (ngram_key[i], ngram_key[i + 1])
+            all_transitions[pair] += count
+            out_degree[ngram_key[i]] += count
+
+    for i in range(len(ngram) - 1):
+        from_ = ngram[i]
+        to = ngram[i + 1]
+        pair = (from_, to)
+        total_out = out_degree.get(from_, 0)
+        freq = all_transitions.get(pair, 0) / total_out if total_out > 0 else 0.0
+        edges.append(Edge(from_=from_, to=to, freq=round(freq, 4)))
+
+    return edges
+
+
+def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
+    """Extract n-grams of ll invocations from JSONL log files."""
+    if args.project:
+        cwd_path: Path = args.project
+        project_folder = get_project_folder(cwd_path)
+        if project_folder is None:
+            logger.error(f"No session project folder found for: {cwd_path}")
+            return 1
+        project_items = [(cwd_path, project_folder)]
+    else:
+        decoded_paths = discover_all_projects(logger)
+        project_items = []
+        for decoded_path in decoded_paths:
+            folder = get_project_folder(decoded_path)
+            if folder is not None:
+                project_items.append((decoded_path, folder))
+
+    # Aggregate events across all projects
+    all_events: dict[str, list[InvocationEvent]] = {}
+    for _cwd_path, project_folder in project_items:
+        events = _extract_ll_event_streams(
+            project_folder, window_days=args.window_days
+        )
+        for sid, evt_list in events.items():
+            all_events.setdefault(sid, []).extend(evt_list)
+
+    # Sort each session's events by timestamp
+    for sid in all_events:
+        all_events[sid].sort(key=lambda e: e.timestamp)
+
+    # Count n-grams
+    counter = _count_ngrams(all_events, min_len=args.min_len)
+    results = _build_chain_results(counter, min_count=args.min_count, top=args.top)
+
+    if args.json:
+        print_json([r.to_dict() for r in results])
+    else:
+        if not results:
+            print("No sequences found.")
+            return 0
+
+        # Print ranked table
+        for rank, r in enumerate(results, 1):
+            chain_str = " → ".join(r.chain)
+            print(f"{rank}. [{r.count}] {chain_str}")
+            for edge in r.edges:
+                print(f"     {edge.from_} → {edge.to}: {edge.freq:.4f}")
+
+    return 0
 
 
 def generate_index(logs_dir: Path) -> None:
@@ -395,6 +722,52 @@ Examples:
         help="Filter to records containing this ll- tool name (e.g. ll-history)",
     )
 
+    sequences_parser = subparsers.add_parser(
+        "sequences",
+        help="Extract tool-chain n-grams of ll invocations from JSONL logs",
+    )
+    sequences_target = sequences_parser.add_mutually_exclusive_group(required=True)
+    sequences_target.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help="Working directory of the target project",
+    )
+    sequences_target.add_argument(
+        "--all",
+        action="store_true",
+        help="Analyze all projects with ll activity",
+    )
+    sequences_parser.add_argument(
+        "--min-len",
+        type=int,
+        default=2,
+        metavar="N",
+        help="Minimum n-gram length (default: 2)",
+    )
+    sequences_parser.add_argument(
+        "--min-count",
+        type=int,
+        default=1,
+        metavar="M",
+        help="Minimum occurrence count to include (default: 1)",
+    )
+    sequences_parser.add_argument(
+        "--top",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Limit output to top N chains by frequency",
+    )
+    sequences_parser.add_argument(
+        "--window-days",
+        type=int,
+        default=None,
+        metavar="D",
+        help="Only consider records within D days of latest record",
+    )
+    add_json_arg(sequences_parser)
+
     return parser
 
 
@@ -436,5 +809,8 @@ def main_logs() -> int:
 
         if args.command == "extract":
             return _cmd_extract(args, logger)
+
+        if args.command == "sequences":
+            return _cmd_sequences(args, logger)
 
         return 1

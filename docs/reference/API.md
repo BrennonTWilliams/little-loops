@@ -3528,13 +3528,14 @@ Entry point for `ll-check-links` command. Check markdown documentation for broke
 def main_logs() -> int
 ```
 
-Entry point for `ll-logs` command. Discover, extract, and tail Claude Code session logs for ll-loop and ll-commands.
+Entry point for `ll-logs` command. Discover, extract, sequence, and tail Claude Code session logs for ll-loop and ll-commands.
 
 **Returns:** 0 on success, 1 when no subcommand given or on error
 
 **Subcommands:**
 - `discover` — List all Claude projects with ll activity (no flags)
 - `extract` — Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl`; requires `--project DIR` or `--all`; optional `--cmd TOOL` to filter by CLI tool
+- `sequences` — Extract tool-chain n-grams of ll invocations from JSONL logs; requires `--project DIR` or `--all`; options: `--min-len N` (default 2), `--min-count M` (default 1), `--top N`, `--window-days D`, `--json`; JSON schema: `[{chain: [str], count: int, edges: [{from, to, freq}]}]`
 - `tail` — Stream live events from an active loop session; requires `--loop NAME`
 
 ---

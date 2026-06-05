@@ -1700,7 +1700,7 @@ ll-messages --sft-format alpaca --output data/sft/raw.jsonl
 
 ### ll-logs
 
-Discover and extract ll-relevant JSONL entries from Claude Code session logs. Also generates `logs/index.md` after extraction.
+Discover and extract ll-relevant JSONL entries from Claude Code session logs. Also generates `logs/index.md` after extraction. The `sequences` subcommand mines tool-chain n-grams for workflow analysis.
 
 **Subcommands:**
 
@@ -1709,6 +1709,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `discover` | List all Claude projects with ll activity (one path per line, sorted) |
 | `tail` | Stream live events from an active loop session |
 | `extract` | Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl` |
+| `sequences` | Extract tool-chain n-grams of ll invocations from JSONL logs |
 
 **`discover` flags:**
 
@@ -1730,7 +1731,19 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--project DIR` | Working directory of the target project |
 | `--cmd TOOL` | Filter to records containing this ll- tool name (e.g. `ll-history`) |
 
-`--all` and `--project` are mutually exclusive.
+**`sequences` flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--all` | | Analyze all projects with ll activity |
+| `--project DIR` | | Working directory of the target project |
+| `--min-len N` | | Minimum n-gram length (default: 2) |
+| `--min-count M` | | Minimum occurrence count to include (default: 1) |
+| `--top N` | | Limit output to top N chains by frequency |
+| `--window-days D` | | Only consider records within D days of latest record |
+| `--json` | `-j` | Output as JSON: `[{"chain": [...], "count": N, "edges": [{"from": "...", "to": "...", "freq": f}]}]` |
+
+`--all` and `--project` are mutually exclusive for `extract` and `sequences`.
 
 **Examples:**
 ```bash
@@ -1740,6 +1753,10 @@ ll-logs tail --loop my-loop              # Stream live events from an active loo
 ll-logs extract --all                    # Extract all projects to logs/
 ll-logs extract --project /path/to/proj  # Extract one project to logs/<slug>/
 ll-logs extract --all --cmd ll-history   # Filter to ll-history invocations
+ll-logs sequences --all                  # Find all tool-chain bigrams (default min-len=2)
+ll-logs sequences --project /path -j     # Output n-grams as JSON for one project
+ll-logs sequences --all --top 10         # Top 10 most frequent chains
+ll-logs sequences --all --min-len 3 --min-count 3  # Trigrams appearing ≥3 times
 ```
 
 ---

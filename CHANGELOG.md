@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`ll-logs sequences` subcommand** — Mines tool-level n-grams (ordered chains of ll skill/command/tool invocations) from extracted log corpora, with occurrence counts and per-edge transition frequencies. Reusable extraction primitive for `loop-suggester` and FEAT-1309. (ENH-1919)
+
 ### Planned
 
 - Windows compatibility testing
