@@ -2657,6 +2657,58 @@ states:
         fsm.context[fsm.input_key] = "FEAT-719"
         assert fsm.context["input"] == "FEAT-719"
 
+    def test_input_hash_determinism(self, simple_loop: Path) -> None:
+        """input_hash is deterministic: same input yields same hash, different yields different."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        logger = Logger(use_color=False)
+
+        def run_with_input(task: str) -> str:
+            args = argparse.Namespace(
+                input=task,
+                context=[],
+                max_iterations=None,
+                delay=None,
+                no_llm=False,
+                llm_model=None,
+                dry_run=True,
+                background=False,
+                foreground_internal=False,
+                quiet=False,
+                verbose=False,
+                show_diagrams=None,
+                diagram_edge_labels=None,
+                diagram_state_detail=None,
+                diagram_scope=None,
+                clear=False,
+                queue=False,
+                program_md=None,
+            )
+            path = simple_loop / "input-loop.yaml"
+            fsm, _ = load_and_validate(path)
+
+            def fake_load_and_validate(p: Path):  # type: ignore[override]
+                return fsm, []
+
+            from unittest.mock import patch
+            with patch(
+                "little_loops.fsm.validation.load_and_validate",
+                side_effect=fake_load_and_validate,
+            ):
+                cmd_run("input-loop", args, simple_loop, logger)
+            return fsm.context["input_hash"]
+
+        hash1 = run_with_input("FEAT-719")
+        hash2 = run_with_input("FEAT-719")
+        hash3 = run_with_input("BUG-1960")
+
+        assert hash1 == hash2, "Same input must produce the same input_hash"
+        assert hash2 != hash3, "Different input must produce different input_hash"
+        assert len(hash1) == 12, "input_hash must be 12 hex chars"
+        assert len(hash3) == 12, "input_hash must be 12 hex chars"
+
     def test_dry_run_with_show_diagrams_renders_diagram(
         self, simple_loop: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

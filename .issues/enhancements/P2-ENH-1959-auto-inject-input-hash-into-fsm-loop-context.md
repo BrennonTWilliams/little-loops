@@ -2,8 +2,9 @@
 id: ENH-1959
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-05T18:05:10Z'
+completed_at: '2026-06-05T18:56:17Z'
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1962
@@ -191,7 +192,39 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `fsm`, `context`, `checkpoint`, `loops`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-05T18:38:35 - `8627aa7b-7aa9-4de2-a6f4-1041551128d1.jsonl`
 - `/ll:refine-issue` - 2026-06-05T18:28:22 - `af4bc73a-d7d6-4402-89e0-fccdfe0db04b.jsonl`
 - `/ll:format-issue` - 2026-06-05T18:13:35 - `b727da36-5701-4920-98db-1291d7539e68.jsonl`
 - `/ll:capture-issue` - 2026-06-05T18:05:10Z - `6111e846-8894-477b-81b3-17824f89e659.jsonl`
 - `/ll:confidence-check` - 2026-06-05T19:45:00Z - `e5bf076d-b9d5-49f4-95a7-3015337eb380.jsonl`
+- `/ll:manage-issue` - 2026-06-05T18:56:17Z - this session
+
+## Resolution
+
+**Completed by**: `/ll:manage-issue enhancement improve ENH-1959`
+**Date**: 2026-06-05T18:56:17Z
+
+### Changes Made
+
+1. **`scripts/little_loops/cli/loop/run.py`**: Added `import hashlib` and inject `input_hash` (SHA-256, 12-char hex) into `fsm.context` after `run_dir` injection, guarded by `"input_hash" not in fsm.context and isinstance(fsm.context.get("input"), str)`. `--context input_hash=VALUE` takes precedence.
+
+2. **`scripts/little_loops/cli/loop/lifecycle.py`**: Added `import hashlib` and re-inject `input_hash` during `cmd_resume()` using same guard and hash computation.
+
+3. **`scripts/little_loops/fsm/validation.py`**: Added `"input_hash"` to `RUNNER_INJECTED` set so fragment parameter validation doesn't flag it as a missing binding.
+
+4. **Tests** (6 new tests, all passing):
+   - `test_input_hash_injected_into_context` — verifies `cmd_run` injects `input_hash` when input is non-empty
+   - `test_input_hash_not_injected_when_input_absent` — verifies no injection when input is absent
+   - `test_context_input_hash_not_overwritten_by_user_context` — verifies `--context` override
+   - `test_input_hash_injected_via_cmd_resume` — verifies `cmd_resume` re-injects `input_hash`
+   - `test_input_hash_in_runner_injected` — verifies validator skips `input_hash` as runner-injected
+   - `test_input_hash_determinism` — verifies same input = same hash, different input = different hash
+
+5. **Docs**:
+   - `docs/generalized-fsm-loop.md`: Added runner-injected context variables table documenting `run_dir`, `design_tokens_context`, and `input_hash`
+   - `docs/guides/LOOPS_GUIDE.md`: Added checkpoint fingerprinting tip with `${context.input_hash}` usage example
+
+### Verification
+
+- `python -m pytest scripts/tests/`: 9912 passed, 0 failures
+- `ruff check scripts/`: All checks passed

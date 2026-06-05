@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import json
 import os
 import re
@@ -160,6 +161,13 @@ def cmd_run(
     # --context run_dir=VALUE (already applied above) takes precedence.
     if "run_dir" not in fsm.context:
         fsm.context["run_dir"] = str(loops_dir / "runs" / (_pre_instance_id or loop_name)) + "/"
+
+    # Inject input hash for checkpoint fingerprinting.
+    # --context input_hash=VALUE (already applied above) takes precedence.
+    if "input_hash" not in fsm.context and isinstance(fsm.context.get("input"), str):
+        fsm.context["input_hash"] = hashlib.sha256(
+            fsm.context["input"].encode()
+        ).hexdigest()[:12]
 
     # Apply YAML loop config env-var overrides (CLI flags below overwrite these)
     if fsm.config is not None and isinstance(fsm.config.handoff_threshold, int):

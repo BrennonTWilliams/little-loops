@@ -1017,6 +1017,14 @@ states:
     action: "${context.metric_cmd}"
 ```
 
+**Runner-injected context variables** — the following variables are automatically injected by the runner into every loop's `context` namespace and are available as `${context.<name>}` without being declared in the YAML `context:` block:
+
+| Variable | Injected by | Description |
+|---|---|---|
+| `run_dir` | `cmd_run` / `cmd_resume` | Per-run artifact directory (`.loops/runs/<loop>-<timestamp>/`). Set before `--context` overrides so CLI flags take precedence. |
+| `design_tokens_context` | `cmd_run` / `cmd_resume` | Resolved design-token values rendered as a prompt-context snippet (empty string when disabled). |
+| `input_hash` | `cmd_run` / `cmd_resume` | SHA-256 hex digest (12 chars) of `context.input`. Available when input is a non-empty string; use for checkpoint fingerprinting to prevent cross-task contamination. Override with `--context input_hash=VALUE`. |
+
 #### `captured` - Stored Action Results
 
 When a state uses `capture: "varname"`:

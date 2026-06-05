@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import json
 import os
 import signal
@@ -462,6 +463,12 @@ def cmd_resume(
     # loops write artifacts to the same directory they started with.
     if "run_dir" not in fsm.context and instance_id is not None:
         fsm.context["run_dir"] = str(loops_dir / "runs" / instance_id) + "/"
+
+    # Re-inject input hash for checkpoint fingerprinting during resumed runs.
+    if "input_hash" not in fsm.context and isinstance(fsm.context.get("input"), str):
+        fsm.context["input_hash"] = hashlib.sha256(
+            fsm.context["input"].encode()
+        ).hexdigest()[:12]
 
     if getattr(args, "delay", None) is not None:
         fsm.backoff = args.delay

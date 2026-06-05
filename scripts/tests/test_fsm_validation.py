@@ -1989,6 +1989,18 @@ class TestValidateFragmentBindings:
         errors = _validate_fragment_bindings(fsm, tmp_path)
         assert errors == []
 
+    def test_input_hash_in_runner_injected(self, tmp_path: Path) -> None:
+        """input_hash is runner-injected and should not be flagged as missing binding."""
+        from little_loops.fsm.validation import _validate_fragment_bindings
+
+        fsm = self._make_fsm_with_fragment_state(
+            "rubric_score",
+            bindings={},  # input_hash NOT bound — but it's runner-injected
+            parameters={"input_hash": {"type": "string", "required": True}},
+        )
+        errors = _validate_fragment_bindings(fsm, tmp_path)
+        assert errors == []
+
     def test_type_mismatch_flagged(self, tmp_path: Path) -> None:
         from little_loops.fsm.validation import _validate_fragment_bindings
 

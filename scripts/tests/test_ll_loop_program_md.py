@@ -330,6 +330,107 @@ class TestCmdRunProgramMdInjection:
             "when the loop YAML declares an empty placeholder"
         )
 
+    def test_input_hash_injected_into_context(self, tmp_path: Path) -> None:
+        """input_hash is injected into fsm.context by cmd_run when input is non-empty."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        # Create a loop that declares input: null so the runner injects positional input
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test-loop.yaml").write_text(
+            "name: test-loop\ninitial: done\n"
+            'context:\n  input: null\n  targets: ""\n  directive: ""\n  design_tokens_context: ""\n'
+            "states:\n  done:\n    terminal: true\n"
+        )
+
+        args = self._make_args(input="FEAT-719", dry_run=True)
+        logger = Logger(use_color=False)
+
+        fsm, _ = load_and_validate(loops_dir / "test-loop.yaml")
+
+        def fake_load_and_validate(path: Path):  # type: ignore[override]
+            return fsm, []
+
+        from unittest.mock import patch
+        with patch(
+            "little_loops.fsm.validation.load_and_validate",
+            side_effect=fake_load_and_validate,
+        ):
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        assert "input_hash" in fsm.context, (
+            "input_hash must be present in fsm.context when input is non-empty"
+        )
+        assert isinstance(fsm.context["input_hash"], str)
+        assert len(fsm.context["input_hash"]) == 12, (
+            "input_hash must be a 12-char hex digest"
+        )
+
+    def test_input_hash_not_injected_when_input_absent(self, tmp_path: Path) -> None:
+        """input_hash is NOT injected when input is absent (None or empty)."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args(input=None, dry_run=True)
+        logger = Logger(use_color=False)
+
+        fsm, _ = load_and_validate(loops_dir / "test-loop.yaml")
+
+        def fake_load_and_validate(path: Path):  # type: ignore[override]
+            return fsm, []
+
+        from unittest.mock import patch
+        with patch(
+            "little_loops.fsm.validation.load_and_validate",
+            side_effect=fake_load_and_validate,
+        ):
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        assert "input_hash" not in fsm.context, (
+            "input_hash must NOT be present in fsm.context when input is absent"
+        )
+
+    def test_context_input_hash_not_overwritten_by_user_context(self, tmp_path: Path) -> None:
+        """--context input_hash=custom overrides the runner-injected default."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test-loop.yaml").write_text(
+            "name: test-loop\ninitial: done\n"
+            'context:\n  input: null\n  targets: ""\n  directive: ""\n  design_tokens_context: ""\n'
+            "states:\n  done:\n    terminal: true\n"
+        )
+
+        args = self._make_args(
+            input="FEAT-719",
+            context=["input_hash=custom-hash-value"],
+            dry_run=True,
+        )
+        logger = Logger(use_color=False)
+
+        fsm, _ = load_and_validate(loops_dir / "test-loop.yaml")
+
+        def fake_load_and_validate(path: Path):  # type: ignore[override]
+            return fsm, []
+
+        from unittest.mock import patch
+        with patch(
+            "little_loops.fsm.validation.load_and_validate",
+            side_effect=fake_load_and_validate,
+        ):
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        assert fsm.context.get("input_hash") == "custom-hash-value", (
+            "--context input_hash=VALUE must override the runner-injected default"
+        )
+
     def test_context_run_dir_not_overwritten_by_user_context(self, tmp_path: Path) -> None:
         """--context run_dir=custom overrides the runner-injected default."""
         from little_loops.cli.loop.run import cmd_run

@@ -3209,6 +3209,16 @@ Each `check-*` state uses `evaluate: type: exit_code` to route on the skill's ex
 - **Start with low `max_iterations`** (5-10) while developing a loop. Increase once the logic is proven.
 - **Use `backoff:`** to add a delay before a state's action executes — useful for rate-limited APIs or CI systems.
 - **State is persisted to disk** after every transition. If a loop is interrupted, `ll-loop resume` picks up where it left off.
+- **Checkpoint fingerprinting**: Use `${context.input_hash}` (a 12-char SHA-256 hex digest of the loop's input, auto-injected by the runner) to bind checkpoint artifacts to a specific task. This prevents stale checkpoints from an unrelated prior run from triggering false `RESUME_SKIP` during crash recovery. For example, in a shell action:
+  ```bash
+  CHECKPOINT="${context.run_dir}/checkpoint.json"
+  if [ -f "$CHECKPOINT" ]; then
+    STORED_HASH=$(grep -o '"input_hash":"[^"]*"' "$CHECKPOINT" | cut -d'"' -f4)
+    if [ "$STORED_HASH" != "${context.input_hash}" ]; then
+      rm -f "$CHECKPOINT"  # stale — belongs to a different task
+    fi
+  fi
+  ```
 - **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
 - **Loop run state, event logs, and meta-eval telemetry are automatically archived** to `.loops/.history/<timestamp>-<loop-name>/` immediately on completion. Meta-loops also archive `meta-eval.jsonl` alongside `state.json` and `events.jsonl`. Use `ll-loop history <name>` without a `run_id` to list archived runs, or `ll-loop history <name> <run_id>` to inspect a specific one.
 - **Foreground runs always write a log file** to `.loops/.running/<instance-id>.log` (same path as background runs). Output is ANSI-stripped plain text; use `tail -f` or `grep` for post-hoc inspection. `ll-loop status <loop>` shows the path in the `Log:` line.

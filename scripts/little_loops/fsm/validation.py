@@ -419,7 +419,7 @@ def _validate_fragment_bindings(fsm: FSMLoop, loop_dir: Path) -> list[Validation
         List of validation errors found
     """
     # Runner-injected vars available at runtime but not at static analysis time
-    RUNNER_INJECTED = {"run_dir", "loop_name", "started_at"}
+    RUNNER_INJECTED = {"run_dir", "loop_name", "started_at", "input_hash"}
 
     errors: list[ValidationError] = []
 

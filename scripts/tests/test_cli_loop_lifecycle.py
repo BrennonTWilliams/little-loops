@@ -662,6 +662,36 @@ class TestCmdResume:
             "design_tokens_context must be injected into fsm.context by cmd_resume"
         )
 
+    def test_input_hash_injected_via_cmd_resume(self, tmp_path: Path) -> None:
+        """input_hash is injected into fsm.context by cmd_resume when input is present."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.context = {"input": "resume task input"}
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        assert "input_hash" in mock_fsm.context, (
+            "input_hash must be injected into fsm.context by cmd_resume when input is present"
+        )
+        # Verify it's a 12-char hex string
+        assert isinstance(mock_fsm.context["input_hash"], str)
+        assert len(mock_fsm.context["input_hash"]) == 12
+
 
 class TestCmdResumeBackground:
     """Tests for cmd_resume --background flag (FEAT-608)."""

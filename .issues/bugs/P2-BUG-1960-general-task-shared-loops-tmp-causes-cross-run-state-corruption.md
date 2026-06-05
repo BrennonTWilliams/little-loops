@@ -3,11 +3,16 @@ id: BUG-1960
 type: BUG
 priority: P2
 status: open
-captured_at: "2026-06-05T18:05:10Z"
+captured_at: '2026-06-05T18:05:10Z'
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1962
-confidence_score: 98
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1960: general-task.yaml Uses Shared .loops/tmp/ Paths Causing Cross-Run State Corruption
@@ -111,7 +116,7 @@ fi
 
 ### Fix 3: Add task fingerprint to checkpoint (defense-in-depth)
 
-After ENH-1959 is implemented, use `${context.input_hash}` in `select_step`:
+ENH-1959 `input_hash` is **already implemented** (injected at `run.py:167-169` and `lifecycle.py:468-470`). Use `${context.input_hash}` directly in `select_step`:
 
 ```bash
 printf '{"in_flight_step":"%s","timestamp":"%s","task_hash":"%s"}\n' \
@@ -160,13 +165,54 @@ Change `check_done.on_error` from `diagnose` to `select_step` so that any remain
   - `test_check_done_on_error_routes_to_select_step` — structural test
 
 ### Documentation
-- N/A (loop YAML fix; no user-facing docs needed beyond the YAML itself)
+- `docs/guides/LOOPS_GUIDE.md:368` — references `.loops/tmp/general-task-dod.md` path pattern; needs update to `${context.run_dir}/dod.md` after migration
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+#### Reference Implementations (Loops Already Using `${context.run_dir}`)
+
+These loops correctly use `${context.run_dir}/` for per-run artifact isolation — model the migration after them:
+
+- `scripts/little_loops/loops/autodev.yaml` — all per-run artifacts (`queue.txt`, `passed.txt`, `skipped.txt`, etc.) under `${context.run_dir}/`
+- `scripts/little_loops/loops/rn-implement.yaml` — captures `RUN_DIR="${context.run_dir}"` as local shell variable, writes `checkpoint.json` at line 239
+- `scripts/little_loops/loops/rn-remediate.yaml` — per-issue artifacts and counter files in `run_dir`
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — state flags (`refine-count`, `wire-done`, `broke-down`) in `run_dir`
+- `scripts/little_loops/loops/oracles/generator-evaluator.yaml` — per-iteration snapshots with `iter-N/` subdirectories in `run_dir`
+
+**Common pattern**: Capture `RUN_DIR="${context.run_dir}"` once at the top of each shell action, then use `"$RUN_DIR/..."` for all paths. The runner creates `run_dir` before execution at `run.py:405` (`Path(fsm.context["run_dir"]).mkdir(parents=True, exist_ok=True)`), so no additional `mkdir -p` is needed in most states.
+
+#### ENH-1959 `input_hash` — Already Available
+
+The `${context.input_hash}` context variable is **already implemented and injectable** (12-char SHA-256 hex digest):
+
+- **Injected** at `run.py:167-169` (`cmd_run()`) and `lifecycle.py:468-470` (`cmd_resume()`)
+- **Registered** in `RUNNER_INJECTED` at `validation.py:422`
+- **Tests exist** at `test_ll_loop_program_md.py:333`, `test_cli_loop_lifecycle.py:665`, `test_ll_loop_commands.py:2660`
+
+Fix 3 can use `${context.input_hash}` directly — no `md5`/`md5sum` fallback needed.
+
+#### Widespread `.loops/tmp/` Usage
+
+19 other built-in loop YAMLs also reference `.loops/tmp/` paths (same vulnerability pattern but not part of this bug):
+`fix-quality-and-tests.yaml`, `scan-and-implement.yaml`, `auto-refine-and-implement.yaml`, `evaluation-quality.yaml`, `recursive-refine.yaml` (128 refs), `loop-router.yaml`, `harness-optimize.yaml`, `prompt-across-issues.yaml`, `dead-code-cleanup.yaml`, `issue-refinement.yaml`, `test-coverage-improvement.yaml`, `autodev.yaml` (1 ref — mixed with `run_dir` usage), `harness-multi-item.yaml`, `prompt-regression-test.yaml`, `context-health-monitor.yaml`, `hitl-md.yaml`, `sprint-refine-and-implement.yaml`, `lib/common.yaml`, `oracles/implement-issue-chain.yaml`
+
+#### Error Propagation Chain
+
+When `check_done` interpolation fails, the error propagates through:
+1. `executor.py:1041` — `interpolate(action_template, ctx)` raises `InterpolationError`
+2. `executor.py:1554` — caught by `_run_action_or_route()`, routes to `on_error: diagnose`
+3. `executor.py:850-852` — `routed` target `"diagnose"` returned from `_execute_state()`
+4. `diagnose` → `failed` (terminal) — loop terminates with zero productive work
+
+Changing `check_done.on_error` to `select_step` would make this a graceful recovery: the loop re-selects the next unchecked step and continues. Precedent exists in `autodev.yaml` (`on_error: dequeue_next` pattern).
 
 ## Implementation Steps
 
 1. **Migrate paths to `${context.run_dir}`** — replace all 6+ `.loops/tmp/general-task-*` paths in shell actions and prompt text
 2. **Add `current-step.txt` consistency check** to `resume_check` — if checkpoint exists but `current-step.txt` doesn't, emit `RESUME_CLEAN`
-3. **Add task fingerprint** to `select_step` checkpoint write and `resume_check` validation (use `${context.input_hash}` once ENH-1959 lands; use a `md5`/`md5sum` fallback in the interim)
+3. **Add task fingerprint** to `select_step` checkpoint write and `resume_check` validation using `${context.input_hash}` (already injected by runner — see Codebase Research Findings)
 4. **Change `check_done.on_error`** from `diagnose` to `select_step`
 5. **Add regression tests** — all scenarios listed above
 6. **Validate**: `ll-loop validate general-task` and `python -m pytest scripts/tests/test_general_task_loop.py -x --tb=short`
@@ -181,7 +227,9 @@ Change `check_done.on_error` from `diagnose` to `select_step` so that any remain
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/guides/LOOPS_GUIDE.md:342-368` — Documents the general-task loop cycle and references `.loops/tmp/general-task-dod.md` path (stale after migration)
+- `docs/generalized-fsm-loop.md` — Documents `${context.run_dir}` and `${context.input_hash}` context variables
+- `scripts/little_loops/loops/README.md` — Lists all built-in loops including `general-task`
 
 ## Labels
 
@@ -192,5 +240,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-06-05 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-05T18:53:22 - `47a35864-3a17-4930-ab95-a305446443dc.jsonl`
 - `/ll:format-issue` - 2026-06-05T18:13:23 - `3eca5207-7b01-419b-a330-d3c0b875236c.jsonl`
 - `/ll:capture-issue` - 2026-06-05T18:05:10Z - `6111e846-8894-477b-81b3-17824f89e659.jsonl`
+- `/ll:confidence-check` - 2026-06-05T19:00:00Z - `019fd1ab-9146-492e-9c9c-c7136c94137c.jsonl`
