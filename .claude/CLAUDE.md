@@ -136,6 +136,13 @@ dead-ends when the judge returns `no` or `partial`. Use
 `partial_route_ok: true` at the loop top-level to suppress the check when
 dead-ending on a non-yes verdict is intentional. See ENH-1917.
 
+`ll-loop validate` enforces rule 5 as WARNING severity (rule MR-5). A
+harness-category loop that writes artifact files to a flat path in an
+iterative generate→evaluate→generate cycle overwrites every iteration's
+output — only the final version survives. Add per-iteration snapshots and
+declare `artifact_versioning: true`, or set `artifact_versioning_ok: true`
+to suppress when intentional overwrite is the desired behavior. See ENH-1957.
+
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.

@@ -145,6 +145,8 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "meta_self_eval_ok",
         "shared_state_ok",
         "partial_route_ok",
+        "artifact_versioning",
+        "artifact_versioning_ok",
         "import",
         "fragments",
         "from",
@@ -995,6 +997,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_partial_route_dead_end(fsm))
 
+    errors.extend(_validate_artifact_overwrite(fsm))
+
     errors.extend(_validate_zero_retry_counter(fsm))
 
     errors.extend(_validate_on_max_iterations(fsm, defined_states))
@@ -1346,6 +1350,96 @@ def _validate_partial_route_dead_end(fsm: FSMLoop) -> list[ValidationError]:
                 severity=ValidationSeverity.WARNING,
             )
         )
+    return errors
+
+
+def _validate_artifact_overwrite(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-5 (ENH-1957): harness loops should version artifacts per iteration.
+
+    A harness-category loop that iteratively generates and overwrites a flat artifact
+    path (e.g. ``${context.run_dir}/image.svg``) loses all intermediate versions.
+    Only the final iteration survives. This rule flags iterative generate→evaluate→generate
+    cycles that write to artifact paths without declaring versioning intent.
+
+    Suppressed by ``artifact_versioning: true`` (loop snapshots per-iteration artifacts)
+    or ``artifact_versioning_ok: true`` (intentional overwrite, e.g. artifact varies
+    by task).
+    """
+    if fsm.artifact_versioning or fsm.artifact_versioning_ok:
+        return []
+    if fsm.category not in ("harness",):
+        return []
+
+    errors: list[ValidationError] = []
+
+    # Find states that write to artifact paths (shell actions with file output)
+    writers: dict[str, set[str]] = {}  # state_name -> set of artifact paths
+    for state_name, state in fsm.states.items():
+        if not state.action or state.action_type not in ("shell", None):
+            continue
+        # Skip sub-loop delegation states
+        if state.action_type == "loop":
+            continue
+        action = state.action
+        # Find run_dir-based artifact writes: ${context.run_dir}/<path> or $RUNDIR/<path>
+        import re
+
+        # Match patterns like: ${context.run_dir}/output.svg, $RUNDIR/image.png, > path
+        # We look for output redirections or cp/mv commands writing to run_dir
+        artifact_refs = set()
+        for pattern in (
+            r'\$\{context\.run_dir\}/([^\s"\';&]+)',
+            r'\$\{captured\.[^}]+\}/([^\s"\';&]+)',
+        ):
+            for m in re.finditer(pattern, action):
+                artifact_refs.add(m.group(1))
+        # Also detect explicit cp/mv writing to run_dir paths
+        for m in re.finditer(r'(?:cp|mv)\s+.*\s+\$\{context\.run_dir\}/([^\s"\';&]+)', action):
+            artifact_refs.add(m.group(1))
+        if artifact_refs:
+            writers[state_name] = artifact_refs
+
+    if not writers:
+        return []
+
+    # Detect iterative cycles: a writer state that is reachable from itself
+    # via a non-trivial path through other states (generate → evaluate → generate)
+    for state_name in writers:
+        refs = fsm.states[state_name].get_referenced_states()
+        # Check if this writer or its downstream states loop back to this writer
+        visited: set[str] = set()
+        to_visit = list(refs - {"$current"})
+        while to_visit:
+            target = to_visit.pop()
+            if target in visited or target not in fsm.states:
+                continue
+            visited.add(target)
+            if target == state_name:
+                # Found a cycle: this writer state is reachable from itself
+                artifact_list = ", ".join(sorted(writers[state_name]))
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"[state: {state_name}] Harness loop writes artifact(s) "
+                            f"({artifact_list}) to a flat path in an iterative cycle "
+                            f"({state_name} → ... → {state_name}). Per-iteration versions "
+                            "are lost; only the final output survives. Add per-iteration "
+                            "snapshots (see oracle generator-evaluator for pattern) and "
+                            "declare `artifact_versioning: true`, or set "
+                            "`artifact_versioning_ok: true` if intentional. (ENH-1957)"
+                        ),
+                        path=f"states.{state_name}",
+                        severity=ValidationSeverity.WARNING,
+                    )
+                )
+                break
+            target_state = fsm.states.get(target)
+            if target_state is not None:
+                target_refs = target_state.get_referenced_states()
+                for r in target_refs:
+                    if r != "$current" and r not in visited:
+                        to_visit.append(r)
+
     return errors
 
 

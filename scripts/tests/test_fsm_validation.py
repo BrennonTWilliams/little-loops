@@ -24,6 +24,7 @@ from little_loops.fsm.schema import (
 from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_artifact_isolation,
+    _validate_artifact_overwrite,
     _validate_evaluator,
     _validate_harness_multimodal_evaluator_blind_spot,
     _validate_input_key_without_guard,
@@ -2026,3 +2027,176 @@ class TestValidateFragmentBindings:
         )
         errors = _validate_fragment_bindings(fsm, tmp_path)
         assert errors == []
+
+
+class TestArtifactVersioning:
+    """MR-5 (ENH-1957): harness loops that overwrite artifacts without versioning."""
+
+    def _iterative_harness_fsm(
+        self,
+        *,
+        artifact_versioning: bool = False,
+        artifact_versioning_ok: bool = False,
+        category: str = "harness",
+        with_loop: bool = False,
+        non_iterative: bool = False,
+    ) -> FSMLoop:
+        """Build a minimal FSM for MR-5 testing.
+
+        Default: iterative generate→evaluate→generate cycle with a flat artifact write.
+        """
+        if non_iterative:
+            # Linear: no loop-back; generate → evaluate → done
+            states = {
+                "generate": make_state(
+                    action="echo 'artifact' > ${context.run_dir}/output.svg",
+                    action_type="shell",
+                    next="evaluate",
+                ),
+                "evaluate": make_state(
+                    action="Rate this output",
+                    action_type="prompt",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        elif with_loop:
+            # Uses sub-loop delegation (no direct artifact writes)
+            states = {
+                "generate": make_state(
+                    action="oracles/generator-evaluator",
+                    action_type="loop",
+                    on_yes="done",
+                    on_no="generate",
+                ),
+                "done": make_state(terminal=True),
+            }
+        else:
+            # Iterative: generate → evaluate → [generate]
+            states = {
+                "generate": make_state(
+                    action="echo 'artifact' > ${context.run_dir}/output.svg",
+                    action_type="shell",
+                    next="evaluate",
+                ),
+                "evaluate": make_state(
+                    action="Rate this output",
+                    action_type="prompt",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="generate",
+                ),
+                "done": make_state(terminal=True),
+            }
+        return FSMLoop(
+            name="test-loop",
+            initial="generate",
+            states=states,
+            category=category,
+            artifact_versioning=artifact_versioning,
+            artifact_versioning_ok=artifact_versioning_ok,
+        )
+
+    # --- MR-5 fires for iterative harness loops ---
+
+    def test_mr5_fires_for_iterative_harness_with_flat_artifact(self) -> None:
+        """MR-5 WARNING when harness loop overwrites artifact without versioning."""
+        fsm = self._iterative_harness_fsm()
+        errors = _validate_artifact_overwrite(fsm)
+        assert len(errors) >= 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+
+    # --- Suppression flags ---
+
+    def test_mr5_suppressed_by_artifact_versioning_true(self) -> None:
+        """MR-5 does NOT fire when artifact_versioning: true."""
+        fsm = self._iterative_harness_fsm(artifact_versioning=True)
+        errors = _validate_artifact_overwrite(fsm)
+        assert errors == []
+
+    def test_mr5_suppressed_by_artifact_versioning_ok_true(self) -> None:
+        """MR-5 does NOT fire when artifact_versioning_ok: true."""
+        fsm = self._iterative_harness_fsm(artifact_versioning_ok=True)
+        errors = _validate_artifact_overwrite(fsm)
+        assert errors == []
+
+    # --- Non-iterative loops are exempt ---
+
+    def test_mr5_does_not_fire_for_non_iterative_harness(self) -> None:
+        """MR-5 does NOT fire for linear (non-iterative) harness loops."""
+        fsm = self._iterative_harness_fsm(non_iterative=True)
+        errors = _validate_artifact_overwrite(fsm)
+        assert errors == []
+
+    # --- Non-harness loops are exempt ---
+
+    def test_mr5_does_not_fire_for_non_harness_category(self) -> None:
+        """MR-5 does NOT fire for non-harness category loops."""
+        fsm = self._iterative_harness_fsm(category="data")
+        errors = _validate_artifact_overwrite(fsm)
+        assert errors == []
+
+    # --- Sub-loop delegation is exempt ---
+
+    def test_mr5_does_not_fire_for_loop_delegation(self) -> None:
+        """MR-5 does NOT fire when artifact work is delegated to a sub-loop."""
+        fsm = self._iterative_harness_fsm(with_loop=True)
+        errors = _validate_artifact_overwrite(fsm)
+        assert errors == []
+
+    # --- End-to-end: validate_fsm() wiring ---
+
+    def test_mr5_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes MR-5 warnings for iterative harness loops."""
+        fsm = self._iterative_harness_fsm()
+        errors = validate_fsm(fsm)
+        mr5 = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING
+            and "artifact" in e.message.lower()
+            and "version" in e.message.lower()
+        ]
+        assert len(mr5) == 1
+
+    # --- Top-level key recognition ---
+
+    def test_artifact_versioning_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """YAML with top-level artifact_versioning produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that snapshots artifacts per iteration\n"
+            "initial: work\n"
+            "artifact_versioning: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
+    def test_artifact_versioning_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """YAML with top-level artifact_versioning_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that intentionally overwrites artifacts\n"
+            "initial: work\n"
+            "artifact_versioning_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []

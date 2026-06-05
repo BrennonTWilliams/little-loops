@@ -5411,7 +5411,7 @@ class TestGeneratorEvaluatorOracle:
 
     def test_required_states_exist(self, data: dict) -> None:
         states = data.get("states", {})
-        for name in ("generate", "evaluate", "score", "done"):
+        for name in ("generate", "evaluate", "snapshot", "score", "done"):
             assert name in states, f"required state '{name}' missing"
 
     def test_evaluate_uses_playwright_screenshot_fragment(self, data: dict) -> None:
@@ -5420,11 +5420,11 @@ class TestGeneratorEvaluatorOracle:
             "evaluate state must use fragment: playwright_screenshot"
         )
 
-    def test_evaluate_routes_to_score_on_all_outcomes(self, data: dict) -> None:
+    def test_evaluate_routes_to_snapshot_on_all_outcomes(self, data: dict) -> None:
         state = data["states"].get("evaluate", {})
-        assert state.get("on_yes") == "score"
-        assert state.get("on_no") == "score"
-        assert state.get("on_error") == "score"
+        assert state.get("on_yes") == "snapshot"
+        assert state.get("on_no") == "snapshot"
+        assert state.get("on_error") == "snapshot"
 
     def test_score_uses_output_contains_all_pass(self, data: dict) -> None:
         state = data["states"].get("score", {})

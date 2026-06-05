@@ -18,6 +18,7 @@ description: |
 initial: init
 max_iterations: 5
 timeout: 1800
+artifact_versioning: true
 
 context:
   concept: ""   # populated from loop_input via input_key: concept

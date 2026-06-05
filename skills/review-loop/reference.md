@@ -41,6 +41,7 @@ These are surfaced by running `ll-loop validate <name>`. The review skill presen
 | MR-2 | Meta-loop lacks measure→propose→apply→re-measure spine: no captured baseline referenced in any evaluator; suppress with `meta_self_eval_ok: true` (ENH-1665) | Warning |
 | MR-3 | Loop writes intermediate artifacts to shared `.loops/tmp/` instead of `${context.run_dir}/`; suppress with `shared_state_ok: true` | Warning |
 | MR-4 | LLM-judged state maps `on_yes` but has no route for `no`/`partial` verdicts — dead-ends the loop (parent reads as failed); suppress with `partial_route_ok: true` (ENH-1917) | Warning |
+| MR-5 | Harness loop writes artifacts to flat paths in iterative cycles without per-iteration versioning; suppress with `artifact_versioning: true` (snapshot artifacts) or `artifact_versioning_ok: true` (intentional overwrite) (ENH-1957) | Warning |
 
 ---
 

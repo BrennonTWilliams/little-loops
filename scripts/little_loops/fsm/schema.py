@@ -968,6 +968,8 @@ class FSMLoop:
     meta_self_eval_ok: bool = False
     shared_state_ok: bool = False
     partial_route_ok: bool = False
+    artifact_versioning: bool = False
+    artifact_versioning_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -1037,6 +1039,10 @@ class FSMLoop:
             result["shared_state_ok"] = self.shared_state_ok
         if self.partial_route_ok:
             result["partial_route_ok"] = self.partial_route_ok
+        if self.artifact_versioning:
+            result["artifact_versioning"] = self.artifact_versioning
+        if self.artifact_versioning_ok:
+            result["artifact_versioning_ok"] = self.artifact_versioning_ok
 
         return result
 
@@ -1092,6 +1098,8 @@ class FSMLoop:
             meta_self_eval_ok=data.get("meta_self_eval_ok", False),
             shared_state_ok=data.get("shared_state_ok", False),
             partial_route_ok=data.get("partial_route_ok", False),
+            artifact_versioning=data.get("artifact_versioning", False),
+            artifact_versioning_ok=data.get("artifact_versioning_ok", False),
             imports=data.get("import", []),
         )
 

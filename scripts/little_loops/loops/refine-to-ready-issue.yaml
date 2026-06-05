@@ -12,6 +12,7 @@ category: issue-management
 initial: resolve_issue
 max_iterations: 20
 on_handoff: spawn
+artifact_versioning: true
 context:
   readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
   outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
@@ -79,8 +80,27 @@ states:
   refine_issue:
     action: "/ll:refine-issue ${captured.issue_id.output} --auto --full-rewrite"
     action_type: slash_command
-    next: check_wire_done
+    next: snapshot_issue
     on_error: diagnose
+
+  snapshot_issue:
+    description: |
+      Per-iteration issue snapshot — copies the issue file into iter-N/ subdirectory
+      so every refinement iteration's issue state is preserved for debugging.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      ISSUE_ID="${captured.issue_id.output}"
+      ISSUE_FILE=$(ll-issues path "$${ISSUE_ID}" 2>/dev/null || echo "")
+      COUNTER=$(cat "$${RUN_DIR}/.iter_counter" 2>/dev/null || echo 0)
+      COUNTER=$((COUNTER + 1))
+      echo "$${COUNTER}" > "$${RUN_DIR}/.iter_counter"
+      mkdir -p "$${RUN_DIR}/iter-$${COUNTER}"
+      if [ -n "$${ISSUE_FILE}" ] && [ -f "$${ISSUE_FILE}" ]; then
+        cp "$${ISSUE_FILE}" "$${RUN_DIR}/iter-$${COUNTER}/$${ISSUE_ID}.md"
+      fi
+    next: check_wire_done
+    on_error: check_wire_done
 
   check_wire_done:
     action: |

@@ -5,6 +5,7 @@ initial: define_done
 max_iterations: 200
 default_timeout: 1800
 on_handoff: spawn
+artifact_versioning_ok: true
 on_max_iterations: summarize_partial
 
 context:

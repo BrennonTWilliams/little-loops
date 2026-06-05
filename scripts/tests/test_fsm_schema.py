@@ -3277,3 +3277,113 @@ class TestFSMLoopRequiredInputs:
         )
         restored = FSMLoop.from_dict(original.to_dict())
         assert restored.required_inputs == ["description"]
+
+
+class TestFSMLoopArtifactVersioning:
+    """Tests for FSMLoop.artifact_versioning and artifact_versioning_ok fields (ENH-1957)."""
+
+    def test_artifact_versioning_defaults_to_false(self) -> None:
+        """FSMLoop.artifact_versioning defaults to False."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert fsm.artifact_versioning is False
+
+    def test_artifact_versioning_ok_defaults_to_false(self) -> None:
+        """FSMLoop.artifact_versioning_ok defaults to False."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert fsm.artifact_versioning_ok is False
+
+    def test_to_dict_omits_artifact_versioning_when_false(self) -> None:
+        """to_dict does not include 'artifact_versioning' key when False."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert "artifact_versioning" not in fsm.to_dict()
+
+    def test_to_dict_omits_artifact_versioning_ok_when_false(self) -> None:
+        """to_dict does not include 'artifact_versioning_ok' key when False."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert "artifact_versioning_ok" not in fsm.to_dict()
+
+    def test_to_dict_includes_artifact_versioning_when_true(self) -> None:
+        """to_dict serializes artifact_versioning when True."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            artifact_versioning=True,
+        )
+        d = fsm.to_dict()
+        assert "artifact_versioning" in d
+        assert d["artifact_versioning"] is True
+
+    def test_to_dict_includes_artifact_versioning_ok_when_true(self) -> None:
+        """to_dict serializes artifact_versioning_ok when True."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            artifact_versioning_ok=True,
+        )
+        d = fsm.to_dict()
+        assert "artifact_versioning_ok" in d
+        assert d["artifact_versioning_ok"] is True
+
+    def test_from_dict_parses_artifact_versioning(self) -> None:
+        """from_dict deserializes artifact_versioning boolean."""
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+            "artifact_versioning": True,
+        }
+        fsm = FSMLoop.from_dict(data)
+        assert fsm.artifact_versioning is True
+
+    def test_from_dict_parses_artifact_versioning_ok(self) -> None:
+        """from_dict deserializes artifact_versioning_ok boolean."""
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+            "artifact_versioning_ok": True,
+        }
+        fsm = FSMLoop.from_dict(data)
+        assert fsm.artifact_versioning_ok is True
+
+    def test_from_dict_defaults_when_absent(self) -> None:
+        """from_dict defaults both fields to False when absent from data."""
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+        }
+        fsm = FSMLoop.from_dict(data)
+        assert fsm.artifact_versioning is False
+        assert fsm.artifact_versioning_ok is False
+
+    def test_round_trip(self) -> None:
+        """FSMLoop with both artifact versioning fields round-trips through to_dict/from_dict."""
+        original = FSMLoop(
+            name="my-loop",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            artifact_versioning=True,
+            artifact_versioning_ok=True,
+        )
+        restored = FSMLoop.from_dict(original.to_dict())
+        assert restored.artifact_versioning is True
+        assert restored.artifact_versioning_ok is True

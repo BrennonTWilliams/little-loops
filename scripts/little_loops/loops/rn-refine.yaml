@@ -12,6 +12,7 @@ scope:
 initial: init
 max_iterations: 30
 timeout: 7200
+artifact_versioning: true
 
 context:
   plan_file: "" # populated from positional CLI arg via input_key: plan_file
@@ -242,6 +243,20 @@ states:
       title, objective, or first goal statement in the just-written plan.md.
       Update only the task: line (format: task: "<double-quoted goal>"); preserve
       all ## Dimensions scores and the ## Aggregate section exactly as they are.
+    next: snapshot
+
+  snapshot:
+    description: |
+      Per-iteration plan versioning — copies plan.md into iter-N/ subdirectory
+      so every iteration's plan is preserved for comparison and rollback.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      COUNTER=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0)
+      COUNTER=$((COUNTER + 1))
+      echo "$COUNTER" > "$RUN_DIR/.iter_counter"
+      mkdir -p "$RUN_DIR/iter-$COUNTER"
+      cp "$RUN_DIR/plan.md" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
     next: score
 
   score:

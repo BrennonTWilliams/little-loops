@@ -1,8 +1,9 @@
 name: generator-evaluator
 description: |
   Oracle sub-loop for iterative artifact generation with visual evaluation. Loops
-  generate → evaluate (Playwright screenshot) → score (LLM rubric) until ALL_PASS or
-  max_iterations. Returns done on success; parent routes on_yes to its next state.
+  generate → evaluate (Playwright screenshot) → snapshot (per-iteration artifact
+  versioning) → score (LLM rubric) until ALL_PASS or max_iterations. Returns done
+  on success; parent routes on_yes to its next state.
   Used by html-website-generator, html-anything, hitl-md, p5js-sketch-generator, and
   svg-image-generator thin wrappers (ENH-1869).
 
@@ -10,6 +11,7 @@ initial: generate
 on_handoff: spawn
 timeout: 7200
 max_iterations: 20
+artifact_versioning: true
 
 parameters:
   run_dir:
@@ -69,9 +71,25 @@ states:
         *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
       esac
       playwright screenshot "file://$${ABS_DIR}/${context.artifact_path}" "$${ABS_DIR}/screenshot.png" 2>&1 && echo "CAPTURED"
-    on_yes: score
-    on_no: score
-    on_error: score
+    on_yes: snapshot
+    on_no: snapshot
+    on_error: snapshot
+
+  snapshot:
+    description: |
+      Per-iteration artifact versioning — copies the current artifact and screenshot
+      into an iter-N/ subdirectory within the run directory. Iteration counter is
+      tracked via .iter_counter file. Runs unconditionally (next: score).
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      COUNTER=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0)
+      COUNTER=$((COUNTER + 1))
+      echo "$COUNTER" > "$RUN_DIR/.iter_counter"
+      mkdir -p "$RUN_DIR/iter-$COUNTER"
+      cp "$RUN_DIR/${context.artifact_path}" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
+      cp "$RUN_DIR/screenshot.png" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
+    next: score
 
   score:
     fragment: ll_rubric_score

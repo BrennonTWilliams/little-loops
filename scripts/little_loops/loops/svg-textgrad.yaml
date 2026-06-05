@@ -12,6 +12,7 @@ initial: init
 max_iterations: 40
 on_handoff: pause
 timeout: 7200
+artifact_versioning: true
 
 # HARNESS: Context variables control quality threshold.
 context:
@@ -216,6 +217,14 @@ states:
         cp "$DIR/image.svg" "$DIR/best.svg"
         cp "$DIR/brief.md" "$DIR/best-brief.md"
       fi
+      # --- Per-iteration artifact snapshot (ENH-1957) ---
+      COUNTER=$(cat "$DIR/.iter_counter" 2>/dev/null || echo 0)
+      COUNTER=$((COUNTER + 1))
+      echo "$COUNTER" > "$DIR/.iter_counter"
+      mkdir -p "$DIR/iter-$COUNTER"
+      cp "$DIR/image.svg" "$DIR/iter-$COUNTER/" 2>/dev/null || true
+      cp "$DIR/brief.md" "$DIR/iter-$COUNTER/" 2>/dev/null || true
+      cp "$DIR/critique.md" "$DIR/iter-$COUNTER/" 2>/dev/null || true
     next: compute_gradient
 
   compute_gradient:

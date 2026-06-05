@@ -16,6 +16,7 @@ initial: parse_input
 max_iterations: 500
 timeout: 28800
 on_handoff: spawn
+artifact_versioning: true
 parameters:
   input:
     type: string

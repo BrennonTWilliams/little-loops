@@ -158,3 +158,31 @@ fragments:
     evaluate:
       type: diff_stall
       max_stall: 2
+
+  snapshot_artifact:
+    description: |
+      Shell state that snapshots the current artifact into a per-iteration
+      iter-N/ subdirectory within the run directory. An iteration counter file
+      tracks the version across loop iterations.
+      Caller must supply via with: bindings:
+        artifact_path — filename (relative to run_dir) of the artifact to snapshot
+        run_dir      — absolute path to the run directory output area
+      State must supply routing: on_yes, on_no, or next: (no evaluator — always
+      succeeds unconditionally). Use next: <target> for unconditional forward.
+    parameters:
+      artifact_path:
+        type: string
+        required: true
+      run_dir:
+        type: string
+        required: true
+    action_type: shell
+    action: |
+      RUN_DIR="${param.run_dir}"
+      COUNTER_FILE="$RUN_DIR/.iter_counter"
+      COUNTER=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNTER=$((COUNTER + 1))
+      echo "$COUNTER" > "$COUNTER_FILE"
+      mkdir -p "$RUN_DIR/iter-$COUNTER"
+      cp "$RUN_DIR/${param.artifact_path}" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
+      cp "$RUN_DIR/screenshot.png" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
