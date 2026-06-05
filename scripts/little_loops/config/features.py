@@ -726,12 +726,19 @@ class CompactionConfig:
     via three-level LCM Algorithm 3 escalation (normal → aggressive bullet-point →
     deterministic truncation). Disabled by default to avoid background LLM calls
     without user opt-in.
+
+    Cross-session condensation (ENH-1954): when ``cross_session_enabled`` is True
+    (default), the compaction pass recurses over existing condensed nodes level by
+    level, grouping by token budget and summarising each group until exactly one
+    project-root summary node remains (``session_id IS NULL``, ``level = max``).
     """
 
     enabled: bool = False
     budget_tokens: int = 4096
     model: str | None = None
     timeout: int = 60
+    cross_session_enabled: bool = True
+    max_level: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CompactionConfig:
@@ -741,6 +748,8 @@ class CompactionConfig:
             budget_tokens=data.get("budget_tokens", 4096),
             model=data.get("model", None),
             timeout=data.get("timeout", 60),
+            cross_session_enabled=data.get("cross_session_enabled", True),
+            max_level=data.get("max_level", None),
         )
 
 

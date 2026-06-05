@@ -1527,6 +1527,16 @@
               "type": "integer",
               "default": 60,
               "description": "Timeout in seconds for each LLM compaction call. On timeout, escalation proceeds through remaining levels, ultimately to deterministic truncation."
+            },
+            "cross_session_enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable recursive cross-session condensation after per-session compaction (ENH-1954). When true, existing condensed nodes are grouped level-by-level and summarised until a single project-root summary node remains. Set to false to preserve pre-ENH-1954 behavior."
+            },
+            "max_level": {
+              "type": ["integer", "null"],
+              "default": null,
+              "description": "Maximum condensation depth. Null means no limit — the pass recurses until exactly one root node remains. Set to an integer to stop after that many cross-session levels."
             }
           },
           "additionalProperties": false

@@ -1921,6 +1921,214 @@ class TestCompactSession:
         assert count == 0
 
 
+    # -- cross-session condensation tests (ENH-1954) -------------------------------
+
+    def _make_multi_session_db(
+        self, tmp_path: Path, sessions: list[tuple[str, list[str]]]
+    ) -> Path:
+        """Bootstrap a DB with multiple sessions, each with messages."""
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            for session_id, messages in sessions:
+                conn.execute(
+                    "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                    (session_id, str(tmp_path / f"{session_id}.jsonl")),
+                )
+                for i, content in enumerate(messages):
+                    ts = f"2026-01-01T00:{i:02d}:00Z"
+                    conn.execute(
+                        "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                        (ts, session_id, content),
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+        return db
+
+    def test_cross_session_condensation_produces_root(self, tmp_path: Path) -> None:
+        """Cross-session pass creates exactly one root node with session_id=NULL, level=max."""
+        from little_loops.session_store import _compact_sessions
+
+        sessions = [
+            (f"cross-root-sess-{i}", [f"Message {j} in session {i}. " * 5 for j in range(30)])
+            for i in range(2)
+        ]
+        db = self._make_multi_session_db(tmp_path, sessions)
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        short_summary = "Compacted."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+
+        conn = connect(db)
+        try:
+            # Verify per-session condensed nodes exist
+            per_session = conn.execute(
+                "SELECT id, level FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NOT NULL"
+            ).fetchall()
+            # Verify cross-session nodes exist
+            cross_session = conn.execute(
+                "SELECT id, level, parent_id FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NULL ORDER BY level"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        assert len(per_session) >= 2, "Expected ≥2 per-session condensed nodes"
+        assert len(cross_session) >= 1, "Expected ≥1 cross-session condensed node"
+        # Root is the highest-level cross-session node
+        max_level = max(r["level"] for r in cross_session)
+        roots = [r for r in cross_session if r["level"] == max_level]
+        assert len(roots) == 1, f"Expected exactly 1 root, got {len(roots)}"
+        # Root should have no parent
+        assert roots[0]["parent_id"] is None
+
+    def test_cross_session_condensation_idempotent(self, tmp_path: Path) -> None:
+        """Running cross-session pass twice does not create duplicate higher-order nodes."""
+        from little_loops.session_store import _compact_sessions
+
+        sessions = [
+            (f"cross-idem-sess-{i}", [f"Msg {j} sess {i}. " * 5 for j in range(30)])
+            for i in range(2)
+        ]
+        db = self._make_multi_session_db(tmp_path, sessions)
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        short_summary = "Compacted."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            # First run
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+            # Second run
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+
+        conn = connect(db)
+        try:
+            cross_session = conn.execute(
+                "SELECT level, COUNT(*) as cnt FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NULL"
+                " GROUP BY level ORDER BY level"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        # Idempotency: each level should have at most one condensed node
+        # (since with 2 sessions, each level groups into a single node)
+        for row in cross_session:
+            assert row["cnt"] <= 1, (
+                f"Duplicate cross-session nodes at level {row['level']}: "
+                f"found {row['cnt']}"
+            )
+
+    def test_cross_session_condensation_parent_id_links_existing(self, tmp_path: Path) -> None:
+        """Re-running _compact_sessions sets parent_id on existing per-session condensed nodes."""
+        from little_loops.session_store import _compact_sessions, _compact_session_conn
+
+        sessions = [
+            (f"cross-link-sess-{i}", [f"Link msg {j} in s{i}. " * 5 for j in range(30)])
+            for i in range(2)
+        ]
+        db = self._make_multi_session_db(tmp_path, sessions)
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        short_summary = "Linked summary."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+
+        # After first run, verify parent_id is set on per-session condensed nodes
+        conn = connect(db)
+        try:
+            per_session = conn.execute(
+                "SELECT id, parent_id FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NOT NULL"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        assert len(per_session) >= 2
+        for row in per_session:
+            assert row["parent_id"] is not None, (
+                f"Per-session condensed node {row['id']} has NULL parent_id after"
+                f" cross-session pass"
+            )
+
+    def test_cross_session_disabled_preserves_old_behavior(self, tmp_path: Path) -> None:
+        """cross_session_enabled: false skips the cross-session pass entirely."""
+        from little_loops.session_store import _compact_sessions
+
+        sessions = [
+            (f"cross-off-sess-{i}", [f"Msg {j} in session {i}. " * 5 for j in range(30)])
+            for i in range(2)
+        ]
+        db = self._make_multi_session_db(tmp_path, sessions)
+        config = {
+            "history": {
+                "compaction": {
+                    "enabled": True,
+                    "budget_tokens": 10,
+                    "cross_session_enabled": False,
+                }
+            }
+        }
+        short_summary = "Off."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+
+        conn = connect(db)
+        try:
+            cross_session = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NULL"
+            ).fetchone()[0]
+            per_session = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NOT NULL"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        assert cross_session == 0, (
+            f"cross_session_enabled=false should produce no cross-session nodes,"
+            f" got {cross_session}"
+        )
+        assert per_session >= 2, "Per-session compaction should still run"
+
+
 # -- helpers for _summarize_block tests -----------------------------------------
 
 

@@ -633,7 +633,7 @@ flowchart TB
 |-----------|------|------|
 | `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v12 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
-| `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712) |
+| `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712). After per-session passes, cross-session recursive condensation (ENH-1954) groups condensed nodes level-by-level into a multi-level DAG terminating at a single project-root summary node (`session_id=NULL`, `level=max`); gated by `history.compaction.cross_session_enabled`. |
 | `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
 | `EventBus.emit()` | `events.py` | Dispatches events to registered transports |
 | `post_tool_use` hook | `hooks/post_tool_use.py` | Writes `tool_events` / `file_events` per call |

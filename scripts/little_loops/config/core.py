@@ -666,6 +666,8 @@ class BRConfig:
                     "budget_tokens": self._history.compaction.budget_tokens,
                     "model": self._history.compaction.model,
                     "timeout": self._history.compaction.timeout,
+                    "cross_session_enabled": self._history.compaction.cross_session_enabled,
+                    "max_level": self._history.compaction.max_level,
                 },
             },
             "sync": {

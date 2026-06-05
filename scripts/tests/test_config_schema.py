@@ -315,6 +315,15 @@ class TestConfigSchema:
         assert "model" in compaction["properties"]
         assert "null" in compaction["properties"]["model"]["type"]
         assert "timeout" in compaction["properties"]
+        assert "cross_session_enabled" in compaction["properties"], (
+            "cross_session_enabled must be declared; additionalProperties: false rejects it otherwise"
+        )
+        assert compaction["properties"]["cross_session_enabled"]["type"] == "boolean"
+        assert compaction["properties"]["cross_session_enabled"]["default"] is True
+        assert "max_level" in compaction["properties"], (
+            "max_level must be declared; additionalProperties: false rejects it otherwise"
+        )
+        assert "null" in compaction["properties"]["max_level"]["type"]
 
     def test_analytics_capture_in_schema(self) -> None:
         """analytics.capture sub-object must be declared so additionalProperties: false

@@ -2774,14 +2774,26 @@ class TestHistoryConfig:
         assert cfg.compaction.budget_tokens == 4096
         assert cfg.compaction.model is None
         assert cfg.compaction.timeout == 60
+        assert cfg.compaction.cross_session_enabled is True
+        assert cfg.compaction.max_level is None
 
     def test_compaction_override(self) -> None:
         cfg = HistoryConfig.from_dict(
-            {"compaction": {"enabled": True, "budget_tokens": 2048, "timeout": 30}}
+            {
+                "compaction": {
+                    "enabled": True,
+                    "budget_tokens": 2048,
+                    "timeout": 30,
+                    "cross_session_enabled": False,
+                    "max_level": 3,
+                }
+            }
         )
         assert cfg.compaction.enabled is True
         assert cfg.compaction.budget_tokens == 2048
         assert cfg.compaction.timeout == 30
+        assert cfg.compaction.cross_session_enabled is False
+        assert cfg.compaction.max_level == 3
 
     def test_unknown_key_ignored(self) -> None:
         cfg = HistoryConfig.from_dict({"unknown_key": "value"})
@@ -2854,6 +2866,8 @@ class TestBRConfigHistoryIntegration:
         assert h["compaction"]["budget_tokens"] == 4096
         assert h["compaction"]["model"] is None
         assert h["compaction"]["timeout"] == 60
+        assert h["compaction"]["cross_session_enabled"] is True
+        assert h["compaction"]["max_level"] is None
 
     def test_history_round_trip_from_dict(self, temp_project_dir: Path) -> None:
         config = BRConfig(temp_project_dir)
@@ -2865,3 +2879,6 @@ class TestBRConfigHistoryIntegration:
         assert (
             h2.evolution.feedback_min_recurrence == config.history.evolution.feedback_min_recurrence
         )
+        assert h2.compaction.enabled == config.history.compaction.enabled
+        assert h2.compaction.cross_session_enabled == config.history.compaction.cross_session_enabled
+        assert h2.compaction.max_level == config.history.compaction.max_level

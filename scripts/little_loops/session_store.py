@@ -1421,6 +1421,12 @@ def _compact_sessions(
 
     Gated by ``history.compaction.enabled`` (default ``false``). Skips silently when
     disabled so backfill() callers that omit config are unaffected.
+
+    When ``cross_session_enabled`` is True (default), runs a recursive cross-session
+    condensation pass after per-session compaction: existing condensed nodes are
+    grouped level-by-level by token budget, summarised, and inserted as higher-order
+    condensed nodes (``session_id=NULL``, ``level=1+``) until exactly one project-root
+    summary node remains (ENH-1954).
     """
     from little_loops.config.features import CompactionConfig
 
@@ -1439,6 +1445,115 @@ def _compact_sessions(
             model=compact_cfg.model,
             timeout=compact_cfg.timeout,
         )
+
+    # -- Cross-session condensation (ENH-1954) ---------------------------------
+    if not compact_cfg.cross_session_enabled:
+        return total
+
+    now = _now()
+    level = 1
+    max_level = compact_cfg.max_level  # None = unlimited
+
+    while True:
+        # Collect condensed nodes at the current level.
+        # Level 0 = per-session condensed; level 1+ = cross-session.
+        condensed = conn.execute(
+            "SELECT id, content, tokens, session_id FROM summary_nodes"
+            " WHERE kind='condensed' AND level = ?"
+            " ORDER BY id",
+            (level - 1,),
+        ).fetchall()
+
+        if len(condensed) <= 1:
+            break  # nothing to roll up, or already at root
+
+        # Group by token budget — same greedy algorithm as _compact_session_conn
+        groups: list[list[tuple[int, str, int, str | None]]] = []
+        current: list[tuple[int, str, int, str | None]] = []
+        current_tokens = 0
+
+        for row in condensed:
+            node_id, content, tokens, sess_id = (
+                row[0], row[1], row[2] or 0, row[3],
+            )
+            if current_tokens + tokens > compact_cfg.budget_tokens and current:
+                groups.append(current)
+                current = [(node_id, content, tokens, sess_id)]
+                current_tokens = tokens
+            else:
+                current.append((node_id, content, tokens, sess_id))
+                current_tokens += tokens
+        if current:
+            groups.append(current)
+
+        for group in groups:
+            member_ids = [g[0] for g in group]
+            contents = [g[1] for g in group]
+
+            summary = _summarize_block(
+                contents, compact_cfg.budget_tokens,
+                model=compact_cfg.model, timeout=compact_cfg.timeout,
+            )
+
+            # Compute ts_start/ts_end for the dedup index.
+            # Level-1 members are per-session condensed nodes (session_id NOT NULL
+            # but ts_start=NULL). Query leaf descendants via session_id to get
+            # real timestamps. Level-2+ members already have ts_start/ts_end set.
+            if level == 1:
+                sess_ids = [g[3] for g in group if g[3] is not None]
+                if sess_ids:
+                    ph = ",".join(["?"] * len(sess_ids))
+                    ts_row = conn.execute(
+                        f"SELECT MIN(ts_start), MAX(ts_end) FROM summary_nodes"
+                        f" WHERE kind='leaf' AND session_id IN ({ph})",
+                        sess_ids,
+                    ).fetchone()
+                    ts_start = ts_row[0] if ts_row else None
+                    ts_end = ts_row[1] if ts_row else None
+                else:
+                    ts_start, ts_end = None, None
+            else:
+                ph = ",".join(["?"] * len(member_ids))
+                ts_row = conn.execute(
+                    f"SELECT MIN(ts_start), MAX(ts_end) FROM summary_nodes"
+                    f" WHERE id IN ({ph})",
+                    member_ids,
+                ).fetchone()
+                ts_start = ts_row[0] if ts_row else None
+                ts_end = ts_row[1] if ts_row else None
+
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO summary_nodes"
+                "(kind, content, tokens, session_id, ts_start, ts_end, created_at, level)"
+                " VALUES('condensed', ?, ?, NULL, ?, ?, ?, ?)",
+                (summary, _estimate_tokens(summary), ts_start, ts_end, now, level),
+            )
+            if cursor.rowcount:
+                parent_id: int | None = cursor.lastrowid
+            else:
+                # Node already exists (idempotent re-run) — look up its id
+                existing = conn.execute(
+                    "SELECT id FROM summary_nodes"
+                    " WHERE kind='condensed' AND session_id IS NULL"
+                    " AND level = ? AND ts_start = ? AND ts_end = ?",
+                    (level, ts_start, ts_end),
+                ).fetchone()
+                parent_id = existing[0] if existing else None
+
+            if parent_id is not None:
+                ph = ",".join(["?"] * len(member_ids))
+                conn.execute(
+                    f"UPDATE summary_nodes SET parent_id = ?"
+                    f" WHERE id IN ({ph}) AND parent_id IS NULL",
+                    [parent_id] + member_ids,
+                )
+
+        # Depth-limit check
+        if max_level is not None and level >= max_level:
+            break
+
+        level += 1
+
     return total
 
 
