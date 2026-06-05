@@ -188,6 +188,128 @@ Knowledge accumulation: `knowledge-base.md` **appends** across iterations (sourc
 
 ---
 
+## `sft-corpus`
+
+**Category**: data
+**File**: `scripts/little_loops/loops/sft-corpus.yaml`
+
+<!-- TODO: update-docs stub — sft-corpus — drafted 2026-06-04 -->
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details for states not yet exercised.
+
+Pipeline that stages session JSONL transcripts, batch-joins `history.db` session-quality metadata, runs a five-predicate filter chain, deduplicates by Jaccard similarity, splits into train/val/test splits, delegates to `dataset-curation` for quality validation, and publishes an SFT training corpus with a manifest and harvest sentinel for incremental re-runs.
+
+### Invocation
+
+```bash
+# Default: stages from data/sessions, outputs to data/corpus
+ll-loop run sft-corpus
+
+# With custom data directory and quality gates
+ll-loop run sft-corpus \
+  --context data_dir=data/my-sessions \
+  --context require_issue_outcome=true \
+  --context exclude_user_corrections=true \
+  --context min_tool_invocations=5
+
+# With PII discarding and custom split ratios
+ll-loop run sft-corpus \
+  --context pii_action=discard \
+  --context val_ratio=0.15 \
+  --context test_ratio=0.15
+```
+
+### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `data_dir` | `"data/sessions"` | Directory with session UUID JSONL transcript files |
+| `output_dir` | `"data/corpus"` | Final corpus output directory (manifest, rejections, staged splits) |
+| `sft_format` | `"chatml"` | SFT output format: `chatml`, `alpaca`, or `sharegpt` |
+| `max_turns` | `20` | Maximum conversation turns per window |
+| `min_tokens` | `50` | Discard examples below this word-count threshold (proxy) |
+| `max_tokens` | `4096` | Discard examples above this word-count threshold (proxy) |
+| `require_issue_outcome` | `false` | Drop sessions where no issue was closed (predicate 1) |
+| `exclude_user_corrections` | `false` | Drop sessions containing user corrections (predicate 2) |
+| `min_tool_invocations` | `0` | Drop sessions below this tool-call count (predicate 3) |
+| `require_file_modifications` | `false` | Drop sessions with zero file modifications (predicate 4) |
+| `pii_action` | `"flag"` | PII handling mode: `flag` (add `pii_detected` field), `redact` (replace with `[TYPE]` placeholders), or `discard` (drop example entirely) (predicate 5) |
+| `val_ratio` | `0.1` | Fraction of sessions reserved for validation split |
+| `test_ratio` | `0.1` | Fraction of sessions reserved for test split |
+| `schema_path` | `"schemas/sft.json"` | Schema file for `dataset-curation` validation |
+| `dedup_threshold` | `0.9` | Jaccard similarity threshold for near-duplicate removal (0.0–1.0) |
+
+### State Graph
+
+```
+stage  (shell: ll-messages --sft-format to raw.jsonl; incremental via sft-corpus.last_harvested)
+  → enrich  (shell: batch-join history.db metadata via lookup_session_metadata())
+    → check_issue_outcome  (predicate 1; shell: gated by require_issue_outcome)
+        on_yes → check_corrections
+        on_no  → reject_issue_outcome  → check_corrections
+    → check_corrections  (predicate 2; shell: gated by exclude_user_corrections)
+        on_yes → check_tools
+        on_no  → reject_corrections  → check_tools
+    → check_tools  (predicate 3; shell: gated by min_tool_invocations > 0)
+        on_yes → check_files
+        on_no  → reject_tools  → check_files
+    → check_files  (predicate 4; shell: gated by require_file_modifications)
+        on_yes → check_pii
+        on_no  → reject_files  → check_pii
+    → check_pii  (predicate 5; shell: apply_pii_action() — flag/redact/discard)
+        on_yes → check_token_length
+        on_no  → reject_pii  → check_token_length
+    → check_token_length  (shell: filter by [min_tokens, max_tokens]; writes token_filtered.jsonl)
+        on_yes → dedup
+        on_no  → reject_token_length → publish
+    → dedup  (shell: Jaccard similarity near-duplicate removal; writes deduped.jsonl)
+        on_yes → split
+        on_no  → publish
+    → split  (shell: session-stratified train/val/test split with seed 42)
+      → curate  (sub-loop: dataset-curation; validates via schema_path)
+          on_success → publish
+          on_failure → done
+    → publish  (shell: aggregate stats, write manifest.json, update sft-corpus.last_harvested)
+      → done  (terminal)
+```
+
+All five rejection states (`reject_issue_outcome`, `reject_corrections`, `reject_tools`, `reject_files`, `reject_pii`) append a `{path, score, reason, timestamp}` entry to `${output_dir}/rejections.jsonl` and continue the chain — rejection does not short-circuit.
+
+### Filter Predicate Chain
+
+The five predicate checks run sequentially. Each predicate is gated by its context flag:
+
+1. **`require_issue_outcome`** — keeps only sessions where an issue was closed (`issue_outcome == "done"`)
+2. **`exclude_user_corrections`** — discards sessions where the user issued a correction
+3. **`min_tool_invocations`** — drops sessions with tool-call counts below the threshold
+4. **`require_file_modifications`** — drops sessions with zero file modifications
+5. **`pii_action`** — `flag` adds a `pii_detected` boolean; `redact` replaces PII spans with `[TYPE]` placeholders; `discard` drops the example entirely
+
+When a flag is `false`/`0` (or `pii_action` is not `discard` with detected PII), the check passes through.
+
+### Output Artifacts
+
+| File | Location | Description |
+|------|----------|-------------|
+| `raw.jsonl` | `${run_dir}/` | Staged transcripts from `ll-messages --sft-format` |
+| `enriched.jsonl` | `${run_dir}/` | Transcripts with `metadata` block (has_corrections, issue_outcome, tool_count, files_modified) |
+| `token_filtered.jsonl` | `${run_dir}/` | Post-token-length-filter examples |
+| `deduped.jsonl` | `${run_dir}/` | Deduplicated examples |
+| `train.jsonl` | `${output_dir}/staged/` | Training split |
+| `val.jsonl` | `${output_dir}/staged/` | Validation split |
+| `test.jsonl` | `${output_dir}/staged/` | Test split |
+| `manifest.json` | `${output_dir}/` | Aggregate stats (total_enriched, accepted, rejected, rejection_reasons) |
+| `rejections.jsonl` | `${output_dir}/` | Per-example rejection log with reason codes |
+| `sft-corpus.last_harvested` | project root | UTC timestamp sentinel for incremental `stage` re-runs |
+
+### Dependencies
+
+- **Sub-loop**: Delegates to [`dataset-curation`](#) as the `curate` state for schema validation and quality checks
+- **Python modules**: `little_loops.history_reader.lookup_session_metadata()` for metadata batch-join; `little_loops.pii.apply_pii_action()` for PII detection/redaction/discard; `little_loops.text_utils` (`extract_words`, `calculate_word_overlap`) for Jaccard dedup
+- **CLI tool**: `ll-messages --sft-format --reader db` for DB-first transcript ingestion
+
+---
+
 ## `oracles/generator-evaluator`
 
 **Category**: oracle sub-loop
