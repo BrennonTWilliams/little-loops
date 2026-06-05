@@ -27,6 +27,15 @@ to the terminal, blocks on `input()`, parses the verdict, and returns it.
 The terminal adapter is the default channel (always available, zero config) and
 the dev/debug fallback when richer adapters aren't configured.
 
+## Current Behavior
+
+The FSM executor currently runs loops without a human-in-the-loop (HITL)
+communication channel. While the `CommunicationAdapter` protocol is defined
+(FEAT-1930), no stdin/stdout implementation exists for interactive
+terminal-based operator approval. The system has no way to pause execution
+and prompt a terminal operator for decisions — loops that encounter states
+requiring human judgment have no mechanism to request it.
+
 ## Expected Behavior
 
 1. Implements `CommunicationAdapter.send_alert()`: renders the prompt + captured
@@ -50,6 +59,24 @@ The terminal adapter serves three roles:
   `CommunicationAdapter` interface is sufficient before building the more
   complex PushNotification adapter
 
+## Use Case
+
+**Who**: A developer iterating on an FSM loop configuration locally
+
+**Context**: The developer is tuning a loop's approval gate and wants to
+observe each decision point interactively. The loop encounters a state that
+requires human judgment — no automated predicate can decide correctly.
+
+**Goal**: The FSM prints a formatted prompt to the terminal showing the
+current state, context, available responses, and timeout. The developer
+reads the prompt, decides, and types `approve`, `reject`, or `edit` (with
+unambiguous prefix matching).
+
+**Outcome**: The FSM receives a parsed `HumanResponse` (approve/reject) or
+`EditResponse` (with edited text), and continues execution. On timeout with
+no input, the FSM receives a `TimeoutResponse` and follows its configured
+timeout route.
+
 ## Acceptance Criteria
 
 - [ ] Implements `CommunicationAdapter` protocol
@@ -63,6 +90,30 @@ The terminal adapter serves three roles:
 - [ ] `supports_async()` returns `False`
 - [ ] Tests: mock stdin/stdout, verify prompt format, verdict parsing, timeout
 
+## API/Interface
+
+```python
+class TerminalAdapter(CommunicationAdapter):
+    """Stdin/stdout implementation of the HITL communication protocol.
+
+    Synchronous adapter: blocks the FSM on input() until a response is
+    received or timeout expires. Always available with zero configuration.
+    """
+
+    def send_alert(self, prompt: str, context: dict, timeout: float) -> None:
+        """Render formatted prompt + context to stdout."""
+
+    def await_response(self, timeout: float) -> HumanResponse | TimeoutResponse:
+        """Block on stdin with shutdown-signal awareness, parse verdict."""
+
+    def supports_async(self) -> bool:
+        """Terminal adapter is synchronous — operator must be present."""
+        return False
+```
+
+The adapter receives pre-interpolated prompt text from the FSM state; it
+only renders, not resolves, variables.
+
 ## Proposed Solution
 
 Wrap `input()` in an `_interruptible_sleep()`-style polling loop (existing
@@ -73,6 +124,24 @@ and signal handling.
 Format the prompt using the existing `${captured.<state>.<field>}` interpolation
 from the FSM context — the adapter receives pre-interpolated text from the FSM
 state, so it only needs to render, not resolve variables.
+
+## Implementation Steps
+
+1. Study the `CommunicationAdapter` protocol definition (FEAT-1930) and the
+   `_interruptible_sleep()` polling pattern in `executor.py`
+2. Implement `TerminalAdapter` class with `send_alert()`, `await_response()`,
+   and `supports_async()` methods
+3. Implement formatted prompt rendering: state name, prompt text, captured
+   context, timeout countdown, valid response keys
+4. Implement stdin reading loop using `sys.stdin` with shutdown-signal-aware
+   polling (check shutdown event between reads)
+5. Implement verdict parsing: case-insensitive unambiguous prefix matching
+   for `approve`/`y`/`yes`, `reject`/`n`/`no`, `edit`/`e`
+6. Implement edit verdict: prompt for edited text on secondary input, return
+   `EditResponse` with captured text
+7. Register `TerminalAdapter` as default adapter in `extension.py`
+8. Write tests: mock stdin/stdout, verify prompt format, verdict parsing
+   (approve/reject/edit), timeout handling, shutdown signal behavior
 
 ## Integration Map
 
@@ -87,9 +156,25 @@ state, so it only needs to render, not resolve variables.
 - `scripts/little_loops/fsm/executor.py` — no changes (uses protocol interface)
 
 ### Similar Patterns
-- `executor.py:1647` — `_interruptible_sleep()`: polling-with-shutdown-signal
+- `executor.py` — `_interruptible_sleep()`: polling-with-shutdown-signal
   pattern
-- `transport.py:115` — `UnixSocketTransport`: blocking I/O with timeout
+- `transport.py` — `UnixSocketTransport`: blocking I/O with timeout
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/executor.py` — will call adapter through
+  `CommunicationAdapter` protocol interface (no direct import of
+  `TerminalAdapter` needed)
+- `scripts/little_loops/extension.py` — will import and register
+  `TerminalAdapter`
+
+### Tests
+- `scripts/tests/test_terminal_adapter.py` — new test file (mock stdin/stdout)
+
+### Documentation
+- `docs/reference/API.md` — add `TerminalAdapter` entry under FSM adapters
+
+### Configuration
+- N/A — terminal adapter is always available with zero configuration
 
 ## Impact
 
@@ -97,6 +182,12 @@ state, so it only needs to render, not resolve variables.
 - **Effort**: Small — single adapter implementation, ~100-150 lines
 - **Risk**: Low — well-understood I/O pattern
 - **Breaking Change**: No
+
+## Related Key Documentation
+
+- [ARCHITECTURE.md](../../docs/ARCHITECTURE.md) — FSM and adapter architecture
+- [API.md](../../docs/reference/API.md) — `CommunicationAdapter` protocol reference
+- [HOST_COMPATIBILITY.md](../../docs/reference/HOST_COMPATIBILITY.md) — host CLI abstraction layer
 
 ---
 ## Status
@@ -111,5 +202,7 @@ open
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-05T22:19:19 - `4c87a3f2-1298-4938-ae70-4c5f78013645.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`

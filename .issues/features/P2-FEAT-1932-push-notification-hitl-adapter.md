@@ -30,6 +30,14 @@ when they respond (or the timeout fires).
 This adapter is what makes `human_approval` useful for unattended and
 semi-attended automation. Without it, HITL means "watching the terminal."
 
+## Current Behavior
+
+HITL communication is currently synchronous and terminal-bound. When an FSM
+enters a `human_approval` state, the operator must be watching the terminal to
+respond. This defeats the purpose of unattended/semi-attended automation:
+`ll-auto` runs over 30+ issues, multi-hour `harness-optimize` loops, and other
+long-running FSM executions all stall waiting for terminal input.
+
 ## Expected Behavior
 
 1. Implements `CommunicationAdapter.send_alert()`: formats the prompt + context
@@ -45,6 +53,23 @@ semi-attended automation. Without it, HITL means "watching the terminal."
 4. If `PushNotification` is unavailable (host doesn't support it, or no
    notification target configured), adapter reports `is_available() → False` so
    the system can fall back to the terminal adapter.
+
+## Use Case
+
+**Who**: A developer running `ll-auto` over 30+ issues overnight, or a
+multi-hour `harness-optimize` loop that may hit approval gates.
+
+**Context**: The FSM reaches a `human_approval` state requiring operator
+judgment (e.g., "this refactor changes 15 files — proceed?"). The operator is
+away from the terminal — at dinner, in a meeting, or asleep.
+
+**Goal**: Receive a push notification on their phone with a concise summary of
+the approval request, review it, and respond with approve/reject/edit — all
+without returning to the terminal.
+
+**Outcome**: The FSM resumes execution with the operator's verdict. If the
+operator does not respond within the timeout window, the FSM follows the
+default path and sends a follow-up notification confirming the timeout.
 
 ## Motivation
 
@@ -71,6 +96,35 @@ reviews on their phone, and the FSM resumes.
 - [ ] Tests: mock PushNotification tool, verify message format, response parsing,
   timeout fallback, unavailability detection
 
+## API/Interface
+
+```python
+class PushNotificationAdapter(CommunicationAdapter):
+    """PushNotification-based async HITL adapter.
+
+    Sends alerts via the PushNotification tool and awaits responses
+    through a callback channel (event bus or file-poller).
+    """
+
+    def send_alert(self, prompt: str, context: dict) -> str:
+        """Format prompt as ≤200 char push notification, send it,
+        return alert_id for response correlation."""
+
+    def await_response(self, alert_id: str, timeout: float) -> HumanResponse | TimeoutResponse:
+        """Block in polling loop waiting for response to arrive via
+        callback channel. Returns HumanResponse on receipt,
+        TimeoutResponse if deadline expires. Respects FSM shutdown
+        signal during polling."""
+
+    def supports_async(self) -> bool:
+        """Returns True — this adapter supports phone-based responses."""
+
+    def is_available(self) -> bool:
+        """Returns False when PushNotification tool is unavailable
+        or no notification target is configured, so the system can
+        fall back to the terminal adapter."""
+```
+
 ## Proposed Solution
 
 **Response callback mechanism** (resolve during refinement):
@@ -88,6 +142,24 @@ reviews on their phone, and the FSM resumes.
 **Push notification format**: The `PushNotification` tool has a ~200 char
 message limit. The adapter should send a concise summary + instructions, not the
 full prompt. The operator can request more context if needed (v2 enhancement).
+
+## Implementation Steps
+
+1. Implement `CommunicationAdapter` protocol base in `push_adapter.py`
+   (depends on FEAT-1930 for the protocol interface)
+2. Implement `send_alert()` — format prompt as ≤200 char push notification,
+   send via `PushNotification` tool, record alert ID for correlation
+3. Implement `await_response()` — polling loop with `_interruptible_sleep()`,
+   FSM shutdown signal respect, response parsing for approve/reject/edit
+   verdicts
+4. Implement response callback mechanism (event bus subscription or
+   file-poller per Proposed Solution options A/B; resolve during refinement)
+5. Implement `is_available()` capability detection and `supports_async()`
+   returning `True`
+6. Add comprehensive tests: mock `PushNotification` tool, verify message
+   format, response parsing, timeout fallback, unavailability detection
+7. Register adapter in `extension.py`; add `hitl.push.target` to config schema
+8. Run tests and verify end-to-end with a mock FSM hitting `human_approval`
 
 ## Integration Map
 
@@ -115,6 +187,11 @@ full prompt. The operator can request more context if needed (v2 enhancement).
   hosts; needs graceful degradation when unavailable
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+- `docs/reference/API.md` — FSM adapter protocol and HITL integration
+- `docs/ARCHITECTURE.md` — HITL system design and communication channel overview
+
 ---
 ## Status
 
@@ -128,5 +205,7 @@ open
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-05T22:18:11 - `cb5e8fb4-eab5-4e81-938d-fe8a00b0ba87.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
