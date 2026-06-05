@@ -123,9 +123,7 @@ def _extract_cwd_from_project(project_dir: Path) -> Path | None:
     return None
 
 
-def discover_all_projects(
-    logger: Logger, *, host: str | None = None
-) -> list[Path]:
+def discover_all_projects(logger: Logger, *, host: str | None = None) -> list[Path]:
     """Discover all projects with ll activity for the given host.
 
     Iterates the host's session directory (e.g. ``~/.claude/projects/`` for

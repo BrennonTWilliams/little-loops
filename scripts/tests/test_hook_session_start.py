@@ -342,9 +342,7 @@ class TestSessionStartBackfillThread:
 class TestSessionStartCodexTranscriptPath:
     """ENH-1945: session_start consumes transcript_path from Codex hook payloads."""
 
-    def _codex_event(
-        self, transcript_path: str | None = None
-    ) -> LLHookEvent:
+    def _codex_event(self, transcript_path: str | None = None) -> LLHookEvent:
         """Helper: create a Codex LLHookEvent with optional transcript_path."""
         payload: dict[str, str] = {}
         if transcript_path is not None:
@@ -374,16 +372,12 @@ class TestSessionStartCodexTranscriptPath:
 
             return _T()
 
-        monkeypatch.setattr(
-            "little_loops.hooks.session_start.threading.Thread", _inline_thread
-        )
+        monkeypatch.setattr("little_loops.hooks.session_start.threading.Thread", _inline_thread)
         import little_loops.session_store as ss
 
         monkeypatch.setattr(ss, "backfill_incremental", _capture_backfill)
 
-        result = handle(
-            self._codex_event(transcript_path=str(transcript))
-        )
+        result = handle(self._codex_event(transcript_path=str(transcript)))
         assert result.exit_code == 0
         assert len(captured_files) == 1
         assert captured_files[0] == [transcript]
@@ -402,9 +396,7 @@ class TestSessionStartCodexTranscriptPath:
         project_dir = claude_dir / encoded
         project_dir.mkdir(parents=True)
         session_file = project_dir / "session.jsonl"
-        session_file.write_text(
-            json.dumps({"role": "user", "content": "hello"}) + "\n"
-        )
+        session_file.write_text(json.dumps({"role": "user", "content": "hello"}) + "\n")
         monkeypatch.setattr(Path, "home", lambda: fake_home)
 
         captured_files: list[list[Path]] = []
@@ -419,9 +411,7 @@ class TestSessionStartCodexTranscriptPath:
 
             return _T()
 
-        monkeypatch.setattr(
-            "little_loops.hooks.session_start.threading.Thread", _inline_thread
-        )
+        monkeypatch.setattr("little_loops.hooks.session_start.threading.Thread", _inline_thread)
         import little_loops.session_store as ss
 
         monkeypatch.setattr(ss, "backfill_incremental", _capture_backfill)
@@ -451,16 +441,12 @@ class TestSessionStartCodexTranscriptPath:
 
             return _T()
 
-        monkeypatch.setattr(
-            "little_loops.hooks.session_start.threading.Thread", _inline_thread
-        )
+        monkeypatch.setattr("little_loops.hooks.session_start.threading.Thread", _inline_thread)
         import little_loops.session_store as ss
 
         monkeypatch.setattr(ss, "backfill_incremental", _capture_backfill)
 
-        result = handle(
-            self._codex_event(transcript_path="/nonexistent/session.jsonl")
-        )
+        result = handle(self._codex_event(transcript_path="/nonexistent/session.jsonl"))
         assert result.exit_code == 0
         # No files to backfill — backfill_incremental should not be called
         # OR called with empty jsonl_files list
@@ -479,9 +465,7 @@ class TestSessionStartCodexTranscriptPath:
         captured_payload: list[dict] = []
 
         def _capture(db, *, jsonl_files, **kw):
-            captured_payload.append(
-                {"jsonl_files": [str(f) for f in jsonl_files]}
-            )
+            captured_payload.append({"jsonl_files": [str(f) for f in jsonl_files]})
 
         def _inline_thread(target, daemon=False, **kw):
             class _T:
@@ -490,16 +474,12 @@ class TestSessionStartCodexTranscriptPath:
 
             return _T()
 
-        monkeypatch.setattr(
-            "little_loops.hooks.session_start.threading.Thread", _inline_thread
-        )
+        monkeypatch.setattr("little_loops.hooks.session_start.threading.Thread", _inline_thread)
         import little_loops.session_store as ss
 
         monkeypatch.setattr(ss, "backfill_incremental", _capture)
 
-        result = handle(
-            self._codex_event(transcript_path=str(transcript))
-        )
+        result = handle(self._codex_event(transcript_path=str(transcript)))
         assert result.exit_code == 0
         assert len(captured_payload) == 1
         assert captured_payload[0]["jsonl_files"] == [str(transcript)]

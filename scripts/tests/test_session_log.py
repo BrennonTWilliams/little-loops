@@ -273,7 +273,6 @@ class TestSessionLogHostAware:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """get_current_session_jsonl resolves JSONL from Codex dir when LL_HOOK_HOST=codex."""
-        import os as _os
 
         monkeypatch.setenv("LL_HOOK_HOST", "codex")
         fake_home = tmp_path / "home"

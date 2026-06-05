@@ -353,9 +353,7 @@ def _detect_error_message(content: list) -> str | None:
     return None
 
 
-def get_project_folder(
-    cwd: Path | None = None, *, host: str | None = None
-) -> Path | None:
+def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> Path | None:
     """Map current directory to the host's session-log project folder.
 
     Converts the working directory into the host-specific encoded path and
