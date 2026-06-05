@@ -2523,28 +2523,85 @@ for ex in examples:
 ### get_project_folder
 
 ```python
-def get_project_folder(cwd: Path | None = None) -> Path | None
+def get_project_folder(
+    cwd: Path | None = None, *, host: str | None = None
+) -> Path | None
 ```
 
-Map a directory to its Claude Code project folder.
+Map a directory to the host's session-log project folder. Dispatches to host-specific
+helpers for Claude Code, Codex, OpenCode, and Pi.
 
 **Parameters:**
 - `cwd` - Working directory to map (default: current directory)
+- `host` - Host identifier: ``"claude-code"``, ``"codex"``, ``"opencode"``, or ``"pi"``.
+  If ``None``, auto-detects from the ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
 
-**Returns:** Path to Claude project folder (`~/.claude/projects/-path-to-dir`), or `None` if it doesn't exist.
+**Returns:** Path to the host's project session folder, or ``None`` if it doesn't exist.
 
 **Example:**
 ```python
 from little_loops.user_messages import get_project_folder
 from pathlib import Path
 
-# Map current directory
+# Map current directory (auto-detect host from LL_HOOK_HOST)
 project_folder = get_project_folder()
 
-# Map specific directory
-project_folder = get_project_folder(Path("/Users/me/my-project"))
+# Map specific directory for Claude Code
+project_folder = get_project_folder(Path("/Users/me/my-project"), host="claude-code")
 # Returns: ~/.claude/projects/-Users-me-my-project
+
+# Map for Codex
+project_folder = get_project_folder(host="codex")
+# Returns: ~/.codex/projects/-Users-me-my-project
 ```
+
+**Internal helpers:**
+
+- ``_get_claude_project_folder(encoded_path: str) -> Path | None`` — probes ``~/.claude/projects/<encoded_path>``
+- ``_get_codex_project_folder(encoded_path: str) -> Path | None`` — probes ``~/.codex/projects/<encoded_path>``
+- ``_get_opencode_project_folder(encoded_path: str) -> Path | None`` — probes ``~/.opencode/projects/<encoded_path>``
+- ``_get_pi_project_folder(encoded_path: str) -> Path | None`` — probes ``~/.pi/projects/<encoded_path>`` (stub; Pi adapter deferred per FEAT-992)
+
+Each helper returns the ``Path`` if the directory exists, or ``None`` otherwise.
+
+### discover_all_projects
+
+```python
+def discover_all_projects(
+    logger: Logger, *, host: str | None = None
+) -> list[Path]
+```
+
+Discover all projects with ll activity for the given host. Iterates the host's session
+directory (e.g. ``~/.claude/projects/`` for Claude Code, ``~/.codex/projects/`` for
+Codex), resolves each directory name back to an absolute path, checks for ll-relevant
+JSONL records, and returns a sorted list of paths that exist on disk.
+
+**Parameters:**
+- ``logger`` - Logger instance for warnings.
+- ``host`` - Host identifier: ``"claude-code"``, ``"codex"``, ``"opencode"``, or ``"pi"``.
+  If ``None``, auto-detects from the ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
+
+**Returns:** Sorted list of decoded absolute paths for projects with ll activity.
+
+**Example:**
+```python
+from little_loops.cli.logs import discover_all_projects
+from little_loops.logger import Logger
+
+logger = Logger.get()
+projects = discover_all_projects(logger)
+# ['/Users/me/my-project', '/Users/me/other-project']
+
+# Discover Codex projects
+projects = discover_all_projects(logger, host="codex")
+```
+
+**Implementation:** Uses the same four-way host dispatch as ``get_project_folder()``.
+Decodes project directory names back to absolute paths by preferring the ``cwd`` field
+from JSONL records first, then falling back to string-replacing ``-`` with ``/``.
+Filters to directories that contain ll-relevant JSONL records via ``_has_ll_activity()``.
+Returns an empty list for unknown host identifiers.
 
 ### extract_user_messages
 
@@ -3502,7 +3559,7 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 **Subcommands:**
 - `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--limit N` (default 20)
 - `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli}`, optional `--limit N` (default 20)
-- `backfill` — Seed the database from existing on-disk sources; `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830); output includes `corrections=N` count of user-correction rows mined from `message_events` (ENH-1904)
+- `backfill` — Seed the database from existing on-disk sources; `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830); output includes `corrections=N` count of user-correction rows mined from `message_events` (ENH-1904). `--host {claude-code,codex,opencode,pi}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945)
 - `related` — Issue events for a given issue ID; requires `ISSUE_ID` positional arg, optional `--limit N` and `--json`
 - `path` — Resolve and print the JSONL file path for a session ID; exits non-zero if unknown
 
