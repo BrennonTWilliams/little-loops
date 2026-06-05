@@ -327,6 +327,9 @@ class TestSessionStartBackfillThread:
         import little_loops.user_messages as um
 
         monkeypatch.setattr(ss, "backfill_incremental", _raise)
+        # Create a JSONL file so the backfill guard passes (ENH-1945: empty
+        # jsonl_files list skips the backfill call, so a file must exist).
+        (in_tmp / "session.jsonl").write_text("{}")
         monkeypatch.setattr(um, "get_project_folder", lambda *a, **kw: in_tmp)
 
         with caplog.at_level(logging.WARNING):
@@ -334,6 +337,172 @@ class TestSessionStartBackfillThread:
 
         assert result.exit_code == 0
         assert any("backfill" in r.message.lower() for r in caplog.records)
+
+
+class TestSessionStartCodexTranscriptPath:
+    """ENH-1945: session_start consumes transcript_path from Codex hook payloads."""
+
+    def _codex_event(
+        self, transcript_path: str | None = None
+    ) -> LLHookEvent:
+        """Helper: create a Codex LLHookEvent with optional transcript_path."""
+        payload: dict[str, str] = {}
+        if transcript_path is not None:
+            payload["transcript_path"] = transcript_path
+        return LLHookEvent(host="codex", intent="session_start", payload=payload)
+
+    def test_codex_backfill_consumes_transcript_path(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When transcript_path is in the Codex payload, _run_backfill uses it directly."""
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+
+        # Create a mock transcript file
+        transcript = in_tmp / "codex-session.jsonl"
+        transcript.write_text(json.dumps({"role": "user", "content": "hello"}) + "\n")
+
+        captured_files: list[list[Path]] = []
+
+        def _capture_backfill(db, *, jsonl_files, **kw):
+            captured_files.append(list(jsonl_files))
+
+        def _inline_thread(target, daemon=False, **kw):
+            class _T:
+                def start(self_inner):
+                    target()
+
+            return _T()
+
+        monkeypatch.setattr(
+            "little_loops.hooks.session_start.threading.Thread", _inline_thread
+        )
+        import little_loops.session_store as ss
+
+        monkeypatch.setattr(ss, "backfill_incremental", _capture_backfill)
+
+        result = handle(
+            self._codex_event(transcript_path=str(transcript))
+        )
+        assert result.exit_code == 0
+        assert len(captured_files) == 1
+        assert captured_files[0] == [transcript]
+
+    def test_codex_backfill_falls_back_when_no_transcript_path(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When transcript_path is absent from payload, falls back to directory probing."""
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+
+        # Create a mock Claude Code project folder
+        fake_home = in_tmp / "home"
+        claude_dir = fake_home / ".claude" / "projects"
+        encoded = str(in_tmp.resolve()).replace("/", "-")
+        project_dir = claude_dir / encoded
+        project_dir.mkdir(parents=True)
+        session_file = project_dir / "session.jsonl"
+        session_file.write_text(
+            json.dumps({"role": "user", "content": "hello"}) + "\n"
+        )
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        captured_files: list[list[Path]] = []
+
+        def _capture_backfill(db, *, jsonl_files, **kw):
+            captured_files.append(list(jsonl_files))
+
+        def _inline_thread(target, daemon=False, **kw):
+            class _T:
+                def start(self_inner):
+                    target()
+
+            return _T()
+
+        monkeypatch.setattr(
+            "little_loops.hooks.session_start.threading.Thread", _inline_thread
+        )
+        import little_loops.session_store as ss
+
+        monkeypatch.setattr(ss, "backfill_incremental", _capture_backfill)
+
+        result = handle(self._codex_event())  # No transcript_path in payload
+        assert result.exit_code == 0
+        # Should fall back to directory probing (which finds session.jsonl)
+        assert len(captured_files) == 1
+        assert len(captured_files[0]) == 1
+
+    def test_codex_backfill_skips_when_transcript_does_not_exist(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When transcript_path points to a missing file, backfill skips gracefully."""
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+
+        captured_files: list[list[Path]] = []
+
+        def _capture_backfill(db, *, jsonl_files, **kw):
+            captured_files.append(list(jsonl_files))
+
+        def _inline_thread(target, daemon=False, **kw):
+            class _T:
+                def start(self_inner):
+                    target()
+
+            return _T()
+
+        monkeypatch.setattr(
+            "little_loops.hooks.session_start.threading.Thread", _inline_thread
+        )
+        import little_loops.session_store as ss
+
+        monkeypatch.setattr(ss, "backfill_incremental", _capture_backfill)
+
+        result = handle(
+            self._codex_event(transcript_path="/nonexistent/session.jsonl")
+        )
+        assert result.exit_code == 0
+        # No files to backfill — backfill_incremental should not be called
+        # OR called with empty jsonl_files list
+        assert len(captured_files) == 0 or captured_files[0] == []
+
+    def test_codex_payload_preserves_event_for_backfill(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The event object is NOT deleted before _run_backfill can read it."""
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+
+        transcript = in_tmp / "codex-session.jsonl"
+        transcript.write_text(json.dumps({"role": "user", "content": "hello"}) + "\n")
+
+        captured_payload: list[dict] = []
+
+        def _capture(db, *, jsonl_files, **kw):
+            captured_payload.append(
+                {"jsonl_files": [str(f) for f in jsonl_files]}
+            )
+
+        def _inline_thread(target, daemon=False, **kw):
+            class _T:
+                def start(self_inner):
+                    target()
+
+            return _T()
+
+        monkeypatch.setattr(
+            "little_loops.hooks.session_start.threading.Thread", _inline_thread
+        )
+        import little_loops.session_store as ss
+
+        monkeypatch.setattr(ss, "backfill_incremental", _capture)
+
+        result = handle(
+            self._codex_event(transcript_path=str(transcript))
+        )
+        assert result.exit_code == 0
+        assert len(captured_payload) == 1
+        assert captured_payload[0]["jsonl_files"] == [str(transcript)]
 
 
 class TestSessionStartProjectDigest:

@@ -96,6 +96,135 @@ class TestGetProjectFolder:
         encoded_path = path_str.replace("/", "-")
         assert encoded_path == expected_encoded
 
+    # --- Host-aware tests (ENH-1945) ---
+
+    def test_host_claude_code_probes_claude_projects(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host="claude-code" probes ~/.claude/projects/<encoded>."""
+        fake_home = tmp_path / "home"
+        claude_dir = fake_home / ".claude" / "projects"
+        encoded = str(tmp_path.resolve()).replace("/", "-")
+        project_dir = claude_dir / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="claude-code")
+        assert result == project_dir
+
+    def test_host_codex_probes_codex_projects(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host="codex" probes ~/.codex/projects/<encoded>."""
+        fake_home = tmp_path / "home"
+        codex_dir = fake_home / ".codex" / "projects"
+        encoded = str(tmp_path.resolve()).replace("/", "-")
+        project_dir = codex_dir / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="codex")
+        assert result == project_dir
+
+    def test_host_opencode_probes_opencode_projects(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host="opencode" probes ~/.opencode/projects/<encoded>."""
+        fake_home = tmp_path / "home"
+        oc_dir = fake_home / ".opencode" / "projects"
+        encoded = str(tmp_path.resolve()).replace("/", "-")
+        project_dir = oc_dir / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="opencode")
+        assert result == project_dir
+
+    def test_host_pi_probes_pi_projects(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host="pi" probes ~/.pi/projects/<encoded>."""
+        fake_home = tmp_path / "home"
+        pi_dir = fake_home / ".pi" / "projects"
+        encoded = str(tmp_path.resolve()).replace("/", "-")
+        project_dir = pi_dir / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="pi")
+        assert result == project_dir
+
+    def test_host_auto_detect_from_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host=None auto-detects from LL_HOOK_HOST env var."""
+        monkeypatch.setenv("LL_HOOK_HOST", "codex")
+        fake_home = tmp_path / "home"
+        codex_dir = fake_home / ".codex" / "projects"
+        encoded = str(tmp_path.resolve()).replace("/", "-")
+        project_dir = codex_dir / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder()  # host=None → auto-detect
+        assert result == project_dir
+
+    def test_host_auto_detect_defaults_to_claude_code(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host=None with no LL_HOOK_HOST defaults to claude-code."""
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        fake_home = tmp_path / "home"
+        claude_dir = fake_home / ".claude" / "projects"
+        encoded = str(tmp_path.resolve()).replace("/", "-")
+        project_dir = claude_dir / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder()  # host=None, no env → defaults to claude-code
+        assert result == project_dir
+
+    def test_returns_none_when_host_dir_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns None when the host-specific directory doesn't exist."""
+        fake_home = tmp_path / "home"
+        # Don't create any project dir
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="codex")
+        assert result is None
+
+    def test_unknown_host_returns_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unknown host string returns None gracefully."""
+        monkeypatch.chdir(tmp_path)
+        result = get_project_folder(host="unknown-host")
+        assert result is None
+
+    def test_backward_compatible_no_host_param(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Calling without host param is backward-compatible (defaults to claude-code)."""
+        fake_home = tmp_path / "home"
+        claude_dir = fake_home / ".claude" / "projects"
+        encoded = str(tmp_path.resolve()).replace("/", "-")
+        project_dir = claude_dir / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder()  # No host arg — must still work
+        assert result == project_dir
+
 
 class TestExtractUserMessages:
     """Tests for extract_user_messages function."""

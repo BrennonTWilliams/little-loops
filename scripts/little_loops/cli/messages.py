@@ -173,8 +173,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
         project_folder = get_project_folder(cwd)
 
         if project_folder is None:
-            logger.error(f"No Claude project folder found for: {cwd}")
-            logger.error(f"Expected: ~/.claude/projects/{str(cwd).replace('/', '-')}")
+            logger.error(f"No session project folder found for: {cwd}")
             return 1
 
         logger.info(f"Project folder: {project_folder}")

@@ -20,6 +20,7 @@ Usage as library:
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -352,33 +353,69 @@ def _detect_error_message(content: list) -> str | None:
     return None
 
 
-def get_project_folder(cwd: Path | None = None) -> Path | None:
-    """Map current directory to Claude Code project folder.
+def get_project_folder(
+    cwd: Path | None = None, *, host: str | None = None
+) -> Path | None:
+    """Map current directory to the host's session-log project folder.
 
-    Converts: /home/user/foo/bar -> ~/.claude/projects/-home-user-foo-bar
+    Converts the working directory into the host-specific encoded path and
+    probes the host's session directory for matching JSONL files.
 
     Args:
         cwd: Working directory to map. If None, uses current directory.
+        host: Host identifier (``"claude-code"``, ``"codex"``, ``"opencode"``,
+            ``"pi"``). If None, auto-detects from ``LL_HOOK_HOST`` env var
+            (default ``"claude-code"``).
 
     Returns:
-        Path to Claude project folder, or None if it doesn't exist.
+        Path to the host's project session folder, or None if not found.
+
+    Future hosts (e.g. FEAT-992 Pi) add a new branch here rather than a
+    new code path elsewhere.
     """
     if cwd is None:
         cwd = Path.cwd()
+    if host is None:
+        host = os.environ.get("LL_HOOK_HOST", "claude-code")
 
     # Convert path to dash-separated format
     # /home/user/foo/bar -> -home-user-foo-bar
     path_str = str(cwd.resolve())
     encoded_path = path_str.replace("/", "-")
 
-    # Build project folder path
-    claude_projects = Path.home() / ".claude" / "projects"
-    project_folder = claude_projects / encoded_path
-
-    if project_folder.exists():
-        return project_folder
-
+    if host == "claude-code":
+        return _get_claude_project_folder(encoded_path)
+    elif host == "codex":
+        return _get_codex_project_folder(encoded_path)
+    elif host == "opencode":
+        return _get_opencode_project_folder(encoded_path)
+    elif host == "pi":
+        return _get_pi_project_folder(encoded_path)
     return None
+
+
+def _get_claude_project_folder(encoded_path: str) -> Path | None:
+    """Probe the Claude Code session directory."""
+    project_folder = Path.home() / ".claude" / "projects" / encoded_path
+    return project_folder if project_folder.exists() else None
+
+
+def _get_codex_project_folder(encoded_path: str) -> Path | None:
+    """Probe the Codex session directory."""
+    project_folder = Path.home() / ".codex" / "projects" / encoded_path
+    return project_folder if project_folder.exists() else None
+
+
+def _get_opencode_project_folder(encoded_path: str) -> Path | None:
+    """Probe the OpenCode session directory."""
+    project_folder = Path.home() / ".opencode" / "projects" / encoded_path
+    return project_folder if project_folder.exists() else None
+
+
+def _get_pi_project_folder(encoded_path: str) -> Path | None:
+    """Probe the Pi session directory (stub; Pi adapter deferred per FEAT-992)."""
+    project_folder = Path.home() / ".pi" / "projects" / encoded_path
+    return project_folder if project_folder.exists() else None
 
 
 def extract_user_messages(

@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from little_loops.session_log import (
     append_session_log_entry,
     get_current_session_jsonl,
@@ -262,4 +264,65 @@ class TestParseSessionLog:
         )
         result = parse_session_log(content)
         assert result == ["/ll:capture-issue", "/ll:refine-issue"]
-        assert "/ll:fake-command" not in result
+
+
+class TestSessionLogHostAware:
+    """ENH-1945: get_current_session_jsonl resolves paths for non-Claude-Code hosts."""
+
+    def test_get_current_session_jsonl_auto_detects_codex(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """get_current_session_jsonl resolves JSONL from Codex dir when LL_HOOK_HOST=codex."""
+        import os as _os
+
+        monkeypatch.setenv("LL_HOOK_HOST", "codex")
+        fake_home = tmp_path / "home"
+        codex_dir = fake_home / ".codex" / "projects"
+        encoded = str(tmp_path.resolve()).replace("/", "-")
+        project_dir = codex_dir / encoded
+        project_dir.mkdir(parents=True)
+        session_file = project_dir / "codex-session.jsonl"
+        session_file.write_text("{}")
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        # Don't patch get_project_folder — test the real resolution chain
+        result = get_current_session_jsonl()
+        assert result == session_file
+
+    def test_get_current_session_jsonl_returns_none_for_missing_codex_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns None when Codex session directory doesn't exist."""
+        monkeypatch.setenv("LL_HOOK_HOST", "codex")
+        fake_home = tmp_path / "home"
+        # Don't create .codex/projects/
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_current_session_jsonl()
+        assert result is None
+
+    def test_append_session_log_entry_works_with_codex_host(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """append_session_log_entry auto-detects session from Codex dir."""
+        monkeypatch.setenv("LL_HOOK_HOST", "codex")
+        fake_home = tmp_path / "home"
+        codex_dir = fake_home / ".codex" / "projects"
+        encoded = str(tmp_path.resolve()).replace("/", "-")
+        project_dir = codex_dir / encoded
+        project_dir.mkdir(parents=True)
+        session_file = project_dir / "codex-session.jsonl"
+        session_file.write_text("{}")
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        issue = tmp_path / "issue.md"
+        issue.write_text("# Issue\n\n---\n\n## Status\n\n**Open**\n")
+
+        result = append_session_log_entry(issue, "/ll:manage-issue")
+        assert result is True
+        content = issue.read_text()
+        assert session_file.name in content
+        assert "## Session Log" in content

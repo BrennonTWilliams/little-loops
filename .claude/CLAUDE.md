@@ -176,7 +176,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
 - `ll-logs` - Discover, extract, and tail Claude Code session logs (`discover` / `extract` / `tail` subcommands; writes `logs/index.md`)
 - `ll-messages` - Extract user messages from Claude Code logs
-- `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `recent --issue <ID>` / `backfill` / `path <session_id>` / `grep <pattern>` / `expand <id>` / `describe <id>` subcommands; default DB `.ll/history.db`)
+- `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `recent --issue <ID>` / `backfill [--host claude-code|codex|opencode|pi]` / `path <session_id>` / `grep <pattern>` / `expand <id>` / `describe <id>` subcommands; default DB `.ll/history.db`)
 - `ll-history-context` - Render a `## Historical Context` block for an issue from `.ll/history.db` (corrections + FTS5 matches, capped at 5 rows, stale-filtered). Use `--effort` to output per-issue effort context (session count, cycle time)
 - `ll-history` - View completed issue statistics, analysis, export topic-filtered excerpts from history, and list sessions per issue (`sessions <ID>`)
 - `ll-deps` - Cross-issue dependency analysis and validation

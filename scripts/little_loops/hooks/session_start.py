@@ -77,7 +77,9 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
     Returns ``LLHookResult(exit_code=0, feedback=<stderr>, stdout=<config-json>)``.
     """
-    del event  # SessionStart consumes no payload fields today; cwd is implicit (os.getcwd()).
+    # ENH-1945: _run_backfill() consumes transcript_path from the payload for
+    # non-Claude-Code hosts (Codex, OpenCode). The event object must be preserved
+    # so the backfill daemon thread can read it.
 
     cwd = Path.cwd()
     feedback_lines: list[str] = []
@@ -129,9 +131,23 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 from little_loops.session_store import backfill_incremental
                 from little_loops.user_messages import get_project_folder
 
-                project_folder = get_project_folder(cwd)
-                if project_folder is not None:
-                    jsonl_files = list(project_folder.glob("*.jsonl"))
+                # ENH-1945: consume transcript_path from hook payload when available
+                # (Codex/OpenCode pass absolute path to session JSONL in the payload).
+                # When not present, fall back to host-aware directory probing.
+                payload = event.payload or {}
+                transcript_path = payload.get("transcript_path") or ""
+
+                if transcript_path:
+                    jsonl_path = Path(transcript_path)
+                    jsonl_files = [jsonl_path] if jsonl_path.is_file() else []
+                else:
+                    project_folder = get_project_folder(cwd)
+                    if project_folder is not None:
+                        jsonl_files = list(project_folder.glob("*.jsonl"))
+                    else:
+                        jsonl_files = []
+
+                if jsonl_files:
                     backfill_incremental(_db_path, jsonl_files=jsonl_files)
             except Exception:
                 logger.warning("session_start: backfill_incremental failed", exc_info=True)

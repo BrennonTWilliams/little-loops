@@ -125,6 +125,12 @@ Examples:
         default=None,
         help="Only process JSONL files modified after DATE (ISO 8601 or YYYY-MM-DD); uses incremental mode",
     )
+    backfill_parser.add_argument(
+        "--host",
+        choices=["claude-code", "codex", "opencode", "pi"],
+        default=None,
+        help="Host to discover session logs for (default: auto-detect from LL_HOOK_HOST env)",
+    )
 
     grep_parser = subparsers.add_parser(
         "grep", help="Regex search over message_events with summary node context"
@@ -301,9 +307,9 @@ def main_session() -> int:
                 except ValueError:
                     logger.error(f"Invalid date: {since_flag!r}. Use YYYY-MM-DD or ISO 8601.")
                     return 1
-                project_folder = get_project_folder()
+                project_folder = get_project_folder(host=args.host)
                 if project_folder is None:
-                    logger.error("No Claude project folder found; cannot discover JSONL files.")
+                    logger.error("No session project folder found; cannot discover JSONL files.")
                     return 1
                 jsonl_files = list(project_folder.glob("*.jsonl"))
                 inc_counts = backfill_incremental(
@@ -316,7 +322,13 @@ def main_session() -> int:
                     f"sessions={inc_counts['sessions']}, corrections={inc_counts.get('corrections', 0)})"
                 )
                 return 0
-            counts = backfill(args.db)
+            # Full backfill (no --since): discover JSONL files so non-Claude-Code
+            # hosts also get message/tool/session backfill (ENH-1945).
+            project_folder = get_project_folder(host=args.host)
+            full_jsonl_files: list[Path] | None = (
+                list(project_folder.glob("*.jsonl")) if project_folder else None
+            )
+            counts = backfill(args.db, jsonl_files=full_jsonl_files)
             total = sum(counts.values())
             logger.success(
                 f"Backfilled {total} rows "

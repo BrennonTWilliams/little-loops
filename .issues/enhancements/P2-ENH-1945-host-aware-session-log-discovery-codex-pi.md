@@ -3,9 +3,10 @@ id: ENH-1945
 title: Make session log discovery host-aware for Codex/OpenCode/Pi backfill
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-06-04
 captured_at: '2026-06-04T19:18:32Z'
+completed_at: '2026-06-05T03:03:07Z'
 discovered_by: capture-issue
 parent: EPIC-1707
 decision_needed: false
@@ -282,6 +283,7 @@ _Added by `/ll:confidence-check` on 2026-06-04 (re-evaluated 2026-06-04T23:55:00
 _Note: Prior risk factor about host naming inconsistency removed — re-verification confirmed `_HOST_RUNNER_REGISTRY` keys and `LL_HOOK_HOST` defaults use identical `"claude-code"` convention; no discrepancy exists._
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-05T02:39:46 - `1e58badc-006a-4950-accc-d7f1de9bdf36.jsonl`
 - `/ll:refine-issue` - 2026-06-05T02:31:21 - `f09b04f7-6149-4dd9-8ab2-cba36c640b61.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:50:47 - `849453dc-052d-4d7f-89cc-55354ccfde5a.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:50:31 - `8826ca14-a9b9-4717-b939-4425b44d5d7c.jsonl`
@@ -297,4 +299,35 @@ _Note: Prior risk factor about host naming inconsistency removed — re-verifica
 
 ---
 
-**Open** | Created: 2026-06-04 | Priority: P2
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-06-05
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/user_messages.py` — Added `host` keyword-only parameter to `get_project_folder()` with host-specific helpers for Claude Code, Codex, OpenCode, and Pi. Auto-detects host from `LL_HOOK_HOST` env var.
+- `scripts/little_loops/hooks/session_start.py` — Removed `del event` blocker; `_run_backfill()` now consumes `transcript_path` from Codex/OpenCode hook payloads directly, falling back to host-aware directory probing.
+- `scripts/little_loops/cli/session.py` — Added `--host` flag to `ll-session backfill`; fixed full backfill gap (passes `jsonl_files` even without `--since`); updated error messages to be host-agnostic.
+- `scripts/little_loops/cli/logs.py` — `discover_all_projects()` now accepts `host` parameter and probes host-specific session directories; updated error messages.
+- `scripts/little_loops/cli/messages.py` — Updated error messages to host-agnostic wording.
+- `scripts/tests/test_user_messages.py` — Added 9 host-aware tests for `get_project_folder()`.
+- `scripts/tests/test_hook_session_start.py` — Added 4 Codex `transcript_path` tests; fixed `test_backfill_warning_logged` for new jsonl_files guard.
+- `scripts/tests/test_session_log.py` — Added 3 host-aware session log tests.
+- `docs/reference/EVENT-SCHEMA.md` — Updated `session_start` payload notes for `transcript_path` consumption.
+- `.claude/CLAUDE.md` — Added `--host` flag to `ll-session` subcommand listing.
+
+### Verification Results
+- Tests: PASS (9887 passed, 0 failed)
+- Lint: PASS (ruff check clean)
+- Types: PASS (mypy clean)
+- Integration: PASS (all 4 checks)
+
+---
+
+## Session Log
+- `/ll:manage-issue` - 2026-06-05T03:03:07Z - `c17dcb46-2efe-44d2-87f9-b15aa27a2593.jsonl`
+
+---
+
+**Done** | Completed: 2026-06-05 | Priority: P2

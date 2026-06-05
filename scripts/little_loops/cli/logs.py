@@ -123,28 +123,46 @@ def _extract_cwd_from_project(project_dir: Path) -> Path | None:
     return None
 
 
-def discover_all_projects(logger: Logger) -> list[Path]:
-    """Discover all Claude projects with ll activity.
+def discover_all_projects(
+    logger: Logger, *, host: str | None = None
+) -> list[Path]:
+    """Discover all projects with ll activity for the given host.
 
-    Iterates ~/.claude/projects/, resolves each directory name back to an
-    absolute path (preferring the cwd field from JSONL records over the
-    lossy '-'-based decode), checks for ll-relevant JSONL records, and
+    Iterates the host's session directory (e.g. ``~/.claude/projects/`` for
+    Claude Code, ``~/.codex/projects/`` for Codex), resolves each directory
+    name back to an absolute path, checks for ll-relevant JSONL records, and
     returns a sorted list of paths that exist on disk.
 
     Args:
         logger: Logger instance for warnings.
+        host: Host identifier. If None, auto-detects from ``LL_HOOK_HOST``
+            env var (default ``"claude-code"``).
 
     Returns:
         Sorted list of decoded absolute paths for projects with ll activity.
     """
-    claude_projects = Path.home() / ".claude" / "projects"
+    import os as _os
 
-    if not claude_projects.exists():
+    if host is None:
+        host = _os.environ.get("LL_HOOK_HOST", "claude-code")
+
+    if host == "claude-code":
+        projects_root = Path.home() / ".claude" / "projects"
+    elif host == "codex":
+        projects_root = Path.home() / ".codex" / "projects"
+    elif host == "opencode":
+        projects_root = Path.home() / ".opencode" / "projects"
+    elif host == "pi":
+        projects_root = Path.home() / ".pi" / "projects"
+    else:
+        return []
+
+    if not projects_root.exists():
         return []
 
     results: list[Path] = []
 
-    for project_dir in claude_projects.iterdir():
+    for project_dir in projects_root.iterdir():
         if not project_dir.is_dir():
             continue
 
@@ -243,8 +261,7 @@ def _cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
         cwd_path: Path = args.project
         project_folder = get_project_folder(cwd_path)
         if project_folder is None:
-            logger.error(f"No Claude project folder found for: {cwd_path}")
-            logger.error(f"Expected: ~/.claude/projects/{str(cwd_path).replace('/', '-')}")
+            logger.error(f"No session project folder found for: {cwd_path}")
             return 1
         project_items = [(cwd_path, project_folder)]
     else:
