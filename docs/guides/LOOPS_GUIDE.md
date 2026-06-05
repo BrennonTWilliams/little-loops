@@ -105,7 +105,6 @@ circuit:
 ```
 
 Loops that do not set `progress_paths` are unaffected — existing semantics are preserved.
-<!-- END TODO stub -->
 
 ## Common Loop Patterns
 
@@ -418,6 +417,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `integrate-sdk` | Proof-driven SDK integration — branches on existing usage (code branch) vs. greenfield (docs branch), enumerates up to 7 required API surfaces, proves each via `ready-to-implement-gate`, then scaffolds integration code with `# Verified: .ll/learning-tests/<slug>.md` citations. Blocks with a structured diagnosis if any surface is refuted or citations don't resolve to proven records. |
 | `learning-tests-audit` | Registry health audit — scans the Learning Test Registry for stale records via a three-phase detection pipeline (installed-package enumeration → LLM-assisted package classification → PyPI/npm registry release-date comparison), bulk-marks stale records via `ll-learning-tests mark-stale`, and produces a four-section triage report (newly stale, already stale, refuted, open TODOs). Run at sprint start to surface registry maintenance items before they cause integration drift. |
 | `proof-first-task` | Opt-in wrapper that gates any implementation loop on `assumption-firewall` — extracts external-API assumptions from an issue file, proves each against the Learning-Test Registry, then delegates to a caller-specified impl loop (default `general-task`). When no `issue_file` is given, skips the gate and runs the impl loop directly. |
+| `migrate-sdk-version` | SDK migration helper — re-proves stale learning-test records after a dependency bump, classifying each as still-valid, needs-upgrade, or refuted, and producing a triage report |
 
 Run:
 ```bash
@@ -990,7 +990,6 @@ snapshot_pre → discover (sub-loop: issue-discovery-triage)
 ```
 
 **Notes**: The loop runs up to 5 outer iterations with a 10-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Because both sub-loops (`issue-discovery-triage` and `autodev`) have their own iteration budgets, the outer cap of 5 mostly exists as a safety net — a typical run completes in a single outer iteration. If `diff_issues` returns an empty list (no new work survived triage), the loop short-circuits to `done` with a "nothing to implement" message rather than invoking `autodev` with an empty queue.
-<!-- END TODO stub -->
 
 ### `recursive-refine` — Depth-First Issue Refinement with Decomposition
 
@@ -1137,6 +1136,81 @@ assess_context → self_assess → route
 - `PRESSURE_OUTPUTS` — Output files are stale; archived to `{scratch_dir}/archive/`
 
 **Notes**: `compact_scratch` summarizes large files in-place rather than deleting them — files referenced in active issues are preserved. Use `ll-loop install context-health-monitor` to add a pre-run hook that triggers it automatically before long sprints.
+
+### `dead-code-cleanup` — Dead Code Removal
+
+**When to use**: When you've accumulated unused imports, functions, or variables and want systematic removal with test-gated safety.
+
+**Usage:**
+```bash
+ll-loop run dead-code-cleanup
+```
+
+**Key context variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `commit_message` | `refactor: remove dead code identified by scan` | Commit message template for each removal |
+
+### `docs-sync` — Documentation Sync
+
+**When to use**: After code changes that may have drifted from documentation — verifies doc accuracy and fixes broken links.
+
+**Usage:**
+```bash
+ll-loop run docs-sync
+```
+
+**Key context variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `commit_message` | `docs: sync documentation with codebase state` | Commit message template |
+
+### `incremental-refactor` — Safe Incremental Refactoring
+
+**When to use**: When a refactoring goal is too large for a single pass — decomposes into atomic steps, each test-gated with automatic rollback on failure.
+
+**Usage:**
+```bash
+ll-loop run incremental-refactor --context refactor_goal="extract auth middleware from request handler"
+```
+
+**Key context variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `refactor_goal` | — | Natural-language description of the refactoring goal |
+| `test_cmd` | `python -m pytest scripts/tests/` | Test command to gate each step |
+| `commit_message` | `refactor: apply incremental refactoring step` | Commit message template |
+
+### `test-coverage-improvement` — Coverage Gap Closure
+
+**When to use**: When you have a coverage target and want automated gap identification, prioritization by risk, and test generation until the target is met.
+
+**Usage:**
+```bash
+ll-loop run test-coverage-improvement --context coverage_target=80
+
+# Focus on specific directories
+ll-loop run test-coverage-improvement \
+  --context coverage_target=85 \
+  --context focus_dirs=scripts/little_loops/fsm
+```
+
+**Key context variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `coverage_target` | `80` | Target coverage percentage (0–100) |
+| `focus_dirs` | — | Directories to scope coverage analysis to |
+| `test_cmd` | — | Test command to run (e.g. `python -m pytest --cov`) |
+| `coverage_cmd` | — | Coverage measurement command |
+
+### `worktree-health` — Orphaned Worktree Monitor
+
+**When to use**: After interrupted `ll-parallel` runs or `ll-loop --worktree` sessions — detects orphaned worktrees and stale branches for cleanup.
+
+**Usage:**
+```bash
+ll-loop run worktree-health
+```
 
 **Evaluation**
 
@@ -1477,13 +1551,7 @@ plan → generate → capture
 
 **Notes:**
 
-<!-- TODO: update-docs stub — vision_gate — drafted 2026-06-04 -->
-
-> **Stub**: `vision_gate` section auto-drafted by `/ll:update-docs`. Fill in details.
-
 - **`vision_gate` — optional external-vision aesthetic scoring** (added 2026-06): After `smoke_test` passes (functional sanity confirmed), the loop can route through `vision_gate`, which sends the screenshot to an independent vision model for aesthetic scoring against the same four criteria. This decouples visual-quality judgment from the host LLM's self-grade — the same anti-self-certification motive behind `smoke_test`, but for aesthetics rather than functionality. The state is a **no-op pass** unless `VISION_BASE_URL`, `VISION_MODEL`, and `VISION_API_KEY` environment variables are all set (graceful degradation). API errors, parse failures, and network issues also pass — the gate never blocks shipping a functionally-sound artifact. A per-run round cap (`.vision_rounds` in the run directory) bounds the refine/re-score ping-pong.
-
-<!-- END TODO stub -->
 
 - The HTML file embeds all CSS and JavaScript inline so it renders correctly under a `file://` URL without a web server.
 - If Playwright is unavailable (missing binary, permission error), the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the HTML source rather than a screenshot.

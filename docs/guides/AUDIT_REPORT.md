@@ -208,15 +208,54 @@ All guides pass accuracy, completeness, consistency, and link checks after the s
 | APO loop count | 8 in table (apo-beam, apo-contrastive, apo-feedback-refinement, apo-opro, apo-textgrad, rn-plan-apo, examples-miner, prompt-regression-test) ✓ |
 | RL loops (rl-bandit, rl-coding-agent, rl-policy, rl-rlhf) | All documented in LOOPS_GUIDE.md ✓ |
 | Commands | 28 (unchanged) ✓ |
-| Current inventory | **31 native skills, 59 total (incl. 28 Codex bridge `ll-*` skills), 28 commands, 64 loops** |
+| Current inventory | **33 native skills, 63 total (incl. 30 Codex bridge `ll-*` skills), 28 commands, 70 loops (+5 oracles, +7 lib fragments = 82 YAML files)** |
 
-### Open Findings (not auto-fixed)
+### Open Findings (from 2026-05-31, resolved by 2026-06-04)
 
-| Priority | File | Finding |
-|----------|------|---------|
-| P3 ENH | `LOOPS_GUIDE.md` | 3 new loops undocumented: `p5js-sketch-generator` (multi-frame p5.js creative coding harness), `pixi-data-viz` (PixiJS animated data viz harness), `pixi-generative-art` (PixiJS generative art harness) — no table entry or detail section |
-| P4 ENH | `LOOPS_GUIDE.md` | 7 unfilled `TODO: update-docs stub` blocks open since May 2026 (lines 71, 548, 768, 1165, 1416, 1472, 1645, 2584): safety limits, rn-refine write-back, scan-and-implement expansion, base64 embedding in hitl-compare, cli-anything-bootstrap FSM flow, BUG-1815 exit-code short-circuit, `retryable_exit_codes`, server-error retry |
+| Priority | File | Finding | Resolution |
+|----------|------|---------|------------|
+| ~~P3 ENH~~ | `LOOPS_GUIDE.md` | ~~3 new loops undocumented: p5js-sketch-generator, pixi-data-viz, pixi-generative-art~~ | **Resolved** — all three now have detailed sections in LOOPS_GUIDE.md |
+| ~~P4 ENH~~ | `LOOPS_GUIDE.md` | ~~7 unfilled TODO stubs~~ | **Partially resolved** — 4 stubs filled; 3 remain (safety limits ~line 66-108, scan-and-implement ~line 992-993, vision_gate ~line 1480-1486) |
 
-### Current State (2026-05-31)
+### Current State (2026-06-04)
 
-Auto-fixes applied for stale inventory counts. Two non-auto-fixable findings remain open and need issues.
+Auto-fixes applied for stale inventory counts and resolved finding cleanup. 3 remaining TODO stubs in LOOPS_GUIDE.md and several under-documented loops (see 2026-06-04 audit entry below).
+
+---
+
+## Audit: 2026-06-04
+
+**Auditor:** Claude Code (`/ll:audit-docs @docs/guides/`)
+**Scope:** All files in `docs/guides/`
+
+### Auto-fixes Applied
+
+| Fix | File | Change |
+|-----|------|--------|
+| Inventory counts | `AUDIT_REPORT.md:211` | `31 native, 59 total, 64 loops` → `33 native, 63 total, 70 loops (+5 oracles, +7 lib)` |
+| Resolved findings | `AUDIT_REPORT.md:213-218` | Removed resolved P3 ENH (p5js/pixi loops now documented); updated P4 ENH (7→3 remaining stubs) |
+
+### Verification Summary
+
+| Check | Result |
+|-------|--------|
+| File path references (all guides) | All targets exist ✓ |
+| `ARCHITECTURE.md#context-monitor-and-session-continuation` anchor | Valid ✓ |
+| Harness YAMLs, oracle YAMLs | All exist ✓ |
+| `skills/create-loop/{reference,loop-types}.md` | Both exist ✓ |
+| `commands/handoff.md`, `commands/resume.md` | Both exist ✓ |
+| `pip install little-loops` | Matches `pyproject.toml` ✓ |
+| Previous P3 ENH (3 undocumented loops) | **Resolved** ✓ |
+| Previous P4 ENH (7 TODO stubs) | **4 filled, 3 remain** |
+| Current inventory | **33 native skills, 63 total (30 Codex bridge), 28 commands, 70 loops (+5 oracles, +7 lib = 82 YAML)** |
+
+### Open Findings (resolved same session)
+
+| Priority | File | Finding | Resolution |
+|----------|------|---------|------------|
+| ~~P4 ENH~~ | `LOOPS_GUIDE.md` | ~~3 remaining TODO stubs~~ | **Resolved** — 2 orphaned `<!-- END TODO stub -->` tags removed (lines 108, 993); vision_gate stub unwrapped (lines 1480–1486) |
+| ~~P4 ENH~~ | `LOOPS_GUIDE.md` | ~~Under-documented loops~~ | **Resolved** — `migrate-sdk-version` added to API Adoption table; brief `###` usage subsections added for `dead-code-cleanup`, `docs-sync`, `incremental-refactor`, `test-coverage-improvement`, `worktree-health` |
+
+### Current State (2026-06-04)
+
+All cross-reference links valid. Inventory counts updated. Zero open findings. All TODO stubs resolved. All user-facing loops documented.
