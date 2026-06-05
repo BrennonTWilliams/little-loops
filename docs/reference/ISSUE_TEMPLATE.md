@@ -625,7 +625,7 @@ if failed_ids:
 - `scripts/tests/integration/test_sprint_reliability.py` - Integration test (NEW)
 
 ### Documentation
-- `docs/CLI-TOOLS-AUDIT.md` - Update ll-sprint capabilities
+- `docs/reference/CLI.md` - Update ll-sprint capabilities
 - `README.md` - Update ll-sprint feature list
 
 ### Configuration
