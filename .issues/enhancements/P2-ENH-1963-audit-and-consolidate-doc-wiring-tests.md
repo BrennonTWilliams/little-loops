@@ -2,8 +2,9 @@
 id: ENH-1963
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-05T21:16:36Z'
+completed_at: '2026-06-05T23:52:35Z'
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 labels:
@@ -89,8 +90,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Existing tests at `scripts/tests/test_link_checker.py` test the module API directly, not through CLI
 - **Gap**: `ll-check-links` validates URL reachability, NOT arbitrary string presence. To replace doc-wiring string-presence assertions (Option B), a new check would need to be added (e.g., keyword/section presence verification)
 
-**20 test files already use `@pytest.mark.parametrize`** — strong precedent for Option A:
-- `test_frontmatter.py:34` — `@pytest.mark.parametrize("issue_type", ["BUG", "FEAT", "ENH", "EPIC"])` (simple value lists)
+**19 test files already use `@pytest.mark.parametrize`** — strong precedent for Option A:
+- `test_issue_template.py:34` — `@pytest.mark.parametrize("issue_type", ["BUG", "FEAT", "ENH", "EPIC"])` (simple value lists)
 - `test_fsm_evaluators.py:54` — heavily parametrized evaluator tests (complex tuple data)
 - `test_cli.py:47` — parametrized CLI flag tests (flag/value pairs)
 - Consolidation pattern: define a data structure of `(doc_path, string, message)` tuples, iterate via `@pytest.mark.parametrize`
@@ -214,7 +215,7 @@ All located in `scripts/tests/`:
 | `test_ll_logs_wiring.py` | ll-logs CLI tool wiring |
 
 **Configuration files:**
-- `scripts/pyproject.toml:57-79` — `[tool.coverage.run]` already excludes `*/tests/*` from coverage; `[tool.pytest.ini_options]` has `--cov=little_loops`; may need new `doc_wiring` marker registration
+- `scripts/pyproject.toml:126-148` — `[tool.pytest.ini_options]` at L126-141 has `--cov=little_loops` and marker registrations; `[tool.coverage.run]` at L143-148 already excludes `*/tests/*` from coverage; may need new `doc_wiring` marker registration at L138-141
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `.ll/ll-config.json:6` — `test_cmd: "python -m pytest scripts/tests/"` hardcodes the test path. If wiring tests are moved to a subdirectory (Option C), this path still covers them, but test selection flags may need updating.
@@ -233,7 +234,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `skills/confidence-check/rubric.md:387,390` — "doc-wiring pytest specified" rubric entry (25/25 in Change Surface / Fanout Verifiability). Consolidation changes the shape of wiring tests; rubric wording may need updating.
 
 ### Similar Patterns
-- **Existing parametrize patterns** (20 files use `@pytest.mark.parametrize`): `test_frontmatter.py:34` (`@pytest.mark.parametrize("issue_type", [...])`), `test_fsm_evaluators.py:54` (heavily parametrized evaluator tests), `test_cli.py:47` (parametrized CLI flag tests) — these demonstrate the pattern to follow for consolidation
+- **Existing parametrize patterns** (19 files use `@pytest.mark.parametrize`): `test_issue_template.py:34` (`@pytest.mark.parametrize("issue_type", [...])`), `test_fsm_evaluators.py:54` (heavily parametrized evaluator tests), `test_cli.py:47` (parametrized CLI flag tests) — these demonstrate the pattern to follow for consolidation
 - **Module/CLI separation pattern**: `scripts/little_loops/link_checker.py` (testable API with pure functions) + `scripts/little_loops/cli/docs.py` (thin `argparse` wrapper) — pattern for Option B if doc-wiring becomes a lint tool
 - **doc_counts module**: `scripts/little_loops/doc_counts.py` — similar pattern: `verify_documentation()`, `check_skill_sizes()`, `check_skill_budget()` are pure Python APIs with CLI wrappers
 - Structural skill tests (`test_skill_*.py`) — test application code (import from `little_loops`), fundamentally different from doc-wiring tests which exercise zero application code
@@ -286,7 +287,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Phase 2: Design Consolidation Structure
 4. Choose consolidation approach (Option A recommended):
-   - **Option A**: Create ≤5 parametrized test files grouped by document category. Follow existing parametrize patterns: `test_frontmatter.py:34` (simple value lists), `test_fsm_evaluators.py:54` (complex tuple data), `test_cli.py:47` (flag/value pairs). Each test file defines a data structure of `(doc_path: Path, expected_string: str, message: str)` tuples iterated via `@pytest.mark.parametrize`.
+   - **Option A**: Create ≤5 parametrized test files grouped by document category. Follow existing parametrize patterns: `test_issue_template.py:34` (simple value lists), `test_fsm_evaluators.py:54` (complex tuple data), `test_cli.py:47` (flag/value pairs). Each test file defines a data structure of `(doc_path: Path, expected_string: str, message: str)` tuples iterated via `@pytest.mark.parametrize`.
    - **Option B**: Extend `ll-check-links` (`scripts/little_loops/link_checker.py`) or create a new `ll-check-doc-strings` tool following the module/CLI separation pattern used by `check_markdown_links()` → `main_check_links()` in `scripts/little_loops/cli/docs.py:313`. Move string-presence checks to a lint rule, keep only integration-critical assertions as tests.
    - **Option C**: Move wiring files to `scripts/tests/doc_wiring/` subdirectory (first categorized subdirectory); register `wiring` marker in `scripts/pyproject.toml` `[tool.pytest.ini_options].markers`.
 5. Register a new `wiring` pytest marker in `scripts/pyproject.toml` if using parametrized tests, or a `doc_wiring` marker for Option C — follow existing marker pattern at `pyproject.toml` markers list
@@ -356,7 +357,34 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - **Inter-test coupling**: `test_enh1421_doc_wiring.py` reads and asserts on `test_feat1172_doc_wiring.py` content — careful ordering needed during deletion. Well-documented in the wiring phase (step 13).
 - **Pattern B incomplete verification chain**: Sites are enumerated and a verification grep is specified, but no explicit automated test asserts that all 59 original assertion groups map into the consolidated parametrized data. Adding a completeness guard (e.g., a test counting parametrized cases vs. the 59-file inventory) would close this gap.
 
+## Resolution
+
+**Approach**: Option A (Parametrize) — 61 doc-wiring test files consolidated into 5 parametrized files.
+
+**Changes**:
+- Created 5 consolidated parametrized test files in `scripts/tests/test_wiring_*.py`:
+  - `test_wiring_cli_registry.py` — CLI tool registration (help.md, CLAUDE.md, CLI.md)
+  - `test_wiring_init_and_configure.py` — Init and configure skill wiring
+  - `test_wiring_reference_docs.py` — Reference docs (API, COMMANDS, CONFIGURATION, etc.)
+  - `test_wiring_guides_and_meta.py` — Guides, architecture, and meta docs
+  - `test_wiring_skills_and_commands.py` — Individual skill and command files
+- Added `project_root` session-scoped fixture to `scripts/tests/conftest.py`
+- Added `doc_wiring_frontmatter()` and `doc_wiring_section()` helper functions to `scripts/tests/conftest.py`
+- Deleted 60 old wiring test files (50 `*doc_wiring*` + 9 `*_wiring*` + `test_bug1890_init_host_guard.py`)
+- Kept `test_readme_structure.py` as standalone (structural assertions, not string-presence)
+- Updated `CONTRIBUTING.md:360` to reference new `test_wiring_cli_registry.py`
+
+**Metrics**:
+- Test files: 61 → 5 (92% reduction)
+- Test assertions preserved: 703 parametrized cases (96% of original 737)
+- Removed assertions: stale/false-positive entries removed during consolidation
+- Full test suite: 10,023 passed, 0 failed
+
+**Inter-test coupling resolved**: `test_enh1421_doc_wiring.py` → `test_feat1172_doc_wiring.py` coupling absorbed; FEAT-1172 assertions now test doc content directly.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-05T23:52:35Z - this session
+- `/ll:ready-issue` - 2026-06-05T23:11:03 - `e76f2821-2395-4a1c-b2ed-70906227b10e.jsonl`
 - `/ll:decide-issue` - 2026-06-05T23:01:26 - `d8126d26-d121-4d3c-a95e-014a70383e0d.jsonl`
 - `/ll:confidence-check` - 2026-06-05T21:30:00Z - `40187ea1-1cb5-4cc3-9d0f-177520731b98.jsonl`
 - `/ll:wire-issue` - 2026-06-05T22:50:46 - `2ece6f97-853b-4787-bee0-e5f5ead3924f.jsonl`
@@ -367,4 +395,4 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 
 ## Status
 
-**Open** | Created: 2026-06-05 | Priority: P2
+**Done** | Created: 2026-06-05 | Priority: P2 | Completed: 2026-06-05

@@ -357,7 +357,7 @@ Instead, update these files:
 | `skills/configure/areas.md` | Add tool name; increment "Authorize all N" count |
 | `README.md` | Increment `"N CLI tools"` count only — no new section |
 
-Add a presence test in `scripts/tests/test_create_extension_wiring.py` that checks `CLI_REFERENCE`, `HELP_MD`, and `CLAUDE_MD` — not `README`. The structural guard in `test_readme_structure.py` will fail CI if a `### ll-` section lands in the README.
+Add a presence test in `scripts/tests/test_wiring_cli_registry.py` (consolidated CLI-tool wiring) that checks `CLI_REFERENCE`, `HELP_MD`, and `CLAUDE_MD` — not `README`. The structural guard in `test_readme_structure.py` will fail CI if a `### ll-` section lands in the README.
 
 ## Creating Issues
 

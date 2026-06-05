@@ -48,6 +48,57 @@ def load_fixture(fixtures_dir: Path, *path_parts: str) -> str:
 
 
 # =============================================================================
+# Doc-Wiring Helpers
+# =============================================================================
+
+
+def doc_wiring_frontmatter(path: Path) -> str:
+    """Extract YAML frontmatter block from a markdown file.
+
+    Returns everything between the first ``---`` and the closing ``---``.
+    Used by doc-wiring tests to assert on frontmatter fields without false
+    positives from body text.
+
+    Args:
+        path: Path to a markdown file with YAML frontmatter.
+
+    Returns:
+        The frontmatter string including the ``---`` delimiters.
+    """
+    content = path.read_text()
+    end = content.index("---", 3)
+    return content[: end + 3]
+
+
+def doc_wiring_section(content: str, heading: str) -> str:
+    """Extract the content under a markdown heading up to the next same-level heading.
+
+    Args:
+        content: Full markdown document text.
+        heading: The heading text to find (without leading ``## `` markers).
+
+    Returns:
+        The content from the heading line to the next heading of the same level,
+        or to end of content if it's the last section.
+    """
+    # Determine heading level from the heading string
+    prefix = "## "
+    marker = prefix + heading
+    start = content.index(marker)
+    # Find next heading at the same level after start
+    end = content.find("\n" + prefix, start + len(marker))
+    if end == -1:
+        return content[start:]
+    return content[start:end]
+
+
+@pytest.fixture(scope="session")
+def project_root() -> Path:
+    """Repository root path (session-scoped, computed once)."""
+    return Path(__file__).parent.parent.parent
+
+
+# =============================================================================
 # Project Directory Fixtures
 # =============================================================================
 
