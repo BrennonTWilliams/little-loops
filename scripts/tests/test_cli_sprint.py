@@ -1,0 +1,622 @@
+"""Tests for ll-sprint CLI dispatcher (main_sprint).
+
+Covers subcommand routing, alias resolution, --handoff-threshold validation,
+and shared argument forwarding for the sprint CLI entry point.
+
+Focuses on gaps not covered by existing tests in test_cli.py
+(TestSprintArgumentParsing uses a hand-rolled parser, not the real main_sprint).
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from little_loops.cli.sprint import main_sprint
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _mock_handlers(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
+    """Mock all sprint command handlers to return 0 and track calls."""
+    mocks: dict[str, MagicMock] = {}
+    handler_names = [
+        "_cmd_sprint_create",
+        "_cmd_sprint_run",
+        "_cmd_sprint_list",
+        "_cmd_sprint_show",
+        "_cmd_sprint_edit",
+        "_cmd_sprint_delete",
+        "_cmd_sprint_analyze",
+    ]
+    for name in handler_names:
+        mock = MagicMock(return_value=0)
+        monkeypatch.setattr(f"little_loops.cli.sprint.{name}", mock)
+        mocks[name] = mock
+    return mocks
+
+
+def _make_sprint_project(tmp_path: Path) -> Path:
+    """Create a minimal temp project with config so main_sprint can initialize."""
+    import json
+
+    ll_dir = tmp_path / ".ll"
+    ll_dir.mkdir()
+    config = {
+        "project": {"name": "test"},
+        "issues": {
+            "base_dir": ".issues",
+            "categories": {
+                "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"},
+            },
+        },
+    }
+    (ll_dir / "ll-config.json").write_text(json.dumps(config))
+
+    issues_dir = tmp_path / ".issues"
+    for category in ["bugs", "features", "epics"]:
+        (issues_dir / category).mkdir(parents=True)
+
+    (tmp_path / ".sprints").mkdir()
+    return tmp_path
+
+
+# ---------------------------------------------------------------------------
+# Subcommand Routing Tests
+# ---------------------------------------------------------------------------
+
+
+class TestMainSprintDispatch:
+    """Tests for main_sprint() subcommand routing with mocked handlers."""
+
+    def test_create_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """main_sprint dispatches 'create' to _cmd_sprint_create."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "create", "test-sprint", "--issues", "BUG-001"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_create"].assert_called_once()
+
+    def test_run_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """main_sprint dispatches 'run' to _cmd_sprint_run."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "run", "test-sprint"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_run"].assert_called_once()
+
+    def test_run_alias_r_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Alias 'r' dispatches to _cmd_sprint_run."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "r", "test-sprint"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_run"].assert_called_once()
+
+    def test_list_routes_to_handler(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """main_sprint dispatches 'list' to _cmd_sprint_list (no project root needed)."""
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "list"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_list"].assert_called_once()
+
+    def test_list_alias_l_routes_to_handler(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Alias 'l' dispatches to _cmd_sprint_list."""
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "l"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_list"].assert_called_once()
+
+    def test_show_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """main_sprint dispatches 'show' to _cmd_sprint_show."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "show", "test-sprint"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_show"].assert_called_once()
+
+    def test_show_alias_s_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Alias 's' dispatches to _cmd_sprint_show."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "s", "test-sprint"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_show"].assert_called_once()
+
+    def test_edit_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """main_sprint dispatches 'edit' to _cmd_sprint_edit."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "edit", "test-sprint", "--add", "BUG-001"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_edit"].assert_called_once()
+
+    def test_edit_alias_e_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Alias 'e' dispatches to _cmd_sprint_edit."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "e", "test-sprint", "--add", "BUG-001"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_edit"].assert_called_once()
+
+    def test_delete_routes_to_handler(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """main_sprint dispatches 'delete' to _cmd_sprint_delete (no project root needed)."""
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "delete", "test-sprint"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_delete"].assert_called_once()
+
+    def test_delete_alias_del_routes_to_handler(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Alias 'del' dispatches to _cmd_sprint_delete."""
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "del", "test-sprint"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_delete"].assert_called_once()
+
+    def test_analyze_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """main_sprint dispatches 'analyze' to _cmd_sprint_analyze."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "analyze", "test-sprint"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_analyze"].assert_called_once()
+
+    def test_analyze_alias_a_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Alias 'a' dispatches to _cmd_sprint_analyze."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "a", "test-sprint"]):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_analyze"].assert_called_once()
+
+    def test_no_command_returns_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No subcommand returns exit code 1."""
+        with patch.object(sys, "argv", ["ll-sprint"]):
+            result = main_sprint()
+
+        assert result == 1
+
+
+# ---------------------------------------------------------------------------
+# Argument Forwarding Tests
+# ---------------------------------------------------------------------------
+
+
+class TestMainSprintArgForwarding:
+    """Tests that shared arguments are parsed and forwarded correctly."""
+
+    def test_run_forwards_dry_run_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--dry-run flag is parsed and handler receives args.dry_run=True."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "run", "test-sprint", "--dry-run"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.dry_run is True
+
+    def test_run_forwards_quiet_flag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--quiet flag is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "run", "test-sprint", "--quiet"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.quiet is True
+
+    def test_run_forwards_resume_flag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--resume flag is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "run", "test-sprint", "--resume"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.resume is True
+
+    def test_run_forwards_max_workers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--max-workers value is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "run", "test-sprint", "--max-workers", "8"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.max_workers == 8
+
+    def test_run_forwards_skip_filter(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--skip argument is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "run", "test-sprint", "--skip", "BUG-001,FEAT-002"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.skip == "BUG-001,FEAT-002"
+
+    def test_run_forwards_only_filter(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--only argument is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "run", "test-sprint", "--only", "BUG-001"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.only == "BUG-001"
+
+    def test_run_forwards_skip_analysis(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--skip-analysis flag is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "run", "test-sprint", "--skip-analysis"]
+        ):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.skip_analysis is True
+
+    def test_run_forwards_type_filter(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--type argument is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "run", "test-sprint", "--type", "BUG,FEAT"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.type == "BUG,FEAT"
+
+    def test_run_forwards_label_filter(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--label argument is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "run", "test-sprint", "--label", "test-coverage"]
+        ):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.label == "test-coverage"
+
+    def test_show_forwards_skip_analysis(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--skip-analysis flag on show is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "show", "test-sprint", "--skip-analysis"]
+        ):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_show"].call_args[0][0]
+        assert call_args.skip_analysis is True
+
+    def test_show_forwards_json_flag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--json flag on show is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "show", "test-sprint", "--json"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_show"].call_args[0][0]
+        assert call_args.json is True
+
+    def test_list_forwards_json_short_form(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """-j short form for list sets json=True."""
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "list", "-j"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_list"].call_args[0][0]
+        assert call_args.json is True
+
+    def test_analyze_forwards_format_flag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--format json on analyze is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "analyze", "test-sprint", "--format", "json"]
+        ):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_analyze"].call_args[0][0]
+        assert call_args.format == "json"
+
+    def test_create_forwards_description(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--description flag on create is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-sprint",
+                "create",
+                "test-sprint",
+                "--issues",
+                "BUG-001",
+                "--description",
+                "My sprint desc",
+            ],
+        ):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_create"].call_args[0][0]
+        assert call_args.description == "My sprint desc"
+
+
+# ---------------------------------------------------------------------------
+# --handoff-threshold Validation Tests
+# ---------------------------------------------------------------------------
+
+
+class TestHandoffThresholdValidation:
+    """Tests for --handoff-threshold range validation in main_sprint()."""
+
+    def test_valid_threshold_accepted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--handoff-threshold 50 is accepted (within 1-100 range)."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "run", "test-sprint", "--handoff-threshold", "50"]
+        ):
+            result = main_sprint()
+
+        assert result == 0
+
+    def test_threshold_below_1_errors(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--handoff-threshold 0 causes parser.error (SystemExit)."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "run", "test-sprint", "--handoff-threshold", "0"]
+        ):
+            with pytest.raises(SystemExit):
+                main_sprint()
+
+    def test_threshold_above_100_errors(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--handoff-threshold 101 causes parser.error (SystemExit)."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "run", "test-sprint", "--handoff-threshold", "101"]
+        ):
+            with pytest.raises(SystemExit):
+                main_sprint()
+
+    def test_threshold_boundary_1_accepted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--handoff-threshold 1 is accepted (lower bound)."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "run", "test-sprint", "--handoff-threshold", "1"]
+        ):
+            result = main_sprint()
+
+        assert result == 0
+
+    def test_threshold_boundary_100_accepted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--handoff-threshold 100 is accepted (upper bound)."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "run", "test-sprint", "--handoff-threshold", "100"]
+        ):
+            result = main_sprint()
+
+        assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# Edge Case Tests
+# ---------------------------------------------------------------------------
+
+
+class TestMainSprintEdgeCases:
+    """Edge case and error path tests for main_sprint()."""
+
+    def test_run_with_config_flag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--config flag sets project root for commands that need it."""
+        project = _make_sprint_project(tmp_path)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-sprint", "run", "test-sprint", "--config", str(project)],
+        ):
+            result = main_sprint()
+
+        assert result == 0
+        mocks["_cmd_sprint_run"].assert_called_once()
+
+    def test_list_with_verbose_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """list --verbose forwards verbose=True."""
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-sprint", "list", "--verbose"]):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_list"].call_args[0][0]
+        assert call_args.verbose is True
+
+    def test_run_with_save_flag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """run --save flag is parsed and forwarded."""
+        project = _make_sprint_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-sprint", "run", "test-sprint", "--save"]
+        ):
+            result = main_sprint()
+
+        assert result == 0
+        call_args = mocks["_cmd_sprint_run"].call_args[0][0]
+        assert call_args.save is True

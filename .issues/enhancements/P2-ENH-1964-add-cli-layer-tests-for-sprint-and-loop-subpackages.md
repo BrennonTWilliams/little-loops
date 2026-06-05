@@ -2,8 +2,9 @@
 id: ENH-1964
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-05T21:16:36Z'
+completed_at: 2026-06-05 23:47:23+00:00
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 labels:
@@ -113,7 +114,7 @@ Developers can refactor the TUI rendering engine, break the main loop dispatcher
 **Note**: `test_cli_loop_lifecycle.py` (2,568 lines) and `test_ll_loop_commands.py` (4,379 lines) already cover `lifecycle.py` commands and some command-level tests. Focus new tests on uncovered modules.
 
 **Dispatcher tests** (Pattern 1 — sys.argv mock):
-- `main_loop()` at `__init__.py:82` — test shorthand insertion (`ll-loop fix-types` → `ll-loop run fix-types`), all 12 subcommands route correctly, aliases (`r`, `c`, `val`, `l`, `st`, `res`, `h`, `t`, `sim`, `s`)
+- `main_loop()` at `__init__.py:16` — test shorthand insertion (`ll-loop fix-types` → `ll-loop run fix-types`), all 12 subcommands route correctly, aliases (`r`, `c`, `val`, `l`, `st`, `res`, `h`, `t`, `sim`, `s`)
 
 **config_cmds.py tests** (Pattern 2 — direct call):
 - `cmd_validate()` at `config_cmds.py:11` — test valid/invalid loop YAML, returns 0/1
@@ -128,7 +129,7 @@ Developers can refactor the TUI rendering engine, break the main loop dispatcher
 - `_print_state_overview_table()` at `info.py:855` — deterministic 4-column table
 
 **next_loop.py tests** (Pattern 2):
-- `LoopCandidate` dataclass at `next_loop.py:15` — test `to_dict()`, field defaults
+- `LoopCandidate` dataclass at `next_loop.py:16` — test `to_dict()`, field defaults
 - `_recency_score()` at `next_loop.py:86` — pure function, exponential decay with 7-day half-life
 - `_score_loop()` at `next_loop.py:101` — weighted scoring: 50% frequency, 30% recency, 20% success rate
 - `_scan_history()` at `next_loop.py:45` — filesystem mock, test metadata extraction
@@ -143,10 +144,10 @@ Developers can refactor the TUI rendering engine, break the main loop dispatcher
 
 | Function | Anchor | What It Does | Test Strategy |
 |---|---|---|---|
-| `_colorize_label()` | `layout.py:21` | Edge label ANSI colorization | String in → string out |
-| `_colorize_diagram_labels()` | `layout.py:78` | Batch label colorization | List in → list out |
-| `_get_state_badge()` | `layout.py:104` | Badge lookup by action_type | Dict lookup, pure |
-| `_badge_display_width()` | `layout.py:138` | Badge width calculation | Number in → number out |
+| `_colorize_label()` | `layout.py:39` | Edge label ANSI colorization | String in → string out |
+| `_colorize_diagram_labels()` | `layout.py:84` | Batch label colorization | List in → list out |
+| `_get_state_badge()` | `layout.py:125` | Badge lookup by action_type | Dict lookup, pure |
+| `_badge_display_width()` | `layout.py:119` | Badge width calculation | Number in → number out |
 | `_box_inner_lines()` | `layout.py:148` | Box interior text layout | Text + width → list[str] |
 | `_collect_edges()` | `layout.py:201` | Edge collection from FSM | FSM → edge list |
 | `_bfs_order()` | `layout.py:233` | BFS node ordering | States + edges → list |
@@ -164,14 +165,14 @@ Developers can refactor the TUI rendering engine, break the main loop dispatcher
 - `_draw_box()` at `layout.py:579` — character-grid box; test with/without highlight, with/without badge
 
 **diagram_modes.py tests** (Pattern 2, all pure):
-- `DiagramFacets` at `diagram_modes.py:41` — test frozen dataclass, field defaults
+- `DiagramFacets` at `diagram_modes.py:42` — test frozen dataclass, field defaults
 - `resolve_facets()` at `diagram_modes.py:93` — test all 6 presets (detailed, summary, clean, local, slim, oneline), modifier overrides
 - `_parse_show_diagrams()` at `diagram_modes.py:75` — test valid topologies/presets, legacy mode rejection with migration hints
 
 **StateFeedRenderer tests** (Pattern 2, mock-able):
-- `StateFeedRenderer.handle_event()` at `_helpers.py:463` — test event dispatch (state_enter, action_start, action_complete, evaluate, route, max_iterations_summary, stall_detected)
-- `_choose_pinned_layout()` at `_helpers.py:217` — test picks best layout variant that fits terminal height
-- `_build_pinned_pane()` at `_helpers.py:460` — test composes header + diagram + state line + separator
+- `StateFeedRenderer.handle_event()` at `_helpers.py:534` — test event dispatch (state_enter, action_start, action_complete, evaluate, route, max_iterations_summary, stall_detected)
+- `_choose_pinned_layout()` at `_helpers.py:231` — test picks best layout variant that fits terminal height
+- `_build_pinned_pane()` at `_helpers.py:269` — test composes header + diagram + state line + separator
 
 ## Success Metrics
 
@@ -232,15 +233,15 @@ def test_loop_run_dispatches_to_correct_subcommand():
 - `_helpers.py:15` — `_score_suffix()`, `_render_execution_plan()`, `_render_dependency_analysis()`
 
 **Loop CLI** (`scripts/little_loops/cli/loop/`):
-- `__init__.py:82` — `main_loop()` shorthand insertion, 12 subcommands + aliases
+- `__init__.py:16` — `main_loop()` shorthand insertion, 12 subcommands + aliases
 - `run.py:29` — `_parse_program_md()`; `run.py:89` — `cmd_run()` foreground/background/dry-run orchestration
 - `layout.py:300` — `TopologyDetector` classifies FSM topology; `layout.py:345` — `LayerAssigner` Sugiyama layer assignment; `layout.py:438` — `CrossingMinimizer` barycenter heuristic; `layout.py:1581` — `_render_fsm_diagram()` main entry; `layout.py:1712` — `_render_neighborhood_diagram()`
 - `info.py:53` — `cmd_list()` with `--running`/`--status`/`--category`/`--label` filters; `info.py:512` — `cmd_history()`; `info.py:936` — `cmd_show()` diagram + state table; `info.py:1192` — `cmd_fragments()`
 - `lifecycle.py:190` — `cmd_status()`; `lifecycle.py:287` — `cmd_stop()` SIGTERM/SIGKILL escalation; `lifecycle.py:362` — `cmd_resume()`; `lifecycle.py:558` — `cmd_monitor()` live tail
 - `config_cmds.py:11` — `cmd_validate()`; `config_cmds.py:37` — `cmd_install()`
 - `testing.py:13` — `cmd_test()` single iteration; `testing.py:175` — `cmd_simulate()` with `--scenario`
-- `next_loop.py:15` — `LoopCandidate` dataclass; `next_loop.py:101` — `_score_loop()` weighted scoring; `next_loop.py:215` — `cmd_next_loop()`
-- `diagram_modes.py:41` — `DiagramFacets` dataclass; `diagram_modes.py:93` — `resolve_facets()` preset resolution
+- `next_loop.py:16` — `LoopCandidate` dataclass; `next_loop.py:101` — `_score_loop()` weighted scoring; `next_loop.py:215` — `cmd_next_loop()`
+- `diagram_modes.py:42` — `DiagramFacets` dataclass; `diagram_modes.py:93` — `resolve_facets()` preset resolution
 - `_helpers.py:58` — `_TeeWriter`; `_helpers.py:463` — `StateFeedRenderer`; `_helpers.py:960` — `run_background()`; `_helpers.py:1104` — `run_foreground()`
 
 ### Shared Dependencies
@@ -403,7 +404,7 @@ _Wiring pass added by `/ll:wire-issue`: test_ll_loop_display.py and test_state_f
    - `cmd_fragments()` at `info.py:1192` — fragment listing
 
 10. **Create `scripts/tests/test_cli_loop_next.py`** — Test `next_loop.py`:
-    - `LoopCandidate` at `next_loop.py:15` — `to_dict()`, field defaults
+    - `LoopCandidate` at `next_loop.py:16` — `to_dict()`, field defaults
     - `_recency_score()` at `next_loop.py:86` — exponential decay calculation
     - `_score_loop()` at `next_loop.py:101` — weighted scoring (50/30/20)
     - `_scan_history()` at `next_loop.py:45` — filesystem metadata extraction
@@ -419,9 +420,9 @@ _Wiring pass added by `/ll:wire-issue`: test_ll_loop_display.py and test_state_f
 13. **Set up snapshot testing infra** (ENH-1965 dependency) — Install `syrupy` or `pytest-snapshot`, configure in `pyproject.toml`, create snapshot directory.
 
 14. **Extract and test pure layout functions** — Create `scripts/tests/test_cli_loop_layout.py`:
-    - `_colorize_label()` at `layout.py:21` — string transformation
-    - `_get_state_badge()` at `layout.py:104` — badge lookup
-    - `_badge_display_width()` at `layout.py:138` — width calculation
+    - `_colorize_label()` at `layout.py:39` — string transformation
+    - `_get_state_badge()` at `layout.py:125` — badge lookup
+    - `_badge_display_width()` at `layout.py:119` — width calculation
     - `_box_inner_lines()` at `layout.py:148` — text layout
     - `_collect_edges()` at `layout.py:201` — edge extraction from FSM
     - `_bfs_order()` at `layout.py:233` — BFS ordering
@@ -439,14 +440,14 @@ _Wiring pass added by `/ll:wire-issue`: test_ll_loop_display.py and test_state_f
     - `_draw_box()` at `layout.py:579` — with/without highlight, with/without badge
 
 16. **Create `scripts/tests/test_cli_loop_diagram_modes.py`** — Test `diagram_modes.py`:
-    - `DiagramFacets` at `diagram_modes.py:41` — frozen dataclass
+    - `DiagramFacets` at `diagram_modes.py:42` — frozen dataclass
     - `resolve_facets()` at `diagram_modes.py:93` — all 6 presets, modifier overrides
     - `_parse_show_diagrams()` at `diagram_modes.py:75` — valid topologies, legacy mode rejection
 
 17. **Create `scripts/tests/test_cli_loop_renderer.py`** — Test `StateFeedRenderer`:
-    - `handle_event()` at `_helpers.py:463` — event dispatch for all event types
-    - `_build_pinned_pane()` at `_helpers.py:460` — pane composition
-    - `_choose_pinned_layout()` at `_helpers.py:217` — layout variant selection
+    - `handle_event()` at `_helpers.py:534` — event dispatch for all event types
+    - `_build_pinned_pane()` at `_helpers.py:269` — pane composition
+    - `_choose_pinned_layout()` at `_helpers.py:231` — layout variant selection
 
 18. **Measure Phase 3 coverage** — Target: ≥50% on `cli/loop/layout.py` (from 0%), ≥80% on `diagram_modes.py`.
 
@@ -507,12 +508,36 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - **Existing partial sprint CLI tests**: `test_sprint.py` already contains `_cmd_sprint_run` (signal handling, error wrapping) and `_cmd_sprint_list` tests; `test_cli.py` also tests `_cmd_sprint_list`. The proposed `test_cli_sprint.py` and `test_cli_sprint_run.py` must audit these to avoid duplicating existing coverage.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-05T23:24:38 - `0988795c-2b6c-4aba-81e8-5ebb8f4e0407.jsonl`
 - `/ll:wire-issue` - 2026-06-05T23:13:33 - `69e4573b-50e5-4f17-8a11-8b70287dd4be.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:10:47 - `6358220c-068a-48b5-be3c-15d795343473.jsonl`
 - `/ll:capture-issue` - 2026-06-05T21:16:36Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5cc001a-5129-4d2d-807d-39a428af0331.jsonl`
 - `/ll:refine-issue` - 2026-06-05T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6192044b-3935-4e42-a3d8-ebccec6a323b.jsonl`
 - `/ll:confidence-check` - 2026-06-05T23:59:00Z - `98ad57cd-d1e7-4383-8d4f-aac5f9447a8f.jsonl`
+- `/ll:manage-issue` - 2026-06-05T23:47:23Z - `5fb768de-0386-4560-91c4-10732d7e6a38.jsonl`
 
 ## Status
 
-**Open** | Created: 2026-06-05 | Priority: P2
+**Done** | Created: 2026-06-05 | Priority: P2
+
+## Resolution
+
+**Phase 1 (Sprint CLI) completed.** Added 69 tests across 3 new test files:
+
+| Test File | Tests | Coverage |
+|---|---|---|
+| `scripts/tests/test_cli_sprint.py` | 36 | `main_sprint()` dispatcher: all 7 subcommands + aliases, `--handoff-threshold` validation, shared arg forwarding |
+| `scripts/tests/test_cli_sprint_commands.py` | 8 | `_cmd_sprint_create` (uppercasing, invalid IDs, skip/type filters), `_cmd_sprint_delete`, `_cmd_sprint_list` (empty, non-verbose) |
+| `scripts/tests/test_cli_sprint_show.py` | 25 | `_score_suffix`, `_render_execution_plan`, `_render_dependency_graph`, `_render_health_summary`, `_cmd_sprint_show` (JSON, skip-analysis) |
+
+**Coverage impact on `cli/sprint/`**:
+- `__init__.py`: 0% → 99%
+- `create.py`: 0% → 100%
+- `show.py`: 0% → 88%
+- `_helpers.py`: 0% → 67%
+- `manage.py`: ~25% → 88% (with existing tests)
+- `edit.py`: ~25% → 84% (with existing tests)
+- `run.py`: ~25% → 66% (with existing tests)
+- **Overall `cli/sprint/`**: ~15% → 79%
+
+**Remaining for future phases**: Phase 2 (Loop CLI non-TUI) and Phase 3 (TUI rendering) — tracked in this issue's Proposed Solution sections.
