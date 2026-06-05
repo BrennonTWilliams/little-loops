@@ -12,6 +12,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.116.0] - 2026-06-04
+
+### Added
+
+- **`sft-corpus` FSM loop** — Complete end-to-end loop for SLM fine-tuning corpus generation with PII detection, session-quality filtering, enrichment, and quality predicates. (ENH-1941, ENH-1948)
+- **`rn-implement` recursive plan-and-implement loop** — New FSM loop that recursively plans, decomposes, implements, and remediates issues using a queue-orchestrator pattern delegating to `rn-decompose` and `rn-remediate` sub-loops. (FEAT-1933, ENH-1936)
+- **LCM-style summary DAG over session history** — Session store now builds a hierarchical summary DAG with parent_id linkage, three-level LCM Algorithm 3 escalation, and two-hop traversal for condensed summary nodes in `grep` and `expand`. (FEAT-1712, BUG-1926, BUG-1928)
+- **Recursive cross-session condensation** — Schema v12 adds a `level` column and cross-session dedup index; N-level recursive CTE enables project-root summary traversal via `ll-session expand --deep`. (ENH-1927, ENH-1955)
+- **Host-aware session log discovery** — `ll-logs discover` and `ll-session backfill` now auto-detect the host CLI (Codex/OpenCode/Pi) and search the correct log directories per host. (ENH-1945)
+- **MR-4 loop validator warning** — New validation rule flags LLM-judged FSM states that set `on_yes` but omit `on_no`/`on_partial` routing, preventing silent dead-ends on non-yes verdicts. (ENH-1917)
+- **Project-context snapshot at session start** — `ll-session start` now injects a project-level context block (branch, recent commits, active issues) into the session store. (ENH-1907)
+- **User corrections mined from message events** — `session_store.py` now extracts user corrections from `message_events` during backfill, with broadened `is_correction()` detection including phrase-internal patterns. (ENH-1887)
+- **`required_inputs` FSM guard** — Loops can now declare `required_inputs` keys that must be present before execution begins. (FEAT-1925)
+- **`vision_gate` state in `html-website-generator`** — Optional aesthetic scoring pass using vision-model evaluation for generated websites. (ENH-1914)
+- **`history.*` config namespace** — New configuration area for history DB settings, wired into `/ll:configure` and `ll-config.json`. (ENH-1905, ENH-1912)
+- **Orchestration pattern shapes in `/ll:create-loop`** — Wizard now offers pre-built orchestration templates (pipeline, generator-evaluator, enumerate-prove, specialist-role). (ENH-1912)
+- **FSM fragment runtime parameterization** — `with:` bindings on fragment states enable caller-provided parameter injection at inclusion time. (ENH-1915)
+
+### Fixed
+
+- **BUG-1947: Design tokens guard type error** — Changed guard from key-existence (`in`) to truthiness check to handle empty string design token values correctly.
+- **BUG-1950: `dequeue_next` pipeline fallback** — Fixed crash when `depth_map.txt` is missing by adding a graceful fallback path.
+- **BUG-1951: Template engine `${DEPTH:-0}` syntax** — Escaped default-value syntax that the single-pass interpolation engine couldn't resolve in `rn-implement`.
+- **Adversarial-redesign `${DIFF_SIZE}` escaping** — Parallel fix for default-value syntax in the adversarial-redesign loop template.
+- **`subprocess_utils` TokenUsage closure** — Fixed capture of init-event model reference in closure for accurate token accounting.
+- **Session backfill issue_id derivation** — Derive `issue_id` from filename when frontmatter `id` field is absent during backfill.
+- **`generate` state partial/no routing** — Fixed `generator-evaluator` loop where `on_yes`-only routing on the generate state silently dead-ended on partial/no verdicts.
+- **`verify-cli` grep bug in `cli-anything-bootstrap`** — Fixed regex pattern and added delegate/convergence guards.
+
+### Changed
+
+- **`rn-implement` rewritten as queue orchestrator** — Refactored from monolithic FSM to a queue-driven orchestrator delegating implementation work to `rn-decompose` and `rn-remediate` sub-loops.
+- **Session store schema v12** — Added `level` column and cross-session dedup index for recursive condensation support.
+- **`ll-session` N-level DAG traversal** — Recursive CTE enables deep summary traversal beyond single-hop lookups.
+- **PII detection in `sft-corpus` filter chain** — Automated PII screening integrated into the corpus generation pipeline.
+- **Analytics capture config extensibility** — `correction_patterns` in `ll-config.json` now supports user-defined regex patterns for custom correction detection.
+- **Effort/velocity reads in planning skills** — `ll-history-context --effort` now feeds cycle-time data into `/ll:refine-issue`, `/ll:ready-issue`, and `/ll:confidence-check`.
+- **`svg-textgrad` loop hardening** — Added `seal_artifacts`, `on_error` routing, and tighter convergence gating.
+- **`/ll:configure` history area** — New interactive configuration area for history DB settings with EPIC-1707 backlinks.
+- **`go-no-go` and `capture-issue` thresholds parameterized** — Configurable confidence thresholds replace hard-coded values.
+
 ## [1.115.0] - 2026-06-03
 
 ### Added
@@ -481,6 +522,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
 [Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...HEAD
+[1.116.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.115.0...v1.116.0
 [1.115.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...v1.115.0
 [1.114.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.113.0...v1.114.0
 [1.113.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.112.0...v1.113.0
