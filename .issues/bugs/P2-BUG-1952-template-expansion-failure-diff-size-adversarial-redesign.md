@@ -1,5 +1,6 @@
 ---
 captured_at: '2026-06-04T23:51:49Z'
+completed_at: 2026-06-05 00:02:58+00:00
 discovered_date: 2026-06-04
 discovered_by: capture-issue
 confidence_score: 99
@@ -8,6 +9,7 @@ score_complexity: 25
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1952: template expansion failure on unescaped `${DIFF_SIZE:-0}` in adversarial-redesign loop
@@ -125,9 +127,11 @@ The `$$` escape sequence is already used extensively in `recursive-refine.yaml`,
 
 ## Status
 
-**Open** | Created: 2026-06-04 | Priority: P2
+**Done** | Created: 2026-06-04 | Completed: 2026-06-05 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-05T00:01:37 - `489bf786-9c40-4190-bc5b-8f20acfb82c2.jsonl`
 - `/ll:format-issue` - 2026-06-04T23:55:24 - `bc897ad4-963d-4d5d-abcd-f141af857f9e.jsonl`
 - `/ll:capture-issue` - 2026-06-04T23:51:49Z - `8826ca14-a9b9-4717-b939-4425b44d5d7c.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:59:00Z - `ae5d31ae-12d3-4754-b1fc-370c3fd2d8f5.jsonl`
+- `/ll:manage-issue` - 2026-06-05T00:02:58Z - `462cb9cf-2d26-439d-96f8-04dfe491409d.jsonl`

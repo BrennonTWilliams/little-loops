@@ -150,7 +150,7 @@ states:
       cp "$RUNDIR/current-critique.json" "$RUNDIR/iter-$ITER-critique.json" 2>/dev/null || true
       DIFF_SIZE=$(diff "$RUNDIR/prev.svg" "$RUNDIR/current.svg" 2>/dev/null | wc -c | tr -d ' ')
       cp "$RUNDIR/current.svg" "$RUNDIR/prev.svg"
-      if [ "${DIFF_SIZE:-0}" -le 100 ]; then
+      if [ "$${DIFF_SIZE:-0}" -le 100 ]; then
         echo "CONVERGED"
       else
         echo "DIVERGED"
