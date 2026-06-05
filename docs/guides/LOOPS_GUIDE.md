@@ -179,7 +179,8 @@ Save this to `.loops/fix-tests.yaml`.
 ll-loop validate fix-tests
 ```
 
-The validator checks your YAML for schema errors, unreachable states, and missing transitions.
+The validator checks your YAML for schema errors, unreachable states, missing transitions,
+captured variable reachability (ENH-1961), and meta-loop evaluation rules (MR-1 through MR-5).
 
 ### 3. Test (Dry Run)
 

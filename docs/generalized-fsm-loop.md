@@ -326,6 +326,11 @@ states:                         # State definitions
     next: string                # Unconditional transition (no evaluation)
     terminal: boolean           # True if this is an end state
     capture: string             # Variable name to store output
+                                # Validated by ENH-1961: any ${captured.<var>.*}
+                                # reference in a downstream state must be reachable
+                                # on ALL code paths — the validator warns when a
+                                # bypass path exists and errors when no capture is
+                                # declared at all.
     timeout: number             # Action-level timeout in seconds
     fragment: string            # Name of a fragment to inherit fields from; state-level keys
                                 # override fragment keys at every nesting level. Fragments that

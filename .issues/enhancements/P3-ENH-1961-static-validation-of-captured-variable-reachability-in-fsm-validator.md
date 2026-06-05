@@ -2,8 +2,9 @@
 id: ENH-1961
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: "2026-06-05T18:05:10Z"
+completed_at: "2026-06-05T20:30:00Z"
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1962

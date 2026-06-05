@@ -25,6 +25,7 @@ from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_artifact_isolation,
     _validate_artifact_overwrite,
+    _validate_capture_reachability,
     _validate_evaluator,
     _validate_harness_multimodal_evaluator_blind_spot,
     _validate_input_key_without_guard,
@@ -2212,3 +2213,418 @@ class TestArtifactVersioning:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
+
+
+class TestCaptureReachabilityValidation:
+    """ENH-1961: static validation of captured variable reachability in FSM validator."""
+
+    # --- Helper to build FSMs for testing ---
+
+    def _fsm_with_capture_and_ref(
+        self,
+        *,
+        capture_state: str = "select",
+        capture_var: str = "selected",
+        ref_state: str = "check",
+        ref_var: str | None = None,
+        extra_states: dict | None = None,
+        initial: str = "start",
+    ) -> FSMLoop:
+        """Build a minimal FSM with a capture state and a referencing state.
+
+        Default graph: start → select → check → done
+        The capture state captures a variable, the ref state references it.
+        extra_states can inject bypass paths or additional routing.
+        """
+        if ref_var is None:
+            ref_var = capture_var
+
+        states: dict[str, StateConfig] = {
+            "start": make_state(
+                action="echo begin",
+                next=capture_state,
+            ),
+            capture_state: make_state(
+                action="echo capturing",
+                capture=capture_var,
+                next=ref_state,
+            ),
+            ref_state: make_state(
+                action=f"echo ${{{{captured.{ref_var}.output}}}}",
+                on_yes="done",
+            ),
+            "done": make_state(terminal=True),
+        }
+
+        if extra_states:
+            states.update(extra_states)
+
+        return FSMLoop(
+            name="test-capture-reachability",
+            initial=initial,
+            states=states,
+        )
+
+    # --- Dominance: all paths safe → no warning ---
+
+    def test_capture_reachable_on_all_paths_no_warning(self) -> None:
+        """No warning when capturing state dominates referencing state."""
+        fsm = self._fsm_with_capture_and_ref()
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Expected no warnings, got: {errors}"
+
+    def test_capture_with_unconditional_next_safe(self) -> None:
+        """No warning when state has next: through capture state (dominated)."""
+        fsm = self._fsm_with_capture_and_ref()
+        errors = _validate_capture_reachability(fsm)
+        assert errors == []
+
+    def test_capture_self_reference_no_warning(self) -> None:
+        """State that captures and references its own variable is safe."""
+        fsm = FSMLoop(
+            name="test-self-ref",
+            initial="work",
+            states={
+                "work": make_state(
+                    action="echo ${captured.result.output}",
+                    capture="result",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == []
+
+    # --- Bypassed capture → WARNING ---
+
+    def test_capture_bypassed_on_one_path_emits_warning(self) -> None:
+        """WARNING when a path to ref_state bypasses the capturing state."""
+        # Two paths to 'check':
+        #   start → select → check  (safe)
+        #   start → shortcut → check  (bypasses capture!)
+        fsm = self._fsm_with_capture_and_ref(
+            extra_states={
+                "shortcut": make_state(
+                    action="echo bypass",
+                    next="check",
+                ),
+            },
+        )
+        # Modify 'start' to fork into both paths
+        fsm.states["start"] = make_state(
+            action="echo begin",
+            on_yes="select",
+            on_no="shortcut",
+        )
+        # Make 'check' reference the captured var
+        fsm.states["check"] = make_state(
+            action="echo ${captured.selected.output}",
+            on_yes="done",
+        )
+
+        errors = _validate_capture_reachability(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert len(warnings) >= 1, f"Expected bypass WARNING, got: {errors}"
+        assert any("selected" in e.message for e in warnings)
+        assert any("select" in e.message for e in warnings)
+
+    def test_bypass_path_in_warning_message(self) -> None:
+        """Warning message includes a concrete bypassing path."""
+        fsm = self._fsm_with_capture_and_ref(
+            extra_states={
+                "shortcut": make_state(action="echo bypass", next="check"),
+            },
+        )
+        fsm.states["start"] = make_state(
+            action="echo begin",
+            on_yes="select",
+            on_no="shortcut",
+        )
+        fsm.states["check"] = make_state(
+            action="echo ${captured.selected.output}",
+            on_yes="done",
+        )
+
+        errors = _validate_capture_reachability(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert len(warnings) >= 1
+        # The bypass path should be start → shortcut → check
+        assert "start" in warnings[0].message
+        assert "shortcut" in warnings[0].message
+        assert "check" in warnings[0].message
+
+    def test_general_task_pattern_emits_warning(self) -> None:
+        """The exact pattern from general-task.yaml (resume bypass) emits warning."""
+        # Pattern: resume_check → [yes: mark_done → check_done] / [no: select_step → do_work → check_done]
+        # check_done references ${captured.selected_step.output}
+        # mark_done path bypasses select_step
+        fsm = FSMLoop(
+            name="test-general-task-pattern",
+            initial="resume_check",
+            states={
+                "resume_check": make_state(
+                    action="check checkpoint",
+                    on_yes="mark_done",
+                    on_no="select_step",
+                ),
+                "mark_done": make_state(
+                    action="mark done",
+                    next="check_done",
+                ),
+                "select_step": make_state(
+                    action="select next step",
+                    capture="selected_step",
+                    next="do_work",
+                ),
+                "do_work": make_state(
+                    action="do the work",
+                    on_yes="check_done",
+                ),
+                "check_done": make_state(
+                    action="check ${captured.selected_step.output}",
+                    on_yes="done",
+                    on_no="select_step",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert len(warnings) >= 1, f"Expected bypass WARNING for general-task pattern, got: {errors}"
+        assert any("selected_step" in e.message for e in warnings)
+        assert any("select_step" in e.message for e in warnings)
+        # Bypass path should be visible
+        assert any("mark_done" in e.message for e in warnings)
+
+    # --- Sub-loop states → skipped ---
+
+    def test_capture_from_sub_loop_skipped(self) -> None:
+        """State with loop set is skipped (its captured vars live in child namespace)."""
+        fsm = FSMLoop(
+            name="test-sub-loop-skip",
+            initial="delegate",
+            states={
+                "delegate": make_state(
+                    loop="child-loop",
+                    action="child-loop",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        # No capture in this FSM, but delegate references $captured.* in its
+        # sub-loop context. We should not emit errors for this.
+        missing_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert missing_errors == [], (
+            f"Sub-loop states should be skipped, got: {missing_errors}"
+        )
+
+    # --- Missing capture state → ERROR ---
+
+    def test_missing_capture_state_emits_error(self) -> None:
+        """ERROR when a ${captured.*} reference has no capturing state at all."""
+        fsm = FSMLoop(
+            name="test-missing-capture",
+            initial="check",
+            states={
+                "check": make_state(
+                    action="echo ${captured.nonexistent.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(error_list) >= 1, f"Expected missing-capture ERROR, got: {errors}"
+        assert any("nonexistent" in e.message for e in error_list)
+        assert any("no state" in e.message.lower() for e in error_list)
+
+    def test_missing_capture_in_evaluate_source_emits_error(self) -> None:
+        """ERROR when evaluate.source references uncaptured variable."""
+        fsm = FSMLoop(
+            name="test-missing-in-source",
+            initial="score",
+            states={
+                "score": make_state(
+                    action="echo scoring",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target=10,
+                        source="${captured.baseline.output}",
+                        direction="maximize",
+                    ),
+                    on_yes="done",
+                    on_no="score",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(error_list) >= 1, f"Expected missing-capture ERROR for source ref, got: {errors}"
+        assert any("baseline" in e.message for e in error_list)
+
+    # --- Mixed: some safe, some not ---
+
+    def test_multiple_references_mixed_safety(self) -> None:
+        """One captured var is safe (dominated), another is bypassed → mixed results."""
+        # Graph: start → capture_safe → fork → [yes: capture_risky → ref_state]
+        #                                        [no: ref_state]
+        # capture_safe dominates ref_state (all paths go through it)
+        # capture_risky does NOT dominate ref_state (fork bypasses it)
+        fsm = FSMLoop(
+            name="test-mixed",
+            initial="start",
+            states={
+                "start": make_state(
+                    action="echo begin",
+                    next="capture_safe",
+                ),
+                "capture_safe": make_state(
+                    action="echo capturing safe",
+                    capture="safe_var",
+                    next="fork",
+                ),
+                "fork": make_state(
+                    action="echo forking",
+                    on_yes="capture_risky",
+                    on_no="ref_state",
+                ),
+                "capture_risky": make_state(
+                    action="echo capturing risky",
+                    capture="risky_var",
+                    next="ref_state",
+                ),
+                "ref_state": make_state(
+                    action="echo ${captured.safe_var.output} ${captured.risky_var.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        # risky_var is bypassed (fork.on_no skips capture_risky)
+        assert any("risky_var" in e.message for e in warnings), (
+            f"Expected risky_var warning, got: {warnings}"
+        )
+        # safe_var should NOT have a warning — all paths go through capture_safe
+        safe_warnings = [e for e in warnings if "safe_var" in e.message]
+        assert safe_warnings == [], f"safe_var should be dominated, got: {safe_warnings}"
+
+    # --- No captures → no errors ---
+
+    def test_no_captures_produces_no_errors(self) -> None:
+        """Loop with no capture: declarations produces no capture-reachability errors."""
+        fsm = FSMLoop(
+            name="test-no-captures",
+            initial="work",
+            states={
+                "work": make_state(action="echo hi", on_yes="done"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == []
+
+    # --- Wiring ---
+
+    def test_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes capture-reachability warnings end-to-end."""
+        fsm = self._fsm_with_capture_and_ref(
+            extra_states={
+                "shortcut": make_state(action="echo bypass", next="check"),
+            },
+        )
+        fsm.states["start"] = make_state(
+            action="echo begin",
+            on_yes="select",
+            on_no="shortcut",
+        )
+        fsm.states["check"] = make_state(
+            action="echo ${captured.selected.output}",
+            on_yes="done",
+        )
+
+        errors = validate_fsm(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        capture_warnings = [e for e in warnings if "captured" in e.message.lower()]
+        assert len(capture_warnings) >= 1, (
+            f"Expected capture-reachability warning in validate_fsm output, got: {errors}"
+        )
+
+    # --- Additional edge cases ---
+
+    def test_capture_via_evaluate_source_safe_when_dominated(self) -> None:
+        """No warning when evaluate.source ref is dominated by its capture state."""
+        fsm = FSMLoop(
+            name="test-eval-source-safe",
+            initial="measure",
+            states={
+                "measure": make_state(
+                    action="echo measuring",
+                    capture="baseline",
+                    next="score",
+                ),
+                "score": make_state(
+                    action="echo scoring",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target=10,
+                        source="${captured.baseline.output}",
+                        direction="maximize",
+                    ),
+                    on_yes="done",
+                    on_no="score",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Expected no warnings, got: {errors}"
+
+    def test_multiple_capture_states_all_dominate(self) -> None:
+        """All capture states dominate the referencing state → no warnings."""
+        fsm = FSMLoop(
+            name="test-multi-capture-safe",
+            initial="step1",
+            states={
+                "step1": make_state(
+                    action="echo step1",
+                    capture="result1",
+                    next="step2",
+                ),
+                "step2": make_state(
+                    action="echo step2",
+                    capture="result2",
+                    next="check",
+                ),
+                "check": make_state(
+                    action="echo ${captured.result1.output} ${captured.result2.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Expected no warnings, got: {errors}"
+
+    def test_dominance_via_long_path(self) -> None:
+        """Dominance through a multi-hop linear path is correctly detected."""
+        fsm = FSMLoop(
+            name="test-long-path",
+            initial="a",
+            states={
+                "a": make_state(action="echo a", next="b"),
+                "b": make_state(action="echo b", capture="data", next="c"),
+                "c": make_state(action="echo c", next="d"),
+                "d": make_state(action="echo d", next="e"),
+                "e": make_state(action="echo ${captured.data.output}", on_yes="done"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Expected no warnings, got: {errors}"

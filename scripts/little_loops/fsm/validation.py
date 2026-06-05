@@ -104,6 +104,9 @@ _META_LOOP_IMPORT_TRIGGERS: frozenset[str] = frozenset({"lib/benchmark.yaml"})
 # cause state corruption under concurrent runs (ll-parallel, retries, etc.).
 _SHARED_TMP_PATH_RE = re.compile(r"\.loops/tmp/[\w./-]+")
 
+# ENH-1961: Regex for extracting captured variable names from ${captured.<var>.*} references
+_CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")
+
 # ENH-1819: Regex patterns for detecting multimodal evaluation in prompt actions
 _MULTIMODAL_EVAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"Read the screenshot", re.IGNORECASE),
@@ -1007,6 +1010,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_progress_paths_isolation(fsm))
 
+    errors.extend(_validate_capture_reachability(fsm))
+
     return errors
 
 
@@ -1572,6 +1577,186 @@ def _validate_progress_paths_isolation(fsm: FSMLoop) -> list[ValidationError]:
                         severity=ValidationSeverity.WARNING,
                     )
                 )
+    return errors
+
+
+def _dominates(fsm: FSMLoop, dominator: str, dominated: str) -> bool:
+    """Return True if dominator dominates dominated in the FSM graph.
+
+    A state D dominates S if every path from the initial state to S must pass
+    through D. This is checked by removing D from the graph and testing whether
+    S is still reachable from the initial state.
+
+    Args:
+        fsm: The FSM loop to analyze
+        dominator: Name of the state that should dominate
+        dominated: Name of the state that should be dominated
+
+    Returns:
+        True if dominator dominates dominated
+    """
+    if dominator == dominated:
+        return True
+    if dominator not in fsm.states or dominated not in fsm.states:
+        return False
+
+    visited: set[str] = set()
+    to_visit: deque[str] = deque([fsm.initial])
+
+    while to_visit:
+        current = to_visit.popleft()
+        if current in visited or current not in fsm.states:
+            continue
+        if current == dominator:
+            continue  # Block this node (simulate removal)
+
+        visited.add(current)
+
+        if current == dominated:
+            # Reached dominated without going through dominator
+            return False
+
+        state = fsm.states[current]
+        for ref in state.get_referenced_states():
+            if ref != "$current" and ref not in visited:
+                to_visit.append(ref)
+
+    # Dominated not reachable without dominator → dominator dominates
+    return True
+
+
+def _find_bypass_path(fsm: FSMLoop, dominator: str, dominated: str) -> list[str]:
+    """Find an example path from initial to dominated that bypasses dominator.
+
+    Uses BFS to find shortest path. Returns empty list if no bypass exists
+    (should not happen when called after _dominates returns False).
+    """
+    parent: dict[str, str] = {}
+    to_visit: deque[str] = deque([fsm.initial])
+    visited: set[str] = set()
+
+    while to_visit:
+        current = to_visit.popleft()
+        if current in visited or current not in fsm.states:
+            continue
+        if current == dominator:
+            continue
+
+        visited.add(current)
+
+        if current == dominated:
+            # Reconstruct path
+            path = [dominated]
+            while path[-1] in parent:
+                path.append(parent[path[-1]])
+            path.reverse()
+            return path
+
+        state = fsm.states[current]
+        for ref in state.get_referenced_states():
+            if ref != "$current" and ref not in visited:
+                if ref not in parent:
+                    parent[ref] = current
+                to_visit.append(ref)
+
+    return []
+
+
+def _has_sub_loop_state(fsm: FSMLoop) -> bool:
+    """Return True if any state in the FSM has ``loop:`` set (delegates to a child loop).
+
+    Used by ENH-1961 to distinguish "capture lives in a sub-loop" from "capture is missing".
+    """
+    return any(state.loop is not None for state in fsm.states.values())
+
+
+def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate that ``${captured.*}`` references are dominated by their capturing states.
+
+    ENH-1961: For each state that references ``${captured.<var>.*}`` in its action
+    or evaluate source, checks that the capturing state dominates the referencing
+    state (i.e., all paths from the initial state pass through the capture state).
+
+    Emits:
+    - WARNING when a capture state does not dominate a referencing state
+      (the reference may crash at runtime on paths that bypass the capture).
+    - ERROR when a referenced capture variable has no capturing state at all
+      in this FSM (excluding sub-loop captures which live in child namespaces).
+    """
+    errors: list[ValidationError] = []
+
+    # Step 1: Build capture map (var_name → capturing_state_name)
+    capture_map: dict[str, str] = {}
+    for state_name, state in fsm.states.items():
+        if state.capture:
+            capture_map[state.capture] = state_name
+
+    # Step 2: Build reference map (state_name → set of captured var names referenced)
+    reference_map: dict[str, set[str]] = {}
+    for state_name, state in fsm.states.items():
+        # Skip sub-loop delegation states — their action is a loop name,
+        # and captured vars belong to the child loop's namespace.
+        if state.loop is not None:
+            continue
+
+        refs: set[str] = set()
+        if state.action:
+            refs.update(_CAPTURED_REF_RE.findall(state.action))
+        if state.evaluate is not None and state.evaluate.source:
+            refs.update(_CAPTURED_REF_RE.findall(state.evaluate.source))
+        if refs:
+            reference_map[state_name] = refs
+
+    if not reference_map:
+        return errors
+
+    # Step 3: For each reference, check dominance of capturing state
+    for ref_state_name, ref_vars in reference_map.items():
+        for var_name in ref_vars:
+            if var_name not in capture_map:
+                # Referenced capture variable has no capturing state in this FSM.
+                # If the loop uses sub-loops, the capture may live in a child
+                # namespace — skip (ENH-1961 scope: only flag same-loop captures).
+                if _has_sub_loop_state(fsm):
+                    continue
+                # No sub-loops: this is genuinely missing.
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"References ${{captured.{var_name}.*}} but no state in "
+                            f"this loop captures '{var_name}'. Add 'capture: {var_name}' "
+                            f"to the state that produces this value."
+                        ),
+                        path=f"states.{ref_state_name}.action",
+                        severity=ValidationSeverity.ERROR,
+                    )
+                )
+                continue
+
+            cap_state_name = capture_map[var_name]
+
+            # Skip if capturing state is not in this FSM (shouldn't happen)
+            if cap_state_name not in fsm.states:
+                continue
+
+            # Dominance check: does cap_state_name dominate ref_state_name?
+            if not _dominates(fsm, cap_state_name, ref_state_name):
+                bypass_path = _find_bypass_path(fsm, cap_state_name, ref_state_name)
+                path_str = " → ".join(bypass_path) if bypass_path else "unknown path"
+
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"References ${{captured.{var_name}.*}} but '{var_name}' "
+                            f"is captured by state '{cap_state_name}' which may not "
+                            f"execute on all paths to '{ref_state_name}'. "
+                            f"Path(s) bypassing capture: {path_str}"
+                        ),
+                        path=f"states.{ref_state_name}.action",
+                        severity=ValidationSeverity.WARNING,
+                    )
+                )
+
     return errors
 
 
