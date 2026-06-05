@@ -2,8 +2,9 @@
 id: BUG-1960
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-05T18:05:10Z'
+completed_at: 2026-06-05 19:14:40+00:00
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1962
@@ -50,7 +51,7 @@ All 8+ artifact paths in `general-task.yaml` use `.loops/tmp/general-task-*`:
 
 **Two specific defects in `resume_check`:**
 
-1. **No `current-step.txt` existence check**: `mark_done` deletes both `current-step.txt` and `checkpoint.json` (lines 196-197), but not atomically. If only the checkpoint survives (e.g., from a prior run that was interrupted between the two `rm` calls, or from a different task entirely), `resume_check` proceeds to check `last-files.txt` and may emit `RESUME_SKIP` if the referenced files happen to exist.
+1. **No `current-step.txt` existence check**: `mark_done` deletes both `current-step.txt` and `checkpoint.json` (lines 197-198), but not atomically. If only the checkpoint survives (e.g., from a prior run that was interrupted between the two `rm` calls, or from a different task entirely), `resume_check` proceeds to check `last-files.txt` and may emit `RESUME_SKIP` if the referenced files happen to exist.
 
 2. **No task fingerprinting**: The checkpoint JSON `{"in_flight_step":"...","timestamp":"..."}` has no field identifying which task it belongs to. A checkpoint from "Implement the plan in remotion-plan.md" can trigger a false resume for "Fix the bug in auth.py."
 
@@ -76,7 +77,7 @@ All 8+ artifact paths in `general-task.yaml` use `.loops/tmp/general-task-*`:
 ## Root Cause
 
 - **File**: `scripts/little_loops/loops/general-task.yaml`
-- **Anchor**: `resume_check` state (lines 84-115), `select_step` state (lines 117-137), `check_done` state (line 254)
+- **Anchor**: `resume_check` state (lines 85-116), `select_step` state (lines 118-138), `check_done` state (line 255)
 - **Cause**: Three compounding factors:
   1. **Shared state**: All artifacts in `.loops/tmp/` with no per-run or per-task isolation
   2. **Incomplete resume validation**: `resume_check` checks checkpoint file existence + last-files existence, but not `current-step.txt` consistency or task identity
@@ -240,7 +241,9 @@ Changing `check_done.on_error` to `select_step` would make this a graceful recov
 **Open** | Created: 2026-06-05 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-05T19:01:09 - `409c6c80-51fa-4289-86e1-ec8b0768b31a.jsonl`
 - `/ll:refine-issue` - 2026-06-05T18:53:22 - `47a35864-3a17-4930-ab95-a305446443dc.jsonl`
 - `/ll:format-issue` - 2026-06-05T18:13:23 - `3eca5207-7b01-419b-a330-d3c0b875236c.jsonl`
 - `/ll:capture-issue` - 2026-06-05T18:05:10Z - `6111e846-8894-477b-81b3-17824f89e659.jsonl`
 - `/ll:confidence-check` - 2026-06-05T19:00:00Z - `019fd1ab-9146-492e-9c9c-c7136c94137c.jsonl`
+- `/ll:manage-issue` - 2026-06-05T19:14:40 - `eb7a4285-43fa-4f05-88de-ff861b20bd89.jsonl`

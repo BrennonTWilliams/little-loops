@@ -94,8 +94,8 @@ class TestChange2CheckDoneReconcileAndSampleVerify:
 
     def test_check_done_reads_both_dod_and_plan(self, raw_data: dict) -> None:
         action = raw_data["states"]["check_done"]["action"]
-        assert "general-task-dod.md" in action, "check_done.action must reference the DoD file"
-        assert "general-task-plan.md" in action, "check_done.action must reference the plan file"
+        assert "dod.md" in action, "check_done.action must reference the DoD file"
+        assert "plan.md" in action, "check_done.action must reference the plan file"
 
     def test_check_done_does_plan_vs_dod_coverage(self, raw_data: dict) -> None:
         action = raw_data["states"]["check_done"]["action"]
@@ -124,7 +124,7 @@ class TestChange3ContinueWorkDodFallback:
 
     def test_continue_work_reads_both_files(self, raw_data: dict) -> None:
         action = raw_data["states"]["continue_work"]["action"]
-        assert "general-task-plan.md" in action and "general-task-dod.md" in action, (
+        assert "plan.md" in action and "dod.md" in action, (
             "continue_work.action must read both plan and DoD files"
         )
 
@@ -223,7 +223,7 @@ class TestChange5DoWorkCapture:
 
     def test_do_work_must_not_modify_plan_file(self, raw_data: dict) -> None:
         action = raw_data["states"]["do_work"]["action"]
-        assert "general-task-plan.md" in action, (
+        assert "plan.md" in action, (
             "do_work.action must explicitly tell the model NOT to modify the plan file"
         )
         assert "Do NOT modify" in action or "do not modify" in action.lower(), (
@@ -377,30 +377,38 @@ def _load_state_script(state_name: str) -> str:
     return data["states"][state_name]["action"]
 
 
+def _setup_run_dir(tmp_path: Path) -> Path:
+    """Create a per-test run_dir (simulating ${context.run_dir})."""
+    run_dir = tmp_path / "run_dir"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
 def _setup_loops_tmp(tmp_path: Path) -> Path:
-    loops_tmp = tmp_path / ".loops" / "tmp"
-    loops_tmp.mkdir(parents=True, exist_ok=True)
-    return loops_tmp
+    """DEPRECATED: use _setup_run_dir instead. Kept for backward compat during migration."""
+    return _setup_run_dir(tmp_path)
 
 
 class TestSelectStepShellAction:
     """Shell execution tests for the select_step action (ENH-1732)."""
 
     def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
         script = _load_state_script("select_step")
-        script = script.replace("${env.PWD}", str(tmp_path))
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${context.input_hash}", "abc123def456")
         return _bash(script, cwd=tmp_path)
 
     def test_empty_plan_emits_no_unchecked_steps(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [x] Step 1: done\n")
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [x] Step 1: done\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "NO_UNCHECKED_STEPS" in result.stdout
 
     def test_unchecked_step_emits_selected_step(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text(
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(
             "# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: pending\n"
         )
         result = self._run(tmp_path)
@@ -409,12 +417,12 @@ class TestSelectStepShellAction:
         assert "Step 2: pending" in result.stdout
 
     def test_unchecked_step_writes_temp_file(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
         self._run(tmp_path)
-        step_file = loops_tmp / "general-task-current-step.txt"
+        step_file = run_dir / "current-step.txt"
         assert step_file.exists(), (
-            "select_step must write the step to general-task-current-step.txt"
+            "select_step must write the step to current-step.txt"
         )
         assert "Step 1: write code" in step_file.read_text()
 
@@ -423,27 +431,28 @@ class TestVerifyStepShellAction:
     """Shell execution tests for the verify_step action (ENH-1732)."""
 
     def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
         script = _load_state_script("verify_step")
-        script = script.replace("${env.PWD}", str(tmp_path))
+        script = script.replace("${context.run_dir}", str(run_dir))
         return _bash(script, cwd=tmp_path)
 
     def test_missing_last_files_emits_verify_pass(self, tmp_path: Path) -> None:
-        _setup_loops_tmp(tmp_path)
-        # No general-task-last-files.txt written
+        _setup_run_dir(tmp_path)
+        # No last-files.txt written
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "VERIFY_PASS" in result.stdout
 
     def test_empty_files_list_emits_verify_pass(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-last-files.txt").write_text("LAST_FILES: \n")
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "last-files.txt").write_text("LAST_FILES: \n")
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "VERIFY_PASS" in result.stdout
 
     def test_non_python_files_emits_verify_pass(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-last-files.txt").write_text(
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "last-files.txt").write_text(
             "LAST_FILES: README.md some-loop.yaml\n"
         )
         result = self._run(tmp_path)
@@ -455,40 +464,41 @@ class TestMarkDoneShellAction:
     """Shell execution tests for the mark_done action (ENH-1732)."""
 
     def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
         script = _load_state_script("mark_done")
-        script = script.replace("${env.PWD}", str(tmp_path))
+        script = script.replace("${context.run_dir}", str(run_dir))
         return _bash(script, cwd=tmp_path)
 
     def test_marks_selected_step_as_done(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text(
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(
             "# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: pending\n- [ ] Step 3: also pending\n"
         )
-        (loops_tmp / "general-task-current-step.txt").write_text("- [ ] Step 2: pending\n")
+        (run_dir / "current-step.txt").write_text("- [ ] Step 2: pending\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
-        plan = (loops_tmp / "general-task-plan.md").read_text()
+        plan = (run_dir / "plan.md").read_text()
         lines = plan.splitlines()
         assert "- [x] Step 1: done" in lines
         assert "- [x] Step 2: pending" in lines
         assert "- [ ] Step 3: also pending" in lines
 
     def test_removes_current_step_temp_file(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
-        step_file = loops_tmp / "general-task-current-step.txt"
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        step_file = run_dir / "current-step.txt"
         step_file.write_text("- [ ] Step 1: write code\n")
         self._run(tmp_path)
-        assert not step_file.exists(), "mark_done must remove general-task-current-step.txt"
+        assert not step_file.exists(), "mark_done must remove current-step.txt"
 
     def test_marks_only_the_selected_step(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text(
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(
             "# Task Plan\n- [ ] Step 1: first\n- [ ] Step 2: second\n"
         )
-        (loops_tmp / "general-task-current-step.txt").write_text("- [ ] Step 1: first\n")
+        (run_dir / "current-step.txt").write_text("- [ ] Step 1: first\n")
         self._run(tmp_path)
-        plan = (loops_tmp / "general-task-plan.md").read_text()
+        plan = (run_dir / "plan.md").read_text()
         assert "- [x] Step 1: first" in plan
         assert "- [ ] Step 2: second" in plan
 
@@ -497,33 +507,35 @@ class TestCheckpointWriteShellAction:
     """ENH-1735: select_step writes in-flight checkpoint before routing to do_work."""
 
     def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
         script = _load_state_script("select_step")
-        script = script.replace("${env.PWD}", str(tmp_path))
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${context.input_hash}", "abc123def456")
         return _bash(script, cwd=tmp_path)
 
     def test_checkpoint_written_when_step_found(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
         self._run(tmp_path)
-        checkpoint = loops_tmp / "general-task-checkpoint.json"
-        assert checkpoint.exists(), "select_step must write general-task-checkpoint.json"
+        checkpoint = run_dir / "checkpoint.json"
+        assert checkpoint.exists(), "select_step must write checkpoint.json"
 
     def test_checkpoint_contains_step_text(self, tmp_path: Path) -> None:
         import json
 
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
         self._run(tmp_path)
-        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        checkpoint = run_dir / "checkpoint.json"
         data = json.loads(checkpoint.read_text())
         assert "in_flight_step" in data
         assert "Step 1: write code" in data["in_flight_step"]
 
     def test_checkpoint_not_written_when_no_steps(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [x] Step 1: done\n")
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [x] Step 1: done\n")
         self._run(tmp_path)
-        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        checkpoint = run_dir / "checkpoint.json"
         assert not checkpoint.exists(), (
             "select_step must not write checkpoint when no unchecked steps remain"
         )
@@ -533,26 +545,27 @@ class TestCheckpointClearShellAction:
     """ENH-1735: mark_done clears the in-flight checkpoint after step completion."""
 
     def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
         script = _load_state_script("mark_done")
-        script = script.replace("${env.PWD}", str(tmp_path))
+        script = script.replace("${context.run_dir}", str(run_dir))
         return _bash(script, cwd=tmp_path)
 
     def test_removes_checkpoint_when_present(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
-        step_file = loops_tmp / "general-task-current-step.txt"
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        step_file = run_dir / "current-step.txt"
         step_file.write_text("- [ ] Step 1: write code\n")
-        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        checkpoint = run_dir / "checkpoint.json"
         checkpoint.write_text(
             '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z"}'
         )
         self._run(tmp_path)
-        assert not checkpoint.exists(), "mark_done must remove general-task-checkpoint.json"
+        assert not checkpoint.exists(), "mark_done must remove checkpoint.json"
 
     def test_tolerates_missing_checkpoint(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
-        step_file = loops_tmp / "general-task-current-step.txt"
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        step_file = run_dir / "current-step.txt"
         step_file.write_text("- [ ] Step 1: write code\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, "mark_done must not fail when checkpoint is absent"
@@ -562,47 +575,52 @@ class TestResumeCheckShellAction:
     """ENH-1735: resume_check detects in-flight checkpoint and routes to mark_done or select_step."""
 
     def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
         script = _load_state_script("resume_check")
-        script = script.replace("${env.PWD}", str(tmp_path))
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${context.input_hash}", "abc123def456")
         return _bash(script, cwd=tmp_path)
 
     def test_no_checkpoint_emits_resume_none(self, tmp_path: Path) -> None:
-        _setup_loops_tmp(tmp_path)
+        _setup_run_dir(tmp_path)
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "RESUME_NONE" in result.stdout
 
     def test_checkpoint_with_existing_files_emits_resume_skip(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        run_dir = _setup_run_dir(tmp_path)
+        checkpoint = run_dir / "checkpoint.json"
         checkpoint.write_text(
-            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z"}'
+            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z","task_hash":"abc123def456"}'
         )
+        (run_dir / "current-step.txt").write_text("- [ ] Step 1: write code\n")
         output_file = tmp_path / "output.py"
         output_file.write_text("# output\n")
-        (loops_tmp / "general-task-last-files.txt").write_text(f"LAST_FILES: {output_file}\n")
+        (run_dir / "last-files.txt").write_text(f"LAST_FILES: {output_file}\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "RESUME_SKIP" in result.stdout
 
     def test_checkpoint_with_missing_files_emits_resume_clean(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        run_dir = _setup_run_dir(tmp_path)
+        checkpoint = run_dir / "checkpoint.json"
         checkpoint.write_text(
-            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z"}'
+            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z","task_hash":"abc123def456"}'
         )
-        (loops_tmp / "general-task-last-files.txt").write_text("LAST_FILES: /nonexistent/file.py\n")
+        (run_dir / "current-step.txt").write_text("- [ ] Step 1: write code\n")
+        (run_dir / "last-files.txt").write_text("LAST_FILES: /nonexistent/file.py\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "RESUME_CLEAN" in result.stdout
         assert not checkpoint.exists(), "resume_check must delete checkpoint on RESUME_CLEAN"
 
     def test_checkpoint_without_last_files_emits_resume_clean(self, tmp_path: Path) -> None:
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        run_dir = _setup_run_dir(tmp_path)
+        checkpoint = run_dir / "checkpoint.json"
         checkpoint.write_text(
-            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z"}'
+            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z","task_hash":"abc123def456"}'
         )
+        (run_dir / "current-step.txt").write_text("- [ ] Step 1: write code\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "RESUME_CLEAN" in result.stdout
@@ -621,22 +639,23 @@ class TestBUG1766ConvergenceEfficiency:
     """
 
     def _run_mark_done(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
         script = _load_state_script("mark_done")
-        script = script.replace("${env.PWD}", str(tmp_path))
+        script = script.replace("${context.run_dir}", str(run_dir))
         return _bash(script, cwd=tmp_path)
 
     # --- Edit 1: mark_done bound to the selected step ----------------------
 
     def test_mark_done_marks_selected_step_not_first_unchecked(self, tmp_path: Path) -> None:
         """current-step.txt points at a LATER step; mark_done must mark THAT one."""
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text(
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(
             "# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: second\n- [ ] Step 3: third\n"
         )
-        (loops_tmp / "general-task-current-step.txt").write_text("- [ ] Step 3: third\n")
+        (run_dir / "current-step.txt").write_text("- [ ] Step 3: third\n")
         result = self._run_mark_done(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
-        plan = (loops_tmp / "general-task-plan.md").read_text()
+        plan = (run_dir / "plan.md").read_text()
         assert "- [x] Step 3: third" in plan, "mark_done must mark the SELECTED step"
         assert "- [ ] Step 2: second" in plan, (
             "mark_done must NOT mark the first unchecked step when a later step is selected"
@@ -646,19 +665,19 @@ class TestBUG1766ConvergenceEfficiency:
         self, tmp_path: Path
     ) -> None:
         """With no current-step.txt, mark_done safely marks the first unchecked step."""
-        loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text(
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(
             "# Task Plan\n- [ ] Step 1: first\n- [ ] Step 2: second\n"
         )
         result = self._run_mark_done(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
-        plan = (loops_tmp / "general-task-plan.md").read_text()
+        plan = (run_dir / "plan.md").read_text()
         assert "- [x] Step 1: first" in plan
         assert "- [ ] Step 2: second" in plan
 
     def test_mark_done_action_references_current_step_file(self, raw_data: dict) -> None:
         action = raw_data["states"]["mark_done"]["action"]
-        assert "general-task-current-step.txt" in action
+        assert "current-step.txt" in action
         assert "STEP_TEXT" in action and "target" in action, (
             "mark_done must bind marking to current-step.txt content"
         )
@@ -675,7 +694,7 @@ class TestBUG1766ConvergenceEfficiency:
     def test_define_done_forbids_tracking_file_criteria(self, raw_data: dict) -> None:
         action = raw_data["states"]["define_done"]["action"]
         assert "Do NOT write DoD criteria that target" in action
-        assert "general-task-plan.md" in action and "general-task-dod.md" in action
+        assert "plan.md" in action and "dod.md" in action
 
     # --- Edit 4: continue_work false-premise prompt fixed ------------------
 
@@ -696,7 +715,10 @@ def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
 
 
-def _load_count_done_script(context_overrides: dict | None = None) -> str:
+def _load_count_done_script(
+    context_overrides: dict | None = None,
+    run_dir: Path | None = None,
+) -> str:
     """Extract the shell action from count_done, with context variables interpolated."""
     with open(LOOP_FILE) as f:
         data = yaml.safe_load(f)
@@ -704,6 +726,8 @@ def _load_count_done_script(context_overrides: dict | None = None) -> str:
     ctx = {**data.get("context", {}), **(context_overrides or {})}
     for key, val in ctx.items():
         script = script.replace(f"${{context.{key}}}", str(val))
+    if run_dir is not None:
+        script = script.replace("${context.run_dir}", str(run_dir))
     return script
 
 
@@ -712,11 +736,12 @@ def _setup_dod_plan(
     *,
     dod_content: str,
     plan_content: str,
-) -> None:
-    loops_tmp = tmp_path / ".loops" / "tmp"
-    loops_tmp.mkdir(parents=True, exist_ok=True)
-    (loops_tmp / "general-task-dod.md").write_text(dod_content)
-    (loops_tmp / "general-task-plan.md").write_text(plan_content)
+) -> Path:
+    """Set up DoD and plan files in a run_dir. Returns the run_dir Path."""
+    run_dir = _setup_run_dir(tmp_path)
+    (run_dir / "dod.md").write_text(dod_content)
+    (run_dir / "plan.md").write_text(plan_content)
+    return run_dir
 
 
 _ALL_DONE_DOD = """\
@@ -791,8 +816,8 @@ class TestCountDoneShellScript:
     """Shell execution tests for the count_done action (ENH-1658)."""
 
     def test_all_done_emits_total_zero(self, tmp_path: Path) -> None:
-        _setup_dod_plan(tmp_path, dod_content=_ALL_DONE_DOD, plan_content=_ALL_DONE_PLAN)
-        script = _load_count_done_script()
+        run_dir = _setup_dod_plan(tmp_path, dod_content=_ALL_DONE_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_done_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -805,8 +830,8 @@ class TestCountDoneShellScript:
         assert data["failed_samples"] == 0
 
     def test_unchecked_criterion_emits_nonzero_total(self, tmp_path: Path) -> None:
-        _setup_dod_plan(tmp_path, dod_content=_UNCHECKED_DOD, plan_content=_UNCHECKED_PLAN)
-        script = _load_count_done_script()
+        run_dir = _setup_dod_plan(tmp_path, dod_content=_UNCHECKED_DOD, plan_content=_UNCHECKED_PLAN)
+        script = _load_count_done_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -818,11 +843,10 @@ class TestCountDoneShellScript:
         assert data["unchecked_plan"] >= 1
 
     def test_missing_dod_exits_nonzero(self, tmp_path: Path) -> None:
-        loops_tmp = tmp_path / ".loops" / "tmp"
-        loops_tmp.mkdir(parents=True, exist_ok=True)
+        run_dir = _setup_run_dir(tmp_path)
         # Only create plan, not DoD
-        (loops_tmp / "general-task-plan.md").write_text(_ALL_DONE_PLAN)
-        script = _load_count_done_script()
+        (run_dir / "plan.md").write_text(_ALL_DONE_PLAN)
+        script = _load_count_done_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode != 0, "Script must exit non-zero when DoD file is missing"
 
@@ -834,8 +858,8 @@ class TestCountDoneShellScript:
 ## Sample Verification
 - [ ] Tests pass: FAILED — pytest returned exit 1
 """
-        _setup_dod_plan(tmp_path, dod_content=dod_with_failed, plan_content=_ALL_DONE_PLAN)
-        script = _load_count_done_script()
+        run_dir = _setup_dod_plan(tmp_path, dod_content=dod_with_failed, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_done_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -856,8 +880,8 @@ class TestENH1676PartialDoDThreshold:
         assert "hard_criteria_tags" in ctx, "context must define hard_criteria_tags"
 
     def test_hard_criteria_unchecked_blocks_when_plan_done(self, tmp_path: Path) -> None:
-        _setup_dod_plan(tmp_path, dod_content=_HARD_UNCHECKED_DOD, plan_content=_ALL_DONE_PLAN)
-        script = _load_count_done_script()
+        run_dir = _setup_dod_plan(tmp_path, dod_content=_HARD_UNCHECKED_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_done_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -867,8 +891,8 @@ class TestENH1676PartialDoDThreshold:
         assert data["total"] > 0, "unmet hard criterion must block routing to done"
 
     def test_all_hard_done_routes_done(self, tmp_path: Path) -> None:
-        _setup_dod_plan(tmp_path, dod_content=_ALL_DONE_DOD, plan_content=_ALL_DONE_PLAN)
-        script = _load_count_done_script()
+        run_dir = _setup_dod_plan(tmp_path, dod_content=_ALL_DONE_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_done_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -881,12 +905,12 @@ class TestENH1676PartialDoDThreshold:
         self, tmp_path: Path
     ) -> None:
         # 19 of 20 criteria checked → 95% pass rate == min_pass_rate; soft criterion is non-blocking.
-        _setup_dod_plan(
+        run_dir = _setup_dod_plan(
             tmp_path,
             dod_content=_SOFT_UNCHECKED_PASS_RATE_OK_DOD,
             plan_content=_ALL_DONE_PLAN,
         )
-        script = _load_count_done_script()
+        script = _load_count_done_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -902,11 +926,14 @@ class TestENH1676PartialDoDThreshold:
 # ---------------------------------------------------------------------------
 
 
-def _load_count_final_script() -> str:
+def _load_count_final_script(run_dir: Path | None = None) -> str:
     """Extract the shell action from count_final."""
     with open(LOOP_FILE) as f:
         data = yaml.safe_load(f)
-    return data["states"]["count_final"]["action"]
+    script = data["states"]["count_final"]["action"]
+    if run_dir is not None:
+        script = script.replace("${context.run_dir}", str(run_dir))
+    return script
 
 
 class TestChange8FinalVerifyGate:
@@ -926,7 +953,7 @@ class TestChange8FinalVerifyGate:
 
     def test_final_verify_action_references_dod_file(self, raw_data: dict) -> None:
         action = raw_data["states"]["final_verify"]["action"]
-        assert "general-task-dod.md" in action
+        assert "dod.md" in action
 
     def test_final_verify_action_has_final_verification_section(self, raw_data: dict) -> None:
         action = raw_data["states"]["final_verify"]["action"]
@@ -999,8 +1026,8 @@ class TestCountFinalShellScript:
     """Shell execution tests for the count_final action (ENH-1681)."""
 
     def test_clean_final_verification_emits_zero_failed(self, tmp_path: Path) -> None:
-        _setup_dod_plan(tmp_path, dod_content=_CLEAN_FINAL_DOD, plan_content=_ALL_DONE_PLAN)
-        script = _load_count_final_script()
+        run_dir = _setup_dod_plan(tmp_path, dod_content=_CLEAN_FINAL_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_final_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -1009,8 +1036,10 @@ class TestCountFinalShellScript:
         assert data["failed_finals"] == 0
 
     def test_one_failed_entry_emits_nonzero(self, tmp_path: Path) -> None:
-        _setup_dod_plan(tmp_path, dod_content=_ONE_FAILED_FINAL_DOD, plan_content=_ALL_DONE_PLAN)
-        script = _load_count_final_script()
+        run_dir = _setup_dod_plan(
+            tmp_path, dod_content=_ONE_FAILED_FINAL_DOD, plan_content=_ALL_DONE_PLAN
+        )
+        script = _load_count_final_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -1020,8 +1049,10 @@ class TestCountFinalShellScript:
 
     def test_two_sections_only_counts_most_recent(self, tmp_path: Path) -> None:
         # Two accumulated ## Final Verification sections; only the last one is clean.
-        _setup_dod_plan(tmp_path, dod_content=_TWO_SECTIONS_FINAL_DOD, plan_content=_ALL_DONE_PLAN)
-        script = _load_count_final_script()
+        run_dir = _setup_dod_plan(
+            tmp_path, dod_content=_TWO_SECTIONS_FINAL_DOD, plan_content=_ALL_DONE_PLAN
+        )
+        script = _load_count_final_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -1032,9 +1063,8 @@ class TestCountFinalShellScript:
         )
 
     def test_missing_dod_exits_nonzero(self, tmp_path: Path) -> None:
-        loops_tmp = tmp_path / ".loops" / "tmp"
-        loops_tmp.mkdir(parents=True, exist_ok=True)
-        script = _load_count_final_script()
+        run_dir = _setup_run_dir(tmp_path)
+        script = _load_count_final_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode != 0, "Script must exit non-zero when DoD file is missing"
 
@@ -1050,15 +1080,15 @@ class TestENH1631SummarizePartial:
 
     def test_summarize_partial_action_references_dod_artifact(self, raw_data: dict) -> None:
         action = raw_data["states"]["summarize_partial"].get("action", "")
-        assert "general-task-dod.md" in action
+        assert "dod.md" in action
 
     def test_summarize_partial_action_references_plan_artifact(self, raw_data: dict) -> None:
         action = raw_data["states"]["summarize_partial"].get("action", "")
-        assert "general-task-plan.md" in action
+        assert "plan.md" in action
 
     def test_summarize_partial_action_references_summary_artifact(self, raw_data: dict) -> None:
         action = raw_data["states"]["summarize_partial"].get("action", "")
-        assert "general-task-summary.md" in action
+        assert "summary.md" in action
 
     def test_summarize_partial_routes_to_done(self, raw_data: dict) -> None:
         state = raw_data["states"]["summarize_partial"]
@@ -1078,4 +1108,114 @@ class TestBUG1724TimeoutProtection:
         assert raw_data["states"]["final_verify"].get("timeout", 0) > 0, (
             "final_verify must have an explicit per-state timeout so it is not silently "
             "skipped when default_timeout is the only protection"
+        )
+
+
+# ---------------------------------------------------------------------------
+# BUG-1960: cross-run state corruption fixes
+# ---------------------------------------------------------------------------
+
+
+class TestResumeCheckBUG1960:
+    """BUG-1960: resume_check detects stale/corrupt state from prior runs."""
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
+        script = _load_state_script("resume_check")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${context.input_hash}", "abc123def456")
+        return _bash(script, cwd=tmp_path)
+
+    def test_checkpoint_without_current_step_emits_resume_clean(
+        self, tmp_path: Path
+    ) -> None:
+        """Fix 2: checkpoint exists but current-step.txt is missing → RESUME_CLEAN."""
+        run_dir = _setup_run_dir(tmp_path)
+        checkpoint = run_dir / "checkpoint.json"
+        checkpoint.write_text(
+            '{"in_flight_step":"- [ ] Step 1: write code",'
+            '"timestamp":"2026-01-01T00:00:00Z",'
+            '"task_hash":"abc123def456"}'
+        )
+        # current-step.txt intentionally NOT created
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "RESUME_CLEAN" in result.stdout
+        assert not checkpoint.exists(), (
+            "resume_check must delete checkpoint when current-step.txt is missing"
+        )
+
+    def test_checkpoint_task_hash_mismatch_emits_resume_clean(
+        self, tmp_path: Path
+    ) -> None:
+        """Fix 3: checkpoint from a different task → RESUME_CLEAN."""
+        run_dir = _setup_run_dir(tmp_path)
+        checkpoint = run_dir / "checkpoint.json"
+        checkpoint.write_text(
+            '{"in_flight_step":"- [ ] Step 1: write code",'
+            '"timestamp":"2026-01-01T00:00:00Z",'
+            '"task_hash":"different_task_hash"}'
+        )
+        (run_dir / "current-step.txt").write_text("- [ ] Step 1: write code\n")
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "RESUME_CLEAN" in result.stdout
+        assert not checkpoint.exists(), (
+            "resume_check must discard checkpoint when task_hash doesn't match"
+        )
+
+    def test_checkpoint_no_hash_field_skips_hash_check(
+        self, tmp_path: Path
+    ) -> None:
+        """Backward compat: checkpoint without task_hash field skips the check."""
+        run_dir = _setup_run_dir(tmp_path)
+        checkpoint = run_dir / "checkpoint.json"
+        checkpoint.write_text(
+            '{"in_flight_step":"- [ ] Step 1: write code",'
+            '"timestamp":"2026-01-01T00:00:00Z"}'
+        )
+        (run_dir / "current-step.txt").write_text("- [ ] Step 1: write code\n")
+        (run_dir / "last-files.txt").write_text("")
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        # Without hash, falls through to last-files check — empty last-files → RESUME_CLEAN
+        assert "RESUME_CLEAN" in result.stdout or "RESUME_NONE" in result.stdout
+
+
+class TestSelectStepBUG1960:
+    """BUG-1960: select_step writes task_hash to checkpoint for cross-run detection."""
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
+        script = _load_state_script("select_step")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${context.input_hash}", "abc123def456")
+        return _bash(script, cwd=tmp_path)
+
+    def test_checkpoint_contains_task_hash(self, tmp_path: Path) -> None:
+        """Fix 3: checkpoint JSON includes task_hash field."""
+        import json
+
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        self._run(tmp_path)
+        checkpoint = run_dir / "checkpoint.json"
+        assert checkpoint.exists()
+        data = json.loads(checkpoint.read_text())
+        assert "task_hash" in data, (
+            "select_step checkpoint must include task_hash for cross-run detection"
+        )
+        assert data["task_hash"] == "abc123def456"
+
+
+class TestCheckDoneErrorRoutingBUG1960:
+    """BUG-1960: check_done.on_error routes to select_step (recoverable) not diagnose."""
+
+    def test_check_done_on_error_routes_to_select_step(self, raw_data: dict) -> None:
+        """Fix 4: on_error: select_step makes missing-capture errors recoverable."""
+        check_done = raw_data["states"]["check_done"]
+        assert check_done["on_error"] == "select_step", (
+            "check_done.on_error must route to select_step so interpolation errors "
+            "on ${captured.selected_step.output} recover gracefully instead of "
+            "terminating the loop"
         )

@@ -17,8 +17,8 @@ circuit:
     window: 3
     on_repeated_failure: diagnose
     exclude_paths:
-      - "${env.PWD}/.loops/tmp/general-task-plan.md"
-      - "${env.PWD}/.loops/tmp/general-task-dod.md"
+      - "${context.run_dir}/plan.md"
+      - "${context.run_dir}/dod.md"
 
 states:
   define_done:
@@ -26,7 +26,7 @@ states:
       Your task is: ${context.input}
 
       Before planning or executing anything, write a concrete Definition of Done
-      to ${env.PWD}/.loops/tmp/general-task-dod.md in this format:
+      to ${context.run_dir}/dod.md in this format:
       ```
       # Definition of Done
       ## Verification Criteria
@@ -45,7 +45,7 @@ states:
       or reading outputs.
 
       Do NOT write DoD criteria that target this loop's own internal tracking artifacts
-      (${env.PWD}/.loops/tmp/general-task-plan.md, ${env.PWD}/.loops/tmp/general-task-dod.md)
+      (${context.run_dir}/plan.md, ${context.run_dir}/dod.md)
       — e.g. "duplicate plan steps are struck through" or "the plan file has no pending
       steps." Those files are loop bookkeeping, not task deliverables; criteria about them
       are unsatisfiable by the worker (which is forbidden to edit them) and make the loop
@@ -70,7 +70,7 @@ states:
       independently completable steps. Each step should be small enough to
       complete in a single focused session.
 
-      Write the step list to ${env.PWD}/.loops/tmp/general-task-plan.md in this format:
+      Write the step list to ${context.run_dir}/plan.md in this format:
       ```
       # Task Plan
       - [ ] Step 1: ...
@@ -84,10 +84,26 @@ states:
 
   resume_check:
     action: |
-      CHECKPOINT="${env.PWD}/.loops/tmp/general-task-checkpoint.json"
-      LAST_FILES_PATH="${env.PWD}/.loops/tmp/general-task-last-files.txt"
+      CHECKPOINT="${context.run_dir}/checkpoint.json"
+      CURRENT_STEP="${context.run_dir}/current-step.txt"
+      LAST_FILES_PATH="${context.run_dir}/last-files.txt"
       if [ ! -f "$CHECKPOINT" ]; then
         echo "RESUME_NONE"
+        exit 0
+      fi
+      # Fix 3: Reject checkpoint from a different task (task fingerprinting).
+      STORED_HASH=$(grep -o '"task_hash":"[^"]*"' "$CHECKPOINT" 2>/dev/null | sed 's/"task_hash":"//;s/"//')
+      if [ -n "$STORED_HASH" ] && [ "${context.input_hash}" != "$STORED_HASH" ]; then
+        rm -f "$CHECKPOINT" "$CURRENT_STEP" "$LAST_FILES_PATH"
+        echo "RESUME_CLEAN"
+        exit 0
+      fi
+      # Fix 2: Inconsistent file set — checkpoint exists but current-step.txt doesn't.
+      # mark_done deletes both together; a checkpoint without its current-step.txt
+      # is a stale/corrupt artifact from a prior interrupted run.
+      if [ ! -f "$CURRENT_STEP" ]; then
+        rm -f "$CHECKPOINT"
+        echo "RESUME_CLEAN"
         exit 0
       fi
       if [ -f "$LAST_FILES_PATH" ]; then
@@ -103,7 +119,7 @@ states:
           fi
         fi
       fi
-      rm -f "$CHECKPOINT"
+      rm -f "$CHECKPOINT" "$CURRENT_STEP"
       echo "RESUME_CLEAN"
     action_type: shell
     capture: resume_check_result
@@ -117,15 +133,16 @@ states:
 
   select_step:
     action: |
-      PLAN="${env.PWD}/.loops/tmp/general-task-plan.md"
+      PLAN="${context.run_dir}/plan.md"
       STEP=$(grep -m1 '^- \[ \]' "$PLAN" || echo "")
       if [ -z "$STEP" ]; then
         echo "NO_UNCHECKED_STEPS"
         exit 0
       fi
-      echo "$STEP" > "${env.PWD}/.loops/tmp/general-task-current-step.txt"
-      CHECKPOINT="${env.PWD}/.loops/tmp/general-task-checkpoint.json"
-      printf '{"in_flight_step":"%s","timestamp":"%s"}\n' "$STEP" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$CHECKPOINT"
+      echo "$STEP" > "${context.run_dir}/current-step.txt"
+      CHECKPOINT="${context.run_dir}/checkpoint.json"
+      printf '{"in_flight_step":"%s","timestamp":"%s","task_hash":"%s"}\n' \
+        "$STEP" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${context.input_hash}" > "$CHECKPOINT"
       echo "SELECTED_STEP: $STEP"
     action_type: shell
     capture: selected_step
@@ -141,14 +158,14 @@ states:
     action: |
       Your task is: ${context.input}
 
-      The step you must complete is in ${env.PWD}/.loops/tmp/general-task-current-step.txt.
+      The step you must complete is in ${context.run_dir}/current-step.txt.
       Read that file to learn exactly which step to implement.
 
-      Implement ONLY that step. Do NOT modify ${env.PWD}/.loops/tmp/general-task-plan.md
-      or ${env.PWD}/.loops/tmp/general-task-dod.md.
+      Implement ONLY that step. Do NOT modify ${context.run_dir}/plan.md
+      or ${context.run_dir}/dod.md.
 
       After completing the step, write exactly one line to
-      ${env.PWD}/.loops/tmp/general-task-last-files.txt:
+      ${context.run_dir}/last-files.txt:
       LAST_FILES: <space-separated list of files you created or modified>
     action_type: prompt
     capture: work_result
@@ -160,7 +177,7 @@ states:
 
   verify_step:
     action: |
-      FILES=$(grep 'LAST_FILES:' "${env.PWD}/.loops/tmp/general-task-last-files.txt" 2>/dev/null | sed 's/LAST_FILES:[[:space:]]*//')
+      FILES=$(grep 'LAST_FILES:' "${context.run_dir}/last-files.txt" 2>/dev/null | sed 's/LAST_FILES:[[:space:]]*//')
       if [ -z "$FILES" ]; then
         echo "VERIFY_PASS"
         exit 0
@@ -182,8 +199,8 @@ states:
 
   mark_done:
     action: |
-      PLAN="${env.PWD}/.loops/tmp/general-task-plan.md"
-      STEP_FILE="${env.PWD}/.loops/tmp/general-task-current-step.txt"
+      PLAN="${context.run_dir}/plan.md"
+      STEP_FILE="${context.run_dir}/current-step.txt"
       # Mark the step that select_step actually selected (bound to current-step.txt),
       # NOT just the first unchecked line. This decouples marking from selection order
       # so the two states can never desync (BUG-1766). $0==target is an exact string
@@ -195,7 +212,7 @@ states:
         awk 'found==0 && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
       fi
       rm -f "$STEP_FILE"
-      rm -f "${env.PWD}/.loops/tmp/general-task-checkpoint.json"
+      rm -f "${context.run_dir}/checkpoint.json"
     action_type: shell
     next: check_done
     on_error: diagnose
@@ -215,8 +232,8 @@ states:
       ---END WORK RESULT---
 
       Read both files:
-      - ${env.PWD}/.loops/tmp/general-task-dod.md — Definition of Done (criteria)
-      - ${env.PWD}/.loops/tmp/general-task-plan.md — Task Plan (steps)
+      - ${context.run_dir}/dod.md — Definition of Done (criteria)
+      - ${context.run_dir}/plan.md — Task Plan (steps)
 
       Step 1 — Plan-vs-DoD coverage reconciliation:
       For EVERY plan step, confirm at least one DoD criterion covers it. If a plan step
@@ -252,12 +269,12 @@ states:
       section) and the plan file to stdout so the evaluator can confirm completeness.
     action_type: prompt
     next: count_done
-    on_error: diagnose
+    on_error: select_step
 
   count_done:
     action: |
-      DOD=".loops/tmp/general-task-dod.md"
-      PLAN=".loops/tmp/general-task-plan.md"
+      DOD="${context.run_dir}/dod.md"
+      PLAN="${context.run_dir}/plan.md"
       if [ ! -f "$DOD" ] || [ ! -f "$PLAN" ]; then
         echo '{"error": "missing artifact"}'
         exit 1
@@ -324,7 +341,7 @@ states:
     action: |
       Your task is: ${context.input}
 
-      Read ${env.PWD}/.loops/tmp/general-task-dod.md.
+      Read ${context.run_dir}/dod.md.
 
       For EVERY criterion in the Verification Criteria section, independently
       re-verify it now by reading files / running commands / checking filesystem
@@ -349,7 +366,7 @@ states:
 
   count_final:
     action: |
-      DOD=".loops/tmp/general-task-dod.md"
+      DOD="${context.run_dir}/dod.md"
       if [ ! -f "$DOD" ]; then
         echo '{"error": "missing artifact"}'
         exit 1
@@ -376,8 +393,8 @@ states:
       Your task is: ${context.input}
 
       Read both files:
-      - ${env.PWD}/.loops/tmp/general-task-plan.md — Task Plan (steps)
-      - ${env.PWD}/.loops/tmp/general-task-dod.md — Definition of Done (criteria)
+      - ${context.run_dir}/plan.md — Task Plan (steps)
+      - ${context.run_dir}/dod.md — Definition of Done (criteria)
 
       Read the plan file to determine which steps are checked vs unchecked. At least
       one DoD criterion or plan step remains unresolved.
@@ -404,10 +421,10 @@ states:
       The general-task loop has reached its iteration limit before all
       Definition of Done criteria were satisfied.
 
-      Read ${env.PWD}/.loops/tmp/general-task-dod.md and
-      ${env.PWD}/.loops/tmp/general-task-plan.md (if they exist).
+      Read ${context.run_dir}/dod.md and
+      ${context.run_dir}/plan.md (if they exist).
       Write a one-paragraph summary to
-      ${env.PWD}/.loops/tmp/general-task-summary.md covering:
+      ${context.run_dir}/summary.md covering:
       (1) what was accomplished (list completed DoD criteria),
       (2) which DoD criteria remain unmet,
       (3) recommended next actions for a human operator.
@@ -422,8 +439,8 @@ states:
       The general-task loop has terminated with an unrecoverable failure.
 
       Diagnose what happened:
-      - If ${env.PWD}/.loops/tmp/general-task-plan.md exists, read it and summarize completed steps.
-      - If ${env.PWD}/.loops/tmp/general-task-dod.md exists, report which done-criteria were met.
+      - If ${context.run_dir}/plan.md exists, read it and summarize completed steps.
+      - If ${context.run_dir}/dod.md exists, report which done-criteria were met.
       - Identify the most likely failure cause and which state failed (define_done, plan, resume_check, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, count_final, continue_work, or summarize_partial).
 
       Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the task description.
