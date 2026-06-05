@@ -152,6 +152,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Full-backfill gap**: `backfill()` in `session_store.py:1503` defaults `jsonl_files=None`, and the guard at line 1535 (`if jsonl_files:`) skips JSONL backfill entirely when `None`. So even full backfill (no `--since`) produces zero `message_events`/`sessions` for non-Claude-Code hosts
 - **Host naming verified consistent**: Re-verification on 2026-06-04 confirmed `_HOST_RUNNER_REGISTRY` keys (`"claude-code"`, `"codex"`, `"opencode"`, `"pi"`), `LL_HOOK_HOST` adapter values (`"codex"`, `"opencode"`), and `resolve_host().name` all use identical string conventions. The dispatcher at `hooks/__init__.py:125` defaults `LL_HOOK_HOST` to `"claude-code"` (not `"claude"`). The earlier concern about a `"claude"`/`"claude-code"` mismatch was unfounded — no such discrepancy exists in the codebase. The `get_project_folder()` host parameter should use these registry names for consistency with `resolve_host().name`.
 - **Failure table**: 16 distinct call sites fail silently for non-Claude-Code hosts — including LCM summary DAG leaf nodes (`_compact_session_conn()` at `session_store.py:1323` queries `message_events` which is empty), correction mining (`mine_corrections_from_messages()` at `session_store.py:1099`), and project digest (all SECTION_PROVIDERS consuming session data)
+- **2026-06-04 re-verification pass (pass 4)**: All critical line numbers re-verified against current code — no drift since prior passes. `get_project_folder()` at `user_messages.py:355`, `_config_candidates()` at `config/core.py:74`, `del event` at `session_start.py:80`, `_run_backfill()` at `session_start.py:127`, `discover_all_projects()` at `cli/logs.py:126`, `resolve_host()` at `host_runner.py:751`, `append_session_log_entry()` at `session_log.py:86`, `get_current_session_jsonl()` at `session_log.py:63` — all confirmed.
+- **OpenCode `HostRunner` is a stub**: `OpenCodeRunner` at `host_runner.py:589-590` raises `HostNotConfigured` on all `build_*` methods. This means `get_project_folder(host="opencode")` can work for session directory probing, but `resolve_host()` with `LL_HOOK_HOST=opencode` cannot execute commands. Implementation step 5 should handle this: `ll-logs discover --host opencode` and `ll-messages extract --host opencode` should probe the OpenCode session directory regardless of whether the runner can exec. The session-discovery layer and the command-execution layer have different host-support thresholds — they should not be coupled.
+- **`opencode` absent from `_PROBE_ORDER`**: `_PROBE_ORDER` at `host_runner.py:736-740` lists only `claude-code`, `codex`, `pi`. Binary-probe auto-detection (`shutil.which`) will never resolve `opencode`. For `--host` auto-detection in CLI tools (`ll-session backfill`, `ll-logs discover`, `ll-messages extract`), the detection chain should be: `--host` flag → `LL_HOOK_HOST` env → `orchestration.host_cli` config → default `"claude-code"`. Do not use `resolve_host()` for CLI auto-detection — it would raise `HostNotConfigured` for opencode projects with no host binary on PATH, crashing the CLI instead of gracefully falling back.
+- **No existing `--host` CLI flag precedent**: Searched all of `scripts/little_loops/cli/` — zero `add_argument("--host")` calls exist. ENH-1945 establishes the pattern. The closest analog is `ll-doctor` at `cli/doctor.py:140-141` which auto-detects via `resolve_host()` + `apply_host_cli_from_config()` but does not expose a `--host` flag. The new `--host` flag should use `choices=["claude-code", "codex", "opencode", "pi"]` and `default=None` (meaning auto-detect).
+- **Existing test mocks confirmed safe**: `patch("little_loops.session_log.get_project_folder", return_value=...)` and similar mocks replace the entire function object — adding `*, host: str | None = None` to the real signature does not affect any existing test. The lambda pattern `monkeypatch.setattr(um, "get_project_folder", lambda *a, **kw: in_tmp)` at `test_hook_session_start.py:333` already uses `*a, **kw` to absorb any future parameters. No test breakage expected from the signature change.
 
 ### Tests
 
@@ -189,6 +194,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `config-schema.json:1173` — `hooks.host` key is consumed for `--host` auto-detection (new consumption of existing key; no schema change needed)
+
+### Host Detection Design (added by `/ll:refine-issue` pass 4)
+
+_These design constraints emerged from fresh codebase analysis and constrain the `--host` auto-detection implementation:_
+
+**Do NOT use `resolve_host()` for CLI auto-detection.** `resolve_host()` at `host_runner.py:751` falls through to a binary probe (`shutil.which`) that only covers `claude-code`, `codex`, `pi` — `opencode` is absent from `_PROBE_ORDER` at line 736-740. If `LL_HOOK_HOST` is unset and no host binary is on PATH, `resolve_host()` raises `HostNotConfigured`, crashing the CLI. Session discovery tools should degrade gracefully (fall back to `"claude-code"` default) rather than crashing.
+
+**Recommended detection chain for `--host` CLI flag:**
+
+```
+1. Explicit --host flag value (if provided)
+2. LL_HOOK_HOST env var (set by adapters)
+3. orchestration.host_cli config key (from ll-config.json)
+4. Default: "claude-code"
+```
+
+This is a simpler chain than `resolve_host()` — it skips the binary probe entirely. The binary probe is appropriate for command execution (where you need a real binary) but not for session directory discovery (where you're just probing a filesystem path). A user on a machine with only Codex installed, running `ll-session backfill`, should get Codex session discovery from `LL_HOOK_HOST=codex` (set by the adapter) — not a crash because `claude` isn't on PATH.
+
+**OpenCode stub caveat:** `OpenCodeRunner` at `host_runner.py:589-590` raises `HostNotConfigured` on all `build_*` methods. Session discovery for `opencode` should work independently — probing the OpenCode session directory does not require the runner to execute commands. The session-discovery layer and the command-execution layer have different host-support thresholds and must not be coupled.
 
 ## Implementation Steps
 
@@ -246,7 +270,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-04 (re-evaluated 2026-06-04T23:55:00)_
+_Added by `/ll:confidence-check` on 2026-06-04 (re-evaluated 2026-06-04T23:55:00, re-evaluated 2026-06-05T02:45:00)_
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 68/100 → MODERATE
@@ -258,6 +282,7 @@ _Added by `/ll:confidence-check` on 2026-06-04 (re-evaluated 2026-06-04T23:55:00
 _Note: Prior risk factor about host naming inconsistency removed — re-verification confirmed `_HOST_RUNNER_REGISTRY` keys and `LL_HOOK_HOST` defaults use identical `"claude-code"` convention; no discrepancy exists._
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-05T02:31:21 - `f09b04f7-6149-4dd9-8ab2-cba36c640b61.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:50:47 - `849453dc-052d-4d7f-89cc-55354ccfde5a.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:50:31 - `8826ca14-a9b9-4717-b939-4425b44d5d7c.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:55:00 - `2d527f2f-a26e-4fef-a416-cbfeb70ef7af.jsonl`
@@ -268,6 +293,7 @@ _Note: Prior risk factor about host naming inconsistency removed — re-verifica
 - `/ll:refine-issue` - 2026-06-04T23:12:24 - `51a4f1e1-9f20-480f-843f-156ec1efd738.jsonl`
 
 - `/ll:capture-issue` - 2026-06-04T19:18:32Z - `15020717-6ee7-4d89-bd61-d70602429425.jsonl`
+- `/ll:confidence-check` - 2026-06-05T02:45:00 - `d3831c55-0b33-4127-9ff5-55a6e3c393cb.jsonl`
 
 ---
 

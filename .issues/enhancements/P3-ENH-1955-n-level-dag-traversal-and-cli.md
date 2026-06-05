@@ -181,7 +181,25 @@ Chose a recursive CTE over iterative Python loops because:
 - ✓ Ruff linting: clean
 - ✓ MyPy type checking: clean
 
+### Codebase Research Verification
+
+_Added by `/ll:refine-issue --auto --full-rewrite` — 2026-06-04:_
+
+- ✓ **Recursive CTE confirmed**: Both `ll_expand()` (`history_reader.py:712`) and `ll_grep()` (`history_reader.py:628`) use `WITH RECURSIVE descendants` with identical CTE shape — base case `SELECT id, kind FROM summary_nodes WHERE id = ?1`, recursive step `JOIN descendants d ON sn.parent_id = d.id`. Single query path handles leaf and condensed nodes uniformly at any depth.
+- ✓ **`ll-history root` confirmed**: `cli/history.py:310-369` — subcommand parser at lines 204-221, root-finding query `WHERE session_id IS NULL AND parent_id IS NULL ORDER BY level DESC LIMIT 1`, integration with `ll_describe()` and `ll_expand()` for `--expand` support.
+- ✓ **`level=` in describe output**: `cli/session.py:374` includes `level={node.level}` in text output; `SummaryNode` dataclass (`history_reader.py:107-121`) includes `level: int | None` field populated from schema v12 `level` column.
+- ✓ **Schema v12 confirmed**: `session_store.py:362-373` — `level INTEGER DEFAULT 0` column, `idx_summary_nodes_cross_dedup` index on `(kind, session_id)` where `kind='condensed' AND session_id IS NULL`.
+- ✓ **Cross-session condensation loop**: `session_store.py:1449-1561` — recursive level-by-level condensation, terminates when `len(condensed) <= 1` or `max_level` reached.
+- ✓ **Config gating**: `CompactionConfig` (`config/features.py:730-752`) with `cross_session_enabled: bool = True` and `max_level: int | None = None`; read from `config/core.py:669-670`; schema in `config-schema.json:1531-1536`.
+- ✓ **Test coverage**: 5 new tests — 3 in `test_history_reader.py:1016-1112` (`TestSummaryDagRetrieval`: root expansion, intermediate node expansion, multi-level grep), 2 in `test_ll_session.py:701-814` (`TestGrepExpandDescribe`: CLI expand/grep with multi-level DAG).
+- ✓ **Caller verification**: DAG `ll_expand`/`ll_grep` callers confirmed as `cli/session.py` and `cli/history.py` only (other `ll_expand` references in `action.py`, `skill_expander.py` etc. are `skill_expander` functions, not the DAG traversal).
+- ✓ **Documentation**: `CONFIGURATION.md:1160` updated to "N-level DAG traversal"; `CLI.md:1501` documents `ll-history root`; `CONTRIBUTING.md:246` updated to "v1–v12 migrations".
+- ℹ Recursive CTE is the first and only SQL-based graph traversal in the codebase; all other tree traversal is Python-based (Kahn's algorithm at `dependency_graph.py:272`, DFS cycle detection at `dependency_graph.py:326`).
+
 ## Session Log
+- `/ll:refine-issue` - 2026-06-05T02:12:07 - `af691ccc-4699-4ad0-853c-be40494ae189.jsonl`
+- `/ll:refine-issue` - 2026-06-05T02:11:09 - `/Users/brennon/.claude/sessions/40098.json`
+- `/ll:refine-issue` - 2026-06-05T02:10:52 - `5d2a3fb2-97a0-4156-813b-1cc2ce1cd604.jsonl`
 - `/ll:format-issue` - 2026-06-05T02:04:08 - `9f7cb561-1b94-4485-bab6-c7b6f0688f94.jsonl`
 - `/ll:manage-issue` - 2026-06-05T01:50:00Z - implementation and verification session
 - `/ll:issue-size-review` - 2026-06-04T19:28:00Z - `8b66735f-5337-46b3-ba3c-44648e5faca2.jsonl`
