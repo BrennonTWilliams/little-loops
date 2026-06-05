@@ -245,6 +245,8 @@ def mark_stale(target_slug: str) -> None: ...
 `enhancement`, `autonomy`, `learning-tests`, `captured`
 
 ## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:34 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
 - `/ll:refine-issue` - 2026-05-16T21:36:45 - `e1da9d61-83f1-4718-91ec-4ed0e57454c9.jsonl`
@@ -276,3 +278,13 @@ def mark_stale(target_slug: str) -> None: ...
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-31): This issue's "registry" is the `.ll/learning-tests/` directory of markdown proof records for **external API and system behavior** — proof-of-behavior documents created by the `ll:explore-api` skill, queried via `ll-learning-tests`. This is entirely distinct from FEAT-917's "Extension Registry," which covers third-party installable PyPI packages (`little-loops-ext-*`) discoverable via `ll extensions`. Do not conflate the two: learning-tests records live in `.ll/learning-tests/<slug>.md` (local, project-scoped, markdown); extension manifests live in `pyproject.toml` metadata (published, PyPI-scoped, TOML). Neither registry's CLI commands, storage paths, nor data models should be shared with the other. Related: FEAT-917.
+
+## Verification Notes (2026-06-05)
+
+- **Decomposed children appear IMPLEMENTED**: `learning_tests.py`, `cli/learning_tests.py`,
+  `skills/explore-api/SKILL.md`, `LearningTestsConfig` all exist in the codebase. The parent
+  issue was decomposed into FEAT-1285/1286/1287 which were implemented.
+- **Stale line references**: `frontmatter.py` refs drifted (L18→L29, L110→L190,
+  `strip_frontmatter` renamed to inline logic at L180-187). `issue_parser.py` refs drifted
+  (IssueInfo L202→L211, ProductImpact L156→L165).
+- **Recommendation**: Consider closing parent as done, or updating to reflect post-decomposition state.

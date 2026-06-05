@@ -95,6 +95,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Integration Map references non-existent paths: `scripts/little_loops/ll_sprint/sprint_loader.py` and `scripts/little_loops/ll_sprint/runner.py`. Sprint runner code is actually at `scripts/little_loops/sprint.py` and `scripts/little_loops/cli/sprint/run.py`. Correct these before implementation.
 
 ## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:55:12 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
@@ -120,3 +122,9 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): Shared integration test requirement with FEAT-1808. Both issues must include a test that verifies `loop-router`'s catalog discovery never returns both `loop-composer` and `goal-cluster` as candidates for the same input: single-goal input must route to composer only; multi-goal input must route to cluster only. Add to FEAT-1810's test plan: `test_loop_router_catalog_exclusivity` in `scripts/tests/test_goal_cluster.py`.
 
 **Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): After EPIC-1811 orchestration loops ship, ensure `goal-cluster`'s `load_goals` input shapes and batch API are general enough that domain-specific loops (FEAT-1806 market-strategy, future analysis loops) can be re-expressed as cluster input batches. The cluster's dedup/batching + shared-context propagation is the orchestration-layer primitive most likely to absorb standalone domain loops. Design the `goal_text` schema and `hints` mechanism with this forward-compatibility in mind.
+
+## Verification Notes (2026-06-05)
+
+- **Path correction from prior verification applied**: `ll_sprint/` → `sprint.py` and `cli/sprint/run.py` is now accurate.
+- `sprint.py` exists at correct path.
+- `goal-cluster.yaml` does not exist (expected).

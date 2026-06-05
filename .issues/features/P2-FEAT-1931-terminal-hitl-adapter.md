@@ -102,3 +102,14 @@ state, so it only needs to render, not resolve variables.
 ## Status
 
 open
+
+## Verification Notes (2026-06-05)
+
+- **Line drift**: References `executor.py:1647 _interruptible_sleep` — now at L1735 (drift +88).
+- Proposed file `scripts/little_loops/fsm/adapters/terminal_adapter.py` does not exist (expected).
+- Created recently; line number from parent EPIC-1929/related FEAT-1794 needs updating.
+
+
+## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`

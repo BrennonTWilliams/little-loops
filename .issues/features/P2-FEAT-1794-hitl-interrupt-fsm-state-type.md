@@ -323,6 +323,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Line numbers have drifted in executor.py: `_execute_state` is now at L818 (issue says 780); `_action_mode` is at L1390 (says 1330); `_emit` is at L1611 (says 1523); `_interruptible_sleep` is at L1735 (says 1647). Update Integration Map line references before implementing.
 
 ## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:53 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
@@ -339,3 +341,15 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): The Stop hook infrastructure introduced by FEAT-1680 (session-end sweep of stale cross-issue status refs) is an independent path from the HITL event bus path in this issue. FEAT-1680 registers a Stop hook in `hooks/hooks.json` for sweeping stale prose references; this issue adds a blocking `human_approval` FSM state that emits `LLEvent` messages via the existing event bus. The two hooks.json registrations target different events (Stop vs. in-loop FSM execution) and touch entirely different data. No coordination between FEAT-1680 and FEAT-1794 is required at implementation time.
+
+## Verification Notes (2026-06-05)
+
+- **Extensive line drift** (prior verification 2026-06-03 flagged, still uncorrected):
+  - `executor.py:_execute_state` at L818 (issue says 780, drift +38)
+  - `executor.py:_action_mode` at L1390 (issue says 1330, drift +60)
+  - `executor.py:_emit` at L1611 (issue says 1523, drift +88)
+  - `executor.py:_interruptible_sleep` at L1735 (issue says 1647, drift +88)
+  - `schema.py:extra_routes` at L447 (issue says 389, drift +58)
+  - `schema.py:_known_on_keys` at L549 (issue says ~485, drift +64)
+- Integration Map line numbers must be updated before implementation.
+- `HostCapabilities` at host_runner.py:74 — CORRECT.

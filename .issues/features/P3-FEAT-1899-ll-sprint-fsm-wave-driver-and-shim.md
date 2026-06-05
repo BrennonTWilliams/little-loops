@@ -158,9 +158,18 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `ll-sprint execute` shim follows the canonical thin-shim pattern established by FEAT-1902 (`<cli> → ll-loop run <loop>`). Coordinate shim implementation approach with FEAT-1902 to avoid divergent patterns.
 
 ## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:54:00 - `2f12f6ef-94a2-4725-933e-626b1ef4cdff.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:47:17 - `6dbe3977-0d8f-47aa-b338-9f0b66da4be5.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:23:35 - `1f79d2d5-df37-42dc-a0f8-73e20acc795b.jsonl`
 - `/ll:scope-epic` - 2026-06-03T19:12:39Z - `87e9f36b-36c2-4e9e-a0c8-3a57aa45d1f5.jsonl`
+
+## Verification Notes (2026-06-05)
+
+- **Path correction needed**: References `scripts/little_loops/parallel_orchestrator.py` (standalone file)
+  but `ParallelOrchestrator` is at `scripts/little_loops/parallel/orchestrator.py` (subpackage).
+- `sprint.py` and `cli/sprint/run.py` — CORRECT.
+- `loops/ll-sprint.yaml` does not exist (expected).

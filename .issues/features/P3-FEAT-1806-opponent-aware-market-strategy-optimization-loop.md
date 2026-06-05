@@ -253,6 +253,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Integration Map had incorrect paths: `loops/builtin/` does not exist (correct path is `scripts/little_loops/loops/`), and `scripts/little_loops/ll_loop.py` does not exist (loop discovery is in `scripts/little_loops/cli/loop/_helpers.py` via `get_builtin_loops_dir()`). Both paths have been corrected. Blocked by FEAT-1808 which is still open.
 
 ## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:55:07 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
@@ -276,3 +278,9 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 ## Status
 
 **Open** | Created: 2026-05-29 | Priority: P3
+
+## Verification Notes (2026-06-05)
+
+- **Path correction from prior verification applied**: `loops/builtin/` → `scripts/little_loops/loops/` is now accurate.
+- `get_builtin_loops_dir()` at `_helpers.py:813` — CORRECT.
+- Blocked by FEAT-1808 (still open). No loop YAML created yet.

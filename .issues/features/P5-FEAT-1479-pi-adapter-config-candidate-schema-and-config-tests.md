@@ -217,6 +217,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Stale line numbers: CODEX_CONFIG_DIR is at config/core.py:41 (not 36); codex branch is at lines 92-93 (not 85-86). The future `PI_CONFIG_DIR` constant and `host=='pi'` branch are still absent from core.py. config-schema.json hooks.host.enum at line 1173 is still `["claude-code","opencode","codex"]` — no 'pi' entry yet.
 
 ## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T21:54:23 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:54 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
@@ -247,3 +249,12 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): The `depends_on: [FEAT-1476]` entry in this issue's frontmatter reflects an incorrect ordering — this issue's code changes (`config/core.py`, `config-schema.json`, tests) can be delivered independently and do not require FEAT-1476's documentation to land first. The dependency arrow should flow FEAT-1476 → FEAT-1479 (docs wait for code, not the reverse). Remove `depends_on: [FEAT-1476]` from the frontmatter when implementing; the doc delegations in the Integration Map section (wiring pass) already correctly point to FEAT-1476 and no frontmatter dependency is needed to enforce that split.
+
+## Verification Notes (2026-06-05)
+
+- **Line numbers still stale** from prior verification:
+  - `CODEX_CONFIG_DIR` at core.py:41 (issue says 36) — uncorrected
+  - `codex` branch at core.py:92-93 (issue says 85-86) — uncorrected
+- **config-schema.json**: `hooks.host.enum` at L1173 still `["claude-code","opencode","codex"]` —
+  missing "pi". `orchestration.host_cli.enum` at L1312 DOES include "pi" (added by FEAT-1463).
+- No `PI_CONFIG_DIR` constant added yet.

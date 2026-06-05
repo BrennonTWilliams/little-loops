@@ -66,8 +66,19 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 **Verdict: NEEDS_UPDATE** — All 5 code-level bugs confirmed still present (ENH-972 O(n) pop, ENH-974 duplicated regex, ENH-975 double-scan, ENH-976 uncompiled patterns, ENH-839 1,981-line layout.py). None of the child issues have a `status:` frontmatter field; they're open by default but should have explicit status.
 
 ## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:52 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+
+## Verification Notes (2026-06-05)
+
+- **layout.py path is wrong**: Line 33 and Integration Map line 49 reference
+  `scripts/little_loops/layout.py`, but the actual file is at
+  `scripts/little_loops/cli/loop/layout.py` (1,981 lines). The root `scripts/little_loops/layout.py`
+  does not exist.
+- All 6 children remain open; none have been fixed. This was also noted in prior verification.
+- ENH-1114 is listed in `relates_to` but is not described in the Scope section.

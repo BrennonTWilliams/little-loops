@@ -102,6 +102,8 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 **Verdict: NEEDS_UPDATE** — ENH-494 and ENH-977 are now done (ll-verify-skills CLI exists). ENH-1801 and ENH-1802 are also done. Still open: ENH-1617 (negative routing instructions) and ENH-1618 (consolidate audit skills); skills/audit/ meta-skill does not exist yet.
 
 ## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:37 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
@@ -112,3 +114,14 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - 4 of 8 children done: ENH-494 (500-line limit), ENH-977 (ll-verify-skills CLI), ENH-1801, ENH-1802.
 - Remaining: ENH-1617 (negative routing), ENH-1618 (audit consolidation — `skills/audit/` does not exist), BUG-1799, BUG-1800 (both `open`).
 - Body and Implementation Order sections should be updated to reflect completed foundational items (ENH-494 and ENH-977) and remaining work.
+
+## Verification Notes (2026-06-05)
+
+- **Child completion count outdated**: Prior verification notes say "4 of 8 children done"
+  (ENH-494, ENH-977, ENH-1801, ENH-1802). Current check shows **6 of 8 done**: BUG-1799 and
+  BUG-1800 have also been completed since last verification.
+- **verify_skills.py path mismatch**: Epic specifies `scripts/little_loops/cli/verify_skills.py`
+  but the actual implementation landed in `scripts/little_loops/cli/docs.py:237` as `main_verify_skills`.
+- **Test file path**: Epic specifies `scripts/tests/test_ll_verify_skills.py` but actual test
+  coverage is in `scripts/tests/test_cli_docs.py`.
+- Remaining open children: ENH-1617, ENH-1618.

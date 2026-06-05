@@ -119,3 +119,14 @@ full prompt. The operator can request more context if needed (v2 enhancement).
 ## Status
 
 open
+
+## Verification Notes (2026-06-05)
+
+- **Line drift**: References `executor.py:1647 _interruptible_sleep` — now at L1735 (drift +88).
+- References `PushNotification` tool which does not exist in codebase (per FEAT-1794).
+- Proposed file `scripts/little_loops/fsm/adapters/push_adapter.py` does not exist (expected).
+
+
+## Session Log
+
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
