@@ -150,7 +150,18 @@ little-loops. Harness's Phase 6-4 validates each skill against 8–10 should-tri
 should-NOT-trigger (near-miss) queries; this issue ports that discipline into a measurable,
 CI-enforceable check that fits little-loops' non-LLM-evaluator philosophy.
 
+
+## Verification Notes
+
+**Verdict**: VALID — 2026-06-05T21:00:23
+
+- Issue describes a planned feature/enhancement that has not yet been implemented
+- Referenced files and directories verified to exist (where applicable)
+- No claims about current code behavior are contradicted by the codebase
+- Dependency references are valid (no broken refs, missing backlinks, or cycles)
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:format-issue` - 2026-06-03T21:04:12 - `b62e3f92-2664-4793-81e7-cf8464c74fe6.jsonl`
 - `/ll:capture-issue` - 2026-06-03T20:59:38Z - `b4fa1e68-4a59-49bd-949a-5a5b7533509f.jsonl`
 

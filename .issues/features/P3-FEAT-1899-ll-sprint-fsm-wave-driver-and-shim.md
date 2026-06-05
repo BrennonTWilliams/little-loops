@@ -158,6 +158,8 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `ll-sprint execute` shim follows the canonical thin-shim pattern established by FEAT-1902 (`<cli> → ll-loop run <loop>`). Coordinate shim implementation approach with FEAT-1902 to avoid divergent patterns.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T22:34:33 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:54:00 - `2f12f6ef-94a2-4725-933e-626b1ef4cdff.jsonl`
@@ -173,3 +175,5 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
   but `ParallelOrchestrator` is at `scripts/little_loops/parallel/orchestrator.py` (subpackage).
 - `sprint.py` and `cli/sprint/run.py` — CORRECT.
 - `loops/ll-sprint.yaml` does not exist (expected).
+
+- `/ll:verify-issues` - 2026-06-05 - Feature not implemented. Body reference to `scripts/little_loops/parallel_orchestrator.py` is incorrect — `ParallelOrchestrator` lives at `scripts/little_loops/parallel/orchestrator.py`. This was flagged previously but never corrected. Fix path reference before starting.

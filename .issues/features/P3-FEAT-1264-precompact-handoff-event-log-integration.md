@@ -116,21 +116,3 @@ This issue modifies only `precompact-handoff.sh`. It does NOT modify:
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): MVP designation from 2026-05-01 audit. FEAT-1264 is the MVP for "reconstruct PreCompact summary at handoff" — the JSONL+jq path defined here. FEAT-1112's SQLite/FTS5-backed reconstruction is a future replacement that reuses the same snapshot-builder API surface (input → markdown sections). Designing the snapshot builder as a stable interface allows the SQLite implementation to swap in without changes to `precompact-handoff.sh` consumers. The error-resolution heuristic referenced above lives canonically in FEAT-1262's Event Semantics section.
-
-## Verification Notes
-
-**Verdict**: DEFERRED (architecture supersession) — Verified 2026-05-14
-
-This issue and its sibling series are **superseded by the hook-intent abstraction (FEAT-1116, completed)** and the follow-on series FEAT-1448–1460 (mostly completed). The implementation contracts in this file target `hooks/scripts/*.sh` shell scripts which are no longer the canonical hook layer.
-
-Canonical pattern going forward:
-
-- Python intent handlers under `scripts/little_loops/hooks/<intent>.py`
-- Per-host adapters under `hooks/adapters/<host>/` (e.g., `claude-code/`, `opencode/`) that envelope host events into `LLHookEvent` and dispatch to `main_hooks()`
-- Prompt text files under `hooks/prompts/` referenced from `hooks/hooks.json`
-
-Parent epics are deferred: **FEAT-1113** (precompact auto-handoff) and **FEAT-1159** (session-event-capture + sessionstart-injection). The headless-mode rationale for FEAT-1113 explicitly notes the FSM signal path already provides automatic handoff.
-
-**To resurrect**: rewrite implementation steps to author a new intent handler + adapter wiring rather than a `hooks/scripts/*.sh` script. Re-validate line anchors in referenced docs (`docs/ARCHITECTURE.md`, `docs/reference/CONFIGURATION.md`, `docs/guides/SESSION_HANDOFF.md`) which have shifted since the recent hook-intent doc commits.
-
-Moving to `.issues/deferred/` mirroring parents FEAT-1113 / FEAT-1159.

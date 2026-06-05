@@ -187,12 +187,6 @@ The referenced target state must either exist in the compiled states or be user-
 - [x] Paradigm YAML without `on_partial_target` behaves as before (`on_partial` is `None`)
 - [x] All 99 tests pass; no regressions
 
-## Verification Notes (2026-06-04)
-
-- **Verdict**: OUTDATED
-- The file this feature modified — `scripts/little_loops/fsm/compilers.py` — was deliberately deleted in commit `09c83ab9` ("refactor(fsm): remove deprecated paradigm compilation system"). All changes described in the Resolution section no longer exist in the codebase.
-- The underlying capability (`on_partial` routing in `StateConfig` and the executor) still exists in `schema.py` and `executor.py`, but the paradigm compiler layer that this feature extended has been removed.
-
 ## Status
 
 **Completed** | Created: 2026-03-07 | Completed: 2026-03-07 | Priority: P3

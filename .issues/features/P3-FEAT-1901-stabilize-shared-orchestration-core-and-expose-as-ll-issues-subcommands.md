@@ -111,6 +111,20 @@ ll-issues classify-failure --rc <int> [--create-issue]
 
 **Open** | Created: 2026-06-03 | Priority: P3
 
+
+## Verification Notes
+
+**Verdict**: VALID — 2026-06-05T21:00:23
+
+- Issue describes a planned feature/enhancement that has not yet been implemented
+- Referenced files and directories verified to exist (where applicable)
+- No claims about current code behavior are contradicted by the codebase
+- Dependency references are valid (no broken refs, missing backlinks, or cycles)
+
+- `/ll:verify-issues` - 2026-06-05 - Partially implemented: `next-issue` and `next-issues` subcommands exist in `cli/issues/`. `verify-work` and `classify-failure` subcommands not yet implemented. Body references `commands/issues.py` which doesn't exist — actual dispatcher is `cli/issues/__init__.py`. Update the Implementation Plan to reflect partial completion and correct the file path.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T22:34:33 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:22:31 - `cf77dd21-97ce-450b-b385-13e81d1a8ae0.jsonl`
 - `/ll:scope-epic` - 2026-06-03T19:12:39Z - `87e9f36b-36c2-4e9e-a0c8-3a57aa45d1f5.jsonl`

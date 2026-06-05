@@ -161,12 +161,6 @@ All acceptance criteria met:
 - When absent, defaults to `"done"` (backward compatible) ✓
 - Dangling `on_stall` references caught by existing `validate_fsm` ✓
 
-## Verification Notes (2026-06-04)
-
-- **Verdict**: OUTDATED
-- The file this feature modified — `scripts/little_loops/fsm/compilers.py` — was deliberately deleted in commit `09c83ab9` ("refactor(fsm): remove deprecated paradigm compilation system"). The `on_stall` override change described in the Resolution section no longer exists in the codebase.
-- While the feature was correctly implemented at the time, the paradigm compilation infrastructure it extended has since been removed.
-
 ## Status
 
 **Completed** | Created: 2026-03-07 | Resolved: 2026-03-07 | Priority: P3

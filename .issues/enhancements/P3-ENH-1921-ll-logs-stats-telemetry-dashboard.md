@@ -110,7 +110,18 @@ Out of scope:
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-1922 owns the per-invocation failure-classification layer (detection of nonzero exits, tracebacks, and correction signals) atop ENH-1919's shared extractor. ENH-1921 aggregates failure/correction rates from ENH-1922's classified output rather than re-implementing failure detection. ENH-1919's shared extractor provides the raw event stream without classification.
 
+
+## Verification Notes
+
+**Verdict**: VALID — 2026-06-05T21:00:23
+
+- Issue describes a planned feature/enhancement that has not yet been implemented
+- Referenced files and directories verified to exist (where applicable)
+- No claims about current code behavior are contradicted by the codebase
+- Dependency references are valid (no broken refs, missing backlinks, or cycles)
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T05:19:22 - `cd123288-5c07-482f-b424-1eebfea29b6e.jsonl`
 - `/ll:format-issue` - 2026-06-04T03:09:55 - `9b934de1-4aab-4e21-b930-1823687cb2b1.jsonl`

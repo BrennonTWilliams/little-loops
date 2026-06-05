@@ -161,6 +161,7 @@ _Added by `/ll:go-no-go` on 2026-04-24_ — **NO-GO (REFINE)**
 The redundancy is real and the fix is conceptually sound, but the proposed `parse_session_log_full` code contained two bugs: (1) iterating all regex section matches rather than using `matches[-1]`, and (2) using `.group()` instead of `.group(1)`. The iterate-all bug is tested behavior (`test_session_log.py:212-235`) and would produce silent regressions on files with multiple session log sections. The proposed solution in this issue has been corrected; it is now safe to implement.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:35 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:41:22 - `5897e8be-dce8-424a-bce0-7c0623343503.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:34 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`

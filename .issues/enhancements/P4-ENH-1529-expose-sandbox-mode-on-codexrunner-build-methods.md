@@ -213,6 +213,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 **Verdict: NEEDS_UPDATE** — Proposed Solution, API interface, and Scope Boundaries sections still reference incorrect Codex sandbox enum values (`write-to-cwd`, `network`). Correct values are `workspace-write` and `danger-full-access`. The Codebase Research section already documents the correct values — the Proposed Solution must be updated to match before implementation.
 
+- `/ll:verify-issues` - 2026-06-05 - Feature not implemented. CodexRunner build methods still hardcode sandbox flags. Issue body references incorrect Codex sandbox enum values (`write-to-cwd`, `network`) — should reference actual values (`workspace-write`, `danger-full-access`). No `_sandbox_args` helper exists.
+
 ## Status
 
 - [ ] Implementation
@@ -229,6 +231,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 ---
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:36 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
@@ -246,11 +250,3 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - `/ll:capture-issue` - 2026-05-16T21:26:07Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c91b1bb-8b36-420d-bb06-e3e6a03f08a4.jsonl`
 
 **Update 2026-06-04**: Confirmed still NEEDS_UPDATE. The Proposed Solution (lines 66-74), API/Interface code block (lines 163-181), and Scope Boundaries (lines 183-187) still reference incorrect Codex sandbox enum values (`write-to-cwd`, `network`). Correct values per `thoughts/research/codex-headless-invocation.md:54-60` are `workspace-write` and `danger-full-access`. The Codebase Research section (lines 130-134) correctly documents the discrepancy but the proposed solution sections have not been corrected.
-
-## Verification Notes (2026-06-05)
-
-- **Sandbox enum values still wrong in Proposed Solution**: `write-to-cwd` should be `workspace-write`;
-  `network` should be `danger-full-access`. Codebase Research section (lines 130-134) correctly documents
-  this mismatch, but Proposed Solution and Scope Boundaries have not been corrected.
-- This was flagged in prior verification and remains uncorrected.
-- All file references otherwise accurate.

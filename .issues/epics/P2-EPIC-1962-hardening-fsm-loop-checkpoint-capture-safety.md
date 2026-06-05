@@ -2,7 +2,7 @@
 id: EPIC-1962
 type: EPIC
 priority: P2
-status: open
+status: done
 captured_at: "2026-06-05T18:20:28Z"
 discovered_date: 2026-06-05
 discovered_by: scope-epic

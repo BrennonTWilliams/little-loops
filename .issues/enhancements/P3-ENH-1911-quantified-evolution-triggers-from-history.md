@@ -164,7 +164,18 @@ self-improvement on quantified triggers (same feedback 2+ times, repeated failur
 bypasses orchestrator). This issue ports the *signal detection*; little-loops keeps its more
 rigorous "propose, don't auto-grade" stance for the action side.
 
+
+## Verification Notes
+
+**Verdict**: VALID — 2026-06-05T21:00:23
+
+- Issue describes a planned feature/enhancement that has not yet been implemented
+- Referenced files and directories verified to exist (where applicable)
+- No claims about current code behavior are contradicted by the codebase
+- Dependency references are valid (no broken refs, missing backlinks, or cycles)
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T04:34:19 - `e1e6b264-2dd0-4d92-92be-102681aa7fbc.jsonl`
 - `/ll:format-issue` - 2026-06-03T21:05:33 - `b833547d-130c-42f1-b9a5-75900748b2de.jsonl`
 - `/ll:capture-issue` - 2026-06-03T20:59:38Z - `b4fa1e68-4a59-49bd-949a-5a5b7533509f.jsonl`

@@ -138,6 +138,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue defines the canonical thin-shim pattern for EPIC-1867 CLI migrations (`<cli> → ll-loop run <loop>`). FEAT-1899 (`ll-sprint execute`) should follow this pattern for consistency rather than implementing an independent shim approach.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:53:59 - `2f12f6ef-94a2-4725-933e-626b1ef4cdff.jsonl`
@@ -147,11 +148,3 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:22:56 - `1489a8f1-014d-4d2b-9f62-365c703f374a.jsonl`
 - `/ll:scope-epic` - 2026-06-03T19:12:39Z - `87e9f36b-36c2-4e9e-a0c8-3a57aa45d1f5.jsonl`
-
-## Verification Notes (2026-06-05)
-
-- **Path correction from prior verification applied**: `auto_manager.py` → `issue_manager.py` is now accurate.
-- `AutoManager` class at issue_manager.py L988 — CORRECT.
-- `AutoManager.run()` at issue_manager.py L1165 — CORRECT.
-- Implementation gated on FEAT-1901 (still open).
-- `loops/ll-auto.yaml` does not exist (expected, not yet created).

@@ -160,6 +160,7 @@ Split into a `layout/` subpackage or three focused modules:
 - Integration Map note re: `_helpers.py` import of `_render_fsm_diagram` still applies
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:35 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:04 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`

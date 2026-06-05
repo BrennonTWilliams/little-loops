@@ -102,6 +102,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Integration Map lists 28 named skills but there are 30 ll-* bridge skill directories. Two skills are missing from the explicit list — run `ls skills/ | grep ^ll-` to enumerate all 30 before implementing.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`

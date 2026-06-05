@@ -111,7 +111,11 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 **Verdict: NEEDS_UPDATE** — MR-3 violation in FSM design section: artifact path `.loops/tmp/loop-composer-plan.json` must be changed to `${context.run_dir}/loop-composer-plan.json` before the loop YAML is created. Fix this before implementation to avoid `ll-loop validate` MR-3 WARNING.
 
+- `/ll:verify-issues` - 2026-06-05 - Feature not implemented. Body contains conflicting references: some sections use `context.run_dir/` (correct per MR-3) while scope boundary notes still reference stale `.loops/tmp/` paths. Resolve this contradiction in the body before starting implementation. `loop-composer.yaml` does not exist yet.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
@@ -146,11 +150,3 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): Shared integration test requirement with FEAT-1810. Both issues must include a test that verifies `loop-router`'s catalog discovery never returns both `loop-composer` and `goal-cluster` as candidates for the same input: single-goal input must route to composer only; multi-goal input must route to cluster only. Add to FEAT-1808's test plan: `test_loop_router_catalog_exclusivity` in `scripts/tests/test_loop_composer.py`.
 
 **Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): Extension-point requirement for FEAT-1809 compatibility. FEAT-1808's current spec describes a monolithic `loop-composer.yaml` with no extension points, but FEAT-1809 (adaptive re-plan variant) needs to layer onto it. The fork-vs-flag question (FEAT-1809 Open Question 1) MUST be resolved before FEAT-1808 implementation begins. At minimum, FEAT-1808 MUST expose extension points — shared fragments in `loops/lib/composer.yaml` (already referenced in the proposed solution) and a strategy/hook pattern for the verdict-gate/reassess step — so FEAT-1809 can add adaptive behavior without forking the entire loop file. FEAT-1808 already has `blocks: [FEAT-1809]` capturing the ordering dependency; this note adds the design constraint that the ordering alone doesn't capture.
-
-## Verification Notes (2026-06-05)
-
-- **MR-3 violation flag not yet corrected**: Prior verification flagged `.loops/tmp/` path usage
-  which violates per-run artifact isolation rules.
-- `loop-router.yaml` exists at `scripts/little_loops/loops/loop-router.yaml`.
-- `loop-composer.yaml` does not exist (expected).
-- Blocks FEAT-1806 and FEAT-1809 (both still open).

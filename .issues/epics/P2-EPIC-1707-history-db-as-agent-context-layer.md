@@ -141,7 +141,11 @@ _Added by `/ll:verify-issues` on 2026-06-04 (updated from 2026-05-31)_
 
 **Verdict: NEEDS_UPDATE** — The Summary still says "the initial 3-skill consumer wiring (ENH-1847: refine-issue, ready-issue, confidence-check) is done." This understates current coverage: ll-history-context is now wired into 7 skills (confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, create-sprint), and ENH-1946 (bookkeeping fix for ENH-1839 in children list) is now `done`. Core remaining work: ENH-1909 (configurable planning_skills injection) remains open; ENH-1945 (host-aware session log discovery) is a new child.
 
+- `/ll:verify-issues` - 2026-06-05 - Epic is 94% complete (30/32 children done). Summary section still says "3 skills wired" — should say "7 skills wired" (confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, create-sprint). Only FEAT-1736 and ENH-1906 remain open. Epic is close to closure-ready; update Summary and consider promoting remaining children or closing the epic.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T22:34:33 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:37 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
@@ -161,13 +165,3 @@ _Added by `/ll:verify-issues` on 2026-06-04 (updated from 2026-05-31)_
 **Open** | Created: 2026-05-26 | Priority: P2
 
 **Update 2026-06-04 (re-verified)**: Confirmed 7 skills now wired (confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, create-sprint) — up from the 3 claimed by the Summary. 25 of 29 children are `done`. Remaining open: FEAT-1736 (missing status field, now fixed to `open`), ENH-1906, ENH-1927, ENH-1945. Body Summary text still needs updating to reflect 7-skill coverage.
-
-## Verification Notes (2026-06-05)
-
-- **Summary text stale**: Line 20 still says "initial 3-skill consumer wiring" but `ll-history-context`
-  is now wired into 7+ skills (confidence-check, go-no-go, refine-issue, ready-issue, manage-issue,
-  scope-epic, create-sprint).
-- **Child completion counts stale**: Body text says remaining work includes ENH-1887, ENH-1888,
-  FEAT-1712, FEAT-948 — all of these except FEAT-1736 are now done. Actual remaining open:
-  FEAT-1736, ENH-1906, ENH-1945.
-- 30 of 33 children are `done`. All child files exist with priority-prefixed filenames.

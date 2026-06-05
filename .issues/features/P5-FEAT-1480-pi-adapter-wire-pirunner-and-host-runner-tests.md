@@ -105,6 +105,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `test_ll_hook_host_env_var_propagates_pi` test in `test_hook_intents.py` tests the **Python-side host routing** — that the intent dispatcher reads `LL_HOOK_HOST=pi` and routes correctly. FEAT-1478's sentinel-file test in `test_pi_adapter.py` verifies the **TypeScript adapter** sets `LL_HOOK_HOST=pi` before spawning Python. Both tests are needed, but their assertions must be non-overlapping to avoid redundancy: this issue asserts Python routing behavior; FEAT-1478 asserts env-var propagation from the TypeScript layer.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
@@ -117,12 +118,3 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:issue-size-review` - 2026-05-15T20:30:00 - `3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`
-
-## Verification Notes (2026-06-05)
-
-- **Major class line range errors**:
-  - `PiRunner` at L653-721 (issue says 478-532 — L478 is in CodexRunner.build_blocking_json)
-  - `CodexRunner` at L343-542 (issue says 270-418 — L270 is in ClaudeCodeRunner.build_blocking_json)
-  - All 4 `PiRunner.build_*` methods still raise HostNotConfigured — CORRECT behavior.
-- Integration Map references PiRunner and CodexRunner at incorrect line ranges that overlap
-  other classes. Must be corrected before implementation.

@@ -49,6 +49,34 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 - Step 2: After FEAT-1112 ships, implement ranking directly against FTS5 — no interim BM25 layer
 - `--intent` without a threshold hit is a no-op
 
+## Success Metrics
+
+- **CLI coverage**: 3+ CLIs accept `--intent`/`--intent-limit` flags (target: ll-history, ll-deps, ll-workflows)
+- **Output reduction**: Intent-filtered output is measurably shorter than full output (`wc -l` comparison)
+- **No tech debt**: Zero `ranking.py` or BM25 files created; ranking uses FTS5 exclusively
+- **Docs updated**: `.claude/CLAUDE.md` and `docs/reference/API.md` reflect new flags
+
+## API/Interface
+
+New CLI flags across affected tools:
+
+```python
+# scripts/little_loops/cli_args.py
+def add_intent_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --intent <query> flag to a parser."""
+    parser.add_argument("--intent", type=str, default=None,
+                        help="Intent query for output filtering")
+
+def add_intent_limit_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --intent-limit <N> flag to a parser."""
+    parser.add_argument("--intent-limit", type=int, default=50,
+                        help="Max lines for intent-filtered output")
+```
+
+- **ll-history**: `main_history()` — top-level `--intent`/`--intent-limit` on main parser
+- **ll-deps**: `main_deps()` — top-level `--intent`/`--intent-limit` on main parser
+- **ll-workflows**: `main()` — `analyze` subparser `--intent`/`--intent-limit`
+
 ## Acceptance Criteria
 
 - `--intent` flag wired into at least 3 CLIs (`ll-history`, `ll-deps`, `ll-scan-codebase`)
@@ -138,6 +166,24 @@ _These touchpoints were identified by wiring analysis and must be included in th
 9. Implement FTS5 ranking against FEAT-1112's store (no `ranking.py` / BM25 layer per Scope Boundary constraint)
 10. Add integration test: `ll-history --intent "rate limit" | wc -l` returns fewer lines than `ll-history | wc -l`
 
+## Impact
+
+- **Priority**: P4 — Nice-to-have context reduction; not blocking any current workflow
+- **Effort**: Medium — Step 1 (flag wiring) is straightforward argparse work; Step 2 (FTS5 ranking) requires FEAT-1112 completion but avoids BM25 complexity
+- **Risk**: Low — `--intent` flag is a no-op pass-through until Step 2; zero existing behavior changes
+- **Breaking Change**: No — new optional flags only; existing CLI invocations are unaffected
+
+## Related Key Documentation
+
+- `docs/reference/CLI.md` — CLI flag documentation (needs `--intent`/`--intent-limit` added)
+- `docs/reference/API.md` — `### main_history` and `### main_deps` function reference (needs update)
+- `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md` — ll-workflows flags table (needs update)
+- `.claude/CLAUDE.md` — Scratch Pad section (already documents `.loops/tmp/scratch/`)
+
+## Labels
+
+`enhancement`, `cli`, `context-management`, `blocked-by-FEAT-1112`
+
 ## Verification Notes
 
 **Verdict**: VALID — Verified 2026-04-23
@@ -157,6 +203,8 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - FEAT-1112 is `done` — the `ll-session` CLI and SQLiteTransport have landed. Both Step 1 and Step 2 are now unblocked.
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-05T22:18:08 - `4aca9a88-34ed-4bf8-bf0d-7490f0e759bf.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:59 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:35 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:16 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
@@ -175,11 +223,13 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 
 ---
 
-## Scope Boundary
+## Scope Boundaries
 
 ~~**Note** (added by `/ll:audit-issue-conflicts` — superseded 2026-06-03): The `ranking.py` BM25 module introduced by this issue is an interim implementation. Once FEAT-1112 (unified SQLite + FTS5 store) lands, the ranking backend should be replaced with FTS5. Implement `ranking.py` as a thin, swappable backend so the transition is a drop-in replacement, not a rewrite.~~ **Superseded** — do not author `ranking.py`. See authoritative constraint below.
 
 **Implementation constraint** (added by `/ll:audit-issue-conflicts` 2026-05-04): `ranking.py` MUST NOT be authored — neither as an interim nor as a final implementation. Do not build a BM25 layer. FEAT-1112 ships. The correct sequence is: (1) wire the `--intent` flag UI into the affected CLIs with full unranked output as a no-op placeholder, (2) wait for FEAT-1112's FTS5 store to land, (3) implement ranking directly against FTS5. Building the BM25 interim layer creates throwaway code with HIGH technical debt (confirmed by tradeoff review 2026-04-26).
+
+- **Cross-issue coordination** (added by `/ll:audit-issue-conflicts` 2026-05-17): Schema extensions to FEAT-1112's `tool_events` table must be coordinated with FEAT-1160. ENH-1114 adds FTS5 intent-ranking indexing; FEAT-1160 adds per-tool `bytes_in`/`bytes_out`/`cache_hit` columns. Both must target FEAT-1112's migration framework to avoid column collisions — implement sequentially after FEAT-1112 ships, not concurrently.
 
 ---
 
@@ -201,6 +251,6 @@ Update first — This issue is explicitly blocked by FEAT-1112 (SQLite + FTS5 st
 
 ---
 
-## Scope Boundary
+## Status
 
-**Note** (added by `/ll:audit-issue-conflicts` 2026-05-17): Schema extensions to FEAT-1112's `tool_events` table must be coordinated with FEAT-1160. ENH-1114 adds FTS5 intent-ranking indexing; FEAT-1160 adds per-tool `bytes_in`/`bytes_out`/`cache_hit` columns. Both must target FEAT-1112's migration framework to avoid column collisions — implement sequentially after FEAT-1112 ships, not concurrently.
+**Open** | Created: 2026-04-15 | Priority: P4

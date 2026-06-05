@@ -70,7 +70,11 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 
 **Verdict: NEEDS_UPDATE** — adversarial-redesign.yaml now exists and FEAT-1807 is done. Still open: FEAT-1806 (market-strategy), FEAT-1808 (loop-composer), FEAT-1809 (adaptive loop-composer), FEAT-1810 (goal-cluster).
 
+- `/ll:verify-issues` - 2026-06-05 - Epic is 20% complete (1/5 children done: FEAT-1807 `adversarial-redesign.yaml` confirmed at `scripts/little_loops/loops/`). Summary should acknowledge FEAT-1807 completion. Body references `loops/` at project root — actual loops directory is `scripts/little_loops/loops/`. Correct path references and update Summary to reflect that 1 of 5 loops is shipped.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T22:34:33 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

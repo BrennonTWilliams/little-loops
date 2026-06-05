@@ -129,6 +129,8 @@ Output (text mode): one candidate block per `(tool, normalized-error-signature)`
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-1922 owns the per-invocation failure-classification layer (detection of nonzero exits, tracebacks, and correction signals) atop ENH-1919's shared extractor. ENH-1921 aggregates failure/correction rates from ENH-1922's classified output rather than re-implementing failure detection. ENH-1919's shared extractor provides the raw event stream without classification.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T05:19:22 - `8b34820d-ae67-4c39-b57a-ea2b07021501.jsonl`
@@ -142,3 +144,4 @@ Output (text mode): one candidate block per `(tool, normalized-error-signature)`
   command is at `.claude/commands/analyze_log.md`, not a skill directory.
 - **Dependent Files** section references `skills/analyze_log/` — should be `.claude/commands/analyze_log.md`.
 - All other references accurate; feature not yet implemented.
+- `/ll:verify-issues` - 2026-06-05 - Feature still not implemented. Prior note about `skills/analyze_log/` vs `commands/analyze_log.md` path error remains uncorrected in issue body. The Integration Map and references to `skills/analyze_log/` should be updated to point to the command file at `.claude/commands/analyze_log.md`.

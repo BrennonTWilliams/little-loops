@@ -136,21 +136,3 @@ FEAT-1116 risk: `session-capture.sh` is a PostToolUse shell script in the layer 
 ## Blocks
 
 - FEAT-1264
-
-## Verification Notes
-
-**Verdict**: DEFERRED (architecture supersession) — Verified 2026-05-14
-
-This issue and its sibling series are **superseded by the hook-intent abstraction (FEAT-1116, completed)** and the follow-on series FEAT-1448–1460 (mostly completed). The implementation contracts in this file target `hooks/scripts/*.sh` shell scripts which are no longer the canonical hook layer.
-
-Canonical pattern going forward:
-
-- Python intent handlers under `scripts/little_loops/hooks/<intent>.py`
-- Per-host adapters under `hooks/adapters/<host>/` (e.g., `claude-code/`, `opencode/`) that envelope host events into `LLHookEvent` and dispatch to `main_hooks()`
-- Prompt text files under `hooks/prompts/` referenced from `hooks/hooks.json`
-
-Parent epics are deferred: **FEAT-1113** (precompact auto-handoff) and **FEAT-1159** (session-event-capture + sessionstart-injection). The headless-mode rationale for FEAT-1113 explicitly notes the FSM signal path already provides automatic handoff.
-
-**To resurrect**: rewrite implementation steps to author a new intent handler + adapter wiring rather than a `hooks/scripts/*.sh` script. Re-validate line anchors in referenced docs (`docs/ARCHITECTURE.md`, `docs/reference/CONFIGURATION.md`, `docs/guides/SESSION_HANDOFF.md`) which have shifted since the recent hook-intent doc commits.
-
-Moving to `.issues/deferred/` mirroring parents FEAT-1113 / FEAT-1159.

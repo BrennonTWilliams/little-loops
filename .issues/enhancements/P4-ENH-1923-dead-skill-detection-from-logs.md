@@ -106,18 +106,13 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 **Verdict: NEEDS_UPDATE** — Integration Map has wrong path for the logs module: `scripts/little_loops/logs.py` → should be `scripts/little_loops/cli/logs.py`. Also, the skill directory referenced is `skills/find-dead-code/` but actual dir is `skills/ll-find-dead-code/`.
 
+- `/ll:verify-issues` - 2026-06-05 - Feature not implemented. No `--never-invoked` flag in cli/logs.py. Issue body references incorrect paths: `scripts/little_loops/logs.py` → should be `scripts/little_loops/cli/logs.py`; `skills/find-dead-code/` → should be `skills/ll-find-dead-code/`. Correct these paths in the Implementation Plan before starting.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:format-issue` - 2026-06-04T03:10:33 - `6828653f-c5aa-47bf-a167-82e4553412d0.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`
-
-## Verification Notes (2026-06-05)
-
-- **Integration Map path**: References `scripts/little_loops/logs.py` — should be
-  `scripts/little_loops/cli/logs.py`.
-- **Dependent Files path**: References `skills/find-dead-code/SKILL.md` — should be
-  `skills/ll-find-dead-code/SKILL.md`.
-- Both path errors were flagged in prior verification and remain uncorrected.
-- Feature not yet implemented.
