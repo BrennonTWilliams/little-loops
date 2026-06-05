@@ -651,9 +651,6 @@ Create from dictionary.
 
 #### Confidence-Check Score Rubrics (Outcome Criteria A & D)
 
-<!-- TODO: update-docs stub — ENH-1412 / ENH-1413 — drafted 2026-05-10 -->
-> **Stub**: Auto-drafted by `/ll:update-docs`. Source of truth is `skills/confidence-check/rubric.md` (the full scoring tables, extracted from `SKILL.md` per ENH-494); expand here if reference-doc readers need the rubric without opening the skill.
-
 The `score_complexity` and `score_change_surface` fields are composite scores produced by `/ll:confidence-check`. They were refactored in ENH-1413 and ENH-1412 respectively into sub-axis structures:
 
 **Criterion A — Complexity (0–25 = Breadth 0–12 + Depth 0–13)** _(ENH-1413)_
@@ -671,7 +668,6 @@ Dual-pattern rubric — the issue is scored under whichever pattern fits:
 - Phase 4.8 suppresses large-file-surface risk phrases when Pattern B's verification chain is complete.
 
 See `skills/confidence-check/rubric.md` for the full rubric tables and output templates, and `skills/confidence-check/SKILL.md` for the phase definitions and flow.
-<!-- END TODO stub -->
 
 ### ProductImpact
 
@@ -4169,11 +4165,6 @@ The stall detector records `(state_name, exit_code, eval_verdict)` after every t
 | `get_terminal_states()` | `set[str]` | States with `terminal=True` |
 | `get_all_referenced_states()` | `set[str]` | All states referenced by transitions |
 
-<!-- TODO: update-docs stub — dd260362 — drafted 2026-05-11 -->
-**`max_edge_revisits` — Per-edge cycle detection:**
-
-> **Stub**: Auto-drafted by `/ll:update-docs`. Fill in details.
-
 When any single state→state edge (e.g., `evaluate → fix`) is traversed more than `max_edge_revisits` times, the loop terminates immediately with `terminated_by="cycle_detected"` (exit code 1) rather than continuing until `max_iterations` is reached. This prevents tight infinite loops where two states bounce between each other indefinitely without making progress. Edge counts are persisted in `LoopState` so they survive a `--resume`. The default value of `100` covers all practical loops; lower it on short single-purpose loops to catch regressions faster.
 
 ```yaml
@@ -4182,7 +4173,6 @@ name: quick-check
 max_iterations: 10
 max_edge_revisits: 5   # terminate if any edge fires more than 5 times
 ```
-<!-- END TODO stub -->
 
 **Example:**
 ```python
@@ -5305,7 +5295,6 @@ result = update_frontmatter(content, {"completed_at": "2026-04-18T12:00:00Z"})
 
 ---
 
-<!-- TODO: update-docs stub — FEAT-1285 — drafted 2026-04-25 -->
 ## little_loops.learning_tests
 
 Registry for learning test records — structured knowledge about external APIs and libraries, persisted as YAML-frontmatter Markdown files under `.ll/learning-tests/<slug>.md`.
@@ -5430,7 +5419,6 @@ if rec and rec.status == "proven":
     # assertions are trusted
     pass
 ```
-<!-- END TODO stub -->
 
 ---
 

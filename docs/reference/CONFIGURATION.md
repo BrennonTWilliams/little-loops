@@ -594,10 +594,7 @@ Each category requires a `files` array of relative paths. The optional `descript
 
 Design system token settings for artifact-generating loops. When enabled, `ll-loop run` and `ll-loop resume` pre-inject the resolved token set into the FSM initial context before the first state is entered.
 
-<!-- TODO: update-docs stub — ENH-1768 — drafted 2026-05-29 -->
 #### Multi-Profile System (ENH-1768)
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in profile layout, selector behavior, and migration from flat config.
 
 Design tokens are organized into **profiles** under `path/profiles/`. Each profile is a self-contained directory with its own `primitives.json`, `semantic.json`, `spacing.json`, `typography.json`, and `themes/` subdirectory.
 
@@ -630,10 +627,7 @@ Built-in profiles:
 
 Run `/ll:configure design-tokens` to interactively set up profiles and select the active one.
 
-<!-- TODO: update-docs stub — ENH-1836 — drafted 2026-06-01 -->
 #### Auto-scaffolding built-in profiles
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Verify the two Case descriptions and the DANGEROUSLY_SKIP_PERMISSIONS note before finalizing.
 
 When you run `/ll:configure` and select or enable a built-in design token profile, the skill detects whether the profile directory is missing from disk and offers to materialize it automatically via `shutil.copytree`:
 
@@ -644,7 +638,6 @@ When you run `/ll:configure` and select or enable a built-in design token profil
 Both cases accept automatically when `DANGEROUSLY_SKIP_PERMISSIONS` is set or when `/ll:configure` is invoked with `--auto`.
 
 Custom or unknown profile names (anything not in the built-in list) are unaffected — a warning is emitted if the directory is missing, but no scaffold is offered.
-<!-- END TODO stub -->
 
 **Legacy flat structure (pre-ENH-1768):**
 
@@ -667,10 +660,7 @@ When no `profiles/` directory is present, the resolver falls back to the flat la
 }
 ```
 
-<!-- TODO: update-docs stub — ENH-1769 — drafted 2026-05-30 -->
 #### W3C DTCG `$value` Format (ENH-1769)
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in format details, migration path, and example.
 
 The design token loader supports the [W3C Design Tokens Community Group](https://tr.designtokens.org/) `$value` format in addition to the legacy flat key-value layout. When a token file contains `$value` keys (e.g., `{"color-primary": {"$value": "#A3B59A"}}`), the loader normalizes them to the internal representation automatically.
 
@@ -687,8 +677,6 @@ The design token loader supports the [W3C Design Tokens Community Group](https:/
 ```
 
 **See also**: [Design Tokens Community Group specification](https://tr.designtokens.org/)
-
-<!-- END TODO stub -->
 
 ### `decisions`
 

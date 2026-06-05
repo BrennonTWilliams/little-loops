@@ -1,9 +1,12 @@
 ---
 discovered_commit: 83f89e6519020ce8ea8cdcbc4e0c75dca8fc3031
 discovered_branch: main
-discovered_date: 2026-06-04T00:00:00Z
+discovered_date: 2026-06-04 00:00:00+00:00
+completed_at: 2026-06-05 22:53:40+00:00
 discovered_by: audit-docs
 doc_file: docs/reference/
+testable: false
+status: done
 ---
 
 # ENH-1956: Fill `update-docs` TODO stubs in reference docs
@@ -79,6 +82,11 @@ The implementing features are all `done` — the code has shipped but the docume
 
 Alternatively, run `/ll:update-docs --fix` which may handle marker removal automatically.
 
+## Scope Boundaries
+
+- **In scope**: Removing TODO stub wrapper comments from 9 stubs across 4 reference docs (API.md, CLI.md, CONFIGURATION.md, loops.md); adding two missing `<!-- END TODO stub -->` markers; verifying no content was lost during unwrapping
+- **Out of scope**: Writing new documentation content (already done — all 9 stubs have complete content); modifying any code; updating any non-reference documentation; changing the stub content quality (already sufficient)
+
 ## Implementation Steps
 
 ~~1. Fill API.md stubs (3) — start with oldest (FEAT-1285, 40 days)~~
@@ -146,11 +154,38 @@ The issue's central claim — that 9 documentation stubs are empty placeholders 
 
 - Issue describes a planned feature/enhancement that has not yet been implemented
 - Referenced files and directories verified to exist (where applicable)
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-06-05
+- **Status**: Completed
+
+### Changes Made
+- `docs/reference/API.md`: Removed TODO stub wrapper comments from 3 stubs (ENH-1412/ENH-1413, dd260362/max_edge_revisits, FEAT-1285/learning_tests)
+- `docs/reference/CLI.md`: Removed TODO stub wrapper comments from 2 stubs (ENH-1805 Model Header, ENH-1797 Token/Cost Summary)
+- `docs/reference/CONFIGURATION.md`: Removed TODO stub wrapper comments from 3 stubs (ENH-1768 Multi-Profile, ENH-1836 Auto-scaffolding, ENH-1769 DTCG format)
+- `docs/reference/loops.md`: Removed TODO stub wrapper comment from 1 stub (sft-corpus)
+
+### Verification Results
+- Stub markers remaining: 0 (verified via grep across all reference docs)
+- Content preservation: Confirmed — all 9 sections retain complete descriptions, examples, tables, and cross-references
+- Doc counts: verify-docs shows 4 pre-existing skills-count mismatches (unrelated to this change)
+- Tests: N/A (testable: false)
+- Lint: N/A (documentation only)
+- Types: N/A (documentation only)
+
+
+## Session Log
+- `/ll:ready-issue` - 2026-06-05T22:50:03 - `9edc7d68-d293-44b8-9ade-dcbf5f7e3a91.jsonl`
+- `/ll:verify-issues` - 2026-06-05T22:39:51 - `ae6caec5-fde4-4de8-88b8-3e9ec6696e94.jsonl`
+- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
+- `/ll:manage-issue` - 2026-06-05T22:53:40 - `1be5ae86-349e-45ad-b934-f43301caf590.jsonl`
 
 ## Status
 
 **Open** | Created: 2026-06-04 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-05T22:50:03 - `9edc7d68-d293-44b8-9ade-dcbf5f7e3a91.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:39:51 - `ae6caec5-fde4-4de8-88b8-3e9ec6696e94.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

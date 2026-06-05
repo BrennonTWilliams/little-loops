@@ -193,10 +193,6 @@ Knowledge accumulation: `knowledge-base.md` **appends** across iterations (sourc
 **Category**: data
 **File**: `scripts/little_loops/loops/sft-corpus.yaml`
 
-<!-- TODO: update-docs stub — sft-corpus — drafted 2026-06-04 -->
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details for states not yet exercised.
-
 Pipeline that stages session JSONL transcripts, batch-joins `history.db` session-quality metadata, runs a five-predicate filter chain, deduplicates by Jaccard similarity, splits into train/val/test splits, delegates to `dataset-curation` for quality validation, and publishes an SFT training corpus with a manifest and harvest sentinel for incremental re-runs.
 
 ### Invocation

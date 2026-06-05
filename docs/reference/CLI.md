@@ -457,10 +457,7 @@ Run a loop.
 | `--context-limit` | | Override context window token estimate |
 | `--no-lock` | | Run without acquiring the scope lock, bypassing the conflict check. **Caution:** this allows concurrent runs that may interfere with each other on shared resources. Use when you need parallel runs that operate on disjoint paths or when testing a loop that would otherwise be blocked by a stale lock you cannot clear. |
 
-<!-- TODO: update-docs stub — ENH-1805 — drafted 2026-05-30 -->
 ##### Model Header Display (ENH-1805)
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in screen output example and interaction with `--llm-model`.
 
 `ll-loop run` and `ll-loop monitor` print a header line showing the active LLM model name on startup, detected from the Claude CLI `stream-json` init event (same mechanism as `ll-auto`). The model name appears in the first output line after the logo banner:
 
@@ -472,12 +469,7 @@ ll-loop run general-task "fix the lint warnings"
 
 When `--llm-model` is passed, the header reflects the override model. When the detection fails (e.g., non-Claude host), the field shows `unknown`.
 
-<!-- END TODO stub -->
-
-<!-- TODO: update-docs stub — ENH-1797 — drafted 2026-06-01 -->
 ##### Per-State Token/Cost Summary (ENH-1797)
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Verify the table columns and sample output before finalizing.
 
 After a loop run completes, `ll-loop run` prints a per-state token and cost summary table immediately before the final completion line. The table is produced whenever at least one LLM action (`prompt` or `slash_command`) executed during the run.
 
@@ -504,7 +496,6 @@ TOTAL                        6   15 600    2 580   11 400      $0.053
 Shell (`action_type: shell`) and MCP tool (`action_type: mcp_tool`) states are omitted from the table — they produce no token usage row in `usage.jsonl`.
 
 The raw per-iteration data lives at `.loops/runs/<run-id>/usage.jsonl` (not archived to `.loops/.history/`). See [Output Artifacts](loops.md#output-artifacts) for the `usage.jsonl` schema.
-<!-- END TODO stub -->
 
 > **Note:** `agent:` and `tools:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent and tool scoping options.
 
