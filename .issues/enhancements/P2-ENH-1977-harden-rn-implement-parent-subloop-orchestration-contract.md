@@ -1,6 +1,8 @@
 ---
 id: ENH-1977
-title: "Harden rn-implement parent↔sub-loop orchestration contract (rate-limit laundering, terminal vocabulary, threshold consistency, resume, decomposed-parent lifecycle + EPIC re-linking)"
+title: "Harden rn-implement parent\u2194sub-loop orchestration contract (rate-limit\
+  \ laundering, terminal vocabulary, threshold consistency, resume, decomposed-parent\
+  \ lifecycle + EPIC re-linking)"
 type: ENH
 priority: P2
 status: open
@@ -23,6 +25,13 @@ labels:
 - loop-defect
 - orchestration
 - epics
+confidence_score: 91
+outcome_confidence: 59
+score_complexity: 15
+implementation_order_risk: true
+score_test_coverage: 8
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-1977: Harden the rn-implement parent↔sub-loop orchestration contract
@@ -295,5 +304,18 @@ elif [ "$MISSING_ARTIFACTS" = "true" ]; then
 
 **Open** | Created: 2026-06-06 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-05_
+
+**Readiness Score**: 91/100 → PROCEED
+**Outcome Confidence**: 59/100 → MODERATE
+
+### Outcome Risk Factors
+- Test coverage gap: classify_remediation, classify_decomposition, finalize_parent, and record_failure states have no existing behavioral tests; tests are co-deliverables of this issue — implement tests for new states before or alongside the implementation so routing bugs surface early (established pattern in test_rn_decompose.py / test_rn_remediate.py / test_rn_implement.py)
+- EPIC re-linking complexity in finalize_parent: conditional logic touches frontmatter across three issue file types (decomposed parent, each child, the EPIC); no-EPIC guard path must be tested explicitly to prevent silent overwrites on non-EPIC parents
+- Fix 3 implementation choice: two paths (full resume support vs. removing the misleading checkpoint write) without a selected one; whichever is chosen, the acceptance criteria for GAP E need updating to reflect the decision
+
 ## Session Log
 - `/ll:capture-issue` - 2026-06-06 - from rn-implement orchestration-contract review (executor.py:598-612 verdict mapping; run 2026-06-06T015949 audit)
+- `/ll:confidence-check` - 2026-06-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

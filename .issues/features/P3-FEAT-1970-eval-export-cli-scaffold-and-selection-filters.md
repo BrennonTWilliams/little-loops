@@ -17,11 +17,11 @@ labels:
 depends_on:
 - FEAT-1968
 size: Large
-confidence_score: 80
-outcome_confidence: 86
+confidence_score: 98
+outcome_confidence: 92
 score_complexity: 25
-score_test_coverage: 18
-score_ambiguity: 18
+score_test_coverage: 20
+score_ambiguity: 22
 score_change_surface: 25
 ---
 
@@ -153,3 +153,4 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - `/ll:format-issue` - 2026-06-06T03:18:03 - `28c795c0-5fbc-487e-9101-6182dd58a8a0.jsonl`
 - `/ll:issue-size-review` - 2026-06-05T21:48:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bad2c36-ed0d-4b74-bdd5-ccfd01530ea6.jsonl`
 - `/ll:confidence-check` - 2026-06-05T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4f2a58f-fea9-4b2e-bd0f-cce4ab995bec.jsonl`
+- `/ll:confidence-check` - 2026-06-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63c68e86-a5ce-425d-a9d8-0f5ffadec88b.jsonl`
