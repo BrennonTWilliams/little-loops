@@ -3536,6 +3536,7 @@ Entry point for `ll-logs` command. Discover, extract, sequence, and tail Claude 
 - `discover` — List all Claude projects with ll activity (no flags)
 - `extract` — Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl`; requires `--project DIR` or `--all`; optional `--cmd TOOL` to filter by CLI tool
 - `sequences` — Extract tool-chain n-grams of ll invocations from JSONL logs; requires `--project DIR` or `--all`; options: `--min-len N` (default 2), `--min-count M` (default 1), `--top N`, `--window-days D`, `--json`; JSON schema: `[{chain: [str], count: int, edges: [{from, to, freq}]}]`
+- `stats` — Aggregate per-skill invocation frequency and correction rate from `skill_events` in `.ll/history.db`; requires `--project DIR` or `--all`; options: `--window-days D`, `--sort {freq,corrections}` (default freq), `--json`; JSON schema: `[{skill: str, invocations: int, corrections: int, correction_rate: float, errors: null, error_rate: null}]`; `errors`/`error_rate` are `null` pending ENH-1922
 - `tail` — Stream live events from an active loop session; requires `--loop NAME`
 
 ---

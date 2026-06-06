@@ -1700,7 +1700,7 @@ ll-messages --sft-format alpaca --output data/sft/raw.jsonl
 
 ### ll-logs
 
-Discover and extract ll-relevant JSONL entries from Claude Code session logs. Also generates `logs/index.md` after extraction. The `sequences` subcommand mines tool-chain n-grams for workflow analysis.
+Discover and extract ll-relevant JSONL entries from Claude Code session logs. Also generates `logs/index.md` after extraction. The `sequences` subcommand mines tool-chain n-grams for workflow analysis. The `stats` subcommand aggregates per-skill invocation frequency and correction rate from `.ll/history.db`.
 
 **Subcommands:**
 
@@ -1710,6 +1710,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `tail` | Stream live events from an active loop session |
 | `extract` | Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl` |
 | `sequences` | Extract tool-chain n-grams of ll invocations from JSONL logs |
+| `stats` | Aggregate skill invocation frequency and correction rate from history.db |
 
 **`discover` flags:**
 
@@ -1743,7 +1744,17 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--window-days D` | | Only consider records within D days of latest record |
 | `--json` | `-j` | Output as JSON: `[{"chain": [...], "count": N, "edges": [{"from": "...", "to": "...", "freq": f}]}]` |
 
-`--all` and `--project` are mutually exclusive for `extract` and `sequences`.
+`--all` and `--project` are mutually exclusive for `extract`, `sequences`, and `stats`.
+
+**`stats` flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--all` | | Aggregate across all projects with ll activity |
+| `--project DIR` | | Working directory of the target project |
+| `--window-days D` | | Only consider records within D days of latest record |
+| `--sort {freq,corrections}` | | Sort by invocation frequency or correction count (default: freq) |
+| `--json` | `-j` | Output as JSON array |
 
 **Examples:**
 ```bash
@@ -1757,6 +1768,10 @@ ll-logs sequences --all                  # Find all tool-chain bigrams (default 
 ll-logs sequences --project /path -j     # Output n-grams as JSON for one project
 ll-logs sequences --all --top 10         # Top 10 most frequent chains
 ll-logs sequences --all --min-len 3 --min-count 3  # Trigrams appearing ≥3 times
+ll-logs stats --all                      # Skill frequency/correction table across all projects
+ll-logs stats --project /path --json     # JSON stats for one project
+ll-logs stats --all --sort corrections   # Sort by correction count (highest first)
+ll-logs stats --all --window-days 30     # Limit to last 30 days of data
 ```
 
 ---
@@ -2047,6 +2062,31 @@ Scans all `skills/*/SKILL.md` files. Skips skills with `disable-model-invocation
 ll-verify-skills                    # Check against default 500-line limit
 ll-verify-skills --limit 400        # Custom limit
 ll-verify-skills --json             # Output as JSON
+```
+
+---
+
+### ll-verify-triggers
+
+Validate skill description trigger accuracy against should-fire and should-NOT-fire
+phrasings. Reports per-skill precision/recall and a cross-skill collision matrix.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | | Output as JSON |
+| `--directory` | `-C` | Base directory (default: current directory) |
+| `--precision-threshold` | | Minimum precision required (default: 0.5) |
+| `--recall-threshold` | | Minimum recall required (default: 0.5) |
+
+**Exit codes:** `0` = all skills meet thresholds, no collisions; `1` = threshold miss or collision detected.
+
+**Examples:**
+```bash
+ll-verify-triggers                         # Validate all skills against default thresholds
+ll-verify-triggers --json                  # Machine-readable JSON output
+ll-verify-triggers --precision-threshold 0.8 --recall-threshold 0.6
 ```
 
 ---

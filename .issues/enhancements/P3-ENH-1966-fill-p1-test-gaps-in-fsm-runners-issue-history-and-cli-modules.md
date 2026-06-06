@@ -3,13 +3,19 @@ id: ENH-1966
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-05T21:16:36Z"
+captured_at: '2026-06-05T21:16:36Z'
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 labels:
-  - test-coverage
-  - captured
+- test-coverage
+- captured
 parent: EPIC-1967
+confidence_score: 94
+outcome_confidence: 81
+score_complexity: 15
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-1966: Fill P1 Test Gaps in fsm/runners, issue_history, and CLI Modules
@@ -113,8 +119,38 @@ def test_quality_signal_with_empty_history():
 - `scripts/tests/test_session_store.py` — history DB test patterns for debt/quality
 - `scripts/tests/test_cli_e2e.py` — CLI test patterns for deps/history/messages
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Additional reference pattern files:**
+- `scripts/tests/test_issue_history_analysis.py` — `CompletedIssue` construction pattern for debt/quality tests
+- `scripts/tests/test_history_context_cli.py` — similar CLI entry-point structure for history-adjacent tests
+- `scripts/tests/test_cli_learning_tests.py` — `capsys` + `patch("sys.argv", [...])` pattern for JSON output assertions
+- `scripts/tests/conftest.py` — shared fixtures: `temp_project_dir`, `issues_dir` (5 sample issues), `config_file`
+- `scripts/tests/helpers.py` — factory functions: `make_test_state()`, `make_test_fsm()`
+
+**Dominant CLI test pattern** (`patch("sys.argv", [...])` + direct `main_*()` call):
+```python
+with patch("sys.argv", ["ll-history", "summary"]):
+    with patch("little_loops.cli.history.scan_completed_issues_from_db", return_value=[]):
+        result = main_history()
+assert result == 0
+```
+
+**CLI context manager**: All 3 CLI modules (`deps.py`, `history.py`, `messages.py`) wrap their body with `cli_event_context` — mock as `little_loops.cli.<module>.cli_event_context` in all unit tests to avoid SQLite writes.
+
 ### Tests
 - All new test files are the deliverable
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Existing partial test files (coordinate — do not duplicate already-covered logic):**
+- `scripts/tests/test_deps_cli.py` (157 lines, 6 tests) — covers `cli/deps.py` `tree` subcommand only; `test_cli_deps.py` should cover remaining subcommands (`analyze`, `validate`, `fix`, `apply`)
+- `scripts/tests/test_cli_messages_save.py` (68 lines, 4 tests) — covers `_save_combined` helper only; `test_cli_messages.py` should cover `main_messages()` entry point with flag combinations
+- `scripts/tests/test_fsm_executor.py` — already covers `DefaultActionRunner._current_process` lifecycle and agent/tools kwarg forwarding; `test_fsm_runners.py` should focus on `SimulationActionRunner` scenarios and remaining `DefaultActionRunner` gaps
 
 ### Documentation
 - No documentation changes expected
@@ -129,6 +165,47 @@ def test_quality_signal_with_empty_history():
 3. Phase 2: Create `test_issue_history_quality.py` — quality signals with edge cases
 4. Phase 3: Create `test_cli_deps.py`, `test_cli_history.py`, `test_cli_messages.py` — argument parsing, happy paths
 5. Run full test suite to confirm no regressions and measure coverage improvement
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Step 1 — `test_fsm_runners.py` specifics:**
+- `SimulationActionRunner` scenarios: test all 5 — `"all-pass"`, `"all-fail"`, `"all-error"`, `"first-fail"` (boundary: `call_count=1` vs `2`), `"alternating"` (odd/even `call_count`)
+- `_prompt_result()` via mocked `sys.stdin`: test inputs `"1"`, `"2"`, `"3"`, `""` (default), `EOFError`, `KeyboardInterrupt`
+- `DefaultActionRunner` shell path: mock `little_loops.fsm.runners.subprocess.Popen`; verify `on_output_line` callback invoked with each stdout line; test `TimeoutExpired` → `exit_code=124`
+- `DefaultActionRunner` slash path: mock `little_loops.fsm.runners.run_claude_command`; verify `on_usage_detailed` forwarding and `usage_events` list on returned `ActionResult`
+- Skip `_current_process` lifecycle — already covered in `test_fsm_executor.py:TestDefaultActionRunnerProcessTracking`
+
+**Step 2 — `test_issue_history_debt.py` specifics:**
+- `debt.py` accepts `contents: dict[Path, str] | None` — pass a dict directly to avoid all filesystem/DB access; no mocking needed for most tests
+- Construct `CompletedIssue` objects with `tmp_path`-based paths (follow pattern in `test_issue_history_analysis.py`)
+- Key test cases: `detect_cross_cutting_smells` with `scatter_score >= 0.3` threshold; `_calculate_debt_metrics` aging counts (patch `datetime.date.today`)
+- Mock targets when needed: `little_loops.issue_history.debt._detect_processing_agent`, `little_loops.issue_history.debt._parse_resolution_action`
+
+**Step 3 — `test_issue_history_quality.py` specifics:**
+- Same `CompletedIssue` + `contents` dict pattern as Step 2 (no DB access needed)
+- `analyze_test_gaps`: test `has_test=True/False` branches and priority thresholds (`bug_count >= 5` → `"critical"`, `>= 3` → `"high"`)
+- `detect_config_gaps`: use `tmp_path` to create real `hooks/hooks.json`, `agents/*.md`, `skills/*/SKILL.md` dirs
+- Mock target: `little_loops.issue_history.quality._find_test_file`
+
+**Step 4 — `test_cli_deps.py`, `test_cli_history.py`, `test_cli_messages.py` specifics:**
+- Follow `patch.object(sys, "argv", [...])` pattern from `test_deps_cli.py`; reuse its `_setup_project` + `_write_issue` helpers in `test_cli_deps.py`
+- Mock `little_loops.cli.<module>.cli_event_context` in all CLI tests (each module wraps its entire body in this context manager)
+- `test_cli_deps.py`: add classes `TestDepsAnalyze`, `TestDepsValidate`, `TestDepsFix`, `TestDepsApply` complementing existing `TestDepsTree`; mock `little_loops.dependency_mapper.analyze_dependencies`, `validate_dependencies`, `fix_dependencies`
+- `test_cli_history.py`: test `summary` DB-empty → filesystem-scan fallback; `analyze --format json/yaml/markdown` routing; mock `little_loops.cli.history.scan_completed_issues_from_db`, `calculate_summary`, `calculate_analysis`
+- `test_cli_messages.py`: test flag combinations (`--commands-only`, `--skip-cli`, `--exclude-agents`, `--skill`); mock `little_loops.cli.messages.get_project_folder`, `extract_user_messages`, `extract_commands`
+
+**Step 5 — Coverage measurement:**
+```bash
+python -m pytest scripts/tests/test_fsm_runners.py scripts/tests/test_issue_history_debt.py \
+  scripts/tests/test_issue_history_quality.py scripts/tests/test_cli_deps.py \
+  scripts/tests/test_cli_history.py scripts/tests/test_cli_messages.py -v \
+  --cov=scripts/little_loops/fsm/runners --cov=scripts/little_loops/issue_history/debt \
+  --cov=scripts/little_loops/issue_history/quality --cov=scripts/little_loops/cli/deps \
+  --cov=scripts/little_loops/cli/history --cov=scripts/little_loops/cli/messages \
+  --cov-report=term-missing
+```
 
 ## Backwards Compatibility
 
@@ -155,6 +232,7 @@ def test_quality_signal_with_empty_history():
 `test-coverage`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-06T01:19:03 - `60252756-dfe4-4839-a040-9e695b6bbda9.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:11:47 - `cb36cb81-33d2-4de4-bdf7-afd916199a11.jsonl`
 - `/ll:capture-issue` - 2026-06-05T21:16:36Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5cc001a-5129-4d2d-807d-39a428af0331.jsonl`
 

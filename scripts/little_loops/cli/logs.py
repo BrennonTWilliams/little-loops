@@ -6,9 +6,10 @@ import argparse
 import json
 import re
 import shutil
+import sqlite3
 import sys
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -16,7 +17,7 @@ from pathlib import Path
 from little_loops.cli.loop.info import (  # private symbol: cross-module coupling; verify signature on upgrade
     _format_history_event,
 )
-from little_loops.cli.output import configure_output, print_json, use_color_enabled
+from little_loops.cli.output import configure_output, print_json, table, use_color_enabled
 from little_loops.cli_args import add_json_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
@@ -671,6 +672,152 @@ def _cmd_tail(args: argparse.Namespace, loops_dir: Path) -> int:
     return 0
 
 
+_CORRECTION_WINDOW_SEC = 30
+
+
+def _aggregate_skill_stats(
+    db_path: Path,
+    *,
+    window_days: int | None = None,
+) -> dict[str, dict[str, int]] | None:
+    """Aggregate per-skill invocation and correction counts from history.db.
+
+    Returns None when the database is absent, or an empty dict when the database
+    has no skill_events rows. Corrections are attributed to the most recent skill
+    event in the same session within _CORRECTION_WINDOW_SEC seconds.
+    """
+    if not db_path.exists():
+        return None
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        try:
+            skill_rows = conn.execute(
+                "SELECT ts, session_id, skill_name FROM skill_events ORDER BY ts"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return None
+
+        if not skill_rows:
+            return {}
+
+        if window_days is not None:
+            latest_ts = skill_rows[-1]["ts"] or ""
+            cutoff = _parse_iso_timestamp(latest_ts) - timedelta(days=window_days)
+            skill_rows = [
+                r for r in skill_rows if _parse_iso_timestamp(r["ts"] or "") >= cutoff
+            ]
+
+        stats: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"invocations": 0, "corrections": 0}
+        )
+        for row in skill_rows:
+            stats[row["skill_name"] or "unknown"]["invocations"] += 1
+
+        session_skills: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        for row in skill_rows:
+            sid = row["session_id"] or ""
+            session_skills[sid].append((row["ts"] or "", row["skill_name"] or "unknown"))
+
+        try:
+            corr_rows = conn.execute(
+                "SELECT ts, session_id FROM user_corrections ORDER BY ts"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            corr_rows = []
+
+        for corr in corr_rows:
+            c_ts = corr["ts"] or ""
+            sid = corr["session_id"] or ""
+            candidates = session_skills.get(sid, [])
+            best_skill: str | None = None
+            best_ts: str = ""
+            for s_ts, s_name in candidates:
+                if s_ts <= c_ts and s_ts >= best_ts:
+                    best_ts = s_ts
+                    best_skill = s_name
+            if best_skill is not None:
+                elapsed = (
+                    _parse_iso_timestamp(c_ts) - _parse_iso_timestamp(best_ts)
+                ).total_seconds()
+                if 0 <= elapsed <= _CORRECTION_WINDOW_SEC:
+                    stats[best_skill]["corrections"] += 1
+
+        return dict(stats)
+    finally:
+        conn.close()
+
+
+def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
+    """Aggregate skill invocation frequency and correction rate from history.db."""
+    if args.project:
+        db_paths = [Path(args.project) / ".ll" / "history.db"]
+    else:
+        decoded_paths = discover_all_projects(logger)
+        db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
+
+    merged: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"invocations": 0, "corrections": 0}
+    )
+    found_any_db = False
+    for db_path in db_paths:
+        result = _aggregate_skill_stats(db_path, window_days=args.window_days)
+        if result is None:
+            continue
+        found_any_db = True
+        for skill, counts in result.items():
+            merged[skill]["invocations"] += counts["invocations"]
+            merged[skill]["corrections"] += counts["corrections"]
+
+    if not merged:
+        if not found_any_db:
+            logger.warning("No history.db found — run with an active ll project.")
+        else:
+            print("No skill events recorded yet.")
+        return 0
+
+    sort_key = getattr(args, "sort", "freq")
+    if sort_key == "corrections":
+        ranked = sorted(
+            merged.items(), key=lambda kv: kv[1]["corrections"], reverse=True
+        )
+    else:
+        ranked = sorted(
+            merged.items(), key=lambda kv: kv[1]["invocations"], reverse=True
+        )
+
+    if args.json:
+        rows_json = [
+            {
+                "skill": skill,
+                "invocations": counts["invocations"],
+                "corrections": counts["corrections"],
+                "correction_rate": (
+                    round(counts["corrections"] / counts["invocations"], 4)
+                    if counts["invocations"] > 0
+                    else 0.0
+                ),
+                "errors": None,
+                "error_rate": None,
+            }
+            for skill, counts in ranked
+        ]
+        print_json(rows_json)
+        return 0
+
+    headers = ["Skill", "Invocations", "Corrections", "Corr%", "Errors"]
+    rows = []
+    for skill, counts in ranked:
+        inv = counts["invocations"]
+        corr = counts["corrections"]
+        corr_pct = f"{corr / inv * 100:.1f}%" if inv > 0 else "0.0%"
+        rows.append([skill, str(inv), str(corr), corr_pct, "N/A"])
+
+    print(table(headers, rows))
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for ll-logs."""
     parser = argparse.ArgumentParser(
@@ -768,6 +915,37 @@ Examples:
     )
     add_json_arg(sequences_parser)
 
+    stats_parser = subparsers.add_parser(
+        "stats",
+        help="Aggregate skill invocation frequency and correction rate from history.db",
+    )
+    stats_target = stats_parser.add_mutually_exclusive_group(required=True)
+    stats_target.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help="Working directory of the target project",
+    )
+    stats_target.add_argument(
+        "--all",
+        action="store_true",
+        help="Aggregate across all projects with ll activity",
+    )
+    stats_parser.add_argument(
+        "--window-days",
+        type=int,
+        default=None,
+        metavar="D",
+        help="Only consider records within D days of latest record",
+    )
+    stats_parser.add_argument(
+        "--sort",
+        choices=["freq", "corrections"],
+        default="freq",
+        help="Sort output by invocation frequency or correction count (default: freq)",
+    )
+    add_json_arg(stats_parser)
+
     return parser
 
 
@@ -812,5 +990,8 @@ def main_logs() -> int:
 
         if args.command == "sequences":
             return _cmd_sequences(args, logger)
+
+        if args.command == "stats":
+            return _cmd_stats(args, logger)
 
         return 1

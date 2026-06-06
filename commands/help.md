@@ -265,6 +265,7 @@ ll-issues         Issue management and visualization (next-id, list, show, path,
 ll-verify-docs    Verify documented counts match actual file counts
 ll-verify-skill-budget Check skill description token footprint against listing budget
 ll-verify-skills  Check that no SKILL.md exceeds 500 lines
+ll-verify-triggers Validate skill description trigger accuracy against fixtures
 ll-check-links    Check markdown documentation for broken links
 ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
 ll-migrate        Migrate completed/deferred issues to type-based directories (one-time, ENH-1390)
@@ -277,7 +278,7 @@ ll-adapt-skills-for-codex Add Codex Skills API frontmatter to all skills AND bri
 ll-adapt-agents-for-codex Generate .codex/agents/*.toml from agents/*.md for Codex agent-select support
 ll-doctor         Check host CLI capability support for little-loops features
 ll-learning-tests Query and manage the learning test registry (check/list/mark-stale)
-ll-logs           Discover, extract, and analyze ll-relevant log entries from Claude project logs (sequences subcommand for tool-chain n-grams)
+ll-logs           Discover, extract, and analyze ll-relevant log entries from Claude project logs (sequences for tool-chain n-grams; stats for skill frequency/correction telemetry)
 ll-session        Query the unified SQLite session store (search/recent/backfill/path/grep/expand/describe)
 ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings)
 ll-history-context Render a ## Historical Context block for an issue from .ll/history.db

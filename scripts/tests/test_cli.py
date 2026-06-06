@@ -2947,6 +2947,21 @@ class TestMainLogsIntegration:
 
         assert result == 0
 
+    def test_stats_returns_0(self) -> None:
+        """ll-logs stats returns 0 on success (no DB present)."""
+        from little_loops.cli import main_logs
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+
+            with (
+                patch.object(sys, "argv", ["ll-logs", "stats", "--all"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+
     def test_discover_finds_ll_project(self, capsys) -> None:
         """ll-logs discover outputs paths for projects with ll activity."""
         import json

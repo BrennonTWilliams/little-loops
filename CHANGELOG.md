@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`ll-logs stats` subcommand** — Aggregates per-skill invocation frequency, correction count, and correction rate from `skill_events` in `.ll/history.db`. Prints a box-drawn table (or `--json` array) sorted by invocation count or correction count. Errors/error-rate columns output `N/A` pending ENH-1922. (ENH-1921)
 - **`ll-logs sequences` subcommand** — Mines tool-level n-grams (ordered chains of ll skill/command/tool invocations) from extracted log corpora, with occurrence counts and per-edge transition frequencies. Reusable extraction primitive for `loop-suggester` and FEAT-1309. (ENH-1919)
+- **`ll-verify-triggers` CLI** — New CLI tool that validates skill description trigger accuracy against should-fire and should-NOT-fire phrasings. Reports per-skill precision/recall and cross-skill collision matrix. Exits non-zero when a skill falls below threshold or collides with another. (FEAT-1910)
 
 ### Planned
 

@@ -181,7 +181,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-harness` - One-shot runner evaluation (skill, cmd, mcp, prompt) with exit-code and semantic criteria
 - `ll-loop` - Execute FSM-based automation loops (`promote-baseline` promotes latest run output as comparator baseline)
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
-- `ll-logs` - Discover, extract, sequence, and tail Claude Code session logs (`discover` / `extract` / `sequences` / `tail` subcommands; writes `logs/index.md`)
+- `ll-logs` - Discover, extract, sequence, and tail Claude Code session logs (`discover` / `extract` / `sequences` / `stats` / `tail` subcommands; writes `logs/index.md`)
 - `ll-messages` - Extract user messages from Claude Code logs
 - `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `recent --issue <ID>` / `backfill [--host claude-code|codex|opencode|pi]` / `path <session_id>` / `grep <pattern>` / `expand <id>` / `describe <id>` subcommands; default DB `.ll/history.db`)
 - `ll-history-context` - Render a `## Historical Context` block for an issue from `.ll/history.db` (corrections + FTS5 matches, capped at 5 rows, stale-filtered). Use `--effort` to output per-issue effort context (session count, cycle time)
@@ -191,6 +191,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-verify-docs` - Verify documented counts match actual file counts
 - `ll-verify-skill-budget` - Check skill description token footprint against listing budget (exit 1 if over)
 - `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines (exit 1 if any violations)
+- `ll-verify-triggers` - Validate skill description trigger accuracy against should-fire/should-not-fire phrasings (exit 1 if below threshold or collisions)
 - `ll-check-links` - Check markdown documentation for broken links
 - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint, epic-progress, decisions (list, add, outcome, generate, sync))
 - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale); record creation is owned by `/ll:explore-api`

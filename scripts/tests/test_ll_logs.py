@@ -4,11 +4,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from little_loops.cli.logs import _cmd_tail, _is_ll_relevant, _parse_args, main_logs
+import pytest
+
+from little_loops.cli.logs import (
+    _aggregate_skill_stats,
+    _cmd_tail,
+    _is_ll_relevant,
+    _parse_args,
+    main_logs,
+)
+from little_loops.session_store import ensure_db
 
 
 class TestArgumentParsing:
@@ -1304,3 +1314,267 @@ class TestExtract:
             assert result == 0
             logs_dir = output_cwd / "logs"
             assert not logs_dir.exists() or not any(logs_dir.rglob("*.jsonl"))
+
+
+def _populate_skill_events(
+    db_path: Path,
+    rows: list[tuple[str, str, str, str]],
+) -> None:
+    """Insert (ts, session_id, skill_name, args) rows into skill_events."""
+    ensure_db(db_path)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        for ts, session_id, skill_name, args in rows:
+            conn.execute(
+                "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+                (ts, session_id, skill_name, args),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _insert_correction(db_path: Path, ts: str, session_id: str, content: str) -> None:
+    """Insert a user_corrections row directly."""
+    ensure_db(db_path)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "INSERT INTO user_corrections(ts, session_id, content, source) VALUES(?, ?, ?, 'test')",
+            (ts, session_id, content),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestStats:
+    """Tests for the stats subcommand."""
+
+    def test_stats_subcommand_parsed(self) -> None:
+        """stats subcommand sets command='stats' and all=True."""
+        with patch("sys.argv", ["ll-logs", "stats", "--all"]):
+            args = _parse_args()
+        assert args.command == "stats"
+        assert args.all is True
+
+    def test_stats_sort_default_freq(self) -> None:
+        """--sort defaults to 'freq'."""
+        with patch("sys.argv", ["ll-logs", "stats", "--all"]):
+            args = _parse_args()
+        assert args.sort == "freq"
+
+    def test_stats_sort_corrections(self) -> None:
+        """--sort corrections is accepted."""
+        with patch("sys.argv", ["ll-logs", "stats", "--all", "--sort", "corrections"]):
+            args = _parse_args()
+        assert args.sort == "corrections"
+
+    def test_stats_window_days(self) -> None:
+        """--window-days is accepted."""
+        with patch("sys.argv", ["ll-logs", "stats", "--all", "--window-days", "7"]):
+            args = _parse_args()
+        assert args.window_days == 7
+
+    def test_stats_project_and_all_mutually_exclusive(self) -> None:
+        """--project and --all cannot be combined."""
+        with patch("sys.argv", ["ll-logs", "stats", "--project", "/tmp", "--all"]):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    def test_stats_json_flag(self) -> None:
+        """--json flag is accepted."""
+        with patch("sys.argv", ["ll-logs", "stats", "--all", "--json"]):
+            args = _parse_args()
+        assert args.json is True
+
+    def test_stats_no_db_returns_0(self, tmp_path: Path) -> None:
+        """stats returns 0 gracefully when no history.db exists."""
+        with (
+            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path)]),
+            patch("pathlib.Path.home", return_value=tmp_path),
+        ):
+            result = main_logs()
+        assert result == 0
+
+    def test_stats_counts_invocations(self, tmp_path: Path, capsys) -> None:
+        """stats correctly counts invocations per skill in tabular output."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        _populate_skill_events(db_path, [
+            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+            ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
+            ("2026-01-01T00:02:00Z", "s1", "capture-issue", ""),
+        ])
+
+        with patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path)]):
+            result = main_logs()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "manage-issue" in out
+        assert "capture-issue" in out
+
+    def test_stats_json_output(self, tmp_path: Path) -> None:
+        """stats --json emits a JSON array with invocation counts."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        _populate_skill_events(db_path, [
+            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+            ("2026-01-01T00:01:00Z", "s1", "capture-issue", ""),
+        ])
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        assert isinstance(data, list)
+        assert len(data) == 2
+        skills = {r["skill"] for r in data}
+        assert "manage-issue" in skills
+        assert "capture-issue" in skills
+
+    def test_stats_json_keys(self, tmp_path: Path) -> None:
+        """JSON output includes invocations, corrections, correction_rate, errors, error_rate."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        _populate_skill_events(db_path, [
+            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+        ])
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            main_logs()
+
+        data = json.loads("\n".join(captured))
+        row = data[0]
+        assert {"skill", "invocations", "corrections", "correction_rate", "errors", "error_rate"} == set(row.keys())
+        assert row["errors"] is None
+        assert row["error_rate"] is None
+
+    def test_stats_correction_attribution(self, tmp_path: Path) -> None:
+        """Corrections within 30s of a skill event are attributed to that skill."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        _populate_skill_events(db_path, [
+            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+        ])
+        _insert_correction(db_path, "2026-01-01T00:00:10Z", "s1", "no, not that")
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        assert data[0]["skill"] == "manage-issue"
+        assert data[0]["corrections"] == 1
+
+    def test_stats_correction_outside_window_not_attributed(self, tmp_path: Path) -> None:
+        """Corrections more than 30s after a skill event are not attributed."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        _populate_skill_events(db_path, [
+            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+        ])
+        _insert_correction(db_path, "2026-01-01T00:01:00Z", "s1", "no, not that")
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        assert data[0]["skill"] == "manage-issue"
+        assert data[0]["corrections"] == 0
+
+    def test_stats_sort_by_corrections(self, tmp_path: Path) -> None:
+        """--sort corrections puts higher-correction skills first."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        _populate_skill_events(db_path, [
+            ("2026-01-01T00:00:00Z", "s1", "capture-issue", ""),
+            ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
+        ])
+        _insert_correction(db_path, "2026-01-01T00:01:10Z", "s1", "no wait")
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json", "--sort", "corrections"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        assert data[0]["skill"] == "manage-issue"
+        assert data[0]["corrections"] == 1
+
+    def test_stats_empty_db_returns_0(self, tmp_path: Path) -> None:
+        """stats returns 0 when DB exists but has no skill events."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        ensure_db(db_path)
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path)]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+
+    def test_aggregate_skill_stats_no_db_returns_none(self, tmp_path: Path) -> None:
+        """_aggregate_skill_stats returns None when DB is absent."""
+        result = _aggregate_skill_stats(tmp_path / ".ll" / "history.db")
+        assert result is None
+
+    def test_aggregate_skill_stats_empty_db_returns_empty(self, tmp_path: Path) -> None:
+        """_aggregate_skill_stats returns {} for a DB with no skill_events rows."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        ensure_db(db_path)
+        result = _aggregate_skill_stats(db_path)
+        assert result == {}
+
+    def test_aggregate_skill_stats_counts(self, tmp_path: Path) -> None:
+        """_aggregate_skill_stats returns correct invocation counts."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        _populate_skill_events(db_path, [
+            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+            ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
+            ("2026-01-01T00:02:00Z", "s1", "capture-issue", ""),
+        ])
+        result = _aggregate_skill_stats(db_path)
+        assert result is not None
+        assert result["manage-issue"]["invocations"] == 2
+        assert result["capture-issue"]["invocations"] == 1
+
+    def test_aggregate_skill_stats_window_days(self, tmp_path: Path) -> None:
+        """window_days filters out older records."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        _populate_skill_events(db_path, [
+            ("2025-01-01T00:00:00Z", "s1", "old-skill", ""),
+            ("2026-06-01T00:00:00Z", "s1", "new-skill", ""),
+        ])
+        result = _aggregate_skill_stats(db_path, window_days=30)
+        assert result is not None
+        assert "new-skill" in result
+        assert "old-skill" not in result
