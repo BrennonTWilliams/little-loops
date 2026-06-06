@@ -20,7 +20,7 @@ fragments:
     description: |
       Discover available loops, write catalog to ${context.run_dir}/composer-catalog.json,
       and capture the full JSON under the `catalog` key.
-      Excludes loop-router and loop-composer from candidates; also applies
+      Excludes loop-router, loop-composer, and loop-composer-adaptive from candidates; also applies
       ${context.exclude} comma-separated overrides.
       State must supply: timeout, next, on_error.
     action_type: shell
@@ -33,6 +33,7 @@ fragments:
       excludes = set(x.strip() for x in exclude_raw.split(',') if x.strip())
       excludes.add('loop-router')
       excludes.add('loop-composer')
+      excludes.add('loop-composer-adaptive')
       project = []
       builtin = []
       for loop in loops:
@@ -200,3 +201,53 @@ fragments:
     evaluate:
       type: output_contains
       pattern: "CANCEL"
+
+  reassess:
+    description: |
+      Adaptive re-assessment after a sub-loop step failure. Reads captured context
+      (completed_step_summaries, last_verdict, plan_display) and returns a structured
+      CONTINUE / REPLAN_TAIL / ABORT decision in a REASSESS_DECISION block.
+      Pairs with check_replan_budget (output_numeric) in the MR-1 routing chain.
+      State must supply: on_yes, on_no, on_partial, on_error.
+    action_type: prompt
+    timeout: 300
+    action: |
+      A sub-loop step failed during composed plan execution. Decide how to proceed.
+
+      GOAL: ${context.goal}
+
+      PLAN SUMMARY:
+      ${captured.plan_display.output}
+
+      COMPLETED STEPS (checkpoint summaries):
+      ${captured.completed_step_summaries.output}
+
+      FAILING STEP VERDICT:
+      ${captured.last_verdict.output}
+
+      Choose one of:
+      - CONTINUE — skip the failing step; proceed with remaining steps unchanged.
+      - REPLAN_TAIL — propose a revised tail plan for the unexecuted steps only.
+        Completed steps are IMMUTABLE. New tail must use only loops from the catalog.
+        Max ${context.max_plan_nodes} total steps in the new tail.
+      - ABORT — goal is not achievable; terminate cleanly.
+
+      Emit your decision LAST as:
+      REASSESS_DECISION:
+      ```json
+      {
+        "decision": "CONTINUE" | "REPLAN_TAIL" | "ABORT",
+        "reason": "<one concise sentence>",
+        "new_tail_plan": []
+      }
+      ```
+      (populate new_tail_plan only if decision is REPLAN_TAIL)
+    capture: reassess_decision
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response end with a REASSESS_DECISION block containing a JSON object with 'decision' set to CONTINUE, REPLAN_TAIL, or ABORT?"
+      min_confidence: 0.5
+    on_yes: parse_reassess_decision
+    on_no: parse_reassess_decision
+    on_partial: parse_reassess_decision
+    on_error: abort_composer

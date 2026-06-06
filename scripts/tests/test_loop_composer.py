@@ -247,6 +247,37 @@ class TestComposerLibFragment:
             "present_plan fragment must detect CANCEL to abort execution"
         )
 
+    def test_lib_has_reassess_fragment(self, lib_data: dict) -> None:
+        assert "reassess" in lib_data["fragments"], (
+            "lib/composer.yaml must define a 'reassess' fragment for the adaptive variant (FEAT-1983)"
+        )
+
+    def test_reassess_fragment_uses_llm_structured_evaluate(self, lib_data: dict) -> None:
+        fragment = lib_data["fragments"]["reassess"]
+        evaluate = fragment.get("evaluate", {})
+        assert evaluate.get("type") == "llm_structured", (
+            "reassess fragment must use llm_structured evaluate (pairs with output_numeric in MR-1 chain)"
+        )
+
+    def test_reassess_fragment_captures_reassess_decision(self, lib_data: dict) -> None:
+        fragment = lib_data["fragments"]["reassess"]
+        assert fragment.get("capture") == "reassess_decision"
+
+    def test_reassess_fragment_action_is_prompt(self, lib_data: dict) -> None:
+        fragment = lib_data["fragments"]["reassess"]
+        assert fragment.get("action_type") == "prompt"
+
+    def test_reassess_fragment_contains_decision_tokens(self, lib_data: dict) -> None:
+        action = lib_data["fragments"]["reassess"].get("action", "")
+        for token in ("CONTINUE", "REPLAN_TAIL", "ABORT"):
+            assert token in action, f"reassess fragment action must mention decision token {token!r}"
+
+    def test_discover_loops_fragment_excludes_adaptive_composer(self, lib_data: dict) -> None:
+        action = lib_data["fragments"]["discover_loops"].get("action", "")
+        assert "loop-composer-adaptive" in action, (
+            "discover_loops fragment must exclude 'loop-composer-adaptive' from the candidate catalog"
+        )
+
 
 class TestCatalogExclusivity:
     """Tests for the routing guard between loop-router, loop-composer, and goal-cluster."""
@@ -275,6 +306,14 @@ class TestCatalogExclusivity:
         with open(LOOP_FILE) as f:
             data = yaml.safe_load(f)
         assert "lib/composer.yaml" in data.get("import", [])
+
+    def test_loop_router_excludes_adaptive_composer(self, router_data: dict) -> None:
+        """loop-router must exclude loop-composer-adaptive from its catalog discovery."""
+        action = router_data.get("states", {}).get("discover_loops", {}).get("action", "")
+        assert "loop-composer-adaptive" in action, (
+            "loop-router's discover_loops must add loop-composer-adaptive to excludes "
+            "(wiring step 9 from FEAT-1983 spec)"
+        )
 
 
 @pytest.mark.slow

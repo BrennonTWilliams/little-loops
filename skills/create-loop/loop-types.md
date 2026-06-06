@@ -1553,7 +1553,7 @@ states:
 
 If user selected any of the three Orch loop types, follow the steps below for that type.
 
-The **Router** shape can be created via the wizard; **Composer** shape is now available via `ll-loop run loop-composer`; **Supervisor** shape is forthcoming under EPIC-1811 (FEAT-1809).
+The **Router** shape can be created via the wizard; **Composer** shape is available via `ll-loop run loop-composer`; **Adaptive Composer** shape is available via `ll-loop run loop-composer-adaptive`.
 
 ---
 
@@ -1647,7 +1647,7 @@ The composer discovers available loops, decomposes the goal into an ordered DAG 
 
 ### Orch Supervisor
 
-**Supervisor** (FEAT-1809): forthcoming under EPIC-1811. Runs a loop, monitors outcomes, and re-plans the sub-loop sequence on failure via a `reassess` gate.
+**loop-composer-adaptive** (FEAT-1983): Adaptive composer with fault-tolerant re-plan-on-failure. Run via `ll-loop run loop-composer-adaptive --input "your goal"`. When a step fails, a `reassess` gate decides CONTINUE / REPLAN_TAIL / ABORT, preserving completed-step checkpoints and replacing only the unexecuted tail on REPLAN_TAIL. Use `loop-composer` for goals where failure should terminate immediately; use `loop-composer-adaptive` when mid-plan recovery is valuable.
 
 ---
 

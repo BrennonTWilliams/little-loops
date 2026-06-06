@@ -460,11 +460,11 @@ questions:
         description: "Classifies a natural language goal, scores candidate loops, dispatches to the winner"
       - label: "Composer — decompose goal into a DAG of sub-loops"
         description: "Decomposes a goal into an ordered DAG of existing loop invocations; run via ll-loop run loop-composer"
-      - label: "Supervisor — run loop, reassess on failure, re-plan"
-        description: "Forthcoming — see EPIC-1811 (FEAT-1809)"
+      - label: "Adaptive Composer — decompose goal, reassess on failure, re-plan tail"
+        description: "Adaptive re-plan-on-failure orchestration; run via ll-loop run loop-composer-adaptive"
 ```
 
-**Apply substitutions:** For the Router shape, clone `loop-router.yaml` via `ll-loop install loop-router` and customize context knobs (`auto`, `confidence_threshold`, `exclude`). For the Composer shape, run `ll-loop run loop-composer --input "your goal"` directly — no install step needed. Supervisor shapes are forthcoming under EPIC-1811 (FEAT-1809).
+**Apply substitutions:** For the Router shape, clone `loop-router.yaml` via `ll-loop install loop-router` and customize context knobs (`auto`, `confidence_threshold`, `exclude`). For the Composer shape, run `ll-loop run loop-composer --input "your goal"` directly. For the Adaptive Composer shape, run `ll-loop run loop-composer-adaptive --input "your goal"` — no install step needed for either.
 
 ---
 

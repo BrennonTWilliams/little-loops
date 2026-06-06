@@ -1,0 +1,715 @@
+name: loop-composer-adaptive
+description: |
+  Adaptive variant of loop-composer. Accepts a natural-language goal, decomposes it into
+  an ordered DAG of up to 8 loop invocations, and executes them sequentially. Unlike the
+  static variant, when a sub-loop fails the adaptive variant invokes a reassess gate that
+  decides CONTINUE / REPLAN_TAIL / ABORT — preserving completed-step checkpoints and
+  replacing only the unexecuted tail on REPLAN_TAIL. Replanning is bounded by max_replans
+  (default 2); ABORT fires on exhaustion or irrecoverable failure.
+
+  Use when a multi-step goal may encounter mid-plan failures that benefit from structured
+  recovery, rather than a full restart. For goals where failure should terminate immediately,
+  use loop-composer instead.
+category: orchestration
+input_key: goal
+required_inputs: ["goal"]
+initial: discover_loops
+max_iterations: 200
+timeout: 345600
+on_handoff: spawn
+
+import:
+  - lib/composer.yaml
+
+context:
+  goal: "" # populated via input_key: the natural language goal to decompose
+  auto: "false" # "false" = require HITL approval before executing
+  exclude: "" # comma-separated loop names to exclude from the candidate catalog
+  max_plan_nodes: "8" # maximum steps allowed in a single plan
+  max_replans: "2" # maximum number of tail-replan attempts before ABORT
+
+states:
+  # ─── Phase 1: Catalog Discovery ──────────────────────────────────────────────
+
+  discover_loops:
+    fragment: discover_loops
+    timeout: 60
+    next: decompose_goal
+    on_error: failed
+
+  # ─── Phase 2: Goal Decomposition ─────────────────────────────────────────────
+
+  decompose_goal:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are a loop composer. Decompose the goal below into an ordered sequence of
+      existing loops that together accomplish it.
+
+      GOAL: ${context.goal}
+
+      AVAILABLE LOOPS (project[] and builtin[] arrays):
+      ${captured.catalog.output}
+
+      Rules:
+      1. Emit a plan of 1–${context.max_plan_nodes} steps (fewer is better).
+      2. Each step must use a loop from the catalog above. When uncertain, prefer
+         "loop-router" as the loop_name — it will route to the best sub-loop at runtime.
+      3. NEVER include "loop-composer", "loop-composer-adaptive", or "goal-cluster" as a loop_name.
+      4. depends_on lists step_ids that must complete before this step runs.
+         For a simple linear sequence all depends_on lists are [previous_step_id].
+         For independent parallel work, depends_on may be [].
+      5. The input field is a string passed as --input to that loop. It may reference
+         a prior step's output with {{step_id_output}} (replaced at runtime).
+
+      Output your plan on the LAST block as:
+      PLAN_JSON:
+      ```json
+      [
+        {"step_id": "step_1", "loop_name": "...", "input": "...", "depends_on": []},
+        {"step_id": "step_2", "loop_name": "...", "input": "...", "depends_on": ["step_1"]}
+      ]
+      ```
+
+      Think briefly (2-3 sentences) about how to decompose the goal, then emit the plan.
+    capture: plan_json
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response end with a PLAN_JSON: code block containing a JSON array of step objects?"
+      min_confidence: 0.5
+    on_yes: parse_plan
+    on_no: parse_plan
+    on_partial: parse_plan
+    on_error: failed
+
+  # ─── Phase 3: Plan Parsing & Display ─────────────────────────────────────────
+
+  parse_plan:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re, sys, os
+
+      run_dir = '${context.run_dir}'
+      os.makedirs(run_dir, exist_ok=True)
+      output = """${captured.plan_json.output}"""
+
+      # Extract JSON array from tagged block
+      plan = None
+      m = re.search(r'PLAN_JSON:\s*```(?:json)?\s*(\[.*?\])\s*```', output, re.DOTALL)
+      if m:
+          try:
+              plan = json.loads(m.group(1))
+          except Exception:
+              pass
+
+      # Fallback: find any JSON array
+      if plan is None:
+          m2 = re.search(r'(\[[\s\S]*\])', output)
+          if m2:
+              try:
+                  plan = json.loads(m2.group(0))
+              except Exception:
+                  pass
+
+      if plan is None or not isinstance(plan, list):
+          print('ERROR: could not parse plan JSON from LLM output')
+          sys.exit(1)
+
+      # Write main plan file
+      plan_file = os.path.join(run_dir, 'composer-plan.json')
+      with open(plan_file, 'w') as f:
+          json.dump(plan, f, indent=2)
+
+      # Write initial plan version (v1)
+      plans_dir = os.path.join(run_dir, 'plans')
+      os.makedirs(plans_dir, exist_ok=True)
+      with open(os.path.join(plans_dir, 'v1.json'), 'w') as f:
+          json.dump(plan, f, indent=2)
+
+      # Format human-readable display for HITL prompt
+      lines = [f'Steps: {len(plan)}', '']
+      for i, step in enumerate(plan, 1):
+          sid = step.get('step_id', f'step_{i}')
+          loop = step.get('loop_name', '?')
+          inp = step.get('input', '')
+          deps = step.get('depends_on', [])
+          dep_str = f' (after: {", ".join(deps)})' if deps else ''
+          lines.append(f'{i}. [{sid}] {loop}{dep_str}')
+          lines.append(f'   Input: {inp[:120]}{"…" if len(inp) > 120 else ""}')
+          lines.append('')
+
+      print('\n'.join(lines))
+      PYEOF
+    capture: plan_display
+    next: validate_plan
+    on_error: re_decompose
+
+  # ─── Phase 4: Plan Validation ─────────────────────────────────────────────────
+
+  validate_plan:
+    fragment: validate_plan
+    on_yes: check_auto_plan
+    on_no: re_decompose
+    on_error: re_decompose
+
+  re_decompose:
+    action_type: shell
+    action: |
+      FILE="${context.run_dir}/decompose-retries.txt"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "3"
+    on_yes: decompose_goal
+    on_no: failed
+
+  # ─── Phase 5: Auto-Approve Gate ───────────────────────────────────────────────
+
+  check_auto_plan:
+    action_type: shell
+    action: |
+      test "${context.auto}" = "true" && exit 0 || exit 1
+    evaluate:
+      type: exit_code
+    on_yes: execute_plan
+    on_no: present_plan
+    on_error: execute_plan
+
+  # ─── Phase 6: HITL Plan Approval ──────────────────────────────────────────────
+
+  present_plan:
+    fragment: present_plan
+    on_yes: present_result
+    on_no: execute_plan
+    on_error: present_result
+
+  # ─── Phase 7: Sequential DAG Execution ───────────────────────────────────────
+
+  execute_plan:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re, sys, os
+
+      run_dir = '${context.run_dir}'
+      plan_file = os.path.join(run_dir, 'composer-plan.json')
+      topo_file = os.path.join(run_dir, 'topo-order.json')
+      completed_file = os.path.join(run_dir, 'completed-steps.txt')
+
+      with open(plan_file) as f:
+          plan = json.load(f)
+      plan_by_id = {n['step_id']: n for n in plan}
+
+      with open(topo_file) as f:
+          topo_order = json.load(f)
+
+      completed = set()
+      if os.path.exists(completed_file):
+          with open(completed_file) as f:
+              completed = set(line.strip() for line in f if line.strip())
+
+      # Find next uncompleted step
+      next_step = None
+      step_num = len(completed)
+      for sid in topo_order:
+          if sid not in completed:
+              next_step = plan_by_id.get(sid)
+              break
+
+      if next_step is None:
+          print('ALL_DONE')
+          sys.exit(1)
+
+      # Substitute {{step_id_output}} references in input
+      step_input = next_step.get('input', '${context.goal}') or '${context.goal}'
+      def replace_step_ref(m):
+          ref_id = m.group(1)
+          ckpt = os.path.join(run_dir, 'checkpoints', f'step-{ref_id}.json')
+          try:
+              with open(ckpt) as cf:
+                  data = json.load(cf)
+              return data.get('output_summary', '')
+          except Exception:
+              return m.group(0)
+      step_input = re.sub(r'\{\{([^}]+)\}\}', replace_step_ref, step_input)
+
+      # Write per-step dispatch files
+      with open(os.path.join(run_dir, 'current-step-id.txt'), 'w') as f:
+          f.write(next_step['step_id'])
+      with open(os.path.join(run_dir, 'current-step-num.txt'), 'w') as f:
+          f.write(str(step_num))
+      with open(os.path.join(run_dir, 'current-step-loop.txt'), 'w') as f:
+          f.write(next_step['loop_name'])
+      with open(os.path.join(run_dir, 'current-step-input.txt'), 'w') as f:
+          f.write(step_input)
+
+      print(next_step['step_id'])
+      sys.exit(0)
+      PYEOF
+    capture: step_check
+    evaluate:
+      type: exit_code
+    on_yes: read_step_loop
+    on_no: read_checkpoints
+    on_error: failed
+
+  read_step_loop:
+    action_type: shell
+    action: |
+      cat "${context.run_dir}/current-step-loop.txt" 2>/dev/null || echo "loop-router"
+    capture: next_step_loop
+    next: read_step_input
+    on_error: failed
+
+  read_step_input:
+    action_type: shell
+    action: |
+      cat "${context.run_dir}/current-step-input.txt" 2>/dev/null || echo "${context.goal}"
+    capture: next_step_input
+    next: dispatch_step
+    on_error: failed
+
+  dispatch_step:
+    loop: "${captured.next_step_loop.output}"
+    timeout: 3600
+    with:
+      input: "${captured.next_step_input.output}"
+    capture: step_output
+    on_yes: write_step_success
+    on_no: write_step_failed
+    on_error: write_step_failed
+
+  write_step_success:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os
+
+      run_dir = '${context.run_dir}'
+      def _read(p, default=''):
+          try:
+              with open(p) as f: return f.read().strip()
+          except Exception: return default
+
+      step_id = _read(os.path.join(run_dir, 'current-step-id.txt'), 'unknown')
+      step_num = _read(os.path.join(run_dir, 'current-step-num.txt'), '0')
+      loop_name = _read(os.path.join(run_dir, 'current-step-loop.txt'), '')
+
+      subloop_out = """${captured.step_output.output}"""
+      output_summary = ''
+      terminal_state = 'done'
+      for line in subloop_out.strip().split('\n'):
+          try:
+              event = json.loads(line)
+              if event.get('type') == 'output' and event.get('text'):
+                  output_summary = event['text'][:500]
+              if event.get('type') == 'terminal':
+                  terminal_state = event.get('state', 'done')
+          except Exception:
+              pass
+
+      os.makedirs(os.path.join(run_dir, 'checkpoints'), exist_ok=True)
+      ckpt = {
+          'step_id': step_id,
+          'step_num': int(step_num),
+          'loop_name': loop_name,
+          'success': True,
+          'terminal_state': terminal_state,
+          'confidence': 1.0,
+          'output_summary': output_summary,
+      }
+      with open(os.path.join(run_dir, 'checkpoints', f'step-{step_id}.json'), 'w') as f:
+          json.dump(ckpt, f, indent=2)
+
+      with open(os.path.join(run_dir, 'checkpoints', f'step-{step_id}-events.jsonl'), 'w') as f:
+          f.write(subloop_out)
+
+      verdict = {'success': True, 'confidence': 1.0, 'terminal_state': terminal_state}
+      with open(os.path.join(run_dir, 'last-verdict.json'), 'w') as f:
+          json.dump(verdict, f)
+
+      with open(os.path.join(run_dir, 'completed-steps.txt'), 'a') as f:
+          f.write(step_id + '\n')
+
+      print(f'STEP_DONE:{step_id}')
+      PYEOF
+    capture: checkpoint_success
+    next: execute_plan
+    on_error: failed
+
+  write_step_failed:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os
+
+      run_dir = '${context.run_dir}'
+      def _read(p, default=''):
+          try:
+              with open(p) as f: return f.read().strip()
+          except Exception: return default
+
+      step_id = _read(os.path.join(run_dir, 'current-step-id.txt'), 'unknown')
+      step_num = _read(os.path.join(run_dir, 'current-step-num.txt'), '0')
+      loop_name = _read(os.path.join(run_dir, 'current-step-loop.txt'), '')
+
+      subloop_out = """${captured.step_output.output}"""
+      terminal_state = 'failed'
+      for line in subloop_out.strip().split('\n'):
+          try:
+              event = json.loads(line)
+              if event.get('type') == 'terminal':
+                  terminal_state = event.get('state', 'failed')
+          except Exception:
+              pass
+
+      os.makedirs(os.path.join(run_dir, 'checkpoints'), exist_ok=True)
+      ckpt = {
+          'step_id': step_id,
+          'step_num': int(step_num),
+          'loop_name': loop_name,
+          'success': False,
+          'terminal_state': terminal_state,
+          'confidence': 0.0,
+          'output_summary': '',
+      }
+      with open(os.path.join(run_dir, 'checkpoints', f'step-{step_id}.json'), 'w') as f:
+          json.dump(ckpt, f, indent=2)
+
+      with open(os.path.join(run_dir, 'checkpoints', f'step-{step_id}-events.jsonl'), 'w') as f:
+          f.write(subloop_out)
+
+      verdict = {'success': False, 'confidence': 0.0, 'terminal_state': terminal_state}
+      with open(os.path.join(run_dir, 'last-verdict.json'), 'w') as f:
+          json.dump(verdict, f)
+
+      # Mark step completed so topo-order advances past it on retry
+      with open(os.path.join(run_dir, 'completed-steps.txt'), 'a') as f:
+          f.write(step_id + '\n')
+
+      print(f'STEP_FAILED:{step_id}')
+      PYEOF
+    capture: checkpoint_failed
+    next: increment_replan_count
+    on_error: abort_composer
+
+  # ─── Phase 8: Adaptive Re-Plan Machinery ─────────────────────────────────────
+
+  increment_replan_count:
+    action_type: shell
+    action: |
+      COUNT=$(cat "${context.run_dir}/replan_count.txt" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "${context.run_dir}/replan_count.txt"
+      echo "$COUNT"
+    capture: replan_count_updated
+    next: check_replan_budget
+    on_error: abort_composer
+
+  check_replan_budget:
+    action_type: shell
+    action: |
+      cat "${context.run_dir}/replan_count.txt" 2>/dev/null || echo 0
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_replans}"
+    on_yes: read_completed_summaries
+    on_no: abort_composer
+    on_error: abort_composer
+
+  read_completed_summaries:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os, glob
+
+      run_dir = '${context.run_dir}'
+      ckpt_dir = os.path.join(run_dir, 'checkpoints')
+      summaries = []
+      if os.path.exists(ckpt_dir):
+          for f in sorted(glob.glob(os.path.join(ckpt_dir, 'step-*.json'))):
+              if f.endswith('-events.jsonl'):
+                  continue
+              try:
+                  with open(f) as fp:
+                      data = json.load(fp)
+                  summaries.append({
+                      'step_id': data.get('step_id'),
+                      'loop_name': data.get('loop_name'),
+                      'success': data.get('success'),
+                      'terminal_state': data.get('terminal_state'),
+                      'output_summary': (data.get('output_summary') or '')[:200],
+                  })
+              except Exception:
+                  pass
+      print(json.dumps(summaries, indent=2))
+      PYEOF
+    capture: completed_step_summaries
+    next: read_last_verdict
+    on_error: abort_composer
+
+  read_last_verdict:
+    action_type: shell
+    action: |
+      cat "${context.run_dir}/last-verdict.json" 2>/dev/null || echo '{"success":false,"confidence":0.0,"terminal_state":"failed"}'
+    capture: last_verdict
+    next: reassess
+    on_error: abort_composer
+
+  reassess:
+    fragment: reassess
+    on_yes: parse_reassess_decision
+    on_no: parse_reassess_decision
+    on_partial: parse_reassess_decision
+    on_error: abort_composer
+
+  parse_reassess_decision:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re, sys
+
+      output = """${captured.reassess_decision.output}"""
+      m = re.search(r'REASSESS_DECISION:\s*```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
+      if m:
+          try:
+              data = json.loads(m.group(1))
+              decision = data.get('decision', 'ABORT')
+              if decision in ('CONTINUE', 'REPLAN_TAIL', 'ABORT'):
+                  print(decision)
+                  sys.exit(0)
+          except Exception:
+              pass
+      print('ABORT')
+      sys.exit(0)
+      PYEOF
+    capture: reassess_token
+    next: route_reassess_continue
+    on_error: abort_composer
+
+  route_reassess_continue:
+    evaluate:
+      type: output_contains
+      source: "${captured.reassess_token.output}"
+      pattern: "CONTINUE"
+    on_yes: execute_plan
+    on_no: route_reassess_replan
+    on_error: abort_composer
+
+  route_reassess_replan:
+    evaluate:
+      type: output_contains
+      source: "${captured.reassess_token.output}"
+      pattern: "REPLAN_TAIL"
+    on_yes: apply_replan
+    on_no: abort_composer
+    on_error: abort_composer
+
+  apply_replan:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re, os, sys
+
+      run_dir = '${context.run_dir}'
+
+      # Parse reassess decision for new tail plan
+      output = """${captured.reassess_decision.output}"""
+      decision_data = None
+      m = re.search(r'REASSESS_DECISION:\s*```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
+      if m:
+          try:
+              decision_data = json.loads(m.group(1))
+          except Exception:
+              pass
+
+      if decision_data is None or decision_data.get('decision') != 'REPLAN_TAIL':
+          print('ERROR: expected REPLAN_TAIL decision with new_tail_plan')
+          sys.exit(1)
+
+      new_tail = decision_data.get('new_tail_plan', [])
+      if not isinstance(new_tail, list) or not new_tail:
+          print('ERROR: REPLAN_TAIL requires a non-empty new_tail_plan array')
+          sys.exit(1)
+
+      # Read completed steps (immutable)
+      completed_file = os.path.join(run_dir, 'completed-steps.txt')
+      completed_ids = []
+      if os.path.exists(completed_file):
+          with open(completed_file) as f:
+              completed_ids = [l.strip() for l in f if l.strip()]
+      completed_set = set(completed_ids)
+
+      # Read current plan
+      plan_file = os.path.join(run_dir, 'composer-plan.json')
+      with open(plan_file) as f:
+          current_plan = json.load(f)
+
+      # Keep completed steps immutable; append new tail
+      completed_steps = [s for s in current_plan if s['step_id'] in completed_set]
+      new_plan = completed_steps + new_tail
+
+      # Version the plan
+      plans_dir = os.path.join(run_dir, 'plans')
+      os.makedirs(plans_dir, exist_ok=True)
+      existing = [f for f in os.listdir(plans_dir) if f.startswith('v') and f.endswith('.json')]
+      next_ver = len(existing) + 1
+      with open(os.path.join(plans_dir, f'v{next_ver}.json'), 'w') as f:
+          json.dump(new_plan, f, indent=2)
+
+      # Write new topo-order (completed first, then new tail in sequence)
+      topo_order = completed_ids + [s['step_id'] for s in new_tail]
+      with open(os.path.join(run_dir, 'topo-order.json'), 'w') as f:
+          json.dump(topo_order, f)
+
+      # Overwrite main plan file with combined plan
+      with open(plan_file, 'w') as f:
+          json.dump(new_plan, f, indent=2)
+
+      print(f'REPLAN_APPLIED:v{next_ver}:{len(new_tail)}_new_steps')
+      PYEOF
+    capture: replan_applied
+    next: execute_plan
+    on_error: abort_composer
+
+  # ─── Phase 9: Review & Synthesize ────────────────────────────────────────────
+
+  read_checkpoints:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os, glob
+
+      run_dir = '${context.run_dir}'
+      ckpt_dir = os.path.join(run_dir, 'checkpoints')
+      results = []
+      if os.path.exists(ckpt_dir):
+          for f in sorted(glob.glob(os.path.join(ckpt_dir, 'step-*.json'))):
+              if f.endswith('-events.jsonl'):
+                  continue
+              try:
+                  with open(f) as fp:
+                      results.append(json.load(fp))
+              except Exception:
+                  pass
+      print(json.dumps(results, indent=2))
+      PYEOF
+    capture: step_results_json
+    next: review_chain
+    on_error: review_chain
+
+  review_chain:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Summarize the execution of this adaptive composed plan.
+
+      ORIGINAL GOAL: ${context.goal}
+
+      PLAN:
+      ${captured.plan_display.output}
+
+      STEP RESULTS (JSON):
+      ${captured.step_results_json.output}
+
+      Write a 2-3 sentence summary: what was accomplished, whether the overall goal was achieved,
+      and what (if anything) failed or was not completed.
+    capture: chain_review
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response contain a substantive summary of plan execution results?"
+      min_confidence: 0.5
+    on_yes: present_result
+    on_no: present_result
+    on_partial: present_result
+    on_error: present_result
+
+  # ─── Terminal States ──────────────────────────────────────────────────────────
+
+  present_result:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 << 'PYEOF'
+      import json, os, glob
+
+      run_dir = '${context.run_dir}'
+
+      def _read_json(p):
+          try:
+              with open(p) as f: return json.load(f)
+          except Exception: return None
+
+      plan = _read_json(os.path.join(run_dir, 'composer-plan.json')) or []
+
+      step_results = {}
+      ckpt_dir = os.path.join(run_dir, 'checkpoints')
+      if os.path.exists(ckpt_dir):
+          for f in sorted(glob.glob(os.path.join(ckpt_dir, 'step-*.json'))):
+              if f.endswith('-events.jsonl'):
+                  continue
+              data = _read_json(f)
+              if data:
+                  step_results[data.get('step_id', os.path.basename(f))] = data
+
+      plans_dir = os.path.join(run_dir, 'plans')
+      plan_versions = 0
+      if os.path.exists(plans_dir):
+          plan_versions = len([f for f in os.listdir(plans_dir) if f.startswith('v') and f.endswith('.json')])
+
+      cancelled = '${captured.user_plan_decision.output:default=}'
+      if 'CANCEL' in cancelled:
+          success = False
+          summary = 'Plan execution cancelled by user before execution began.'
+      else:
+          success = bool(step_results) and all(v.get('success', False) for v in step_results.values())
+          review_out = '${captured.chain_review.output:default=}'
+          if review_out.strip():
+              summary = review_out.strip()
+          else:
+              total = len(plan)
+              completed = len(step_results)
+              summary = f'Executed {completed}/{total} steps. ' + (
+                  'All steps succeeded.' if success else 'Some steps failed or were not completed.')
+
+      result = {
+          'plan': plan,
+          'step_results': step_results,
+          'success': success,
+          'plan_versions': plan_versions,
+          'summary': summary,
+      }
+      print(json.dumps(result, indent=2))
+      PYEOF
+
+  abort_composer:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 -c "
+      import json
+      print(json.dumps({
+          'plan': [],
+          'step_results': {},
+          'success': False,
+          'plan_versions': 0,
+          'summary': 'loop-composer-adaptive aborted: replan budget exhausted or irrecoverable failure.'
+      }, indent=2))
+      "
+      exit 1
+
+  failed:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 -c "
+      import json
+      print(json.dumps({'plan': [], 'step_results': {}, 'success': False, 'plan_versions': 0, 'summary': 'loop-composer-adaptive encountered a fatal error during catalog discovery, decomposition, or plan validation.'}, indent=2))
+      "
+      exit 1
