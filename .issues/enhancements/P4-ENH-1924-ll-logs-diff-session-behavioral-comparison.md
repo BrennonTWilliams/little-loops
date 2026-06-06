@@ -1,15 +1,27 @@
 ---
 id: ENH-1924
-title: "ll-logs diff: compare sessions before/after a prompt change"
+title: 'll-logs diff: compare sessions before/after a prompt change'
 type: ENH
 priority: P4
 status: open
-captured_at: "2026-06-04T02:27:34Z"
-discovered_date: "2026-06-04"
+captured_at: '2026-06-04T02:27:34Z'
+discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1918
-relates_to: [EPIC-1918, FEAT-1920]
-labels: [captured, ll-logs, regression]
+relates_to:
+- EPIC-1918
+- FEAT-1920
+labels:
+- captured
+- ll-logs
+- regression
+confidence_score: 91
+outcome_confidence: 87
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 25
+size: Medium
 ---
 
 # ENH-1924: ll-logs diff — compare sessions before/after a prompt change
@@ -111,5 +123,6 @@ open
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
+- `/ll:confidence-check` - 2026-06-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f85e4cc3-4abd-48ec-bd01-8a39df77bf18.jsonl`
 - `/ll:format-issue` - 2026-06-04T03:10:25 - `4276cd32-50a5-4188-b806-1ea69e9f0941.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

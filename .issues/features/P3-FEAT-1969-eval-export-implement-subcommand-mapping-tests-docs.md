@@ -3,7 +3,7 @@ id: FEAT-1969
 title: 'eval-export implementation: subcommand, mapping, tests, docs'
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: FEAT-1920
 relates_to:
 - FEAT-1920
@@ -21,6 +21,7 @@ score_complexity: 17
 score_test_coverage: 20
 score_ambiguity: 10
 score_change_surface: 20
+size: Very Large
 ---
 
 # FEAT-1969: eval-export implementation — subcommand, mapping, tests, docs
@@ -163,6 +164,19 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - Core mapping logic is underspecified — fixture schema and outcome extraction rule are delegated to an incomplete prerequisite; rework risk if FEAT-1968 decisions differ from implicit assumptions in this issue
 - Ambiguity in redaction policy (deferred to FEAT-1968) means implementation may need significant revision once that spec is complete
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-06-05
+- **Reason**: Issue too large for single session (size score 11/11)
+
+### Decomposed Into
+- FEAT-1970: eval-export CLI scaffold and selection filters
+- FEAT-1971: eval-export invocation mapping, output, tests, and docs
+
 ## Session Log
 - `/ll:issue-size-review` - 2026-06-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8be904b6-a889-49bc-bc5f-f854cacc72bb.jsonl`
 - `/ll:confidence-check` - 2026-06-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8be904b6-a889-49bc-bc5f-f854cacc72bb.jsonl`
+- `/ll:issue-size-review` - 2026-06-05T21:48:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bad2c36-ed0d-4b74-bdd5-ccfd01530ea6.jsonl`
