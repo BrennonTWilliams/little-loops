@@ -64,11 +64,17 @@ from little_loops.config.features import (
     SyncConfig,
     WebhookEventsConfig,
 )
-from little_loops.config.orchestration import OrchestrationConfig
+from little_loops.config.orchestration import (
+    ComposerAdaptiveConfig,
+    ComposerConfig,
+    OrchestrationConfig,
+)
 
 __all__ = [
     "BRConfig",
     "CLConfig",
+    "ComposerAdaptiveConfig",
+    "ComposerConfig",
     "OrchestrationConfig",
     "AnalyticsCaptureConfig",
     "CategoryConfig",

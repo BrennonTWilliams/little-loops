@@ -976,6 +976,25 @@ Settings for the host CLI used by orchestration scripts (`ll-auto`, `ll-parallel
 |-----|---------|-------------|
 | `host_cli` | (auto-detected) | Override the host CLI: `"claude-code"`, `"codex"`, `"opencode"`, or `"pi"`. Mirrors the `LL_HOST_CLI` environment variable; env var takes precedence if both are set. |
 
+#### `orchestration.composer`
+
+Settings for the `loop-composer` built-in orchestration loop.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `max_plan_nodes` | `8` | Maximum number of steps allowed in a single loop-composer plan. |
+| `auto` | `false` | When true, skip the HITL plan-approval gate and execute the plan immediately. |
+
+#### `orchestration.composer.adaptive`
+
+Tuning knobs for the `loop-composer-adaptive` built-in loop (fault-tolerant re-plan-on-failure).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | When true, prefer the adaptive composer variant. |
+| `max_replans` | `2` | Maximum re-plan attempts before aborting. |
+| `reassess_min_confidence` | `0.6` | Confidence threshold below which the reassess gate triggers a re-plan. |
+
 ### `hooks`
 
 Settings for hook adapter selection.

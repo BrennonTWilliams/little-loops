@@ -1325,6 +1325,28 @@
               "type": "boolean",
               "default": false,
               "description": "When true, skip the HITL plan-approval gate and execute the plan immediately. Defaults to false (require human approval) given the blast radius of multi-loop execution."
+            },
+            "adaptive": {
+              "type": "object",
+              "description": "Tuning knobs for the adaptive loop-composer-adaptive built-in loop.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "When true, prefer the adaptive composer variant."
+                },
+                "max_replans": {
+                  "type": "integer",
+                  "default": 2,
+                  "description": "Maximum re-plan attempts before aborting."
+                },
+                "reassess_min_confidence": {
+                  "type": "number",
+                  "default": 0.6,
+                  "description": "Confidence threshold below which the reassess gate triggers a re-plan."
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

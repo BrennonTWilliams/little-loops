@@ -23,6 +23,8 @@ from little_loops.config import (
     CliConfig,
     CommandsConfig,
     CompactionConfig,
+    ComposerAdaptiveConfig,
+    ComposerConfig,
     ConfidenceGateConfig,
     DecisionsConfig,
     DependencyMappingConfig,
@@ -2548,6 +2550,30 @@ class TestOrchestrationConfig:
         config = OrchestrationConfig.from_dict({"host_cli": "claude-code"})
         assert config.host_cli == "claude-code"
 
+    def test_from_dict_defaults_composer_adaptive(self) -> None:
+        config = OrchestrationConfig.from_dict({})
+        assert config.composer.adaptive.enabled is False
+        assert config.composer.adaptive.max_replans == 2
+        assert config.composer.adaptive.reassess_min_confidence == 0.6
+
+    def test_from_dict_composer_adaptive_with_values(self) -> None:
+        data = {"composer": {"adaptive": {"enabled": True, "max_replans": 5, "reassess_min_confidence": 0.8}}}
+        config = OrchestrationConfig.from_dict(data)
+        assert config.composer.adaptive.enabled is True
+        assert config.composer.adaptive.max_replans == 5
+        assert config.composer.adaptive.reassess_min_confidence == 0.8
+
+    def test_composer_adaptive_config_defaults(self) -> None:
+        config = ComposerAdaptiveConfig.from_dict({})
+        assert config.enabled is False
+        assert config.max_replans == 2
+        assert config.reassess_min_confidence == 0.6
+
+    def test_composer_config_defaults(self) -> None:
+        config = ComposerConfig.from_dict({})
+        assert isinstance(config.adaptive, ComposerAdaptiveConfig)
+        assert config.adaptive.enabled is False
+
 
 class TestBRConfigOrchestration:
     """Extend TestBRConfig with orchestration property coverage."""
@@ -2579,6 +2605,17 @@ class TestBRConfigOrchestration:
 
         config = BRConfig(temp_project_dir)
         assert config.orchestration.host_cli is None
+
+    def test_orchestration_composer_adaptive_from_file(self, temp_project_dir: Path) -> None:
+        """BRConfig.orchestration.composer.adaptive is read from ll-config.json."""
+        cfg = {"orchestration": {"composer": {"adaptive": {"enabled": True, "max_replans": 3}}}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+
+        config = BRConfig(temp_project_dir)
+        assert config.orchestration.composer.adaptive.enabled is True
+        assert config.orchestration.composer.adaptive.max_replans == 3
+        assert config.orchestration.composer.adaptive.reassess_min_confidence == 0.6
 
 
 class TestBRConfigAnalyticsCaptureIntegration:

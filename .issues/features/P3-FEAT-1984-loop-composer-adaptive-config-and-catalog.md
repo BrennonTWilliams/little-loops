@@ -4,9 +4,10 @@ title: "Adaptive loop-composer \u2014 Config Schema, Orchestration Parser, and S
   \ Catalog"
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-06T00:00:00Z'
+completed_at: '2026-06-06T23:17:19Z'
 discovered_date: 2026-06-06
 discovered_by: issue-size-review
 blocked_by:
@@ -20,6 +21,12 @@ labels:
 - adaptive
 - config
 size: Small
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 20
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # FEAT-1984: Adaptive loop-composer — Config Schema, Orchestration Parser, and Skill Catalog
@@ -62,58 +69,58 @@ The project config loads without schema validation errors, `OrchestrationConfig.
 
 ## Current Behavior
 
-- `config-schema.json` has `"additionalProperties": false` on the `orchestration` object; adding `orchestration.composer.*` keys to `.ll/ll-config.json` causes schema validation failures.
-- `OrchestrationConfig` has no `composer` field; config values under `orchestration.composer` are silently discarded.
-- `skills/create-loop/loop-types.md` does not list the adaptive composer variant.
-- `skills/create-loop/templates.md` marks the Composer entry as "Forthcoming".
+- `config-schema.json` has `orchestration.composer` with `max_plan_nodes` (integer, default 8) and `auto` (boolean, default false), but no `adaptive` sub-object; adding `orchestration.composer.adaptive.*` keys to `.ll/ll-config.json` fails schema validation because `orchestration.composer` has `"additionalProperties": false`.
+- `OrchestrationConfig` in `scripts/little_loops/config/orchestration.py` has only a `host_cli: str | None` field; the entire `composer` sub-dict (including the existing `max_plan_nodes` and `auto` keys) is silently discarded.
+- `skills/create-loop/loop-types.md` — the `### Orch Supervisor` section describes `loop-composer-adaptive` behavior but does not document any `orchestration.composer.adaptive.*` config knobs.
+- `skills/create-loop/SKILL.md` Step 1 type mapping comments still label both Composer and Adaptive Composer as "Forthcoming — see EPIC-1811".
+- `skills/create-loop/templates.md` already lists the Adaptive Composer as an active option (not "Forthcoming"); no change needed there.
 
 ## Expected Behavior
 
-- `config-schema.json` validates `orchestration.composer.adaptive.{enabled,max_replans,reassess_min_confidence}` keys correctly.
+- `config-schema.json` validates `orchestration.composer.adaptive.{enabled,max_replans,reassess_min_confidence}` keys correctly, as a new `adaptive` sub-object within the existing `orchestration.composer.properties`.
 - `OrchestrationConfig.composer` is a typed `ComposerConfig` dataclass populated from config; missing keys use safe defaults (`enabled: false`, `max_replans: 2`, `reassess_min_confidence: 0.6`).
-- `skills/create-loop/loop-types.md` lists the adaptive composer variant with when-to-use guidance.
-- `skills/create-loop/templates.md` shows the Composer entry as active with a reference to `loop-composer-adaptive.yaml`.
+- `skills/create-loop/loop-types.md` `### Orch Supervisor` section documents the `orchestration.composer.adaptive.*` config knobs alongside the existing behavior description.
+- `skills/create-loop/SKILL.md` Step 1 type mapping no longer shows "Forthcoming" for the Composer / Adaptive Composer entries.
 - Existing config loading tests continue to pass.
 
 ## Acceptance Criteria
 
-1. `config-schema.json` declares `orchestration.composer` as a property within the `orchestration` object (which currently has `"additionalProperties": false`) with sub-keys:
+1. `config-schema.json` adds an `adaptive` sub-object inside the existing `orchestration.composer.properties` block (which already contains `max_plan_nodes` and `auto`); the `adaptive` block has `"additionalProperties": false` and declares:
    - `adaptive.enabled` (boolean, default `false`)
    - `adaptive.max_replans` (integer, default `2`)
    - `adaptive.reassess_min_confidence` (number, default `0.6`)
-2. `scripts/little_loops/config/orchestration.py` — `OrchestrationConfig.from_dict()` parses `composer.adaptive.*` fields without error; existing config files without the new keys continue to load cleanly
-3. `skills/create-loop/loop-types.md` lists the Orch Composer adaptive variant as an active option
-4. `skills/create-loop/templates.md` updates the Composer entry from "Forthcoming" to active with adaptive guidance
-5. Existing tests that validate config loading continue to pass
+2. `scripts/little_loops/config/orchestration.py` — `OrchestrationConfig.from_dict()` parses `composer.adaptive.*` fields without error; existing config files without the new keys continue to load cleanly; `ComposerConfig` and `ComposerAdaptiveConfig` are exported from `scripts/little_loops/config/__init__.py`
+3. `skills/create-loop/loop-types.md` `### Orch Supervisor` section documents the `orchestration.composer.adaptive.*` config knobs (enabled, max_replans, reassess_min_confidence) with their defaults
+4. `skills/create-loop/SKILL.md` Step 1 type mapping removes "Forthcoming — see EPIC-1811" from the Composer and Adaptive Composer entries
+5. Existing tests that validate config loading continue to pass; a new `TestOrchestrationConfig` test in `scripts/tests/test_config.py` asserts `OrchestrationConfig.from_dict({})` produces safe defaults for `composer.adaptive.*`
 
 ## Proposed Solution
 
 ### Config schema extension (`config-schema.json`)
 
-Add `composer` property inside the `orchestration` object's `properties`:
+The `orchestration.composer` sub-object already exists with `max_plan_nodes` and `auto`. Add `adaptive` as a new property inside `orchestration.composer.properties` (do NOT rewrite the whole composer block — append `adaptive` alongside the existing properties):
+
 ```json
-"composer": {
+"adaptive": {
   "type": "object",
+  "description": "Tuning knobs for the adaptive loop-composer-adaptive built-in loop.",
   "properties": {
-    "adaptive": {
-      "type": "object",
-      "properties": {
-        "enabled": {"type": "boolean", "default": false},
-        "max_replans": {"type": "integer", "default": 2},
-        "reassess_min_confidence": {"type": "number", "default": 0.6}
-      },
-      "additionalProperties": false
-    }
+    "enabled": {"type": "boolean", "default": false, "description": "When true, prefer the adaptive composer variant."},
+    "max_replans": {"type": "integer", "default": 2, "description": "Maximum re-plan attempts before aborting."},
+    "reassess_min_confidence": {"type": "number", "default": 0.6, "description": "Confidence threshold below which the reassess gate triggers a re-plan."}
   },
   "additionalProperties": false
 }
 ```
 
-Note: `orchestration` currently has `"additionalProperties": false` — the `composer` key must be declared as a property before the schema will accept it.
+Add this block inside the existing `"orchestration" → "properties" → "composer" → "properties"` object. The outer `orchestration.composer` block already has `"additionalProperties": false` — adding `adaptive` to its `properties` is sufficient.
 
 ### Orchestration config parser (`scripts/little_loops/config/orchestration.py`)
 
-Update `OrchestrationConfig.from_dict()` to parse `composer.adaptive.*` fields. Add a `ComposerAdaptiveConfig` dataclass:
+Follow the `CommandsConfig`/`ConfidenceGateConfig` pattern from `scripts/little_loops/config/automation.py`: a leaf sub-dataclass with its own `from_dict()` composed into a parent via `field(default_factory=...)`.
+
+Current `orchestration.py` is 29 lines with a single-field `OrchestrationConfig`. Extend it to:
+
 ```python
 @dataclass
 class ComposerAdaptiveConfig:
@@ -121,50 +128,103 @@ class ComposerAdaptiveConfig:
     max_replans: int = 2
     reassess_min_confidence: float = 0.6
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ComposerAdaptiveConfig:
+        return cls(
+            enabled=data.get("enabled", False),
+            max_replans=data.get("max_replans", 2),
+            reassess_min_confidence=data.get("reassess_min_confidence", 0.6),
+        )
+
 @dataclass
 class ComposerConfig:
     adaptive: ComposerAdaptiveConfig = field(default_factory=ComposerAdaptiveConfig)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ComposerConfig:
+        return cls(
+            adaptive=ComposerAdaptiveConfig.from_dict(data.get("adaptive", {})),
+        )
+
+@dataclass
+class OrchestrationConfig:
+    host_cli: str | None = None
+    composer: ComposerConfig = field(default_factory=ComposerConfig)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrchestrationConfig:
+        return cls(
+            host_cli=data.get("host_cli"),
+            composer=ComposerConfig.from_dict(data.get("composer", {})),
+        )
 ```
 
-Integrate into `OrchestrationConfig` with a `composer: ComposerConfig` field. Parse via `ComposerConfig(adaptive=ComposerAdaptiveConfig(**raw.get("composer", {}).get("adaptive", {})))` with appropriate defaults.
+Export `ComposerConfig` and `ComposerAdaptiveConfig` from `scripts/little_loops/config/__init__.py` alongside the existing `OrchestrationConfig` export.
+
+> **Note**: `loop-composer-adaptive.yaml` reads its tunables from `${context.max_replans}` etc. (context-block defaults), not directly from `orchestration.composer.adaptive.*`. The Python config is the authoritative typed representation for tooling/programmatic use. A future issue can wire the runner to inject config values into context defaults on startup; that is out of scope here.
 
 ### Skill catalog updates
 
-- `skills/create-loop/loop-types.md` — add "Orch Composer (adaptive)" row: when to use, key states, evaluator requirements
-- `skills/create-loop/templates.md` — update "Composer" section from "Forthcoming" to active; add brief note pointing to `loop-composer-adaptive.yaml` and when to prefer the adaptive variant over the static one
+- `skills/create-loop/loop-types.md` — in the `### Orch Supervisor` subsection, append a "Config knobs (`ll-config.json`)" paragraph listing `orchestration.composer.adaptive.{enabled,max_replans,reassess_min_confidence}` with defaults; follow the format of the "Key context knobs" block already present in `### Orch Composer`
+- `skills/create-loop/SKILL.md` — in the Step 1 type mapping table, remove "Forthcoming — see EPIC-1811" from both "Orch: Composer (goal → DAG)" and "Orch: Supervisor (adaptive re-plan)" and replace with active loop names (`loop-composer` / `loop-composer-adaptive`)
+- `skills/create-loop/templates.md` — already active; no "Forthcoming" text present; no changes needed
 
 ## Integration Map
 
 ### Files to Modify
-- `config-schema.json` — add `orchestration.composer` property block
-- `scripts/little_loops/config/orchestration.py` — add `ComposerAdaptiveConfig` and `ComposerConfig` dataclasses, update `OrchestrationConfig.from_dict()`
-- `skills/create-loop/loop-types.md` — add adaptive composer row
-- `skills/create-loop/templates.md` — activate composer entry
+- `config-schema.json` — add `adaptive` sub-object inside existing `orchestration.composer.properties` block (after the `auto` property)
+- `scripts/little_loops/config/orchestration.py` — add `ComposerAdaptiveConfig` and `ComposerConfig` dataclasses, update `OrchestrationConfig` and its `from_dict()`
+- `scripts/little_loops/config/__init__.py` — export `ComposerConfig` and `ComposerAdaptiveConfig`
+- `skills/create-loop/loop-types.md` — append config-knobs paragraph to `### Orch Supervisor` subsection
+- `skills/create-loop/SKILL.md` — update Step 1 type mapping to remove "Forthcoming" from Composer/Adaptive Composer entries
 
 ### Dependent Files (Callers/Importers)
-- `loops/loop-composer-adaptive.yaml` (FEAT-1983) — the loop YAML that reads `orchestration.composer.adaptive.*` at runtime
-- Any script instantiating `OrchestrationConfig` — gains the new `composer` field (additive, no breaking change)
+- Any script importing `OrchestrationConfig` from `scripts/little_loops/config/` — gains the new `composer` field (additive, no breaking change)
+- `scripts/little_loops/config/core.py:BRConfig._parse_config()` — already wires `OrchestrationConfig.from_dict(self._raw_config.get("orchestration", {}))` at line ~218; no change needed
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/host_runner.py` — calls `apply_host_cli_from_config()` which accesses `config.orchestration.host_cli`; no change needed (additive change only touches `host_cli`), but confirmed runtime consumer of the `OrchestrationConfig` object [Agent 1 finding]
 
 ### Similar Patterns
-- `scripts/little_loops/config/orchestration.py` — existing `WorktreeConfig` and `OrchestrationConfig` dataclasses show the pattern to follow for `ComposerConfig`
+- `scripts/little_loops/config/automation.py:CommandsConfig` — the canonical nested-dataclass pattern in this codebase; `ConfidenceGateConfig`, `RateLimitsConfig`, and `RecursiveRefineConfig` each have their own `from_dict()` and are composed via `field(default_factory=...)` — follow this exactly for `ComposerConfig`
 
 ### Tests
-- `scripts/tests/` — existing config loading tests must continue to pass; add a test asserting `OrchestrationConfig.from_dict({})` produces safe defaults for `composer.adaptive.*`
+- `scripts/tests/test_config.py:TestOrchestrationConfig` — existing class with tests for `from_dict({})` defaults and `host_cli`; add a `test_from_dict_defaults_composer_adaptive()` test following `TestCommandsConfig.test_from_dict_with_defaults` pattern (line ~513) — call `OrchestrationConfig.from_dict({})` and assert `config.composer.adaptive.enabled is False`, `config.composer.adaptive.max_replans == 2`, `config.composer.adaptive.reassess_min_confidence == 0.6`
+- `scripts/tests/test_config.py:TestBRConfigOrchestration` — existing integration tests; add a parallel `test_orchestration_composer_adaptive_from_file()` test
+- `scripts/tests/test_config_schema.py` — existing schema validation tests; verify the schema accepts `{"orchestration": {"composer": {"adaptive": {"enabled": true, "max_replans": 3}}}}`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_config.py` — top-level import block (lines 11–54) imports from `little_loops.config` and is the established convention for validating public exports; add `ComposerConfig` and `ComposerAdaptiveConfig` to this import block after they are exported from `__init__.py` — if the exports are missing or misnamed, the entire test module will fail to import [Agent 3 finding]
 
 ### Documentation
-- `skills/create-loop/loop-types.md` and `skills/create-loop/templates.md` updated as part of this issue
+- `skills/create-loop/loop-types.md` — `### Orch Supervisor` subsection gets a config-knobs block
+- `skills/create-loop/SKILL.md` — Step 1 type mapping updated (removes "Forthcoming" text)
+- `skills/create-loop/templates.md` — already active; no changes needed
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — `### orchestration` section (line 971) currently documents only `host_cli`; the new `orchestration.composer.adaptive.*` keys (`enabled`, `max_replans`, `reassess_min_confidence`) are not documented here; add a `composer.adaptive` sub-table or paragraph listing the three new keys with types and defaults [Agent 2 finding]
+- `skills/create-loop/reference.md` — Orchestration Loops section (near line 1162) documents `ll-loop run loop-composer` invocation but has no `orchestration.composer.*` config-knobs reference; add a "Config knobs (`ll-config.json`)" block matching the format used in `loop-types.md` [Agent 2 finding]
 
 ### Configuration
 - `config-schema.json` extended; `.ll/ll-config.json` files without the new keys load cleanly (all new fields have defaults)
 
 ## Implementation Steps
 
-1. Add `composer` property block to the `orchestration` object in `config-schema.json`
-2. Add `ComposerAdaptiveConfig` and `ComposerConfig` dataclasses in `scripts/little_loops/config/orchestration.py`
-3. Wire `composer: ComposerConfig` into `OrchestrationConfig` and update `from_dict()` to parse it with safe defaults
-4. Add "Orch Composer (adaptive)" row to `skills/create-loop/loop-types.md` (when to use, key states, evaluator requirements)
-5. Update the Composer entry in `skills/create-loop/templates.md` from "Forthcoming" to active with `loop-composer-adaptive.yaml` reference
-6. Run existing config tests to verify no regressions
+1. In `config-schema.json`, locate `orchestration → properties → composer → properties` (currently contains `max_plan_nodes` and `auto`) and add the `adaptive` sub-object with `enabled`, `max_replans`, `reassess_min_confidence` and `"additionalProperties": false`
+2. In `scripts/little_loops/config/orchestration.py`, add `ComposerAdaptiveConfig` and `ComposerConfig` dataclasses (each with `from_dict()`) following the `ConfidenceGateConfig` pattern in `automation.py`
+3. Update `OrchestrationConfig` to add `composer: ComposerConfig = field(default_factory=ComposerConfig)` and update `from_dict()` to parse `composer=ComposerConfig.from_dict(data.get("composer", {}))`
+4. In `scripts/little_loops/config/__init__.py`, add `ComposerConfig` and `ComposerAdaptiveConfig` to the exports
+5. In `skills/create-loop/loop-types.md`, append a "Config knobs (`ll-config.json`)" paragraph to the `### Orch Supervisor` subsection with the three `orchestration.composer.adaptive.*` keys and their defaults
+6. In `skills/create-loop/SKILL.md`, find the Step 1 type mapping entries for "Orch: Composer (goal → DAG)" and "Orch: Supervisor (adaptive re-plan)" and remove the "Forthcoming — see EPIC-1811" suffix; replace with the active loop names
+7. Add tests to `scripts/tests/test_config.py` — one unit test asserting `OrchestrationConfig.from_dict({}).composer.adaptive` defaults, one with explicit values set, and optionally one schema-validation test in `test_config_schema.py`; also add `ComposerConfig` and `ComposerAdaptiveConfig` to the top-level import block (lines 11–54) to validate the `__init__.py` exports
+8. Run `python -m pytest scripts/tests/test_config.py scripts/tests/test_config_schema.py -v` to verify no regressions
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. Update `docs/reference/CONFIGURATION.md` `### orchestration` section — add a `composer.adaptive` sub-section or table documenting `enabled` (boolean, default `false`), `max_replans` (integer, default `2`), and `reassess_min_confidence` (number, default `0.6`)
+10. Update `skills/create-loop/reference.md` Orchestration Loops section — add a "Config knobs (`ll-config.json`)" block for `loop-composer-adaptive` listing the three `orchestration.composer.adaptive.*` keys, following the format used in `loop-types.md`
 
 ## Impact
 
@@ -174,6 +234,9 @@ Integrate into `OrchestrationConfig` with a `composer: ComposerConfig` field. Pa
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T23:14:01 - `9ede9f4a-af0f-45d9-9eeb-7c5dfcd2756e.jsonl`
+- `/ll:wire-issue` - 2026-06-06T23:10:44 - `761b33a9-e683-4cd4-bb8c-476e36fa4ded.jsonl`
+- `/ll:refine-issue` - 2026-06-06T23:04:58 - `43bd0b4e-cd16-4288-b473-ac350f44aee1.jsonl`
 - `/ll:format-issue` - 2026-06-06T22:19:30 - `a614b3c8-9173-47a3-a2ba-a5bcd371462b.jsonl`
 - `/ll:issue-size-review` - 2026-06-06T00:00:00Z - `4da8ccb1-c9d9-425d-8832-3a5570cd748e.jsonl`
 

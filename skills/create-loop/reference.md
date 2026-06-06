@@ -1165,6 +1165,18 @@ The plan is a JSON array of `{step_id, loop_name, input, depends_on}` objects wr
 `${context.run_dir}/composer-plan.json`. Step outputs are persisted as checkpoints under
 `${context.run_dir}/checkpoints/step-<step_id>.json` so FEAT-1809 can re-plan from them.
 
+**loop-composer-adaptive** — Run the adaptive fault-tolerant variant via
+`ll-loop run loop-composer-adaptive --input "your goal"`. When a step fails, a `reassess`
+gate decides CONTINUE / REPLAN_TAIL / ABORT, preserving completed-step checkpoints.
+
+**Config knobs (`ll-config.json`) for loop-composer-adaptive**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `orchestration.composer.adaptive.enabled` | `false` | When true, prefer the adaptive composer variant. |
+| `orchestration.composer.adaptive.max_replans` | `2` | Maximum re-plan attempts before aborting. |
+| `orchestration.composer.adaptive.reassess_min_confidence` | `0.6` | Confidence threshold below which the reassess gate triggers a re-plan. |
+
 ---
 
 ## RL Loop State Structures

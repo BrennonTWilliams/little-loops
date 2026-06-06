@@ -1649,6 +1649,28 @@ The composer discovers available loops, decomposes the goal into an ordered DAG 
 
 **loop-composer-adaptive** (FEAT-1983): Adaptive composer with fault-tolerant re-plan-on-failure. Run via `ll-loop run loop-composer-adaptive --input "your goal"`. When a step fails, a `reassess` gate decides CONTINUE / REPLAN_TAIL / ABORT, preserving completed-step checkpoints and replacing only the unexecuted tail on REPLAN_TAIL. Use `loop-composer` for goals where failure should terminate immediately; use `loop-composer-adaptive` when mid-plan recovery is valuable.
 
+**Config knobs (`ll-config.json`)**
+
+```json
+{
+  "orchestration": {
+    "composer": {
+      "adaptive": {
+        "enabled": false,
+        "max_replans": 2,
+        "reassess_min_confidence": 0.6
+      }
+    }
+  }
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `orchestration.composer.adaptive.enabled` | `false` | When true, prefer the adaptive composer variant. |
+| `orchestration.composer.adaptive.max_replans` | `2` | Maximum re-plan attempts before aborting. |
+| `orchestration.composer.adaptive.reassess_min_confidence` | `0.6` | Confidence threshold below which the reassess gate triggers a re-plan. |
+
 ---
 
 ## RL Loops
