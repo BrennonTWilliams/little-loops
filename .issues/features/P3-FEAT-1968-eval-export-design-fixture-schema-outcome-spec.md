@@ -58,6 +58,23 @@ After this issue:
    and whether redaction is best-effort or blocking.
 5. The spec is recorded as a `ll-issues decisions add` entry so FEAT-1969 can reference it.
 
+## Motivation
+
+This design issue unblocks FEAT-1969 (eval-export implementation):
+- Without a confirmed fixture schema, FEAT-1969 implementers must guess at field names, types, and required vs. optional constraints — leading to inconsistencies with `ll-harness` expectations.
+- The ENH-1919 extractor yields invocation sequences but no definition of "outcome" exists — without this, any fixture generation logic would be arbitrary.
+- Recording decisions in `.ll/decisions.yaml` creates a durable, referenceable spec across all eval-export sub-issues (FEAT-1969, FEAT-1970, FEAT-1971).
+
+## Use Case
+
+**Who**: Developer picking up FEAT-1969 (eval-export implementation)
+
+**Context**: About to implement `ll-logs eval-export` and needs design clarity before writing any code
+
+**Goal**: Confirm what a `ll-harness`-compatible fixture file looks like, what counts as an "outcome" extractable from logs, which fields constitute "input context", and what the redaction scope is
+
+**Outcome**: Has a `decisions.yaml` entry with the confirmed spec to reference throughout FEAT-1969, FEAT-1970, and FEAT-1971 implementation
+
 ## Proposed Solution
 
 ### Step 1 — Confirm fixture schema
@@ -124,6 +141,10 @@ Update this issue's frontmatter to `decision_needed: false` once recorded.
 - Redaction approach is documented.
 - `decision_needed: false` in this issue's frontmatter after decisions are recorded.
 
+## API/Interface
+
+N/A — No public API changes. This issue produces a `decisions.yaml` entry documenting the fixture schema and extraction spec; no new code or public interfaces are introduced.
+
 ## Impact
 
 - **Priority**: P3 — unblocks FEAT-1969 implementation
@@ -142,5 +163,6 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - Step 1 contains a false premise: it instructs the implementer to "identify the dataclass or dict structure that `ll-harness` loads from fixture files," but `ll-harness` (`cli/harness.py`) does not load fixture files — it is a CLI tool accepting arguments (`runner`, `target`, `--exit-code`, `--semantic`). There is no fixture-loading dataclass to discover. The implementer must **design** the fixture schema from scratch, deciding what a `ll-harness`-compatible fixture file should contain (e.g., pre-defined runner/target/criteria fields in YAML).
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-06T03:28:17 - `6297c89c-86c7-4c08-ae25-157a34cfb566.jsonl`
 - `/ll:issue-size-review` - 2026-06-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8be904b6-a889-49bc-bc5f-f854cacc72bb.jsonl`
 - `/ll:confidence-check` - 2026-06-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8be904b6-a889-49bc-bc5f-f854cacc72bb.jsonl`

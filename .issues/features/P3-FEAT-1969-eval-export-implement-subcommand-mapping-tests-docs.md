@@ -56,6 +56,10 @@ observed outcome per the spec in FEAT-1968, and writes them as `ll-harness`-comp
 fixture records. A maintainer can run the command, get a fixture file, and pass it
 directly to `ll-harness` without manual editing.
 
+## Use Case
+
+A skill maintainer wants to build a regression harness for the `refine-issue` skill. They run `ll-logs eval-export --skill refine-issue --out /tmp/evals.yaml` to extract recent log records where that skill was invoked. The command produces a `ll-harness`-compatible fixture file they can pass directly to `ll-harness` for evaluation — without manually authoring test prompts or editing the fixture file.
+
 ## Proposed Solution
 
 ### Step 1 — Add subcommand scaffold
@@ -122,19 +126,15 @@ prerequisite ENH-1919 extractor.
 6. Add unit + round-trip tests in `test_ll_logs.py`.
 7. Update `docs/reference/API.md` with eval-export documentation.
 
-## Edge Cases
-
-- Sessions with no extractable outcome → skipped; print count at end.
-- Redaction: apply documented pattern list from FEAT-1968; skip record if unredactable sensitive content is detected.
-- `--out` path directory does not exist → create parent dirs or fail with a clear message.
-- `--limit 0` → treat as unlimited.
-
 ## Acceptance Criteria
 
 - `ll-logs eval-export --skill refine-issue --out /tmp/evals.yaml` produces a valid fixture file.
 - The fixture file loads under `ll-harness` without manual editing.
 - `--skill` / `--issue` filters select the expected records.
 - Sessions with no extractable outcome are skipped with a logged count.
+- Records with unredactable sensitive content are skipped (not written to output).
+- `--out` path with non-existent parent directories: parent dirs are created or a clear error message is shown.
+- `--limit 0` is treated as unlimited.
 - Unit + round-trip tests pass under `python -m pytest scripts/tests/test_ll_logs.py`.
 - `docs/reference/API.md` documents the new subcommand.
 
@@ -177,6 +177,7 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - FEAT-1971: eval-export invocation mapping, output, tests, and docs
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-06T03:18:10 - `28c795c0-5fbc-487e-9101-6182dd58a8a0.jsonl`
 - `/ll:issue-size-review` - 2026-06-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8be904b6-a889-49bc-bc5f-f854cacc72bb.jsonl`
 - `/ll:confidence-check` - 2026-06-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8be904b6-a889-49bc-bc5f-f854cacc72bb.jsonl`
 - `/ll:issue-size-review` - 2026-06-05T21:48:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bad2c36-ed0d-4b74-bdd5-ccfd01530ea6.jsonl`

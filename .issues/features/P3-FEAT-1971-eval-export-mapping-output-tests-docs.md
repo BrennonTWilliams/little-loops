@@ -47,6 +47,12 @@ must be recorded in `.ll/decisions.yaml` before the mapping logic can be finaliz
 **Blocked by FEAT-1970** — the `_cmd_eval_export` stub and parser must exist before
 the body can be filled in.
 
+## Motivation
+
+- **Eliminates manual fixture authoring**: `ll-harness` fixture files currently must be hand-crafted; `eval-export` automates extraction from real session logs.
+- **Closes the eval loop**: Real invocation data → fixtures → harness runs → quality signal; without this subcommand the pipeline breaks at extraction.
+- **Bounded scope**: Implementation is tightly bounded — fill in one stub handler, add two test cases, update one doc section — once FEAT-1968 records the schema and FEAT-1970 creates the scaffold.
+
 ## Current Behavior
 
 After FEAT-1970 merges, `ll-logs eval-export` parses flags but produces no output.
@@ -58,6 +64,16 @@ selects log records where the target skill was invoked, captures the input conte
 observed outcome per the spec in FEAT-1968, and writes them as `ll-harness`-compatible
 fixture records. A maintainer can run the command, get a fixture file, and pass it
 directly to `ll-harness` without manual editing.
+
+## Use Case
+
+**Who**: A little-loops maintainer or developer who wants eval coverage for ll skills
+
+**Context**: After sessions accumulate, they want regression fixtures for `ll-harness` without manually constructing each fixture record.
+
+**Goal**: Run `ll-logs eval-export --skill refine-issue --out /tmp/evals.yaml` and get a valid, ready-to-use fixture file.
+
+**Outcome**: A YAML (or JSON) file that `ll-harness` accepts directly with no manual editing — eval coverage bootstrapped from real usage data.
 
 ## Proposed Solution
 
@@ -94,6 +110,21 @@ In `docs/reference/API.md`, update the `ll-logs` section: add `eval-export` subc
 description, flag reference table, example output fixture, and a note about the
 prerequisite ENH-1919 extractor.
 
+## API/Interface
+
+```bash
+ll-logs eval-export [OPTIONS]
+
+Options:
+  --skill NAME    Filter invocations to this skill name
+  --issue ID      Filter invocations to sessions linked to this issue ID
+  --limit N       Maximum fixture records to export (0 = unlimited)
+  --out PATH      Output file path (default: stdout)
+  --json          Output JSON instead of default YAML
+```
+
+Output format: `ll-harness`-compatible fixture records; schema confirmed by FEAT-1968 decisions in `.ll/decisions.yaml`.
+
 ## Integration Map
 
 ### Files to Modify
@@ -104,6 +135,18 @@ prerequisite ENH-1919 extractor.
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/harness.py` — fixture schema source of truth (read only)
 - ENH-1919 invocation extractor in `cli/logs.py` — primary data source
+
+### Similar Patterns
+- Other `_cmd_*` handlers in `cli/logs.py` — follow existing subcommand structure and output conventions
+
+### Tests
+- `scripts/tests/test_ll_logs.py` — add unit test (mapping logic) and round-trip test (eval-export → ll-harness schema validation)
+
+### Documentation
+- `docs/reference/API.md` — update `ll-logs` section with `eval-export` subcommand, flag table, and example fixture output
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -153,5 +196,6 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - **Scaffold not yet present**: FEAT-1970's `_cmd_eval_export` stub has not been implemented. FEAT-1971's integration map targets "fill in" the body, which requires the scaffold to exist first.
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-06T03:18:45 - `47c66fc0-004c-4d4a-becb-ea2057211831.jsonl`
 - `/ll:issue-size-review` - 2026-06-05T21:48:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bad2c36-ed0d-4b74-bdd5-ccfd01530ea6.jsonl`
 - `/ll:confidence-check` - 2026-06-05T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

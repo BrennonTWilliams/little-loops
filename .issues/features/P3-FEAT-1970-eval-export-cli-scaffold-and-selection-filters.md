@@ -34,6 +34,14 @@ Wire `_cmd_eval_export` as the handler and implement the selection filter flags
 (`--skill`, `--issue`, `--limit`, `--out`, `--json`) so the CLI interface is
 complete and parseable before the mapping logic lands in FEAT-1971.
 
+## Use Case
+
+A developer landing on FEAT-1971 to implement the eval-export mapping logic opens
+`scripts/little_loops/cli/logs.py`, finds `_cmd_eval_export` already wired and all
+five filter flags registered, and can immediately run
+`ll-logs eval-export --skill foo --limit 5` to validate flag parsing before writing
+any mapping code.
+
 ## Parent Issue
 
 Decomposed from FEAT-1969: eval-export implementation — subcommand, mapping, tests, docs
@@ -42,6 +50,13 @@ Decomposed from FEAT-1969: eval-export implementation — subcommand, mapping, t
 
 **Blocked by FEAT-1968** — do not start until FEAT-1968 is `done` and its decisions
 are recorded in `.ll/decisions.yaml`.
+
+## Motivation
+
+Separates the CLI surface from the mapping logic (FEAT-1971) so each can be reviewed,
+tested, and merged independently. Having the parser scaffold in place first gives
+FEAT-1971's author immediate flag-validation feedback without touching parser wiring,
+and keeps the subcommand interface frozen as a contract between the two issues.
 
 ## Current Behavior
 
@@ -70,13 +85,40 @@ Add arguments to the `eval-export` subparser:
 - `--out PATH` — write to file; default stdout
 - `--json` — JSON output vs YAML (default YAML)
 
+## API/Interface
+
+```
+ll-logs eval-export [--skill NAME] [--issue ID] [--limit N] [--out PATH] [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--skill NAME` | str | None | Filter by skill name |
+| `--issue ID` | str | None | Filter by issue ID in session context |
+| `--limit N` | int | 0 | Cap output records (0 = unlimited) |
+| `--out PATH` | str | stdout | Write output to file |
+| `--json` | flag | YAML | JSON output instead of YAML |
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/cli/logs.py` — add `eval-export` parser entry and `_cmd_eval_export` stub
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/logs.py` — `_build_parser` dispatches to `_cmd_eval_export` via subparser `set_defaults(func=...)`
+- FEAT-1971 will fill in the body of `_cmd_eval_export`; no external callers at this stage
+
 ### Similar Patterns
 - `_cmd_extract`, `_cmd_discover`, `_cmd_tail` in `cli/logs.py` — follow same subcommand handler shape
+
+### Tests
+- `scripts/tests/test_ll_logs.py` — add test cases for `eval-export --help` and flag parsing
+
+### Documentation
+- N/A — CLI help text is self-documenting via argparse
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -108,5 +150,6 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - **FEAT-1968 is open**: The issue explicitly states "do not start until FEAT-1968 is done and its decisions are recorded in `.ll/decisions.yaml`." FEAT-1968 status is `open`. Practically, the 5 CLI flags are already fully enumerated in FEAT-1970 and don't depend on FEAT-1968's design decisions, so the implementation itself is unblocked — but the stated prerequisite is not yet cleared.
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-06T03:18:03 - `28c795c0-5fbc-487e-9101-6182dd58a8a0.jsonl`
 - `/ll:issue-size-review` - 2026-06-05T21:48:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bad2c36-ed0d-4b74-bdd5-ccfd01530ea6.jsonl`
 - `/ll:confidence-check` - 2026-06-05T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4f2a58f-fea9-4b2e-bd0f-cce4ab995bec.jsonl`
