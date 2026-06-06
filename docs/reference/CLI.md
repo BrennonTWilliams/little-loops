@@ -1713,6 +1713,8 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `stats` | Aggregate skill invocation frequency and correction rate from history.db |
 | `dead-skills` | Cross-reference skill catalog against log corpus to flag never/rarely-invoked skills |
 | `scan-failures` | Mine failed ll-* Bash calls from session logs; cluster by error signature; optionally create bug issues |
+| `diff` | Compare two sessions' ll-invocation behavior: skills added/removed, per-skill count deltas, and unified sequence diff |
+| `eval-export` | Export EvalFixture v1 records reconstructed from session logs for use with `ll-harness` |
 
 **`discover` flags:**
 
@@ -1746,7 +1748,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--window-days D` | | Only consider records within D days of latest record |
 | `--json` | `-j` | Output as JSON: `[{"chain": [...], "count": N, "edges": [{"from": "...", "to": "...", "freq": f}]}]` |
 
-`--all` and `--project` are mutually exclusive for `extract`, `sequences`, `stats`, `dead-skills`, and `scan-failures`.
+`--all` and `--project` are mutually exclusive for `extract`, `sequences`, `stats`, `dead-skills`, `scan-failures`, and `eval-export`.
 
 **`stats` flags:**
 
@@ -1778,6 +1780,25 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--capture` | | Create BUG issue files for each failure cluster |
 | `--json` | `-j` | Output as JSON: `[{"tool": str, "count": int, "normalized_sig": str, "sample_error": str, "session_ids": [...]}]` |
 
+**`diff` flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `SESSION_A` | | First session ID or JSONL file path (positional) |
+| `SESSION_B` | | Second session ID or JSONL file path (positional) |
+| `--json` | `-j` | Output diff as JSON object |
+
+**`eval-export` flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--project DIR` | | Project working directory (default: cwd) |
+| `--skill NAME` | | Filter exported fixtures to this skill name |
+| `--issue ID` | | Filter to fixtures where this issue ID appears in session context |
+| `--limit N` | | Cap output record count (0 = unlimited) |
+| `--out PATH` | | Write output to file (default: stdout) |
+| `--json` | | JSON output instead of default YAML |
+
 **Examples:**
 ```bash
 ll-logs discover                          # List all projects with ll activity
@@ -1801,6 +1822,25 @@ ll-logs scan-failures --all                         # Report all failed ll-* cal
 ll-logs scan-failures --project /path --json        # JSON failure clusters for one project
 ll-logs scan-failures --all --window-days 30        # Only failures from last 30 days
 ll-logs scan-failures --all --capture               # Create BUG issues for each failure cluster
+ll-logs diff SESSION_A SESSION_B                    # Compare behavioral diff between two sessions
+ll-logs diff SESSION_A SESSION_B --json             # Diff output as JSON
+ll-logs eval-export --project .                     # Export all fixtures from current project (YAML)
+ll-logs eval-export --skill refine-issue --json     # JSON fixtures for refine-issue only
+ll-logs eval-export --issue ENH-1710 --limit 10     # Up to 10 fixtures touching ENH-1710
+```
+
+**Companion loop — `ll-logs-telemetry-digest`** (FEAT-1925)
+
+A project-local FSM loop that orchestrates the full `ll-logs` analysis pipeline in a single unattended run:
+1. Refreshes the log corpus (`ll-logs extract`)
+2. Runs `stats`, `sequences`, `scan-failures`, and `dead-skills` subcommands
+3. Triages findings into issue files
+4. Writes a digest artifact to `.loops/runs/ll-logs-telemetry-digest-<timestamp>/digest.md`
+
+Subcommands not yet available are skipped gracefully via capability detection — the loop gains depth as new subcommands land.
+
+```bash
+ll-loop run ll-logs-telemetry-digest    # Full telemetry digest pass
 ```
 
 ---
@@ -1827,6 +1867,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `grep` | Regex search over `message_events` with optional summary-node scope filtering; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |
 | `expand` | Return all `message_events` covered by a given summary node ID; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |
 | `describe` | Show metadata (level, block span, parent) for a summary node |
+| `prune` | Delete raw event rows older than configured `analytics.retention` max-age and VACUUM the DB |
 
 **`grep` flags:**
 
@@ -1882,7 +1923,19 @@ ll-session grep "error"                         # Regex search over messages
 ll-session grep "traceback" --summary-id 5      # Search within a summary node's span
 ll-session expand 5                             # List messages covered by summary node 5
 ll-session describe 5                           # Show metadata for summary node 5
+ll-session prune --dry-run                      # Preview what would be pruned without deleting
+ll-session prune                                # Delete old raw events and VACUUM
+ll-session prune --json                         # Prune result as JSON
 ```
+
+**`prune` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Report rows that would be deleted without actually deleting them |
+| `--json` | Output result summary as JSON |
+
+Pruning is dual-gated by `analytics.retention` config: both `min_project_age_days` and `min_db_size_mb` must be exceeded before any rows are deleted (defaults: 365 days, 800 MB). High-value tables (`issue_events`, `user_corrections`) are never pruned. See `analytics.retention` in [CONFIGURATION.md](CONFIGURATION.md).
 
 ---
 

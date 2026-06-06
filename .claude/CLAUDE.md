@@ -181,10 +181,10 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-harness` - One-shot runner evaluation (skill, cmd, mcp, prompt) with exit-code and semantic criteria
 - `ll-loop` - Execute FSM-based automation loops (`promote-baseline` promotes latest run output as comparator baseline)
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
-- `ll-logs` - Discover, extract, sequence, and tail Claude Code session logs (`discover` / `extract` / `sequences` / `stats` / `tail` / `dead-skills` / `scan-failures` subcommands; writes `logs/index.md`)
+- `ll-logs` - Discover, extract, sequence, and tail Claude Code session logs (`discover` / `extract` / `sequences` / `stats` / `tail` / `dead-skills` / `scan-failures` / `diff` / `eval-export` subcommands; writes `logs/index.md`)
 - `ll-messages` - Extract user messages from Claude Code logs
-- `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `recent --issue <ID>` / `backfill [--host claude-code|codex|opencode|pi]` / `path <session_id>` / `grep <pattern>` / `expand <id>` / `describe <id>` subcommands; default DB `.ll/history.db`)
-- `ll-history-context` - Render a `## Historical Context` block for an issue from `.ll/history.db` (corrections + FTS5 matches, capped at 5 rows, stale-filtered). Use `--effort` to output per-issue effort context (session count, cycle time)
+- `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `recent --issue <ID>` / `backfill [--host claude-code|codex|opencode|pi]` / `path <session_id>` / `grep <pattern>` / `expand <id>` / `describe <id>` / `prune [--dry-run]` subcommands; default DB `.ll/history.db`)
+- `ll-history-context` - Render a `## Historical Context` block for an issue from `.ll/history.db` (corrections + FTS5 matches, capped at 5 rows, stale-filtered). Use `--effort` to output per-issue effort context (session count, cycle time). Use `--for-skill NAME` to gate the call on `history.planning_skills` config (exits 0 with no output if NAME is not in the configured list)
 - `ll-history` - View completed issue statistics, analysis, export topic-filtered excerpts from history, and list sessions per issue (`sessions <ID>`)
 - `ll-deps` - Cross-issue dependency analysis and validation
 - `ll-sync` - Sync local issues with GitHub Issues
