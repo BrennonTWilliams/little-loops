@@ -158,7 +158,7 @@ ll-loop run harness-optimize -b        # Score-gated hill climbing in the backgr
 
 - **28 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **9 specialized agents** — codebase analysis, quality assurance, automation, and research
-- **63 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
+- **35 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
 - **32 CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
 - **75 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
 - **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic
@@ -173,6 +173,7 @@ Full reference: [Command Reference](docs/reference/COMMANDS.md) · [CLI Referenc
 - **[docs.little-loops.ai](https://docs.little-loops.ai)** — hosted docs (searchable, dark mode, mobile)
 - [Configuration Reference](docs/reference/CONFIGURATION.md) — all options, variable substitution, overrides
 - [Loops Guide](docs/guides/LOOPS_GUIDE.md) — FSM YAML authoring, loop patterns, practical examples
+- [Harness Optimization Guide](docs/guides/HARNESS_OPTIMIZATION_GUIDE.md) — iteratively optimizing skills, commands, and configs against a benchmark
 - [Session Handoff Guide](docs/guides/SESSION_HANDOFF.md) — context management and continuation
 - [Architecture Overview](docs/ARCHITECTURE.md) — system design and diagrams
 - [Troubleshooting](docs/development/TROUBLESHOOTING.md) — common issues and solutions
