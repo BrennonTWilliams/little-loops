@@ -2,8 +2,9 @@
 id: ENH-1966
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-05T21:16:36Z'
+completed_at: '2026-06-06T02:29:23Z'
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 labels:
@@ -255,6 +256,7 @@ python -m pytest scripts/tests/test_fsm_runners.py scripts/tests/test_issue_hist
 `test-coverage`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T02:03:18 - `79da944a-ab9d-49c6-9a40-5d2ecb6f08f6.jsonl`
 - `/ll:confidence-check` - 2026-06-05T22:00:00 - `32b022a9-1839-42ef-b3f7-0faf3dfee73e.jsonl`
 - `/ll:wire-issue` - 2026-06-06T01:52:21 - `3612d4fb-be77-497c-89c8-8917093e314d.jsonl`
 - `/ll:refine-issue` - 2026-06-06T01:19:03 - `60252756-dfe4-4839-a040-9e695b6bbda9.jsonl`
