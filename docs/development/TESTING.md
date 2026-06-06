@@ -485,6 +485,84 @@ pytest_add_cli_args_test_selection = ["tests/"]
 pytest_add_cli_args = ["-x", "-q"]
 ```
 
+### Snapshot Testing with syrupy
+
+Snapshot tests catch unintended changes to CLI output, TUI rendering, and formatted text by comparing against stored golden files. The project uses [syrupy](https://github.com/syrupy-project/syrupy) (installed as a dev dependency).
+
+#### How it works
+
+1. First run with `--snapshot-update` generates golden files in `scripts/tests/__snapshots__/`.
+2. Subsequent runs compare output against the stored golden files — failure means something changed.
+3. Golden files are version-controlled and reviewed in PRs.
+
+#### Writing snapshot tests
+
+```python
+import pytest
+from syrupy.assertion import SnapshotAssertion
+
+@pytest.mark.usefixtures("stable_snapshot_env")
+class TestMyOutputSnapshot:
+    def test_my_formatter(self, snapshot: SnapshotAssertion) -> None:
+        from little_loops.cli.output import table
+        result = table(["Name", "Status"], [["foo", "open"]])
+        assert snapshot == result  # syrupy assertion
+```
+
+The `stable_snapshot_env` fixture (in `scripts/tests/conftest.py`) sets:
+- `little_loops.cli.output._USE_COLOR = False` — strips ANSI from snapshots
+- `little_loops.cli.loop.layout._USE_COLOR = False` — strips ANSI from diagram snapshots
+- `output.terminal_width` returns `80` — deterministic line wrapping
+
+**Apply it explicitly** with `@pytest.mark.usefixtures("stable_snapshot_env")` — never with `autouse=True`, as that would override tests asserting both color-on and color-off behaviour.
+
+#### Determinism: patching terminal_width at all import sites
+
+When testing functions that call `terminal_width()` via re-imports (e.g. sprint or loop helpers), patch each import site separately:
+
+```python
+@pytest.fixture
+def stable_snapshot_env(monkeypatch):
+    monkeypatch.setattr("little_loops.cli.output._USE_COLOR", False)
+    monkeypatch.setattr("little_loops.cli.output.terminal_width", lambda **_kw: 80)
+    # Also patch re-import sites if exercising sprint/loop paths:
+    monkeypatch.setattr("little_loops.cli.sprint._helpers.terminal_width", lambda **_kw: 80)
+    monkeypatch.setattr("little_loops.cli.loop._helpers.terminal_width", lambda **_kw: 80)
+```
+
+#### Generating and updating golden files
+
+```bash
+# Generate golden files for the first time (or after intentional changes)
+pytest --snapshot-update scripts/tests/test_snapshot_output_primitives.py
+pytest --snapshot-update scripts/tests/test_snapshot_loop_layout.py
+
+# Or update all snapshot test files at once
+pytest --snapshot-update scripts/tests/test_snapshot_*.py
+
+# Run without --snapshot-update to verify against stored golden files
+pytest scripts/tests/test_snapshot_*.py -v
+```
+
+After updating snapshots, review the diff with `git diff scripts/tests/__snapshots__/` before committing. Commit the updated golden files alongside the source change that caused them.
+
+#### Snapshot test files
+
+| File | What it covers |
+|------|----------------|
+| `test_snapshot_output_primitives.py` | `table()`, `status_block()`, `progress()`, `sparkline()` |
+| `test_snapshot_loop_layout.py` | `_render_fsm_diagram()` — linear chains, branching FSMs, highlight mode |
+
+#### Normalizing colored output
+
+When a function you want to snapshot always produces ANSI color codes (e.g. a path that doesn't respect `_USE_COLOR`), use `strip_ansi()` to normalize before comparison:
+
+```python
+from little_loops.cli.output import strip_ansi
+
+assert snapshot == strip_ansi(result)
+```
+
 ### Integration Tests
 
 Mark tests with `@pytest.mark.integration` for component-level testing:

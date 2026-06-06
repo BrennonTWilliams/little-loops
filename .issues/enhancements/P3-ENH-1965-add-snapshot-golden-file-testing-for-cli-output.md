@@ -2,8 +2,9 @@
 id: ENH-1965
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-05T21:16:36Z'
+completed_at: '2026-06-06T02:40:51Z'
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 labels:
@@ -75,7 +76,7 @@ Decided by `/ll:decide-issue` on 2026-06-05.
 
 **Selected**: syrupy
 
-**Reasoning**: syrupy's auto-provided `snapshot` fixture integrates directly with the existing test patterns — `_USE_COLOR` and `terminal_width` are already patched in tests like `test_ll_loop_display.py`, and `strip_ansi()` from `output.py:46` normalizes colored output before comparison. While pytest-snapshot has a simpler API, syrupy's `assert snapshot == value` pattern requires no conftest ceremony and scores higher on codebase consistency. All current output is text (`str`), but `layout.py`'s FSM renderer may extend to image output, and syrupy handles that path.
+**Reasoning**: syrupy's auto-provided `snapshot` fixture integrates directly with the existing test patterns — `_USE_COLOR` and `terminal_width` are already patched in tests like `test_ll_loop_display.py`, and `strip_ansi()` from `output.py:45` normalizes colored output before comparison. While pytest-snapshot has a simpler API, syrupy's `assert snapshot == value` pattern requires no conftest ceremony and scores higher on codebase consistency. All current output is text (`str`), but `layout.py`'s FSM renderer may extend to image output, and syrupy handles that path.
 
 #### Scoring Summary
 
@@ -85,7 +86,7 @@ Decided by `/ll:decide-issue` on 2026-06-05.
 | pytest-snapshot | 2/3 | 3/3 | 2/3 | 3/3 | 10/12 |
 
 **Key evidence**:
-- syrupy: `assert snapshot == value` extends pytest assertions naturally; existing `_USE_COLOR` + `terminal_width` monkeypatches (14+ sites in `test_ll_loop_display.py`) map directly to determinism controls; `strip_ansi()` at `output.py:46` available for color-independent golden files; `helpers.py:make_test_state()` provides deterministic FSM inputs.
+- syrupy: `assert snapshot == value` extends pytest assertions naturally; existing `_USE_COLOR` + `terminal_width` monkeypatches (14+ sites in `test_ll_loop_display.py`) map directly to determinism controls; `strip_ansi()` at `output.py:45` available for color-independent golden files; `helpers.py:make_test_state()` provides deterministic FSM inputs.
 - pytest-snapshot: `snapshot.assert_match(value, "name")` API requires explicit snapshot names and conftest `snapshot_path` setup; no auto-injection; sufficient for text-only but extra ceremony compared to syrupy.
 
 Implementation:
@@ -139,7 +140,7 @@ def test_sprint_status_output(snapshot):
 
 ### Tests
 - New snapshot test files are the deliverable
-- `scripts/tests/test_cli_output.py` — existing test file for `table()`, `status_block()`, `progress()`, `sparkline()`, `strip_ansi()`; uses substring assertions today; snapshot tests for output primitives should be added here or in a new `test_snapshot_output_primitives.py` [Agent 3 finding]
+- `scripts/tests/test_cli_output.py` — existing test file for `table()`, `status_block()`, `progress()`, `sparkline()`, `strip_ansi()` (at `output.py:45`); uses substring assertions today; snapshot tests for output primitives should be added here or in a new `test_snapshot_output_primitives.py` [Agent 3 finding]
 
 ### Dependent Files (Callers/Importers)
 
@@ -170,7 +171,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/cli/loop/layout.py` — `_USE_COLOR` module-level flag at layout.py — also patchable via `monkeypatch.setattr("little_loops.cli.loop.layout._USE_COLOR", False)`.
 
 **Normalization utility:**
-- `scripts/little_loops/cli/output.py:46` — `strip_ansi(text: str) -> str` — strips ANSI escape sequences; use in snapshot fixtures to produce color-independent golden files: `assert snapshot == strip_ansi(result)`.
+- `scripts/little_loops/cli/output.py:45` — `strip_ansi(text: str) -> str` — strips ANSI escape sequences; use in snapshot fixtures to produce color-independent golden files: `assert snapshot == strip_ansi(result)`.
 
 **Existing conftest and helper patterns to extend:**
 - `scripts/tests/conftest.py` — add a `snapshot_config` fixture that pins `_USE_COLOR=False` and `terminal_width=80` for all snapshot test classes; no syrupy-specific fixture needed (syrupy auto-provides `snapshot`).
@@ -212,7 +213,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - `scripts/little_loops/cli/sprint/show.py:_render_execution_plan()` — snapshot tabular sprint output.
    - `scripts/little_loops/cli/output.py:table()` — snapshot the shared table formatter.
 
-4. **Use `strip_ansi()` from `scripts/little_loops/cli/output.py:46`** to normalize colored outputs before comparison when snapshots need to be color-independent.
+4. **Use `strip_ansi()` from `scripts/little_loops/cli/output.py:45`** to normalize colored outputs before comparison when snapshots need to be color-independent.
 
 5. **Run first pass** with `pytest --snapshot-update scripts/tests/test_snapshot_*.py` to generate `scripts/tests/__snapshots__/` golden files; commit alongside tests.
 
@@ -248,7 +249,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `test-infrastructure`, `captured`
 
+## Resolution
+
+- Installed `syrupy>=4.0` as a dev dependency in `scripts/pyproject.toml`
+- Added `stable_snapshot_env` fixture to `scripts/tests/conftest.py` (non-autouse, pins `_USE_COLOR=False` and `terminal_width=80`)
+- Created `scripts/tests/test_snapshot_output_primitives.py` — 12 snapshot tests for `table()`, `status_block()`, `progress()`, `sparkline()`
+- Created `scripts/tests/test_snapshot_loop_layout.py` — 4 snapshot tests for `_render_fsm_diagram()` (linear, branching, highlight, suppress_labels)
+- Generated 16 golden files in `scripts/tests/__snapshots__/`
+- Documented snapshot workflow in `CONTRIBUTING.md` § Testing Guidelines and `docs/development/TESTING.md` § Snapshot Testing
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T02:32:10 - `7011bc06-221f-4f44-b0d8-d16ea2690b34.jsonl`
 - `/ll:confidence-check` - 2026-06-05T21:30:00Z - `32b022a9-1839-42ef-b3f7-0faf3dfee73e.jsonl`
 - `/ll:wire-issue` - 2026-06-06T01:51:01 - `bb830a9b-0152-4e34-a1d6-73a18b175601.jsonl`
 - `/ll:decide-issue` - 2026-06-06T01:19:09 - `60252756-dfe4-4839-a040-9e695b6bbda9.jsonl`

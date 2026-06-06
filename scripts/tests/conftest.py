@@ -10,6 +10,28 @@ from typing import Any
 
 import pytest
 
+
+# =============================================================================
+# Snapshot Testing Helpers
+# =============================================================================
+
+
+@pytest.fixture
+def stable_snapshot_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin determinism controls for snapshot tests.
+
+    Disables ANSI color and fixes terminal width to 80 so golden files are
+    stable across environments. Apply explicitly to snapshot test classes via
+    ``@pytest.mark.usefixtures("stable_snapshot_env")`` rather than autouse
+    to avoid interfering with tests that assert both color-on and color-off.
+    """
+    monkeypatch.setattr("little_loops.cli.output._USE_COLOR", False)
+    monkeypatch.setattr("little_loops.cli.output.terminal_width", lambda **_kw: 80)
+    try:
+        monkeypatch.setattr("little_loops.cli.loop.layout._USE_COLOR", False)
+    except AttributeError:
+        pass
+
 # =============================================================================
 # Fixture File Helpers
 # =============================================================================

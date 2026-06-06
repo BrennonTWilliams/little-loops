@@ -680,6 +680,52 @@ See [Configuration Reference → Extensions](docs/reference/CONFIGURATION.md#ext
 - Test both success and error paths
 - Aim for meaningful coverage, not just line coverage
 
+### Snapshot Testing
+
+Snapshot (golden-file) tests catch unintended changes to CLI output, TUI rendering, and formatted text. The project uses [syrupy](https://github.com/syrupy-project/syrupy).
+
+**Writing a snapshot test:**
+
+```python
+import pytest
+from syrupy.assertion import SnapshotAssertion
+
+@pytest.mark.usefixtures("stable_snapshot_env")
+class TestMyOutputSnapshot:
+    def test_my_formatter(self, snapshot: SnapshotAssertion) -> None:
+        from little_loops.cli.output import table
+        result = table(["Name", "Status"], [["foo", "open"]])
+        assert snapshot == result
+```
+
+The `stable_snapshot_env` fixture (defined in `conftest.py`) pins `_USE_COLOR=False` and `terminal_width=80` so golden files are stable across environments. Apply it explicitly via `@pytest.mark.usefixtures` — do **not** use `autouse=True` to avoid interfering with tests that assert both color-on and color-off behaviour.
+
+**Generating golden files (first run or intentional change):**
+
+```bash
+pytest --snapshot-update scripts/tests/test_snapshot_*.py
+```
+
+Golden files live in `scripts/tests/__snapshots__/` and are version-controlled. Review them in PRs like any other test artifact.
+
+**Updating after an intentional formatting change:**
+
+```bash
+# Update only the affected test file's snapshots
+pytest --snapshot-update scripts/tests/test_snapshot_output_primitives.py
+
+# Then commit both the source change and the updated golden files together
+git add scripts/little_loops/cli/output.py scripts/tests/__snapshots__/
+git commit -m "fix(output): change table border style"
+```
+
+**Snapshot test files:**
+
+| File | What it covers |
+|------|----------------|
+| `test_snapshot_output_primitives.py` | `table()`, `status_block()`, `progress()`, `sparkline()` |
+| `test_snapshot_loop_layout.py` | `_render_fsm_diagram()` — linear and branching FSMs |
+
 ## Event Schema Maintenance
 
 When adding a new `LLEvent` type or changing payload fields:

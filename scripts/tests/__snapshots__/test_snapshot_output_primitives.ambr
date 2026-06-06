@@ -1,0 +1,75 @@
+# serializer version: 1
+# name: TestProgressSnapshot.test_empty_bar
+  '|                  |'
+# ---
+# name: TestProgressSnapshot.test_full_bar
+  '|##################|'
+# ---
+# name: TestProgressSnapshot.test_half_filled_bar
+  '|#########         |'
+# ---
+# name: TestSparklineSnapshot.test_empty
+  '░░░░░░░░░░'
+# ---
+# name: TestSparklineSnapshot.test_full
+  '██████████'
+# ---
+# name: TestSparklineSnapshot.test_half_filled
+  '█████░░░░░'
+# ---
+# name: TestStatusBlockSnapshot.test_aligned_status_block
+  '''
+  ID      : ENH-1965
+  Title   : Add snapshot testing
+  Status  : in_progress
+  Priority: P3
+  Type    : ENH
+  '''
+# ---
+# name: TestStatusBlockSnapshot.test_two_key_status_block
+  '''
+  Status  : open
+  Priority: P3
+  '''
+# ---
+# name: TestTableSnapshot.test_single_col_table
+  '''
+  ┌─────┐
+  │Item │
+  ├─────┤
+  │alpha│
+  │beta │
+  │gamma│
+  └─────┘
+  '''
+# ---
+# name: TestTableSnapshot.test_table_with_truncation
+  '''
+  ┌─────┬────────────────────┐
+  │Key  │Value               │
+  ├─────┼────────────────────┤
+  │short│aaaaaaaaaaaaaaaaaaa…│
+  └─────┴────────────────────┘
+  '''
+# ---
+# name: TestTableSnapshot.test_three_col_issue_table
+  '''
+  ┌────────┬────────┬────────────────────┐
+  │ID      │Priority│Title               │
+  ├────────┼────────┼────────────────────┤
+  │ENH-1965│P3      │Add Snapshot Testing│
+  │BUG-001 │P0      │Critical crash      │
+  │FEAT-042│P2      │Dark mode support   │
+  └────────┴────────┴────────────────────┘
+  '''
+# ---
+# name: TestTableSnapshot.test_two_col_table
+  '''
+  ┌────┬──────┐
+  │Name│Status│
+  ├────┼──────┤
+  │foo │open  │
+  │bar │done  │
+  └────┴──────┘
+  '''
+# ---
