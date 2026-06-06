@@ -59,6 +59,22 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 - **`loop-router` as the universal leaf.** The composer's prompt is biased toward emitting `loop-router` nodes when the model is uncertain about loop choice. This pushes uncertainty to the routing layer where it already has a confidence/HITL gate, instead of duplicating that logic at the composer level.
 - **State interpolation between steps.** Step N+1's `input` string can reference `${plan_state.step_3.output}` so plans can express "feed step 3's output into step 5". This is the load-bearing part — without it, the composer is just a fancy `ll-sprint`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**CRITICAL: Fragment sharing does NOT use `loop: lib/composer.yaml#<state>` syntax.**
+`scripts/little_loops/fsm/fragments.py:resolve_fragments()` resolves fragments via a `fragments:` top-level mapping in lib YAML files. The `loop:` key dispatches a whole child FSM — `resolve_loop_path()` in `scripts/little_loops/cli/loop/_helpers.py` has no `#state` extraction logic. The `reusable: true` key is not recognized anywhere in the engine. The correct sharing mechanism: define `discover_loops`, `validate_plan`, and `present_plan` under a `fragments:` mapping in `lib/composer.yaml`, then reference them via `fragment: discover_loops` (etc.) inside the loop YAML states. All six existing lib files (`common.yaml`, `cli.yaml`, `harness.yaml`, etc.) follow this `fragments:` mapping pattern — none use `reusable: true`.
+
+**CRITICAL: `${plan_state.step_N.output}` interpolation requires dict-typed context values.**
+`scripts/little_loops/fsm/interpolation.py:_get_nested()` walks dot-separated paths through Python dicts. Context values are string-typed from the YAML `context:` block. If `plan_state` is stored as a JSON string (`'{"step_1": {"output": "..."}}'`), `_get_nested` will fail on `plan_state.step_1` because it tries to subscript a string, not a dict. Implementation options: (a) use shell states to write per-step output to `${context.run_dir}/checkpoints/step-N.json` and read them back with shell `cat` (the pattern used by `general-task.yaml` and `rn-decompose.yaml`), rather than relying on `${plan_state.step_N.output}` context interpolation; or (b) understand that context values set programmatically during execution (not from the YAML `context:` block) can be dict-typed. Option (a) is the safe, proven path.
+
+**Sub-loop dispatch routing verbs:** use `on_yes`/`on_no`/`on_error` when `capture:` is set on the dispatch state (the `loop-router` pattern); use `on_success`/`on_failure`/`on_error` when `context_passthrough: true` is set (the `recursive-refine` pattern). For `execute_plan`'s per-node dispatch, the `capture:` variant is appropriate since step outputs need to be persisted.
+
+**`discover_loops` shell pattern from `loop-router.yaml`:** the excludes logic is an inline Python block that (1) splits `${context.exclude}` on commas for user-configurable exclusions, then (2) unconditionally calls `excludes.add('loop-router')`. FEAT-1808's `discover_loops` fragment must add `excludes.add('loop-composer')` in the same inline Python, and the copy in `loop-router.yaml` must add `excludes.add('loop-composer')` to its inline Python (wiring step 8).
+
+**`test_expected_loops_exist` currently has 69 loops** in its `expected` set; `loop-composer` will be the 70th. The test glob is `*.yaml` (top-level only), so `lib/composer.yaml` is not in scope.
+
 ## Acceptance Criteria
 
 - [ ] `loop-composer.yaml` accepts a natural-language goal and decomposes it into an ordered DAG of ≤8 `{step_id, loop_name, input, depends_on}` nodes
@@ -108,6 +124,18 @@ Output (structured JSON from `present_result` state):
 6. Update `docs/guides/LOOPS_GUIDE.md`, `scripts/little_loops/loops/README.md`, and add `"loop-composer"` to `test_builtin_loops.py::test_expected_loops_exist`
 7. Run `ll-loop validate loop-composer` — confirm no MR-1 or MR-3 violations
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `scripts/little_loops/loops/loop-router.yaml` — add `excludes.add('loop-composer')` to the inline Python in `discover_loops`, parallel to the existing `excludes.add('loop-router')` (blocking routing guard per Scope Boundary)
+9. Update `config-schema.json` — add `"composer"` nested object under `"orchestration"` with `"max_plan_nodes"` (type: integer, default: 8) and `"auto"` (type: boolean, default: false) before any user sets these config keys (`"additionalProperties": false` is set on the `orchestration` object)
+10. Update `scripts/little_loops/loops/README.md` — add `lib/composer.yaml` row to the Fragment Libraries table (~lines 179–186); this is a second distinct edit from the loop catalog entry in step 6
+11. Update `skills/create-loop/templates.md` — replace Composer "Forthcoming" label with `ll-loop run loop-composer` instruction and remove "not yet available" prose at line 467
+12. Update `skills/create-loop/loop-types.md` — add Orch Composer branch alongside Orch Router to distinguish single-goal routing from multi-loop DAG decomposition
+13. Verify `lib/composer.yaml` omits `initial:` so `test_doc_counts.py::test_lib_fragments_are_not_runnable` continues to pass
+14. Verify all five parametrized sweep tests in `test_builtin_loops.py` pass with the new `loop-composer.yaml` before opening the PR
+
 ## Integration Map
 
 ### Files to Modify
@@ -115,6 +143,11 @@ Output (structured JSON from `present_result` state):
 - `scripts/little_loops/loops/README.md` — append composer entry
 - `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles::test_expected_loops_exist` — add `"loop-composer"` to the `expected` set
 - `docs/guides/LOOPS_GUIDE.md` — note composer as the multi-loop entry point sitting above `loop-router`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/lib/composer.yaml` (new) — shared fragment library exposing `discover_loops`, `validate_plan`, `present_plan` as `reusable: true` states (in impl steps but absent from this map) [Agent 1 finding]
+- `scripts/little_loops/loops/loop-router.yaml` — add `excludes.add('loop-composer')` to the inline Python in `discover_loops` state, parallel to `excludes.add('loop-router')` (blocking routing guard per Scope Boundary) [Agent 2 finding]
+- `config-schema.json` — add `"composer"` nested object under `"orchestration"` with `max_plan_nodes` (integer, default 8) and `auto` (boolean, default false); required before any user sets these keys because `"additionalProperties": false` is set on the `orchestration` object [Agent 2 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/loops/loop-router.yaml` — direct ancestor; reuse catalog discovery and HITL shape
@@ -125,14 +158,44 @@ Output (structured JSON from `present_result` state):
 ### Tests
 - `scripts/tests/test_loop_composer.py` (new) — schema validation, plan-parsing tests, structural assertions on the state graph, optional `@pytest.mark.slow` live-LLM class.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_doc_counts.py` — `test_lib_fragments_are_not_runnable` auto-sweeps `loops/lib/`; `lib/composer.yaml` must omit `initial:` to pass (verify, no code change needed) [Agent 3 finding]
+- `test_builtin_loops.py` sweep tests — five parametrized checks (`test_all_validate_as_valid_fsm`, `test_all_have_description_field`, `test_no_bare_pass_token_in_output_contains`, `test_no_bare_bash_variable_in_shell_actions`, `test_all_failure_terminals_have_diagnostic_action`) auto-pick up `loop-composer.yaml`; verify all pass before merging [Agent 3 finding]
+- Suggested test class structure for `test_loop_composer.py`: `TestLoopComposerFile` (file/parse/validate/fields), `TestLoopComposerStates` (required states, per-state assertions), `TestComposerLibFragment` (reusable fragment states), `TestComposerPlanParsing` (valid plan, missing step_id, cycle in depends_on, unknown loop_name, node cap), `TestCatalogExclusivity` (`test_loop_router_catalog_exclusivity`), `TestLoopComposerLive` (`@pytest.mark.slow` + `@pytest.mark.skipif` guard) — follow pattern from `scripts/tests/test_loop_router.py` [Agent 3 finding]
+
 ### Configuration
 - Consider `orchestration.composer.max_plan_nodes` (default 8) and `orchestration.composer.auto` (default false — composer should HITL by default given blast radius).
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/create-loop/templates.md` — Orchestration shape menu marks Composer as "Forthcoming (see FEAT-1808)"; update to active (`ll-loop run loop-composer`) and remove "not yet available" prose after ship [Agent 2 finding]
+- `skills/create-loop/loop-types.md` — Orch Router section directs users to clone `loop-router`; add guidance distinguishing router (single goal → best existing loop) vs. composer (complex goal → ordered DAG of loops) [Agent 2 finding]
+- `skills/create-loop/reference.md` — Dispatch-state documentation references only `loop-router` as the canonical sub-loop dispatch example; add `loop-composer` as a second canonical DAG-walk dispatch pattern [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` — loop type classification table (~line 144) needs a Composer row (distinct from the routing section update already in Files to Modify) [Agent 2 finding]
+- `scripts/little_loops/loops/README.md` — Fragment Libraries table (~lines 179–186) needs a `lib/composer.yaml` entry; distinct from the loop catalog entry already listed [Agent 2 finding]
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/fragments.py` — resolves `lib/composer.yaml#<state>` fragment references at runtime; no code changes expected, but verify existing fragment resolution handles the new lib file [Agent 1 finding]
+- `scripts/little_loops/fsm/interpolation.py` — resolves `${plan_state.step_N.output}` references; verify nested plan_state path interpolation is supported before implementing the state interpolation step [Agent 1 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/fsm/fragments.py:resolve_fragments()` — the fragment system resolves `fragment: <name>` keys in states against a `fragments:` top-level mapping in lib files. `lib/composer.yaml` must use a `fragments:` mapping (NOT `states:` + `reusable: true`). The `#state` reference syntax in `loop:` is not supported — `resolve_loop_path()` in `scripts/little_loops/cli/loop/_helpers.py` resolves whole loop files, not individual states within them.
+- `scripts/little_loops/fsm/interpolation.py:_get_nested()` — nested dot-path traversal works on Python dicts. `plan_state` context values must be dict-typed (set programmatically by the executor) for `${plan_state.step_N.output}` to work; string-serialized JSON stored in the YAML `context:` block will NOT be traversable. Recommend using shell checkpoint files at `${context.run_dir}/checkpoints/step-N.json` instead of context-level interpolation for step output passing.
+- `scripts/little_loops/fsm/executor.py:_execute_sub_loop()` — sub-loop dispatch routing: states with `capture:` key route via `on_yes`/`on_no`/`on_error`; states with `context_passthrough: true` route via `on_success`/`on_failure`/`on_error`. Use `on_yes`/`on_no` for the per-node dispatch states in `execute_plan`.
+- `scripts/little_loops/loops/general-task.yaml` — checkpoint write/read/delete lifecycle pattern: `printf '{"step":"%s","timestamp":"%s"}' > "${context.run_dir}/checkpoints/step-N.json"`. Follow this exact shape for FEAT-1808's per-step checkpoint writes.
+- `scripts/little_loops/loops/lib/common.yaml` — provides `queue_pop`, `queue_track`, `shell_exit`, `retry_counter` fragments directly usable in `loop-composer`. Consider `retry_counter` for bounded decompose retries.
 
 ## Open Questions
 
 1. **Plan schema format.** YAML inline vs. dedicated JSON blob. Probably JSON because the LLM emits it and we already have JSON tooling.
 2. **Failure semantics.** When step 4 of 6 fails, do we stop, continue, or re-plan the tail? For the MVP: stop and report. Re-planning is FEAT-1809.
-3. **Reusing `recursive-refine`'s shape?** That loop already does "decompose → recurse → terminate" with sub-loops. Worth a side-by-side comparison before committing to a brand-new state graph.
+3. ~~**Reusing `recursive-refine`'s shape?**~~ **CLOSED** — `recursive-refine` (`scripts/little_loops/loops/recursive-refine.yaml`) uses a queue+depth-tracking shape designed for *unknown-boundary recursive discovery*: it dequeues one item, runs a sub-loop, and if the sub-loop decomposes the item it enqueues children at `parent_depth + 1`. The plan queue is open-ended; the loop terminates when the queue empties or budget exhausts. `loop-composer` is structurally different: the plan is bounded and fully known before execution begins (`decompose_goal` emits a complete JSON DAG), nodes are walked in topological order, and there is no child-enqueue step. The state graphs do not overlap. Do NOT adapt `recursive-refine`'s shape — use `loop-router.yaml` as the ancestor (HITL + dispatch pattern) and `general-task.yaml` for the checkpoint read/write lifecycle.
 
 ## Relationship to Sibling Issues
 
@@ -193,6 +256,8 @@ _Added by `/ll:confidence-check` on 2026-06-06_
 - **Plan schema not locked**: "Probably JSON" is a minor decision point. The JSON path is the obvious choice; close this explicitly at the start of implementation.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-06T21:26:33 - `e5ece679-fa95-499d-831d-5b8f7df99a47.jsonl`
+- `/ll:wire-issue` - 2026-06-06T21:20:10 - `b909cf61-8cbb-4e9e-bd01-7eb935601be7.jsonl`
 - `/ll:confidence-check` - 2026-06-06T00:00:00Z - `d0f98747-4363-4b4e-b794-19c4467e0b49.jsonl`
 - `/ll:format-issue` - 2026-06-06T21:09:52 - `14697907-ef57-4058-9a37-92c45ac2362d.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
