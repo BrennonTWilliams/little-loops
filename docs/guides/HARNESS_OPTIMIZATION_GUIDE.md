@@ -15,15 +15,14 @@ change only when the score improves.
 
 This pattern is powerful and dangerous in equal measure: a careless optimizer makes
 output *worse* roughly half the time and cannot tell that it did. The design rules below
-exist to make harness optimization safe, and they are grounded in direct measurement of
-real optimizers — see [Why It Needs Guardrails](#why-it-needs-guardrails-the-shor-evidence).
+exist to make harness optimization safe — see [Why It Needs Guardrails](#why-it-needs-guardrails).
 
 ---
 
 ## Table of Contents
 
 - [What Is Harness Optimization?](#what-is-harness-optimization)
-- [Why It Needs Guardrails: The SHOR Evidence](#why-it-needs-guardrails-the-shor-evidence)
+- [Why It Needs Guardrails](#why-it-needs-guardrails)
 - [The Design Rules (MR-1…MR-5)](#the-design-rules-mr-1mr-5)
 - [The Optimizer Error Taxonomy](#the-optimizer-error-taxonomy)
 - [The Canonical Shape](#the-canonical-shape)
@@ -57,29 +56,24 @@ pattern).
 
 ---
 
-## Why It Needs Guardrails: The SHOR Evidence
+## Why It Needs Guardrails
 
-The rules in this guide are not stylistic preferences. They encode findings from
-[*Towards Direct Evaluation of Harness Optimizers via Priority Ranking*](../research/Towards-Direct-Evaluation-of-Harness-Optimizers.md)
-(the SHOR study), which measured what real coding-agent optimizers actually do at each
-step rather than only at the end:
+The rules in this guide are not stylistic preferences. They follow from a few hard facts
+about how optimizers actually behave step-to-step, not just at the end:
 
-- **~45–48% of optimizer update steps are detrimental** to agent performance (Analysis I).
-  Nearly half of "improvements" make things worse. → *You must measure each change and be
-  able to revert it.*
-- **94.4% of errors in non-`prompt` components persist to the final harness** (Analysis
-  II); intermediate mistakes are mostly **not** self-correcting. → *External measurement,
-  not the optimizer's own say-so, must decide what survives.*
-- **Optimizers cannot tell whether their own update helped or hurt** — accuracy is close
-  to random (Table 1; Sonnet 4.6 = **33.4%**). → *An LLM self-grade on a harness edit is
-  worth little; pair it with a non-LLM signal.* This is exactly MR-1.
-- **Telling the optimizer *which component* is flawed lifts its fix-rate by +17–51pp**
-  (§7.1). The bottleneck is *diagnosis* (knowing where to act), not the edit itself. →
+- **Nearly half of an optimizer's edits make output worse.** → *You must measure each
+  change and be able to revert it.*
+- **Intermediate mistakes are mostly *not* self-correcting** — a bad edit tends to persist
+  to the final harness rather than wash out. → *External measurement, not the optimizer's
+  own say-so, must decide what survives.*
+- **An optimizer cannot reliably tell whether its own edit helped or hurt** — its
+  self-assessment is close to a coin flip. → *An LLM self-grade on a harness edit is worth
+  little; pair it with a non-LLM signal.* This is exactly MR-1.
+- **The bottleneck is *diagnosis* — knowing which component to act on — not the edit
+  itself.** Telling the optimizer where the flaw is sharply lifts its fix-rate. →
   *Diagnose first; spend the first step identifying the highest-priority component.*
-- **A good agent harness is not necessarily a good optimizer harness** (Finding 2). →
-  *Don't assume your strongest skill will also be your strongest optimizer; validate it.*
-- Ranking signal is strongest for **mid-stage** harnesses (Finding 6) — neither pristine
-  nor fully converged — which is where most of your optimization effort will land.
+- **A good agent harness is not necessarily a good optimizer harness.** → *Don't assume
+  your strongest skill will also be your strongest optimizer; validate it.*
 
 The throughline: harness optimization is driven far more by trial-and-error than by
 informed judgment, and end-result-only evaluation hides this. The guardrails turn
@@ -93,24 +87,23 @@ The normative source for these rules is [`.claude/CLAUDE.md` § Loop Authoring](
 `ll-loop validate` enforces them. This section explains *why* each exists. Each rule can be
 suppressed with a top-level flag when you have a justified reason.
 
-| Rule | What it requires | SHOR basis | Severity | Suppress with |
-|------|------------------|------------|----------|---------------|
-| **MR-1** | Every `check_semantic` / `llm_structured` state pairs with ≥1 non-LLM evaluator (`exit_code`, `output_numeric`, `convergence`, `diff_stall`, `mcp_result`) | Self-grades ≈33–55% accurate (Table 1) | **ERROR** | `meta_self_eval_ok: true` |
-| **MR-3** | Intermediate artifacts write under `${context.run_dir}/`, not bare `.loops/tmp/` | (Concurrency safety, not SHOR) | WARNING | `shared_state_ok: true` |
-| **MR-4** | An LLM-judged state with `on_yes` must also route `on_no`/`on_partial` (or `next:`/full `route:`) — no silent dead-end on a non-yes verdict | Half of verdicts are adverse (Analysis I) | WARNING | `partial_route_ok: true` |
-| **MR-5** | A harness loop that writes artifacts in a generate→evaluate cycle must snapshot per-iteration (`artifact_versioning: true`), not overwrite a flat path | Keep the trajectory; errors persist (Analysis II) | WARNING | `artifact_versioning_ok: true` |
+| Rule | What it requires | Why | Severity | Suppress with |
+|------|------------------|-----|----------|---------------|
+| **MR-1** | Every `check_semantic` / `llm_structured` state pairs with ≥1 non-LLM evaluator (`exit_code`, `output_numeric`, `convergence`, `diff_stall`, `mcp_result`) | Self-grades are unreliable | **ERROR** | `meta_self_eval_ok: true` |
+| **MR-3** | Intermediate artifacts write under `${context.run_dir}/`, not bare `.loops/tmp/` | Concurrency safety | WARNING | `shared_state_ok: true` |
+| **MR-4** | An LLM-judged state with `on_yes` must also route `on_no`/`on_partial` (or `next:`/full `route:`) — no silent dead-end on a non-yes verdict | Half of verdicts are adverse | WARNING | `partial_route_ok: true` |
+| **MR-5** | A harness loop that writes artifacts in a generate→evaluate cycle must snapshot per-iteration (`artifact_versioning: true`), not overwrite a flat path | Errors persist — keep the trajectory | WARNING | `artifact_versioning_ok: true` |
 
-MR-1 is the load-bearing one: it is the direct operationalization of the finding that an
-optimizer's self-assessment is no better than a coin flip. Pair the LLM judge with
-something the LLM cannot talk its way around — an exit code, a numeric score, a diff
-stall, or a convergence gate.
+MR-1 is the load-bearing one: an optimizer's self-assessment is no better than a coin
+flip, so pair the LLM judge with something it cannot talk its way around — an exit code, a
+numeric score, a diff stall, or a convergence gate.
 
 ---
 
 ## The Optimizer Error Taxonomy
 
-SHOR catalogued the recurring ways optimizers damage a harness (Table 5). Treat this as a
-**review checklist for your `propose`/`apply` steps** — these are the failure modes your
+These are the recurring ways optimizers damage a harness. Treat the list as a
+**review checklist for your `propose`/`apply` steps** — the failure modes your
 diagnosis prompt should watch for and your scorer should catch:
 
 | Error type | What it looks like | Mitigation |
@@ -145,7 +138,7 @@ diagnose → baseline → propose → apply → score → gate ─┬─► comm
 
 | State | Role |
 |-------|------|
-| `diagnose` | **Initial state.** Identify the highest-priority component to fix before any edit — the +17–51pp lever from SHOR §7.1. |
+| `diagnose` | **Initial state.** Identify the highest-priority component to fix before any edit — this is the biggest lever on fix-rate. |
 | `baseline` | Run the scorer once; capture the pre-edit score. |
 | `propose` | LLM proposes **one** targeted edit to the diagnosed component. |
 | `apply` | Apply the proposed change to the target file(s). |
@@ -157,7 +150,7 @@ diagnose → baseline → propose → apply → score → gate ─┬─► comm
 Two properties make this shape safe by construction:
 
 - **`diagnose` is initial**, so every iteration re-prioritizes *which* component to touch
-  rather than blindly editing — the diagnosis-first lesson from SHOR.
+  rather than blindly editing.
 - **The success signal is the non-LLM `convergence` gate**, never an LLM self-grade. This
   satisfies MR-1 by construction (there is no `check_semantic` to pair). The accept/revert
   branch is the operational answer to "half of edits are detrimental."
@@ -169,18 +162,18 @@ even when individual edits are reverted (MR-3 / MR-5).
 > **One-line hardening for `diagnose`:** make the priority ranking an explicit gate, not a
 > suggestion — `diagnose` should emit a single committed highest-priority component and
 > refuse to advance to `propose` without one, so every iteration spends its first step on
-> the +17–51pp lever (SHOR §7.1) rather than drifting into an unscoped edit.
+> the highest-leverage component rather than drifting into an unscoped edit.
 
 ### Feed the trajectory forward: cumulative summaries
 
 The per-iteration `trajectory.jsonl` is also the substrate for the optimizer's `memory`
 component. On each re-entry to `diagnose`, summarize the prior iterations — *what was
 proposed, what the score did, and what was reverted* — and put that summary in the
-diagnosis context. This directly counters **Redundant Duplication** (Table 5, error type
-#1): without a memory of reverted edits, an optimizer happily re-proposes the change it
-just discarded, because Analysis II shows these mistakes are **not** self-correcting. The
-summary is a cumulative ledger ("tried X → +0, reverted; tried Y → +3, kept"), not a
-verbatim replay — keep it short enough to ride in the diagnosis prompt.
+diagnosis context. This directly counters **Redundant Duplication**: without a memory of
+reverted edits, an optimizer happily re-proposes the change it just discarded, since these
+mistakes don't self-correct. The summary is a cumulative ledger ("tried X → +0, reverted;
+tried Y → +3, kept"), not a verbatim replay — keep it short enough to ride in the
+diagnosis prompt.
 
 ---
 
@@ -212,8 +205,8 @@ rules.
   varies; this flags evaluators with Bernoulli variance `p*(1-p)` below 0.05 across ≥10
   runs.
 - **`ll-loop run <loop> --baseline`** — empirically validate the optimizer earns its cost
-  by running a blind A/B against an unguided single call. Because a *good agent harness is
-  not necessarily a good optimizer harness* (SHOR Finding 2), don't assume — measure.
+  by running a blind A/B against an unguided single call. A strong skill is not necessarily
+  a strong optimizer — don't assume, measure.
 - **`ll-loop promote-baseline <loop>`** — after inspecting a run's output, promote it as
   the new comparator baseline.
 
@@ -223,7 +216,7 @@ Once `trajectory.jsonl` tags each edit by component and strategy (which componen
 touched, what kind of change it was), you can analyze **which fix strategies correlate with
 score improvement** versus which tend to regress — and bias future `propose` steps toward
 the ones that earn their keep. This is a genuine learning layer, but it is only meaningful
-**at sample size**. With ~45–48% of update steps detrimental (Analysis I) and single-task
+**at sample size**. With nearly half of update steps detrimental and single-task
 scores noisy, a correlation drawn from a handful of iterations is indistinguishable from
 chance — the same trap the `diagnose-evaluators` Bernoulli-variance check guards against
 (`p*(1-p)` below 0.05 across ≥10 runs is too flat to trust). Treat strategy-outcome
@@ -238,6 +231,6 @@ override the non-LLM `convergence` gate on any individual edit.
   wrapping a *skill* in a quality pipeline (not optimizing the harness itself)
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — full FSM reference: evaluators, state fields, CLI
 - [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md) — the normative MR-1…MR-5 rules
-- [Towards Direct Evaluation of Harness Optimizers](../research/Towards-Direct-Evaluation-of-Harness-Optimizers.md) — the SHOR study behind these guardrails
+- [Towards Direct Evaluation of Harness Optimizers](../research/Towards-Direct-Evaluation-of-Harness-Optimizers.md) — the empirical study behind these guardrails, with the per-step measurements, error taxonomy, and findings the rules above are distilled from
 - [`scripts/little_loops/loops/harness-optimize.yaml`](../../scripts/little_loops/loops/harness-optimize.yaml) — the reference harness-optimizer loop
 - [`skills/create-loop/templates.md`](../../skills/create-loop/templates.md) — the wizard-generated "Optimize a harness" template
