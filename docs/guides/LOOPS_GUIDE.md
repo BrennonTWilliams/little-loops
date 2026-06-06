@@ -142,6 +142,7 @@ What are you trying to do?
 | Harness a skill | discover, execute, check_*, advance, done | Multi-phase evaluation (exit code → MCP → skill → LLM → diff) | Batch processing with layered quality gates |
 | Composable sub-loops | 1 per child loop + done | Binary (success/failure) per child | Multi-stage pipelines from existing loops |
 | Orchestration (router) | classify, score, dispatch, review, done | Multi-way (project/built-in/propose-new) | Dynamic dispatch to best-fit existing loop; see `loop-router` |
+| Orchestration (composer) | discover, decompose, validate, execute, review, done | DAG-walk (per-node on_yes/no) | Multi-loop DAG execution from a single goal; see `loop-composer` |
 
 Use `/ll:create-loop` to build any of these. Pass a natural language description to skip the wizard (e.g., `/ll:create-loop reduce lint errors to zero`), or run it with no args for the interactive guided flow. Either way the output is FSM YAML ready to run.
 

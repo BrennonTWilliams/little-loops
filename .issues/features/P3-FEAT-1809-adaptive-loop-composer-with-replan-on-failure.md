@@ -1,17 +1,30 @@
 ---
 id: FEAT-1809
-title: Adaptive `loop-composer` — Re-plan-on-Failure Variant
+title: "Adaptive `loop-composer` \u2014 Re-plan-on-Failure Variant"
 type: FEAT
 priority: P3
 status: open
 parent: EPIC-1811
-captured_at: "2026-05-30T06:48:30Z"
+captured_at: '2026-05-30T06:48:30Z'
 discovered_date: 2026-05-30
 discovered_by: capture-issue
-relates_to: [FEAT-1808, FEAT-1810]
+relates_to:
+- FEAT-1808
+- FEAT-1810
 blocked_by:
 - FEAT-1808
-labels: [loop-composer, orchestration, adaptive, loops]
+labels:
+- loop-composer
+- orchestration
+- adaptive
+- loops
+confidence_score: 77
+outcome_confidence: 63
+score_complexity: 11
+score_test_coverage: 14
+score_ambiguity: 18
+score_change_surface: 20
+implementation_order_risk: true
 ---
 
 # FEAT-1809: Adaptive `loop-composer` — Re-plan-on-Failure Variant
@@ -113,6 +126,71 @@ ${context.run_dir}/plans/v<N>.json              # plan snapshot per version (v1 
 8. Write integration tests in `scripts/tests/test_loop_composer_adaptive.py`
 9. Update `docs/guides/LOOPS_GUIDE.md` with adaptive variant documentation and when to prefer it over static
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Step 3 — Implementation detail for per-step verdict gate:**
+Because `_execute_sub_loop()` has no `on_partial` path (see Integration Map findings), implement the gate as a two-state pair after every sub-loop call:
+```yaml
+run_step_N:
+  loop: <sub-loop-name>
+  with:
+    run_dir: "${context.run_dir}"
+    step_index: "N"
+  on_yes: read_step_N_verdict    # both outcomes read the token file
+  on_no: read_step_N_verdict
+  on_error: abort_composer
+
+read_step_N_verdict:
+  action_type: shell
+  action: cat "${context.run_dir}/step-N-verdict.txt" 2>/dev/null || echo "BLOCKED"
+  evaluate:
+    type: output_contains
+    pattern: "DONE"
+  on_yes: <next-step>            # fully successful
+  on_no: check_verdict_type      # partial / blocked / low-confidence → reassess
+```
+
+**Step 2 — Fragment import for `lib/composer.yaml`:**
+Use `import: [lib/composer.yaml]` at the top of `loop-composer-adaptive.yaml`. Reference as `fragment: reassess` in the `reassess` state. Fragment parameter bindings via `with:` key. The `lib/` path resolves relative to the loop file's directory and falls back to the built-in loops dir (see `scripts/little_loops/fsm/fragments.py:resolve_fragments()`). Do **not** use `from:` inheritance — that is for full-loop base classes (`lib/apo-base.yaml`), not for state-level fragment libraries.
+
+**Step 4 — Budget counter pattern (following `rn-remediate.yaml:check_remediation_budget`):**
+```yaml
+check_replan_budget:
+  action_type: shell
+  action: cat "${context.run_dir}/replan_count.txt" 2>/dev/null || echo 0
+  evaluate:
+    type: output_numeric
+    operator: lt
+    target: "${context.max_replans}"
+  on_yes: reassess               # under budget → evaluate
+  on_no: abort_composer          # exhausted → ABORT
+```
+Increment via a shell state that writes `$((COUNT + 1)) > ${context.run_dir}/replan_count.txt` before routing to `check_replan_budget`.
+
+**Step 7 — Non-LLM evaluator for `reassess` (MR-1 pairing):**
+Pair the `llm_structured` `reassess` state with a preceding `exit_code` gate that verifies the step-verdict file exists and is non-empty (structural precondition), and/or a subsequent `output_numeric` gate on the replan counter. This satisfies MR-1 without relying on self-evaluation. Example routing chain: `read_step_verdict → check_replan_budget (output_numeric) → reassess (llm_structured) → apply_replan`.
+
+**Step 8 — Test pattern (following `scripts/tests/test_rn_remediate.py`):**
+Use `_load_loop()` + `Test<PhaseGroup>` class per FSM phase:
+```python
+def _load_loop() -> dict:
+    with open(LOOPS_DIR / "loop-composer-adaptive.yaml") as f:
+        return yaml.safe_load(f)
+
+class TestReplanBudget:
+    def test_check_replan_budget_uses_output_numeric(self) -> None:
+        state = _load_loop()["states"]["check_replan_budget"]
+        assert state["evaluate"]["type"] == "output_numeric"
+        assert state["evaluate"]["operator"] == "lt"
+
+    def test_reassess_has_llm_structured_evaluate(self) -> None:
+        state = _load_loop()["states"]["reassess"]
+        assert state["evaluate"]["type"] == "llm_structured"
+```
+Also add `"loop-composer-adaptive"` to any explicit name-list assertions in `test_builtin_loops.py` if the test checks by name (auto-discovery via `is_runnable_loop()` handles validation; name-list tests check registration completeness).
+
 ## Meta-Loop Considerations
 
 Per `.claude/CLAUDE.md` § Loop Authoring, any loop that mutates other harness artifacts is a meta-loop and needs non-LLM evaluator pairing. `loop-composer-adaptive` orchestrates other loops but doesn't *write* harness artifacts itself, so it's a regular orchestration loop — **but** the `reassess` LLM judge is exactly the kind of self-evaluation surface that mis-grades reliably. Pair `reassess` with an exit-code / `output_numeric` evaluator (e.g. step exit-code, files-produced count) as ground truth before trusting the LLM's `CONTINUE` verdict.
@@ -146,6 +224,36 @@ Per `.claude/CLAUDE.md` § Loop Authoring, any loop that mutates other harness a
 - `orchestration.composer.adaptive.max_replans` (default 2)
 - `orchestration.composer.adaptive.reassess_min_confidence` (default 0.6 — below this, automatically `REPLAN_TAIL`)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Critical runtime constraint — sub-loop partial routing gap:**
+`_execute_sub_loop()` in `scripts/little_loops/fsm/executor.py` maps child FSM termination to only three parent verdicts: `on_yes` (child terminates at `done`), `on_no` (child terminates at non-`done` state, or `max_iterations`/`timeout`/`signal`), and `on_error` (child runtime error). There is **no `on_partial` path** — a child loop cannot directly signal low-confidence to its parent via the FSM exit verdict.
+
+**Implication for per-step verdict gate (Step 3 / AC-1):** The confidence threshold check cannot rely solely on the sub-loop's termination verdict. Use the **outcome token pattern** from `scripts/little_loops/loops/rn-remediate.yaml:emit_implemented` + `rn-remediate.yaml:classify_remediation`:
+1. Sub-loop writes `${context.run_dir}/step-<N>-verdict.txt` with a structured token (e.g. `DONE`, `PARTIAL`, `BLOCKED`) before its terminal state
+2. Parent immediately follows the sub-loop state (`on_yes: read_step_verdict`, `on_no: read_step_verdict`) with a `read_step_verdict` state that uses `evaluate.type: output_contains` on that file
+3. Routes `on_yes` (token=`DONE`) to the next step, routes `on_no` (token=`PARTIAL`/`BLOCKED`) or low-confidence token to `reassess`
+
+**Additional files to modify (beyond the table above):**
+- `config-schema.json` — add `orchestration.composer` sub-object; **note:** `orchestration` currently has `"additionalProperties": false` so the new `composer` key must be declared as a property before the schema will accept it
+- `scripts/little_loops/config/orchestration.py` — `OrchestrationConfig.from_dict()` needs updated to parse `composer.adaptive.*` fields
+- `scripts/tests/test_builtin_loops.py` — parametrized `test_all_validate_as_valid_fsm` auto-discovers `loop-composer-adaptive.yaml` via `is_runnable_loop()` — no manual registration needed, but `ll-loop validate` must pass before this test will pass
+- `scripts/little_loops/loops/README.md` — add `loop-composer-adaptive` to loop catalog table and `lib/composer.yaml` to fragment libraries table
+- `skills/create-loop/loop-types.md` — add Orch Composer adaptive variant
+- `skills/create-loop/templates.md` — update Composer entry from "Forthcoming" to active with adaptive guidance
+
+**Reusable utilities in `lib/common.yaml`:**
+- `snapshot_artifact` fragment — parameterizable per-iteration snapshot to `${context.run_dir}/iter-<N>/`; adapt for `checkpoints/step-<N>.json` (bindings: `artifact_path`, `run_dir`)
+- `retry_counter` fragment — file-backed counter + `output_numeric` gate; adapt for `max_replans` budget enforcement (**note:** currently writes to `.loops/tmp/` — override `action:` to write under `${context.run_dir}/` to satisfy MR-3)
+
+**FSM runtime files (callers/importers that matter for implementation):**
+- `scripts/little_loops/fsm/executor.py` — `_execute_sub_loop()` (routing), `_route()` (verdict dispatch), `extra_routes` (custom verdict names like `on_partial`, `on_blocked` are supported)
+- `scripts/little_loops/fsm/fragments.py` — `resolve_fragments()` handles `import: [lib/composer.yaml]`; local `fragments:` block wins over imported in a deep-merge
+- `scripts/little_loops/fsm/schema.py` — `StateConfig.from_dict()` parses `on_partial`, `on_blocked`, and any `on_<X>` key into `extra_routes`
+- `scripts/little_loops/cli/loop/run.py` — injects `context.run_dir` and `mkdir -p`s it (this is what CLAUDE.md means by "the runner injects `run_dir`"; it is **not** `loop_runner.py`)
+
 ## Open Questions
 
 1. **Fork vs. flag.** ✅ **RESOLVED** (2026-06-04 by `/ll:audit-issue-conflicts`): Fragment approach.
@@ -178,7 +286,24 @@ FEAT-1808 must ship before this. Implementing adaptive without the static planne
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-06_
+
+**Readiness Score**: 77/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 63/100 → LOW
+
+### Concerns
+- **FEAT-1808 is still `open`** — this is the hard prerequisite stated explicitly in the issue; implementation cannot start until `loop-composer.yaml` and the shared fragment lib are delivered
+
+### Outcome Risk Factors
+- **Broad change surface across 4 subsystems** — 10 files touched (loops, config, tests, docs/skills); moderate per-site complexity in YAML loop logic raises integration surface even though each individual site is manageable
+- **Tests are co-deliverables** — `test_loop_composer_adaptive.py` is being created as part of this issue; there is no pre-existing test coverage for the adaptive loop behavior; implement tests concurrently with each FSM phase rather than at the end to catch routing logic bugs early
+- **`max_iterations` × `max_replans` combined cap** — open question #2 is unresolved; a re-plan that spawns iterations could multiply total wall-clock cost; decide on a concrete combined cap during Step 4 before writing budget enforcement logic
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-06T00:00:00 - `232674db-961a-4d26-9ceb-6ba3a50d03eb.jsonl`
+- `/ll:refine-issue` - 2026-06-06T21:36:45 - `bddffda0-3fbc-47ac-ba21-11b317cedcca.jsonl`
 - `/ll:format-issue` - 2026-06-06T21:26:25 - `75e3d153-c4ec-46a7-b92d-93a9875c6ba6.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:55:12 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`

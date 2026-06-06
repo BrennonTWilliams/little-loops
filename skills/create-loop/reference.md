@@ -1135,6 +1135,38 @@ The `dispatch` state uses dynamic loop interpolation: `loop: "${captured.chosen.
 
 ---
 
+### Orchestration (Composer)
+```
+States: discover_loops, decompose_goal, parse_plan, validate_plan, check_auto_plan,
+        present_plan, execute_plan, read_step_loop, read_step_input, dispatch_step,
+        write_step_success, write_step_failed, read_checkpoints, review_chain, present_result
+Initial: discover_loops
+
+Transitions:
+  discover_loops:   next -> decompose_goal,  on_error -> failed
+  decompose_goal:   on_yes/no/partial -> parse_plan
+  parse_plan:       next -> validate_plan,   on_error -> re_decompose
+  validate_plan:    on_yes -> check_auto_plan, on_no -> re_decompose
+  check_auto_plan:  on_yes -> execute_plan,  on_no -> present_plan
+  present_plan:     on_yes -> present_result (CANCEL), on_no -> execute_plan (APPROVE)
+  execute_plan:     on_yes -> read_step_loop, on_no -> read_checkpoints (all done)
+  dispatch_step:    on_yes -> write_step_success, on_no/error -> write_step_failed
+  write_step_success: next -> execute_plan
+  write_step_failed: next -> read_checkpoints
+  review_chain:     all -> present_result
+  present_result:   [terminal]
+```
+
+The `dispatch_step` state uses the same dynamic loop interpolation as the Router:
+`loop: "${captured.next_step_loop.output}"`. Run the built-in directly via
+`ll-loop run loop-composer --input "your goal"`.
+
+The plan is a JSON array of `{step_id, loop_name, input, depends_on}` objects written to
+`${context.run_dir}/composer-plan.json`. Step outputs are persisted as checkpoints under
+`${context.run_dir}/checkpoints/step-<step_id>.json` so FEAT-1809 can re-plan from them.
+
+---
+
 ## RL Loop State Structures
 
 ### rl-bandit — Epsilon-Greedy Bandit

@@ -183,6 +183,7 @@ Built-in fragment libraries are in `lib/`:
 | `lib/score-plan-quality.yaml` | Plan-quality scoring fragment (`score_plan_quality`) used by `rn-plan-apo` to score plan trees on four dimensions |
 | `lib/prompt-fragments.yaml` | Reusable prompt-construction fragments for building structured LLM inputs |
 | `lib/harness.yaml` | Harness evaluation fragments (`playwright_screenshot`, `ll_rubric_score`) — Playwright screenshot capture and LLM rubric scoring; used by `oracles/generator-evaluator` |
+| `lib/composer.yaml` | Orchestration fragments for loop-composer and loop-composer-adaptive (`discover_loops`, `validate_plan`, `present_plan`) — shared by FEAT-1808 and FEAT-1809 |
 
 Import a library in any loop:
 

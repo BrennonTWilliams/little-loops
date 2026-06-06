@@ -31,6 +31,7 @@ states:
       exclude_raw = '${context.exclude}'
       excludes = set(x.strip() for x in exclude_raw.split(',') if x.strip())
       excludes.add('loop-router')
+      excludes.add('loop-composer')
       project = []
       builtin = []
       for loop in loops:

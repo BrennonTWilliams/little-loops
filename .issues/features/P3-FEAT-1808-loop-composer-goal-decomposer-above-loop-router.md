@@ -3,9 +3,10 @@ id: FEAT-1808
 title: "loop-composer \u2014 Goal Decomposer Built-in FSM Loop (One Level Above loop-router)"
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-05-30T06:48:30Z'
+completed_at: '2026-06-06T21:52:41Z'
 discovered_date: 2026-05-30
 discovered_by: capture-issue
 blocks:
@@ -25,6 +26,14 @@ implementation_order_risk: true
 ## Summary
 
 Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal too large for a single existing loop, decomposes it into an ordered DAG of `loop-router` calls (or direct sub-loop invocations), then walks the plan to execution. Each node in the plan is an existing loop; the composer is purely an orchestration layer that turns "I want to ship feature X" into "refine → wire → plan → implement → review → PR".
+
+## Current Behavior
+
+No built-in loop accepts a natural-language goal and decomposes it into an ordered sequence of existing loop invocations. Users must manually chain slash commands, invoke `ll-sprint`, or write a bespoke loop YAML for each recurring multi-loop workflow pattern.
+
+## Expected Behavior
+
+`ll-loop run loop-composer --input 'goal string'` accepts a natural-language goal, decomposes it into an ordered DAG of ≤8 `{step_id, loop_name, input, depends_on}` nodes, presents the plan for HITL approval, then walks the plan in topological order — each node dispatching an existing loop and capturing its result. On completion, returns a structured JSON summary: `{plan, step_results, success, summary}`.
 
 ## Motivation
 
@@ -263,6 +272,7 @@ _Updated by `/ll:confidence-check` on 2026-06-06 (post refine-issue + wire-issue
 - **HITL cost-estimate threshold unspecified**: `present_plan` condition references a cost-estimate threshold that is not defined in `config-schema.json` or the config interface section. Define or drop it before implementing the HITL gate condition.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T21:37:44 - `81aad894-174d-491c-915b-3b5a92c288f1.jsonl`
 - `/ll:confidence-check` - 2026-06-06T22:00:00Z - `8ca99a59-7946-4709-b040-2d8d0c6a144b.jsonl`
 - `/ll:refine-issue` - 2026-06-06T21:26:33 - `e5ece679-fa95-499d-831d-5b8f7df99a47.jsonl`
 - `/ll:wire-issue` - 2026-06-06T21:20:10 - `b909cf61-8cbb-4e9e-bd01-7eb935601be7.jsonl`
@@ -283,6 +293,17 @@ _Updated by `/ll:confidence-check` on 2026-06-06 (post refine-issue + wire-issue
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:13 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-30T06:48:30Z - `6be17ec6-da10-4c91-9b41-f2c0b3be4efb.jsonl`
+
+## Impact
+
+- **Priority**: P3 — Orchestration utility; valuable for complex multi-loop workflows but not blocking any existing features.
+- **Effort**: Large — New `loop-composer.yaml` FSM + `lib/composer.yaml` fragment library + `test_loop_composer.py` test suite + 8+ documentation and wiring touchpoints (loop-router, config-schema, skills/create-loop, LOOPS_GUIDE, README). High change surface (score: 22/25).
+- **Risk**: Medium — New artifact with no regression risk to existing loops; however, `loop-router.yaml` exclusion guard and `config-schema.json` additions are required wiring that affect existing files. `implementation_order_risk: true` (blocks FEAT-1806, FEAT-1809).
+- **Breaking Change**: No
+
+## Labels
+
+`loop`, `orchestration`, `fsm`, `composer`, `captured`
 
 ---
 

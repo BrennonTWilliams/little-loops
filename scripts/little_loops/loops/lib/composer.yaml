@@ -1,0 +1,202 @@
+# Shared fragment library for loop-composer and loop-composer-adaptive (FEAT-1809).
+#
+# Import in any loop with:
+#   import:
+#     - lib/composer.yaml
+#
+# Then reference a fragment in a state with:
+#   my_state:
+#     fragment: discover_loops
+#     timeout: 60
+#     next: next_state
+#     on_error: failed
+#
+# CRITICAL: Do NOT use `reusable: true` or `loop: lib/composer.yaml#<state>` —
+# neither syntax is recognized by the engine. Use `fragment: <name>` referencing
+# the `fragments:` mapping below (resolved by fsm/fragments.py:resolve_fragments()).
+
+fragments:
+  discover_loops:
+    description: |
+      Discover available loops, write catalog to ${context.run_dir}/composer-catalog.json,
+      and capture the full JSON under the `catalog` key.
+      Excludes loop-router and loop-composer from candidates; also applies
+      ${context.exclude} comma-separated overrides.
+      State must supply: timeout, next, on_error.
+    action_type: shell
+    action: |
+      mkdir -p "${context.run_dir}"
+      ll-loop list --json 2>/dev/null | python3 -c "
+      import json, sys, os
+      loops = json.load(sys.stdin)
+      exclude_raw = '${context.exclude}'
+      excludes = set(x.strip() for x in exclude_raw.split(',') if x.strip())
+      excludes.add('loop-router')
+      excludes.add('loop-composer')
+      project = []
+      builtin = []
+      for loop in loops:
+          name = loop.get('name', '')
+          if name in excludes:
+              continue
+          entry = {
+              'name': name,
+              'description': str(loop.get('description', '') or '')[:200],
+              'category': loop.get('category', ''),
+          }
+          if loop.get('built_in'):
+              builtin.append(entry)
+          else:
+              project.append(entry)
+      catalog = {'project': project, 'builtin': builtin}
+      run_dir = os.environ.get('LL_RUN_DIR', '${context.run_dir}')
+      os.makedirs(run_dir, exist_ok=True)
+      with open(os.path.join(run_dir, 'composer-catalog.json'), 'w') as f:
+          json.dump(catalog, f, indent=2)
+      print(json.dumps(catalog, indent=2))
+      "
+    capture: catalog
+
+  validate_plan:
+    description: |
+      Validate a composer plan JSON file at ${context.run_dir}/composer-plan.json:
+      - Parse JSON array
+      - Check required fields (step_id, loop_name, input, depends_on)
+      - Reject unknown loop names (cross-checked against captured.catalog)
+      - Detect cycles via Kahn's topological sort
+      - Enforce node cap (${context.max_plan_nodes})
+      On success (exit 0): writes topological order to ${context.run_dir}/topo-order.json,
+        prints PLAN_VALID.
+      On failure (exit 1): writes errors to ${context.run_dir}/validation-errors.txt,
+        prints error lines.
+      State must supply: on_yes (valid), on_no (invalid → retry), on_error.
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, os, collections
+
+      run_dir = '${context.run_dir}'
+      plan_file = os.path.join(run_dir, 'composer-plan.json')
+      max_nodes = int('${context.max_plan_nodes}' or '8')
+
+      errors = []
+
+      # Load plan
+      try:
+          with open(plan_file) as f:
+              plan = json.load(f)
+      except Exception as e:
+          errors.append(f'Cannot read plan file: {e}')
+          with open(os.path.join(run_dir, 'validation-errors.txt'), 'w') as f:
+              f.write('\n'.join(errors))
+          print('\n'.join(errors))
+          sys.exit(1)
+
+      if not isinstance(plan, list):
+          errors.append('Plan must be a JSON array')
+      elif len(plan) == 0:
+          errors.append('Plan must contain at least one step')
+      elif len(plan) > max_nodes:
+          errors.append(f'Plan has {len(plan)} nodes; max is {max_nodes}')
+
+      if not errors:
+          # Build known loop names from catalog
+          catalog_raw = '${captured.catalog.output}'
+          try:
+              catalog = json.loads(catalog_raw)
+              known_loops = {l['name'] for l in catalog.get('project', []) + catalog.get('builtin', [])}
+          except Exception:
+              known_loops = set()
+
+          step_ids = set()
+          for i, node in enumerate(plan):
+              sid = node.get('step_id', '')
+              if not sid:
+                  errors.append(f'Node {i} missing step_id')
+              elif sid in step_ids:
+                  errors.append(f'Duplicate step_id: {sid!r}')
+              else:
+                  step_ids.add(sid)
+
+              loop_name = node.get('loop_name', '')
+              if not loop_name:
+                  errors.append(f'Node {i} ({sid!r}) missing loop_name')
+              elif known_loops and loop_name not in known_loops:
+                  errors.append(f'Node {i} ({sid!r}) loop_name {loop_name!r} not in catalog')
+
+              if 'input' not in node:
+                  errors.append(f'Node {i} ({sid!r}) missing input field')
+
+              deps = node.get('depends_on', [])
+              if not isinstance(deps, list):
+                  errors.append(f'Node {i} ({sid!r}) depends_on must be a list')
+
+      if not errors:
+          # Cycle detection via Kahn's algorithm
+          graph = {n['step_id']: set(n.get('depends_on', [])) for n in plan}
+          for sid, deps in graph.items():
+              for dep in deps:
+                  if dep not in step_ids:
+                      errors.append(f'step_id {sid!r} depends on unknown step {dep!r}')
+
+      if not errors:
+          remaining = {sid: set(deps) for sid, deps in graph.items()}
+          queue = sorted(sid for sid in step_ids if not remaining[sid])
+          visited = []
+          while queue:
+              node_id = queue.pop(0)
+              visited.append(node_id)
+              for sid in list(step_ids):
+                  if node_id in remaining[sid]:
+                      remaining[sid].discard(node_id)
+                      if not remaining[sid]:
+                          queue.append(sid)
+          if len(visited) != len(step_ids):
+              errors.append('Plan contains a cycle in depends_on')
+          else:
+              topo_file = os.path.join(run_dir, 'topo-order.json')
+              with open(topo_file, 'w') as f:
+                  json.dump(visited, f)
+
+      err_file = os.path.join(run_dir, 'validation-errors.txt')
+      if errors:
+          with open(err_file, 'w') as f:
+              f.write('\n'.join(errors))
+          print('\n'.join(errors))
+          sys.exit(1)
+      else:
+          if os.path.exists(err_file):
+              os.remove(err_file)
+          print('PLAN_VALID')
+          sys.exit(0)
+      PYEOF
+    capture: validation_result
+    evaluate:
+      type: exit_code
+
+  present_plan:
+    description: |
+      HITL gate — displays the composed plan (from ${captured.plan_display.output})
+      and asks the user to APPROVE or CANCEL.
+      on_yes fires when CANCEL is typed (abort execution).
+      on_no fires when APPROVE is typed (proceed to execute_plan).
+      State must supply: on_yes (CANCEL → abort), on_no (APPROVE → execute), on_error.
+      The loop must have a state before this that captures formatted plan text as plan_display.
+    action_type: prompt
+    timeout: 600
+    action: |
+      GOAL: ${context.goal}
+
+      COMPOSED EXECUTION PLAN:
+
+      ${captured.plan_display.output}
+
+      Each step will invoke a loop in the order shown above.
+      Steps with depends_on will run after their dependencies complete.
+
+      Type APPROVE to execute this plan.
+      To abort without executing, type: CANCEL
+    capture: user_plan_decision
+    evaluate:
+      type: output_contains
+      pattern: "CANCEL"

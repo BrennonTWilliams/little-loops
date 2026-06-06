@@ -1553,7 +1553,7 @@ states:
 
 If user selected any of the three Orch loop types, follow the steps below for that type.
 
-The **Router** shape can be created via the wizard; **Composer** and **Supervisor** shapes are forthcoming under EPIC-1811 (FEAT-1808, FEAT-1809).
+The **Router** shape can be created via the wizard; **Composer** shape is now available via `ll-loop run loop-composer`; **Supervisor** shape is forthcoming under EPIC-1811 (FEAT-1809).
 
 ---
 
@@ -1628,13 +1628,26 @@ dispatch:
   on_error: review
 ```
 
-### Orch Composer and Supervisor
+### Orch Composer
 
-These shapes are forthcoming under EPIC-1811:
-- **Composer** (FEAT-1808): Decomposes a goal into a sequence of sub-loops connected via `depends_on` in a DAG structure.
-- **Supervisor** (FEAT-1809): Runs a loop, monitors outcomes, and re-plans the sub-loop sequence on failure via a `reassess` gate.
+If user selected "Composer — decompose goal into a DAG of sub-loops":
 
-When FEAT-1808 and FEAT-1809 reach `done`, this section will be expanded with full wizard flows for each shape. In the meantime, direct users to EPIC-1811 for status.
+The Composer shape is available as a built-in loop. Direct the user to run it directly:
+
+```
+ll-loop run loop-composer --input "natural language goal"
+```
+
+Key context knobs:
+- `auto: "true"` — skip the HITL plan-approval gate (default: false)
+- `max_plan_nodes: "8"` — maximum steps in a plan (default: 8)
+- `exclude: "loop-a,loop-b"` — comma-separated loop names to exclude from candidates
+
+The composer discovers available loops, decomposes the goal into an ordered DAG of up to 8 steps (each step is an existing loop invocation), shows the plan for approval, then walks the DAG sequentially. See `loop-composer.yaml` in the built-in loops.
+
+### Orch Supervisor
+
+**Supervisor** (FEAT-1809): forthcoming under EPIC-1811. Runs a loop, monitors outcomes, and re-plans the sub-loop sequence on failure via a `reassess` gate.
 
 ---
 

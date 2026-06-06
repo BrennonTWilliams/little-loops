@@ -459,12 +459,12 @@ questions:
       - label: "Router — dispatch goal to best-fit loop (Recommended)"
         description: "Classifies a natural language goal, scores candidate loops, dispatches to the winner"
       - label: "Composer — decompose goal into a DAG of sub-loops"
-        description: "Forthcoming — see EPIC-1811 (FEAT-1808)"
+        description: "Decomposes a goal into an ordered DAG of existing loop invocations; run via ll-loop run loop-composer"
       - label: "Supervisor — run loop, reassess on failure, re-plan"
         description: "Forthcoming — see EPIC-1811 (FEAT-1809)"
 ```
 
-**Apply substitutions:** For the Router shape, clone `loop-router.yaml` via `ll-loop install loop-router` and customize context knobs (`auto`, `confidence_threshold`, `exclude`). Composer and Supervisor shapes are not yet available — see EPIC-1811.
+**Apply substitutions:** For the Router shape, clone `loop-router.yaml` via `ll-loop install loop-router` and customize context knobs (`auto`, `confidence_threshold`, `exclude`). For the Composer shape, run `ll-loop run loop-composer --input "your goal"` directly — no install step needed. Supervisor shapes are forthcoming under EPIC-1811 (FEAT-1809).
 
 ---
 
