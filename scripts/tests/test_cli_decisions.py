@@ -13,10 +13,12 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.decisions import (
+    CouplingEntry,
     DecisionEntry,
     ExceptionEntry,
     RuleEntry,
     list_entries,
+    load_decisions,
     save_decisions,
 )
 
@@ -548,6 +550,329 @@ class TestDecisionsCLISync:
         content = ll_local.read_text(encoding="utf-8")
         assert "## Active Rules" in content
         assert sample_rule.rule in content
+
+
+# =============================================================================
+# TestDecisionsCLICoupling
+# =============================================================================
+
+
+class TestDecisionsCLICoupling:
+    """Tests for coupling-type entries in ll-issues decisions CLI."""
+
+    @pytest.fixture
+    def sample_coupling(self) -> CouplingEntry:
+        return CouplingEntry(
+            id="COUPLING-001",
+            type="coupling",
+            timestamp="2026-06-06T00:00:00Z",
+            category="wiring",
+            labels=["wire-issue"],
+            rationale="New CLI commands must be registered in plugin.json",
+            if_changed="commands/*.md",
+            then_check=[".claude-plugin/plugin.json", ".claude/CLAUDE.md"],
+            tier="hard",
+            archetype="add-cli-command",
+        )
+
+    def test_add_coupling(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """add --type coupling creates a coupling entry and returns 0."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "add",
+                "--type",
+                "coupling",
+                "--category",
+                "wiring",
+                "--rationale",
+                "test rationale",
+                "--if-changed",
+                "commands/*.md",
+                "--then-check",
+                ".claude-plugin/plugin.json,.claude/CLAUDE.md",
+                "--tier",
+                "hard",
+                "--archetype",
+                "add-cli-command",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert decisions_path.exists()
+        entries = load_decisions(decisions_path)
+        assert len(entries) == 1
+        entry = entries[0]
+        assert isinstance(entry, CouplingEntry)
+        assert entry.if_changed == "commands/*.md"
+        assert entry.then_check == [".claude-plugin/plugin.json", ".claude/CLAUDE.md"]
+        assert entry.tier == "hard"
+        assert entry.archetype == "add-cli-command"
+
+    def test_add_coupling_missing_if_changed(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """add --type coupling without --if-changed returns 1."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "add",
+                "--type",
+                "coupling",
+                "--category",
+                "wiring",
+                "--rationale",
+                "test rationale",
+                "--then-check",
+                "docs/reference/API.md",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+
+    def test_add_coupling_missing_then_check(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """add --type coupling without --then-check returns 1."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "add",
+                "--type",
+                "coupling",
+                "--category",
+                "wiring",
+                "--rationale",
+                "test rationale",
+                "--if-changed",
+                "commands/*.md",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+
+    def test_add_coupling_id_prefix(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+    ) -> None:
+        """auto-generated coupling IDs use COUPLING- prefix."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "add",
+                "--type",
+                "coupling",
+                "--category",
+                "wiring",
+                "--rationale",
+                "test",
+                "--if-changed",
+                "scripts/**",
+                "--then-check",
+                "docs/reference/API.md",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            main_issues()
+
+        entries = load_decisions(decisions_path)
+        assert entries[0].id.startswith("COUPLING-")
+
+    def test_list_coupling_type_filter(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_coupling: CouplingEntry,
+        sample_rule: RuleEntry,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --type coupling shows coupling entries but not rule entries."""
+        save_decisions([sample_coupling, sample_rule], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "list",
+                "--type",
+                "coupling",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "COUPLING-001" in captured.out
+        assert "NAMING-001" not in captured.out
+
+    def test_list_coupling_archetype_filter(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_coupling: CouplingEntry,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --archetype filters coupling entries by archetype."""
+        other = CouplingEntry(
+            id="COUPLING-002",
+            if_changed="config-schema.json",
+            then_check=["docs/reference/API.md"],
+            tier="hard",
+            archetype="add-config-key",
+        )
+        save_decisions([sample_coupling, other], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "list",
+                "--archetype",
+                "add-cli-command",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "COUPLING-001" in captured.out
+        assert "COUPLING-002" not in captured.out
+
+    def test_list_coupling_shows_if_changed_and_tier(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_coupling: CouplingEntry,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --type coupling displays if_changed, then_check, and tier fields."""
+        save_decisions([sample_coupling], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "list",
+                "--type",
+                "coupling",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "commands/*.md" in captured.out
+        assert "plugin.json" in captured.out
+        assert "hard" in captured.out
+
+    def test_list_coupling_json_format(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_coupling: CouplingEntry,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --type coupling --format json returns valid JSON with coupling fields."""
+        import json
+
+        save_decisions([sample_coupling], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "list",
+                "--type",
+                "coupling",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) == 1
+        assert data[0]["type"] == "coupling"
+        assert data[0]["if_changed"] == "commands/*.md"
+        assert data[0]["then_check"] == [".claude-plugin/plugin.json", ".claude/CLAUDE.md"]
+        assert data[0]["tier"] == "hard"
+        assert data[0]["archetype"] == "add-cli-command"
 
 
 # =============================================================================

@@ -3,12 +3,20 @@ id: FEAT-1736
 title: Wire-Issue Coupling Rules via Decisions Log
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-05-27
 discovered_by: capture-issue
-captured_at: "2026-05-27T04:46:43Z"
-depends_on: [FEAT-1712]
+captured_at: '2026-05-27T04:46:43Z'
+completed_at: '2026-06-06T06:29:42Z'
+depends_on:
+- FEAT-1712
 parent: EPIC-1707
+confidence_score: 92
+outcome_confidence: 77
+score_complexity: 19
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # FEAT-1736: Wire-Issue Coupling Rules via Decisions Log
@@ -37,7 +45,7 @@ Archetype templates are implemented as sets of coupling entries sharing an `arch
 
 ## Motivation
 
-The wire-issue improvements analysis (`docs/development/wire-issue-improvements.md`) identifies two root causes for missed wiring: thin symbol extraction and no persistent coupling knowledge. This issue addresses the latter. Known coupling patterns (e.g., any change to `config-schema.json` requires updating `docs/reference/API.md`) are expressed once as coupling entries and applied automatically on every wire-issue run for matching issues, eliminating repeated agent re-discovery of the same patterns.
+The wire-issue improvements analysis (`docs/research/wire-issue-improvements.md`) identifies two root causes for missed wiring: thin symbol extraction and no persistent coupling knowledge. This issue addresses the latter. Known coupling patterns (e.g., any change to `config-schema.json` requires updating `docs/reference/API.md`) are expressed once as coupling entries and applied automatically on every wire-issue run for matching issues, eliminating repeated agent re-discovery of the same patterns.
 
 Coupling rules live in decisions.yaml rather than a separate file because the schema already provides stable IDs, enforcement tiers, `supersedes` for rule evolution, and `labels[]` for archetype grouping — all the structure needed for coupling rules without a second file to maintain.
 
@@ -142,7 +150,11 @@ ll-issues decisions list --type=coupling --archetype=add-cli-command
 
 ### Dependent Files (Callers/Importers)
 - `skills/wire-issue/SKILL.md` — Phase 3 invokes `ll-issues decisions list` (subprocess call); imports `load_coupling_entries()` indirectly via CLI
-- TBD - grep for Python callers: `grep -r "load_coupling_entries\|CouplingEntry" scripts/`
+- No existing Python callers — `load_coupling_entries` and `CouplingEntry` are new symbols; only consumer at runtime is `skills/wire-issue/SKILL.md` Phase 3 via CLI subprocess (`ll-issues decisions list --type=coupling`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/__init__.py` — imports `cmd_decisions`, `add_decisions_parser`; may need `CouplingEntry` added to its import block if used at the dispatch layer [Agent 1 finding]
+- `scripts/little_loops/decisions_sync.py` — imports `list_entries`, `resolve_active`; calls `list_entries(path, type="rule")` so coupling entries are naturally excluded — no changes required [Agent 1 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/decisions.py` — add `CouplingEntry` following `RuleEntry` / `DecisionEntry` pattern from FEAT-948
@@ -151,14 +163,39 @@ ll-issues decisions list --type=coupling --archetype=add-cli-command
 
 ### Tests
 - `scripts/tests/test_decisions.py` — extend with: load coupling entries, filter by archetype, `if_changed` glob matching, tier classification, graceful skip when no `decisions.yaml`
+- `scripts/tests/test_cli_decisions.py` — extend with: coupling-specific `--if-changed`, `--then-check`, `--tier`, `--archetype` flag validation in `add`; `--archetype` post-filter in `list`; ID prefix `"COUPLING"` auto-generation in `_cmd_add()`
 - `scripts/tests/test_wire_issue_static_layer.py` — new: coupling entry injection into wire-issue Phase 3, fallback when no DB, fallback when no decisions.yaml
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_config_schema.py` — conditional: `test_decisions_in_schema` currently asserts `additionalProperties: false` on the `decisions` block; if a new field is added to `config-schema.json` for coupling support, this test needs a corresponding assertion [Agent 3 finding]
+- `scripts/tests/test_wiring_cli_registry.py` — asserts `ll-issues decisions` appears in `docs/reference/CLI.md`; extend with parametrized assertions for new flags (`--archetype`, `--if-changed`, `--then-check`, `--tier`) once CLI.md is updated [Agent 1 finding]
+
 ### Documentation
-- `docs/development/wire-issue-improvements.md` — add note that Dimensions 3 and 4 are addressed by this issue (coupling entries + archetype bundles replace separate `coupling-rules.yaml`)
+- `docs/research/wire-issue-improvements.md` — add note that Dimensions 3 and 4 are addressed by this issue (coupling entries + archetype bundles replace separate `coupling-rules.yaml`)
 - `docs/reference/API.md` — document `CouplingEntry` dataclass and `load_coupling_entries()` helper
+- `docs/reference/CLI.md` — document coupling-specific flags (`--if-changed`, `--then-check`, `--tier`, `--archetype`) for `ll-issues decisions add` and `--archetype` for `ll-issues decisions list`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` — add `coupling` row to the "Decisions Log" entry-type table (currently lists `rule`, `decision`, `exception`); add `wire-issue` to the Key consumers line [Agent 2 finding]
 
 ### Configuration
 - `config-schema.json` — entry type enum updated to include `coupling` (tracked under Files to Modify above)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`config-schema.json` has no entry-type enum**: The `decisions` section of `config-schema.json` only has `enabled`, `log_path`, `auto_generate` keys — no `entries[].type` enum. The actual type enum lives in two Python locations: `_ENTRY_REGISTRY` dict keys in `scripts/little_loops/decisions.py` and `choices=["rule","decision","exception"]` in `scripts/little_loops/cli/issues/decisions.py`. Both need `"coupling"` added; `config-schema.json` does not.
+
+- **`config.session_db` property does not exist on `BRConfig`**: The pseudocode in Proposed Solution uses `config.session_db` which is not a real attribute. The correct pattern (matching `generate_from_completed()` in `decisions.py`) is `db_path = project_root / ".ll" / "history.db"`. Alternatively use `Path(config.decisions.log_path).parent / "history.db"` for path-relative resolution. Update `load_coupling_entries()` to use one of these.
+
+- **SQLite `query_coupling_via_sqlite()` requires a new DB migration**: The session store is at schema v12 (`SCHEMA_VERSION = 12` in `session_store.py`) and has no coupling table or FTS5 index for coupling entries. Implementing the SQLite fast-path requires adding a migration in `session_store._MIGRATIONS`. Consider deferring the SQLite path to a follow-on; the YAML fallback is robust for all current use cases.
+
+- **`_cmd_add()` ID auto-generation prefix dict needs updating**: In `scripts/little_loops/cli/issues/decisions.py`, `_cmd_add()` generates entry IDs from a hardcoded prefix dict `{"rule": "RULE", "decision": "DEC", "exception": "EXC"}`. Adding `"coupling": "COUPLING"` to this dict is required alongside the `--type choices` update.
+
+- **`issue_history/coupling.py` is an unrelated module**: `scripts/little_loops/issue_history/coupling.py` exists but computes Jaccard file co-occurrence from completed issue history — a different concept from `CouplingEntry` in decisions.yaml. No changes needed to this file; naming does not conflict since they are in separate packages.
+
+- **`decisions_sync.py` is not affected**: `decisions_sync.py` syncs only `type="rule"` entries with `enforcement="required"` to `ll.local.md`. Coupling entries will not be auto-synced, which is correct behavior — coupling entries drive wire-issue, not the Active Rules block.
 
 ## Implementation Steps
 
@@ -168,7 +205,15 @@ ll-issues decisions list --type=coupling --archetype=add-cli-command
 4. **Wire-issue integration** — update `skills/wire-issue/SKILL.md` Phase 3 to call `ll-issues decisions list --type=coupling`, match `if_changed` globs against planned change files, and inject matched `then_check` targets as `MUST_AUDIT` list in agent prompts; annotate hard/soft/fyi tier in output
 5. **Archetype inference** — add lightweight prompt in wire-issue Phase 3 to infer archetype label from issue title + implementation plan; use inferred label to pre-load matching bundle via `--archetype` filter
 6. **Tests** — extend `test_decisions.py`; create `test_wire_issue_static_layer.py`
-7. **Docs** — update `docs/development/wire-issue-improvements.md` and `docs/reference/API.md`
+7. **Docs** — update `docs/research/wire-issue-improvements.md` and `docs/reference/API.md`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `docs/ARCHITECTURE.md` — add `coupling` row to the "Decisions Log" entry-type table; add `wire-issue` to the Key consumers line alongside the existing consumers
+9. Update `_print_entry()` in `scripts/little_loops/cli/issues/decisions.py` — add `elif isinstance(entry, CouplingEntry):` branch to display `if_changed`, `then_check`, and `tier` fields; without this branch, `ll-issues decisions list --type=coupling` shows only the header, silently omitting all coupling-specific content
+10. Extend `test_wiring_cli_registry.py` — add parametrized assertions for the new coupling flags in `docs/reference/CLI.md` once the CLI docs are updated (step 7)
 
 ## Use Case
 
@@ -189,7 +234,7 @@ ll-issues decisions list --type=coupling --archetype=add-cli-command
 - [ ] SQLite query path used when DB available (FEAT-1112); YAML + Python fallback otherwise
 - [ ] Graceful skip (no error, no behavior change) when `decisions.yaml` does not exist
 - [ ] Tests cover: coupling entry CRUD, archetype filtering, glob matching, tier classification, DB fallback, no-file fallback
-- [ ] `docs/development/wire-issue-improvements.md` notes Dimensions 3 and 4 are addressed here
+- [ ] `docs/research/wire-issue-improvements.md` notes Dimensions 3 and 4 are addressed here
 
 ## Impact
 
@@ -202,7 +247,7 @@ ll-issues decisions list --type=coupling --archetype=add-cli-command
 
 | Document | Relevance |
 |----------|-----------|
-| `docs/development/wire-issue-improvements.md` | Source analysis; Dimensions 3 and 4 are addressed here |
+| `docs/research/wire-issue-improvements.md` | Source analysis; Dimensions 3 and 4 are addressed here |
 | `.issues/features/P3-FEAT-948-rules-and-decisions-log-for-issue-compliance.md` | Prerequisite: establishes decisions.yaml schema and CLI |
 | `docs/reference/API.md` | Document new `CouplingEntry` and query helper |
 
@@ -227,6 +272,11 @@ ll-issues decisions list --type=coupling --archetype=add-cli-command
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T06:13:24 - `bc0c9814-4d3f-43c0-80b0-7d94bf761d3d.jsonl`
+- `/ll:confidence-check` - 2026-06-06T00:00:00Z - `b0de6839-9d9c-48cb-9f15-2f1d336ec2d8.jsonl`
+- `/ll:wire-issue` - 2026-06-06T06:03:38 - `8ed7b083-50b7-47e3-a7f2-7a091b7ac0ec.jsonl`
+- `/ll:refine-issue` - 2026-06-06T05:56:16 - `5f49fd53-56c3-4860-b0f4-ca309ceb1668.jsonl`
+- `/ll:confidence-check` - 2026-06-06T00:00:00Z - `9029be6c-8329-49c0-9735-9a01010bd610.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:35 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`

@@ -120,6 +120,12 @@ EXISTING_WIRING:
 
 ---
 
+## Phase 3.5: Static Coupling Layer
+
+Run `ll-issues decisions list --type=coupling --format=json 2>/dev/null`. Skip silently if unavailable or if no entries match `files_to_modify`. Infer change archetype from the issue title (`add-cli-command`, `add-config-key`, `add-event-type`, …) and load that bundle via `--archetype`; merge results. Collect matched `then_check` targets into `MUST_AUDIT` (tier: `hard`→blocking in agent prompts + Implementation Steps; `soft`→advisory; `fyi`→report only). Prepend `MUST_AUDIT` to Phase 4 agent prompts. Full procedure in [static-coupling-layer.md](static-coupling-layer.md).
+
+---
+
 ## Phase 4: Run Wiring Research (3 Parallel Agents)
 
 Spawn all 3 agents in a **single message** with multiple Agent tool calls.
@@ -136,6 +142,7 @@ Issue: {{ISSUE_ID}} — {{issue title}}
 Key symbols to trace: {{key_symbols from Phase 3}}
 Files already known to be modified: {{files_to_modify from Phase 3}}
 Already-known callers: {{known_callers from Phase 3}}
+{{MUST_AUDIT block from Phase 3.5 if non-empty}}
 
 Find:
 1. Direct importers — files that `import` or `from X import` any key symbol
@@ -486,9 +493,8 @@ WIRE ISSUE: {{ISSUE_ID}}
 
 | Skill | Purpose | Gap type addressed |
 |-------|---------|-------------------|
-| `refine-issue` | Codebase research to fill implementation knowledge | Root cause, patterns, current behavior |
-| `wire-issue` | Trace all wiring touchpoints the implementation must hit | Missing callers, registrations, docs, tests |
+| `refine-issue` | Codebase research to fill knowledge gaps | Root cause, patterns, current behavior |
 | `ready-issue` | Validate accuracy of all claims in the issue | Correctness, stale references |
 | `confidence-check` | Evaluate readiness and implementation risk | Readiness score, complexity, ambiguity |
 
-`wire-issue` is specifically for the "I refined the issue but the implementation plan still doesn't account for all the files that need to change" problem.
+Use `wire-issue` specifically when the implementation plan doesn't account for all files that need to change.

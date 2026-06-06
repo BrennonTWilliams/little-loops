@@ -192,13 +192,72 @@ class ExceptionEntry:
         return d
 
 
+@dataclass
+class CouplingEntry:
+    """A coupling rule linking changed files to required audit targets in wire-issue."""
+
+    id: str
+    type: str = "coupling"
+    timestamp: str = ""
+    category: str = ""
+    labels: list[str] = field(default_factory=list)
+    rationale: str = ""
+    if_changed: str = ""
+    then_check: list[str] = field(default_factory=list)
+    tier: str = "soft"  # hard | soft | fyi
+    archetype: str | None = None
+    enforcement: str = "advisory"
+    supersedes: str | None = None
+    issue: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CouplingEntry:
+        return cls(
+            id=data["id"],
+            type=data.get("type", "coupling"),
+            timestamp=data.get("timestamp", ""),
+            category=data.get("category", ""),
+            labels=data.get("labels", []),
+            rationale=data.get("rationale", ""),
+            if_changed=data.get("if_changed", ""),
+            then_check=data.get("then_check", []),
+            tier=data.get("tier", "soft"),
+            archetype=data.get("archetype"),
+            enforcement=data.get("enforcement", "advisory"),
+            supersedes=data.get("supersedes"),
+            issue=data.get("issue"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "id": self.id,
+            "type": self.type,
+            "timestamp": self.timestamp,
+            "category": self.category,
+            "labels": self.labels,
+            "rationale": self.rationale,
+            "if_changed": self.if_changed,
+            "then_check": self.then_check,
+            "tier": self.tier,
+            "enforcement": self.enforcement,
+        }
+        if self.archetype is not None:
+            d["archetype"] = self.archetype
+        if self.supersedes is not None:
+            d["supersedes"] = self.supersedes
+        if self.issue is not None:
+            d["issue"] = self.issue
+        return d
+
+
 # Open dispatch registry — add new entry types here without modifying CRUD functions
-AnyEntry = RuleEntry | DecisionEntry | ExceptionEntry
+AnyEntry = RuleEntry | DecisionEntry | ExceptionEntry | CouplingEntry
 
 _ENTRY_REGISTRY: dict[str, Any] = {
     "rule": RuleEntry,
     "decision": DecisionEntry,
     "exception": ExceptionEntry,
+    "coupling": CouplingEntry,
 }
 
 
@@ -295,6 +354,31 @@ def set_outcome(
             save_decisions(entries, path)
             return
     raise KeyError(f"No entry with id {entry_id!r}")
+
+
+def load_coupling_entries(
+    path: Path | None = None,
+    *,
+    changed_globs: list[str] | None = None,
+    archetype: str | None = None,
+) -> list[CouplingEntry]:
+    """Return coupling entries, optionally filtered by glob match against changed files and archetype.
+
+    Returns an empty list when decisions.yaml is absent (graceful degradation).
+    """
+    from fnmatch import fnmatch
+
+    entries = [e for e in load_decisions(path) if isinstance(e, CouplingEntry)]
+
+    if archetype is not None:
+        entries = [e for e in entries if e.archetype == archetype]
+
+    if changed_globs is not None:
+        entries = [
+            e for e in entries if any(fnmatch(f, e.if_changed) for f in changed_globs)
+        ]
+
+    return entries
 
 
 def generate_from_completed(config: BRConfig) -> int:

@@ -654,10 +654,11 @@ flowchart TB
 | `rule` | Enforced policies (advisory or required); required rules surface in `/ll:ready-issue` validation |
 | `decision` | Recorded architectural or process decisions; auto-generated from completed issues via `ll-issues decisions generate` |
 | `exception` | One-time exceptions to existing rules; suppress false-positive violations in `/ll:ready-issue` and `/ll:verify-issues` |
+| `coupling` | Wire-issue static layer: maps `if_changed` glob patterns to `then_check` audit targets; `tier` (hard/soft/fyi) controls how matches are injected into agent prompts; optional `archetype` groups rules into named bundles (e.g., `add-cli-command`) |
 
 **Opt-in**: Absent `.ll/decisions.yaml` is never an error — all integrations gracefully skip when the file is missing. Enable the feature by adding a `decisions:` block to `.ll/ll-config.json`.
 
-**Key consumers**: `/ll:ready-issue` (Decisions Gate), `/ll:verify-issues` (rule violation detection), `/ll:format-issue` (quality analysis), `decisions_sync.py` (active rules → `.ll/ll.local.md` sync).
+**Key consumers**: `/ll:ready-issue` (Decisions Gate), `/ll:verify-issues` (rule violation detection), `/ll:format-issue` (quality analysis), `decisions_sync.py` (active rules → `.ll/ll.local.md` sync), `/ll:wire-issue` Phase 3.5 (coupling entries → `MUST_AUDIT` injection into agent prompts).
 
 ### Correction Detection Heuristic
 

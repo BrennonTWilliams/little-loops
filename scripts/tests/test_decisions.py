@@ -9,11 +9,13 @@ import pytest
 import yaml
 
 from little_loops.decisions import (
+    CouplingEntry,
     DecisionEntry,
     ExceptionEntry,
     RuleEntry,
     add_entry,
     list_entries,
+    load_coupling_entries,
     load_decisions,
     resolve_active,
     save_decisions,
@@ -543,3 +545,137 @@ class TestGenerateFromCompleted:
         assert count == 0
         entries = load_decisions(decisions_path)
         assert len(entries) == 1
+
+
+# =============================================================================
+# TestCouplingEntry
+# =============================================================================
+
+
+@pytest.fixture
+def sample_coupling() -> CouplingEntry:
+    return CouplingEntry(
+        id="COUPLING-001",
+        type="coupling",
+        timestamp="2026-06-06T00:00:00Z",
+        category="wiring",
+        labels=["wire-issue", "archetype:add-cli-command"],
+        rationale="New CLI commands must be registered in plugin.json",
+        if_changed="commands/*.md",
+        then_check=[".claude-plugin/plugin.json", ".claude/CLAUDE.md"],
+        tier="hard",
+        archetype="add-cli-command",
+    )
+
+
+class TestCouplingEntry:
+    """Tests for CouplingEntry dataclass and load_coupling_entries()."""
+
+    def test_round_trip(self, decisions_path: Path, sample_coupling: CouplingEntry) -> None:
+        save_decisions([sample_coupling], decisions_path)
+        loaded = load_decisions(decisions_path)
+        assert len(loaded) == 1
+        entry = loaded[0]
+        assert isinstance(entry, CouplingEntry)
+        assert entry.id == "COUPLING-001"
+        assert entry.if_changed == "commands/*.md"
+        assert entry.then_check == [".claude-plugin/plugin.json", ".claude/CLAUDE.md"]
+        assert entry.tier == "hard"
+        assert entry.archetype == "add-cli-command"
+
+    def test_to_dict_omits_none_fields(self, sample_coupling: CouplingEntry) -> None:
+        d = sample_coupling.to_dict()
+        assert "if_changed" in d
+        assert "then_check" in d
+        assert "tier" in d
+        assert "archetype" in d
+
+    def test_to_dict_omits_none_optional_fields(self) -> None:
+        entry = CouplingEntry(
+            id="COUPLING-002",
+            if_changed="scripts/**",
+            then_check=["docs/reference/API.md"],
+        )
+        d = entry.to_dict()
+        assert "archetype" not in d
+        assert "supersedes" not in d
+        assert "issue" not in d
+
+    def test_load_coupling_entries_returns_only_coupling(
+        self, decisions_path: Path, sample_coupling: CouplingEntry, sample_rule: RuleEntry
+    ) -> None:
+        save_decisions([sample_coupling, sample_rule], decisions_path)
+        entries = load_coupling_entries(decisions_path)
+        assert len(entries) == 1
+        assert entries[0].id == "COUPLING-001"
+
+    def test_load_coupling_entries_glob_match(
+        self, decisions_path: Path, sample_coupling: CouplingEntry
+    ) -> None:
+        save_decisions([sample_coupling], decisions_path)
+        # Matches commands/*.md pattern
+        matched = load_coupling_entries(decisions_path, changed_globs=["commands/help.md"])
+        assert len(matched) == 1
+        # Does not match
+        unmatched = load_coupling_entries(decisions_path, changed_globs=["scripts/foo.py"])
+        assert len(unmatched) == 0
+
+    def test_load_coupling_entries_archetype_filter(
+        self, decisions_path: Path, sample_coupling: CouplingEntry
+    ) -> None:
+        other = CouplingEntry(
+            id="COUPLING-002",
+            if_changed="config-schema.json",
+            then_check=["docs/reference/API.md"],
+            tier="hard",
+            archetype="add-config-key",
+        )
+        save_decisions([sample_coupling, other], decisions_path)
+        entries = load_coupling_entries(decisions_path, archetype="add-cli-command")
+        assert len(entries) == 1
+        assert entries[0].id == "COUPLING-001"
+
+    def test_load_coupling_entries_archetype_and_glob_combined(
+        self, decisions_path: Path, sample_coupling: CouplingEntry
+    ) -> None:
+        save_decisions([sample_coupling], decisions_path)
+        # archetype matches, glob also matches
+        matched = load_coupling_entries(
+            decisions_path,
+            changed_globs=["commands/new-cmd.md"],
+            archetype="add-cli-command",
+        )
+        assert len(matched) == 1
+        # archetype matches, glob does not match
+        no_match = load_coupling_entries(
+            decisions_path,
+            changed_globs=["scripts/foo.py"],
+            archetype="add-cli-command",
+        )
+        assert len(no_match) == 0
+
+    def test_load_coupling_entries_absent_file(self, tmp_path: Path) -> None:
+        absent = tmp_path / "nonexistent.yaml"
+        assert load_coupling_entries(absent) == []
+
+    def test_tier_classification(self) -> None:
+        hard = CouplingEntry(id="C-001", if_changed="*.md", then_check=["a.md"], tier="hard")
+        soft = CouplingEntry(id="C-002", if_changed="*.md", then_check=["b.md"], tier="soft")
+        fyi = CouplingEntry(id="C-003", if_changed="*.md", then_check=["c.md"], tier="fyi")
+        assert hard.tier == "hard"
+        assert soft.tier == "soft"
+        assert fyi.tier == "fyi"
+
+    def test_mixed_entries_list_filter(
+        self, decisions_path: Path, sample_coupling: CouplingEntry, sample_rule: RuleEntry
+    ) -> None:
+        save_decisions([sample_coupling, sample_rule], decisions_path)
+        coupling_entries = list_entries(decisions_path, type="coupling")
+        assert len(coupling_entries) == 1
+        assert coupling_entries[0].id == "COUPLING-001"
+
+    def test_add_coupling_entry(self, decisions_path: Path, sample_coupling: CouplingEntry) -> None:
+        add_entry(sample_coupling, decisions_path)
+        loaded = load_decisions(decisions_path)
+        assert len(loaded) == 1
+        assert isinstance(loaded[0], CouplingEntry)

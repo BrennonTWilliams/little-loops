@@ -29,12 +29,17 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
     list_p = subsubs.add_parser("list", help="List decisions log entries")
     list_p.add_argument(
         "--type",
-        choices=["rule", "decision", "exception"],
+        choices=["rule", "decision", "exception", "coupling"],
         default=None,
         help="Filter by entry type",
     )
     list_p.add_argument("--category", default=None, help="Filter by category")
     list_p.add_argument("--label", default=None, help="Filter by label")
+    list_p.add_argument(
+        "--archetype",
+        default=None,
+        help="Filter coupling entries by archetype label (e.g. add-cli-command)",
+    )
     list_p.add_argument(
         "--no-outcome",
         action="store_true",
@@ -70,7 +75,7 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
     add_p.add_argument(
         "--type",
         required=True,
-        choices=["rule", "decision", "exception"],
+        choices=["rule", "decision", "exception", "coupling"],
         help="Entry type",
     )
     add_p.add_argument("--category", required=True, help="Category (e.g. 'architecture')")
@@ -122,6 +127,33 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
         dest="entry_id",
         metavar="ENTRY-ID",
         help="Explicit entry ID (auto-generated if omitted)",
+    )
+    # Coupling-specific flags (only relevant when --type=coupling)
+    add_p.add_argument(
+        "--if-changed",
+        default=None,
+        dest="if_changed",
+        metavar="GLOB",
+        help="Glob pattern matching files being modified (required for type=coupling)",
+    )
+    add_p.add_argument(
+        "--then-check",
+        default=None,
+        dest="then_check",
+        metavar="PATHS",
+        help="Comma-separated file/pattern list to audit for wiring gaps (required for type=coupling)",
+    )
+    add_p.add_argument(
+        "--tier",
+        choices=["hard", "soft", "fyi"],
+        default="soft",
+        help="Coupling tier: hard (must change together), soft (should update), fyi (informational)",
+    )
+    add_p.add_argument(
+        "--archetype",
+        default=None,
+        dest="archetype",
+        help="Named bundle label grouping related coupling rules (e.g. add-cli-command)",
     )
     add_config_arg(add_p)
 
@@ -175,6 +207,7 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
     from pathlib import Path
 
     from little_loops.decisions import (
+        CouplingEntry,
         DecisionEntry,
         ExceptionEntry,
         RuleEntry,
@@ -198,7 +231,7 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
 
     if sub == "add":
         return _cmd_add(
-            args, path, RuleEntry, DecisionEntry, ExceptionEntry, add_entry, list_entries
+            args, path, RuleEntry, DecisionEntry, ExceptionEntry, CouplingEntry, add_entry, list_entries
         )
 
     if sub == "outcome":
@@ -247,6 +280,11 @@ def _cmd_list(args, path, list_entries, resolve_active) -> int:
     if getattr(args, "active_only", False):
         entries = resolve_active(entries)
 
+    if getattr(args, "archetype", None):
+        from little_loops.decisions import CouplingEntry as _CE
+
+        entries = [e for e in entries if isinstance(e, _CE) and e.archetype == args.archetype]
+
     fmt = getattr(args, "format", "text") or "text"
     if fmt == "json":
         print(json.dumps([e.to_dict() for e in entries], indent=2))
@@ -262,7 +300,7 @@ def _cmd_list(args, path, list_entries, resolve_active) -> int:
 
 
 def _print_entry(entry) -> None:
-    from little_loops.decisions import DecisionEntry, ExceptionEntry, RuleEntry
+    from little_loops.decisions import CouplingEntry, DecisionEntry, ExceptionEntry, RuleEntry
 
     label_str = ", ".join(entry.labels) if entry.labels else ""
     print(
@@ -272,13 +310,19 @@ def _print_entry(entry) -> None:
         print(f"  rule: {entry.rule}")
     elif isinstance(entry, ExceptionEntry):
         print(f"  rule_ref: {entry.rule_ref}")
+    elif isinstance(entry, CouplingEntry):
+        print(f"  if_changed: {entry.if_changed}")
+        print(f"  then_check: {', '.join(entry.then_check)}")
+        print(f"  tier: {entry.tier}")
+        if entry.archetype:
+            print(f"  archetype: {entry.archetype}")
     if entry.rationale:
         print(f"  rationale: {entry.rationale}")
     if isinstance(entry, DecisionEntry) and entry.outcome:
         print(f"  outcome: {entry.outcome.result} @ {entry.outcome.measured_at}")
 
 
-def _cmd_add(args, path, RuleEntry, DecisionEntry, ExceptionEntry, add_entry, list_entries) -> int:
+def _cmd_add(args, path, RuleEntry, DecisionEntry, ExceptionEntry, CouplingEntry, add_entry, list_entries) -> int:
     entry_type = args.type
 
     # Validate type-specific required fields
@@ -291,6 +335,13 @@ def _cmd_add(args, path, RuleEntry, DecisionEntry, ExceptionEntry, add_entry, li
     if entry_type == "exception" and not getattr(args, "rule_ref", None):
         print("Error: --rule-ref is required for type 'exception'", file=sys.stderr)
         return 1
+    if entry_type == "coupling":
+        if not getattr(args, "if_changed", None):
+            print("Error: --if-changed is required for type 'coupling'", file=sys.stderr)
+            return 1
+        if not getattr(args, "then_check", None):
+            print("Error: --then-check is required for type 'coupling'", file=sys.stderr)
+            return 1
 
     # Generate an ID if not provided
     entry_id = getattr(args, "entry_id", None)
@@ -300,6 +351,7 @@ def _cmd_add(args, path, RuleEntry, DecisionEntry, ExceptionEntry, add_entry, li
             "rule": args.category.upper() if args.category else "RULE",
             "decision": args.category.upper() if args.category else "DEC",
             "exception": args.category.upper() + "-EX" if args.category else "EX",
+            "coupling": "COUPLING",
         }[entry_type]
         entry_id = f"{prefix}-{len(existing) + 1:03d}"
 
@@ -329,6 +381,21 @@ def _cmd_add(args, path, RuleEntry, DecisionEntry, ExceptionEntry, add_entry, li
             alternatives_rejected=getattr(args, "alternatives_rejected", None),
             issue=getattr(args, "issue", None),
             scope=getattr(args, "scope", "issue"),
+        )
+    elif entry_type == "coupling":
+        then_check = [t.strip() for t in args.then_check.split(",")]
+        entry = CouplingEntry(
+            id=entry_id,
+            timestamp=timestamp,
+            category=args.category,
+            labels=labels,
+            rationale=args.rationale,
+            if_changed=args.if_changed,
+            then_check=then_check,
+            tier=getattr(args, "tier", "soft"),
+            archetype=getattr(args, "archetype", None),
+            enforcement=getattr(args, "enforcement", "advisory"),
+            issue=getattr(args, "issue", None),
         )
     else:  # exception
         entry = ExceptionEntry(
