@@ -697,6 +697,9 @@ class StateFeedRenderer:
                     print(f"{indent}       {line}", flush=True)
 
         elif event_type == "action_complete":
+            actual_model = event.get("model")
+            if actual_model:
+                self.model = actual_model
             if not self.quiet:
                 duration_ms = event.get("duration_ms", 0)
                 exit_code = event.get("exit_code", 0)

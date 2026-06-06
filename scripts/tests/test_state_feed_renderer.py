@@ -158,6 +158,23 @@ class TestStateFeedRendererHandleEvent:
         captured = capsys.readouterr()
         assert "exit: 1" in captured.out
 
+    def test_action_complete_updates_model(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """action_complete with 'model' field updates self.model for future renders."""
+        fsm = _make_test_fsm()
+        args = _make_args(show_diagrams=True)
+        renderer = StateFeedRenderer(fsm, args, model="sonnet")
+        assert renderer.model == "sonnet"
+        renderer.handle_event(
+            {"event": "action_complete", "duration_ms": 500, "exit_code": 0,
+             "depth": 0, "model": "claude-sonnet-4-6"}
+        )
+        assert renderer.model == "claude-sonnet-4-6"
+        renderer.handle_event(
+            {"event": "state_enter", "state": "start", "iteration": 1, "depth": 0}
+        )
+        captured = capsys.readouterr()
+        assert "claude-sonnet-4-6" in captured.out
+
     def test_evaluate_yes_shows_checkmark(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Yes verdict shows checkmark symbol."""
         fsm = _make_test_fsm()
