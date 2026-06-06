@@ -1,6 +1,6 @@
 ---
 id: FEAT-1808
-title: `loop-composer` — Goal Decomposer Built-in FSM Loop (One Level Above `loop-router`)
+title: "loop-composer — Goal Decomposer Built-in FSM Loop (One Level Above loop-router)"
 type: FEAT
 priority: P3
 status: open
@@ -9,6 +9,13 @@ captured_at: "2026-05-30T06:48:30Z"
 discovered_date: 2026-05-30
 discovered_by: capture-issue
 blocks: [FEAT-1806, FEAT-1809]
+confidence_score: 86
+outcome_confidence: 72
+score_complexity: 17
+score_test_coverage: 15
+score_ambiguity: 18
+score_change_surface: 22
+implementation_order_risk: true
 ---
 
 # FEAT-1808: `loop-composer` — Goal Decomposer Built-in FSM Loop (One Level Above `loop-router`)
@@ -23,6 +30,16 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 
 **Why:** Plenty of real goals ("ship the auth migration", "audit and harden the loops directory") naturally fan out across 3–6 existing loops; there is no general entry point for them.
 **How to apply:** This is purely an orchestration layer — the composer never *does* work, it only sequences other loops. All actual work stays in the leaf loops `loop-router` already knows how to dispatch.
+
+## Use Case
+
+**Who**: Developer using the ll-loop orchestration system
+
+**Context**: When they have a complex natural-language goal ("ship feature X", "audit and harden the loops directory") that naturally spans 3–6 existing loops — too large for a single loop dispatch
+
+**Goal**: Turn a high-level intent into an ordered, executable sequence of existing loops without manually chaining slash commands or writing a bespoke loop YAML for each recurring multi-step pattern
+
+**Outcome**: `loop-composer` decomposes the goal, presents an inspectable plan for approval (HITL gate), then walks the DAG sequentially — returning a structured summary of all step results when complete
 
 ## Proposed Solution
 
@@ -41,6 +58,55 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 - **Sequential MVP, DAG semantics in the schema.** Plan entries carry `depends_on:` from day 1 even though the executor walks them in topo order; this leaves room for parallel fan-out without a plan-format change.
 - **`loop-router` as the universal leaf.** The composer's prompt is biased toward emitting `loop-router` nodes when the model is uncertain about loop choice. This pushes uncertainty to the routing layer where it already has a confidence/HITL gate, instead of duplicating that logic at the composer level.
 - **State interpolation between steps.** Step N+1's `input` string can reference `${plan_state.step_3.output}` so plans can express "feed step 3's output into step 5". This is the load-bearing part — without it, the composer is just a fancy `ll-sprint`.
+
+## Acceptance Criteria
+
+- [ ] `loop-composer.yaml` accepts a natural-language goal and decomposes it into an ordered DAG of ≤8 `{step_id, loop_name, input, depends_on}` nodes
+- [ ] Plan validation rejects: unknown loop names, cyclic dependencies, and plans exceeding the configured node cap
+- [ ] HITL gate (`present_plan`) blocks execution when `${context.auto}` is false or cost-estimate exceeds threshold; user can approve, edit, or CANCEL
+- [ ] Sequential execution walks the plan in correct topological order
+- [ ] Plan JSON is persisted to `${context.run_dir}/composer-plan.json` and survives re-runs
+- [ ] Step outputs stored in `${context.plan_state}` and interpolatable by later steps via `${plan_state.step_N.output}`
+- [ ] `lib/composer.yaml` fragment exposes `discover_loops`, `validate_plan`, `present_plan` as `reusable: true` states
+- [ ] Verdict struct `{success, confidence, terminal_state}` captured per step in `${context.plan_state.last_verdict}`
+- [ ] Checkpoints written to `${context.run_dir}/checkpoints/step-<N>.json` after each sub-loop completes
+- [ ] `ll-loop validate` reports no MR-3 violations; all intermediate artifacts use `${context.run_dir}/`
+- [ ] `test_loop_router_catalog_exclusivity` passes: single-goal input routes to `loop-composer` only; multi-goal input routes to `goal-cluster` only
+- [ ] `loop-composer` never dispatches `goal-cluster` as a child node
+
+## API/Interface
+
+`loop-composer` is an FSM loop artifact, not a Python module. Its public interface is the `ll-loop` invocation contract:
+
+```yaml
+# Invocation
+# ll-loop run loop-composer --input "natural-language goal string"
+
+# Context flags
+# context.auto: false  (default — requires HITL approval before execution)
+# orchestration.composer.max_plan_nodes: 8  (default node cap)
+# orchestration.composer.auto: false  (config-level override)
+```
+
+Output (structured JSON from `present_result` state):
+```json
+{
+  "plan": [{"step_id": "...", "loop_name": "...", "input": "...", "depends_on": []}],
+  "step_results": {"step_id": {"output": "...", "success": true, "confidence": 0.9}},
+  "success": true,
+  "summary": "prose summary of all step results"
+}
+```
+
+## Implementation Steps
+
+1. Create `scripts/little_loops/loops/lib/composer.yaml` with `discover_loops`, `validate_plan`, and `present_plan` states marked `reusable: true`
+2. Create `scripts/little_loops/loops/loop-composer.yaml` with `decompose_goal → validate_plan → present_plan → execute_plan → review_chain → present_result` FSM referencing lib/composer.yaml fragments
+3. Implement `execute_plan` with topological DAG walk, verdict-gate hook capturing `{success, confidence, terminal_state}` per step, and checkpoint writes to `${context.run_dir}/checkpoints/step-<N>.json`
+4. Implement state interpolation so step N+1 `input` can reference `${plan_state.step_N.output}`
+5. Add `scripts/tests/test_loop_composer.py`: schema validation, plan-parsing, cycle-detection, and `test_loop_router_catalog_exclusivity`
+6. Update `docs/guides/LOOPS_GUIDE.md`, `scripts/little_loops/loops/README.md`, and add `"loop-composer"` to `test_builtin_loops.py::test_expected_loops_exist`
+7. Run `ll-loop validate loop-composer` — confirm no MR-1 or MR-3 violations
 
 ## Integration Map
 
@@ -113,7 +179,22 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 - `/ll:verify-issues` - 2026-06-05 - Feature not implemented. Body contains conflicting references: some sections use `context.run_dir/` (correct per MR-3) while scope boundary notes still reference stale `.loops/tmp/` paths. Resolve this contradiction in the body before starting implementation. `loop-composer.yaml` does not exist yet.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-06_
+
+**Readiness Score**: 86/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
+
+### Outcome Risk Factors
+
+- **Test coverage on loop YAML**: `execute_plan`, `validate_plan`, and `decompose_goal` states live in YAML and are not directly unit-testable. Tests are co-deliverables — implement tests first for cycle-detection and plan-parsing logic (`test_loop_composer.py`) alongside YAML authoring.
+- **Unresolved `recursive-refine` shape comparison**: Open Question 3 is unresolved. Do the side-by-side comparison at the start of Step 1 before committing the state graph; overlap discovery mid-implementation could require a rework.
+- **Plan schema not locked**: "Probably JSON" is a minor decision point. The JSON path is the obvious choice; close this explicitly at the start of implementation.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-06T00:00:00Z - `d0f98747-4363-4b4e-b794-19c4467e0b49.jsonl`
+- `/ll:format-issue` - 2026-06-06T21:09:52 - `14697907-ef57-4058-9a37-92c45ac2362d.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 

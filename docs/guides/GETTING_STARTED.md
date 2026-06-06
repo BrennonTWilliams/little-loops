@@ -309,6 +309,8 @@ Once you're comfortable with the basic workflow, each guide covers a deeper area
 | [Sprint Guide](SPRINT_GUIDE.md) | You have multiple issues with dependencies and want batch execution with waves |
 | [Loops Guide](LOOPS_GUIDE.md) | You want to automate a recurring workflow (quality gate, fix cycle) as an FSM |
 | [Session Handoff Guide](SESSION_HANDOFF.md) | Your sessions are hitting context limits and you need seamless continuation |
+| [History & Session Guide](HISTORY_SESSION_GUIDE.md) | You want to query past sessions, inject historical context into planning, or analyze project trends |
+| [Decisions Log Guide](DECISIONS_LOG_GUIDE.md) | You want to record architectural decisions, enforce team rules, or understand how `decision_needed` gates automation |
 
 ---
 

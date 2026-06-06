@@ -208,6 +208,8 @@ Refinement transforms raw captures into implementation-ready issues. The steps r
 8. tradeoff-review-issues ← prune low-value issues
 ```
 
+> See [Decisions Log Guide](DECISIONS_LOG_GUIDE.md) for the full decisions system: how `decision_needed` gates automation, the four entry types (decisions, rules, exceptions, coupling contracts), and how `ll-issues decisions sync` propagates required rules to `.ll/ll.local.md`.
+
 > **When to skip steps:** `normalize` and `prioritize` are safe to run on every issue.
 > Skip `verify` for issues you just wrote yourself. Skip `align` if you're not using a goals doc.
 > Skip `refine` for small, well-understood bugs. Skip `wire` unless the integration map feels incomplete.

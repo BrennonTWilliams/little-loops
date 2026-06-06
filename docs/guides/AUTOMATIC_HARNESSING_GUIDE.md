@@ -911,39 +911,139 @@ states:
 
 ## Validating Your Harness
 
-Once a harness is created, validate that it actually improves output quality over
-an unguided LLM call. Use `ll-loop run --baseline` to run a blind A/B comparison:
+A harness adds evaluation gates and retry logic that cost tokens and time. Before committing to it, verify it actually earns that cost by improving output quality over an unguided baseline call. The `--baseline` flag runs a blind A/B comparison in a single `ll-loop run` invocation.
 
-```
+### Quick Start
+
+```bash
 ll-loop run harness-single-shot --baseline
 ```
 
-This executes the loop in two parallel arms:
+This executes two arms concurrently and prints a summary when both finish.
 
-- **Harness arm** — runs the full loop with all evaluation gates active
-- **Baseline arm** — runs an ungated single-shot invocation of the same skill
+### Flags
 
-After both arms complete, a blind LLM judge evaluates each output without knowing
-which arm produced it. The de-anonymized verdicts are written to
-`ab.json` and a summary is printed at the terminal:
+| Flag | Purpose |
+|------|---------|
+| `--baseline` | Enable A/B mode |
+| `--baseline-skill SKILL` | Override the inferred baseline skill (see below) |
+| `--items N` | Limit sample size when the harness processes a large backlog |
+
+`--baseline` cannot be combined with `--worktree` or `--resume`.
+
+### How It Works
+
+**Parallel arms.** A `ThreadPoolExecutor(max_workers=2)` runs both arms concurrently:
+
+- **Harness arm** — full gated execution: all `check_*` evaluators, retries, and routing active. Drives FSM state transitions as normal.
+- **Baseline arm** — single-shot skill invocation, no evaluation gates, no retries. Data-collection only; it does not affect loop routing.
+
+The harness arm is what advances the loop. The baseline arm exists solely to give the judge something to compare against.
+
+**Blind evaluation.** Before the judge sees the outputs, they are randomly labeled "Output A" and "Output B" — the judge never knows which arm produced which. Verdicts are de-anonymized after the judge responds. This prevents the judge from being biased toward the arm it perceives as "the better system."
+
+**Token and duration capture.** Both arms independently accumulate `(input + output)` token counts and wall-clock duration. These appear in the summary and per-item records.
+
+### Reading the Output
 
 ```
 A/B Summary (n=10)
-  Harness pass-rate:  90%
-  Baseline pass-rate: 60%
-  Delta:              +30%
+  Harness pass-rate:  90%   Baseline pass-rate: 60%   Delta: +30%
 
   Median tokens:      harness=84k  baseline=42k  (+100%)
-  Median duration:    harness=3.0m  baseline=1.0m  (+200%)
+  Median duration:    harness=3.0s  baseline=1.0s  (+200%)
   Verdict:            harness wins on quality, costs ~100% more tokens
 
-Per-item: .loops/runs/<id>/ab.json
+Per-item: .loops/runs/<run-id>/ab.json
 ```
 
-**Interpreting results:**
-- A positive delta means the harness adds value (higher pass-rate)
-- Token/duration ratios show the cost of quality improvement
-- Per-item records in `ab.json` let you audit individual comparisons
+**Interpreting the delta:** A positive delta means the harness produces better output. Treat deltas below ~10pp with caution — judge variance at small sample sizes can produce noise at that level. Run with a larger `--items` count if you need a tighter confidence interval.
+
+**Interpreting the cost ratio:** A +30pp quality delta at +100% token cost is generally worth it for high-stakes automation (code changes, architecture decisions). It's likely not worth it for low-stakes batch tasks where "good enough" output is acceptable.
+
+### `ab.json` Schema
+
+Per-item records are written to `.loops/runs/<run-id>/ab.json`:
+
+```json
+{
+  "summary": {
+    "harness_pass_rate": 0.9,
+    "baseline_pass_rate": 0.6,
+    "delta": 0.3,
+    "median_tokens_harness": 84000,
+    "median_tokens_baseline": 42000,
+    "median_duration_harness": 3000,
+    "median_duration_baseline": 1000
+  },
+  "items": [
+    {
+      "index": 0,
+      "harness_pass": true,
+      "baseline_pass": false,
+      "harness_tokens": 91000,
+      "baseline_tokens": 38000,
+      "harness_duration_ms": 3200,
+      "baseline_duration_ms": 950,
+      "confidence": 0.85,
+      "reason": "Output A clearly addressed the edge case; Output B ignored it."
+    }
+  ]
+}
+```
+
+Use per-item records to audit individual comparisons — a harness that wins on aggregate but loses on specific item types may have a targeted gap in its evaluation chain.
+
+### `--baseline-skill` Override
+
+By default, the baseline skill is extracted by parsing the harness's `execute.action` for a `/ll:some-skill` pattern. When the action is a shell script, a compound command, or uses flags that change behavior, the extraction may fail or produce the wrong skill.
+
+Override it explicitly:
+
+```bash
+# Harness action is a shell script — tell it which skill to invoke as the baseline
+ll-loop run my-harness --baseline --baseline-skill "/ll:refine-issue"
+
+# Compare a flagged variant against the unflagged baseline
+ll-loop run my-harness --baseline --baseline-skill "/ll:refine-issue"
+# harness runs: /ll:refine-issue --with-context
+# baseline runs: /ll:refine-issue
+```
+
+### From A/B to Regression Detection: `promote-baseline`
+
+Once you've validated that the harness wins, promote the winning run as the permanent baseline for ongoing regression detection:
+
+```bash
+ll-loop promote-baseline harness-single-shot
+# → Promoted baseline for harness-single-shot: .loops/baselines/harness-single-shot/output.txt
+```
+
+From here, add a `check_comparator` evaluator state to the harness. Future runs compare each output against this stored baseline and route `no` if the output regresses:
+
+```yaml
+check_comparator:
+  action: "echo ${captured.execute.output}"
+  action_type: shell
+  evaluate:
+    type: comparator
+    baseline_path: ".loops/baselines/harness-single-shot/"
+    auto_promote: true    # bootstrap baseline on first run if missing
+    min_pairs: 1
+  on_yes: check_invariants
+  on_no: execute          # retry if baseline wins
+  on_tie: check_invariants
+  on_no_baseline: check_invariants
+```
+
+**The two modes are complementary, not the same:**
+
+| Mode | When to use |
+|------|------------|
+| `--baseline` | One-time empirical validation: does this harness earn its cost? |
+| `check_comparator` | Continuous regression guard: did a recent change make outputs worse? |
+
+Both use `.loops/baselines/<loop>/output.txt` as the reference file.
 
 **Testing without full integration:**
 While developing harnesses, test the blind evaluator in isolation by importing

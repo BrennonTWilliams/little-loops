@@ -507,6 +507,7 @@ if detect_context_handoff(result.stdout):
 
 ## See Also
 
+- [History & Session Guide](HISTORY_SESSION_GUIDE.md) — `ll-session`, `ll-history`, `ll-history-context`, and `ll-logs`; the session-start hook that triggers incremental `ll-session backfill --since` to populate history.db
 - [ARCHITECTURE.md](../ARCHITECTURE.md#context-monitor-and-session-continuation) - Technical details
 - [commands/handoff.md](../../commands/handoff.md) - Command reference
 - [commands/resume.md](../../commands/resume.md) - Command reference
