@@ -1,15 +1,17 @@
 ---
 id: FEAT-1808
-title: "loop-composer — Goal Decomposer Built-in FSM Loop (One Level Above loop-router)"
+title: "loop-composer \u2014 Goal Decomposer Built-in FSM Loop (One Level Above loop-router)"
 type: FEAT
 priority: P3
 status: open
 parent: EPIC-1811
-captured_at: "2026-05-30T06:48:30Z"
+captured_at: '2026-05-30T06:48:30Z'
 discovered_date: 2026-05-30
 discovered_by: capture-issue
-blocks: [FEAT-1806, FEAT-1809]
-confidence_score: 86
+blocks:
+- FEAT-1806
+- FEAT-1809
+confidence_score: 89
 outcome_confidence: 72
 score_complexity: 17
 score_test_coverage: 15
@@ -83,7 +85,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [ ] Sequential execution walks the plan in correct topological order
 - [ ] Plan JSON is persisted to `${context.run_dir}/composer-plan.json` and survives re-runs
 - [ ] Step outputs stored in `${context.plan_state}` and interpolatable by later steps via `${plan_state.step_N.output}`
-- [ ] `lib/composer.yaml` fragment exposes `discover_loops`, `validate_plan`, `present_plan` as `reusable: true` states
+- [ ] `lib/composer.yaml` exposes `discover_loops`, `validate_plan`, `present_plan` under a top-level `fragments:` mapping, referenced from loop states via `fragment: <name>` (NOT `reusable: true` / `loop: lib/composer.yaml#<state>` — neither is recognized by the engine; see Codebase Research Findings)
 - [ ] Verdict struct `{success, confidence, terminal_state}` captured per step in `${context.plan_state.last_verdict}`
 - [ ] Checkpoints written to `${context.run_dir}/checkpoints/step-<N>.json` after each sub-loop completes
 - [ ] `ll-loop validate` reports no MR-3 violations; all intermediate artifacts use `${context.run_dir}/`
@@ -116,8 +118,8 @@ Output (structured JSON from `present_result` state):
 
 ## Implementation Steps
 
-1. Create `scripts/little_loops/loops/lib/composer.yaml` with `discover_loops`, `validate_plan`, and `present_plan` states marked `reusable: true`
-2. Create `scripts/little_loops/loops/loop-composer.yaml` with `decompose_goal → validate_plan → present_plan → execute_plan → review_chain → present_result` FSM referencing lib/composer.yaml fragments
+1. Create `scripts/little_loops/loops/lib/composer.yaml` with `discover_loops`, `validate_plan`, and `present_plan` defined under a top-level `fragments:` mapping (mirroring `lib/common.yaml`, `lib/cli.yaml`, etc.) — do NOT mark them `reusable: true` (unrecognized key)
+2. Create `scripts/little_loops/loops/loop-composer.yaml` with `decompose_goal → validate_plan → present_plan → execute_plan → review_chain → present_result` FSM; reference the shared states via `fragment: discover_loops` / `fragment: validate_plan` / `fragment: present_plan` keys inside the loop states (resolved by `fsm/fragments.py:resolve_fragments()`)
 3. Implement `execute_plan` with topological DAG walk, verdict-gate hook capturing `{success, confidence, terminal_state}` per step, and checkpoint writes to `${context.run_dir}/checkpoints/step-<N>.json`
 4. Implement state interpolation so step N+1 `input` can reference `${plan_state.step_N.output}`
 5. Add `scripts/tests/test_loop_composer.py`: schema validation, plan-parsing, cycle-detection, and `test_loop_router_catalog_exclusivity`
@@ -145,7 +147,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `docs/guides/LOOPS_GUIDE.md` — note composer as the multi-loop entry point sitting above `loop-router`
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/lib/composer.yaml` (new) — shared fragment library exposing `discover_loops`, `validate_plan`, `present_plan` as `reusable: true` states (in impl steps but absent from this map) [Agent 1 finding]
+- `scripts/little_loops/loops/lib/composer.yaml` (new) — shared fragment library exposing `discover_loops`, `validate_plan`, `present_plan` under a top-level `fragments:` mapping, referenced via `fragment: <name>` (in impl steps but absent from this map) [Agent 1 finding]
 - `scripts/little_loops/loops/loop-router.yaml` — add `excludes.add('loop-composer')` to the inline Python in `discover_loops` state, parallel to `excludes.add('loop-router')` (blocking routing guard per Scope Boundary) [Agent 2 finding]
 - `config-schema.json` — add `"composer"` nested object under `"orchestration"` with `max_plan_nodes` (integer, default 8) and `auto` (boolean, default false); required before any user sets these keys because `"additionalProperties": false` is set on the `orchestration` object [Agent 2 finding]
 
@@ -178,7 +180,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/fsm/fragments.py` — resolves `lib/composer.yaml#<state>` fragment references at runtime; no code changes expected, but verify existing fragment resolution handles the new lib file [Agent 1 finding]
+- `scripts/little_loops/fsm/fragments.py` — `resolve_fragments()` resolves `fragment: <name>` keys against the `fragments:` mapping in lib files (NOT `lib/composer.yaml#<state>` syntax, which is unsupported); no code changes expected, but verify existing fragment resolution handles the new lib file [Agent 1 finding, corrected]
 - `scripts/little_loops/fsm/interpolation.py` — resolves `${plan_state.step_N.output}` references; verify nested plan_state path interpolation is supported before implementing the state interpolation step [Agent 1 finding]
 
 ### Codebase Research Findings
@@ -216,8 +218,13 @@ FEAT-1808 implementation MUST include:
    - `discover_loops` — catalog discovery (reused from `loop-router`)
    - `validate_plan` — plan parsing, cycle detection, node-cap enforcement
    - `present_plan` — HITL gate shell action
-   These states MUST be `reusable: true` so both `loop-composer.yaml` and
-   `loop-composer-adaptive.yaml` reference them via `loop: lib/composer.yaml#<state>`.
+   These MUST be defined under a top-level `fragments:` mapping (the pattern used by
+   every existing `lib/*.yaml`) so both `loop-composer.yaml` and
+   `loop-composer-adaptive.yaml` reference them via a `fragment: <name>` key in their
+   states. Do NOT use `reusable: true` or `loop: lib/composer.yaml#<state>` — neither is
+   recognized by the engine (`fsm/fragments.py:resolve_fragments()` resolves the
+   `fragments:` mapping; `resolve_loop_path()` has no `#state` extraction). See the
+   CRITICAL note in Codebase Research Findings.
 
 2. **Verdict-gate hook pattern** at the `execute_plan` exit point: after each sub-loop
    step completes, a verdict struct `{success, confidence, terminal_state}` is captured
@@ -244,18 +251,19 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-06_
+_Updated by `/ll:confidence-check` on 2026-06-06 (post refine-issue + wire-issue pass)_
 
-**Readiness Score**: 86/100 → PROCEED
+**Readiness Score**: 89/100 → PROCEED
 **Outcome Confidence**: 72/100 → MODERATE
 
 ### Outcome Risk Factors
 
-- **Test coverage on loop YAML**: `execute_plan`, `validate_plan`, and `decompose_goal` states live in YAML and are not directly unit-testable. Tests are co-deliverables — implement tests first for cycle-detection and plan-parsing logic (`test_loop_composer.py`) alongside YAML authoring.
-- **Unresolved `recursive-refine` shape comparison**: Open Question 3 is unresolved. Do the side-by-side comparison at the start of Step 1 before committing the state graph; overlap discovery mid-implementation could require a rework.
-- **Plan schema not locked**: "Probably JSON" is a minor decision point. The JSON path is the obvious choice; close this explicitly at the start of implementation.
+- ~~**`reusable: true` spec contradiction in acceptance criteria**~~ **RESOLVED** (2026-06-06): AC-7, Implementation Steps 1–2, the Integration Map, and the Design Constraint section previously specified `reusable: true` states referenced via `loop: lib/composer.yaml#<state>`. Both mechanisms are unrecognized by the engine (CRITICAL research finding). All four sections now prescribe the `fragments:` top-level mapping + `fragment: <name>` reference pattern used by every existing `lib/*.yaml`. No remaining `reusable: true` references in the spec.
+- **Tests are co-deliverables**: `execute_plan`, `validate_plan`, and `decompose_goal` states live in YAML and are not directly unit-testable. Tests are co-deliverables — write `test_loop_composer.py` cycle-detection and plan-parsing tests alongside YAML authoring, not after.
+- **HITL cost-estimate threshold unspecified**: `present_plan` condition references a cost-estimate threshold that is not defined in `config-schema.json` or the config interface section. Define or drop it before implementing the HITL gate condition.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-06T22:00:00Z - `8ca99a59-7946-4709-b040-2d8d0c6a144b.jsonl`
 - `/ll:refine-issue` - 2026-06-06T21:26:33 - `e5ece679-fa95-499d-831d-5b8f7df99a47.jsonl`
 - `/ll:wire-issue` - 2026-06-06T21:20:10 - `b909cf61-8cbb-4e9e-bd01-7eb935601be7.jsonl`
 - `/ll:confidence-check` - 2026-06-06T00:00:00Z - `d0f98747-4363-4b4e-b794-19c4467e0b49.jsonl`
