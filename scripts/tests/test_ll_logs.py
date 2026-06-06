@@ -13,12 +13,18 @@ import pytest
 
 from little_loops.cli.logs import (
     _aggregate_skill_stats,
+    _build_eval_fixture,
+    _classify_outcome,
     _cmd_tail,
     _compute_session_diff,
+    _EvalInvocation,
     _events_from_jsonl,
+    _extract_eval_invocation,
+    _fixture_to_harness_argv,
     _is_ll_relevant,
     _load_catalog_names,
     _parse_args,
+    _redact_input_context,
     _resolve_session_log,
     main_logs,
 )
@@ -2398,3 +2404,274 @@ class TestEvalExport:
             main_logs()
         assert exc_info.value.code == 0
         assert "--project" in capsys.readouterr().out
+
+
+class TestEvalExportMapping:
+    """Unit tests for the FEAT-1971 invocation -> EvalFixture mapping core."""
+
+    def test_extract_skill_from_command_name(self) -> None:
+        """A user <command-name>/ll: record maps to a skill-runner invocation."""
+        record = {
+            "type": "user",
+            "sessionId": "sess-1",
+            "timestamp": "2026-06-06T00:00:00Z",
+            "message": {
+                "content": [
+                    {"text": "<command-name>/ll:refine-issue</command-name>\nrefine FEAT-1971"}
+                ]
+            },
+        }
+        inv = _extract_eval_invocation(record)
+        assert inv is not None
+        assert inv.runner == "skill"
+        assert inv.target == "refine-issue"
+        assert inv.session_id == "sess-1"
+        assert "FEAT-1971" in inv.input_context
+
+    def test_extract_cmd_from_bash(self) -> None:
+        """An assistant Bash ll-<tool> record maps to a cmd-runner invocation."""
+        record = {
+            "type": "assistant",
+            "sessionId": "sess-2",
+            "timestamp": "2026-06-06T01:00:00Z",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {"command": "ll-issues list --type FEAT"},
+                    }
+                ]
+            },
+        }
+        inv = _extract_eval_invocation(record)
+        assert inv is not None
+        assert inv.runner == "cmd"
+        assert inv.target == "ll-issues list --type FEAT"
+        assert inv.input_context == ""
+
+    def test_extract_returns_none_for_unrelated_record(self) -> None:
+        """A record with no ll signal yields no invocation."""
+        assert _extract_eval_invocation({"type": "user", "message": {"content": "hi"}}) is None
+
+    def test_build_fixture_skill_record(self) -> None:
+        """A skill invocation maps to the full EvalFixture v1 schema (ARCHITECTURE-017)."""
+        inv = _EvalInvocation(
+            runner="skill",
+            target="refine-issue",
+            session_id="sess-1",
+            timestamp="2026-06-06T00:00:00Z",
+            input_context="refine FEAT-1971 in the backlog",
+        )
+        fixture = _build_eval_fixture(inv, "accepted")
+        assert fixture == {
+            "runner": "skill",
+            "target": "refine-issue",
+            "session_id": "sess-1",
+            "timestamp": "2026-06-06T00:00:00Z",
+            "outcome": "accepted",
+            "runner_args": [],
+            "exit_code": None,
+            "semantic": None,
+            "timeout": 120,
+            "input_context": "refine FEAT-1971 in the backlog",
+            "issue_id": "FEAT-1971",
+            "skill_name": "refine-issue",
+            "pii_detected": False,
+        }
+
+    def test_build_fixture_cmd_has_no_skill_name(self) -> None:
+        """A cmd invocation carries no skill_name and no issue_id from empty context."""
+        inv = _EvalInvocation("cmd", "ll-issues list", "sess-2", "2026-06-06T01:00:00Z", "")
+        fixture = _build_eval_fixture(inv, "corrected")
+        assert fixture["runner"] == "cmd"
+        assert fixture["skill_name"] is None
+        assert fixture["issue_id"] is None
+        assert fixture["input_context"] is None
+        assert fixture["outcome"] == "corrected"
+
+    def test_redaction_sets_pii_detected(self) -> None:
+        """Email + absolute path in the context are redacted and flag pii_detected."""
+        redacted, pii = _redact_input_context("mail me at a@b.com see /home/u/x/y.txt")
+        assert pii is True
+        assert "a@b.com" not in redacted
+        assert "[EMAIL]" in redacted
+        assert "<path>" in redacted
+
+    def test_redaction_clean_text_no_pii(self) -> None:
+        """Clean text passes through unredacted with pii_detected False."""
+        redacted, pii = _redact_input_context("refine the issue")
+        assert redacted == "refine the issue"
+        assert pii is False
+
+    def test_classify_outcome_precedence(self) -> None:
+        """failed > corrected > accepted; unknown only when metadata is empty."""
+        assert _classify_outcome({}, has_error=False) == "unknown"
+        assert _classify_outcome({"has_corrections": True}, has_error=True) == "failed"
+        assert _classify_outcome({"has_corrections": True}, has_error=False) == "corrected"
+        assert _classify_outcome({"has_corrections": False}, has_error=False) == "accepted"
+        # failed wins even with no DB metadata (strong execution evidence).
+        assert _classify_outcome({}, has_error=True) == "failed"
+
+    def test_fixture_to_harness_argv_round_trips_through_parser(self) -> None:
+        """Every exported fixture serializes into a valid ll-harness argv."""
+        from little_loops.cli.harness import _parse_harness_args
+
+        inv = _EvalInvocation("skill", "check-code", "s", "2026-06-06T00:00:00Z", "")
+        argv = _fixture_to_harness_argv(_build_eval_fixture(inv, "accepted"))
+        ns = _parse_harness_args(argv)
+        assert ns.runner == "skill"
+        assert ns.target == "check-code"
+
+
+class TestEvalExportRoundTrip:
+    """End-to-end: export from a synthetic corpus, replay output under ll-harness."""
+
+    def _make_project_dir(
+        self, claude_projects: Path, home: Path, subpath: str, records: list[dict]
+    ) -> Path:
+        project_path = home / subpath
+        project_path.mkdir(parents=True, exist_ok=True)
+        encoded = str(project_path.resolve()).replace("/", "-")
+        proj_dir = claude_projects / encoded
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        with open(proj_dir / "session.jsonl", "w") as f:
+            for record in records:
+                f.write(json.dumps(record) + "\n")
+        return project_path
+
+    def test_export_then_replay_under_harness(self, tmp_path: Path) -> None:
+        """eval-export output loads field-by-field into a valid ll-harness invocation."""
+        import yaml
+
+        from little_loops.cli.harness import _parse_harness_args
+
+        home = tmp_path / "home"
+        claude_projects = home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+        records = [
+            {
+                "type": "user",
+                "sessionId": "sess-a",
+                "timestamp": "2026-06-06T00:00:00Z",
+                "message": {
+                    "content": [
+                        {"text": "<command-name>/ll:refine-issue</command-name>\nrefine FEAT-1971"}
+                    ]
+                },
+            },
+            {
+                "type": "assistant",
+                "sessionId": "sess-a",
+                "timestamp": "2026-06-06T00:01:00Z",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Bash",
+                            "input": {"command": "ll-issues list"},
+                        }
+                    ]
+                },
+            },
+        ]
+        project_path = self._make_project_dir(claude_projects, home, "proj", records)
+        out_file = tmp_path / "evals.yaml"
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch(
+                "little_loops.history_reader.lookup_session_metadata",
+                return_value={"has_corrections": False},
+            ),
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "eval-export",
+                    "--project",
+                    str(project_path),
+                    "--out",
+                    str(out_file),
+                ],
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        fixtures = yaml.safe_load(out_file.read_text())
+        assert len(fixtures) == 2
+        # Both records share a corrections-free session -> accepted outcome.
+        assert {fx["outcome"] for fx in fixtures} == {"accepted"}
+        runners = {fx["runner"] for fx in fixtures}
+        assert runners == {"skill", "cmd"}
+        # Every fixture must replay cleanly into the harness parser.
+        for fx in fixtures:
+            ns = _parse_harness_args(_fixture_to_harness_argv(fx))
+            assert ns.target == fx["target"]
+
+    def test_skill_filter_and_skip_unknown(self, tmp_path: Path) -> None:
+        """--skill narrows to one target; sessions with no DB metadata are skipped."""
+        import yaml
+
+        home = tmp_path / "home"
+        claude_projects = home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+        records = [
+            {
+                "type": "user",
+                "sessionId": "sess-known",
+                "timestamp": "2026-06-06T00:00:00Z",
+                "message": {
+                    "content": [{"text": "<command-name>/ll:refine-issue</command-name>\nx"}]
+                },
+            },
+            {
+                "type": "user",
+                "sessionId": "sess-unknown",
+                "timestamp": "2026-06-06T00:02:00Z",
+                "message": {
+                    "content": [{"text": "<command-name>/ll:refine-issue</command-name>\ny"}]
+                },
+            },
+            {
+                "type": "user",
+                "sessionId": "sess-known",
+                "timestamp": "2026-06-06T00:03:00Z",
+                "message": {
+                    "content": [{"text": "<command-name>/ll:check-code</command-name>\nz"}]
+                },
+            },
+        ]
+        project_path = self._make_project_dir(claude_projects, home, "proj", records)
+        out_file = tmp_path / "evals.yaml"
+
+        def fake_lookup(session_id, *, db=None):
+            return {"has_corrections": False} if session_id == "sess-known" else {}
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch("little_loops.history_reader.lookup_session_metadata", side_effect=fake_lookup),
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "eval-export",
+                    "--project",
+                    str(project_path),
+                    "--skill",
+                    "refine-issue",
+                    "--out",
+                    str(out_file),
+                ],
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        fixtures = yaml.safe_load(out_file.read_text())
+        # Only the refine-issue invocation from the known session survives:
+        # check-code is filtered by --skill, sess-unknown is skipped (no metadata).
+        assert len(fixtures) == 1
+        assert fixtures[0]["target"] == "refine-issue"
+        assert fixtures[0]["session_id"] == "sess-known"

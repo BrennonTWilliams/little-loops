@@ -3540,6 +3540,22 @@ Entry point for `ll-logs` command. Discover, extract, sequence, and tail Claude 
 - `dead-skills` — Cross-reference skill catalog against log corpus to flag never/rarely-invoked skills; requires `--project DIR` or `--all`; options: `--window-days D`, `--threshold N` (default 3), `--json`; JSON schema: `[{skill: str, invocations: int, tier: "never"|"rarely"}]`; excludes bridge skills and `disable-model-invocation: true` entries
 - `scan-failures` — Mine failed `ll-*` Bash calls from interactive session JSONL logs; requires `--project DIR` or `--all`; options: `--window-days D`, `--json`, `--capture`; clusters failures by `(tool, normalized-error-signature)`, suppresses transient errors and `ll-verify-*` expected-nonzero gates; JSON schema: `[{tool: str, count: int, normalized_sig: str, sample_error: str, session_ids: [str]}]`; `--capture` creates a BUG issue file per cluster via `create_issue_from_failure()`
 - `diff` — Compare two sessions' ll-invocation behavior; positional args: `SESSION_A SESSION_B` (session ID or JSONL path); option: `--json`; reports added/removed skills, invocation count deltas, and unified sequence diff; JSON schema: `{session_a: str, session_b: str, skills_added: [str], skills_removed: [str], count_deltas: {skill: {a: int, b: int, delta: int}}, sequence_diff: [str]}`; resolves session IDs via `sessions` table in `.ll/history.db`
+- `eval-export` — Reconstruct `ll-harness` eval fixtures (EvalFixture v1) from session logs; optional `--project DIR` (default: cwd), `--skill NAME`, `--issue ID`, `--limit N` (0 = unlimited), `--out PATH` (default: stdout), `--json` (default: YAML). Walks the project's JSONL via the ENH-1919 invocation extractor, sources an **execution** outcome (`accepted`/`corrected`/`failed`; `unknown` records are skipped with a logged count) from `history_reader.lookup_session_metadata()`, and best-effort-redacts `input_context` (PII + absolute paths, flagged by `pii_detected`). ll-harness has **no fixture loader** — a fixture replays by serializing its fields into `ll-harness <runner> <target> [runner_args...] [--exit-code N] [--semantic TEXT] [--timeout S]`. Fixture fields: `runner` (skill|cmd), `target`, `session_id`, `timestamp`, `outcome`, `runner_args`, `exit_code`, `semantic`, `timeout`, `input_context`, `issue_id`, `skill_name`, `pii_detected`. Schema + outcome taxonomy fixed by decision ARCHITECTURE-017 in `.ll/decisions.yaml` (FEAT-1968). Example record:
+  ```yaml
+  - runner: skill
+    target: refine-issue
+    session_id: 9c1f-...
+    timestamp: '2026-06-06T00:00:00Z'
+    outcome: accepted
+    runner_args: []
+    exit_code: null
+    semantic: null
+    timeout: 120
+    input_context: refine FEAT-1971 in the backlog
+    issue_id: FEAT-1971
+    skill_name: refine-issue
+    pii_detected: false
+  ```
 - `tail` — Stream live events from an active loop session; requires `--loop NAME`
 
 ---

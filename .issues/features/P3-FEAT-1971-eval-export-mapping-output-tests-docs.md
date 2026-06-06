@@ -3,7 +3,7 @@ id: FEAT-1971
 title: eval-export invocation mapping, output, tests, and docs
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: FEAT-1969
 relates_to:
 - FEAT-1969
@@ -24,6 +24,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: 2026-06-06 05:26:17+00:00
 ---
 
 # FEAT-1971: eval-export invocation mapping, output, tests, and docs
@@ -195,7 +196,32 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - **Upstream design unresolved**: The fixture schema, outcome definition, and redaction rules are all pending FEAT-1968. The mapping body cannot be finalized without these — expect re-work if FEAT-1968 decisions diverge from assumptions.
 - **Scaffold not yet present**: FEAT-1970's `_cmd_eval_export` stub has not been implemented. FEAT-1971's integration map targets "fill in" the body, which requires the scaffold to exist first.
 
+## Resolution
+
+Implemented `_cmd_eval_export` in `scripts/little_loops/cli/logs.py` per decision
+ARCHITECTURE-017 (FEAT-1968). The handler walks the project's JSONL logs in a single
+pass — reconstructing each ll invocation (`_extract_eval_invocation`) and the per-session
+`failed` signal (`_record_has_error`) together — sources an execution outcome from
+`history_reader.lookup_session_metadata` (`_classify_outcome`: failed > corrected >
+accepted; `unknown` records skipped with a logged count), best-effort-redacts the input
+context (`_redact_input_context`: `pii.redact_pii` + `_ABS_PATH_RE`, flagged by
+`pii_detected`), and serializes EvalFixture v1 records (YAML default, JSON with `--json`)
+to `--out` or stdout. `--skill`, `--issue`, and `--limit` filters applied. Since ll-harness
+has no fixture loader, `_fixture_to_harness_argv` encodes the replay contract (serialize
+fields into `ll-harness <runner> <target> ...`) and the round-trip test proves every
+exported fixture parses cleanly under the harness CLI.
+
+**Files changed:**
+- `scripts/little_loops/cli/logs.py` — mapping/redaction/output body + `--project` flag + helpers
+- `scripts/tests/test_ll_logs.py` — `TestEvalExportMapping` (unit) + `TestEvalExportRoundTrip` (e2e)
+- `docs/reference/API.md` — `eval-export` subcommand under `main_logs`
+
+**Verification:** 16 eval-export tests pass; ruff check/format clean on changed files;
+mypy reports no new errors.
+
 ## Session Log
+- `/ll:manage-issue feat implement` - 2026-06-06T05:26:17 - `1a7950dc-87ff-4b7a-80f1-2e51600b52c2.jsonl`
+- `/ll:ready-issue` - 2026-06-06T05:12:36 - `f70e4fe7-266e-413c-ab86-aac990ed9c57.jsonl`
 - `/ll:format-issue` - 2026-06-06T03:18:45 - `47c66fc0-004c-4d4a-becb-ea2057211831.jsonl`
 - `/ll:issue-size-review` - 2026-06-05T21:48:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bad2c36-ed0d-4b74-bdd5-ccfd01530ea6.jsonl`
 - `/ll:confidence-check` - 2026-06-05T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

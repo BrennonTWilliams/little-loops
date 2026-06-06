@@ -1348,9 +1348,294 @@ def _cmd_diff(args: argparse.Namespace, logger: Logger) -> int:
     return 0
 
 
+_ISSUE_ID_RE = re.compile(r"\b[A-Z]+-\d+\b")
+
+
+@dataclass
+class _EvalInvocation:
+    """A reconstructed ll-harness invocation extracted from a JSONL record.
+
+    Carries the runner kind and raw (un-redacted) input-context text that the
+    EvalFixture export needs but that ``InvocationEvent`` discards.
+    """
+
+    runner: str  # "skill" | "cmd"
+    target: str  # skill name (runner==skill) or full shell command (runner==cmd)
+    session_id: str
+    timestamp: str
+    input_context: str  # raw user-message text; "" when none (e.g. Bash invocations)
+
+
+def _extract_eval_invocation(record: dict) -> _EvalInvocation | None:
+    """Reconstruct a single ll-harness invocation from a JSONL record.
+
+    Mirrors ``_extract_tool_name``'s three signals but also captures the runner
+    kind and raw input-context text needed for EvalFixture export:
+      (a) queue enqueue ``/ll:<name>``      -> runner=skill, target=name
+      (b) user ``<command-name>/ll:<name>`` -> runner=skill, target=name
+      (c) assistant Bash ``ll-<tool>``      -> runner=cmd,   target=<full command>
+
+    Returns None for records that carry no ll invocation signal.
+    """
+    record_type = record.get("type")
+    sid = record.get("sessionId", "")
+    ts = record.get("timestamp", "")
+
+    # (a) queue-operation enqueue
+    if record_type == "queue-operation" and record.get("operation") == "enqueue":
+        content = record.get("content", "")
+        if isinstance(content, str) and content.startswith("/ll:"):
+            m = _QUEUE_SKILL_RE.match(content)
+            if m:
+                return _EvalInvocation("skill", m.group(1), sid, ts, content)
+
+    # (b) user records with <command-name>/ll: pattern
+    if record_type == "user":
+        message = record.get("message", {})
+        if not isinstance(message, dict):
+            return None
+        content = message.get("content")
+        text = ""
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    text = block.get("text", "")
+                    if text:
+                        break
+        if text:
+            m = _COMMAND_NAME_SKILL_RE.search(text)
+            if m:
+                name = m.group(1)
+                if name.endswith("</command-name>"):
+                    name = name[: -len("</command-name>")]
+                return _EvalInvocation("skill", name, sid, ts, text)
+
+    # (c) assistant Bash tool-use invoking ll-<tool>
+    if record_type == "assistant":
+        message = record.get("message", {})
+        content = message.get("content", [])
+        if isinstance(content, list):
+            for block in content:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_use"
+                    and block.get("name") == "Bash"
+                ):
+                    cmd = block.get("input", {}).get("command", "")
+                    if _LL_BASH_RE.search(cmd):
+                        return _EvalInvocation("cmd", cmd, sid, ts, "")
+
+    return None
+
+
+def _record_has_error(record: dict) -> bool:
+    """True if a JSONL record is a ``tool_result`` flagged ``is_error``.
+
+    Used as the session-level ``failed`` outcome signal: session logs expose no
+    output-quality judgment, only execution evidence (ARCHITECTURE-017).
+    """
+    if record.get("type") != "user":
+        return False
+    message = record.get("message", {})
+    if not isinstance(message, dict):
+        return False
+    content = message.get("content")
+    if isinstance(content, list):
+        for block in content:
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "tool_result"
+                and block.get("is_error")
+            ):
+                return True
+    return False
+
+
+def _classify_outcome(metadata: dict, *, has_error: bool) -> str:
+    """Map session metadata + error signal to an EvalFixture execution outcome.
+
+    Precedence ``failed`` > ``corrected`` > ``accepted``; ``unknown`` when the DB
+    returned no metadata. Per ARCHITECTURE-017 the taxonomy is EXECUTION, not
+    output quality. ``metadata`` is the dict from
+    ``history_reader.lookup_session_metadata`` (``{}`` when the session is absent).
+    """
+    if has_error:
+        return "failed"
+    if not metadata:
+        return "unknown"
+    if metadata.get("has_corrections"):
+        return "corrected"
+    return "accepted"
+
+
+def _redact_input_context(text: str) -> tuple[str | None, bool]:
+    """Best-effort, non-blocking redaction of user-message text.
+
+    Applies ``pii.redact_pii`` (email/phone/SSN) then ``_ABS_PATH_RE`` (absolute
+    paths). Returns ``(redacted_text_or_None, pii_detected)`` where ``pii_detected``
+    is True when either pass altered the text. Never raises and never drops a
+    record for unredactable content (ARCHITECTURE-017).
+    """
+    if not text:
+        return None, False
+    from little_loops.pii import redact_pii
+
+    redacted = redact_pii(text)
+    redacted = _ABS_PATH_RE.sub("<path>", redacted)
+    return redacted, redacted != text
+
+
+def _build_eval_fixture(inv: _EvalInvocation, outcome: str) -> dict:
+    """Map a reconstructed invocation + outcome to an EvalFixture v1 record.
+
+    Pure function (no I/O) — the mapping core covered by unit tests. Schema and
+    field semantics per decision ARCHITECTURE-017 in ``.ll/decisions.yaml``: the
+    fixture replays into ``ll-harness <runner> <target> [runner_args...]
+    [--exit-code N] [--semantic TEXT] [--timeout S]`` (ll-harness has no loader).
+    """
+    input_context, pii_detected = _redact_input_context(inv.input_context)
+    issue_match = _ISSUE_ID_RE.search(inv.input_context) if inv.input_context else None
+    issue_id = issue_match.group(0) if issue_match else None
+    skill_name = inv.target if inv.runner == "skill" else None
+    return {
+        "runner": inv.runner,
+        "target": inv.target,
+        "session_id": inv.session_id,
+        "timestamp": inv.timestamp,
+        "outcome": outcome,
+        "runner_args": [],
+        "exit_code": None,
+        "semantic": None,
+        "timeout": 120,
+        "input_context": input_context,
+        "issue_id": issue_id,
+        "skill_name": skill_name,
+        "pii_detected": pii_detected,
+    }
+
+
+def _fixture_to_harness_argv(fixture: dict) -> list[str]:
+    """Serialize an EvalFixture record back into an ``ll-harness`` argv.
+
+    ll-harness has no fixture loader (ARCHITECTURE-017); a fixture replays by
+    serializing its fields into the harness CLI arg surface. Used by the
+    round-trip test to prove every exported fixture is a valid harness invocation.
+    """
+    argv: list[str] = [fixture["runner"], fixture["target"]]
+    argv.extend(fixture.get("runner_args") or [])
+    if fixture.get("exit_code") is not None:
+        argv.extend(["--exit-code", str(fixture["exit_code"])])
+    if fixture.get("semantic") is not None:
+        argv.extend(["--semantic", str(fixture["semantic"])])
+    timeout = fixture.get("timeout")
+    if timeout is not None and timeout != 120:
+        argv.extend(["--timeout", str(timeout)])
+    return argv
+
+
 def _cmd_eval_export(args: argparse.Namespace) -> int:
-    """Export eval fixtures from ll-harness session logs (stub — mapping logic lands in FEAT-1971)."""
-    print("eval-export: not yet implemented", file=sys.stderr)
+    """Export ll-harness eval fixtures reconstructed from session logs (FEAT-1971).
+
+    Walks the current project's JSONL logs, reconstructs each ll invocation, sources
+    an execution outcome from ``history_reader.lookup_session_metadata``, redacts the
+    input context, and writes EvalFixture v1 records (YAML default, JSON with
+    ``--json``). Schema + outcome taxonomy: decision ARCHITECTURE-017 in
+    ``.ll/decisions.yaml``.
+    """
+    from little_loops.history_reader import lookup_session_metadata
+
+    cwd_path = Path(args.project) if args.project else Path.cwd()
+    project_folder = get_project_folder(cwd_path)
+    if project_folder is None:
+        print(f"No session project folder found for: {cwd_path}", file=sys.stderr)
+        return 1
+    db_path = cwd_path / ".ll" / "history.db"
+
+    # Single JSONL pass: collect raw invocations + per-session error flags together
+    # (avoids the double-parse the decision warns against).
+    invocations: list[_EvalInvocation] = []
+    session_has_error: dict[str, bool] = {}
+    jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
+    for jsonl_file in jsonl_files:
+        try:
+            with open(jsonl_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if _record_has_error(record):
+                        sid = record.get("sessionId", "")
+                        if sid:
+                            session_has_error[sid] = True
+                    inv = _extract_eval_invocation(record)
+                    if inv is not None:
+                        invocations.append(inv)
+        except OSError:
+            continue
+
+    # Stable, deterministic order: by timestamp then session.
+    invocations.sort(key=lambda e: (e.timestamp, e.session_id))
+
+    metadata_cache: dict[str, dict] = {}
+    fixtures: list[dict] = []
+    skipped = 0
+    for inv in invocations:
+        # --skill: keep only skill-runner invocations of the named target.
+        if args.skill and not (inv.runner == "skill" and inv.target == args.skill):
+            continue
+
+        if inv.session_id not in metadata_cache:
+            metadata_cache[inv.session_id] = lookup_session_metadata(inv.session_id, db=db_path)
+        outcome = _classify_outcome(
+            metadata_cache[inv.session_id],
+            has_error=session_has_error.get(inv.session_id, False),
+        )
+        # No extractable execution outcome -> skip with a logged count.
+        if outcome == "unknown":
+            skipped += 1
+            continue
+
+        fixture = _build_eval_fixture(inv, outcome)
+
+        # --issue: match the extracted issue_id or a literal occurrence in target.
+        if args.issue and args.issue != fixture["issue_id"] and args.issue not in inv.target:
+            continue
+
+        fixtures.append(fixture)
+        if args.limit and len(fixtures) >= args.limit:
+            break
+
+    if args.json:
+        output = json.dumps(fixtures, indent=2)
+    else:
+        import yaml
+
+        output = yaml.safe_dump(fixtures, sort_keys=False, default_flow_style=False)
+
+    if args.out:
+        out_path = Path(args.out)
+        try:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(output, encoding="utf-8")
+        except OSError as exc:
+            print(f"Failed to write {out_path}: {exc}", file=sys.stderr)
+            return 1
+        print(f"Wrote {len(fixtures)} fixture(s) to {out_path}", file=sys.stderr)
+    else:
+        print(output, end="" if output.endswith("\n") else "\n")
+
+    if skipped:
+        print(
+            f"Skipped {skipped} invocation(s) with no extractable outcome",
+            file=sys.stderr,
+        )
+
     return 0
 
 
@@ -1555,6 +1840,12 @@ Examples:
     eval_export_parser = subparsers.add_parser(
         "eval-export",
         help="Export eval fixtures from ll-harness session logs",
+    )
+    eval_export_parser.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help="Project working directory (default: current directory)",
     )
     eval_export_parser.add_argument(
         "--skill",
