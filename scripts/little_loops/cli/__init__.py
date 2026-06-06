@@ -71,6 +71,7 @@ from little_loops.cli.sprint import (
     main_sprint,
 )
 from little_loops.cli.sync import main_sync
+from little_loops.cli.verify_triggers import main_verify_triggers
 
 __all__ = [
     "main_action",
@@ -104,6 +105,7 @@ __all__ = [
     "main_verify_docs",
     "main_verify_skill_budget",
     "main_verify_skills",
+    "main_verify_triggers",
     # Re-exported for backward compatibility (used in tests)
     "_render_execution_plan",
     "_render_dependency_graph",

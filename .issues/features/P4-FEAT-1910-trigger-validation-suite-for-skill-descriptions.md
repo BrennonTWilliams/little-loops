@@ -3,8 +3,8 @@ id: FEAT-1910
 title: Trigger-validation suite for skill descriptions (should-fire / should-not-fire)
 type: FEAT
 priority: P4
-status: open
-captured_at: "2026-06-03T20:59:38Z"
+status: in_progress
+captured_at: '2026-06-03T20:59:38Z'
 discovered_date: 2026-06-03
 discovered_by: capture-issue
 ---
