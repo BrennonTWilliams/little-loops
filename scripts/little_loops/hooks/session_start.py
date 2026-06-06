@@ -31,7 +31,8 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-import threading
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -121,38 +122,35 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
             ensure_db(cwd / ".ll" / "history.db")
 
-        # ENH-1830: trigger incremental JSONL backfill in a background daemon thread
-        # so historical session data reaches history.db without manual intervention.
-        # All errors are suppressed so backfill failures never block session startup.
+        # ENH-1830 / BUG-1882: trigger incremental JSONL backfill in a detached
+        # subprocess so it outlives the short-lived hook process. A daemon thread
+        # is killed when the hook subprocess exits (typically in <0.5s), so it
+        # never commits. Path discovery runs synchronously here (fast) to produce
+        # the concrete path arg passed to the worker.
         _db_path = cwd / ".ll" / "history.db"
 
-        def _run_backfill() -> None:
-            try:
-                from little_loops.session_store import backfill_incremental
-                from little_loops.user_messages import get_project_folder
+        with contextlib.suppress(Exception):
+            from little_loops.user_messages import get_project_folder
 
-                # ENH-1945: consume transcript_path from hook payload when available
-                # (Codex/OpenCode pass absolute path to session JSONL in the payload).
-                # When not present, fall back to host-aware directory probing.
-                payload = event.payload or {}
-                transcript_path = payload.get("transcript_path") or ""
+            # ENH-1945: consume transcript_path from hook payload when available.
+            payload = event.payload or {}
+            _transcript = (payload.get("transcript_path") or "").strip()
+            if _transcript and Path(_transcript).is_file():
+                _backfill_path: str | None = _transcript
+            else:
+                _pf = get_project_folder(cwd)
+                _backfill_path = str(_pf) if _pf is not None else None
 
-                if transcript_path:
-                    jsonl_path = Path(transcript_path)
-                    jsonl_files = [jsonl_path] if jsonl_path.is_file() else []
-                else:
-                    project_folder = get_project_folder(cwd)
-                    if project_folder is not None:
-                        jsonl_files = list(project_folder.glob("*.jsonl"))
-                    else:
-                        jsonl_files = []
-
-                if jsonl_files:
-                    backfill_incremental(_db_path, jsonl_files=jsonl_files)
-            except Exception:
-                logger.warning("session_start: backfill_incremental failed", exc_info=True)
-
-        threading.Thread(target=_run_backfill, daemon=True).start()
+            if _backfill_path is not None:
+                subprocess.Popen(
+                    [sys.executable, "-m", "little_loops.cli.backfill_worker",
+                     str(_db_path), _backfill_path],
+                    start_new_session=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    cwd=str(cwd),
+                )
 
         # ENH-1907: Inject project-context digest (best-effort, opt-in).
         # Runs after the backfill thread launches so the digest reflects only

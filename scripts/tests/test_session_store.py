@@ -1213,6 +1213,101 @@ class TestBackfillIncremental:
         assert count == 1
 
 
+class TestBackfillIncrementalAssistantMessages:
+    """Per-table watermark for assistant_messages (BUG-1882)."""
+
+    def _make_assistant_text_jsonl(self, directory: Path, session_id: str) -> Path:
+        jsonl = directory / f"{session_id}.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": session_id,
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {
+                        "content": [{"type": "text", "text": "hello from assistant"}]
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return jsonl
+
+    def test_populates_assistant_messages_on_first_run(self, tmp_path: Path) -> None:
+        """When last_backfill_ts_assistant_messages is absent, all files are processed."""
+        jsonl = self._make_assistant_text_jsonl(tmp_path, "asst-1")
+        db = tmp_path / "history.db"
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        assert counts["assistant_messages"] >= 1
+        conn = connect(db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM assistant_messages").fetchone()[0]
+        finally:
+            conn.close()
+        assert n >= 1
+
+    def test_per_table_watermark_written_after_run(self, tmp_path: Path) -> None:
+        """backfill_incremental writes last_backfill_ts_assistant_messages to meta."""
+        db = tmp_path / "history.db"
+        backfill_incremental(db, jsonl_files=[], since_ts=0.0)
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'last_backfill_ts_assistant_messages'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None and row["value"] is not None
+
+    def test_historical_files_included_even_when_global_ts_excludes_them(
+        self, tmp_path: Path
+    ) -> None:
+        """Files older than global last_backfill_ts are still processed for assistant_messages
+        when last_backfill_ts_assistant_messages is absent (schema migration gap scenario)."""
+        jsonl = self._make_assistant_text_jsonl(tmp_path, "asst-hist")
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            # Set global watermark to far future → global filter excludes the file
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES('last_backfill_ts', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                ("9999-12-31T23:59:59Z",),
+            )
+            # No last_backfill_ts_assistant_messages → per-table ts defaults to 0
+            conn.commit()
+        finally:
+            conn.close()
+
+        counts = backfill_incremental(db, jsonl_files=[jsonl])
+        # Global filter skips the file for other tables but assistant_messages uses its own ts
+        assert counts["assistant_messages"] >= 1
+        assert counts["tools"] == 0  # global ts still excludes tools
+
+    def test_assistant_messages_respects_own_watermark_on_subsequent_runs(
+        self, tmp_path: Path
+    ) -> None:
+        """Once last_backfill_ts_assistant_messages is set, future runs skip old files."""
+        jsonl = self._make_assistant_text_jsonl(tmp_path, "asst-2")
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES('last_backfill_ts_assistant_messages', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                ("9999-12-31T23:59:59Z",),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        assert counts["assistant_messages"] == 0  # own watermark excludes the file
+
+
 class TestIsCorrectionHeuristic:
     """ENH-1831: correction-detection heuristic."""
 

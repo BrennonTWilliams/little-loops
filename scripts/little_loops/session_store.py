@@ -1726,7 +1726,32 @@ def backfill_incremental(
             counts["sessions"] = _backfill_sessions(conn, filtered)
             counts["tools"] = _backfill_tool_events(conn, filtered)
             counts["messages"] = _backfill_messages(conn, filtered)
-            counts["assistant_messages"] = _backfill_assistant_messages(conn, filtered)
+
+        # Per-table watermark for assistant_messages (added in v11 / ENH-1942).
+        # When the key is absent the table has never been backfilled (e.g. it
+        # was added by a schema migration after the last full backfill), so we
+        # reprocess ALL provided files rather than only the globally-filtered
+        # subset. This self-heals the historical gap on the first incremental
+        # run after the migration without requiring a manual full backfill.
+        _ASST_KEY = "last_backfill_ts_assistant_messages"
+        _asst_row = conn.execute("SELECT value FROM meta WHERE key = ?", (_ASST_KEY,)).fetchone()
+        _asst_raw = _asst_row[0] if (_asst_row and _asst_row[0]) else None
+        if _asst_raw:
+            try:
+                _asst_since = datetime.fromisoformat(str(_asst_raw).replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                _asst_since = 0.0
+        else:
+            _asst_since = 0.0  # never backfilled → process all files
+
+        asst_filtered = [f for f in jsonl_files if _mtime(f) >= _asst_since]
+        if asst_filtered:
+            counts["assistant_messages"] = _backfill_assistant_messages(conn, asst_filtered)
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (_ASST_KEY, _now()),
+        )
 
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         conn.execute(

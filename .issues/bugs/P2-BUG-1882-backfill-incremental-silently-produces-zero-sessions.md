@@ -2,7 +2,7 @@
 id: BUG-1882
 type: BUG
 priority: P2
-status: done
+status: open
 discovered_date: 2026-06-02
 captured_at: '2026-06-02T23:39:38Z'
 completed_at: '2026-06-03T00:49:03Z'
@@ -185,9 +185,26 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `bug`, `history-db`, `sessions`, `captured`
 
+## Reopened — 2026-06-06
+
+**Root cause confirmed**. The June 3 "fix" (reordering `_backfill_sessions` before `_backfill_tool_events`) addressed the symptom but not the cause. Investigation on 2026-06-06 confirmed the daemon thread is still being killed before `conn.commit()`:
+
+- `last_backfill_ts` is stuck at `2026-06-03T19:47:48Z` — never updated since the last manual `ll-session backfill` run.
+- 1,729 JSONL files are newer than `last_backfill_ts` but haven't been committed.
+- `assistant_messages` table (added in v11 / ENH-1942, merged June 4) has **0 rows** — direct proof the daemon thread never commits: `_backfill_assistant_messages` works correctly when called manually (tested: inserted 37 rows from 5 files in isolation).
+- The `sessions` table has rows only because the manual June 3 backfill pre-dated the daemon thread being the sole mechanism.
+
+The timing: `session-start.sh` spawns a short-lived Python subprocess. After `handle()` starts the daemon thread and returns, `main_hooks()` writes to stdout and exits. Total process lifetime is ~0.1–0.5s. Processing 1,729 files takes ~4.5s+ — the thread is always killed before `conn.commit()` runs.
+
+**Second root cause**: even after fixing thread lifetime, historical files (pre-`last_backfill_ts`) won't be reprocessed for `assistant_messages` because `backfill_incremental` only processes files newer than `last_backfill_ts`. No per-table watermark exists to detect that a new schema migration added a table needing a targeted historical re-backfill.
+
+**Required fix**:
+1. Replace `threading.Thread(daemon=True)` with a detached subprocess (`subprocess.Popen([sys.executable, '-m', 'little_loops.hooks.backfill_worker', str(_db_path)], start_new_session=True, stdin=DEVNULL, stdout=DEVNULL, stderr=DEVNULL)`) that outlives the hook process.
+2. Add per-table backfill watermarks to `meta` (e.g., `last_backfill_ts_assistant_messages`) so `backfill_incremental` can detect and re-process historical files for newly-added tables.
+
 ## Status
 
-**Open** | Created: 2026-06-02 | Priority: P2
+**Open** | Created: 2026-06-02 | Reopened: 2026-06-06 | Priority: P2
 
 ## Session Log
 - `/ll:ready-issue` - 2026-06-03T00:39:07 - `17557f51-d1e7-48ab-8c75-d04f0cc19f24.jsonl`
