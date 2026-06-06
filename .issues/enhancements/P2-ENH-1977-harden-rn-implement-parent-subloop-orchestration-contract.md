@@ -5,8 +5,9 @@ title: "Harden rn-implement parent\u2194sub-loop orchestration contract (rate-li
   \ lifecycle + EPIC re-linking)"
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-06T00:00:00Z'
+completed_at: '2026-06-06T05:14:18Z'
 discovered_date: '2026-06-06'
 discovered_by: audit-loop-run
 relates_to:
@@ -62,6 +63,20 @@ same three loop files; splitting them would cause repeated churn over `rn-implem
 
 ## Coordination with BUG-1974 / BUG-1975 / BUG-1976
 
+> **Status update (2026-06-06, `/ll:ready-issue`):** All three of these bugs have since shipped and
+> are now `status: done`. Their fixes are already present in the code:
+> - **BUG-1975** — `run_size_review` now has `on_partial: detect_children` (`rn-decompose.yaml:78`).
+> - **BUG-1974** — `detect_children` no-children outcome now terminates `on_no: done`
+>   (`rn-decompose.yaml:127`), not `failed`.
+> - **BUG-1976** — `issue-size-review` staging fix shipped standalone.
+>
+> Consequence for this ENH: the BUG-1975 prerequisite is **already satisfied** (Fix 1 can build on the
+> existing `on_partial` route), the BUG-1974 telemetry flip is **already landed** (no longer carried
+> here), and the "serialize with BUG-1974" constraint below is **moot**. The two folded acceptance
+> criteria are now **verify-only** rather than implementation work (see Acceptance Criteria). The core
+> ENH (Gaps A–G via Fixes 1–5) remains **unimplemented** and valid. The original analysis is retained
+> below for context.
+
 These three within-state bugs came from the same audit (run `2026-06-06T015949`). Their relationship
 to this ENH is **not uniform** — two are absorbed here, one ships standalone:
 
@@ -88,9 +103,10 @@ to this ENH is **not uniform** — two are absorbed here, one ships standalone:
   touches the blanket-stage line. The staging bug is orthogonal (same file, different line, different
   behavior) and should be fixed independently of this ENH.
 
-`detect_children` is the shared conflict zone (BUG-1974's terminal flip + Fix 4's body-marker match
-rewrite both land there). Do **not** implement this ENH in parallel (`ll-parallel`) with BUG-1974;
-serialize them or fold 1974 in here.
+`detect_children` is the shared conflict zone (Fix 4's body-marker match rewrite lands there).
+~~Do **not** implement this ENH in parallel (`ll-parallel`) with BUG-1974; serialize them or fold
+1974 in here.~~ **Resolved:** BUG-1974's terminal flip already landed (`rn-decompose.yaml:127`), so
+this serialization constraint no longer applies — Fix 4 only needs the body-marker rewrite.
 
 ## Gaps
 
@@ -261,30 +277,35 @@ elif [ "$MISSING_ARTIFACTS" = "true" ]; then
 
 ## Acceptance Criteria
 
-- [ ] A rate-limited sub-loop run reaches the parent's `rate_limit_diagnostic` and is reported in
+- [x] A rate-limited sub-loop run reaches the parent's `rate_limit_diagnostic` and is reported in
       `summary.json.rate_limited`; the issue is **not** counted as implemented. (A)
-- [ ] `on_rate_limit_exhausted` dead routes on the parent's `loop:` states are removed or made
+- [x] `on_rate_limit_exhausted` dead routes on the parent's `loop:` states are removed or made
       reachable. (A)
-- [ ] An implement crash is recorded in `failures.txt` and `summary.json.failed`, and does **not**
+- [x] An implement crash is recorded in `failures.txt` and `summary.json.failed`, and does **not**
       trigger a decomposition attempt. (B, C)
-- [ ] Only `NEEDS_DECOMPOSE` outcomes route to `run_decomposition`. (B)
-- [ ] `check_readiness` uses the loop-context thresholds; readiness and `diagnose` agree under
+- [x] Only `NEEDS_DECOMPOSE` outcomes route to `run_decomposition`. (B)
+- [x] `check_readiness` uses the loop-context thresholds; readiness and `diagnose` agree under
       overridden thresholds. (D)
-- [ ] A killed run can be resumed without re-seeding the queue (or the dead checkpoint is removed). (E)
-- [ ] A decomposed parent's status is set to `done` and it is moved to the completed directory. (F)
-- [ ] When the decomposed parent had `parent: EPIC-NNN`, each child carries `parent: EPIC-NNN`,
+- [x] A killed run can be resumed without re-seeding the queue (or the dead checkpoint is removed). (E)
+      **Decision (impl):** both — resume-aware `init` (skips re-seed when a non-empty
+      `queue.txt` survives, via `--context resume=1 --context run_dir=<prior>`) AND the
+      dead `checkpoint.json` write removed (`failed` is now a bare terminal).
+- [x] A decomposed parent's status is set to `done` and it is moved to the completed directory. (F)
+- [x] When the decomposed parent had `parent: EPIC-NNN`, each child carries `parent: EPIC-NNN`,
       records lineage via `relates_to`/body marker, and appears in the EPIC's `relates_to:`,
       `## Children`, and `ll-issues epic-progress`. (F)
-- [ ] `detect_children` still finds children after the `parent:` repoint (matches on body marker /
+- [x] `detect_children` still finds children after the `parent:` repoint (matches on body marker /
       manifest). (F)
-- [ ] `run_size_review` has an `on_partial: detect_children` route; a `partial` verdict proceeds
-      instead of `terminated_by: error`. (folds BUG-1975)
-- [ ] A no-children `detect_children` outcome terminates the sub-loop in `done` (writing the
-      `NO_CHILDREN` token), not `failed`; sub-loop telemetry no longer records `final_state: failed`
-      for expected no-decomposition runs. (folds BUG-1974)
-- [ ] An issue with `missing_artifacts: true` routes to `wire`. (G)
-- [ ] `ll-loop validate` passes for all three loops; MR-1/MR-3/MR-4 remain satisfied.
-- [ ] Tests cover: rate-limit classification, implement-failure classification, decompose
+- [x] `run_size_review` has an `on_partial: detect_children` route; a `partial` verdict proceeds
+      instead of `terminated_by: error`. (folds BUG-1975 — **already landed** at `rn-decompose.yaml:78`;
+      verify it survives Fix 4's `detect_children` rewrite)
+- [x] A no-children `detect_children` outcome terminates the sub-loop in `done`, not `failed`; sub-loop
+      telemetry no longer records `final_state: failed` for expected no-decomposition runs. (folds
+      BUG-1974 — **already landed** at `rn-decompose.yaml:127`; Fix 1 still adds the `NO_CHILDREN` token
+      write on that success path)
+- [x] An issue with `missing_artifacts: true` routes to `wire`. (G)
+- [x] `ll-loop validate` passes for all three loops; MR-1/MR-3/MR-4 remain satisfied.
+- [x] Tests cover: rate-limit classification, implement-failure classification, decompose
       classification, threshold pass-through, resume, parent-close, and EPIC re-linking (incl. the
       no-EPIC path).
 
@@ -317,5 +338,6 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - Fix 3 implementation choice: two paths (full resume support vs. removing the misleading checkpoint write) without a selected one; whichever is chosen, the acceptance criteria for GAP E need updating to reflect the decision
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T04:55:53 - `2d33acef-ad1e-46da-93fa-8b8fcde4aa6a.jsonl`
 - `/ll:capture-issue` - 2026-06-06 - from rn-implement orchestration-contract review (executor.py:598-612 verdict mapping; run 2026-06-06T015949 audit)
 - `/ll:confidence-check` - 2026-06-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

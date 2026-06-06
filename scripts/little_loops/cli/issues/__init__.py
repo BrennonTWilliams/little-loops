@@ -32,6 +32,10 @@ def main_issues() -> int:
             add_epic_progress_parser,
             cmd_epic_progress,
         )
+        from little_loops.cli.issues.finalize_decomposition import (
+            add_finalize_decomposition_parser,
+            cmd_finalize_decomposition,
+        )
         from little_loops.cli.issues.fingerprint import cmd_fingerprint
         from little_loops.cli.issues.impact_effort import cmd_impact_effort
         from little_loops.cli.issues.list_cmd import cmd_list
@@ -676,6 +680,7 @@ Examples:
         sk.add_argument("--reason", default=None, help="Reason for skipping (appended to Skip Log)")
         add_config_arg(sk)
 
+        add_finalize_decomposition_parser(subs)
         add_epic_progress_parser(subs)
         add_decisions_parser(subs)
 
@@ -738,4 +743,6 @@ Examples:
             return cmd_epic_progress(config, args)
         if args.command == "decisions":
             return cmd_decisions(config, args)
+        if args.command == "finalize-decomposition":
+            return cmd_finalize_decomposition(config, args)
         return 1

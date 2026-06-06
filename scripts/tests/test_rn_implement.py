@@ -186,21 +186,24 @@ class TestRateLimitAndErrorHandling:
             f"all LLM actions are delegated to sub-loops. Found: {slash_states}"
         )
 
-    def test_all_delegation_states_have_exhaustion_handler(self) -> None:
-        """All loop delegation states have on_rate_limit_exhausted."""
+    def test_delegation_states_have_no_dead_exhaustion_handler(self) -> None:
+        """ENH-1977: a loop child can never yield a rate-limit verdict, so the
+        on_rate_limit_exhausted handler is removed from delegation states (the
+        RATE_LIMITED outcome now arrives via the token channel)."""
         data = _load_loop()
         for name, state in data["states"].items():
             if state.get("loop") is not None:
-                assert "on_rate_limit_exhausted" in state, (
-                    f"Delegation state '{name}' missing on_rate_limit_exhausted"
+                assert "on_rate_limit_exhausted" not in state, (
+                    f"Delegation state '{name}' should not carry a dead exhaustion handler"
                 )
 
-    def test_failed_state_writes_checkpoint(self) -> None:
-        """failed state writes checkpoint.json for potential resume."""
+    def test_failed_state_has_no_dead_checkpoint(self) -> None:
+        """ENH-1977 Fix 3: the dead checkpoint.json write is removed (failed is a
+        bare terminal whose action would be skipped by the runner anyway)."""
         data = _load_loop()
         failed = data["states"]["failed"]
-        action = failed["action"]
-        assert "checkpoint.json" in action
+        assert "action" not in failed
+        assert "checkpoint.json" not in str(failed)
 
 
 # ---------------------------------------------------------------------------
@@ -232,31 +235,31 @@ class TestSubLoopDelegation:
         """run_remediation routes to dequeue_next on success (child done = implemented)."""
         data = _load_loop()
         state = data["states"]["run_remediation"]
-        assert state["on_success"] == "dequeue_next"
+        assert state["on_success"] == "classify_remediation"
 
     def test_run_remediation_routes_on_failure_to_run_decomposition(self) -> None:
         """run_remediation routes to run_decomposition on failure (child stalled)."""
         data = _load_loop()
         state = data["states"]["run_remediation"]
-        assert state["on_failure"] == "run_decomposition"
+        assert state["on_failure"] == "classify_remediation"
 
     def test_run_remediation_routes_on_error_to_skip_issue(self) -> None:
         """run_remediation routes to skip_issue on error."""
         data = _load_loop()
         state = data["states"]["run_remediation"]
-        assert state["on_error"] == "skip_issue"
+        assert state["on_error"] == "classify_remediation"
 
     def test_run_remediation_routes_on_no_to_run_decomposition(self) -> None:
         """run_remediation routes to run_decomposition on no (timeout/max_iter/never-started)."""
         data = _load_loop()
         state = data["states"]["run_remediation"]
-        assert state["on_no"] == "run_decomposition"
+        assert state.get("on_no") is None  # ENH-1977: consolidated into on_failure
 
     def test_run_remediation_has_rate_limit_exhausted_handler(self) -> None:
         """run_remediation routes to rate_limit_diagnostic on rate limit exhaustion."""
         data = _load_loop()
         state = data["states"]["run_remediation"]
-        assert state["on_rate_limit_exhausted"] == "rate_limit_diagnostic"
+        assert "on_rate_limit_exhausted" not in state  # ENH-1977: dead route removed
 
     # --- run_decomposition ---
 
@@ -278,31 +281,31 @@ class TestSubLoopDelegation:
         """run_decomposition routes to dequeue_next on success (children enqueued)."""
         data = _load_loop()
         state = data["states"]["run_decomposition"]
-        assert state["on_success"] == "dequeue_next"
+        assert state["on_success"] == "classify_decomposition"
 
     def test_run_decomposition_routes_on_failure_to_skip_issue(self) -> None:
         """run_decomposition routes to skip_issue on failure (no children found)."""
         data = _load_loop()
         state = data["states"]["run_decomposition"]
-        assert state["on_failure"] == "skip_issue"
+        assert state["on_failure"] == "classify_decomposition"
 
     def test_run_decomposition_routes_on_error_to_skip_issue(self) -> None:
         """run_decomposition routes to skip_issue on error."""
         data = _load_loop()
         state = data["states"]["run_decomposition"]
-        assert state["on_error"] == "skip_issue"
+        assert state["on_error"] == "classify_decomposition"
 
     def test_run_decomposition_routes_on_no_to_skip_issue(self) -> None:
         """run_decomposition routes to skip_issue on no (timeout/max_iter/never-started)."""
         data = _load_loop()
         state = data["states"]["run_decomposition"]
-        assert state["on_no"] == "skip_issue"
+        assert state.get("on_no") is None  # ENH-1977: consolidated into on_failure
 
     def test_run_decomposition_has_rate_limit_exhausted_handler(self) -> None:
         """run_decomposition routes to skip_issue on rate limit exhaustion."""
         data = _load_loop()
         state = data["states"]["run_decomposition"]
-        assert state["on_rate_limit_exhausted"] == "skip_issue"
+        assert "on_rate_limit_exhausted" not in state  # ENH-1977: dead route removed
 
 
 # ---------------------------------------------------------------------------
@@ -536,5 +539,81 @@ class TestValidation:
         """rn-implement orchestrator has ≤14 states (down from 32-state monolith)."""
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 14, f"Expected ≤14 states in orchestrator, got {state_count}"
+        assert state_count <= 24, f"Expected ≤24 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
+
+
+# ============================================================================
+# TestParentClassifier — ENH-1977 Fix 1/3 (rn-implement parent side)
+# ============================================================================
+
+
+class TestParentClassifier:
+    """Parent classifies sub-loop outcomes via the token channel."""
+
+    def test_classifier_states_exist(self) -> None:
+        data = _load_loop()
+        for name in (
+            "classify_remediation",
+            "route_rem_implemented",
+            "route_rem_decompose",
+            "route_rem_rate_limited",
+            "classify_decomposition",
+            "route_dec_decomposed",
+            "route_dec_no_children",
+            "route_dec_rate_limited",
+            "record_failure",
+        ):
+            assert name in data["states"], f"missing {name}"
+
+    def test_loop_states_route_to_classifiers(self) -> None:
+        data = _load_loop()
+        rem = data["states"]["run_remediation"]
+        assert rem["on_success"] == "classify_remediation"
+        assert rem["on_failure"] == "classify_remediation"
+        assert rem["on_error"] == "classify_remediation"
+        dec = data["states"]["run_decomposition"]
+        assert dec["on_success"] == "classify_decomposition"
+
+    def test_dead_rate_limit_routes_removed(self) -> None:
+        data = _load_loop()
+        assert "on_rate_limit_exhausted" not in data["states"]["run_remediation"]
+        assert "on_rate_limit_exhausted" not in data["states"]["run_decomposition"]
+        assert "max_rate_limit_retries" not in data["states"]["run_remediation"]
+
+    def test_implemented_routes_to_dequeue(self) -> None:
+        data = _load_loop()
+        assert data["states"]["route_rem_implemented"]["on_yes"] == "dequeue_next"
+
+    def test_only_needs_decompose_routes_to_decomposition(self) -> None:
+        data = _load_loop()
+        assert data["states"]["route_rem_decompose"]["on_yes"] == "run_decomposition"
+
+    def test_rate_limited_routes_to_diagnostic(self) -> None:
+        data = _load_loop()
+        assert data["states"]["route_rem_rate_limited"]["on_yes"] == "rate_limit_diagnostic"
+        assert data["states"]["route_dec_rate_limited"]["on_yes"] == "rate_limit_diagnostic"
+
+    def test_record_failure_appends_and_dequeues(self) -> None:
+        data = _load_loop()
+        rf = data["states"]["record_failure"]
+        assert "failures.txt" in rf["action"]
+        assert rf["next"] == "dequeue_next"
+
+    def test_report_includes_rate_limited(self) -> None:
+        data = _load_loop()
+        assert "rate_limited" in data["states"]["report"]["action"]
+
+    def test_init_supports_resume(self) -> None:
+        data = _load_loop()
+        action = data["states"]["init"]["action"]
+        assert "${context.resume}" in action
+        assert "queue.txt" in action
+
+    def test_failed_is_bare_terminal(self) -> None:
+        """Fix 3: the dead checkpoint write is removed; failed is a bare terminal."""
+        data = _load_loop()
+        failed = data["states"]["failed"]
+        assert failed.get("terminal") is True
+        assert "action" not in failed
+        assert "checkpoint.json" not in str(failed)

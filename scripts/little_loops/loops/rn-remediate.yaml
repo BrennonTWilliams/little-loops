@@ -65,7 +65,7 @@ states:
     action: "/ll:confidence-check ${context.issue_id} --auto"
     action_type: slash_command
     on_success: verify_scores_persisted
-    on_error: failed
+    on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   verify_scores_persisted:
@@ -89,18 +89,18 @@ states:
     evaluate:
       type: exit_code
     on_yes: check_readiness
-    on_no: failed
-    on_error: failed
+    on_no: emit_scores_missing
+    on_error: emit_scores_missing
 
   check_readiness:
     fragment: shell_exit
     action: |
       ID="${context.issue_id}"
-      # Use check-readiness with threshold overrides
-      READY=$(ll-issues check-readiness "$ID" 2>&1; echo $?)
-      echo "$READY"
-      # Check exit code: 0 = ready, 1 = not ready
-      ll-issues check-readiness "$ID" 2>/dev/null
+      # Use the loop-context thresholds so the readiness gate agrees with
+      # diagnose / check_convergence under overridden thresholds (ENH-1977 Fix 2).
+      ll-issues check-readiness "$ID" \
+        --readiness "${context.readiness_threshold}" \
+        --outcome "${context.outcome_threshold}"
     on_yes: implement
     on_no: check_outcome
     on_error: check_outcome
@@ -171,6 +171,8 @@ states:
         echo "IMPLEMENT"
       elif [ "$DECISION_NEEDED" = "true" ]; then
         echo "DECIDE"
+      elif [ "$MISSING_ARTIFACTS" = "true" ]; then
+        echo "WIRE"
       elif [ "$AMBIGUITY" -ge 15 ]; then
         echo "WIRE"
       elif [ "$COMPLEXITY" -ge 15 ] || [ "$CONFIDENCE" -lt 50 ]; then
@@ -182,7 +184,7 @@ states:
       fi
     capture: diagnosis
     next: route_d_implement
-    on_error: failed
+    on_error: emit_implement_failed
 
   route_d_implement:
     evaluate:
@@ -191,7 +193,7 @@ states:
       pattern: "IMPLEMENT"
     on_yes: implement
     on_no: route_d_decide
-    on_error: failed
+    on_error: emit_implement_failed
 
   route_d_decide:
     evaluate:
@@ -200,7 +202,7 @@ states:
       pattern: "DECIDE"
     on_yes: decide
     on_no: route_d_wire
-    on_error: failed
+    on_error: emit_implement_failed
 
   route_d_wire:
     evaluate:
@@ -209,7 +211,7 @@ states:
       pattern: "WIRE"
     on_yes: wire
     on_no: route_d_refine
-    on_error: failed
+    on_error: emit_implement_failed
 
   route_d_refine:
     evaluate:
@@ -217,8 +219,8 @@ states:
       source: "${captured.diagnosis.output}"
       pattern: "REFINE"
     on_yes: refine
-    on_no: failed
-    on_error: failed
+    on_no: emit_needs_decompose
+    on_error: emit_implement_failed
 
   # =========================================================================
   # Phase 3: Remediation Actions
@@ -233,13 +235,13 @@ states:
       if [ $EXIT_CODE -eq 0 ]; then
         COUNT=$(cat "${context.run_dir}/implemented_count.txt" 2>/dev/null || echo 0)
         echo $((COUNT + 1)) > "${context.run_dir}/implemented_count.txt"
-      else
-        echo "Implement failed for $ID (exit=$EXIT_CODE)" >> "${context.run_dir}/failures.txt"
       fi
+      # Failure recording is owned by the parent's record_failure state
+      # (driven by the IMPLEMENT_FAILED outcome token) to avoid double-counting.
       exit $EXIT_CODE
-    on_yes: done
-    on_no: failed
-    on_error: failed
+    on_yes: emit_implemented
+    on_no: emit_implement_failed
+    on_error: emit_implement_failed
 
   decide:
     fragment: with_rate_limit_handling
@@ -262,7 +264,7 @@ states:
     action: "/ll:refine-issue ${context.issue_id} --auto --full-rewrite"
     action_type: slash_command
     on_success: re_assess
-    on_error: failed
+    on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   # =========================================================================
@@ -274,7 +276,7 @@ states:
     action: "/ll:confidence-check ${context.issue_id} --auto"
     action_type: slash_command
     on_success: verify_re_assess_scores
-    on_error: failed
+    on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   verify_re_assess_scores:
@@ -298,8 +300,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: check_convergence
-    on_no: failed
-    on_error: failed
+    on_no: emit_scores_missing
+    on_error: emit_scores_missing
 
   check_convergence:
     action_type: shell
@@ -375,7 +377,7 @@ states:
       pattern: "CONVERGED_PASS"
     on_yes: implement
     on_no: route_conv_improved
-    on_error: failed
+    on_error: emit_implement_failed
 
   route_conv_improved:
     evaluate:
@@ -383,8 +385,8 @@ states:
       source: "${captured.convergence_result.output}"
       pattern: "CONVERGED_IMPROVED"
     on_yes: check_remediation_budget
-    on_no: failed
-    on_error: failed
+    on_no: emit_needs_decompose
+    on_error: emit_implement_failed
 
   check_remediation_budget:
     action_type: shell
@@ -400,20 +402,56 @@ states:
       operator: lt
       target: "${context.max_remediation_passes}"
     on_yes: diagnose
-    on_no: failed
-    on_error: failed
+    on_no: emit_needs_decompose
+    on_error: emit_implement_failed
+
+  # =========================================================================
+  # Outcome-Token Emitters (ENH-1977 Fix 1 — parent↔sub-loop classification)
+  # =========================================================================
+  # Each terminal path writes exactly one outcome token to the shared run_dir so
+  # the parent's classify_remediation can route deterministically rather than
+  # collapsing every non-done terminal into "decompose". Tokens:
+  #   IMPLEMENTED | NEEDS_DECOMPOSE | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED
+
+  emit_implemented:
+    action_type: shell
+    action: |
+      echo "IMPLEMENTED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: done
+
+  emit_needs_decompose:
+    action_type: shell
+    action: |
+      echo "NEEDS_DECOMPOSE" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: failed
+
+  emit_implement_failed:
+    action_type: shell
+    action: |
+      echo "IMPLEMENT_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: failed
+
+  emit_scores_missing:
+    action_type: shell
+    action: |
+      echo "SCORES_MISSING" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: failed
 
   # =========================================================================
   # Diagnostic State
   # =========================================================================
 
   rate_limit_diagnostic:
+    # Writes the RATE_LIMITED token and routes to a NON-done terminal so the
+    # parent does not read rate-limit exhaustion as success (ENH-1977 GAP A).
+    # The parent's record in rate_limits.txt is owned by the parent's own
+    # rate_limit_diagnostic to avoid double counting.
     action_type: shell
     action: |
       ID="${context.issue_id}"
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID}" >> "${context.run_dir}/rate_limits.txt"
-      echo "[RATE_LIMIT] Skipping $ID due to rate limit exhaustion"
-    next: done
+      echo "RATE_LIMITED" > "${context.run_dir}/subloop_outcome_$${ID}.txt"
+      echo "[RATE_LIMIT] $${ID} rate-limited during remediation"
+    next: failed
 
   # =========================================================================
   # Terminal States

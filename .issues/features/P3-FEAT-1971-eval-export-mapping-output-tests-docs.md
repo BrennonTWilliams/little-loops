@@ -18,11 +18,11 @@ depends_on:
 - FEAT-1968
 - FEAT-1970
 size: Very Large
-confidence_score: 70
-outcome_confidence: 71
+confidence_score: 96
+outcome_confidence: 79
 score_complexity: 18
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 25
 ---
 
@@ -199,3 +199,4 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - `/ll:format-issue` - 2026-06-06T03:18:45 - `47c66fc0-004c-4d4a-becb-ea2057211831.jsonl`
 - `/ll:issue-size-review` - 2026-06-05T21:48:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bad2c36-ed0d-4b74-bdd5-ccfd01530ea6.jsonl`
 - `/ll:confidence-check` - 2026-06-05T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-06-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97d712f6-0c8c-427a-8e09-00357f29a19b.jsonl`

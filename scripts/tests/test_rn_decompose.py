@@ -60,7 +60,7 @@ class TestDecompositionChain:
         """snap_for_size_review routes on_error to failed (sub-loop terminal)."""
         data = _load_loop()
         snap = data["states"]["snap_for_size_review"]
-        assert snap["on_error"] == "failed"
+        assert snap["on_error"] == "emit_size_review_failed"
 
     def test_run_size_review_is_slash_command(self) -> None:
         """run_size_review invokes /ll:issue-size-review as slash_command."""
@@ -96,7 +96,7 @@ class TestDecompositionChain:
         """run_size_review routes on_error to failed (sub-loop terminal)."""
         data = _load_loop()
         rsr = data["states"]["run_size_review"]
-        assert rsr["on_error"] == "failed"
+        assert rsr["on_error"] == "emit_size_review_failed"
 
     def test_detect_children_uses_comm_diff(self) -> None:
         """detect_children uses comm -13 for pre/post diff."""
@@ -122,16 +122,19 @@ class TestDecompositionChain:
         """detect_children routes to done when no children found (expected success path, BUG-1974)."""
         data = _load_loop()
         dc = data["states"]["detect_children"]
-        assert dc["on_no"] == "done", (
-            "BUG-1974: no-children exit (size review < 5) is the expected success path; "
-            "must route to done, not failed, to avoid inflating telemetry failure counts"
+        # ENH-1977 Fix 1: routes via emit_no_children, which still terminates in
+        # `done` (preserving the BUG-1974 telemetry guarantee) after writing the
+        # NO_CHILDREN outcome token for the parent classifier.
+        assert dc["on_no"] == "emit_no_children"
+        assert data["states"]["emit_no_children"]["next"] == "done", (
+            "BUG-1974: no-children must still terminate in done, not failed"
         )
 
     def test_detect_children_errors_to_failed(self) -> None:
         """detect_children routes on_error to failed (sub-loop terminal)."""
         data = _load_loop()
         dc = data["states"]["detect_children"]
-        assert dc["on_error"] == "failed"
+        assert dc["on_error"] == "emit_size_review_failed"
 
     def test_description_does_not_misclassify_no_children_as_failed(self) -> None:
         """Loop description must not say 'no children found' terminates in failed (BUG-1974)."""
@@ -161,14 +164,18 @@ class TestDecompositionChain:
         """enqueue_children routes both outcomes to done (sub-loop terminal)."""
         data = _load_loop()
         ec = data["states"]["enqueue_children"]
-        assert ec["on_yes"] == "done", "Success should route to done terminal"
-        assert ec["on_no"] == "done", "No children after filter should also route to done"
+        # ENH-1977 Fix 4: success now routes through finalize_parent (which closes
+        # the decomposed parent and terminates in done); the cycle-filtered path
+        # emits NO_CHILDREN and terminates in done.
+        assert ec["on_yes"] == "finalize_parent"
+        assert data["states"]["finalize_parent"]["next"] == "done"
+        assert ec["on_no"] == "emit_no_children"
 
     def test_enqueue_children_errors_to_failed(self) -> None:
         """enqueue_children routes on_error to failed (sub-loop terminal)."""
         data = _load_loop()
         ec = data["states"]["enqueue_children"]
-        assert ec["on_error"] == "failed"
+        assert ec["on_error"] == "emit_size_review_failed"
 
 
 # ============================================================================
@@ -418,3 +425,55 @@ class TestFSMHealth:
                 k in state for k in ("on_yes", "on_no", "on_success", "on_failure", "on_error")
             )
             assert has_route, f"State '{name}' is a dead-end (no outgoing routes)"
+
+
+# ============================================================================
+# TestDecomposeOutcomeChannel — ENH-1977 Fix 1/4 (rn-decompose side)
+# ============================================================================
+
+
+class TestDecomposeOutcomeChannel:
+    """rn-decompose writes outcome tokens and finalizes the decomposed parent."""
+
+    def test_emit_states_exist(self) -> None:
+        data = _load_loop()
+        for name in ("emit_no_children", "emit_size_review_failed", "finalize_parent"):
+            assert name in data["states"], f"missing state {name}"
+
+    def test_finalize_parent_writes_decomposed_and_calls_cli(self) -> None:
+        data = _load_loop()
+        fp = data["states"]["finalize_parent"]
+        assert "DECOMPOSED" in fp["action"]
+        assert "ll-issues finalize-decomposition" in fp["action"]
+        assert fp["next"] == "done"
+
+    def test_enqueue_children_routes_to_finalize_parent(self) -> None:
+        data = _load_loop()
+        assert data["states"]["enqueue_children"]["on_yes"] == "finalize_parent"
+
+    def test_emit_no_children_token_and_done(self) -> None:
+        data = _load_loop()
+        s = data["states"]["emit_no_children"]
+        assert "NO_CHILDREN" in s["action"]
+        assert s["next"] == "done"
+
+    def test_emit_size_review_failed_token_and_failed(self) -> None:
+        data = _load_loop()
+        s = data["states"]["emit_size_review_failed"]
+        assert "SIZE_REVIEW_FAILED" in s["action"]
+        assert s["next"] == "failed"
+
+    def test_detect_children_no_children_emits_token(self) -> None:
+        data = _load_loop()
+        assert data["states"]["detect_children"]["on_no"] == "emit_no_children"
+
+    def test_rate_limit_diagnostic_writes_token_and_fails(self) -> None:
+        data = _load_loop()
+        rld = data["states"]["rate_limit_diagnostic"]
+        assert "RATE_LIMITED" in rld["action"]
+        assert rld["next"] == "failed"
+
+    def test_detect_children_matches_body_marker(self) -> None:
+        """Detection survives the parent: repoint via the Decomposed-from marker (Fix 4)."""
+        data = _load_loop()
+        assert "Decomposed from" in data["states"]["detect_children"]["action"]

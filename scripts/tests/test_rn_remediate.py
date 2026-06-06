@@ -79,7 +79,7 @@ class TestAssessAndScorePersistence:
         """verify_scores_persisted routes to failed when retries exhausted."""
         data = _load_loop()
         vsp = data["states"]["verify_scores_persisted"]
-        assert vsp["on_no"] == "failed"
+        assert vsp["on_no"] == "emit_scores_missing"
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +213,7 @@ class TestDiagnoseRouting:
         """diagnose on_error routes to failed (terminal) — no parent decomposition path."""
         data = _load_loop()
         diag = data["states"]["diagnose"]
-        assert diag["on_error"] == "failed"
+        assert diag["on_error"] == "emit_implement_failed"
 
     def test_router_chain_covers_all_five_tokens(self) -> None:
         """The 4 routers cover IMPLEMENT, DECIDE, WIRE, REFINE with DECOMPOSE fallthrough."""
@@ -229,7 +229,7 @@ class TestDiagnoseRouting:
         assert data["states"]["route_d_wire"]["on_no"] == "route_d_refine"
         # route_d_refine → refine or failed (DECOMPOSE fallthrough → terminal)
         assert data["states"]["route_d_refine"]["on_yes"] == "refine"
-        assert data["states"]["route_d_refine"]["on_no"] == "failed"
+        assert data["states"]["route_d_refine"]["on_no"] == "emit_needs_decompose"
 
     def test_routers_use_output_contains_with_source(self) -> None:
         """All diagnose routers use output_contains with captured diagnosis source."""
@@ -267,14 +267,14 @@ class TestRemediationActions:
         """implement routes to done (terminal) on success — queue management stays in parent."""
         data = _load_loop()
         impl = data["states"]["implement"]
-        assert impl["on_yes"] == "done"
+        assert impl["on_yes"] == "emit_implemented"
 
     def test_implement_failure_routes_to_failed(self) -> None:
         """implement routes to failed (terminal) on failure — issue skipping stays in parent."""
         data = _load_loop()
         impl = data["states"]["implement"]
-        assert impl["on_no"] == "failed"
-        assert impl["on_error"] == "failed"
+        assert impl["on_no"] == "emit_implement_failed"
+        assert impl["on_error"] == "emit_implement_failed"
 
     def test_decide_is_slash_command_with_auto(self) -> None:
         """decide invokes /ll:decide-issue --auto as a slash_command."""
@@ -328,7 +328,7 @@ class TestRemediationActions:
         """refine routes to failed (terminal) on error — issue skipping stays in parent."""
         data = _load_loop()
         ref = data["states"]["refine"]
-        assert ref["on_error"] == "failed"
+        assert ref["on_error"] == "emit_implement_failed"
 
 
 # ---------------------------------------------------------------------------
@@ -434,7 +434,7 @@ class TestReassessAndConvergence:
         # route_conv_improved
         rci = data["states"]["route_conv_improved"]
         assert rci["on_yes"] == "check_remediation_budget"
-        assert rci["on_no"] == "failed"
+        assert rci["on_no"] == "emit_needs_decompose"
 
     def test_convergence_routers_use_output_contains_with_source(self) -> None:
         """Convergence routers use output_contains with captured source."""
@@ -492,7 +492,7 @@ class TestRemediationBudget:
         """Budget exhausted routes to failed (terminal) — decomposition stays in parent."""
         data = _load_loop()
         crb = data["states"]["check_remediation_budget"]
-        assert crb["on_no"] == "failed"
+        assert crb["on_no"] == "emit_needs_decompose"
 
     def test_context_max_remediation_passes_set(self) -> None:
         """max_remediation_passes context variable is set to 3."""
@@ -714,3 +714,69 @@ class TestFSMHealth:
                     assert key not in state, (
                         f"Terminal state '{name}' has outgoing routing via '{key}'"
                     )
+
+
+# ============================================================================
+# TestOutcomeTokenChannel — ENH-1977 Fix 1/2/5 (rn-remediate side)
+# ============================================================================
+
+
+class TestOutcomeTokenChannel:
+    """rn-remediate writes outcome tokens and uses loop-context thresholds."""
+
+    def test_emit_states_exist(self) -> None:
+        data = _load_loop()
+        for name in (
+            "emit_implemented",
+            "emit_needs_decompose",
+            "emit_implement_failed",
+            "emit_scores_missing",
+        ):
+            assert name in data["states"], f"missing emit state {name}"
+
+    def test_emit_tokens_written_to_run_dir(self) -> None:
+        data = _load_loop()
+        expected = {
+            "emit_implemented": "IMPLEMENTED",
+            "emit_needs_decompose": "NEEDS_DECOMPOSE",
+            "emit_implement_failed": "IMPLEMENT_FAILED",
+            "emit_scores_missing": "SCORES_MISSING",
+        }
+        for name, token in expected.items():
+            action = data["states"][name]["action"]
+            assert token in action
+            assert "subloop_outcome_" in action
+            assert "${context.run_dir}" in action
+
+    def test_emit_implemented_routes_to_done(self) -> None:
+        data = _load_loop()
+        assert data["states"]["emit_implemented"]["next"] == "done"
+
+    def test_implement_success_emits_implemented(self) -> None:
+        data = _load_loop()
+        assert data["states"]["implement"]["on_yes"] == "emit_implemented"
+        assert data["states"]["implement"]["on_no"] == "emit_implement_failed"
+
+    def test_needs_decompose_only_on_stall_paths(self) -> None:
+        data = _load_loop()
+        assert data["states"]["route_d_refine"]["on_no"] == "emit_needs_decompose"
+        assert data["states"]["route_conv_improved"]["on_no"] == "emit_needs_decompose"
+        assert data["states"]["check_remediation_budget"]["on_no"] == "emit_needs_decompose"
+
+    def test_rate_limit_diagnostic_writes_token_and_fails(self) -> None:
+        data = _load_loop()
+        rld = data["states"]["rate_limit_diagnostic"]
+        assert "RATE_LIMITED" in rld["action"]
+        assert rld["next"] == "failed", "rate-limit must NOT terminate in done (GAP A)"
+
+    def test_check_readiness_passes_thresholds(self) -> None:
+        data = _load_loop()
+        action = data["states"]["check_readiness"]["action"]
+        assert "--readiness" in action and "${context.readiness_threshold}" in action
+        assert "--outcome" in action and "${context.outcome_threshold}" in action
+
+    def test_diagnose_routes_missing_artifacts_to_wire(self) -> None:
+        data = _load_loop()
+        action = data["states"]["diagnose"]["action"]
+        assert 'MISSING_ARTIFACTS" = "true"' in action.replace("'", '"') or \
+            'MISSING_ARTIFACTS' in action and 'WIRE' in action

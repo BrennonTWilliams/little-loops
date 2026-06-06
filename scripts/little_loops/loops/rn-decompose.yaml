@@ -68,7 +68,7 @@ states:
 
       echo "Snapshot captured for $ID"
     next: run_size_review
-    on_error: failed
+    on_error: emit_size_review_failed
 
   run_size_review:
     fragment: with_rate_limit_handling
@@ -76,8 +76,8 @@ states:
     action_type: slash_command
     on_success: detect_children
     on_partial: detect_children   # partial = review ran with a caveat; proceed and log it (BUG-1975)
-    on_no: failed                 # no = judge found size review inconclusive; error-terminate
-    on_error: failed
+    on_no: emit_size_review_failed   # no = judge found size review inconclusive (ENH-1977)
+    on_error: emit_size_review_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   detect_children:
@@ -124,8 +124,8 @@ states:
         exit 1
       fi
     on_yes: enqueue_children
-    on_no: done          # "No children found" is expected success when size review score < 5
-    on_error: failed
+    on_no: emit_no_children   # "No children found" is expected success (size review < 5)
+    on_error: emit_size_review_failed
 
   enqueue_children:
     action_type: shell
@@ -204,21 +204,59 @@ states:
 
       CHILD_COUNT=$(wc -l < "$RUN_DIR/children_$${ID}.txt" | tr -d ' ')
       echo "Enqueued $CHILD_COUNT children for $ID (depth=$CHILD_DEPTH)"
-    on_yes: done
-    on_no: done
-    on_error: failed
+    on_yes: finalize_parent
+    on_no: emit_no_children   # all children cycle-filtered → nothing decomposed
+    on_error: emit_size_review_failed
+
+  finalize_parent:
+    # ENH-1977 Fix 4: close the decomposed parent (status=done, body note, move to
+    # completed/) and re-link its children into the parent's EPIC when it had one.
+    # Also writes the DECOMPOSED outcome token for the parent's classify_decomposition.
+    # Best-effort: a finalize error must not undo the already-enqueued children.
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      echo "DECOMPOSED" > "$RUN_DIR/subloop_outcome_$${ID}.txt"
+      ll-issues finalize-decomposition "$ID" \
+        --children-file "$RUN_DIR/children_$${ID}.txt" || \
+        echo "WARN: finalize-decomposition failed for $ID (children remain enqueued)" >&2
+      echo "Finalized decomposed parent $ID"
+    next: done
+
+  # =========================================================================
+  # Outcome-Token Emitters (ENH-1977 Fix 1)
+  # =========================================================================
+  # Every decompose terminal path overwrites the shared outcome token so the
+  # parent's classify_decomposition never reads a stale remediation token.
+  # Tokens: DECOMPOSED | NO_CHILDREN | SIZE_REVIEW_FAILED | RATE_LIMITED
+
+  emit_no_children:
+    action_type: shell
+    action: |
+      echo "NO_CHILDREN" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: done
+
+  emit_size_review_failed:
+    action_type: shell
+    action: |
+      echo "SIZE_REVIEW_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: failed
 
   # =========================================================================
   # Diagnostic State
   # =========================================================================
 
   rate_limit_diagnostic:
+    # Writes RATE_LIMITED and routes to a non-done terminal so the parent reads
+    # rate-limit exhaustion (ENH-1977 GAP A), not success. The parent owns the
+    # rate_limits.txt record to avoid double counting.
     action_type: shell
     action: |
       ID="${context.issue_id}"
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID}" >> "${context.run_dir}/rate_limits.txt"
-      echo "[RATE_LIMIT] Skipping $ID due to rate limit exhaustion"
-    next: done
+      echo "RATE_LIMITED" > "${context.run_dir}/subloop_outcome_$${ID}.txt"
+      echo "[RATE_LIMIT] $${ID} rate-limited during decomposition"
+    next: failed
 
   # =========================================================================
   # Terminal States
