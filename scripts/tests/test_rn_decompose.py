@@ -83,6 +83,15 @@ class TestDecompositionChain:
             "BUG-1937: on_rate_limit_exhausted must carry over to sub-loop"
         )
 
+    def test_run_size_review_routes_partial_to_detect_children(self) -> None:
+        """run_size_review routes on_partial to detect_children (BUG-1975)."""
+        data = _load_loop()
+        rsr = data["states"]["run_size_review"]
+        assert rsr.get("on_partial") == "detect_children", (
+            "BUG-1975: a partial LLM verdict (e.g. hygiene caveat) must proceed to "
+            "detect_children, not error-terminate the sub-loop"
+        )
+
     def test_run_size_review_errors_to_failed(self) -> None:
         """run_size_review routes on_error to failed (sub-loop terminal)."""
         data = _load_loop()
@@ -109,17 +118,28 @@ class TestDecompositionChain:
         dc = data["states"]["detect_children"]
         assert dc["on_yes"] == "enqueue_children"
 
-    def test_detect_children_routes_no_to_failed(self) -> None:
-        """detect_children routes to failed when no children found (sub-loop terminal)."""
+    def test_detect_children_routes_no_to_done(self) -> None:
+        """detect_children routes to done when no children found (expected success path, BUG-1974)."""
         data = _load_loop()
         dc = data["states"]["detect_children"]
-        assert dc["on_no"] == "failed"
+        assert dc["on_no"] == "done", (
+            "BUG-1974: no-children exit (size review < 5) is the expected success path; "
+            "must route to done, not failed, to avoid inflating telemetry failure counts"
+        )
 
     def test_detect_children_errors_to_failed(self) -> None:
         """detect_children routes on_error to failed (sub-loop terminal)."""
         data = _load_loop()
         dc = data["states"]["detect_children"]
         assert dc["on_error"] == "failed"
+
+    def test_description_does_not_misclassify_no_children_as_failed(self) -> None:
+        """Loop description must not say 'no children found' terminates in failed (BUG-1974)."""
+        data = _load_loop()
+        description = data.get("description", "")
+        assert "no children found" not in description.lower() or "failed" not in description.lower(), (
+            "BUG-1974: description still classifies 'no children found' as a failed outcome"
+        )
 
     def test_enqueue_children_has_cycle_detection(self) -> None:
         """enqueue_children performs cycle detection via Python visited set."""
@@ -343,6 +363,7 @@ class TestFSMHealth:
             "next",
             "on_yes",
             "on_no",
+            "on_partial",
             "on_error",
             "on_success",
             "on_failure",
@@ -371,6 +392,7 @@ class TestFSMHealth:
             "next",
             "on_yes",
             "on_no",
+            "on_partial",
             "on_error",
             "on_success",
             "on_failure",

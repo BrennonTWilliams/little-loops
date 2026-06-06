@@ -4,8 +4,8 @@ description: |
   Sub-loop for the issue decomposition pipeline (size review → child detection →
   enqueue with cycle detection) extracted from rn-implement Phase 5. Accepts an
   issue ID via parameters and runs decomposition to split large issues into child
-  issues. Terminates with done (children enqueued) or failed (no children found
-  or error).
+  issues. Terminates with done (children enqueued, or no decomposition needed —
+  expected success path when size review score < 5) or failed (error only).
 
   Run standalone as: ll-loop run rn-decompose "<issue-id>"
 
@@ -26,7 +26,6 @@ import:
   - lib/common.yaml
 meta_self_eval_ok: false
 shared_state_ok: false
-partial_route_ok: true
 
 parameters:
   issue_id:
@@ -76,6 +75,8 @@ states:
     action: "/ll:issue-size-review ${context.issue_id} --auto"
     action_type: slash_command
     on_success: detect_children
+    on_partial: detect_children   # partial = review ran with a caveat; proceed and log it (BUG-1975)
+    on_no: failed                 # no = judge found size review inconclusive; error-terminate
     on_error: failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 
@@ -123,7 +124,7 @@ states:
         exit 1
       fi
     on_yes: enqueue_children
-    on_no: failed
+    on_no: done          # "No children found" is expected success when size review score < 5
     on_error: failed
 
   enqueue_children:

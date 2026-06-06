@@ -1,10 +1,12 @@
 ---
 id: BUG-1975
-title: "rn-decompose: run_size_review has no on_partial route, so a partial LLM verdict terminates the sub-loop with error"
+title: 'rn-decompose: run_size_review has no on_partial route, so a partial LLM verdict
+  terminates the sub-loop with error'
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-06T00:00:00Z'
+completed_at: '2026-06-06T04:42:09Z'
 discovered_date: '2026-06-06'
 discovered_by: audit-loop-run
 relates_to:
@@ -16,6 +18,12 @@ labels:
 - rn-decompose
 - loop-defect
 - routing
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 25
+score_test_coverage: 15
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1975: rn-decompose run_size_review missing on_partial route
@@ -134,5 +142,20 @@ flagged as a silent dead-end. Adding `on_partial` here aligns the state with tha
 
 **Open** | Created: 2026-06-06 | Priority: P3
 
+## Resolution
+
+**Fixed**: Added `on_partial: detect_children` and `on_no: failed` to `run_size_review` in `loops/rn-decompose.yaml`.
+
+- `on_partial → detect_children`: partial verdict (e.g. hygiene caveat from staged changes) now proceeds to child detection rather than error-terminating the sub-loop.
+- `on_no → failed`: inconclusive judge verdict terminates with error explicitly instead of dead-ending.
+- Removed `partial_route_ok: true` top-level suppressor — no longer needed since all LLM-judged states in rn-decompose now have full routing tables.
+- MR-4 (`ll-loop validate`) now passes cleanly with no warnings.
+
+**Sibling audit**: rn-remediate (5 slash_command states) and rn-implement have `partial_route_ok: true` suppressing the same gap — tracked separately.
+
+**Test**: Added `test_run_size_review_routes_partial_to_detect_children` in `test_rn_decompose.py`; updated routing-key tuples in structural tests to include `on_partial`.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T04:38:44 - `cd60e399-996e-41ba-b8f7-cdae1ec0ace5.jsonl`
 - `/ll:capture-issue` - 2026-06-06 - from rn-implement-audit-2026-06-06.md (run 2026-06-06T015949, F3)
+- `/ll:confidence-check` - 2026-06-05 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1adb4edf-fbef-44fc-a122-565b3721e970.jsonl`
