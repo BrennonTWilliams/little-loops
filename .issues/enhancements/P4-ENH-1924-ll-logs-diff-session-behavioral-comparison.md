@@ -3,7 +3,7 @@ id: ENH-1924
 title: 'll-logs diff: compare sessions before/after a prompt change'
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-04T02:27:34Z'
 discovered_date: '2026-06-04'
 discovered_by: capture-issue
@@ -17,6 +17,7 @@ labels:
 - regression
 confidence_score: 91
 outcome_confidence: 87
+completed_at: '2026-06-06T03:44:36Z'
 score_complexity: 22
 score_test_coverage: 20
 score_ambiguity: 20

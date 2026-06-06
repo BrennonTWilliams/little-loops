@@ -2086,3 +2086,256 @@ class TestScanFailures:
         assert result == 0
         captured = capsys.readouterr()
         assert "No ll-* failures found" in captured.out
+
+
+class TestDiff:
+    """Tests for the diff subcommand."""
+
+    def _write_jsonl(self, path: Path, records: list[dict]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            for r in records:
+                f.write(json.dumps(r) + "\n")
+
+    def _bash_record(self, command: str, session_id: str = "s1", timestamp: str = "2026-01-01T00:00:00Z") -> dict:
+        return {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "name": "Bash", "input": {"command": command}}],
+            },
+            "sessionId": session_id,
+            "timestamp": timestamp,
+        }
+
+    def test_diff_subcommand_parsed(self) -> None:
+        """diff subcommand sets command='diff' and captures both session args."""
+        with patch("sys.argv", ["ll-logs", "diff", "sess-a", "sess-b"]):
+            args = _parse_args()
+        assert args.command == "diff"
+        assert args.session_a == "sess-a"
+        assert args.session_b == "sess-b"
+
+    def test_diff_json_flag_parsed(self) -> None:
+        """diff --json sets json=True."""
+        with patch("sys.argv", ["ll-logs", "diff", "a", "b", "--json"]):
+            args = _parse_args()
+        assert args.json is True
+
+    def test_resolve_session_log_direct_path(self, tmp_path: Path) -> None:
+        """_resolve_session_log returns path when given an existing .jsonl file."""
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text("{}\n")
+        result = _resolve_session_log(str(jsonl), tmp_path / "history.db")
+        assert result == jsonl
+
+    def test_resolve_session_log_db_lookup(self, tmp_path: Path) -> None:
+        """_resolve_session_log resolves session ID via DB lookup."""
+        import sqlite3 as _sqlite3
+        from little_loops.session_store import ensure_db
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        ensure_db(db_path)
+        jsonl_path = tmp_path / "mysession.jsonl"
+        jsonl_path.write_text("")
+        conn = _sqlite3.connect(str(db_path))
+        conn.execute("INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)", ("my-session-id", str(jsonl_path)))
+        conn.commit()
+        conn.close()
+
+        result = _resolve_session_log("my-session-id", db_path)
+        assert result == jsonl_path
+
+    def test_resolve_session_log_not_found_returns_none(self, tmp_path: Path) -> None:
+        """_resolve_session_log returns None for an unknown session ID with no DB."""
+        result = _resolve_session_log("unknown-session", tmp_path / "nonexistent.db")
+        assert result is None
+
+    def test_events_from_jsonl_extracts_ll_invocations(self, tmp_path: Path) -> None:
+        """_events_from_jsonl extracts ll invocation events sorted by timestamp."""
+        jsonl = tmp_path / "session.jsonl"
+        self._write_jsonl(jsonl, [
+            self._bash_record("ll-issues list", timestamp="2026-01-01T00:00:02Z"),
+            self._bash_record("ll-history sessions", timestamp="2026-01-01T00:00:01Z"),
+            {"type": "user", "message": {"role": "user", "content": "hello"}, "sessionId": "s1"},
+        ])
+        events = _events_from_jsonl(jsonl)
+        assert len(events) == 2
+        assert events[0].tool_name == "ll-history"
+        assert events[1].tool_name == "ll-issues"
+
+    def test_events_from_jsonl_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        """_events_from_jsonl returns [] for a nonexistent file."""
+        events = _events_from_jsonl(tmp_path / "nonexistent.jsonl")
+        assert events == []
+
+    def test_compute_session_diff_skills_added_and_removed(self) -> None:
+        """_compute_session_diff correctly identifies added and removed skills."""
+        from little_loops.cli.logs import InvocationEvent
+
+        def _evt(name: str) -> InvocationEvent:
+            return InvocationEvent(tool_name=name, timestamp="", session_id="s")
+
+        events_a = [_evt("ll-issues"), _evt("ll-history")]
+        events_b = [_evt("ll-issues"), _evt("ll-auto")]
+
+        diff = _compute_session_diff("sess-a", events_a, "sess-b", events_b)
+        assert diff.skills_added == ["ll-auto"]
+        assert diff.skills_removed == ["ll-history"]
+
+    def test_compute_session_diff_count_deltas(self) -> None:
+        """_compute_session_diff reports count deltas for skills with changed frequency."""
+        from little_loops.cli.logs import InvocationEvent
+
+        def _evt(name: str) -> InvocationEvent:
+            return InvocationEvent(tool_name=name, timestamp="", session_id="s")
+
+        events_a = [_evt("ll-issues"), _evt("ll-issues")]
+        events_b = [_evt("ll-issues"), _evt("ll-issues"), _evt("ll-issues")]
+
+        diff = _compute_session_diff("a", events_a, "b", events_b)
+        assert "ll-issues" in diff.count_deltas
+        assert diff.count_deltas["ll-issues"] == {"a": 2, "b": 3, "delta": 1}
+
+    def test_compute_session_diff_identical_sessions(self) -> None:
+        """_compute_session_diff returns empty diff for identical event streams."""
+        from little_loops.cli.logs import InvocationEvent
+
+        events = [InvocationEvent(tool_name="ll-issues", timestamp="", session_id="s")]
+        diff = _compute_session_diff("a", events, "b", events)
+        assert diff.skills_added == []
+        assert diff.skills_removed == []
+        assert diff.count_deltas == {}
+        assert diff.sequence_diff == []
+
+    def test_compute_session_diff_sequence_diff_present(self) -> None:
+        """_compute_session_diff includes a unified sequence diff when order changes."""
+        from little_loops.cli.logs import InvocationEvent
+
+        def _evt(name: str) -> InvocationEvent:
+            return InvocationEvent(tool_name=name, timestamp="", session_id="s")
+
+        events_a = [_evt("ll-issues"), _evt("ll-history")]
+        events_b = [_evt("ll-history"), _evt("ll-issues")]
+
+        diff = _compute_session_diff("a", events_a, "b", events_b)
+        assert len(diff.sequence_diff) > 0
+
+    def test_diff_no_differences_text_output(self, tmp_path: Path, capsys) -> None:
+        """diff exits 0 with 'No behavioral differences' message for identical sessions."""
+        jsonl_a = tmp_path / "a.jsonl"
+        jsonl_b = tmp_path / "b.jsonl"
+        records = [self._bash_record("ll-issues list")]
+        self._write_jsonl(jsonl_a, records)
+        self._write_jsonl(jsonl_b, records)
+
+        with patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), str(jsonl_b)]):
+            result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No behavioral differences" in captured.out
+
+    def test_diff_detects_added_skill_text(self, tmp_path: Path, capsys) -> None:
+        """diff text output shows added skill from session B."""
+        jsonl_a = tmp_path / "a.jsonl"
+        jsonl_b = tmp_path / "b.jsonl"
+        self._write_jsonl(jsonl_a, [self._bash_record("ll-issues list")])
+        self._write_jsonl(jsonl_b, [
+            self._bash_record("ll-issues list"),
+            self._bash_record("ll-auto --dry-run"),
+        ])
+
+        with patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), str(jsonl_b)]):
+            result = main_logs()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "ll-auto" in out
+        assert "+" in out
+
+    def test_diff_detects_removed_skill_text(self, tmp_path: Path, capsys) -> None:
+        """diff text output shows removed skill not in session B."""
+        jsonl_a = tmp_path / "a.jsonl"
+        jsonl_b = tmp_path / "b.jsonl"
+        self._write_jsonl(jsonl_a, [
+            self._bash_record("ll-issues list"),
+            self._bash_record("ll-history sessions"),
+        ])
+        self._write_jsonl(jsonl_b, [self._bash_record("ll-issues list")])
+
+        with patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), str(jsonl_b)]):
+            result = main_logs()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "ll-history" in out
+        assert "-" in out
+
+    def test_diff_json_output_schema(self, tmp_path: Path) -> None:
+        """diff --json outputs valid JSON with expected top-level keys."""
+        jsonl_a = tmp_path / "a.jsonl"
+        jsonl_b = tmp_path / "b.jsonl"
+        self._write_jsonl(jsonl_a, [self._bash_record("ll-issues list")])
+        self._write_jsonl(jsonl_b, [self._bash_record("ll-auto --dry-run")])
+
+        captured_lines: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), str(jsonl_b), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured_lines))
+        assert "session_a" in data
+        assert "session_b" in data
+        assert "skills_added" in data
+        assert "skills_removed" in data
+        assert "count_deltas" in data
+        assert "sequence_diff" in data
+        assert isinstance(data["skills_added"], list)
+        assert isinstance(data["skills_removed"], list)
+        assert isinstance(data["sequence_diff"], list)
+
+    def test_diff_count_delta_in_json(self, tmp_path: Path) -> None:
+        """diff --json count_deltas reports correct a/b/delta values."""
+        jsonl_a = tmp_path / "a.jsonl"
+        jsonl_b = tmp_path / "b.jsonl"
+        self._write_jsonl(jsonl_a, [self._bash_record("ll-issues list")])
+        self._write_jsonl(jsonl_b, [
+            self._bash_record("ll-issues list"),
+            self._bash_record("ll-issues list"),
+        ])
+
+        captured_lines: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), str(jsonl_b), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured_lines))
+        assert "ll-issues" in data["count_deltas"]
+        assert data["count_deltas"]["ll-issues"] == {"a": 1, "b": 2, "delta": 1}
+
+    def test_diff_unresolvable_session_a_returns_1(self, tmp_path: Path) -> None:
+        """diff returns 1 when session_a cannot be resolved."""
+        jsonl_b = tmp_path / "b.jsonl"
+        jsonl_b.write_text("")
+
+        with patch("sys.argv", ["ll-logs", "diff", "nonexistent-session-id", str(jsonl_b)]):
+            result = main_logs()
+
+        assert result == 1
+
+    def test_diff_unresolvable_session_b_returns_1(self, tmp_path: Path) -> None:
+        """diff returns 1 when session_b cannot be resolved."""
+        jsonl_a = tmp_path / "a.jsonl"
+        jsonl_a.write_text("")
+
+        with patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), "nonexistent-session-id"]):
+            result = main_logs()
+
+        assert result == 1
