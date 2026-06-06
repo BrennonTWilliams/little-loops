@@ -2391,7 +2391,9 @@ class TestCaptureReachabilityValidation:
         )
         errors = _validate_capture_reachability(fsm)
         warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
-        assert len(warnings) >= 1, f"Expected bypass WARNING for general-task pattern, got: {errors}"
+        assert len(warnings) >= 1, (
+            f"Expected bypass WARNING for general-task pattern, got: {errors}"
+        )
         assert any("selected_step" in e.message for e in warnings)
         assert any("select_step" in e.message for e in warnings)
         # Bypass path should be visible
@@ -2417,9 +2419,7 @@ class TestCaptureReachabilityValidation:
         # No capture in this FSM, but delegate references $captured.* in its
         # sub-loop context. We should not emit errors for this.
         missing_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
-        assert missing_errors == [], (
-            f"Sub-loop states should be skipped, got: {missing_errors}"
-        )
+        assert missing_errors == [], f"Sub-loop states should be skipped, got: {missing_errors}"
 
     # --- Missing capture state → ERROR ---
 

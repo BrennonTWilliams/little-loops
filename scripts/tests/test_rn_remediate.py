@@ -778,5 +778,8 @@ class TestOutcomeTokenChannel:
     def test_diagnose_routes_missing_artifacts_to_wire(self) -> None:
         data = _load_loop()
         action = data["states"]["diagnose"]["action"]
-        assert 'MISSING_ARTIFACTS" = "true"' in action.replace("'", '"') or \
-            'MISSING_ARTIFACTS' in action and 'WIRE' in action
+        assert (
+            'MISSING_ARTIFACTS" = "true"' in action.replace("'", '"')
+            or "MISSING_ARTIFACTS" in action
+            and "WIRE" in action
+        )

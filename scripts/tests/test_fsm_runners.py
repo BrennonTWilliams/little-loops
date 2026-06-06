@@ -11,8 +11,6 @@ import subprocess
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from little_loops.fsm.executor import ActionResult, DefaultActionRunner, SimulationActionRunner
 
 
@@ -230,7 +228,9 @@ class TestDefaultActionRunnerSlashPath:
         runner = DefaultActionRunner()
         completed = self._make_completed_process(stdout="output", returncode=0)
 
-        with patch("little_loops.fsm.runners.run_claude_command", return_value=completed) as mock_fn:
+        with patch(
+            "little_loops.fsm.runners.run_claude_command", return_value=completed
+        ) as mock_fn:
             runner.run("/ll:my-skill arg", 60, True)
 
         mock_fn.assert_called_once()

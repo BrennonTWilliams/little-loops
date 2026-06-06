@@ -1815,9 +1815,7 @@ def prune(
                 f"project age {project_age_days}d < {retention_cfg.min_project_age_days}d"
             )
         if db_size_mb < retention_cfg.min_db_size_mb:
-            gates_unmet.append(
-                f"db size {db_size_mb:.1f}MB < {retention_cfg.min_db_size_mb}MB"
-            )
+            gates_unmet.append(f"db size {db_size_mb:.1f}MB < {retention_cfg.min_db_size_mb}MB")
         result["gate_unmet"] = gates_unmet
 
         if gates_unmet:

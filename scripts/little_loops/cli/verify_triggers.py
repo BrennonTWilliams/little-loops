@@ -25,17 +25,98 @@ from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 STOPWORDS: frozenset[str] = frozenset(
     {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "can", "shall", "to", "of", "in", "for",
-        "on", "with", "at", "by", "from", "as", "or", "and", "not", "no",
-        "but", "if", "then", "else", "when", "where", "how", "all", "each",
-        "every", "both", "few", "more", "most", "other", "some", "such",
-        "only", "own", "same", "so", "than", "too", "very", "just", "about",
-        "above", "after", "again", "against", "any", "because", "before",
-        "between", "into", "through", "during", "under", "over", "its",
-        "it", "this", "that", "these", "those", "use", "used", "using",
-        "also", "get", "got", "make", "made", "see",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "can",
+        "shall",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "or",
+        "and",
+        "not",
+        "no",
+        "but",
+        "if",
+        "then",
+        "else",
+        "when",
+        "where",
+        "how",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "just",
+        "about",
+        "above",
+        "after",
+        "again",
+        "against",
+        "any",
+        "because",
+        "before",
+        "between",
+        "into",
+        "through",
+        "during",
+        "under",
+        "over",
+        "its",
+        "it",
+        "this",
+        "that",
+        "these",
+        "those",
+        "use",
+        "used",
+        "using",
+        "also",
+        "get",
+        "got",
+        "make",
+        "made",
+        "see",
     }
 )
 
@@ -393,9 +474,7 @@ def _format_text_report(
         lines.append(f"{'':-<40} {'':->10} {'':->10}")
         for name in sorted(results):
             r = results[name]
-            lines.append(
-                f"{name:<40} {r.precision:>10.0%} {r.recall:>10.0%}"
-            )
+            lines.append(f"{name:<40} {r.precision:>10.0%} {r.recall:>10.0%}")
         lines.append("")
 
     # Collisions
@@ -404,7 +483,7 @@ def _format_text_report(
         lines.append("=" * 50)
         for c in collisions:
             skills = ", ".join(c["skills"])
-            lines.append(f"  Phrasing: \"{c['phrasing']}\"")
+            lines.append(f'  Phrasing: "{c["phrasing"]}"')
             lines.append(f"  Colliding skills: {skills}")
             lines.append("")
     else:
@@ -417,13 +496,11 @@ def _format_text_report(
         r = results[name]
         if r.precision < thresholds["precision_threshold"]:
             failures.append(
-                f"  {name}: precision {r.precision:.0%} < "
-                f"{thresholds['precision_threshold']:.0%}"
+                f"  {name}: precision {r.precision:.0%} < {thresholds['precision_threshold']:.0%}"
             )
         if r.recall < thresholds["recall_threshold"]:
             failures.append(
-                f"  {name}: recall {r.recall:.0%} < "
-                f"{thresholds['recall_threshold']:.0%}"
+                f"  {name}: recall {r.recall:.0%} < {thresholds['recall_threshold']:.0%}"
             )
 
     if collisions:
@@ -575,8 +652,10 @@ Exit codes:
             print(_format_text_report(results, collisions, thresholds))
 
         if _any_failures(
-            results, collisions,
-            args.precision_threshold, args.recall_threshold,
+            results,
+            collisions,
+            args.precision_threshold,
+            args.recall_threshold,
         ):
             return 1
         return 0

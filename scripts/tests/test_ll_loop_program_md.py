@@ -354,6 +354,7 @@ class TestCmdRunProgramMdInjection:
             return fsm, []
 
         from unittest.mock import patch
+
         with patch(
             "little_loops.fsm.validation.load_and_validate",
             side_effect=fake_load_and_validate,
@@ -364,9 +365,7 @@ class TestCmdRunProgramMdInjection:
             "input_hash must be present in fsm.context when input is non-empty"
         )
         assert isinstance(fsm.context["input_hash"], str)
-        assert len(fsm.context["input_hash"]) == 12, (
-            "input_hash must be a 12-char hex digest"
-        )
+        assert len(fsm.context["input_hash"]) == 12, "input_hash must be a 12-char hex digest"
 
     def test_input_hash_not_injected_when_input_absent(self, tmp_path: Path) -> None:
         """input_hash is NOT injected when input is absent (None or empty)."""
@@ -384,6 +383,7 @@ class TestCmdRunProgramMdInjection:
             return fsm, []
 
         from unittest.mock import patch
+
         with patch(
             "little_loops.fsm.validation.load_and_validate",
             side_effect=fake_load_and_validate,
@@ -421,6 +421,7 @@ class TestCmdRunProgramMdInjection:
             return fsm, []
 
         from unittest.mock import patch
+
         with patch(
             "little_loops.fsm.validation.load_and_validate",
             side_effect=fake_load_and_validate,

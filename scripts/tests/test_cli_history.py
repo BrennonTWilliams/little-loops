@@ -46,9 +46,7 @@ def _make_empty_analysis():
 class TestHistoryRootSubcommand:
     """Tests for ll-history root subcommand (completely untested elsewhere)."""
 
-    def test_root_no_db_returns_1(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_root_no_db_returns_1(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """root returns 1 when no DB or no root node found."""
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
@@ -117,16 +115,12 @@ class TestHistoryAnalyzeYaml:
             sys, "argv", ["ll-history", "analyze", "--format", "yaml", "-d", str(issues_dir)]
         ):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
-                with patch(
-                    "little_loops.issue_history.scan_completed_issues", return_value=[]
-                ):
+                with patch("little_loops.issue_history.scan_completed_issues", return_value=[]):
                     with patch(
                         "little_loops.issue_history.calculate_analysis",
                         return_value=_make_empty_analysis(),
                     ):
-                        with patch(
-                            "little_loops.issue_history.format_analysis_yaml"
-                        ) as mock_fmt:
+                        with patch("little_loops.issue_history.format_analysis_yaml") as mock_fmt:
                             mock_fmt.return_value = "analysis: empty\n"
                             result = main_history()
 
@@ -135,9 +129,7 @@ class TestHistoryAnalyzeYaml:
         captured = capsys.readouterr()
         assert "analysis: empty" in captured.out
 
-    def test_analyze_yaml_exit_code_zero(
-        self, tmp_path: Path
-    ) -> None:
+    def test_analyze_yaml_exit_code_zero(self, tmp_path: Path) -> None:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         issues_dir = tmp_path / ".issues"
@@ -147,9 +139,7 @@ class TestHistoryAnalyzeYaml:
             sys, "argv", ["ll-history", "analyze", "--format", "yaml", "-d", str(issues_dir)]
         ):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
-                with patch(
-                    "little_loops.issue_history.scan_completed_issues", return_value=[]
-                ):
+                with patch("little_loops.issue_history.scan_completed_issues", return_value=[]):
                     with patch(
                         "little_loops.issue_history.calculate_analysis",
                         return_value=_make_empty_analysis(),
@@ -172,14 +162,10 @@ class TestHistorySessionsJson:
     ) -> None:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
-        with patch.object(
-            sys, "argv", ["ll-history", "sessions", "ENH-999", "--json"]
-        ):
+        with patch.object(sys, "argv", ["ll-history", "sessions", "ENH-999", "--json"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
                 # sessions_for_issue is from little_loops.history_reader
-                with patch(
-                    "little_loops.history_reader.sessions_for_issue", return_value=[]
-                ):
+                with patch("little_loops.history_reader.sessions_for_issue", return_value=[]):
                     result = main_history()
         assert result == 0
         captured = capsys.readouterr()
@@ -194,9 +180,7 @@ class TestHistorySessionsJson:
         ll_dir.mkdir()
         with patch.object(sys, "argv", ["ll-history", "sessions", "ENH-999"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
-                with patch(
-                    "little_loops.history_reader.sessions_for_issue", return_value=[]
-                ):
+                with patch("little_loops.history_reader.sessions_for_issue", return_value=[]):
                     result = main_history()
         assert result == 0
         captured = capsys.readouterr()
@@ -225,9 +209,7 @@ class TestHistoryExportStdout:
             ["ll-history", "export", "testing", "-d", str(issues_dir)],
         ):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
-                with patch(
-                    "little_loops.issue_history.scan_completed_issues", return_value=[]
-                ):
+                with patch("little_loops.issue_history.scan_completed_issues", return_value=[]):
                     with patch(
                         "little_loops.issue_history.synthesize_docs",
                         return_value="# Doc output\n",
@@ -237,9 +219,7 @@ class TestHistoryExportStdout:
         captured = capsys.readouterr()
         assert "# Doc output" in captured.out
 
-    def test_export_empty_issues_exits_zero(
-        self, tmp_path: Path
-    ) -> None:
+    def test_export_empty_issues_exits_zero(self, tmp_path: Path) -> None:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         issues_dir = tmp_path / ".issues"
@@ -249,8 +229,6 @@ class TestHistoryExportStdout:
             sys, "argv", ["ll-history", "export", "some-topic", "-d", str(issues_dir)]
         ):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
-                with patch(
-                    "little_loops.issue_history.scan_completed_issues", return_value=[]
-                ):
+                with patch("little_loops.issue_history.scan_completed_issues", return_value=[]):
                     result = main_history()
         assert result == 0

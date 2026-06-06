@@ -2693,6 +2693,7 @@ states:
                 return fsm, []
 
             from unittest.mock import patch
+
             with patch(
                 "little_loops.fsm.validation.load_and_validate",
                 side_effect=fake_load_and_validate,

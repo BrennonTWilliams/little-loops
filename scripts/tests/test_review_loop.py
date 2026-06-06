@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from little_loops.fsm import validate_fsm
-from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig
+from little_loops.fsm.schema import FSMLoop
 from little_loops.fsm.validation import ValidationSeverity
 from tests.helpers import make_test_fsm, make_test_state
 

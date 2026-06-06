@@ -236,9 +236,7 @@ def _extract_ll_event_streams(
     """
     events_by_session: dict[str, list[InvocationEvent]] = {}
 
-    jsonl_files = [
-        f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")
-    ]
+    jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
     if not jsonl_files:
         return events_by_session
 
@@ -390,9 +388,7 @@ class ChainResult:
         return {
             "chain": self.chain,
             "count": self.count,
-            "edges": [
-                {"from": e.from_, "to": e.to, "freq": e.freq} for e in self.edges
-            ],
+            "edges": [{"from": e.from_, "to": e.to, "freq": e.freq} for e in self.edges],
         }
 
 
@@ -416,7 +412,7 @@ def _count_ngrams(
         # but note: min_len is the minimum, so we use range(min_len, len(names)+1)
         for n in range(min_len, len(names) + 1):
             for i in range(len(names) - n + 1):
-                ngram = tuple(names[i: i + n])
+                ngram = tuple(names[i : i + n])
                 counter[ngram] += 1
     return counter
 
@@ -497,9 +493,7 @@ def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
     # Aggregate events across all projects
     all_events: dict[str, list[InvocationEvent]] = {}
     for _cwd_path, project_folder in project_items:
-        events = _extract_ll_event_streams(
-            project_folder, window_days=args.window_days
-        )
+        events = _extract_ll_event_streams(project_folder, window_days=args.window_days)
         for sid, evt_list in events.items():
             all_events.setdefault(sid, []).extend(evt_list)
 
@@ -706,13 +700,9 @@ def _aggregate_skill_stats(
         if window_days is not None:
             latest_ts = skill_rows[-1]["ts"] or ""
             cutoff = _parse_iso_timestamp(latest_ts) - timedelta(days=window_days)
-            skill_rows = [
-                r for r in skill_rows if _parse_iso_timestamp(r["ts"] or "") >= cutoff
-            ]
+            skill_rows = [r for r in skill_rows if _parse_iso_timestamp(r["ts"] or "") >= cutoff]
 
-        stats: dict[str, dict[str, int]] = defaultdict(
-            lambda: {"invocations": 0, "corrections": 0}
-        )
+        stats: dict[str, dict[str, int]] = defaultdict(lambda: {"invocations": 0, "corrections": 0})
         for row in skill_rows:
             stats[row["skill_name"] or "unknown"]["invocations"] += 1
 
@@ -837,7 +827,9 @@ def _cmd_dead_skills(args: argparse.Namespace, logger: Logger) -> int:
 
     catalog_names = _load_catalog_names(catalog_root)
     if not catalog_names:
-        logger.warning("No catalog skills found — run from an ll project root with skills/ directory.")
+        logger.warning(
+            "No catalog skills found — run from an ll project root with skills/ directory."
+        )
         return 0
 
     threshold = args.threshold
@@ -858,7 +850,7 @@ def _cmd_dead_skills(args: argparse.Namespace, logger: Logger) -> int:
         return 0
 
     headers = ["Skill", "Invocations", "Tier"]
-    table_rows = [[r["skill"], str(r["invocations"]), r["tier"]] for r in rows]
+    table_rows = [[str(r["skill"]), str(r["invocations"]), str(r["tier"])] for r in rows]
     print(table(headers, table_rows))
     return 0
 
@@ -930,9 +922,7 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
     latest_ts_overall: str = ""
 
     for _cwd_path, project_folder in project_items:
-        jsonl_files = [
-            f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")
-        ]
+        jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
 
         for jsonl_file in jsonl_files:
             try:
@@ -1026,9 +1016,7 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
     if args.window_days is not None and latest_ts_overall:
         cutoff = _parse_iso_timestamp(latest_ts_overall) - timedelta(days=args.window_days)
         raw_clusters = {
-            k: v
-            for k, v in raw_clusters.items()
-            if _parse_iso_timestamp(v[3]) >= cutoff
+            k: v for k, v in raw_clusters.items() if _parse_iso_timestamp(v[3]) >= cutoff
         }
 
     clusters: list[_FailureCluster] = sorted(
@@ -1114,9 +1102,7 @@ def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
         decoded_paths = discover_all_projects(logger)
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
 
-    merged: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"invocations": 0, "corrections": 0}
-    )
+    merged: dict[str, dict[str, int]] = defaultdict(lambda: {"invocations": 0, "corrections": 0})
     found_any_db = False
     for db_path in db_paths:
         result = _aggregate_skill_stats(db_path, window_days=args.window_days)
@@ -1136,13 +1122,9 @@ def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
 
     sort_key = getattr(args, "sort", "freq")
     if sort_key == "corrections":
-        ranked = sorted(
-            merged.items(), key=lambda kv: kv[1]["corrections"], reverse=True
-        )
+        ranked = sorted(merged.items(), key=lambda kv: kv[1]["corrections"], reverse=True)
     else:
-        ranked = sorted(
-            merged.items(), key=lambda kv: kv[1]["invocations"], reverse=True
-        )
+        ranked = sorted(merged.items(), key=lambda kv: kv[1]["invocations"], reverse=True)
 
     if args.json:
         rows_json = [
@@ -1281,7 +1263,9 @@ def _compute_session_diff(
 
     label_a = f"session_a ({session_a[:8]})" if len(session_a) > 8 else f"session_a ({session_a})"
     label_b = f"session_b ({session_b[:8]})" if len(session_b) > 8 else f"session_b ({session_b})"
-    sequence_diff = list(difflib.unified_diff(names_a, names_b, fromfile=label_a, tofile=label_b, lineterm=""))
+    sequence_diff = list(
+        difflib.unified_diff(names_a, names_b, fromfile=label_a, tofile=label_b, lineterm="")
+    )
 
     return SessionDiff(
         session_a=session_a,
@@ -1316,7 +1300,12 @@ def _cmd_diff(args: argparse.Namespace, logger: Logger) -> int:
         print_json(diff.to_dict())
         return 0
 
-    if not diff.skills_added and not diff.skills_removed and not diff.count_deltas and not diff.sequence_diff:
+    if (
+        not diff.skills_added
+        and not diff.skills_removed
+        and not diff.count_deltas
+        and not diff.sequence_diff
+    ):
         print("No behavioral differences found.")
         return 0
 
@@ -1833,8 +1822,12 @@ Examples:
         "diff",
         help="Compare two sessions' ll-invocation behavior (skills, sequences, counts)",
     )
-    diff_parser.add_argument("session_a", metavar="SESSION_A", help="First session ID or JSONL file path")
-    diff_parser.add_argument("session_b", metavar="SESSION_B", help="Second session ID or JSONL file path")
+    diff_parser.add_argument(
+        "session_a", metavar="SESSION_A", help="First session ID or JSONL file path"
+    )
+    diff_parser.add_argument(
+        "session_b", metavar="SESSION_B", help="Second session ID or JSONL file path"
+    )
     add_json_arg(diff_parser)
 
     eval_export_parser = subparsers.add_parser(

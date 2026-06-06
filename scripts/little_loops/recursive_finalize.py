@@ -36,7 +36,9 @@ def _completed_at_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _find_issue_file(issue_id: str, issues_dir: Path, *, include_completed: bool = True) -> Path | None:
+def _find_issue_file(
+    issue_id: str, issues_dir: Path, *, include_completed: bool = True
+) -> Path | None:
     """Locate the markdown file for ``issue_id`` under ``issues_dir``.
 
     Matches files whose name contains ``-<issue_id>-`` (case-insensitive), mirroring
@@ -159,9 +161,7 @@ def finalize_decomposed_parent(
 
     # --- Step 1: close the parent -------------------------------------------------
     content = _append_decomposition_note(content, parent_id, child_ids)
-    content = update_frontmatter(
-        content, {"status": "done", "completed_at": _completed_at_now()}
-    )
+    content = update_frontmatter(content, {"status": "done", "completed_at": _completed_at_now()})
     parent_path.write_text(content, encoding="utf-8")
 
     moved = False

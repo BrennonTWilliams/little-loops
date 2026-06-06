@@ -108,9 +108,7 @@ class TestStaticLayerFallback:
         absent = tmp_path / "nonexistent.yaml"
         assert load_coupling_entries(absent) == []
 
-    def test_no_coupling_entries_returns_empty(
-        self, decisions_path: Path, tmp_path: Path
-    ) -> None:
+    def test_no_coupling_entries_returns_empty(self, decisions_path: Path, tmp_path: Path) -> None:
         rule = RuleEntry(id="RULE-001", rule="Some rule", enforcement="required")
         save_decisions([rule], decisions_path)
         result = load_coupling_entries(decisions_path, changed_globs=["commands/help.md"])
@@ -167,7 +165,10 @@ class TestStaticLayerGlobMatching:
         assert len(matched) == 2
 
     def test_no_changed_globs_returns_all_coupling(
-        self, decisions_path: Path, cli_command_coupling: CouplingEntry, soft_coupling: CouplingEntry
+        self,
+        decisions_path: Path,
+        cli_command_coupling: CouplingEntry,
+        soft_coupling: CouplingEntry,
     ) -> None:
         save_decisions([cli_command_coupling, soft_coupling], decisions_path)
         # No glob filter — returns all coupling entries
@@ -247,23 +248,17 @@ class TestStaticLayerArchetypeFilter:
 class TestStaticLayerTierClassification:
     """Tier values are preserved for hard/soft/fyi partitioning in wire-issue."""
 
-    def test_hard_tier(
-        self, decisions_path: Path, cli_command_coupling: CouplingEntry
-    ) -> None:
+    def test_hard_tier(self, decisions_path: Path, cli_command_coupling: CouplingEntry) -> None:
         save_decisions([cli_command_coupling], decisions_path)
         entries = load_coupling_entries(decisions_path, changed_globs=["commands/help.md"])
         assert entries[0].tier == "hard"
 
-    def test_soft_tier(
-        self, decisions_path: Path, soft_coupling: CouplingEntry
-    ) -> None:
+    def test_soft_tier(self, decisions_path: Path, soft_coupling: CouplingEntry) -> None:
         save_decisions([soft_coupling], decisions_path)
         entries = load_coupling_entries(decisions_path, changed_globs=["scripts/foo.py"])
         assert entries[0].tier == "soft"
 
-    def test_fyi_tier(
-        self, decisions_path: Path, fyi_coupling: CouplingEntry
-    ) -> None:
+    def test_fyi_tier(self, decisions_path: Path, fyi_coupling: CouplingEntry) -> None:
         save_decisions([fyi_coupling], decisions_path)
         entries = load_coupling_entries(decisions_path, changed_globs=["anything.md"])
         assert entries[0].tier == "fyi"

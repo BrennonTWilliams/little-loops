@@ -231,7 +231,14 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
 
     if sub == "add":
         return _cmd_add(
-            args, path, RuleEntry, DecisionEntry, ExceptionEntry, CouplingEntry, add_entry, list_entries
+            args,
+            path,
+            RuleEntry,
+            DecisionEntry,
+            ExceptionEntry,
+            CouplingEntry,
+            add_entry,
+            list_entries,
         )
 
     if sub == "outcome":
@@ -322,7 +329,9 @@ def _print_entry(entry) -> None:
         print(f"  outcome: {entry.outcome.result} @ {entry.outcome.measured_at}")
 
 
-def _cmd_add(args, path, RuleEntry, DecisionEntry, ExceptionEntry, CouplingEntry, add_entry, list_entries) -> int:
+def _cmd_add(
+    args, path, RuleEntry, DecisionEntry, ExceptionEntry, CouplingEntry, add_entry, list_entries
+) -> int:
     entry_type = args.type
 
     # Validate type-specific required fields

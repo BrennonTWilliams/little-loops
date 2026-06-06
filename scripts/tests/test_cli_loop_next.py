@@ -6,9 +6,7 @@ and the install command (which has zero existing test coverage).
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,7 +20,6 @@ from little_loops.cli.loop.next_loop import (
     _score_loop,
 )
 from little_loops.logger import Logger
-
 
 # ---------------------------------------------------------------------------
 # LoopCandidate
@@ -357,9 +354,7 @@ class TestResolveParams:
 class TestCmdInstall:
     """Tests for cmd_install function."""
 
-    def test_installs_builtin_loop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_installs_builtin_loop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """cmd_install copies a built-in loop to the project .loops dir."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()

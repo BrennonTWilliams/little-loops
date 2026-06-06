@@ -374,9 +374,7 @@ def load_coupling_entries(
         entries = [e for e in entries if e.archetype == archetype]
 
     if changed_globs is not None:
-        entries = [
-            e for e in entries if any(fnmatch(f, e.if_changed) for f in changed_globs)
-        ]
+        entries = [e for e in entries if any(fnmatch(f, e.if_changed) for f in changed_globs)]
 
     return entries
 

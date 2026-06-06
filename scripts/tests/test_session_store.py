@@ -2322,12 +2322,16 @@ class TestPrune:
     # Config that disables both dual gates so pruning always runs in tests.
     _GATES_OPEN = {"analytics": {"retention": {"min_project_age_days": 0, "min_db_size_mb": 0}}}
 
-    def _insert_old_row(self, conn: sqlite3.Connection, table: str, ts: str = "2020-01-01T00:00:00Z") -> None:
+    def _insert_old_row(
+        self, conn: sqlite3.Connection, table: str, ts: str = "2020-01-01T00:00:00Z"
+    ) -> None:
         """Insert a minimal row with an old timestamp into a prunable table."""
         if table == "tool_events":
             conn.execute("INSERT INTO tool_events(ts) VALUES(?)", (ts,))
         elif table == "cli_events":
-            conn.execute("INSERT INTO cli_events(ts, binary, args) VALUES(?, 'll-session', '[]')", (ts,))
+            conn.execute(
+                "INSERT INTO cli_events(ts, binary, args) VALUES(?, 'll-session', '[]')", (ts,)
+            )
         elif table == "file_events":
             conn.execute("INSERT INTO file_events(ts) VALUES(?)", (ts,))
         elif table == "message_events":
@@ -2375,11 +2379,7 @@ class TestPrune:
     def test_gate_unmet_messages_include_thresholds(self, tmp_path: Path) -> None:
         """gate_unmet entries quote the threshold values for operator visibility."""
         db = tmp_path / "h.db"
-        config = {
-            "analytics": {
-                "retention": {"min_project_age_days": 365, "min_db_size_mb": 800}
-            }
-        }
+        config = {"analytics": {"retention": {"min_project_age_days": 365, "min_db_size_mb": 800}}}
         result = prune(db, config=config)
         assert any("365d" in g for g in result["gate_unmet"])
         assert any("800MB" in g for g in result["gate_unmet"])

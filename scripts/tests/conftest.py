@@ -10,7 +10,6 @@ from typing import Any
 
 import pytest
 
-
 # =============================================================================
 # Snapshot Testing Helpers
 # =============================================================================
@@ -31,6 +30,7 @@ def stable_snapshot_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("little_loops.cli.loop.layout._USE_COLOR", False)
     except AttributeError:
         pass
+
 
 # =============================================================================
 # Fixture File Helpers

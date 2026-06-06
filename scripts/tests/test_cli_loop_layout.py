@@ -11,7 +11,6 @@ import pytest
 
 from tests.helpers import make_test_fsm, make_test_state
 
-
 # ---------------------------------------------------------------------------
 # _colorize_label
 # ---------------------------------------------------------------------------
@@ -23,12 +22,8 @@ class TestColorizeLabel:
     @pytest.fixture(autouse=True)
     def _force_color(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Force ANSI color output in test environment (non-TTY)."""
-        monkeypatch.setattr(
-            "little_loops.cli.loop.layout._USE_COLOR", True, raising=False
-        )
-        monkeypatch.setattr(
-            "little_loops.cli.output._USE_COLOR", True, raising=False
-        )
+        monkeypatch.setattr("little_loops.cli.loop.layout._USE_COLOR", True, raising=False)
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True, raising=False)
 
     def test_no_slash_returns_unchanged(self) -> None:
         """A simple label without '/' is returned as-is if no color code matched."""
@@ -151,9 +146,7 @@ class TestBoxInnerLines:
         from little_loops.cli.loop.layout import _box_inner_lines
 
         state = make_test_state(action="this is a very long action that exceeds the inner width")
-        lines = _box_inner_lines(
-            state, "mystate", verbose=False, inner_width=20, title_only=False
-        )
+        lines = _box_inner_lines(state, "mystate", verbose=False, inner_width=20, title_only=False)
         assert len(lines) == 2  # name line + truncated action
         assert lines[1].endswith("…")  # ends with ellipsis
 
@@ -163,9 +156,7 @@ class TestBoxInnerLines:
 
         action = "123456789012345" * 3  # 45 chars
         state = make_test_state(action=action)
-        lines = _box_inner_lines(
-            state, "mystate", verbose=True, inner_width=15, title_only=False
-        )
+        lines = _box_inner_lines(state, "mystate", verbose=True, inner_width=15, title_only=False)
         # Each wrapped line should be ≤ inner_width
         for line in lines[1:]:  # skip name line
             assert len(line) <= 15
@@ -201,9 +192,7 @@ class TestBoxInnerLines:
 
         action = "1234567890"  # 10 chars
         state = make_test_state(action=action)
-        lines = _box_inner_lines(
-            state, "mystate", verbose=False, inner_width=10, title_only=False
-        )
+        lines = _box_inner_lines(state, "mystate", verbose=False, inner_width=10, title_only=False)
         assert len(lines) == 2
         assert lines[1] == action
 
@@ -212,9 +201,7 @@ class TestBoxInnerLines:
         from little_loops.cli.loop.layout import _box_inner_lines
 
         state = make_test_state(action="line1\nline2\nline3")
-        lines = _box_inner_lines(
-            state, "mystate", verbose=False, inner_width=40, title_only=False
-        )
+        lines = _box_inner_lines(state, "mystate", verbose=False, inner_width=40, title_only=False)
         assert len(lines) == 2
         assert lines[1] == "line1"
 

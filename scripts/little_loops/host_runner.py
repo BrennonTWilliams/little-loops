@@ -553,9 +553,7 @@ class CodexRunner:
             capabilities=self.capabilities,
         )
 
-    def build_detached(
-        self, *, prompt: str, sandbox_mode: str | None = None
-    ) -> HostInvocation:
+    def build_detached(self, *, prompt: str, sandbox_mode: str | None = None) -> HostInvocation:
         args: list[str] = ["exec"]
         args += self._sandbox_args(sandbox_mode)
         args += [

@@ -23,6 +23,7 @@ from little_loops.cli.verify_triggers import (
 # Unit tests: keyword extraction
 # ---------------------------------------------------------------------------
 
+
 class TestExtractKeywords:
     """Tests for _extract_keywords — deterministic keyword extraction."""
 
@@ -90,6 +91,7 @@ class TestExtractKeywords:
 # Unit tests: fixture parsing
 # ---------------------------------------------------------------------------
 
+
 class TestTriggerFixtures:
     """Tests for trigger fixture parsing from SKILL.md frontmatter."""
 
@@ -150,6 +152,7 @@ trigger_fixtures:
 # Unit tests: precision/recall
 # ---------------------------------------------------------------------------
 
+
 class TestPrecisionRecall:
     """Tests for precision/recall computation."""
 
@@ -184,6 +187,7 @@ class TestPrecisionRecall:
 # ---------------------------------------------------------------------------
 # Unit tests: collision detection
 # ---------------------------------------------------------------------------
+
 
 class TestCollisionDetection:
     """Tests for cross-skill collision detection."""
@@ -249,6 +253,7 @@ class TestCollisionDetection:
 # Unit tests: skill description loading
 # ---------------------------------------------------------------------------
 
+
 class TestLoadSkillDescriptions:
     """Tests for skill description loading from disk."""
 
@@ -295,6 +300,7 @@ description: Run tests
 # ---------------------------------------------------------------------------
 # Integration tests: _run_validation
 # ---------------------------------------------------------------------------
+
 
 class TestRunValidation:
     """Integration tests for the core validation logic."""
@@ -392,6 +398,7 @@ description: A skill without fixtures
 # ---------------------------------------------------------------------------
 # CLI integration tests
 # ---------------------------------------------------------------------------
+
 
 class TestMainVerifyTriggers:
     """Tests for main_verify_triggers entry point."""
@@ -529,9 +536,10 @@ description: A skill without trigger fixtures
         """--precision-threshold flag is parsed."""
         self._setup_skills_dir(tmp_path)
         with (
-            patch("sys.argv", [
-                "ll-verify-triggers", "-C", str(tmp_path), "--precision-threshold", "0.9"
-            ]),
+            patch(
+                "sys.argv",
+                ["ll-verify-triggers", "-C", str(tmp_path), "--precision-threshold", "0.9"],
+            ),
             patch("little_loops.cli.verify_triggers._run_validation") as mock_run,
             patch("builtins.print"),
         ):
@@ -542,9 +550,9 @@ description: A skill without trigger fixtures
         """--recall-threshold flag is parsed."""
         self._setup_skills_dir(tmp_path)
         with (
-            patch("sys.argv", [
-                "ll-verify-triggers", "-C", str(tmp_path), "--recall-threshold", "0.7"
-            ]),
+            patch(
+                "sys.argv", ["ll-verify-triggers", "-C", str(tmp_path), "--recall-threshold", "0.7"]
+            ),
             patch("little_loops.cli.verify_triggers._run_validation") as mock_run,
             patch("builtins.print"),
         ):

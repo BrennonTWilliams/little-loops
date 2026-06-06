@@ -9,13 +9,11 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from little_loops.cli.loop.testing import cmd_simulate, cmd_test
 from little_loops.logger import Logger
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -98,9 +96,7 @@ class TestCmdSimulateScenarios:
         assert "done" in captured.out  # reached terminal state
         assert "Terminated by: terminal" in captured.out
 
-    def test_all_fail_scenario(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_all_fail_scenario(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--scenario all-fail makes all exit codes 1."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
@@ -116,9 +112,7 @@ class TestCmdSimulateScenarios:
         # With all-fail, step1's on_no → done should trigger
         assert "done" in captured.out
 
-    def test_all_error_scenario(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_all_error_scenario(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--scenario all-error makes all exit codes 2."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
@@ -133,9 +127,7 @@ class TestCmdSimulateScenarios:
         captured = capsys.readouterr()
         assert "SIMULATION" in captured.out
 
-    def test_first_fail_scenario(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_first_fail_scenario(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--scenario first-fail makes first exit code 1, rest 0."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
@@ -150,9 +142,7 @@ class TestCmdSimulateScenarios:
         captured = capsys.readouterr()
         assert "SIMULATION" in captured.out
 
-    def test_alternating_scenario(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_alternating_scenario(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--scenario alternating toggles between 0 and 1."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()

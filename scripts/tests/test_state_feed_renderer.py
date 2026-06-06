@@ -165,8 +165,13 @@ class TestStateFeedRendererHandleEvent:
         renderer = StateFeedRenderer(fsm, args, model="sonnet")
         assert renderer.model == "sonnet"
         renderer.handle_event(
-            {"event": "action_complete", "duration_ms": 500, "exit_code": 0,
-             "depth": 0, "model": "claude-sonnet-4-6"}
+            {
+                "event": "action_complete",
+                "duration_ms": 500,
+                "exit_code": 0,
+                "depth": 0,
+                "model": "claude-sonnet-4-6",
+            }
         )
         assert renderer.model == "claude-sonnet-4-6"
         renderer.handle_event(

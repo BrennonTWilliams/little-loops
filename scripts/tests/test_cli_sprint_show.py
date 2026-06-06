@@ -14,7 +14,7 @@ import argparse
 import json as _json
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -27,7 +27,6 @@ from little_loops.cli.sprint.show import (
 from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
 from little_loops.issue_parser import IssueInfo
 from little_loops.sprint import Sprint, SprintManager
-
 
 # ---------------------------------------------------------------------------
 # Test Helpers
@@ -219,7 +218,9 @@ class TestRenderExecutionPlan:
 
     def test_issue_with_scores_renders_suffix(self) -> None:
         """Issues with confidence scores show score suffix inline."""
-        issue = _make_issue("BUG-001", "Fix crash", "P0", confidence_score=85, outcome_confidence=72)
+        issue = _make_issue(
+            "BUG-001", "Fix crash", "P0", confidence_score=85, outcome_confidence=72
+        )
         dep_graph = _make_dep_graph([issue])
         waves = [[issue]]
 
@@ -417,9 +418,7 @@ class TestCmdSprintShow:
         manager = SprintManager(sprints_dir=sprints_dir, config=config)
         return manager, "test-sprint"
 
-    def test_show_json_output(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_show_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--json flag produces valid JSON with expected keys."""
         manager, sprint_name = self._setup_show_project(tmp_path)
 
@@ -428,7 +427,6 @@ class TestCmdSprintShow:
             json=True,
             skip_analysis=True,
         )
-        from little_loops.config import BRConfig
 
         # Inject config into manager attributes if needed
         result = _cmd_sprint_show(args, manager)
@@ -441,9 +439,7 @@ class TestCmdSprintShow:
         assert "waves" in data
         assert "has_cycles" in data
 
-    def test_show_skip_analysis(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_show_skip_analysis(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--skip-analysis flag suppresses dependency analysis output."""
         manager, sprint_name = self._setup_show_project(tmp_path)
 

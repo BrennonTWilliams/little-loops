@@ -25,7 +25,6 @@ import pytest
 from little_loops.cli.messages import main_messages
 from little_loops.user_messages import CommandRecord, UserMessage
 
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -73,9 +72,7 @@ class TestMessagesCommandsOnly:
                         "little_loops.cli.messages._save_combined",
                         return_value=Path("/out.jsonl"),
                     ):
-                        with patch.object(
-                            sys, "argv", ["ll-messages", "--commands-only"]
-                        ):
+                        with patch.object(sys, "argv", ["ll-messages", "--commands-only"]):
                             result = main_messages()
         assert result == 0
         mock_msgs.assert_not_called()
@@ -89,9 +86,7 @@ class TestMessagesCommandsOnly:
                         "little_loops.cli.messages._save_combined",
                         return_value=Path("/out.jsonl"),
                     ):
-                        with patch.object(
-                            sys, "argv", ["ll-messages", "--commands-only"]
-                        ):
+                        with patch.object(sys, "argv", ["ll-messages", "--commands-only"]):
                             result = main_messages()
         assert result == 0
         mock_cmds.assert_called_once()
@@ -131,9 +126,7 @@ class TestMessagesSkipCli:
                         "little_loops.cli.messages._save_combined",
                         return_value=Path("/out.jsonl"),
                     ):
-                        with patch.object(
-                            sys, "argv", ["ll-messages", "--skip-cli"]
-                        ):
+                        with patch.object(sys, "argv", ["ll-messages", "--skip-cli"]):
                             result = main_messages()
         assert result == 0
         mock_cmds.assert_not_called()
@@ -164,19 +157,13 @@ class TestMessagesStdout:
         with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[_make_message()]):
                 with patch(_EXTRACT_COMMANDS_PATH, return_value=[]):
-                    with patch(
-                        "little_loops.cli.messages._save_combined"
-                    ) as mock_save:
-                        with patch.object(
-                            sys, "argv", ["ll-messages", "--stdout"]
-                        ):
+                    with patch("little_loops.cli.messages._save_combined") as mock_save:
+                        with patch.object(sys, "argv", ["ll-messages", "--stdout"]):
                             result = main_messages()
         assert result == 0
         mock_save.assert_not_called()
 
-    def test_stdout_flag_prints_json_lines(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_stdout_flag_prints_json_lines(self, capsys: pytest.CaptureFixture[str]) -> None:
         msg = _make_message(content="test stdout message")
         with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[msg]):
@@ -185,7 +172,7 @@ class TestMessagesStdout:
                         result = main_messages()
         assert result == 0
         captured = capsys.readouterr()
-        lines = [l for l in captured.out.strip().splitlines() if l]
+        lines = [ln for ln in captured.out.strip().splitlines() if ln]
         assert len(lines) > 0
         for line in lines:
             parsed = json.loads(line)
@@ -205,9 +192,7 @@ class TestMessagesExcludeAgentsIntegration:
             with patch(_EXTRACT_MESSAGES_PATH) as mock_msgs:
                 mock_msgs.return_value = []
                 with patch(_EXTRACT_COMMANDS_PATH, return_value=[]):
-                    with patch.object(
-                        sys, "argv", ["ll-messages", "--exclude-agents"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-messages", "--exclude-agents"]):
                         result = main_messages()
         assert result == 0
         call_kwargs = mock_msgs.call_args.kwargs
@@ -218,9 +203,7 @@ class TestMessagesExcludeAgentsIntegration:
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[]):
                 with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
                     mock_cmds.return_value = []
-                    with patch.object(
-                        sys, "argv", ["ll-messages", "--exclude-agents"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-messages", "--exclude-agents"]):
                         result = main_messages()
         assert result == 0
         call_kwargs = mock_cmds.call_args.kwargs

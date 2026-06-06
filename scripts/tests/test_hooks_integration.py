@@ -319,7 +319,9 @@ class TestContextMonitor:
 
             config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
-            config_link.write_text(test_config.read_text())  # no context_limit_estimate -> auto-detect
+            config_link.write_text(
+                test_config.read_text()
+            )  # no context_limit_estimate -> auto-detect
 
             transcript_file = tmp_path / "transcript.jsonl"
             assistant_entry = {
@@ -957,9 +959,7 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
-    def test_sentinel_1000000_honored_as_explicit_override(
-        self, hook_script: Path, tmp_path: Path
-    ):
+    def test_sentinel_1000000_honored_as_explicit_override(self, hook_script: Path, tmp_path: Path):
         """Explicit context_limit_estimate: 1000000 in config is honored (not treated as sentinel).
 
         Unknown model with 900k baseline and config limit 1000000. 900k / 1M = 90% -> trigger (exit 2).

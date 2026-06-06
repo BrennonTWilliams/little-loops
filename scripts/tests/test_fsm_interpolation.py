@@ -545,9 +545,7 @@ class TestSafeInterpolation:
 
     def test_default_suffix_returns_actual_when_present(self) -> None:
         """${captured.present:default=fb} returns the actual value when it exists."""
-        ctx = InterpolationContext(
-            captured={"present": {"output": "real value"}}
-        )
+        ctx = InterpolationContext(captured={"present": {"output": "real value"}})
         result = interpolate("${captured.present.output:default=fb}", ctx)
         assert result == "real value"
 
@@ -596,9 +594,7 @@ class TestSafeInterpolation:
 
     def test_default_suffix_nested_path_missing(self) -> None:
         """Default kicks in for a missing nested path within an existing captured key."""
-        ctx = InterpolationContext(
-            captured={"selected_step": {"exit_code": 0}}
-        )
+        ctx = InterpolationContext(captured={"selected_step": {"exit_code": 0}})
         result = interpolate("${captured.selected_step.output:default=no output}", ctx)
         assert result == "no output"
 
@@ -612,9 +608,7 @@ class TestSafeInterpolation:
 
     def test_nullable_suffix_returns_actual_when_present(self) -> None:
         """${captured.present.output?} returns actual value when it exists."""
-        ctx = InterpolationContext(
-            captured={"present": {"output": "real value"}}
-        )
+        ctx = InterpolationContext(captured={"present": {"output": "real value"}})
         result = interpolate("${captured.present.output?}", ctx)
         assert result == "real value"
 
@@ -633,9 +627,7 @@ class TestSafeInterpolation:
 
     def test_nullable_suffix_nested_path_missing(self) -> None:
         """Nullable kicks in for a missing nested path within an existing key."""
-        ctx = InterpolationContext(
-            captured={"selected_step": {"exit_code": 0}}
-        )
+        ctx = InterpolationContext(captured={"selected_step": {"exit_code": 0}})
         result = interpolate("${captured.selected_step.output?}", ctx)
         assert result == ""
 
@@ -675,33 +667,25 @@ class TestSafeInterpolation:
             context={"real_var": "hello"},
             captured={},
         )
-        result = interpolate(
-            "X=${captured.a:default=N/A} Y=${context.real_var}", ctx
-        )
+        result = interpolate("X=${captured.a:default=N/A} Y=${context.real_var}", ctx)
         assert result == "X=N/A Y=hello"
 
     def test_multiple_defaults_in_one_string(self) -> None:
         """Multiple :default= references in one template all resolve."""
         ctx = InterpolationContext(captured={})
-        result = interpolate(
-            "A=${captured.x:default=1} B=${captured.y:default=2}", ctx
-        )
+        result = interpolate("A=${captured.x:default=1} B=${captured.y:default=2}", ctx)
         assert result == "A=1 B=2"
 
     def test_multiple_nullable_in_one_string(self) -> None:
         """Multiple ? references in one template all resolve to empty."""
         ctx = InterpolationContext(captured={})
-        result = interpolate(
-            "[${captured.x?}][${captured.y?}]", ctx
-        )
+        result = interpolate("[${captured.x?}][${captured.y?}]", ctx)
         assert result == "[][]"
 
     def test_mixed_default_and_nullable(self) -> None:
         """Mixing :default= and ? forms in one template works independently."""
         ctx = InterpolationContext(captured={})
-        result = interpolate(
-            "A=${captured.x:default=got} B=${captured.y?}", ctx
-        )
+        result = interpolate("A=${captured.x:default=got} B=${captured.y?}", ctx)
         assert result == "A=got B="
 
     # ── Edge cases and error conditions ───────────────────────────────

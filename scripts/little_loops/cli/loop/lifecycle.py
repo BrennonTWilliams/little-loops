@@ -466,9 +466,7 @@ def cmd_resume(
 
     # Re-inject input hash for checkpoint fingerprinting during resumed runs.
     if "input_hash" not in fsm.context and isinstance(fsm.context.get("input"), str):
-        fsm.context["input_hash"] = hashlib.sha256(
-            fsm.context["input"].encode()
-        ).hexdigest()[:12]
+        fsm.context["input_hash"] = hashlib.sha256(fsm.context["input"].encode()).hexdigest()[:12]
 
     if getattr(args, "delay", None) is not None:
         fsm.backoff = args.delay

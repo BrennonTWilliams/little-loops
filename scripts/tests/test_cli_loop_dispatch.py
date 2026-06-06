@@ -12,13 +12,11 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from little_loops.cli.loop import main_loop
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -83,9 +81,7 @@ class TestMainLoopDispatch:
 
     # -- run --
 
-    def test_run_routes_to_handler(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_run_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop dispatches 'run' to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -143,9 +139,7 @@ class TestMainLoopDispatch:
 
     # -- list --
 
-    def test_list_routes_to_handler(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_list_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop dispatches 'list' to cmd_list."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -203,9 +197,7 @@ class TestMainLoopDispatch:
 
     # -- stop --
 
-    def test_stop_routes_to_handler(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_stop_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop dispatches 'stop' to cmd_stop."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -279,9 +271,7 @@ class TestMainLoopDispatch:
 
     # -- test --
 
-    def test_test_routes_to_handler(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_test_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop dispatches 'test' to cmd_test."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -355,9 +345,7 @@ class TestMainLoopDispatch:
 
     # -- show --
 
-    def test_show_routes_to_handler(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_show_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop dispatches 'show' to cmd_show."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -519,9 +507,7 @@ class TestMainLoopShorthand:
         for mock in mocks.values():
             mock.assert_not_called()
 
-    def test_no_args_shows_help(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_args_shows_help(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """No arguments shows help and returns 1."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -560,9 +546,7 @@ class TestMainLoopRunFlagForwarding:
         call_args = mocks["cmd_run"].call_args
         assert call_args[0][1].max_iterations == 5
 
-    def test_dry_run_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_dry_run_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--dry-run is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -575,9 +559,7 @@ class TestMainLoopRunFlagForwarding:
         mocks["cmd_run"].assert_called_once()
         assert mocks["cmd_run"].call_args[0][1].dry_run is True
 
-    def test_no_llm_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_llm_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--no-llm is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -590,9 +572,7 @@ class TestMainLoopRunFlagForwarding:
         mocks["cmd_run"].assert_called_once()
         assert mocks["cmd_run"].call_args[0][1].no_llm is True
 
-    def test_background_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_background_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--background/-b is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -605,9 +585,7 @@ class TestMainLoopRunFlagForwarding:
         mocks["cmd_run"].assert_called_once()
         assert mocks["cmd_run"].call_args[0][1].background is True
 
-    def test_worktree_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_worktree_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--worktree is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -620,9 +598,7 @@ class TestMainLoopRunFlagForwarding:
         mocks["cmd_run"].assert_called_once()
         assert mocks["cmd_run"].call_args[0][1].worktree is True
 
-    def test_delay_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_delay_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--delay is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -635,9 +611,7 @@ class TestMainLoopRunFlagForwarding:
         mocks["cmd_run"].assert_called_once()
         assert mocks["cmd_run"].call_args[0][1].delay == 2.5
 
-    def test_llm_model_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_llm_model_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--llm-model is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -650,9 +624,7 @@ class TestMainLoopRunFlagForwarding:
         mocks["cmd_run"].assert_called_once()
         assert mocks["cmd_run"].call_args[0][1].llm_model == "sonnet"
 
-    def test_queue_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_queue_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--queue/-q is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -665,26 +637,20 @@ class TestMainLoopRunFlagForwarding:
         mocks["cmd_run"].assert_called_once()
         assert mocks["cmd_run"].call_args[0][1].queue is True
 
-    def test_context_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_context_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--context KEY=VALUE is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
         mocks = _mock_handlers(monkeypatch)
 
-        with patch.object(
-            sys, "argv", ["ll-loop", "run", "test-loop", "--context", "theme=dark"]
-        ):
+        with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--context", "theme=dark"]):
             result = main_loop()
 
         assert result == 0
         mocks["cmd_run"].assert_called_once()
         assert "theme=dark" in mocks["cmd_run"].call_args[0][1].context
 
-    def test_baseline_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_baseline_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--baseline is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -743,9 +709,7 @@ class TestMainLoopRunHandoffThresholdAccepted:
 class TestMainLoopShowFlagForwarding:
     """Tests that show subcommand flags are parsed and forwarded correctly."""
 
-    def test_show_verbose_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_show_verbose_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--verbose is parsed and forwarded to cmd_show."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -758,9 +722,7 @@ class TestMainLoopShowFlagForwarding:
         mocks["cmd_show"].assert_called_once()
         assert mocks["cmd_show"].call_args[0][1].verbose is True
 
-    def test_show_json_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_show_json_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--json is parsed and forwarded to cmd_show."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -777,9 +739,7 @@ class TestMainLoopShowFlagForwarding:
 class TestMainLoopListFlagForwarding:
     """Tests that list subcommand flags are parsed and forwarded correctly."""
 
-    def test_list_running_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_list_running_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--running is parsed and forwarded to cmd_list."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -792,9 +752,7 @@ class TestMainLoopListFlagForwarding:
         mocks["cmd_list"].assert_called_once()
         assert mocks["cmd_list"].call_args[0][0].running is True
 
-    def test_list_json_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_list_json_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--json is parsed and forwarded to cmd_list."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -807,9 +765,7 @@ class TestMainLoopListFlagForwarding:
         mocks["cmd_list"].assert_called_once()
         assert mocks["cmd_list"].call_args[0][0].json is True
 
-    def test_list_category_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_list_category_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--category is parsed and forwarded to cmd_list."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -826,9 +782,7 @@ class TestMainLoopListFlagForwarding:
 class TestMainLoopHistoryFlagForwarding:
     """Tests that history subcommand flags are parsed correctly."""
 
-    def test_history_tail_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_history_tail_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--tail is parsed and forwarded to cmd_history."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)

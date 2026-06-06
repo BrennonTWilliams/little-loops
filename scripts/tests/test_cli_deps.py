@@ -16,7 +16,6 @@ import pytest
 
 from little_loops.cli.deps import main_deps as main
 
-
 # ---------------------------------------------------------------------------
 # Shared helpers (same shape as test_deps_cli.py helpers)
 # ---------------------------------------------------------------------------
@@ -122,9 +121,7 @@ class TestDepsAnalyzeFormat:
         issues_dir = _setup_project(tmp_path)
         _write_issue(issues_dir / "features", "FEAT-001", title="A")
         _write_issue(issues_dir / "features", "FEAT-002", title="B", blocked_by=["FEAT-001"])
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze", "--graph"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze", "--graph"]):
             result = main()
         assert result == 0
         captured = capsys.readouterr()
@@ -144,9 +141,7 @@ class TestDepsValidateOutput:
     ) -> None:
         issues_dir = _setup_project(tmp_path)
         _write_issue(issues_dir / "features", "FEAT-001", title="Clean")
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]):
             result = main()
         assert result == 0
         captured = capsys.readouterr()
@@ -162,9 +157,7 @@ class TestDepsValidateOutput:
         # Independent issues with no dependency refs → no validation problems
         _write_issue(issues_dir / "features", "FEAT-001", title="A")
         _write_issue(issues_dir / "features", "FEAT-002", title="B")
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]):
             result = main()
         assert result == 0
         captured = capsys.readouterr()
@@ -199,9 +192,7 @@ class TestDepsValidateOutput:
     ) -> None:
         issues_dir = _setup_project(tmp_path)
         _write_issue(issues_dir / "features", "FEAT-001", title="A", blocked_by=["FEAT-999"])
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]):
             result = main()
         assert result == 0
         captured = capsys.readouterr()

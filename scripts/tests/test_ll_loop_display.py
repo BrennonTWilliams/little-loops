@@ -26,6 +26,7 @@ from little_loops.fsm.schema import (
     RouteConfig,
     StateConfig,
 )
+from tests.helpers import make_test_fsm, make_test_state
 
 if TYPE_CHECKING:
     pass
@@ -50,9 +51,6 @@ class MockExecutor:
             duration_ms=100,
             captured={},
         )
-
-
-from tests.helpers import make_test_fsm, make_test_state
 
 
 class TestStateToDict:

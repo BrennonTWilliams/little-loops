@@ -33,9 +33,7 @@ def cmd_finalize_decomposition(config: BRConfig, args: argparse.Namespace) -> in
     if args.children_file:
         cf = Path(args.children_file)
         if cf.exists():
-            child_ids.extend(
-                line.strip() for line in cf.read_text().splitlines() if line.strip()
-            )
+            child_ids.extend(line.strip() for line in cf.read_text().splitlines() if line.strip())
 
     project_root = args.config or Path.cwd()
     issues_dir = Path(args.issues_dir)

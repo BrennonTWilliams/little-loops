@@ -284,7 +284,15 @@ class TestForSkillFlag:
         self._setup_issue_session(db, "ENH-1909", "sess-001", "2026-01-10T10:00:00Z")
         with patch(
             "sys.argv",
-            ["ll-history-context", "--for-skill", "manage-issue", "--effort", "--db", str(db), "ENH-1909"],
+            [
+                "ll-history-context",
+                "--for-skill",
+                "manage-issue",
+                "--effort",
+                "--db",
+                str(db),
+                "ENH-1909",
+            ],
         ):
             result = main_history_context()
         out = capsys.readouterr().out
@@ -301,7 +309,15 @@ class TestForSkillFlag:
         self._setup_issue_session(db, "ENH-1909", "sess-002", "2026-01-10T10:00:00Z")
         with patch(
             "sys.argv",
-            ["ll-history-context", "--for-skill", "manage-issue", "--effort", "--db", str(db), "ENH-1909"],
+            [
+                "ll-history-context",
+                "--for-skill",
+                "manage-issue",
+                "--effort",
+                "--db",
+                str(db),
+                "ENH-1909",
+            ],
         ):
             result = main_history_context()
         out = capsys.readouterr().out
@@ -318,7 +334,15 @@ class TestForSkillFlag:
         self._setup_issue_session(db, "ENH-1909", "sess-003", "2026-01-10T10:00:00Z")
         with patch(
             "sys.argv",
-            ["ll-history-context", "--for-skill", "create-sprint", "--effort", "--db", str(db), "ENH-1909"],
+            [
+                "ll-history-context",
+                "--for-skill",
+                "create-sprint",
+                "--effort",
+                "--db",
+                str(db),
+                "ENH-1909",
+            ],
         ):
             result = main_history_context()
         out = capsys.readouterr().out

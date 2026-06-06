@@ -22,7 +22,6 @@ from little_loops.cli.logs import (
     _extract_eval_invocation,
     _fixture_to_harness_argv,
     _is_ll_relevant,
-    _load_catalog_names,
     _parse_args,
     _redact_input_context,
     _resolve_session_log,
@@ -731,7 +730,10 @@ class TestSequences:
             )
 
             with (
-                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--min-len", "3"]),
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "sequences", "--project", str(project_path), "--min-len", "3"],
+                ),
                 patch("pathlib.Path.home", return_value=home),
                 patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
             ):
@@ -767,7 +769,10 @@ class TestSequences:
             )
 
             with (
-                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--min-count", "2"]),
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "sequences", "--project", str(project_path), "--min-count", "2"],
+                ),
                 patch("pathlib.Path.home", return_value=home),
                 patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
             ):
@@ -801,7 +806,10 @@ class TestSequences:
             project_path = self._make_project_dir(claude_projects, home, "myproject", records)
 
             with (
-                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--top", "1"]),
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "sequences", "--project", str(project_path), "--top", "1"],
+                ),
                 patch("pathlib.Path.home", return_value=home),
                 patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
             ):
@@ -828,14 +836,26 @@ class TestSequences:
                 home,
                 "myproject",
                 [
-                    {**self._assistant_bash_record("ll-issues list", "s1"), "timestamp": "2026-06-01T10:00:00Z"},
-                    {**self._assistant_bash_record("ll-issues show", "s1"), "timestamp": "2026-06-01T10:01:00Z"},
-                    {**self._assistant_bash_record("ll-old-command", "s2"), "timestamp": "2020-01-01T00:00:00Z"},
+                    {
+                        **self._assistant_bash_record("ll-issues list", "s1"),
+                        "timestamp": "2026-06-01T10:00:00Z",
+                    },
+                    {
+                        **self._assistant_bash_record("ll-issues show", "s1"),
+                        "timestamp": "2026-06-01T10:01:00Z",
+                    },
+                    {
+                        **self._assistant_bash_record("ll-old-command", "s2"),
+                        "timestamp": "2020-01-01T00:00:00Z",
+                    },
                 ],
             )
 
             with (
-                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--window-days", "10"]),
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "sequences", "--project", str(project_path), "--window-days", "10"],
+                ),
                 patch("pathlib.Path.home", return_value=home),
                 patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
             ):
@@ -868,7 +888,9 @@ class TestSequences:
             )
 
             with (
-                patch("sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--json"]),
+                patch(
+                    "sys.argv", ["ll-logs", "sequences", "--project", str(project_path), "--json"]
+                ),
                 patch("pathlib.Path.home", return_value=home),
                 patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
             ):
@@ -973,15 +995,19 @@ class TestSequences:
             claude_projects.mkdir(parents=True)
 
             # Each session needs ≥2 events for n-grams with default min-len=2
-            path_a = self._make_project_dir(
-                claude_projects, home, "proj_a",
+            self._make_project_dir(
+                claude_projects,
+                home,
+                "proj_a",
                 [
                     self._assistant_bash_record("ll-issues list", "sa"),
                     self._assistant_bash_record("ll-issues show", "sa"),
                 ],
             )
-            path_b = self._make_project_dir(
-                claude_projects, home, "proj_b",
+            self._make_project_dir(
+                claude_projects,
+                home,
+                "proj_b",
                 [
                     self._assistant_bash_record("ll-history sessions", "sb"),
                     self._assistant_bash_record("ll-history context", "sb"),
@@ -1411,11 +1437,14 @@ class TestStats:
         """stats correctly counts invocations per skill in tabular output."""
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
-        _populate_skill_events(db_path, [
-            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
-            ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
-            ("2026-01-01T00:02:00Z", "s1", "capture-issue", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+                ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
+                ("2026-01-01T00:02:00Z", "s1", "capture-issue", ""),
+            ],
+        )
 
         with patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path)]):
             result = main_logs()
@@ -1429,15 +1458,21 @@ class TestStats:
         """stats --json emits a JSON array with invocation counts."""
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
-        _populate_skill_events(db_path, [
-            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
-            ("2026-01-01T00:01:00Z", "s1", "capture-issue", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+                ("2026-01-01T00:01:00Z", "s1", "capture-issue", ""),
+            ],
+        )
 
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1453,20 +1488,33 @@ class TestStats:
         """JSON output includes invocations, corrections, correction_rate, errors, error_rate."""
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
-        _populate_skill_events(db_path, [
-            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+            ],
+        )
 
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             main_logs()
 
         data = json.loads("\n".join(captured))
         row = data[0]
-        assert {"skill", "invocations", "corrections", "correction_rate", "errors", "error_rate"} == set(row.keys())
+        assert {
+            "skill",
+            "invocations",
+            "corrections",
+            "correction_rate",
+            "errors",
+            "error_rate",
+        } == set(row.keys())
         assert row["errors"] is None
         assert row["error_rate"] is None
 
@@ -1474,15 +1522,21 @@ class TestStats:
         """Corrections within 30s of a skill event are attributed to that skill."""
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
-        _populate_skill_events(db_path, [
-            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+            ],
+        )
         _insert_correction(db_path, "2026-01-01T00:00:10Z", "s1", "no, not that")
 
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1495,15 +1549,21 @@ class TestStats:
         """Corrections more than 30s after a skill event are not attributed."""
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
-        _populate_skill_events(db_path, [
-            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+            ],
+        )
         _insert_correction(db_path, "2026-01-01T00:01:00Z", "s1", "no, not that")
 
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1516,16 +1576,25 @@ class TestStats:
         """--sort corrections puts higher-correction skills first."""
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
-        _populate_skill_events(db_path, [
-            ("2026-01-01T00:00:00Z", "s1", "capture-issue", ""),
-            ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "capture-issue", ""),
+                ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
+            ],
+        )
         _insert_correction(db_path, "2026-01-01T00:01:10Z", "s1", "no wait")
 
         captured: list[str] = []
         with (
-            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--json", "--sort", "corrections"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "sys.argv",
+                ["ll-logs", "stats", "--project", str(tmp_path), "--json", "--sort", "corrections"],
+            ),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1543,7 +1612,10 @@ class TestStats:
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path)]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1566,11 +1638,14 @@ class TestStats:
         """_aggregate_skill_stats returns correct invocation counts."""
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
-        _populate_skill_events(db_path, [
-            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
-            ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
-            ("2026-01-01T00:02:00Z", "s1", "capture-issue", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+                ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
+                ("2026-01-01T00:02:00Z", "s1", "capture-issue", ""),
+            ],
+        )
         result = _aggregate_skill_stats(db_path)
         assert result is not None
         assert result["manage-issue"]["invocations"] == 2
@@ -1580,10 +1655,13 @@ class TestStats:
         """window_days filters out older records."""
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
-        _populate_skill_events(db_path, [
-            ("2025-01-01T00:00:00Z", "s1", "old-skill", ""),
-            ("2026-06-01T00:00:00Z", "s1", "new-skill", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2025-01-01T00:00:00Z", "s1", "old-skill", ""),
+                ("2026-06-01T00:00:00Z", "s1", "new-skill", ""),
+            ],
+        )
         result = _aggregate_skill_stats(db_path, window_days=30)
         assert result is not None
         assert "new-skill" in result
@@ -1597,7 +1675,11 @@ class TestDeadSkills:
         """Create a minimal SKILL.md stub in skills_dir/name/."""
         skill_dir = skills_dir / name
         skill_dir.mkdir(parents=True, exist_ok=True)
-        body = "Bridged from `commands/placeholder.md` for Codex Skills API discovery." if bridge else ""
+        body = (
+            "Bridged from `commands/placeholder.md` for Codex Skills API discovery."
+            if bridge
+            else ""
+        )
         (skill_dir / "SKILL.md").write_text(
             f"---\nname: {name}\ndescription: Test skill.\n---\n{body}\n"
         )
@@ -1645,7 +1727,10 @@ class TestDeadSkills:
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1663,17 +1748,23 @@ class TestDeadSkills:
         db_path.parent.mkdir(parents=True)
         skills_dir = tmp_path / "skills"
         self._make_skill(skills_dir, "used-skill")
-        _populate_skill_events(db_path, [
-            ("2026-01-01T00:00:00Z", "s1", "used-skill", ""),
-            ("2026-01-01T00:01:00Z", "s1", "used-skill", ""),
-            ("2026-01-01T00:02:00Z", "s1", "used-skill", ""),
-            ("2026-01-01T00:03:00Z", "s1", "used-skill", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "used-skill", ""),
+                ("2026-01-01T00:01:00Z", "s1", "used-skill", ""),
+                ("2026-01-01T00:02:00Z", "s1", "used-skill", ""),
+                ("2026-01-01T00:03:00Z", "s1", "used-skill", ""),
+            ],
+        )
 
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1688,15 +1779,21 @@ class TestDeadSkills:
         db_path.parent.mkdir(parents=True)
         skills_dir = tmp_path / "skills"
         self._make_skill(skills_dir, "rare-skill")
-        _populate_skill_events(db_path, [
-            ("2026-01-01T00:00:00Z", "s1", "rare-skill", ""),
-            ("2026-01-01T00:01:00Z", "s1", "rare-skill", ""),
-        ])
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "rare-skill", ""),
+                ("2026-01-01T00:01:00Z", "s1", "rare-skill", ""),
+            ],
+        )
 
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1718,7 +1815,10 @@ class TestDeadSkills:
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             main_logs()
 
@@ -1738,7 +1838,10 @@ class TestDeadSkills:
         captured: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1874,6 +1977,7 @@ class TestScanFailures:
     def test_scan_failures_detects_is_error_flag(self, capsys, tmp_path) -> None:
         """Nonzero-exit failure (is_error: True) is detected and surfaced."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
@@ -1906,6 +2010,7 @@ class TestScanFailures:
     def test_scan_failures_detects_traceback(self, capsys) -> None:
         """Traceback text in result content is detected as a failure."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
@@ -1939,6 +2044,7 @@ class TestScanFailures:
     def test_scan_failures_clusters_same_error(self, capsys) -> None:
         """Multiple occurrences of the same error collapse to one cluster."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
@@ -1959,9 +2065,15 @@ class TestScanFailures:
 
             captured_lines: list[str] = []
             with (
-                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path), "--json"]),
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "scan-failures", "--project", str(project_path), "--json"],
+                ),
                 patch("pathlib.Path.home", return_value=home),
-                patch("builtins.print", side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else "")),
+                patch(
+                    "builtins.print",
+                    side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else ""),
+                ),
             ):
                 result = main_logs()
 
@@ -1975,6 +2087,7 @@ class TestScanFailures:
     def test_scan_failures_suppresses_transient_errors(self, capsys) -> None:
         """Rate limit and other transient errors are suppressed from candidates."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
@@ -2003,6 +2116,7 @@ class TestScanFailures:
     def test_scan_failures_excludes_verify_tools(self, capsys) -> None:
         """ll-verify-* expected-exit-1 calls are excluded from candidates."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
@@ -2031,6 +2145,7 @@ class TestScanFailures:
     def test_scan_failures_json_output_schema(self, capsys) -> None:
         """--json output contains expected keys."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
@@ -2048,9 +2163,15 @@ class TestScanFailures:
 
             captured_lines: list[str] = []
             with (
-                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path), "--json"]),
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "scan-failures", "--project", str(project_path), "--json"],
+                ),
                 patch("pathlib.Path.home", return_value=home),
-                patch("builtins.print", side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else "")),
+                patch(
+                    "builtins.print",
+                    side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else ""),
+                ),
             ):
                 result = main_logs()
 
@@ -2068,6 +2189,7 @@ class TestScanFailures:
     def test_scan_failures_no_failures_returns_0(self, capsys) -> None:
         """scan-failures returns 0 with 'no failures' message when corpus is clean."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
@@ -2103,7 +2225,9 @@ class TestDiff:
             for r in records:
                 f.write(json.dumps(r) + "\n")
 
-    def _bash_record(self, command: str, session_id: str = "s1", timestamp: str = "2026-01-01T00:00:00Z") -> dict:
+    def _bash_record(
+        self, command: str, session_id: str = "s1", timestamp: str = "2026-01-01T00:00:00Z"
+    ) -> dict:
         return {
             "type": "assistant",
             "message": {
@@ -2138,14 +2262,19 @@ class TestDiff:
     def test_resolve_session_log_db_lookup(self, tmp_path: Path) -> None:
         """_resolve_session_log resolves session ID via DB lookup."""
         import sqlite3 as _sqlite3
+
         from little_loops.session_store import ensure_db
+
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
         ensure_db(db_path)
         jsonl_path = tmp_path / "mysession.jsonl"
         jsonl_path.write_text("")
         conn = _sqlite3.connect(str(db_path))
-        conn.execute("INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)", ("my-session-id", str(jsonl_path)))
+        conn.execute(
+            "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+            ("my-session-id", str(jsonl_path)),
+        )
         conn.commit()
         conn.close()
 
@@ -2160,11 +2289,18 @@ class TestDiff:
     def test_events_from_jsonl_extracts_ll_invocations(self, tmp_path: Path) -> None:
         """_events_from_jsonl extracts ll invocation events sorted by timestamp."""
         jsonl = tmp_path / "session.jsonl"
-        self._write_jsonl(jsonl, [
-            self._bash_record("ll-issues list", timestamp="2026-01-01T00:00:02Z"),
-            self._bash_record("ll-history sessions", timestamp="2026-01-01T00:00:01Z"),
-            {"type": "user", "message": {"role": "user", "content": "hello"}, "sessionId": "s1"},
-        ])
+        self._write_jsonl(
+            jsonl,
+            [
+                self._bash_record("ll-issues list", timestamp="2026-01-01T00:00:02Z"),
+                self._bash_record("ll-history sessions", timestamp="2026-01-01T00:00:01Z"),
+                {
+                    "type": "user",
+                    "message": {"role": "user", "content": "hello"},
+                    "sessionId": "s1",
+                },
+            ],
+        )
         events = _events_from_jsonl(jsonl)
         assert len(events) == 2
         assert events[0].tool_name == "ll-history"
@@ -2247,10 +2383,13 @@ class TestDiff:
         jsonl_a = tmp_path / "a.jsonl"
         jsonl_b = tmp_path / "b.jsonl"
         self._write_jsonl(jsonl_a, [self._bash_record("ll-issues list")])
-        self._write_jsonl(jsonl_b, [
-            self._bash_record("ll-issues list"),
-            self._bash_record("ll-auto --dry-run"),
-        ])
+        self._write_jsonl(
+            jsonl_b,
+            [
+                self._bash_record("ll-issues list"),
+                self._bash_record("ll-auto --dry-run"),
+            ],
+        )
 
         with patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), str(jsonl_b)]):
             result = main_logs()
@@ -2264,10 +2403,13 @@ class TestDiff:
         """diff text output shows removed skill not in session B."""
         jsonl_a = tmp_path / "a.jsonl"
         jsonl_b = tmp_path / "b.jsonl"
-        self._write_jsonl(jsonl_a, [
-            self._bash_record("ll-issues list"),
-            self._bash_record("ll-history sessions"),
-        ])
+        self._write_jsonl(
+            jsonl_a,
+            [
+                self._bash_record("ll-issues list"),
+                self._bash_record("ll-history sessions"),
+            ],
+        )
         self._write_jsonl(jsonl_b, [self._bash_record("ll-issues list")])
 
         with patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), str(jsonl_b)]):
@@ -2288,7 +2430,10 @@ class TestDiff:
         captured_lines: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), str(jsonl_b), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -2309,15 +2454,21 @@ class TestDiff:
         jsonl_a = tmp_path / "a.jsonl"
         jsonl_b = tmp_path / "b.jsonl"
         self._write_jsonl(jsonl_a, [self._bash_record("ll-issues list")])
-        self._write_jsonl(jsonl_b, [
-            self._bash_record("ll-issues list"),
-            self._bash_record("ll-issues list"),
-        ])
+        self._write_jsonl(
+            jsonl_b,
+            [
+                self._bash_record("ll-issues list"),
+                self._bash_record("ll-issues list"),
+            ],
+        )
 
         captured_lines: list[str] = []
         with (
             patch("sys.argv", ["ll-logs", "diff", str(jsonl_a), str(jsonl_b), "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -2384,11 +2535,16 @@ class TestEvalExport:
         with patch(
             "sys.argv",
             [
-                "ll-logs", "eval-export",
-                "--skill", "manage-issue",
-                "--issue", "FEAT-1970",
-                "--limit", "10",
-                "--out", str(out_file),
+                "ll-logs",
+                "eval-export",
+                "--skill",
+                "manage-issue",
+                "--issue",
+                "FEAT-1970",
+                "--limit",
+                "10",
+                "--out",
+                str(out_file),
                 "--json",
             ],
         ):

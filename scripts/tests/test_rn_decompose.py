@@ -140,9 +140,9 @@ class TestDecompositionChain:
         """Loop description must not say 'no children found' terminates in failed (BUG-1974)."""
         data = _load_loop()
         description = data.get("description", "")
-        assert "no children found" not in description.lower() or "failed" not in description.lower(), (
-            "BUG-1974: description still classifies 'no children found' as a failed outcome"
-        )
+        assert (
+            "no children found" not in description.lower() or "failed" not in description.lower()
+        ), "BUG-1974: description still classifies 'no children found' as a failed outcome"
 
     def test_enqueue_children_has_cycle_detection(self) -> None:
         """enqueue_children performs cycle detection via Python visited set."""

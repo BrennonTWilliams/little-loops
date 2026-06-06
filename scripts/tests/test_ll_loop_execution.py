@@ -14,9 +14,6 @@ import pytest
 
 from little_loops.fsm.schema import (
     EvaluateConfig,
-    FSMLoop,
-    RouteConfig,
-    StateConfig,
 )
 from tests.helpers import make_test_fsm, make_test_state
 

@@ -88,7 +88,9 @@ class TestAnalyzeTestGapsGapScoreBranches:
 
     def test_has_test_true_gap_score_equals_bug_count(self, tmp_path: Path) -> None:
         hotspots = self._make_hotspots("src/foo.py", 3)
-        with patch("little_loops.issue_history.quality._find_test_file", return_value="tests/test_foo.py"):
+        with patch(
+            "little_loops.issue_history.quality._find_test_file", return_value="tests/test_foo.py"
+        ):
             result = analyze_test_gaps([], hotspots, project_root=tmp_path)
         assert len(result.gaps) == 1
         gap = result.gaps[0]
@@ -111,9 +113,7 @@ import pytest  # noqa: E402 — needed for approx above
 class TestAnalyzeTestGapsPriorityThresholds:
     """Test priority assignment for each (has_test, bug_count) combination."""
 
-    def _analyze_with(
-        self, bug_count: int, has_test: bool, tmp_path: Path
-    ) -> str:
+    def _analyze_with(self, bug_count: int, has_test: bool, tmp_path: Path) -> str:
         h = Hotspot(
             path="src/module.py",
             issue_count=bug_count,
@@ -182,6 +182,7 @@ class TestDetectConfigGapsFilesystem:
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
         import json as _json
+
         (hooks_dir / "hooks.json").write_text(
             _json.dumps({"hooks": {"PostToolUse": []}}), encoding="utf-8"
         )

@@ -15,15 +15,12 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from little_loops.cli.sprint.create import _cmd_sprint_create
 from little_loops.cli.sprint.manage import _cmd_sprint_delete, _cmd_sprint_list
 from little_loops.sprint import Sprint, SprintManager
-
 
 # ---------------------------------------------------------------------------
 # _cmd_sprint_create Tests
@@ -162,9 +159,7 @@ class TestCmdSprintDelete:
         """Deleting an existing sprint returns 0 and removes the file."""
         sprints_dir = tmp_path / ".sprints"
         sprints_dir.mkdir()
-        Sprint(
-            name="my-sprint", description="", issues=["BUG-001"], created=""
-        ).save(sprints_dir)
+        Sprint(name="my-sprint", description="", issues=["BUG-001"], created="").save(sprints_dir)
 
         manager = SprintManager(sprints_dir=sprints_dir)
         args = argparse.Namespace(sprint="my-sprint")
@@ -195,7 +190,9 @@ class TestCmdSprintDelete:
 class TestCmdSprintList:
     """Tests for _cmd_sprint_list — gaps not covered by existing tests."""
 
-    def test_list_empty_sprints_dir(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_list_empty_sprints_dir(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Listing an empty sprints directory prints a message and returns 0."""
         sprints_dir = tmp_path / ".sprints"
         sprints_dir.mkdir()
@@ -209,16 +206,16 @@ class TestCmdSprintList:
         captured = capsys.readouterr()
         assert "No sprints defined" in captured.out
 
-    def test_list_non_verbose_format(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_list_non_verbose_format(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Non-verbose list shows sprint names with descriptions (if any)."""
         sprints_dir = tmp_path / ".sprints"
         sprints_dir.mkdir()
-        Sprint(
-            name="alpha", description="First sprint", issues=["BUG-001"], created=""
-        ).save(sprints_dir)
-        Sprint(name="beta", description="", issues=["FEAT-010"], created="").save(
+        Sprint(name="alpha", description="First sprint", issues=["BUG-001"], created="").save(
             sprints_dir
         )
+        Sprint(name="beta", description="", issues=["FEAT-010"], created="").save(sprints_dir)
 
         manager = SprintManager(sprints_dir=sprints_dir)
         args = argparse.Namespace(json=False, verbose=False)
