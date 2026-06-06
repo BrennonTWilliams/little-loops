@@ -1,15 +1,31 @@
 ---
 id: FEAT-1925
-title: "ll-logs-telemetry-digest: FSM loop wrapping EPIC-1918 subcommands"
+title: 'll-logs-telemetry-digest: FSM loop wrapping EPIC-1918 subcommands'
 type: FEAT
 priority: P3
 status: open
-captured_at: "2026-06-04T03:04:39Z"
-discovered_date: "2026-06-04"
+captured_at: '2026-06-04T03:04:39Z'
+discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1918
-relates_to: [EPIC-1918, ENH-1919, ENH-1921, ENH-1922, ENH-1923]
-labels: [captured, ll-logs, telemetry, loop, fsm]
+relates_to:
+- EPIC-1918
+- ENH-1919
+- ENH-1921
+- ENH-1922
+- ENH-1923
+labels:
+- captured
+- ll-logs
+- telemetry
+- loop
+- fsm
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1925: ll-logs-telemetry-digest — FSM loop wrapping EPIC-1918 subcommands
@@ -22,6 +38,14 @@ run. The loop refreshes the log corpus, conditionally invokes each new
 `ll-logs` subcommand as it becomes available (capability-detected via
 `--help` guard), triages findings into issues, writes a structured digest, and
 commits only when new issues were filed.
+
+## Current Behavior
+
+The EPIC-1918 telemetry subcommands (`ll-logs stats`, `ll-logs scan-failures`, `ll-logs sequences`, `ll-logs dead-skills`) must be run manually, individually, and in the correct order. There is no automated harness to compose them, correlate findings across subcommands, or produce a consolidated digest. No loop exists at `.loops/ll-logs-telemetry-digest.yaml`.
+
+## Expected Behavior
+
+Running `ll-loop run ll-logs-telemetry-digest` refreshes the log corpus, then sequentially invokes each EPIC-1918 subcommand using capability detection (`--help` guard) to skip those not yet implemented. Findings from `scan-failures` and `dead-skills` are triaged into issues (capped at 3 and 2 per run respectively). A structured digest is written to `${run_dir}/digest.md` and new issue files are committed only when created — all without manual intervention.
 
 ## Motivation
 
@@ -283,6 +307,13 @@ max_iterations: 2
 timeout: 3600
 ```
 
+## Impact
+
+- **Priority**: P3 — automation convenience; depends on EPIC-1918 children shipping before the loop gains full depth
+- **Effort**: Small — pure YAML loop, no Python changes required
+- **Risk**: Low — isolated YAML artifact; touches no existing code or data paths
+- **Breaking Change**: No
+
 ## API / Interface
 
 - **Invocation**: `ll-loop run ll-logs-telemetry-digest`
@@ -318,6 +349,8 @@ timeout: 3600
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-06T00:36:00Z - `8107f14f-4f99-41ee-b217-9335aae5bdbb.jsonl`
+- `/ll:format-issue` - 2026-06-06T05:22:27 - `06e1fd7f-9e9e-4f4e-85e5-c6c182434078.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T05:19:22 - `8b34820d-ae67-4c39-b57a-ea2b07021501.jsonl`
 - `/ll:capture-issue` - 2026-06-04T03:04:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/551af427-6235-4491-aaed-0867dd5fc912.jsonl`

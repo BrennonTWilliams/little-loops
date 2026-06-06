@@ -754,6 +754,33 @@ class CompactionConfig:
 
 
 @dataclass
+class RetentionConfig:
+    """Retention policy for history.db raw event tables (ENH-1906).
+
+    Pruning is dual-gated: both ``min_project_age_days`` and ``min_db_size_mb``
+    must be exceeded before any rows are deleted. Default thresholds are generous
+    so fresh or small projects are never affected.
+
+    Only high-volume tables are pruned (tool_events, cli_events, file_events,
+    message_events). High-value tables (issue_events, user_corrections) are
+    never pruned.
+    """
+
+    min_project_age_days: int = 365
+    min_db_size_mb: int = 800
+    raw_event_max_age_days: int | None = 90
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RetentionConfig:
+        """Create RetentionConfig from dictionary. Lenient: ignores unknown keys."""
+        return cls(
+            min_project_age_days=data.get("min_project_age_days", 365),
+            min_db_size_mb=data.get("min_db_size_mb", 800),
+            raw_event_max_age_days=data.get("raw_event_max_age_days", 90),
+        )
+
+
+@dataclass
 class HistoryConfig:
     """History read/consume configuration (ENH-1913).
 

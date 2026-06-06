@@ -25,6 +25,7 @@ Public API:
     backfill_incremental(db,...): incremental JSONL-only backfill filtered by mtime
     mine_corrections_from_messages(conn,...): scan message_events and insert corrections
     compact_session(session_id,...): summarize one session into summary_nodes/summary_spans
+    prune(db,...):               prune raw event rows older than N days and VACUUM
     search(db,...):              FTS5 full-text query with BM25 ranking
     recent(db,...):              recent rows for a given event kind
     is_correction(text):         return True if text matches a user-correction signal
@@ -45,7 +46,7 @@ import threading
 import time
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,7 @@ __all__ = [
     "backfill_incremental",
     "mine_corrections_from_messages",
     "compact_session",
+    "prune",
     "search",
     "recent",
     "is_correction",
@@ -1736,3 +1738,126 @@ def backfill_incremental(
     finally:
         conn.close()
     return counts
+
+
+# High-volume tables eligible for age-based pruning.
+_PRUNABLE_TABLES = ("tool_events", "cli_events", "file_events", "message_events")
+
+
+def prune(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    config: dict | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Prune raw event rows older than configured max-age, then VACUUM the database.
+
+    Both dual gates must be exceeded before any rows are deleted:
+    - ``min_project_age_days``: project age (MIN(started_at) from sessions table)
+    - ``min_db_size_mb``: DB file size on disk
+
+    High-volume tables pruned: ``tool_events``, ``cli_events``, ``file_events``,
+    ``message_events``. High-value tables (``issue_events``, ``user_corrections``)
+    are never pruned.
+
+    Args:
+        db: Path to the history database.
+        config: Project config dict (reads ``analytics.retention``). ``None`` uses defaults.
+        dry_run: Count rows that would be deleted without deleting them.
+
+    Returns:
+        dict with keys:
+        - ``pruned`` (bool): whether pruning ran (gates met and rows eligible)
+        - ``gate_unmet`` (list[str]): human-readable reason for each unmet gate
+        - ``project_age_days`` (int): measured project age
+        - ``db_size_mb`` (float): DB file size in MB
+        - ``deleted`` (dict[str, int]): row counts per table (actual or projected)
+        - ``vacuumed`` (bool): whether VACUUM ran (always False in dry_run)
+    """
+    from little_loops.config.features import RetentionConfig
+
+    raw = (config or {}).get("analytics", {}).get("retention", {})
+    retention_cfg = RetentionConfig.from_dict(raw)
+
+    db_path = Path(db)
+    result: dict = {
+        "pruned": False,
+        "gate_unmet": [],
+        "project_age_days": 0,
+        "db_size_mb": 0.0,
+        "deleted": {},
+        "vacuumed": False,
+    }
+
+    conn = connect(db)
+    try:
+        # Gate 1: project age — MIN(started_at) from sessions
+        row = conn.execute("SELECT MIN(started_at) FROM sessions").fetchone()
+        oldest_ts = row[0] if row and row[0] else None
+        if oldest_ts:
+            try:
+                oldest_dt = datetime.fromisoformat(oldest_ts.replace("Z", "+00:00"))
+                project_age_days = (datetime.now(UTC) - oldest_dt).days
+            except ValueError:
+                project_age_days = 0
+        else:
+            project_age_days = 0
+        result["project_age_days"] = project_age_days
+
+        # Gate 2: DB file size
+        db_size_mb = db_path.stat().st_size / (1024 * 1024) if db_path.exists() else 0.0
+        result["db_size_mb"] = round(db_size_mb, 2)
+
+        # Evaluate gates
+        gates_unmet: list[str] = []
+        if project_age_days < retention_cfg.min_project_age_days:
+            gates_unmet.append(
+                f"project age {project_age_days}d < {retention_cfg.min_project_age_days}d"
+            )
+        if db_size_mb < retention_cfg.min_db_size_mb:
+            gates_unmet.append(
+                f"db size {db_size_mb:.1f}MB < {retention_cfg.min_db_size_mb}MB"
+            )
+        result["gate_unmet"] = gates_unmet
+
+        if gates_unmet:
+            return result
+
+        if retention_cfg.raw_event_max_age_days is None:
+            result["pruned"] = True
+            return result
+
+        cutoff = datetime.now(UTC) - timedelta(days=retention_cfg.raw_event_max_age_days)
+        cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        deleted: dict[str, int] = {}
+        for table in _PRUNABLE_TABLES:
+            count_row = conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE ts < ?", (cutoff_str,)
+            ).fetchone()
+            deleted[table] = count_row[0] if count_row else 0
+            if not dry_run and deleted[table] > 0:
+                conn.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff_str,))
+
+        result["deleted"] = deleted
+        result["pruned"] = True
+
+        if not dry_run:
+            conn.commit()
+    finally:
+        conn.close()
+
+    # VACUUM outside the original connection to avoid transaction conflicts
+    if result["pruned"] and not dry_run:
+        try:
+            vac_conn = sqlite3.connect(str(db_path))
+            vac_conn.isolation_level = None
+            try:
+                vac_conn.execute("VACUUM")
+                result["vacuumed"] = True
+            finally:
+                vac_conn.close()
+        except sqlite3.Error as exc:
+            logger.warning("prune: VACUUM failed: %s", exc)
+
+    return result

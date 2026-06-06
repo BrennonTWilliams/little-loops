@@ -1405,6 +1405,28 @@
             }
           },
           "additionalProperties": false
+        },
+        "retention": {
+          "type": "object",
+          "description": "Retention policy for history.db raw event tables (ENH-1906). Pruning is dual-gated: both min_project_age_days and min_db_size_mb must be exceeded before any rows are deleted. Default thresholds are generous so fresh or small projects are unaffected.",
+          "properties": {
+            "min_project_age_days": {
+              "type": "integer",
+              "default": 365,
+              "description": "Minimum project age in days (measured as MIN(started_at) from sessions table). Both gates must be exceeded before pruning runs."
+            },
+            "min_db_size_mb": {
+              "type": "integer",
+              "default": 800,
+              "description": "Minimum DB file size in MB before pruning runs. Both gates must be exceeded."
+            },
+            "raw_event_max_age_days": {
+              "type": ["integer", "null"],
+              "default": 90,
+              "description": "Delete tool_events, cli_events, file_events, message_events rows older than N days. Null disables per-table pruning. High-value tables (issue_events, user_corrections) are never pruned."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

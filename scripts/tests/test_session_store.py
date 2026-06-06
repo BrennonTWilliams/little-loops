@@ -24,6 +24,7 @@ from little_loops.session_store import (
     connect,
     ensure_db,
     is_correction,
+    prune,
     recent,
     record_correction,
     search,
@@ -2313,3 +2314,208 @@ class TestSummarizeBlock:
         assert "Message one" in prompt
         assert "\n---\n" in prompt
         assert "Message three" in prompt
+
+
+class TestPrune:
+    """Retention/compaction policy for history.db raw event tables (ENH-1906)."""
+
+    # Config that disables both dual gates so pruning always runs in tests.
+    _GATES_OPEN = {"analytics": {"retention": {"min_project_age_days": 0, "min_db_size_mb": 0}}}
+
+    def _insert_old_row(self, conn: sqlite3.Connection, table: str, ts: str = "2020-01-01T00:00:00Z") -> None:
+        """Insert a minimal row with an old timestamp into a prunable table."""
+        if table == "tool_events":
+            conn.execute("INSERT INTO tool_events(ts) VALUES(?)", (ts,))
+        elif table == "cli_events":
+            conn.execute("INSERT INTO cli_events(ts, binary, args) VALUES(?, 'll-session', '[]')", (ts,))
+        elif table == "file_events":
+            conn.execute("INSERT INTO file_events(ts) VALUES(?)", (ts,))
+        elif table == "message_events":
+            conn.execute("INSERT INTO message_events(ts) VALUES(?)", (ts,))
+        conn.commit()
+
+    def _insert_session(self, conn: sqlite3.Connection, started_at: str) -> None:
+        """Insert a session row with the given started_at timestamp."""
+        conn.execute(
+            "INSERT INTO sessions(session_id, jsonl_path, started_at) VALUES(?,?,?)",
+            ("test-session", "test.jsonl", started_at),
+        )
+        conn.commit()
+
+    def test_both_gates_unmet_by_default_fresh_db(self, tmp_path: Path) -> None:
+        """Fresh small DB with no sessions fails both gates."""
+        db = tmp_path / "h.db"
+        result = prune(db)
+        assert not result["pruned"]
+        assert len(result["gate_unmet"]) == 2
+
+    def test_blocks_when_project_too_young(self, tmp_path: Path) -> None:
+        """Gate fails when project age < threshold even if DB is large enough."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_session(conn, "2026-05-01T00:00:00Z")  # ~35 days old
+        conn.close()
+        config = {"analytics": {"retention": {"min_project_age_days": 365, "min_db_size_mb": 0}}}
+        result = prune(db, config=config)
+        assert not result["pruned"]
+        assert any("project age" in g for g in result["gate_unmet"])
+        assert result["project_age_days"] < 365
+
+    def test_blocks_when_db_too_small(self, tmp_path: Path) -> None:
+        """Gate fails when DB size < threshold even if project is old enough."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_session(conn, "2020-01-01T00:00:00Z")  # very old
+        conn.close()
+        config = {"analytics": {"retention": {"min_project_age_days": 0, "min_db_size_mb": 9999}}}
+        result = prune(db, config=config)
+        assert not result["pruned"]
+        assert any("db size" in g for g in result["gate_unmet"])
+
+    def test_gate_unmet_messages_include_thresholds(self, tmp_path: Path) -> None:
+        """gate_unmet entries quote the threshold values for operator visibility."""
+        db = tmp_path / "h.db"
+        config = {
+            "analytics": {
+                "retention": {"min_project_age_days": 365, "min_db_size_mb": 800}
+            }
+        }
+        result = prune(db, config=config)
+        assert any("365d" in g for g in result["gate_unmet"])
+        assert any("800MB" in g for g in result["gate_unmet"])
+
+    def test_prunes_old_rows_from_high_volume_tables(self, tmp_path: Path) -> None:
+        """Rows older than raw_event_max_age_days are deleted from all prunable tables."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        for table in ("tool_events", "cli_events", "file_events", "message_events"):
+            self._insert_old_row(conn, table)
+        conn.close()
+
+        config = {**self._GATES_OPEN, "analytics": {**self._GATES_OPEN["analytics"]}}
+        config["analytics"]["retention"]["raw_event_max_age_days"] = 90
+        result = prune(db, config=config)
+
+        assert result["pruned"]
+        conn2 = connect(db)
+        for table in ("tool_events", "cli_events", "file_events", "message_events"):
+            count = conn2.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            assert count == 0, f"{table} should be empty after prune"
+            assert result["deleted"][table] == 1
+        conn2.close()
+
+    def test_retains_recent_rows(self, tmp_path: Path) -> None:
+        """Rows newer than the cutoff are kept after pruning."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_old_row(conn, "tool_events", "2020-01-01T00:00:00Z")
+        conn.execute("INSERT INTO tool_events(ts) VALUES(?)", ("2099-12-31T00:00:00Z",))
+        conn.commit()
+        conn.close()
+
+        result = prune(db, config=self._GATES_OPEN)
+        assert result["deleted"]["tool_events"] == 1
+
+        conn2 = connect(db)
+        count = conn2.execute("SELECT COUNT(*) FROM tool_events").fetchone()[0]
+        conn2.close()
+        assert count == 1  # only the future row survives
+
+    def test_high_value_tables_never_pruned(self, tmp_path: Path) -> None:
+        """issue_events and user_corrections are never deleted by prune()."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        conn.execute(
+            "INSERT INTO issue_events(ts, issue_id, transition) VALUES(?,?,?)",
+            ("2020-01-01T00:00:00Z", "ENH-1906", "open"),
+        )
+        conn.execute(
+            "INSERT INTO user_corrections(ts, session_id, content, source) VALUES(?,?,?,?)",
+            ("2020-01-01T00:00:00Z", "s1", "don't do that", "message"),
+        )
+        conn.commit()
+        conn.close()
+
+        prune(db, config=self._GATES_OPEN)
+
+        conn2 = connect(db)
+        ie_count = conn2.execute("SELECT COUNT(*) FROM issue_events").fetchone()[0]
+        uc_count = conn2.execute("SELECT COUNT(*) FROM user_corrections").fetchone()[0]
+        conn2.close()
+        assert ie_count == 1
+        assert uc_count == 1
+
+    def test_idempotent(self, tmp_path: Path) -> None:
+        """Second prune call with no new rows reports 0 deleted."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_old_row(conn, "tool_events")
+        conn.close()
+
+        prune(db, config=self._GATES_OPEN)
+        result2 = prune(db, config=self._GATES_OPEN)
+        assert result2["pruned"]
+        assert result2["deleted"].get("tool_events", 0) == 0
+
+    def test_dry_run_does_not_delete_rows(self, tmp_path: Path) -> None:
+        """dry_run=True counts rows without deleting them."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_old_row(conn, "message_events")
+        conn.close()
+
+        result = prune(db, config=self._GATES_OPEN, dry_run=True)
+        assert result["pruned"]
+        assert result["deleted"]["message_events"] == 1
+        assert not result["vacuumed"]
+
+        conn2 = connect(db)
+        count = conn2.execute("SELECT COUNT(*) FROM message_events").fetchone()[0]
+        conn2.close()
+        assert count == 1  # row still present
+
+    def test_null_raw_event_max_age_disables_pruning(self, tmp_path: Path) -> None:
+        """raw_event_max_age_days=null means no table is pruned."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_old_row(conn, "tool_events")
+        conn.close()
+
+        config = {
+            "analytics": {
+                "retention": {
+                    "min_project_age_days": 0,
+                    "min_db_size_mb": 0,
+                    "raw_event_max_age_days": None,
+                }
+            }
+        }
+        result = prune(db, config=config)
+        assert result["pruned"]
+        assert result["deleted"] == {}
+
+        conn2 = connect(db)
+        count = conn2.execute("SELECT COUNT(*) FROM tool_events").fetchone()[0]
+        conn2.close()
+        assert count == 1
+
+    def test_vacuum_runs_after_prune(self, tmp_path: Path) -> None:
+        """vacuumed flag is set True when pruning runs and rows are deleted."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_old_row(conn, "cli_events")
+        conn.close()
+
+        result = prune(db, config=self._GATES_OPEN)
+        assert result["vacuumed"]
+
+    def test_returns_project_age_and_db_size(self, tmp_path: Path) -> None:
+        """Result always includes measured project_age_days and db_size_mb."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_session(conn, "2022-01-01T00:00:00Z")
+        conn.close()
+
+        result = prune(db)
+        assert result["project_age_days"] > 0
+        assert result["db_size_mb"] > 0

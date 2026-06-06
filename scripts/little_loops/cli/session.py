@@ -13,6 +13,7 @@ Subcommands:
     grep     regex search over message_events with covering summary node context
     expand   return message_events covered by a summary node
     describe metadata for a summary node
+    prune    delete raw event rows older than configured max-age and VACUUM (ENH-1906)
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from little_loops.session_store import (
     backfill_incremental,
     cli_event_context,
     connect,
+    prune,
     recent,
     search,
 )
@@ -61,6 +63,8 @@ Examples:
   %(prog)s grep "auth middleware"                 # Regex search over message_events
   %(prog)s expand 42                              # Messages covered by summary node 42
   %(prog)s describe 42                            # Metadata for summary node 42
+  %(prog)s prune --dry-run                        # Show what would be pruned
+  %(prog)s prune                                  # Delete old raw events and VACUUM
 """,
     )
     parser.add_argument(
@@ -161,6 +165,18 @@ Examples:
         "node_id", type=int, metavar="NODE_ID", help="Summary node ID to describe"
     )
     add_json_arg(describe_parser)
+
+    prune_parser = subparsers.add_parser(
+        "prune",
+        help="Prune raw event rows older than configured max-age and VACUUM the database",
+    )
+    prune_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Report which rows would be deleted without actually deleting them",
+    )
+    add_json_arg(prune_parser)
 
     return parser
 
@@ -387,6 +403,57 @@ def main_session() -> int:
             print(f"ts_start={node.ts_start}  ts_end={node.ts_end}")
             print(f"tokens={node.tokens}  created_at={node.created_at}")
             print(f"content: {node.content[:200]}")
+            return 0
+
+        if args.command == "prune":
+            import json as _json
+
+            from little_loops.config.core import resolve_config_path
+
+            config: dict | None = None
+            config_path = resolve_config_path(Path.cwd())
+            if config_path is not None:
+                try:
+                    config = _json.loads(config_path.read_text(encoding="utf-8"))
+                except (OSError, _json.JSONDecodeError):
+                    config = None
+
+            result = prune(args.db, config=config, dry_run=args.dry_run)
+
+            if args.json:
+                print_json(result)
+                return 0
+
+            if args.dry_run:
+                print("DRY RUN — no rows deleted\n")
+
+            if result["gate_unmet"]:
+                print("Gates unmet — pruning skipped:")
+                for reason in result["gate_unmet"]:
+                    print(f"  {reason}")
+                print(
+                    f"\nDB: {result['db_size_mb']:.1f} MB  |  "
+                    f"project age: {result['project_age_days']}d"
+                )
+                return 0
+
+            if not result["pruned"]:
+                print("No pruning configured (raw_event_max_age_days is null).")
+                return 0
+
+            deleted = result.get("deleted", {})
+            total = sum(deleted.values())
+            if total == 0:
+                print("Gates met — no eligible rows found.")
+            else:
+                label = "Would delete" if args.dry_run else "Deleted"
+                for table, count in deleted.items():
+                    print(f"  {table}: {count:,} rows")
+                print(f"\n{label} {total:,} rows total.")
+
+            if not args.dry_run and result.get("vacuumed"):
+                print("Database VACUUMed.")
+
             return 0
 
         return 1
