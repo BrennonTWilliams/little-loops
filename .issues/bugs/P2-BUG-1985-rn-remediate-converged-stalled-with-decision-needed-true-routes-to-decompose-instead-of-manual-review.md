@@ -4,7 +4,7 @@ title: 'rn-remediate: CONVERGED_STALLED with decision_needed still true routes t
   NEEDS_DECOMPOSE instead of NEEDS_MANUAL_REVIEW'
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-06T00:00:00Z'
 discovered_date: '2026-06-06'
 discovered_by: audit-loop-run
@@ -198,3 +198,4 @@ _Added by `/ll:refine-issue` — based on direct codebase analysis:_
 - `/ll:refine-issue` - 2026-06-06T22:39:32 - `0ca21a34-10fe-4584-bba4-cf168e9b3350.jsonl`
 - `/ll:format-issue` - 2026-06-06T22:29:15 - `e0f0d6fe-d848-4276-84db-9f4b881a2d8b.jsonl`
 - `/ll:audit-loop-run` - 2026-06-06 - from run 2026-06-06T220136 (FEAT-1809)
+- `/ll:confidence-check` - 2026-06-06T00:00:00 - `87c3e6e8-ef30-4f17-aa89-a55974b75a02.jsonl`

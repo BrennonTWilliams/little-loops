@@ -731,7 +731,7 @@ ll-loop run rn-remediate "<issue-id>" \
 | `delta_complexity` | pre − post | inverted (lower complexity = improved) |
 | `delta_ambiguity` | pre − post | inverted (lower ambiguity = improved) |
 
-Convergence rules (first match wins): both scores at or above thresholds → `CONVERGED_PASS` → `implement`; `total_delta ≤ 2` → `CONVERGED_STALLED` → `failed`; otherwise → `CONVERGED_IMPROVED` → check remediation budget (under budget → re-enter `diagnose`; exhausted → `failed`).
+Convergence rules (first match wins): both scores at or above thresholds → `CONVERGED_PASS` → `implement`; `total_delta ≤ 2` + `decision_needed=true` → `NEEDS_MANUAL_REVIEW` → `failed` (parent marks issue blocked); `total_delta ≤ 2` + `decision_needed=false` → `CONVERGED_STALLED` → `failed`; otherwise → `CONVERGED_IMPROVED` → check remediation budget (under budget → re-enter `diagnose`; exhausted → `failed`).
 
 **FSM flow** (abbreviated — 23 states across 5 phases):
 
@@ -754,8 +754,9 @@ Phase 4 — Re-Assessment:
   re_assess → verify_re_assess_scores → check_convergence
 
 Phase 5 — Convergence:
-  check_convergence → route_conv_pass → route_conv_improved → check_remediation_budget
-    (PASS → implement; IMPROVED + under budget → diagnose; STALLED or budget exhausted → failed)
+  check_convergence → route_conv_pass → route_conv_improved → route_conv_manual_review → check_remediation_budget
+    (PASS → implement; IMPROVED + under budget → diagnose; NEEDS_MANUAL_REVIEW → emit_needs_manual_review → failed;
+     STALLED or budget exhausted → emit_needs_decompose → failed)
 ```
 
 **Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > DECOMPOSE). The `DECOMPOSE` token is a terminal diagnosis — it falls through the routing chain to `failed`, signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_iterations: 100`, `timeout: 14400`, `on_handoff: spawn`.

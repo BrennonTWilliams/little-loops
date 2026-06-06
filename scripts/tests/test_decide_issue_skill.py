@@ -271,3 +271,35 @@ class TestPhase3bInlineProvisionalScan:
         assert "AskUserQuestion" not in text, (
             "Phase 3b must not use AskUserQuestion — --auto mode is non-interactive"
         )
+
+
+class TestPhase3bResolvedFilter:
+    """Phase 3b-i resolved-question filter must be documented in SKILL.md (ENH-1986)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 3b: Inline Decision Scan")
+        next_heading = content.find("\n## Phase 4:", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_resolved_filter_subsection_exists(self) -> None:
+        text = self._phase_text()
+        assert "Phase 3b-i" in text, "Phase 3b must include a Phase 3b-i resolved-question filter subsection"
+
+    def test_resolved_markers_documented(self) -> None:
+        text = self._phase_text()
+        assert "✅ RESOLVED" in text, "Phase 3b-i must document the ✅ RESOLVED marker variant"
+        assert "NO_ACTIONABLE_DECISIONS" in text, "Phase 3b-i must document the NO_ACTIONABLE_DECISIONS output token"
+
+    def test_decision_needed_not_cleared_on_no_actionable(self) -> None:
+        text = self._phase_text()
+        assert "decision_needed remains true" in text or "leave it as `true`" in text or "leave `decision_needed`" in text, (
+            "Phase 3b-i must document that decision_needed is NOT cleared on the NO_ACTIONABLE_DECISIONS path"
+        )
+
+    def test_no_file_edit_on_no_actionable(self) -> None:
+        text = self._phase_text()
+        assert "Do NOT edit the issue file" in text or "do not edit" in text.lower(), (
+            "Phase 3b-i must document that the issue file is not edited on the NO_ACTIONABLE_DECISIONS path"
+        )

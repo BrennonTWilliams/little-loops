@@ -425,7 +425,7 @@ class TestReassessAndConvergence:
         assert cc.get("capture") == "convergence_result"
 
     def test_convergence_router_chain_is_correct(self) -> None:
-        """Convergence routing: PASS → implement, IMPROVED → budget, STALLED → failed (terminal)."""
+        """Convergence routing: PASS → implement, IMPROVED → budget, STALLED → manual_review or decompose."""
         data = _load_loop()
         # route_conv_pass
         rcp = data["states"]["route_conv_pass"]
@@ -434,12 +434,16 @@ class TestReassessAndConvergence:
         # route_conv_improved
         rci = data["states"]["route_conv_improved"]
         assert rci["on_yes"] == "check_remediation_budget"
-        assert rci["on_no"] == "emit_needs_decompose"
+        assert rci["on_no"] == "route_conv_manual_review"
+        # route_conv_manual_review
+        rcmr = data["states"]["route_conv_manual_review"]
+        assert rcmr["on_yes"] == "emit_needs_manual_review"
+        assert rcmr["on_no"] == "emit_needs_decompose"
 
     def test_convergence_routers_use_output_contains_with_source(self) -> None:
         """Convergence routers use output_contains with captured source."""
         data = _load_loop()
-        for state_name in ("route_conv_pass", "route_conv_improved"):
+        for state_name in ("route_conv_pass", "route_conv_improved", "route_conv_manual_review"):
             state = data["states"][state_name]
             evaluate = state["evaluate"]
             assert evaluate["type"] == "output_contains"
@@ -729,6 +733,7 @@ class TestOutcomeTokenChannel:
         for name in (
             "emit_implemented",
             "emit_needs_decompose",
+            "emit_needs_manual_review",
             "emit_implement_failed",
             "emit_scores_missing",
         ):
@@ -739,6 +744,7 @@ class TestOutcomeTokenChannel:
         expected = {
             "emit_implemented": "IMPLEMENTED",
             "emit_needs_decompose": "NEEDS_DECOMPOSE",
+            "emit_needs_manual_review": "MANUAL_REVIEW_NEEDED",
             "emit_implement_failed": "IMPLEMENT_FAILED",
             "emit_scores_missing": "SCORES_MISSING",
         }
@@ -760,8 +766,17 @@ class TestOutcomeTokenChannel:
     def test_needs_decompose_only_on_stall_paths(self) -> None:
         data = _load_loop()
         assert data["states"]["route_d_refine"]["on_no"] == "emit_needs_decompose"
-        assert data["states"]["route_conv_improved"]["on_no"] == "emit_needs_decompose"
+        assert data["states"]["route_conv_improved"]["on_no"] == "route_conv_manual_review"
+        assert data["states"]["route_conv_manual_review"]["on_no"] == "emit_needs_decompose"
         assert data["states"]["check_remediation_budget"]["on_no"] == "emit_needs_decompose"
+
+    def test_check_convergence_detects_decision_needed(self) -> None:
+        """check_convergence stall branch checks decision_needed for NEEDS_MANUAL_REVIEW."""
+        data = _load_loop()
+        action = data["states"]["check_convergence"]["action"]
+        assert "POST_DECISION" in action
+        assert "NEEDS_MANUAL_REVIEW" in action
+        assert "decision_needed" in action
 
     def test_rate_limit_diagnostic_writes_token_and_fails(self) -> None:
         data = _load_loop()

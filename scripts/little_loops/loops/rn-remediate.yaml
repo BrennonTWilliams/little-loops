@@ -362,7 +362,13 @@ states:
       if [ "$POST_CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$POST_OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
         echo "CONVERGED_PASS"
       elif [ "$TOTAL_DELTA" -le 2 ]; then
-        echo "CONVERGED_STALLED"
+        # Distinguish: stalled because unresolvable decision vs genuinely too large
+        POST_DECISION=$(jq -r '.decision_needed // "false"' "$POST" 2>/dev/null)
+        if [ "$POST_DECISION" = "true" ]; then
+          echo "NEEDS_MANUAL_REVIEW"
+        else
+          echo "CONVERGED_STALLED"
+        fi
       else
         echo "CONVERGED_IMPROVED"
       fi
@@ -385,8 +391,17 @@ states:
       source: "${captured.convergence_result.output}"
       pattern: "CONVERGED_IMPROVED"
     on_yes: check_remediation_budget
-    on_no: emit_needs_decompose
+    on_no: route_conv_manual_review
     on_error: emit_implement_failed
+
+  route_conv_manual_review:
+    evaluate:
+      type: output_contains
+      source: "${captured.convergence_result.output}"
+      pattern: "NEEDS_MANUAL_REVIEW"
+    on_yes: emit_needs_manual_review
+    on_no: emit_needs_decompose
+    on_error: emit_needs_decompose
 
   check_remediation_budget:
     action_type: shell
@@ -411,7 +426,7 @@ states:
   # Each terminal path writes exactly one outcome token to the shared run_dir so
   # the parent's classify_remediation can route deterministically rather than
   # collapsing every non-done terminal into "decompose". Tokens:
-  #   IMPLEMENTED | NEEDS_DECOMPOSE | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED
+  #   IMPLEMENTED | NEEDS_DECOMPOSE | NEEDS_MANUAL_REVIEW | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED
 
   emit_implemented:
     action_type: shell
@@ -423,6 +438,12 @@ states:
     action_type: shell
     action: |
       echo "NEEDS_DECOMPOSE" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: failed
+
+  emit_needs_manual_review:
+    action_type: shell
+    action: |
+      echo "MANUAL_REVIEW_NEEDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
     next: failed
 
   emit_implement_failed:

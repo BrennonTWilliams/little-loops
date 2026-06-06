@@ -557,6 +557,8 @@ class TestParentClassifier:
             "classify_remediation",
             "route_rem_implemented",
             "route_rem_decompose",
+            "route_rem_manual_review",
+            "mark_blocked",
             "route_rem_rate_limited",
             "classify_decomposition",
             "route_dec_decomposed",
@@ -565,6 +567,18 @@ class TestParentClassifier:
             "record_failure",
         ):
             assert name in data["states"], f"missing {name}"
+
+    def test_manual_review_routes_to_mark_blocked(self) -> None:
+        data = _load_loop()
+        rmr = data["states"]["route_rem_manual_review"]
+        assert rmr["on_yes"] == "mark_blocked"
+        assert rmr["on_no"] == "route_rem_rate_limited"
+
+    def test_mark_blocked_writes_file_and_dequeues(self) -> None:
+        data = _load_loop()
+        mb = data["states"]["mark_blocked"]
+        assert "blocked.txt" in mb["action"]
+        assert mb["next"] == "dequeue_next"
 
     def test_loop_states_route_to_classifiers(self) -> None:
         data = _load_loop()

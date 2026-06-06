@@ -134,6 +134,30 @@ After extraction:
 
 **Precondition**: `AUTO_MODE = true` AND `OPTIONS = 0` after Phase 3 pattern scan.
 
+### Phase 3b-i: Skip resolved questions
+
+Before scanning for provisional language, collect all numbered list items under the `## Open Questions` section and check each for a resolution marker:
+
+- `✅ RESOLVED`, `✔ RESOLVED`, `**RESOLVED**`, `> **RESOLVED**`
+
+Markers appear inline after the bold question label, e.g.:
+`**Fork vs. flag.** ✅ **RESOLVED** (2026-06-04 by …)`
+
+**If ALL items under `## Open Questions` are marked resolved** (or the section has no items) **and `decision_needed: true`**:
+
+1. Output:
+   ```
+   ## RESULT: NO_ACTIONABLE_DECISIONS — all questions already marked resolved
+   decision_needed remains true (human-required decision; automation cannot clear a flag it did not earn)
+   ```
+2. Do NOT edit the issue file.
+3. Do NOT clear `decision_needed` — leave it as `true`.
+4. Exit 0, then proceed to Phase 8 (Append Session Log) only. Skip Phases 4–7 and Phase 9.
+
+**If at least one question is unresolved**, proceed to the provisional-language scan below (scoping the scan to unresolved items only).
+
+---
+
 Scan ALL sections of the issue file (not just `## Proposed Solution`) for provisional decision language using these patterns:
 
 ### Provisional Pattern A — Parenthetical `(e.g., ...)`
