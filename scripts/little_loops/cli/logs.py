@@ -25,6 +25,7 @@ from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 from little_loops.user_messages import get_project_folder
 
 _COMMAND_NAME_RE = re.compile(r"<command-name>/ll:")
+BRIDGE_MARKER = "Bridged from `commands/"
 
 
 def _is_ll_relevant(record: dict) -> bool:
@@ -749,6 +750,362 @@ def _aggregate_skill_stats(
         conn.close()
 
 
+def _load_catalog_names(root_dir: Path) -> set[str]:
+    """Load normalized skill/command names from skills/ and commands/ under root_dir.
+
+    Excludes bridge skills (containing BRIDGE_MARKER) and skills/commands with
+    disable-model-invocation: true.  Normalizes names by stripping the "ll-" prefix
+    so catalog names match the skill_events.skill_name recording convention.
+    """
+    import yaml
+
+    names: set[str] = set()
+
+    skills_dir = root_dir / "skills"
+    if skills_dir.is_dir():
+        for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+            try:
+                text = skill_md.read_text()
+            except OSError:
+                continue
+            if BRIDGE_MARKER in text:
+                continue
+            name: str = skill_md.parent.name
+            if text.startswith("---"):
+                end = text.find("---", 3)
+                if end != -1:
+                    try:
+                        fm = yaml.safe_load(text[3:end]) or {}
+                    except yaml.YAMLError:
+                        fm = {}
+                    if isinstance(fm, dict):
+                        dmi = fm.get("disable-model-invocation")
+                        if (isinstance(dmi, bool) and dmi) or (
+                            isinstance(dmi, str) and dmi.strip().lower() in ("true", "yes", "1")
+                        ):
+                            continue
+                        name = str(fm.get("name") or name)
+            if name.startswith("ll-"):
+                name = name[3:]
+            if name:
+                names.add(name)
+
+    commands_dir = root_dir / "commands"
+    if commands_dir.is_dir():
+        for cmd_md in sorted(commands_dir.glob("*.md")):
+            stem = cmd_md.stem
+            try:
+                text = cmd_md.read_text()
+            except OSError:
+                names.add(stem)
+                continue
+            if text.startswith("---"):
+                end = text.find("---", 3)
+                if end != -1:
+                    try:
+                        fm = yaml.safe_load(text[3:end]) or {}
+                    except yaml.YAMLError:
+                        fm = {}
+                    if isinstance(fm, dict):
+                        dmi = fm.get("disable-model-invocation")
+                        if (isinstance(dmi, bool) and dmi) or (
+                            isinstance(dmi, str) and dmi.strip().lower() in ("true", "yes", "1")
+                        ):
+                            continue
+            names.add(stem)
+
+    return names
+
+
+def _cmd_dead_skills(args: argparse.Namespace, logger: Logger) -> int:
+    """List catalog skills/commands never or rarely invoked within the window."""
+    if args.project:
+        db_paths = [Path(args.project) / ".ll" / "history.db"]
+        catalog_root = Path(args.project)
+    else:
+        decoded_paths = discover_all_projects(logger)
+        db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
+        catalog_root = Path.cwd()
+
+    merged: dict[str, int] = defaultdict(int)
+    for db_path in db_paths:
+        result = _aggregate_skill_stats(db_path, window_days=args.window_days)
+        if result is None:
+            continue
+        for skill, counts in result.items():
+            merged[skill] += counts["invocations"]
+
+    catalog_names = _load_catalog_names(catalog_root)
+    if not catalog_names:
+        logger.warning("No catalog skills found — run from an ll project root with skills/ directory.")
+        return 0
+
+    threshold = args.threshold
+    rows = []
+    for name in sorted(catalog_names):
+        count = merged.get(name, 0)
+        if count == 0:
+            rows.append({"skill": name, "invocations": 0, "tier": "never"})
+        elif count <= threshold:
+            rows.append({"skill": name, "invocations": count, "tier": "rarely"})
+
+    if args.json:
+        print_json(rows)
+        return 0
+
+    if not rows:
+        print("No dead or rarely-invoked skills found.")
+        return 0
+
+    headers = ["Skill", "Invocations", "Tier"]
+    table_rows = [[r["skill"], str(r["invocations"]), r["tier"]] for r in rows]
+    print(table(headers, table_rows))
+    return 0
+
+
+_STACK_FRAME_RE = re.compile(r'\s*File "[^"]+", line \d+[^\n]*')
+_ABS_PATH_RE = re.compile(r"/(?:[^\s,;\"']+/)+[^\s,;\"']+")
+_LINE_NUM_RE = re.compile(r"\bline \d+\b")
+_LL_VERIFY_RE = re.compile(r"^ll-verify-\w+")
+
+
+def _normalize_error_sig(text: str) -> str:
+    """Strip volatile parts (paths, line numbers, stack frames) from error text.
+
+    Returns a stable string suitable as a cluster key.
+    """
+    text = _STACK_FRAME_RE.sub("", text)
+    text = _ABS_PATH_RE.sub("<path>", text)
+    text = _LINE_NUM_RE.sub("line N", text)
+    return re.sub(r"\s+", " ", text).strip()[:300]
+
+
+def _extract_error_text(content: object) -> str:
+    """Extract plain text from a tool_result content field (string or list of text blocks)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text", "")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(parts)
+    return ""
+
+
+@dataclass
+class _FailureCluster:
+    """Aggregated failure cluster keyed on (tool_name, normalized_sig)."""
+
+    tool_name: str
+    normalized_sig: str
+    count: int
+    sample_error: str
+    session_ids: list[str]
+
+
+def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
+    """Mine failed ll-* Bash calls from interactive session JSONL logs."""
+    from little_loops.issue_lifecycle import FailureType, classify_failure
+
+    if args.project:
+        cwd_path: Path = args.project
+        project_folder = get_project_folder(cwd_path)
+        if project_folder is None:
+            logger.error(f"No session project folder found for: {cwd_path}")
+            return 1
+        project_items = [(cwd_path, project_folder)]
+    else:
+        decoded_paths = discover_all_projects(logger)
+        project_items = []
+        for decoded_path in decoded_paths:
+            folder = get_project_folder(decoded_path)
+            if folder is not None:
+                project_items.append((decoded_path, folder))
+
+    # raw_clusters maps (tool_name, normalized_sig) -> (count, sample_error, session_ids, latest_ts)
+    raw_clusters: dict[tuple[str, str], tuple[int, str, list[str], str]] = {}
+    latest_ts_overall: str = ""
+
+    for _cwd_path, project_folder in project_items:
+        jsonl_files = [
+            f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")
+        ]
+
+        for jsonl_file in jsonl_files:
+            try:
+                with open(jsonl_file, encoding="utf-8") as f:
+                    lines = f.readlines()
+            except OSError:
+                continue
+
+            # pending maps tool_use_id -> (ll_tool_name, timestamp)
+            pending: dict[str, tuple[str, str]] = {}
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                record_type = record.get("type")
+                ts = record.get("timestamp", "")
+                session_id = record.get("sessionId", "")
+
+                if ts and ts > latest_ts_overall:
+                    latest_ts_overall = ts
+
+                if record_type == "assistant":
+                    message = record.get("message", {})
+                    content = message.get("content", [])
+                    if not isinstance(content, list):
+                        continue
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        if block.get("type") != "tool_use" or block.get("name") != "Bash":
+                            continue
+                        cmd = block.get("input", {}).get("command", "")
+                        m = _LL_BASH_RE.search(cmd)
+                        if not m:
+                            continue
+                        tool_name = m.group(1)
+                        block_id = block.get("id", "")
+                        if block_id:
+                            pending[block_id] = (tool_name, ts)
+
+                elif record_type == "user":
+                    message = record.get("message", {})
+                    content = message.get("content", [])
+                    if not isinstance(content, list) or not content:
+                        continue
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        if block.get("type") != "tool_result":
+                            continue
+                        tool_use_id = block.get("tool_use_id", "")
+                        if tool_use_id not in pending:
+                            continue
+                        tool_name, _invoke_ts = pending.pop(tool_use_id)
+
+                        # Skip ll-verify-* tools — exit 1 is expected gate behavior
+                        if _LL_VERIFY_RE.match(tool_name):
+                            continue
+
+                        is_error_flag = block.get("is_error") is True
+                        raw_content = block.get("content", "")
+                        error_text = _extract_error_text(raw_content)
+                        has_traceback = "Traceback (most recent call last)" in error_text
+
+                        if not (is_error_flag or has_traceback):
+                            continue
+
+                        returncode = 1 if is_error_flag else 0
+                        failure_type, _reason = classify_failure(error_text, returncode)
+                        if failure_type == FailureType.TRANSIENT:
+                            continue
+
+                        normalized_sig = _normalize_error_sig(error_text)
+                        key = (tool_name, normalized_sig)
+
+                        if key in raw_clusters:
+                            cnt, sample, sids, _lts = raw_clusters[key]
+                            if session_id not in sids:
+                                sids.append(session_id)
+                            raw_clusters[key] = (cnt + 1, sample, sids, ts)
+                        else:
+                            raw_clusters[key] = (1, error_text[:500], [session_id], ts)
+
+    # Apply window-days filter using the latest seen timestamp as anchor
+    if args.window_days is not None and latest_ts_overall:
+        cutoff = _parse_iso_timestamp(latest_ts_overall) - timedelta(days=args.window_days)
+        raw_clusters = {
+            k: v
+            for k, v in raw_clusters.items()
+            if _parse_iso_timestamp(v[3]) >= cutoff
+        }
+
+    clusters: list[_FailureCluster] = sorted(
+        [
+            _FailureCluster(
+                tool_name=k[0],
+                normalized_sig=k[1],
+                count=v[0],
+                sample_error=v[1],
+                session_ids=v[2],
+            )
+            for k, v in raw_clusters.items()
+        ],
+        key=lambda c: c.count,
+        reverse=True,
+    )
+
+    if not clusters:
+        if not args.json:
+            print("No ll-* failures found.")
+        else:
+            print_json([])
+        return 0
+
+    if args.capture:
+        return _capture_failure_clusters(clusters, logger)
+
+    if args.json:
+        print_json(
+            [
+                {
+                    "tool": c.tool_name,
+                    "count": c.count,
+                    "normalized_sig": c.normalized_sig,
+                    "sample_error": c.sample_error,
+                    "session_ids": c.session_ids,
+                }
+                for c in clusters
+            ]
+        )
+        return 0
+
+    for c in clusters:
+        print(f"[{c.count}x] {c.tool_name}")
+        print(f"  Sessions: {', '.join(c.session_ids[:5])}")
+        for sl in c.sample_error.splitlines()[:5]:
+            print(f"  {sl}")
+        print()
+
+    return 0
+
+
+def _capture_failure_clusters(clusters: list[_FailureCluster], logger: Logger) -> int:
+    """Create bug issue files for each distinct failure cluster (--capture mode)."""
+    from little_loops.issue_lifecycle import create_issue_from_failure
+    from little_loops.issue_parser import IssueInfo
+
+    config = BRConfig(Path.cwd())
+    created = 0
+
+    for c in clusters:
+        stub_info = IssueInfo(
+            path=Path(f"cli/{c.tool_name}"),
+            issue_type="bugs",
+            priority="P1",
+            issue_id=c.tool_name,
+            title=f"Tool failure in {c.tool_name}",
+        )
+        result = create_issue_from_failure(c.sample_error, stub_info, config, logger)
+        if result is not None:
+            logger.info(f"Created: {result.name}")
+            created += 1
+
+    logger.info(f"Captured {created} failure cluster(s) as bug issues.")
+    return 0
+
+
 def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
     """Aggregate skill invocation frequency and correction rate from history.db."""
     if args.project:
@@ -946,6 +1303,68 @@ Examples:
     )
     add_json_arg(stats_parser)
 
+    scan_failures_parser = subparsers.add_parser(
+        "scan-failures",
+        help="Mine failed ll-* calls from interactive session logs and propose bug issues",
+    )
+    scan_failures_target = scan_failures_parser.add_mutually_exclusive_group(required=True)
+    scan_failures_target.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help="Working directory of the target project",
+    )
+    scan_failures_target.add_argument(
+        "--all",
+        action="store_true",
+        help="Scan all projects with ll activity",
+    )
+    scan_failures_parser.add_argument(
+        "--window-days",
+        type=int,
+        default=None,
+        metavar="D",
+        help="Only consider records within D days of latest record",
+    )
+    scan_failures_parser.add_argument(
+        "--capture",
+        action="store_true",
+        help="Create bug issue files for each failure cluster (one per tool+error signature)",
+    )
+    add_json_arg(scan_failures_parser)
+
+    dead_skills_parser = subparsers.add_parser(
+        "dead-skills",
+        help="List catalog skills/commands with zero or low invocations across the corpus",
+    )
+    dead_skills_target = dead_skills_parser.add_mutually_exclusive_group(required=True)
+    dead_skills_target.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help="Working directory of the target project (also used as catalog root)",
+    )
+    dead_skills_target.add_argument(
+        "--all",
+        action="store_true",
+        help="Aggregate across all projects; catalog loaded from current directory",
+    )
+    dead_skills_parser.add_argument(
+        "--window-days",
+        type=int,
+        default=None,
+        metavar="D",
+        help="Only consider records within D days of latest record",
+    )
+    dead_skills_parser.add_argument(
+        "--threshold",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Skills with invocations <= N are 'rarely' invoked (default: 3)",
+    )
+    add_json_arg(dead_skills_parser)
+
     return parser
 
 
@@ -993,5 +1412,11 @@ def main_logs() -> int:
 
         if args.command == "stats":
             return _cmd_stats(args, logger)
+
+        if args.command == "scan-failures":
+            return _cmd_scan_failures(args, logger)
+
+        if args.command == "dead-skills":
+            return _cmd_dead_skills(args, logger)
 
         return 1

@@ -1700,7 +1700,7 @@ ll-messages --sft-format alpaca --output data/sft/raw.jsonl
 
 ### ll-logs
 
-Discover and extract ll-relevant JSONL entries from Claude Code session logs. Also generates `logs/index.md` after extraction. The `sequences` subcommand mines tool-chain n-grams for workflow analysis. The `stats` subcommand aggregates per-skill invocation frequency and correction rate from `.ll/history.db`.
+Discover and extract ll-relevant JSONL entries from Claude Code session logs. Also generates `logs/index.md` after extraction. The `sequences` subcommand mines tool-chain n-grams for workflow analysis. The `stats` subcommand aggregates per-skill invocation frequency and correction rate from `.ll/history.db`. The `dead-skills` subcommand cross-references the skill catalog against the log corpus to flag never-invoked and rarely-invoked skills.
 
 **Subcommands:**
 
@@ -1711,6 +1711,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `extract` | Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl` |
 | `sequences` | Extract tool-chain n-grams of ll invocations from JSONL logs |
 | `stats` | Aggregate skill invocation frequency and correction rate from history.db |
+| `dead-skills` | Cross-reference skill catalog against log corpus to flag never/rarely-invoked skills |
 
 **`discover` flags:**
 
@@ -1744,7 +1745,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--window-days D` | | Only consider records within D days of latest record |
 | `--json` | `-j` | Output as JSON: `[{"chain": [...], "count": N, "edges": [{"from": "...", "to": "...", "freq": f}]}]` |
 
-`--all` and `--project` are mutually exclusive for `extract`, `sequences`, and `stats`.
+`--all` and `--project` are mutually exclusive for `extract`, `sequences`, `stats`, and `dead-skills`.
 
 **`stats` flags:**
 
@@ -1755,6 +1756,16 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--window-days D` | | Only consider records within D days of latest record |
 | `--sort {freq,corrections}` | | Sort by invocation frequency or correction count (default: freq) |
 | `--json` | `-j` | Output as JSON array |
+
+**`dead-skills` flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--all` | | Aggregate across all projects; catalog loaded from current directory |
+| `--project DIR` | | Working directory of the target project (also used as catalog root) |
+| `--window-days D` | | Only consider records within D days of latest record |
+| `--threshold N` | | Skills with invocations ≤ N are "rarely" invoked (default: 3) |
+| `--json` | `-j` | Output as JSON: `[{"skill": str, "invocations": int, "tier": "never"\|"rarely"}]` |
 
 **Examples:**
 ```bash
@@ -1772,6 +1783,9 @@ ll-logs stats --all                      # Skill frequency/correction table acro
 ll-logs stats --project /path --json     # JSON stats for one project
 ll-logs stats --all --sort corrections   # Sort by correction count (highest first)
 ll-logs stats --all --window-days 30     # Limit to last 30 days of data
+ll-logs dead-skills --project /path/to/proj --json  # List never/rarely-invoked skills as JSON
+ll-logs dead-skills --project . --threshold 5       # Skills with <=5 invocations
+ll-logs dead-skills --all --window-days 90          # Dead skills across all projects, last 90 days
 ```
 
 ---

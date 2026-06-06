@@ -15,6 +15,7 @@ from little_loops.cli.logs import (
     _aggregate_skill_stats,
     _cmd_tail,
     _is_ll_relevant,
+    _load_catalog_names,
     _parse_args,
     main_logs,
 )
@@ -1578,3 +1579,173 @@ class TestStats:
         assert result is not None
         assert "new-skill" in result
         assert "old-skill" not in result
+
+
+class TestDeadSkills:
+    """Tests for the dead-skills subcommand."""
+
+    def _make_skill(self, skills_dir: Path, name: str, bridge: bool = False) -> None:
+        """Create a minimal SKILL.md stub in skills_dir/name/."""
+        skill_dir = skills_dir / name
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        body = "Bridged from `commands/placeholder.md` for Codex Skills API discovery." if bridge else ""
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: Test skill.\n---\n{body}\n"
+        )
+
+    def test_dead_skills_subcommand_parsed(self) -> None:
+        """dead-skills subcommand sets command='dead-skills'."""
+        with patch("sys.argv", ["ll-logs", "dead-skills", "--all"]):
+            args = _parse_args()
+        assert args.command == "dead-skills"
+        assert args.all is True
+
+    def test_dead_skills_threshold_default(self) -> None:
+        """--threshold defaults to 3."""
+        with patch("sys.argv", ["ll-logs", "dead-skills", "--all"]):
+            args = _parse_args()
+        assert args.threshold == 3
+
+    def test_dead_skills_window_days(self) -> None:
+        """--window-days is accepted."""
+        with patch("sys.argv", ["ll-logs", "dead-skills", "--all", "--window-days", "7"]):
+            args = _parse_args()
+        assert args.window_days == 7
+
+    def test_dead_skills_project_and_all_mutually_exclusive(self) -> None:
+        """--project and --all cannot be combined."""
+        with patch("sys.argv", ["ll-logs", "dead-skills", "--project", "/tmp", "--all"]):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    def test_dead_skills_json_flag(self) -> None:
+        """--json flag is accepted."""
+        with patch("sys.argv", ["ll-logs", "dead-skills", "--all", "--json"]):
+            args = _parse_args()
+        assert args.json is True
+
+    def test_dead_skills_never_invoked_appears(self, tmp_path: Path) -> None:
+        """A catalog skill with zero invocations appears with tier='never'."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        skills_dir = tmp_path / "skills"
+        self._make_skill(skills_dir, "my-skill")
+        # No skill_events seeded → zero invocations
+        ensure_db(db_path)
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        assert isinstance(data, list)
+        skills_found = {r["skill"]: r for r in data}
+        assert "my-skill" in skills_found
+        assert skills_found["my-skill"]["invocations"] == 0
+        assert skills_found["my-skill"]["tier"] == "never"
+
+    def test_dead_skills_used_skill_not_shown(self, tmp_path: Path) -> None:
+        """A skill with invocations above threshold does not appear in output."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        skills_dir = tmp_path / "skills"
+        self._make_skill(skills_dir, "used-skill")
+        _populate_skill_events(db_path, [
+            ("2026-01-01T00:00:00Z", "s1", "used-skill", ""),
+            ("2026-01-01T00:01:00Z", "s1", "used-skill", ""),
+            ("2026-01-01T00:02:00Z", "s1", "used-skill", ""),
+            ("2026-01-01T00:03:00Z", "s1", "used-skill", ""),
+        ])
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        skills_found = {r["skill"] for r in data}
+        assert "used-skill" not in skills_found
+
+    def test_dead_skills_rarely_invoked(self, tmp_path: Path) -> None:
+        """A skill with invocations <= threshold appears with tier='rarely'."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        skills_dir = tmp_path / "skills"
+        self._make_skill(skills_dir, "rare-skill")
+        _populate_skill_events(db_path, [
+            ("2026-01-01T00:00:00Z", "s1", "rare-skill", ""),
+            ("2026-01-01T00:01:00Z", "s1", "rare-skill", ""),
+        ])
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        skills_found = {r["skill"]: r for r in data}
+        assert "rare-skill" in skills_found
+        assert skills_found["rare-skill"]["invocations"] == 2
+        assert skills_found["rare-skill"]["tier"] == "rarely"
+
+    def test_dead_skills_json_output_shape(self, tmp_path: Path) -> None:
+        """JSON output items have exactly skill, invocations, tier keys."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        skills_dir = tmp_path / "skills"
+        self._make_skill(skills_dir, "shape-skill")
+        ensure_db(db_path)
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            main_logs()
+
+        data = json.loads("\n".join(captured))
+        assert len(data) == 1
+        assert set(data[0].keys()) == {"skill", "invocations", "tier"}
+
+    def test_dead_skills_bridge_skill_excluded(self, tmp_path: Path) -> None:
+        """Bridge skills (containing BRIDGE_MARKER) are excluded from the catalog."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        skills_dir = tmp_path / "skills"
+        self._make_skill(skills_dir, "real-skill")
+        self._make_skill(skills_dir, "bridge-skill", bridge=True)
+        ensure_db(db_path)
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        skills_found = {r["skill"] for r in data}
+        assert "real-skill" in skills_found
+        assert "bridge-skill" not in skills_found
+
+    def test_dead_skills_no_catalog_returns_0(self, tmp_path: Path) -> None:
+        """Returns 0 gracefully when no catalog skills exist."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        ensure_db(db_path)
+
+        with patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path)]):
+            result = main_logs()
+
+        assert result == 0

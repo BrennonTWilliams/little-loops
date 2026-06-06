@@ -1,15 +1,29 @@
 ---
 id: ENH-1922
-title: "ll-logs scan-failures: mine failed ll-* calls to auto-file bugs"
+title: 'll-logs scan-failures: mine failed ll-* calls to auto-file bugs'
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-04T02:27:34Z"
-discovered_date: "2026-06-04"
+captured_at: '2026-06-04T02:27:34Z'
+discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1918
-relates_to: [EPIC-1918, ENH-1904, ENH-1921]
-labels: [captured, ll-logs, bugs, automation]
+relates_to:
+- EPIC-1918
+- ENH-1904
+- ENH-1921
+labels:
+- captured
+- ll-logs
+- bugs
+- automation
+confidence_score: 94
+outcome_confidence: 76
+score_complexity: 16
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 18
+decision_needed: false
 ---
 
 # ENH-1922: ll-logs scan-failures — mine failed ll-* calls to auto-file bugs
@@ -76,6 +90,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `/ll:capture-issue` (skill) — candidate sink; reuses Jaccard + FTS5 dup detection and the reopen flow from `skills/capture-issue/SKILL.md`
 - `session_store` correction path (ENH-1904) — sibling, not overlap
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/__init__.py` — module-level docstring at line 15 describes `ll-logs` capabilities; needs `scan-failures` appended after implementation [Agent 2 finding]
+- `scripts/tests/test_cli.py` — `TestMainLogsIntegration` class covers `main_logs()` dispatch; add `test_scan_failures_returns_0` smoke test matching the `test_stats_returns_0` pattern [Agent 3 finding]
+- `scripts/tests/test_issue_lifecycle.py` — `TestClassifyFailure` (line 551, 5 methods) and `TestCreateIssueFromFailure` (line 413, 6 methods) and `TestEventEmission` (lines 1284 and 1317) directly test the reused functions; if `create_issue_from_failure()` signature changes to allow `parent_info: IssueInfo | None`, all 8 direct-call sites require updating [Agent 3 finding]
+- `scripts/tests/test_issue_manager.py` — 3 `mock.patch("little_loops.issue_manager.create_issue_from_failure")` calls at lines 2008/2016/2058 would silently break if the import path or signature changes [Agent 3 finding]
+
 ### Similar Patterns
 - `.claude/commands/analyze_log.md` — failure pattern table and priority-bumping/dedup logic; reference only (text-log variant)
 - `scripts/little_loops/cli/logs.py:_extract_ll_event_streams()` — ENH-1919 shared extractor (already implemented); walks JSONL files, extracts per-session ordered `InvocationEvent` streams; reuse directly
@@ -87,8 +107,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Tests
 - `scripts/tests/test_ll_logs.py` — add `TestScanFailures` class following `TestSequences` fixture pattern; use existing `_make_project_dir()` and `_assistant_bash_record()` helpers; add `_user_tool_result_record(tool_use_id, content, is_error=True)` factory for tool result records; cover: nonzero exit detection (`is_error: True`), traceback text detection, `(tool, signature)` clustering, false-positive suppression for expected-nonzero gates (`ll-verify-*` exit 1), `--json` output schema
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli.py` — add `test_scan_failures_returns_0` to `TestMainLogsIntegration` (line ~2921) following the `test_stats_returns_0` pattern; covers happy-path dispatch through `main_logs()` [Agent 3 finding]
+- `scripts/tests/test_issue_lifecycle.py` — **update if signature changes**: `TestCreateIssueFromFailure` (6 methods, line 413) and `TestEventEmission.test_create_issue_from_failure_emits_event` (line 1284) call `create_issue_from_failure()` directly with `parent_info=IssueInfo(...)` — all 8 call sites need updating if `parent_info` becomes `Optional` [Agent 3 finding]
+- `scripts/tests/test_issue_manager.py` — **update if signature changes**: 3 `mock.patch` targets at lines 2008/2016/2058 would silently fail if `create_issue_from_failure` import path changes [Agent 3 finding]
+
 ### Documentation
-- `docs/reference/API.md` — update `ll-logs` section with new subcommand
+- `docs/reference/API.md` — update `ll-logs` section with new subcommand; also remove the "pending ENH-1922" qualifier on `errors`/`error_rate` fields in the `stats` bullet (line ~3539) once implemented
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.claude/CLAUDE.md` — `## CLI Tools` section `ll-logs` bullet (line ~184): parenthetical subcommand list `(discover / extract / sequences / stats / tail)` needs `scan-failures` appended [Agent 2 finding]
+- `commands/help.md` — `CLI TOOLS` → `ll-logs` row (line ~281): description paragraph needs `scan-failures` capability added [Agent 2 finding]
+- `docs/ARCHITECTURE.md` — file tree inline comment for `logs.py` (line ~250): inline subcommand list needs `scan-failures` appended after `stats` [Agent 2 finding]
+- `CHANGELOG.md` — `stats` bullet (lines ~12–13) contains "pending ENH-1922" note to resolve; add `scan-failures` as a new `### Added` entry [Agent 2 finding]
+- `skills/init/SKILL.md` — two identical `ll-logs` description blocks (lines ~411 and ~447, inside Step 11 CLAUDE.md template) need `scan-failures` in capability text [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -105,6 +137,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 4. **Emit candidates** (`logs.py`): text mode prints one block per cluster (tool, count, sample error, session IDs); `--json` mode calls `print_json()` from `cli/output.py` with a list of cluster dicts; `--capture` mode calls `create_issue_from_failure()` from `issue_lifecycle.py` for each cluster (one BUG per `(tool, sig)` pair), preceded by a Jaccard dup check mirroring `capture-issue`'s dedup logic.
 5. **Tests** in `test_ll_logs.py`: add `TestScanFailures` class; add `_user_tool_result_record(tool_use_id, content, is_error=True)` factory alongside existing `_assistant_bash_record()`; seed a fixture corpus via `_make_project_dir()` with paired `assistant`+`user` records; assert: (a) nonzero-exit failures are detected, (b) traceback-text failures are detected, (c) multiple occurrences of same error collapse to one cluster, (d) transient errors (`rate limit`) are suppressed, (e) `ll-verify-*` expected-exit-1 calls are excluded.
 6. **Update docs**: add `scan-failures` to `docs/reference/API.md` (main_logs section) and `docs/reference/CLI.md` (ll-logs subcommands table).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. **Resolve `create_issue_from_failure()` signature gap**: the function currently requires `parent_info: IssueInfo` as a required positional arg; the `--capture` flow in `scan-failures` has no parent issue. **Selected: construct a minimal stub `IssueInfo` from the failing `ll-*` command name** to satisfy the existing signature without a breaking change. This avoids the cascading update to 8 direct-call sites in `test_issue_lifecycle.py` and 3 `mock.patch` targets in `test_issue_manager.py` that making `parent_info` optional would require.
+8. **Update `scripts/tests/test_cli.py`** — add `test_scan_failures_returns_0` to `TestMainLogsIntegration` (line ~2921) following the `test_stats_returns_0` shape: patch `sys.argv` to `["ll-logs", "scan-failures", "--all"]`, invoke `main_logs()`, assert return 0.
+9. **Update prose documentation** — after implementation, update the following to add `scan-failures` to the subcommand lists: `.claude/CLAUDE.md` (line ~184), `commands/help.md` (line ~281), `docs/ARCHITECTURE.md` (line ~250), `scripts/little_loops/cli/__init__.py` docstring (line ~15), and both blocks in `skills/init/SKILL.md` (lines ~411 and ~447).
+10. **Update `CHANGELOG.md`** — resolve the "pending ENH-1922" note in the `stats` subcommand bullet; add a `### Added` entry for `scan-failures`.
 
 ## Success Metrics
 
@@ -157,7 +198,22 @@ Output (text mode): one candidate block per `(tool, normalized-error-signature)`
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-1922 owns the per-invocation failure-classification layer (detection of nonzero exits, tracebacks, and correction signals) atop ENH-1919's shared extractor. ENH-1921 aggregates failure/correction rates from ENH-1922's classified output rather than re-implementing failure detection. ENH-1919's shared extractor provides the raw event stream without classification.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-05_
+
+**Readiness Score**: 92/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
+
+### Outcome Risk Factors
+- **Open decision — `create_issue_from_failure()` signature (Step 7)**: The `--capture` path requires calling this function, but it takes `parent_info: IssueInfo` as a required positional arg. Step 7 presents two options without choosing one: (a) make `parent_info` optional — cascades to 8 direct-call sites in `test_issue_lifecycle.py` + 3 `mock.patch` targets in `test_issue_manager.py`; or (b) construct a minimal stub `IssueInfo` from the tool name, avoiding all cascading changes. Resolve this open decision before starting `--capture` implementation. Option B is lower-risk and likely sufficient.
+- **Broad doc/wiring surface (11 files)**: Seven of eleven touchpoints are mechanical doc/string updates (`.claude/CLAUDE.md`, `commands/help.md`, `docs/ARCHITECTURE.md`, `cli/__init__.py`, `skills/init/SKILL.md` ×2, `CHANGELOG.md`). None will break functionality if missed, but a verification pass is needed to avoid incomplete wiring at PR time.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-05T02:00:00 - `96c87ebe-6aa2-4e31-9f6e-048c63d3f1da.jsonl`
+- `/ll:decide-issue` - 2026-06-06T02:07:09 - `886c31c7-0954-45fb-848f-1d2c6cb35941.jsonl`
+- `/ll:confidence-check` - 2026-06-05T00:00:00 - `ebab5302-4a33-4ea6-bbbf-a199ce5df87d.jsonl`
+- `/ll:wire-issue` - 2026-06-06T02:02:01 - `4a91fe55-6469-496e-af97-a69c0e2d2af2.jsonl`
 - `/ll:refine-issue` - 2026-06-06T01:56:20 - `ca84d26f-26ba-4062-b6de-19cdd5c32aa4.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

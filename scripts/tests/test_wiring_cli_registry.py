@@ -42,6 +42,8 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/CLI.md", "37 `LLEvent` types", "ENH-1115"),
     ("commands/help.md", "using goals file if present, or auto-discovering goals", "ENH-1443"),
     ("commands/help.md", "ll-logs", "ll-logs"),
+    ("docs/reference/CLI.md", "dead-skills", "ENH-1923"),
+    (".claude/CLAUDE.md", "dead-skills", "ENH-1923"),
     ("commands/help.md", "ll-create-extension", "FEAT-1045"),
     ("docs/reference/CLI.md", "ll-create-extension", "FEAT-1045"),
     (".claude/CLAUDE.md", "ll-create-extension", "FEAT-1045"),
