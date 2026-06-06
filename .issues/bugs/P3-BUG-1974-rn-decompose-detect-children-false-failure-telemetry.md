@@ -4,8 +4,9 @@ title: 'rn-decompose: detect_children exits 1 for no-children routes to failed t
   polluting telemetry'
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-06T03:29:25Z'
+completed_at: '2026-06-06T04:44:05Z'
 discovered_date: '2026-06-06'
 discovered_by: audit-loop-run
 relates_to:
@@ -47,7 +48,7 @@ failures from expected "nothing to decompose" outcomes.
 
 ## Current Behavior
 
-In `loops/rn-decompose.yaml`, the `detect_children` state uses `on_no: failed` routing. When `detect_children` exits 1 (signaling "no children found"), the FSM terminates in the `failed` terminal state. Every no-decomposition outcome records `final_state: failed` in event history and loop telemetry, inflating sub-loop failure counts.
+In `scripts/little_loops/loops/rn-decompose.yaml`, the `detect_children` state uses `on_no: failed` routing. When `detect_children` exits 1 (signaling "no children found"), the FSM terminates in the `failed` terminal state. Every no-decomposition outcome records `final_state: failed` in event history and loop telemetry, inflating sub-loop failure counts.
 
 ## Expected Behavior
 
@@ -70,13 +71,13 @@ as intended — no decomposition needed. But the sub-loop recorded as `failed`.
 
 ## Root Cause
 
-- **File**: `loops/rn-decompose.yaml`
+- **File**: `scripts/little_loops/loops/rn-decompose.yaml`
 - **Anchor**: in state `detect_children`
 - **Cause**: `on_no: failed` treats a no-children exit (exit code 1) as a loop failure. Exit code 1 in this state means "no children found after size review" — the expected outcome when `issue-size-review` returns score < 5. The routing should be `on_no: done` since the sub-loop completed its work successfully (determined that no decomposition is needed).
 
 ## Proposed Solution
 
-In `loops/rn-decompose.yaml`, add a `done` routing for the no-children case:
+In `scripts/little_loops/loops/rn-decompose.yaml`, add a `done` routing for the no-children case:
 
 ```yaml
   detect_children:
@@ -103,15 +104,15 @@ Alternatively, have `detect_children` exit 0 in both cases and distinguish via `
 
 ## Implementation Steps
 
-1. Update `detect_children` state in `loops/rn-decompose.yaml`: change `on_no: failed` to `on_no: done`
+1. Update `detect_children` state in `scripts/little_loops/loops/rn-decompose.yaml`: change `on_no: failed` to `on_no: done`
 2. Optionally refine to output-based routing (`output_contains: "FOUND"`) for explicit semantics
-3. Run `ll-loop validate loops/rn-decompose.yaml` to confirm the change passes validation
+3. Run `ll-loop validate rn-decompose` to confirm the change passes validation
 4. Run a test iteration against an issue with size review score < 5 and confirm `final_state: done`
 
 ## Impact
 
 - **Priority**: P3 — Low urgency; telemetry noise with no functional regression
-- **Effort**: Small — single-line YAML change in `loops/rn-decompose.yaml`
+- **Effort**: Small — single-line YAML change in `scripts/little_loops/loops/rn-decompose.yaml`
 - **Risk**: Low — changes only the terminal routing for the no-children path; `on_error: failed` is preserved
 - **Breaking Change**: No
 - **Severity**: LOW — cosmetic telemetry noise, no functional regression
@@ -121,6 +122,18 @@ Alternatively, have `detect_children` exit 0 in both cases and distinguish via `
 
 **Open** | Created: 2026-06-06 | Priority: P3
 
+## Resolution
+
+Fixed in commit `ec8e078d` (landed with BUG-1975 fix, 2026-06-06):
+
+- `scripts/little_loops/loops/rn-decompose.yaml`: `detect_children.on_no` changed from `failed` to `done`
+- `scripts/little_loops/loops/rn-decompose.yaml`: loop description updated — "no children found" now documented as a `done` (success) path, not `failed`
+- `scripts/tests/test_rn_decompose.py`: `test_detect_children_routes_no_to_failed` renamed to `test_detect_children_routes_no_to_done`; assertion updated to `== "done"`; `test_description_does_not_misclassify_no_children_as_failed` added
+
+`ll-loop validate rn-decompose` passes clean. All 42 rn-decompose tests pass.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-06T04:44:05 - `07385415-54aa-4ce7-8a3e-af16c4a0039c.jsonl`
+- `/ll:ready-issue` - 2026-06-06T04:31:42 - `07385415-54aa-4ce7-8a3e-af16c4a0039c.jsonl`
 - `/ll:format-issue` - 2026-06-06T03:42:00 - `97ec5bad-c4ae-4905-967e-fe34fe404a62.jsonl`
 - `/ll:confidence-check` - 2026-06-05T23:27:00 - `fc2faaa1-72f4-4cc4-8c91-b3c75ba8ff97.jsonl`
