@@ -1,6 +1,7 @@
 ---
 id: BUG-1974
-title: "rn-decompose: detect_children exits 1 for no-children routes to failed terminal, polluting telemetry"
+title: 'rn-decompose: detect_children exits 1 for no-children routes to failed terminal,
+  polluting telemetry'
 type: BUG
 priority: P3
 status: open
@@ -9,14 +10,28 @@ discovered_date: '2026-06-06'
 discovered_by: audit-loop-run
 relates_to:
 - BUG-1973
+- ENH-1977
 labels:
 - rn-implement
 - rn-decompose
 - loop-defect
 - telemetry
+confidence_score: 93
+outcome_confidence: 78
+score_complexity: 25
+score_test_coverage: 8
+score_ambiguity: 20
+score_change_surface: 25
 ---
 
 # BUG-1974: rn-decompose detect_children false-failure routing
+
+> **Coordination (2026-06-06):** Partially absorbed by **ENH-1977**. That issue's Fix 1/Fix 4 rewrite
+> `detect_children` (token write + body-marker match), and its token channel makes the parent-level
+> consequence moot. But the *sub-loop telemetry* flip this bug describes (`on_no: failed → done`) is
+> **not** automatic — ENH-1977 must carry it explicitly, and now lists it as an acceptance criterion.
+> Do not implement this bug in parallel with ENH-1977 (shared `detect_children` state); fold it in or
+> serialize. Standalone fix remains valid if landed *before* ENH-1977.
 
 ## Summary
 
@@ -108,3 +123,4 @@ Alternatively, have `detect_children` exit 0 in both cases and distinguish via `
 
 ## Session Log
 - `/ll:format-issue` - 2026-06-06T03:42:00 - `97ec5bad-c4ae-4905-967e-fe34fe404a62.jsonl`
+- `/ll:confidence-check` - 2026-06-05T23:27:00 - `fc2faaa1-72f4-4cc4-8c91-b3c75ba8ff97.jsonl`
