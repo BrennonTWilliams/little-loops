@@ -6,8 +6,20 @@ priority: P3
 status: open
 discovered_date: 2026-05-30
 discovered_by: link-epics
-labels: [epic, loops, orchestration, built-in]
-relates_to: [FEAT-1808, FEAT-1809, FEAT-1810, FEAT-1806, FEAT-1807, ENH-1912, EPIC-1694]
+labels:
+- epic
+- loops
+- orchestration
+- built-in
+relates_to:
+- FEAT-1808
+- FEAT-1810
+- FEAT-1806
+- FEAT-1807
+- ENH-1912
+- EPIC-1694
+- FEAT-1983
+- FEAT-1984
 ---
 
 # EPIC-1811: Built-in Orchestration Loops

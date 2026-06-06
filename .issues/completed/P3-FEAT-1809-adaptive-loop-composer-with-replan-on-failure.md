@@ -3,7 +3,7 @@ id: FEAT-1809
 title: "Adaptive `loop-composer` \u2014 Re-plan-on-Failure Variant"
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-05-30T06:48:30Z'
 discovered_date: 2026-05-30
@@ -18,13 +18,16 @@ labels:
 - orchestration
 - adaptive
 - loops
-confidence_score: 77
-outcome_confidence: 63
-score_complexity: 11
+confidence_score: 90
+outcome_confidence: 66
+score_complexity: 14
 score_test_coverage: 14
 score_ambiguity: 18
 score_change_surface: 20
 implementation_order_risk: true
+decision_needed: true
+size: Very Large
+completed_at: '2026-06-06T22:17:06Z'
 ---
 
 # FEAT-1809: Adaptive `loop-composer` — Re-plan-on-Failure Variant
@@ -73,7 +76,7 @@ Pure upfront-planning (FEAT-1808) is cheap, inspectable, and easy to debug — b
 
 ## Proposed Solution
 
-Layer the following onto `loop-composer.yaml` (or fork to `loop-composer-adaptive.yaml` if the divergence is large enough):
+Fork to `loop-composer-adaptive.yaml` (sharing reusable states via `loops/lib/composer.yaml` fragments):
 
 1. **Per-step verdict gate.** After each sub-loop completes, evaluate `{success, confidence, terminal_state}`. If verdict is `partial` / `blocked` / low-confidence, route to `reassess` instead of the next step.
 2. **`reassess` state.** Tier 2 LLM prompt that takes the *original goal*, the *current plan*, the *completed steps* (with outputs), and the *failing step's verdict*. Output is one of:
@@ -198,7 +201,7 @@ Per `.claude/CLAUDE.md` § Loop Authoring, any loop that mutates other harness a
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/loop-composer.yaml` OR `loop-composer-adaptive.yaml` (decide during design — depends on whether the static and adaptive variants share enough states to compose from a shared fragment in `loops/lib/`)
+- `scripts/little_loops/loops/loop-composer-adaptive.yaml` (new — fork of loop-composer; shares reusable states via `loops/lib/composer.yaml`)
 - `scripts/little_loops/loops/lib/composer.yaml` (new likely) — extract `reassess` and verdict-gate fragments for reuse between static + adaptive
 - `scripts/tests/test_loop_composer_adaptive.py` (new)
 - `docs/guides/LOOPS_GUIDE.md` — note adaptive variant and when to prefer it
@@ -288,20 +291,33 @@ FEAT-1808 must ship before this. Implementing adaptive without the static planne
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-06_
+_Updated by `/ll:confidence-check` on 2026-06-06_
 
-**Readiness Score**: 77/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 63/100 → LOW
-
-### Concerns
-- **FEAT-1808 is still `open`** — this is the hard prerequisite stated explicitly in the issue; implementation cannot start until `loop-composer.yaml` and the shared fragment lib are delivered
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 66/100 → LOW
 
 ### Outcome Risk Factors
-- **Broad change surface across 4 subsystems** — 10 files touched (loops, config, tests, docs/skills); moderate per-site complexity in YAML loop logic raises integration surface even though each individual site is manageable
-- **Tests are co-deliverables** — `test_loop_composer_adaptive.py` is being created as part of this issue; there is no pre-existing test coverage for the adaptive loop behavior; implement tests concurrently with each FSM phase rather than at the end to catch routing logic bugs early
-- **`max_iterations` × `max_replans` combined cap** — open question #2 is unresolved; a re-plan that spawns iterations could multiply total wall-clock cost; decide on a concrete combined cap during Step 4 before writing budget enforcement logic
+- **Implement tests first so** each FSM phase (verdict gate, budget counter, reassess) is validated immediately — `test_loop_composer_adaptive.py` is a co-deliverable with no pre-existing coverage for adaptive routing paths
+- **Open question on `max_iterations × max_replans` combined cap** — this open question is unresolved and Step 4 requires a concrete value before writing `check_replan_budget`; `lib/common.yaml:retry_counter` and `max_iterations: 120` (from `loop-composer.yaml`) will interact; resolve before starting Step 4
+- **Broad change surface across 5 subsystems** — 11 files touched (YAML loop, lib fragment, config-schema.json, orchestration.py, tests, docs, skills); per-site depth is moderate but integration surface raises partial-wiring risk; run `ll-loop validate` after each sub-phase
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-06-06
+- **Reason**: Issue too large for single session (score 11/11 — Very Large)
+
+### Decomposed Into
+- FEAT-1983: Adaptive loop-composer — Core FSM, States, Tests, and Docs
+- FEAT-1984: Adaptive loop-composer — Config Schema, Orchestration Parser, and Skill Catalog
+
+---
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-06-06T00:00:00Z - `4da8ccb1-c9d9-425d-8832-3a5570cd748e.jsonl`
+- `/ll:confidence-check` - 2026-06-06T00:00:00 - `9964c4e8-5af9-4272-afd6-4d243c3572d9.jsonl`
+- `/ll:decide-issue` - 2026-06-06T22:06:54 - `1595fce6-72c1-42cc-b3a7-09646d205ec5.jsonl`
+- `/ll:confidence-check` - 2026-06-06T22:00:00 - `86618db0-bff7-45be-bce7-f45dd969a803.jsonl`
 - `/ll:confidence-check` - 2026-06-06T00:00:00 - `232674db-961a-4d26-9ceb-6ba3a50d03eb.jsonl`
 - `/ll:refine-issue` - 2026-06-06T21:36:45 - `bddffda0-3fbc-47ac-ba21-11b317cedcca.jsonl`
 - `/ll:format-issue` - 2026-06-06T21:26:25 - `75e3d153-c4ec-46a7-b92d-93a9875c6ba6.jsonl`
@@ -326,3 +342,13 @@ _Added by `/ll:confidence-check` on 2026-06-06_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1808 both spec intermediate artifacts using bare `.loops/tmp/` paths (`composer-checkpoints/step-<N>.json`, `composer-plans/v<N>.json`). Per MR-3 (`ll-loop validate` WARNING), all intermediate artifacts MUST be written under `${context.run_dir}/` to prevent state corruption on concurrent runs. Update all artifact paths in the Implementation Steps to use `${context.run_dir}/` (e.g. `${context.run_dir}/checkpoints/step-<N>.json`, `${context.run_dir}/plans/v<N>.json`). The path convention should be established in FEAT-1808 first; this issue must inherit the same convention.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-06-06
+- **Decomposed into**: FEAT-1983, FEAT-1984
+
+Work for FEAT-1809 is now carried by its child issues; this parent was closed by rn-decompose.
