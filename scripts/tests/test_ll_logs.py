@@ -14,9 +14,12 @@ import pytest
 from little_loops.cli.logs import (
     _aggregate_skill_stats,
     _cmd_tail,
+    _compute_session_diff,
+    _events_from_jsonl,
     _is_ll_relevant,
     _load_catalog_names,
     _parse_args,
+    _resolve_session_log,
     main_logs,
 )
 from little_loops.session_store import ensure_db

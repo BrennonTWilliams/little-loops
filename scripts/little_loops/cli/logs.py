@@ -1175,6 +1175,179 @@ def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
     return 0
 
 
+def _resolve_session_log(session_ref: str, db_path: Path) -> Path | None:
+    """Resolve a session reference (session ID or JSONL path) to a JSONL file path.
+
+    Tries in order:
+    1. Direct file path if the ref resolves to an existing ``.jsonl`` file
+    2. DB lookup of ``session_id → jsonl_path`` in the sessions table
+    Returns None if unresolvable.
+    """
+    candidate = Path(session_ref)
+    if candidate.suffix == ".jsonl" and candidate.exists():
+        return candidate
+
+    if db_path.exists():
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT jsonl_path FROM sessions WHERE session_id = ?",
+                (session_ref,),
+            ).fetchone()
+            if row and row["jsonl_path"]:
+                return Path(row["jsonl_path"])
+        except sqlite3.OperationalError:
+            pass
+        finally:
+            conn.close()
+
+    return None
+
+
+def _events_from_jsonl(jsonl_path: Path) -> list[InvocationEvent]:
+    """Extract ll invocation events from a single JSONL file, sorted by timestamp."""
+    events: list[InvocationEvent] = []
+    try:
+        with open(jsonl_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                tool_name = _extract_tool_name(record)
+                if tool_name is None:
+                    continue
+                ts = record.get("timestamp", "")
+                sid = record.get("sessionId", "")
+                events.append(InvocationEvent(tool_name=tool_name, timestamp=ts, session_id=sid))
+    except OSError:
+        pass
+    events.sort(key=lambda e: e.timestamp)
+    return events
+
+
+@dataclass
+class SessionDiff:
+    """Behavioral diff between two ll sessions."""
+
+    session_a: str
+    session_b: str
+    skills_added: list[str]
+    skills_removed: list[str]
+    count_deltas: dict[str, dict[str, int]]
+    sequence_diff: list[str]
+
+    def to_dict(self) -> dict:
+        return {
+            "session_a": self.session_a,
+            "session_b": self.session_b,
+            "skills_added": self.skills_added,
+            "skills_removed": self.skills_removed,
+            "count_deltas": self.count_deltas,
+            "sequence_diff": self.sequence_diff,
+        }
+
+
+def _compute_session_diff(
+    session_a: str,
+    events_a: list[InvocationEvent],
+    session_b: str,
+    events_b: list[InvocationEvent],
+) -> SessionDiff:
+    """Compute the behavioral diff between two session event streams."""
+    import difflib
+    from collections import Counter as _Counter
+
+    names_a = [e.tool_name for e in events_a]
+    names_b = [e.tool_name for e in events_b]
+
+    set_a = set(names_a)
+    set_b = set(names_b)
+    skills_added = sorted(set_b - set_a)
+    skills_removed = sorted(set_a - set_b)
+
+    counter_a: Counter = _Counter(names_a)
+    counter_b: Counter = _Counter(names_b)
+    count_deltas: dict[str, dict[str, int]] = {}
+    for skill in sorted(set_a | set_b):
+        ca = counter_a.get(skill, 0)
+        cb = counter_b.get(skill, 0)
+        if ca != cb:
+            count_deltas[skill] = {"a": ca, "b": cb, "delta": cb - ca}
+
+    label_a = f"session_a ({session_a[:8]})" if len(session_a) > 8 else f"session_a ({session_a})"
+    label_b = f"session_b ({session_b[:8]})" if len(session_b) > 8 else f"session_b ({session_b})"
+    sequence_diff = list(difflib.unified_diff(names_a, names_b, fromfile=label_a, tofile=label_b, lineterm=""))
+
+    return SessionDiff(
+        session_a=session_a,
+        session_b=session_b,
+        skills_added=skills_added,
+        skills_removed=skills_removed,
+        count_deltas=count_deltas,
+        sequence_diff=sequence_diff,
+    )
+
+
+def _cmd_diff(args: argparse.Namespace, logger: Logger) -> int:
+    """Compare two sessions' ll-invocation behavior."""
+    db_path = DEFAULT_DB_PATH
+
+    path_a = _resolve_session_log(args.session_a, db_path)
+    if path_a is None:
+        logger.error(f"Cannot resolve session: {args.session_a}")
+        return 1
+
+    path_b = _resolve_session_log(args.session_b, db_path)
+    if path_b is None:
+        logger.error(f"Cannot resolve session: {args.session_b}")
+        return 1
+
+    events_a = _events_from_jsonl(path_a)
+    events_b = _events_from_jsonl(path_b)
+
+    diff = _compute_session_diff(args.session_a, events_a, args.session_b, events_b)
+
+    if args.json:
+        print_json(diff.to_dict())
+        return 0
+
+    if not diff.skills_added and not diff.skills_removed and not diff.count_deltas and not diff.sequence_diff:
+        print("No behavioral differences found.")
+        return 0
+
+    if diff.skills_added:
+        print(f"Skills added ({len(diff.skills_added)}):")
+        for s in diff.skills_added:
+            print(f"  + {s}")
+
+    if diff.skills_removed:
+        if diff.skills_added:
+            print()
+        print(f"Skills removed ({len(diff.skills_removed)}):")
+        for s in diff.skills_removed:
+            print(f"  - {s}")
+
+    if diff.count_deltas:
+        print()
+        print("Invocation count changes:")
+        for skill, counts in sorted(diff.count_deltas.items()):
+            delta_str = f"+{counts['delta']}" if counts["delta"] > 0 else str(counts["delta"])
+            print(f"  {skill}: {counts['a']} → {counts['b']} ({delta_str})")
+
+    if diff.sequence_diff:
+        print()
+        print("Sequence diff:")
+        for line in diff.sequence_diff:
+            print(f"  {line}")
+
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for ll-logs."""
     parser = argparse.ArgumentParser(
@@ -1365,6 +1538,14 @@ Examples:
     )
     add_json_arg(dead_skills_parser)
 
+    diff_parser = subparsers.add_parser(
+        "diff",
+        help="Compare two sessions' ll-invocation behavior (skills, sequences, counts)",
+    )
+    diff_parser.add_argument("session_a", metavar="SESSION_A", help="First session ID or JSONL file path")
+    diff_parser.add_argument("session_b", metavar="SESSION_B", help="Second session ID or JSONL file path")
+    add_json_arg(diff_parser)
+
     return parser
 
 
@@ -1418,5 +1599,8 @@ def main_logs() -> int:
 
         if args.command == "dead-skills":
             return _cmd_dead_skills(args, logger)
+
+        if args.command == "diff":
+            return _cmd_diff(args, logger)
 
         return 1
