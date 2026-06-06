@@ -54,11 +54,13 @@ class TestAssessAndScorePersistence:
         assess = data["states"]["assess"]
         assert assess["on_rate_limit_exhausted"] == "rate_limit_diagnostic"
 
-    def test_verify_scores_persisted_uses_retry_counter(self) -> None:
-        """verify_scores_persisted uses retry_counter fragment."""
+    def test_verify_scores_persisted_uses_exit_code_evaluator(self) -> None:
+        """verify_scores_persisted uses exit_code evaluator (not output_numeric)."""
         data = _load_loop()
         vsp = data["states"]["verify_scores_persisted"]
-        assert vsp.get("fragment") == "retry_counter"
+        assert vsp.get("action_type") == "shell"
+        assert vsp.get("fragment") is None
+        assert vsp.get("evaluate", {}).get("type") == "exit_code"
 
     def test_verify_scores_persisted_checks_frontmatter(self) -> None:
         """verify_scores_persisted validates confidence_score and outcome_confidence."""
@@ -352,11 +354,13 @@ class TestReassessAndConvergence:
         reassess = data["states"]["re_assess"]
         assert reassess["on_success"] == "verify_re_assess_scores"
 
-    def test_verify_re_assess_scores_uses_retry_counter(self) -> None:
-        """verify_re_assess_scores uses retry_counter fragment."""
+    def test_verify_re_assess_scores_uses_exit_code_evaluator(self) -> None:
+        """verify_re_assess_scores uses exit_code evaluator (not output_numeric)."""
         data = _load_loop()
         vras = data["states"]["verify_re_assess_scores"]
-        assert vras.get("fragment") == "retry_counter"
+        assert vras.get("action_type") == "shell"
+        assert vras.get("fragment") is None
+        assert vras.get("evaluate", {}).get("type") == "exit_code"
 
     def test_verify_re_assess_scores_writes_post_scores(self) -> None:
         """verify_re_assess_scores writes post_scores JSON to run_dir."""

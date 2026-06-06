@@ -1,10 +1,12 @@
 ---
 id: BUG-1973
-title: "rn-remediate: verify_scores_persisted uses output_numeric evaluator but action outputs a string"
+title: 'rn-remediate: verify_scores_persisted uses output_numeric evaluator but action
+  outputs a string'
 type: BUG
 priority: P1
-status: open
+status: done
 captured_at: '2026-06-06T03:29:25Z'
+completed_at: '2026-06-06T04:09:00Z'
 discovered_date: '2026-06-06'
 discovered_by: audit-loop-run
 relates_to:
@@ -14,6 +16,13 @@ labels:
 - rn-remediate
 - evaluator
 - loop-defect
+confidence_score: 96
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 23
+size: Medium
 ---
 
 # BUG-1973: rn-remediate verify_scores_persisted output_numeric evaluator mismatch
@@ -74,17 +83,33 @@ implement — but was skipped because rn-remediate terminated `failed` at this s
 
 ## Proposed Solution
 
-In the rn-remediate sub-loop definition (inline `_subloop` in `loops/rn-implement.yaml`),
-change `verify_scores_persisted.evaluate`:
+In `scripts/little_loops/loops/rn-remediate.yaml` (a standalone loop invoked by rn-implement,
+not an inline subloop), change `verify_scores_persisted` to remove the `fragment: retry_counter`
+dependency (which injects the `output_numeric` evaluator) and replace with an explicit `exit_code`
+evaluator:
 
 ```yaml
   verify_scores_persisted:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -z "$ISSUE_FILE" ]; then
+        echo "ERROR: Issue file not found for $ID"
+        exit 1
+      fi
+      CONFIDENCE=$(grep '^confidence_score:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      OUTCOME=$(grep '^outcome_confidence:' "$ISSUE_FILE" | head -1 | awk '{print $2}')
+      if [ -z "$CONFIDENCE" ] || [ -z "$OUTCOME" ]; then
+        echo "ERROR: confidence_score or outcome_confidence missing for $ID"
+        exit 1
+      fi
+      ll-issues show "$ID" --json > "${context.run_dir}/pre_scores_${ID}.json" 2>/dev/null
+      echo "Scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
     evaluate:
--     type: output_numeric
--     operator: lt
--     target: "${param.max_retries}"
-+     type: exit_code
-    fragment_bindings: ~    # remove — no longer needed
+      type: exit_code
+-   # Removed: fragment: retry_counter  (injected output_numeric evaluator — wrong for this action)
+-   # Removed: with: counter_key / max_retries  (retry_counter fragment params, no longer needed)
     on_yes: check_readiness
     on_no: failed
     on_error: failed
@@ -104,5 +129,16 @@ The action's exit-code contract is already correct:
 
 **Open** | Created: 2026-06-06 | Priority: P1
 
+## Resolution
+
+Replaced `fragment: retry_counter` (which injects `output_numeric` evaluator) with explicit
+`action_type: shell` + `evaluate: type: exit_code` in both `verify_scores_persisted` and
+`verify_re_assess_scores` states. Updated two tests (`test_verify_scores_persisted_uses_retry_counter`
+→ `test_verify_scores_persisted_uses_exit_code_evaluator`, same for `verify_re_assess_scores`)
+that previously asserted the broken fragment usage.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T04:01:56 - `d0d182db-229c-431f-80be-8debdbc2f8d2.jsonl`
 - `/ll:format-issue` - 2026-06-06T03:41:01 - `b23a2893-543d-4167-8343-e752c0206d37.jsonl`
+- `/ll:confidence-check` - 2026-06-05T00:00:00Z - `bf3719b0-31e7-4794-a41c-534efbeeeff1.jsonl`
+- `/ll:manage-issue` - 2026-06-06T04:09:00Z - `fix`

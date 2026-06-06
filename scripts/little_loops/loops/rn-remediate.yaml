@@ -69,7 +69,7 @@ states:
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   verify_scores_persisted:
-    fragment: retry_counter
+    action_type: shell
     action: |
       ID="${context.issue_id}"
       ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
@@ -86,9 +86,8 @@ states:
       # Write pre-scores
       ll-issues show "$ID" --json > "${context.run_dir}/pre_scores_$${ID}.json" 2>/dev/null
       echo "Scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
-    with:
-      counter_key: "verify_scores_${context.issue_id}"
-      max_retries: 1
+    evaluate:
+      type: exit_code
     on_yes: check_readiness
     on_no: failed
     on_error: failed
@@ -279,7 +278,7 @@ states:
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   verify_re_assess_scores:
-    fragment: retry_counter
+    action_type: shell
     action: |
       ID="${context.issue_id}"
       ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
@@ -296,9 +295,8 @@ states:
       # Write post-scores
       ll-issues show "$ID" --json > "${context.run_dir}/post_scores_$${ID}.json" 2>/dev/null
       echo "Post-scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
-    with:
-      counter_key: "verify_re_scores_${context.issue_id}"
-      max_retries: 1
+    evaluate:
+      type: exit_code
     on_yes: check_convergence
     on_no: failed
     on_error: failed
