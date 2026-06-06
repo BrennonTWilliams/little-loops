@@ -97,7 +97,20 @@ The injection workaround is therefore the only way to get ll-defined persona beh
 
 ### `--tools` (tool allowlist / sandbox modes)
 
-Only basic sandbox modes pass through to Codex. Fine-grained tool allowlist flags (`--allowedTools`, `--disallowedTools`) are not translated and are dropped silently.
+Codex does not support a fine-grained tool allowlist (`--tools` parameter emits
+`CapabilityNotSupported` and is dropped). Instead, use the `sandbox_mode=`
+parameter on `CodexRunner` build methods (ENH-1529) to constrain execution:
+
+| `sandbox_mode` value | Codex flag |
+|---|---|
+| `None` (default) / `"off"` | `--dangerously-bypass-approvals-and-sandbox` |
+| `"read-only"` | `--sandbox read-only` |
+| `"workspace-write"` | `--sandbox workspace-write` |
+| `"danger-full-access"` | `--sandbox danger-full-access` |
+
+Invalid `sandbox_mode` values raise `ValueError`. All three build methods
+(`build_streaming`, `build_blocking_json`, `build_detached`) accept the
+parameter.
 
 ### `json_schema` inline dict (tool schemas)
 

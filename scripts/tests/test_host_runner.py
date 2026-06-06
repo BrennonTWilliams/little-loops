@@ -370,6 +370,118 @@ class TestCodexRunner:
         assert "--dangerously-bypass-approvals-and-sandbox" in invocation.args
         assert invocation.args[-1] == "hi there"
 
+    # ── sandbox_mode (ENH-1529) ──────────────────────────────────────────
+
+    @pytest.mark.parametrize(
+        ("mode", "expected_flag", "expected_value"),
+        [
+            (None, "--dangerously-bypass-approvals-and-sandbox", None),
+            ("off", "--dangerously-bypass-approvals-and-sandbox", None),
+            ("read-only", "--sandbox", "read-only"),
+            ("workspace-write", "--sandbox", "workspace-write"),
+            ("danger-full-access", "--sandbox", "danger-full-access"),
+        ],
+    )
+    def test_build_streaming_sandbox_mode(
+        self, mode: str | None, expected_flag: str, expected_value: str | None
+    ) -> None:
+        """ENH-1529: sandbox_mode controls Codex sandbox flag in build_streaming."""
+        runner = CodexRunner()
+        invocation = runner.build_streaming(prompt="hi", sandbox_mode=mode)
+
+        assert expected_flag in invocation.args
+        if expected_value is not None:
+            idx = invocation.args.index(expected_flag)
+            assert invocation.args[idx + 1] == expected_value
+            # The dangerous bypass flag must NOT be present when sandbox mode is explicit
+            assert "--dangerously-bypass-approvals-and-sandbox" not in invocation.args
+        else:
+            # None/"off" preserves existing behavior
+            assert "--dangerously-bypass-approvals-and-sandbox" in invocation.args
+
+    @pytest.mark.parametrize(
+        ("mode", "expected_flag", "expected_value"),
+        [
+            (None, "--dangerously-bypass-approvals-and-sandbox", None),
+            ("off", "--dangerously-bypass-approvals-and-sandbox", None),
+            ("read-only", "--sandbox", "read-only"),
+            ("workspace-write", "--sandbox", "workspace-write"),
+            ("danger-full-access", "--sandbox", "danger-full-access"),
+        ],
+    )
+    def test_build_blocking_json_sandbox_mode(
+        self, mode: str | None, expected_flag: str, expected_value: str | None
+    ) -> None:
+        """ENH-1529: sandbox_mode controls Codex sandbox flag in build_blocking_json."""
+        runner = CodexRunner()
+        invocation = runner.build_blocking_json(prompt="hi", sandbox_mode=mode)
+
+        assert expected_flag in invocation.args
+        if expected_value is not None:
+            idx = invocation.args.index(expected_flag)
+            assert invocation.args[idx + 1] == expected_value
+            assert "--dangerously-bypass-approvals-and-sandbox" not in invocation.args
+        else:
+            assert "--dangerously-bypass-approvals-and-sandbox" in invocation.args
+
+    @pytest.mark.parametrize(
+        ("mode", "expected_flag", "expected_value"),
+        [
+            (None, "--dangerously-bypass-approvals-and-sandbox", None),
+            ("off", "--dangerously-bypass-approvals-and-sandbox", None),
+            ("read-only", "--sandbox", "read-only"),
+            ("workspace-write", "--sandbox", "workspace-write"),
+            ("danger-full-access", "--sandbox", "danger-full-access"),
+        ],
+    )
+    def test_build_detached_sandbox_mode(
+        self, mode: str | None, expected_flag: str, expected_value: str | None
+    ) -> None:
+        """ENH-1529: sandbox_mode controls Codex sandbox flag in build_detached."""
+        runner = CodexRunner()
+        invocation = runner.build_detached(prompt="hi", sandbox_mode=mode)
+
+        assert expected_flag in invocation.args
+        if expected_value is not None:
+            idx = invocation.args.index(expected_flag)
+            assert invocation.args[idx + 1] == expected_value
+            assert "--dangerously-bypass-approvals-and-sandbox" not in invocation.args
+        else:
+            assert "--dangerously-bypass-approvals-and-sandbox" in invocation.args
+
+    def test_sandbox_mode_invalid_value_raises_value_error(self) -> None:
+        """ENH-1529: invalid sandbox_mode values raise ValueError."""
+        runner = CodexRunner()
+        with pytest.raises(ValueError, match="sandbox_mode"):
+            runner.build_streaming(prompt="hi", sandbox_mode="bogus")
+
+    def test_sandbox_mode_default_preserves_existing_behavior(self) -> None:
+        """ENH-1529: default sandbox_mode=None preserves the existing snapshot test."""
+        runner = CodexRunner()
+        invocation = runner.build_streaming(prompt="/ll:ready-issue BUG-001")
+
+        assert [invocation.binary, *invocation.args] == [
+            "codex",
+            "exec",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--json",
+            "--skip-git-repo-check",
+            "/ll:ready-issue BUG-001",
+        ]
+
+    def test_tools_warning_mentions_sandbox_mode_parameter(self) -> None:
+        """ENH-1529: tools warning suggests sandbox_mode= as the Codex-native alternative."""
+        runner = CodexRunner()
+        with pytest.warns(CapabilityNotSupported, match="sandbox_mode"):
+            runner.build_streaming(prompt="hi", tools=["Read", "Edit"])
+
+    def test_describe_capabilities_documents_sandbox_mode_tool_constraint(self) -> None:
+        """ENH-1529: describe_capabilities notes partial tool-constraint support via sandbox modes."""
+        report = CodexRunner().describe_capabilities()
+        by_name = {e.name: e for e in report.capabilities}
+        tool_entry = by_name["tool_allowlist"]
+        assert "sandbox_mode" in tool_entry.note.lower()
+
     def test_satisfies_host_runner_protocol(self) -> None:
         assert isinstance(CodexRunner(), HostRunner)
 
@@ -596,7 +708,7 @@ class TestDescribeCapabilities:
         by_name = {e.name: e for e in report.capabilities}
         assert by_name["agent_select"].status == "partial"
         assert "developer_instructions" in by_name["agent_select"].note
-        assert by_name["tool_allowlist"].status == "unsupported"
+        assert by_name["tool_allowlist"].status == "partial"  # ENH-1529
         assert by_name["json_schema"].status == "partial"
 
     def test_opencode_runner_returns_capability_report(self) -> None:
@@ -644,7 +756,7 @@ class TestDescribeCapabilities:
         # Tools remain unsupported.
         with pytest.warns(CapabilityNotSupported, match="tool"):
             runner.build_streaming(prompt="hi", tools=["Read"])
-        assert by_name["tool_allowlist"].status == "unsupported"
+        assert by_name["tool_allowlist"].status == "partial"  # ENH-1529
 
 
 class TestApplyHostCliFromConfig:

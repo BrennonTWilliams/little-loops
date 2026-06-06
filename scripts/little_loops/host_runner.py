@@ -392,6 +392,28 @@ class CodexRunner:
     def detect(self) -> bool:
         return shutil.which("codex") is not None
 
+    _VALID_SANDBOX_MODES = frozenset({"off", "read-only", "workspace-write", "danger-full-access"})
+
+    @staticmethod
+    def _sandbox_args(sandbox_mode: str | None) -> list[str]:
+        """Return the Codex sandbox flag(s) for *sandbox_mode*.
+
+        ``None`` or ``"off"`` → ``--dangerously-bypass-approvals-and-sandbox``
+        (current default — skips both approval prompt and sandbox restrictions).
+        ``"read-only"`` → ``--sandbox read-only``
+        ``"workspace-write"`` → ``--sandbox workspace-write``
+        ``"danger-full-access"`` → ``--sandbox danger-full-access``
+        Other values raise :exc:`ValueError`.
+        """
+        if sandbox_mode is None or sandbox_mode == "off":
+            return ["--dangerously-bypass-approvals-and-sandbox"]
+        if sandbox_mode in CodexRunner._VALID_SANDBOX_MODES:
+            return ["--sandbox", sandbox_mode]
+        raise ValueError(
+            f"Invalid sandbox_mode {sandbox_mode!r}. "
+            f"Valid values: None, 'off', {', '.join(sorted(CodexRunner._VALID_SANDBOX_MODES))!r}"
+        )
+
     @staticmethod
     def _emit_agent_warning(agent: str) -> None:
         # Note: this stderr print writes to the parent process's sys.stderr.
@@ -440,6 +462,7 @@ class CodexRunner:
         resume: bool = False,
         agent: str | None = None,
         tools: list[str] | None = None,
+        sandbox_mode: str | None = None,
     ) -> HostInvocation:
         if agent is not None:
             prompt, injected = self._inject_agent_persona(agent, prompt, working_dir)
@@ -449,6 +472,8 @@ class CodexRunner:
             warnings.warn(
                 "codex host does not support a tool allowlist; "
                 "tool access is controlled via --sandbox mode. "
+                "Use sandbox_mode='read-only' or 'workspace-write' for "
+                "constrained Codex execution (ENH-1529). "
                 "The 'tools' parameter will be ignored.",
                 CapabilityNotSupported,
                 stacklevel=2,
@@ -457,8 +482,8 @@ class CodexRunner:
         args: list[str] = ["exec"]
         if resume:
             args += ["resume", "--last"]
+        args += self._sandbox_args(sandbox_mode)
         args += [
-            "--dangerously-bypass-approvals-and-sandbox",
             "--json",
             "--skip-git-repo-check",
         ]
@@ -490,10 +515,11 @@ class CodexRunner:
         prompt: str,
         model: str | None = None,
         json_schema: dict | None = None,
+        sandbox_mode: str | None = None,
     ) -> HostInvocation:
-        args: list[str] = [
-            "exec",
-            "--dangerously-bypass-approvals-and-sandbox",
+        args: list[str] = ["exec"]
+        args += self._sandbox_args(sandbox_mode)
+        args += [
             "--json",
             "--skip-git-repo-check",
         ]
@@ -527,10 +553,12 @@ class CodexRunner:
             capabilities=self.capabilities,
         )
 
-    def build_detached(self, *, prompt: str) -> HostInvocation:
-        args = [
-            "exec",
-            "--dangerously-bypass-approvals-and-sandbox",
+    def build_detached(
+        self, *, prompt: str, sandbox_mode: str | None = None
+    ) -> HostInvocation:
+        args: list[str] = ["exec"]
+        args += self._sandbox_args(sandbox_mode)
+        args += [
             "--skip-git-repo-check",
             prompt,
         ]
@@ -561,11 +589,16 @@ class CodexRunner:
                     "prompt as a persona prefix when the file exists. Falls back to "
                     "CapabilityNotSupported + stderr warning when the TOML is absent.",
                 ),
-                # tool_allowlist=False (line 304); warning at build_streaming lines 326-333
+                # tool_allowlist=False; partial constraint available via sandbox_mode=
+                # parameter on build_streaming / build_blocking_json / build_detached
+                # (ENH-1529). The --tools allowlist parameter is still unsupported.
                 CapabilityEntry(
                     "tool_allowlist",
-                    "unsupported",
-                    "codex uses sandbox modes for tool access; --tools parameter is ignored",
+                    "partial",
+                    "codex uses sandbox modes for tool access; --tools parameter is "
+                    "unsupported, but sandbox_mode= parameter on build methods offers "
+                    "constrained execution (off, read-only, workspace-write, "
+                    "danger-full-access)",
                 ),
                 # json_schema: partial — --output-schema requires a file path; ENH-1530 bridges
                 # via temp file written in build_blocking_json, path returned in cleanup_paths

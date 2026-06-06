@@ -3,7 +3,7 @@ id: ENH-1529
 title: Expose sandbox_mode parameter on CodexRunner build methods
 priority: P4
 type: ENH
-status: open
+status: done
 captured_at: '2026-05-16T21:26:07Z'
 discovered_date: '2026-05-16'
 discovered_by: capture-issue
@@ -230,7 +230,34 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 ---
 
+## Resolution
+
+Implemented 2026-06-05.
+
+### Changes
+
+- **`scripts/little_loops/host_runner.py`**:
+  - Added `_sandbox_args(sandbox_mode)` static method with `_VALID_SANDBOX_MODES` frozenset
+  - Threaded `sandbox_mode: str | None = None` through `build_streaming`, `build_blocking_json`, `build_detached`
+  - Updated `tools` warning to suggest `sandbox_mode=` as the Codex-native alternative (ENH-1529)
+  - Updated `describe_capabilities` — `tool_allowlist` status changed from `"unsupported"` to `"partial"` with expanded note listing valid mode values
+- **`scripts/tests/test_host_runner.py`**: 8 new tests — parametrized sandbox mode for all 3 build methods (15 cases), invalid value ValueError check, default behavior snapshot, tools warning match, and describe_capabilities assertion
+- **`docs/codex/usage.md`**: Replaced bare `--tools` limitation text with `sandbox_mode=` parameter table and usage instructions
+- **`docs/reference/API.md`**: Added `sandbox_mode: str | None = None` to HostRunner Protocol signatures and updated CodexRunner table row
+
+### Verification
+
+- 87/87 `test_host_runner.py` tests pass (no regressions)
+- All 51 codex-related wiring tests pass
+- ruff ✅ | mypy ✅
+- Full test suite: **10,088 passed**, 1 pre-existing failure (`test_cli_loop_testing.py`) unrelated
+
+### Design note
+
+Used correct Codex sandbox enum values (`read-only`, `workspace-write`, `danger-full-access`) from `thoughts/research/codex-headless-invocation.md` rather than the incorrect values (`write-to-cwd`, `network`) that appeared in the original Proposed Solution section.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-06T00:18:22Z
 - `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
