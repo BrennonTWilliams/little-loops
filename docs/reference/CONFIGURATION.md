@@ -129,7 +129,6 @@ For interactive editing, use `/ll:configure`.
   "context_monitor": {
     "enabled": true,
     "auto_handoff_threshold": 80,
-    "context_limit_estimate": 1000000,
     "use_transcript_baseline": true
   },
 
@@ -431,7 +430,7 @@ Context window monitoring for automatic session handoff. See [Session Handoff Gu
 |-----|---------|-------------|
 | `enabled` | `true` | Enable context window monitoring (enabled by default; all project templates include this setting) |
 | `auto_handoff_threshold` | `80` | Context usage percentage to trigger handoff warning |
-| `context_limit_estimate` | `1000000` | Fallback/override for the context window token limit. Auto-detection reads the model from the JSONL transcript and selects the correct limit for known models (claude-*-4* → 200 000). Set this only to override auto-detection or when using an unknown/custom model. Also overridable via `LL_CONTEXT_LIMIT` env var. |
+| `context_limit_estimate` | `0` (auto) | Override for the context window token limit. Omit or set to `0` for auto-detection (known claude-*-4* models -> 200000; baseline exceeding that auto-upgrades to 1000000). Set to an explicit non-zero value to override, e.g. `1000000` for 1M-context models. Also overridable via `LL_CONTEXT_LIMIT` env var. |
 | `use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Part of the three-tier token priority system: `result_token_count > 0` (zero-lag authoritative, written by the `on_usage` callback from stream-json `result` events) → transcript baseline (one-turn lag, ±5–15%) → pure heuristics (±30–50%). This setting enables the second tier; the first tier (`result_token_count`) is always active when available. |
 
 ### `analytics`
@@ -465,6 +464,31 @@ Per-category gating for analytics writes (ENH-1840). All categories default to e
     "enabled": true,
     "capture": {
       "file_events": false
+    }
+  }
+}
+```
+
+#### `analytics.retention`
+
+Retention policy for `history.db` raw event tables (ENH-1906). Pruning is **dual-gated**: both `min_project_age_days` and `min_db_size_mb` must be exceeded before any rows are deleted. This protects fresh or small projects from accidental data loss. High-value tables (`issue_events`, `user_corrections`) are never pruned regardless of settings.
+
+Run `ll-session prune --dry-run` to preview what would be deleted before committing.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `analytics.retention.min_project_age_days` | `integer` | `365` | Minimum project age in days (MIN(started_at) from sessions table) before pruning is allowed. Both gates must be exceeded. |
+| `analytics.retention.min_db_size_mb` | `integer` | `800` | Minimum `.ll/history.db` file size in MB before pruning is allowed. Both gates must be exceeded. |
+| `analytics.retention.raw_event_max_age_days` | `integer\|null` | `90` | Delete rows older than N days from `tool_events`, `cli_events`, `file_events`, and `message_events`. `null` disables per-table pruning. |
+
+**Example** — reduce raw-event retention to 30 days once the DB reaches 200 MB:
+```json
+{
+  "analytics": {
+    "retention": {
+      "min_project_age_days": 180,
+      "min_db_size_mb": 200,
+      "raw_event_max_age_days": 30
     }
   }
 }

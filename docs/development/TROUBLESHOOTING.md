@@ -546,7 +546,6 @@ grep -rn "print(" hooks/ scripts/ | grep -v "flush=True"
          "tool_call_base": 100,
          "bash_output_per_char": 0.3
        },
-       "context_limit_estimate": 1000000
      }
    }
    ```

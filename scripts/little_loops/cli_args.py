@@ -160,7 +160,7 @@ def add_context_limit_arg(parser: argparse.ArgumentParser) -> None:
         "--context-limit",
         type=int,
         default=None,
-        help="Override context window token estimate (default: from config or 1000000 for Sonnet/Opus, 200000 for Haiku 4.5)",
+        help="Override context window token estimate (default: auto-detected from session transcript; 200000 for known Claude 4 models, 1000000 for 1M-context sessions)",
     )
 
 

@@ -584,12 +584,12 @@ questions:
     options:
       - label: "{{current context_limit_estimate}} (keep)"
         description: "Keep current setting"
-      - label: "100000"
-        description: "100k (conservative)"
-      - label: "150000"
-        description: "150k (default)"
+      - label: "0"
+        description: "0 (auto-detect, recommended)"
       - label: "200000"
-        description: "200k (permissive)"
+        description: "200k (standard Claude 4 models)"
+      - label: "1000000"
+        description: "1M (1M-context models)"
     multiSelect: false
 ```
 

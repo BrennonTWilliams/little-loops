@@ -25,7 +25,7 @@ fi
 # Read configuration with defaults
 THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_handoff_threshold" "80")}"
 # context_limit_estimate is an optional override/fallback; auto-detection sets the final limit below.
-CONFIG_LIMIT=$(ll_config_value "context_monitor.context_limit_estimate" "1000000")
+CONFIG_LIMIT=$(ll_config_value "context_monitor.context_limit_estimate" "")
 STATE_FILE=$(ll_config_value "context_monitor.state_file" ".ll/ll-context-state.json")
 
 # Read estimate weights with defaults
@@ -114,24 +114,26 @@ estimate_tokens() {
 get_transcript_baseline() {
     local path="$1"
     [ -z "$path" ] || [ ! -f "$path" ] && echo 0 && return
-    tail -50 "$path" 2>/dev/null | jq -s 'map(select(.type == "assistant")) | last |
+    local result
+    result=$(tail -50 "$path" 2>/dev/null | jq -s 'map(select(.type == "assistant")) | last |
         (.message.usage.input_tokens // 0) +
         (.message.usage.cache_creation_input_tokens // 0) +
         (.message.usage.cache_read_input_tokens // 0) +
-        (.message.usage.output_tokens // 0)' 2>/dev/null || echo 0
+        (.message.usage.output_tokens // 0)' 2>/dev/null || echo 0)
+    [[ "$result" =~ ^[0-9]+$ ]] && echo "$result" || echo 0
 }
 
 # Map a model identifier to its context window size.
-# Config override wins when explicitly set to a non-default value (anything other than 1000000).
-# Known claude-*-4* prefixes → 200000; unknown models → config_override fallback.
+# Config override wins when explicitly set to a non-empty, non-zero value (including 1000000 for 1M models).
+# Known claude-*-4* prefixes -> 200000; all other models -> 200000.
 get_context_limit() {
     local model="$1"
     local config_override="$2"
-    # Explicit user override: if set to something other than the default 1000000, honour it.
-    [ -n "$config_override" ] && [ "$config_override" != "1000000" ] && echo "$config_override" && return
+    # Explicit user override: honor any non-empty, non-zero value (including 1000000 for 1M-context models).
+    [ -n "$config_override" ] && [ "$config_override" != "0" ] && echo "$config_override" && return
     case "$model" in
         claude-opus-4*|claude-sonnet-4*|claude-haiku-4*) echo 200000 ;;
-        *) echo "${config_override:-200000}" ;;
+        *) echo 200000 ;;
     esac
 }
 
@@ -281,6 +283,14 @@ main() {
         TRANSCRIPT_BASELINE=$(get_transcript_baseline "$TRANSCRIPT_PATH")
     fi
 
+    # Auto-upgrade: if the measured transcript baseline exceeds the resolved limit but is within
+    # plausible 1M range, the model has a larger context window (e.g. 1M variant with stripped suffix).
+    # Upper bound 1100000 prevents corrupt reads (e.g. 1517046) from triggering a false upgrade.
+    if [ "${TRANSCRIPT_BASELINE:-0}" -gt "$CONTEXT_LIMIT" ] 2>/dev/null && \
+       [ "${TRANSCRIPT_BASELINE:-0}" -le 1100000 ] 2>/dev/null; then
+        [ "$CONTEXT_LIMIT" -le 200000 ] && CONTEXT_LIMIT=1000000
+    fi
+
     # Calculate new totals
     # Priority: authoritative result event count > transcript baseline > pure heuristics.
     # result_token_count already reflects full turn usage — do NOT add TOKENS on top.
@@ -301,6 +311,13 @@ main() {
     fi
     NEW_TOKENS=$((NEW_TOKENS + overhead))
 
+    # Sanity clamp: discard impossible token counts (> 3x limit) as transcript misreads.
+    # 3x catches real corrupt reads (e.g. 1517046/200000 = 758%) while allowing legitimate
+    # estimates that overshoot the limit due to overhead (e.g. 111% on a tight 50k window).
+    if [ "$NEW_TOKENS" -gt $((CONTEXT_LIMIT * 3)) ] 2>/dev/null; then
+        NEW_TOKENS=$CURRENT_TOKENS
+    fi
+
     # Update breakdown tracking
     OVERHEAD_NEW=$((OVERHEAD_CURRENT + overhead))
     TOOL_NEW=$((TOOL_CURRENT + TOKENS))
@@ -314,7 +331,8 @@ main() {
         --argjson overhead "$OVERHEAD_NEW" \
         --argjson baseline "$TRANSCRIPT_BASELINE" \
         --arg model "$DETECTED_MODEL" \
-        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead | .transcript_baseline_tokens = $baseline | .detected_model = $model')
+        --argjson limit "$CONTEXT_LIMIT" \
+        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead | .transcript_baseline_tokens = $baseline | .detected_model = $model | .context_limit = $limit')
 
     # Calculate usage percentage
     USAGE_PERCENT=$((NEW_TOKENS * 100 / CONTEXT_LIMIT))

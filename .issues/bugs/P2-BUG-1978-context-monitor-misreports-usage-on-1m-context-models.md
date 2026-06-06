@@ -4,8 +4,9 @@ title: context-monitor.sh misreports context usage on 1M-context models (200k de
   and has no sanity clamp for transient transcript-baseline spikes
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-06T00:00:00Z'
+completed_at: '2026-06-06T20:24:37Z'
 discovered_date: '2026-06-06'
 discovered_by: capture-issue
 decision_needed: false
@@ -241,6 +242,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-06-06 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T20:04:07 - `e7a60e1c-1f7a-43c5-94b7-650409a63183.jsonl`
 - `/ll:confidence-check` - 2026-06-06T00:00:00Z - `8da81e23-9a86-45a0-892b-ea7fc9faa5ea.jsonl`
 - `/ll:wire-issue` - 2026-06-06T19:58:10 - `bc19e9f1-b796-4f10-896b-5f271b0c432a.jsonl`
 - `/ll:refine-issue` - 2026-06-06T19:50:36 - `466bd496-d413-4f6c-95a6-9c241c735ce2.jsonl`

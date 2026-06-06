@@ -688,9 +688,9 @@
         },
         "context_limit_estimate": {
           "type": "integer",
-          "description": "Fallback/override for the context window token limit. Auto-detection reads the model from the JSONL transcript and selects the correct limit for known models (claude-*-4* → 200000). Set this only to override auto-detection or when using an unknown/custom model.",
-          "default": 1000000,
-          "minimum": 50000,
+          "description": "Override for the context window token limit. Omit or set to 0 for auto-detection (known claude-*-4* variants -> 200000; if transcript baseline exceeds that, auto-upgrades to 1000000). Set to an explicit non-zero value to override, e.g. 1000000 for 1M-context models.",
+          "default": 0,
+          "minimum": 0,
           "maximum": 2000000
         },
         "state_file": {

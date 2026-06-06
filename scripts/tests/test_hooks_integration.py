@@ -26,7 +26,6 @@ class TestContextMonitor:
             "context_monitor": {
                 "enabled": True,
                 "auto_handoff_threshold": 80,
-                "context_limit_estimate": 1000000,
                 "state_file": str(tmp_path / "ll-context-state.json"),
             }
         }
@@ -320,7 +319,7 @@ class TestContextMonitor:
 
             config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
-            config_link.write_text(test_config.read_text())  # context_limit_estimate = 1000000
+            config_link.write_text(test_config.read_text())  # no context_limit_estimate -> auto-detect
 
             transcript_file = tmp_path / "transcript.jsonl"
             assistant_entry = {
@@ -892,6 +891,186 @@ class TestContextMonitor:
             # Falls back to heuristics: estimated_tokens stays near 5000 (heuristic delta is small)
             assert state["estimated_tokens"] < 80000, (
                 f"estimated_tokens {state['estimated_tokens']} should stay near heuristic baseline. "
+                f"Full state: {state}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_1m_model_limit_resolution(self, hook_script: Path, test_config: Path, tmp_path: Path):
+        """Transcript baseline exceeding 200k auto-upgrades context limit to 1M.
+
+        Uses baseline of 250K tokens on claude-opus-4-8 (maps to 200k by model name).
+        250k > 200k triggers auto-upgrade to 1M. 250k / 1M = 25% -> no handoff (exit 0).
+        Verifies state context_limit is written as 1000000.
+        """
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".ll" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            transcript_file = tmp_path / "transcript.jsonl"
+            assistant_entry = {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-opus-4-8",
+                    "usage": {
+                        "input_tokens": 250000,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 0,
+                    },
+                },
+            }
+            transcript_file.write_text(json.dumps(assistant_entry) + "\n")
+
+            state_file = tmp_path / "ll-context-state.json"
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x\n"},
+                "transcript_path": str(transcript_file),
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            # exit 0 = no trigger. 250k / 1M = 25% < 80% threshold.
+            assert result.returncode == 0, (
+                f"Expected exit 0 (auto-upgraded to 1M limit), got {result.returncode}. "
+                f"stderr: {result.stderr}"
+            )
+            if state_file.exists():
+                state = json.loads(state_file.read_text())
+                assert state.get("context_limit") == 1000000, (
+                    f"Expected context_limit=1000000 in state. Full state: {state}"
+                )
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_sentinel_1000000_honored_as_explicit_override(
+        self, hook_script: Path, tmp_path: Path
+    ):
+        """Explicit context_limit_estimate: 1000000 in config is honored (not treated as sentinel).
+
+        Unknown model with 900k baseline and config limit 1000000. 900k / 1M = 90% -> trigger (exit 2).
+        If 1000000 were still ignored: limit falls to 200k, 900k clamped -> exit 0.
+        """
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config = {
+                "context_monitor": {
+                    "enabled": True,
+                    "auto_handoff_threshold": 80,
+                    "context_limit_estimate": 1000000,
+                    "state_file": str(tmp_path / "ll-context-state.json"),
+                }
+            }
+            config_file = tmp_path / ".ll" / "ll-config.json"
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            config_file.write_text(json.dumps(config, indent=2))
+
+            transcript_file = tmp_path / "transcript.jsonl"
+            assistant_entry = {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-custom-model-xyz",
+                    "usage": {
+                        "input_tokens": 900000,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 0,
+                    },
+                },
+            }
+            transcript_file.write_text(json.dumps(assistant_entry) + "\n")
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x\n"},
+                "transcript_path": str(transcript_file),
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            # exit 2 = handoff triggered. 900k / 1M = 90% > 80% threshold.
+            assert result.returncode == 2, (
+                f"Expected exit 2 (1000000 honored as 1M limit), got {result.returncode}. "
+                f"stderr: {result.stderr}"
+            )
+            assert "1000000" in result.stderr, (
+                f"Expected '1000000' in stderr to confirm explicit 1M limit. stderr: {result.stderr}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_impossible_baseline_clamped(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Impossible token count (> 1.05x limit) is clamped to prior estimate, no spurious trigger.
+
+        Pre-write state with result_token_count=1517046 (> 200k limit x 1.05 = 210k).
+        Clamp falls back to CURRENT_TOKENS (1000) -> exit 0. Without clamp: 758% -> exit 2.
+        """
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".ll" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            state_file = tmp_path / "ll-context-state.json"
+            state_file.write_text(
+                json.dumps(
+                    {
+                        "estimated_tokens": 1000,
+                        "tool_calls": 5,
+                        "result_token_count": 1517046,
+                        "breakdown": {},
+                    }
+                )
+            )
+
+            input_data = {
+                "tool_name": "Write",
+                "tool_response": {"content": ""},
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            assert result.returncode != 2, (
+                f"Expected no handoff trigger (clamped), got exit 2. stderr: {result.stderr}"
+            )
+            state = json.loads(state_file.read_text())
+            assert state["estimated_tokens"] <= 200000, (
+                f"estimated_tokens {state['estimated_tokens']} should be <= 200000 after clamp. "
                 f"Full state: {state}"
             )
 

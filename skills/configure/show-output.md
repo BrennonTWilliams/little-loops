@@ -125,7 +125,7 @@ Context Monitor Configuration
 -----------------------------
   enabled:                {{config.context_monitor.enabled}}                 (default: false)
   auto_handoff_threshold: {{config.context_monitor.auto_handoff_threshold}}  (default: 80%)
-  context_limit_estimate: {{config.context_monitor.context_limit_estimate}}  (default: 150000)
+  context_limit_estimate: {{config.context_monitor.context_limit_estimate}}  (default: 0, auto-detect)
   state_file:             {{config.context_monitor.state_file}}              (default: .ll/ll-context-state.json)
 
 Edit: /ll:configure context

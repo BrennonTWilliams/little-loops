@@ -1164,8 +1164,7 @@ When `result_token_count > 0` in `.ll/ll-context-state.json`, the context monito
 {
   "context_monitor": {
     "enabled": true,
-    "auto_handoff_threshold": 80,
-    "context_limit_estimate": 1000000
+    "auto_handoff_threshold": 80
   }
 }
 ```
