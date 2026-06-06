@@ -1749,3 +1749,337 @@ class TestDeadSkills:
             result = main_logs()
 
         assert result == 0
+
+
+class TestScanFailures:
+    """Tests for the scan-failures subcommand."""
+
+    def _make_project_dir(
+        self,
+        claude_projects: Path,
+        home: Path,
+        subpath: str,
+        records: list[dict],
+        session_id: str = "session-abc",
+    ) -> Path:
+        """Create a mock claude project dir with JSONL content."""
+        project_path = home / subpath
+        project_path.mkdir(parents=True, exist_ok=True)
+
+        encoded = str(project_path.resolve()).replace("/", "-")
+        proj_dir = claude_projects / encoded
+        proj_dir.mkdir(parents=True, exist_ok=True)
+
+        if records:
+            jsonl_file = proj_dir / "session.jsonl"
+            with open(jsonl_file, "w") as f:
+                for record in records:
+                    if "sessionId" not in record:
+                        record = {**record, "sessionId": session_id}
+                    if "cwd" not in record:
+                        record = {**record, "cwd": str(project_path)}
+                    f.write(json.dumps(record) + "\n")
+
+        return project_path
+
+    def _assistant_bash_record(
+        self,
+        command: str,
+        tool_use_id: str = "toolu_001",
+        session_id: str = "sess-1",
+        timestamp: str = "2026-01-01T00:00:00Z",
+    ) -> dict:
+        return {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": tool_use_id,
+                        "name": "Bash",
+                        "input": {"command": command},
+                    }
+                ],
+            },
+            "sessionId": session_id,
+            "timestamp": timestamp,
+        }
+
+    def _user_tool_result_record(
+        self,
+        tool_use_id: str = "toolu_001",
+        content: str = "Error output",
+        is_error: bool = True,
+        session_id: str = "sess-1",
+        timestamp: str = "2026-01-01T00:00:01Z",
+    ) -> dict:
+        return {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "is_error": is_error,
+                        "content": [{"type": "text", "text": content}],
+                    }
+                ],
+            },
+            "sessionId": session_id,
+            "timestamp": timestamp,
+        }
+
+    def test_scan_failures_subcommand_parsed(self) -> None:
+        """scan-failures sets command='scan-failures' and all=True."""
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--all"]):
+            args = _parse_args()
+        assert args.command == "scan-failures"
+        assert args.all is True
+
+    def test_scan_failures_project_flag(self) -> None:
+        """scan-failures --project sets project path."""
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--project", "/tmp"]):
+            args = _parse_args()
+        assert args.project == Path("/tmp")
+
+    def test_scan_failures_capture_flag(self) -> None:
+        """--capture flag is accepted."""
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--capture"]):
+            args = _parse_args()
+        assert args.capture is True
+
+    def test_scan_failures_window_days_flag(self) -> None:
+        """--window-days is accepted."""
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--window-days", "7"]):
+            args = _parse_args()
+        assert args.window_days == 7
+
+    def test_scan_failures_project_and_all_mutually_exclusive(self) -> None:
+        """--project and --all cannot be combined."""
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--project", "/tmp", "--all"]):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    def test_scan_failures_detects_is_error_flag(self, capsys, tmp_path) -> None:
+        """Nonzero-exit failure (is_error: True) is detected and surfaced."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-history --bad-flag", tool_use_id="t1"),
+                    self._user_tool_result_record(
+                        tool_use_id="t1",
+                        content="ll-history: error: unrecognized arguments: --bad-flag",
+                        is_error=True,
+                    ),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "ll-history" in captured.out
+
+    def test_scan_failures_detects_traceback(self, capsys) -> None:
+        """Traceback text in result content is detected as a failure."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            tb = "Traceback (most recent call last):\n  File 'foo.py', line 5\nValueError: oops"
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t2"),
+                    self._user_tool_result_record(
+                        tool_use_id="t2",
+                        content=tb,
+                        is_error=False,
+                    ),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "ll-issues" in captured.out
+
+    def test_scan_failures_clusters_same_error(self, capsys) -> None:
+        """Multiple occurrences of the same error collapse to one cluster."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            error = "ll-history: error: something went wrong"
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-history", tool_use_id="t1", session_id="s1"),
+                    self._user_tool_result_record("t1", error, session_id="s1"),
+                    self._assistant_bash_record("ll-history", tool_use_id="t2", session_id="s2"),
+                    self._user_tool_result_record("t2", error, session_id="s2"),
+                ],
+            )
+
+            captured_lines: list[str] = []
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path), "--json"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("builtins.print", side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else "")),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured_lines))
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["count"] == 2
+        assert data[0]["tool"] == "ll-history"
+
+    def test_scan_failures_suppresses_transient_errors(self, capsys) -> None:
+        """Rate limit and other transient errors are suppressed from candidates."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-history", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "rate limit exceeded", is_error=True),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No ll-* failures found" in captured.out
+
+    def test_scan_failures_excludes_verify_tools(self, capsys) -> None:
+        """ll-verify-* expected-exit-1 calls are excluded from candidates."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-verify-skills", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "Skill exceeds 500 lines", is_error=True),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No ll-* failures found" in captured.out
+
+    def test_scan_failures_json_output_schema(self, capsys) -> None:
+        """--json output contains expected keys."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "KeyError: 'missing'", is_error=True),
+                ],
+            )
+
+            captured_lines: list[str] = []
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path), "--json"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("builtins.print", side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else "")),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured_lines))
+        assert isinstance(data, list)
+        assert len(data) == 1
+        entry = data[0]
+        assert "tool" in entry
+        assert "count" in entry
+        assert "normalized_sig" in entry
+        assert "sample_error" in entry
+        assert "session_ids" in entry
+
+    def test_scan_failures_no_failures_returns_0(self, capsys) -> None:
+        """scan-failures returns 0 with 'no failures' message when corpus is clean."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-history list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "Success", is_error=False),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No ll-* failures found" in captured.out

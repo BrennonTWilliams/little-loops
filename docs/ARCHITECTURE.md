@@ -247,7 +247,7 @@ little-loops/
         │   │   ├── lifecycle.py     # status, stop, resume
         │   │   ├── info.py          # list, history, show
         │   │   └── testing.py       # ll-loop test/simulate subcommand utilities
-        │   └── logs.py              # ll-logs: discover/extract/sequences/stats/tail/dead-skills subcommands + index generation
+        │   └── logs.py              # ll-logs: discover/extract/sequences/stats/tail/dead-skills/scan-failures subcommands + index generation
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration loading
         ├── state.py             # State persistence

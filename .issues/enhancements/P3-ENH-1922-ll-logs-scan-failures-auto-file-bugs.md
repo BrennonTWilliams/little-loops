@@ -3,8 +3,9 @@ id: ENH-1922
 title: 'll-logs scan-failures: mine failed ll-* calls to auto-file bugs'
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-04T02:27:34Z'
+completed_at: '2026-06-06T02:24:49Z'
 discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1918
@@ -180,7 +181,7 @@ Output (text mode): one candidate block per `(tool, normalized-error-signature)`
 
 ## Related Key Documentation
 
-- `docs/reference/API.md` (ll-logs); `skills/` analyze_log
+- `docs/reference/API.md` (ll-logs); `.claude/commands/analyze_log.md`
 
 ## Labels
 
@@ -210,6 +211,7 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - **Broad doc/wiring surface (11 files)**: Seven of eleven touchpoints are mechanical doc/string updates (`.claude/CLAUDE.md`, `commands/help.md`, `docs/ARCHITECTURE.md`, `cli/__init__.py`, `skills/init/SKILL.md` ×2, `CHANGELOG.md`). None will break functionality if missed, but a verification pass is needed to avoid incomplete wiring at PR time.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T02:12:18 - `8e08f497-2fcf-4b4b-9ae0-2a00c506422b.jsonl`
 - `/ll:confidence-check` - 2026-06-05T02:00:00 - `96c87ebe-6aa2-4e31-9f6e-048c63d3f1da.jsonl`
 - `/ll:decide-issue` - 2026-06-06T02:07:09 - `886c31c7-0954-45fb-848f-1d2c6cb35941.jsonl`
 - `/ll:confidence-check` - 2026-06-05T00:00:00 - `ebab5302-4a33-4ea6-bbbf-a199ce5df87d.jsonl`

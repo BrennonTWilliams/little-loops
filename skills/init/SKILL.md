@@ -408,7 +408,7 @@ If user opted in:
    - `ll-create-extension` - Scaffold a new little-loops extension project
    - `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
    - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
-   - `ll-logs` - Discover, extract, and analyze (sequences) ll-relevant log entries from Claude project logs
+   - `ll-logs` - Discover, extract, and analyze (sequences, scan-failures) ll-relevant log entries from Claude project logs
    - `ll-doctor` - Check host CLI capability support for little-loops features
    - `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings)
    - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands for Codex discovery
@@ -444,7 +444,7 @@ If user opted in:
    - `ll-create-extension` - Scaffold a new little-loops extension project
    - `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
    - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
-   - `ll-logs` - Discover, extract, and analyze (sequences) ll-relevant log entries from Claude project logs
+   - `ll-logs` - Discover, extract, and analyze (sequences, scan-failures) ll-relevant log entries from Claude project logs
    - `ll-doctor` - Check host CLI capability support for little-loops features
    - `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings)
    - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands for Codex discovery

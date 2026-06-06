@@ -278,7 +278,7 @@ ll-adapt-skills-for-codex Add Codex Skills API frontmatter to all skills AND bri
 ll-adapt-agents-for-codex Generate .codex/agents/*.toml from agents/*.md for Codex agent-select support
 ll-doctor         Check host CLI capability support for little-loops features
 ll-learning-tests Query and manage the learning test registry (check/list/mark-stale)
-ll-logs           Discover, extract, and analyze ll-relevant log entries from Claude project logs (sequences for tool-chain n-grams; stats for skill frequency/correction telemetry; dead-skills for never/rarely-invoked skill detection)
+ll-logs           Discover, extract, and analyze ll-relevant log entries from Claude project logs (sequences for tool-chain n-grams; stats for skill frequency/correction telemetry; dead-skills for never/rarely-invoked skill detection; scan-failures for mining failed ll-* calls into bug candidates)
 ll-session        Query the unified SQLite session store (search/recent/backfill/path/grep/expand/describe)
 ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings)
 ll-history-context Render a ## Historical Context block for an issue from .ll/history.db

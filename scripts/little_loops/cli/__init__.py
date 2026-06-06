@@ -12,7 +12,7 @@ Provides command-line interfaces for automated issue management:
 - ll-workflows: Identify multi-step workflow patterns from user message history
 - ll-messages: Extract user messages from Claude Code logs
 - ll-history: Completed issue statistics and analysis
-- ll-logs: Discover and extract ll-relevant JSONL entries from ~/.claude/projects/
+- ll-logs: Discover, extract, and analyze ll-relevant JSONL entries from ~/.claude/projects/ (scan-failures mines failed ll-* calls)
 - ll-session: Query the unified session store (SQLite + FTS5)
 - ll-history-context: render a ## Historical Context block for an issue from .ll/history.db
 - ll-deps: Cross-issue dependency discovery and validation
