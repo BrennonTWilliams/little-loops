@@ -45,6 +45,10 @@ parameters:
     type: integer
     required: false
     description: "Max remediation iterations before escalation to decomposition (default: 3)"
+  run_dir:
+    type: path
+    required: true
+    description: "Parent loop's run directory for score snapshots and counter coupling"
 
 context:
   readiness_threshold: 85

@@ -144,6 +144,7 @@ states:
       readiness_threshold: "${context.readiness_threshold}"
       outcome_threshold: "${context.outcome_threshold}"
       max_remediation_passes: "${context.max_remediation_passes}"
+      run_dir: "${captured.run_dir.output}"
     max_rate_limit_retries: 3
     on_success: dequeue_next
     on_failure: run_decomposition
