@@ -4,6 +4,8 @@ A harness loop wraps your skill in a multi-stage quality pipeline — automatica
 
 The hard problem in automated iteration isn't running the skill — it's knowing when the output is actually good. A harness loop is a quality evaluation pipeline that applies a skill or prompt to work items, then evaluates the result from multiple angles before advancing: mechanical tests catch regressions, LLM judgment assesses semantic quality, user-simulation skills verify the experience as a real user would, and diff invariants catch runaway changes. The wizard auto-derives this evaluation framework from your project config so you don't write it by hand.
 
+> **Harnessing a skill ≠ optimizing a harness.** This guide is about wrapping a skill in a quality pipeline — the *harness stays fixed* while the skill runs over your work. If instead you want to iteratively rewrite the *harness artifact itself* (a skill, command, agent, loop YAML, or `CLAUDE.md`) against a benchmark, see [HARNESS_OPTIMIZATION_GUIDE.md](HARNESS_OPTIMIZATION_GUIDE.md).
+
 ---
 
 ## Table of Contents

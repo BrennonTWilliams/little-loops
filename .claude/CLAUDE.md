@@ -147,6 +147,10 @@ The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.
 
+Rationale for these rules, plus the optimizer error taxonomy and the canonical
+`diagnose → propose → apply → measure-externally` shape, lives in
+[docs/guides/HARNESS_OPTIMIZATION_GUIDE.md](../docs/guides/HARNESS_OPTIMIZATION_GUIDE.md).
+
 Use `ll-loop diagnose-evaluators <loop>` to validate discriminator health after
 MR-1 passes: a state can have a non-LLM evaluator paired correctly (MR-1
 satisfied) but still be toothless if its verdict never varies across runs.

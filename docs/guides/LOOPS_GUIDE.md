@@ -2909,9 +2909,12 @@ See [harness-optimize reference](../reference/loops.md#harness-optimize) for the
 
 > **Advanced** — See [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) for the
 > full harness guide. This section is a brief overview.
-> **Meta-loops** (loops that modify other harness artifacts) must follow the design rules in
-> [CLAUDE.md § Loop Authoring](../../.claude/CLAUDE.md) — diagnosis-first scaffolding and a
-> non-LLM evaluator paired with every `check_semantic` state.
+> **Meta-loops** (loops that modify other harness artifacts) are a distinct pattern —
+> iteratively rewriting a skill, command, agent, loop YAML, or `CLAUDE.md` against a
+> benchmark. See [HARNESS_OPTIMIZATION_GUIDE.md](HARNESS_OPTIMIZATION_GUIDE.md) for the
+> rationale and the optimizer error taxonomy; the normative design rules (diagnosis-first
+> scaffolding, a non-LLM evaluator paired with every `check_semantic` state) live in
+> [CLAUDE.md § Loop Authoring](../../.claude/CLAUDE.md).
 
 A **harness loop** is a pre-structured FSM pattern that wraps a skill or prompt in a layered quality evaluation pipeline, then repeats over a list of work items — or runs once in single-shot mode. The `/ll:create-loop` wizard auto-derives the evaluation framework from your project config so you don't write it by hand.
 
