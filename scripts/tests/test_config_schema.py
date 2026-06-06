@@ -248,7 +248,7 @@ class TestConfigSchema:
         assert props["themes_dir"]["type"] == "string"
         assert props["themes_dir"]["default"] == "themes"
         assert props["active_theme"]["type"] == "string"
-        assert props["active_theme"]["default"] == "light"
+        assert props["active_theme"]["default"] == "dark"
 
     def test_analytics_in_schema(self) -> None:
         """analytics block must be declared in config-schema.json (FEAT-1624).

@@ -1346,7 +1346,7 @@
         },
         "active_theme": {
           "type": "string",
-          "default": "light",
+          "default": "dark",
           "description": "Name of the active theme file (without .json extension) under themes_dir."
         },
         "active": {

@@ -2423,7 +2423,7 @@ class TestDesignTokensConfig:
         assert config.primitives_file == "primitives.json"
         assert config.semantic_file == "semantic.json"
         assert config.themes_dir == "themes"
-        assert config.active_theme == "light"
+        assert config.active_theme == "dark"
 
 
 class TestBRConfigDesignTokensIntegration:
@@ -2434,7 +2434,7 @@ class TestBRConfigDesignTokensIntegration:
         config = BRConfig(temp_project_dir)
         assert config.design_tokens.enabled is True
         assert config.design_tokens.path == ".ll/design-tokens"
-        assert config.design_tokens.active_theme == "light"
+        assert config.design_tokens.active_theme == "dark"
 
     def test_design_tokens_override_from_config(self, temp_project_dir: Path) -> None:
         """Custom design_tokens values are loaded from config file."""
@@ -2464,7 +2464,7 @@ class TestBRConfigDesignTokensIntegration:
         assert dt["primitives_file"] == "primitives.json"
         assert dt["semantic_file"] == "semantic.json"
         assert dt["themes_dir"] == "themes"
-        assert dt["active_theme"] == "light"
+        assert dt["active_theme"] == "dark"
 
 
 class TestDeepMerge:

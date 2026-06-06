@@ -326,7 +326,7 @@ class DesignTokensConfig:
     primitives_file: str = "primitives.json"
     semantic_file: str = "semantic.json"
     themes_dir: str = "themes"
-    active_theme: str = "light"
+    active_theme: str = "dark"
     active: str = "default"
     profiles_dir: str | None = None
 
@@ -339,7 +339,7 @@ class DesignTokensConfig:
             primitives_file=data.get("primitives_file", "primitives.json"),
             semantic_file=data.get("semantic_file", "semantic.json"),
             themes_dir=data.get("themes_dir", "themes"),
-            active_theme=data.get("active_theme", "light"),
+            active_theme=data.get("active_theme", "dark"),
             active=data.get("active", "default"),
             profiles_dir=data.get("profiles_dir"),
         )

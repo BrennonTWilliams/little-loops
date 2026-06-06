@@ -25,7 +25,7 @@ def _write_tokens(
     primitives: dict | None = None,
     semantic: dict | None = None,
     theme: dict | None = None,
-    theme_name: str = "light",
+    theme_name: str = "dark",
 ) -> Path:
     """Create a minimal token directory under *base* and return its path."""
     token_dir = base / ".ll" / "design-tokens"
