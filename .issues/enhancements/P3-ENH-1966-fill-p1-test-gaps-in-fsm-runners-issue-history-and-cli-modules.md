@@ -114,6 +114,12 @@ def test_quality_signal_with_empty_history():
 - `scripts/little_loops/issue_history/quality.py` — called by quality signal pipelines
 - `scripts/little_loops/cli/deps.py`, `history.py`, `messages.py` — CLI entry points
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py` — imports `DefaultActionRunner`, `SimulationActionRunner`; provides `ActionConfig`/`LoopContext` import context for runner tests
+- `scripts/little_loops/issue_history/__init__.py` — re-exports `detect_cross_cutting_smells`, `analyze_test_gaps`, `detect_config_gaps`; mock at the source module, not the re-export
+- `scripts/little_loops/issue_history/analysis.py` — calls both `debt.py` and `quality.py` in the analysis pipeline
+- `scripts/little_loops/cli/__init__.py` — imports and re-exports `main_deps`, `main_history`, `main_messages`; always mock at `little_loops.cli.<module>.<symbol>`, not `little_loops.cli.<symbol>`
+
 ### Similar Patterns
 - `scripts/tests/test_fsm_executor.py` — FSM test patterns to follow for runners
 - `scripts/tests/test_session_store.py` — history DB test patterns for debt/quality
@@ -151,9 +157,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_deps_cli.py` (157 lines, 6 tests) — covers `cli/deps.py` `tree` subcommand only; `test_cli_deps.py` should cover remaining subcommands (`analyze`, `validate`, `fix`, `apply`)
 - `scripts/tests/test_cli_messages_save.py` (68 lines, 4 tests) — covers `_save_combined` helper only; `test_cli_messages.py` should cover `main_messages()` entry point with flag combinations
 - `scripts/tests/test_fsm_executor.py` — already covers `DefaultActionRunner._current_process` lifecycle and agent/tools kwarg forwarding; `test_fsm_runners.py` should focus on `SimulationActionRunner` scenarios and remaining `DefaultActionRunner` gaps
+- `scripts/tests/test_issue_history_cli.py` — covers `main_history()` entry point (summary, analyze, sessions, root subcommands); `test_cli_history.py` should cover remaining subcommands and edge cases without duplicating these
+- `scripts/tests/test_dependency_mapper.py` — already covers `main_deps` `analyze`, `validate`, `fix`, `apply` subcommands; `test_cli_deps.py` should cover thin CLI-layer gaps not already there (e.g., `--sprint` flag, error output format routing)
+- `scripts/tests/test_cli.py` (`TestMainHistoryCoverage`, `TestMainMessagesIntegration`, `TestMainMessagesAdditionalCoverage`) — covers `main_history()` and `main_messages()` happy paths via `test_cli.py`; new test files should focus on edge cases and subcommand-specific behavior not covered there
+- `scripts/tests/test_issue_history_advanced_analytics.py` — covers `detect_cross_cutting_smells`, `analyze_agent_effectiveness`, `analyze_complexity_proxy`, `analyze_test_gaps`, `analyze_rejection_rates`, `detect_manual_patterns`, `detect_config_gaps` with empty-input and `contents` dict patterns; reference for debt/quality test construction
 
 ### Documentation
 - No documentation changes expected
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/development/TESTING.md` — `## Test Suite Organization` section cites "~50 test modules" and "50+ modules"; adding 6 new files drifts this to ~56; update if keeping the count precise
 
 ### Configuration
 - No configuration changes expected
@@ -165,6 +178,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 3. Phase 2: Create `test_issue_history_quality.py` — quality signals with edge cases
 4. Phase 3: Create `test_cli_deps.py`, `test_cli_history.py`, `test_cli_messages.py` — argument parsing, happy paths
 5. Run full test suite to confirm no regressions and measure coverage improvement
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Import `SimulationActionRunner`, `DefaultActionRunner` from `little_loops.fsm.executor` (re-export path), not directly from `little_loops.fsm.runners` — matches all existing tests
+7. Import debt/quality functions from `little_loops.issue_history` package (re-export), not from `little_loops.issue_history.debt`/`.quality` directly; only `_calculate_debt_metrics` requires the direct module import
+8. `detect_cross_cutting_smells(issues, hotspots, contents)` and `analyze_test_gaps(issues, hotspots, project_root)` both require a `HotspotAnalysis` positional argument — construct with `HotspotAnalysis()` for empty-input tests; the issue's API section omits this parameter
+9. Before writing `test_cli_deps.py`, check `test_dependency_mapper.py` — analyze/validate/fix/apply subcommands may already be covered; focus new tests on CLI-layer-only gaps
+10. Before writing `test_cli_history.py` and `test_cli_messages.py`, check `test_issue_history_cli.py` and `test_cli.py` (`TestMainHistoryCoverage`, `TestMainMessagesIntegration`) to avoid duplicating already-covered happy paths
 
 ### Codebase Research Findings
 
@@ -232,6 +255,8 @@ python -m pytest scripts/tests/test_fsm_runners.py scripts/tests/test_issue_hist
 `test-coverage`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-05T22:00:00 - `32b022a9-1839-42ef-b3f7-0faf3dfee73e.jsonl`
+- `/ll:wire-issue` - 2026-06-06T01:52:21 - `3612d4fb-be77-497c-89c8-8917093e314d.jsonl`
 - `/ll:refine-issue` - 2026-06-06T01:19:03 - `60252756-dfe4-4839-a040-9e695b6bbda9.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:11:47 - `cb36cb81-33d2-4de4-bdf7-afd916199a11.jsonl`
 - `/ll:capture-issue` - 2026-06-05T21:16:36Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5cc001a-5129-4d2d-807d-39a428af0331.jsonl`

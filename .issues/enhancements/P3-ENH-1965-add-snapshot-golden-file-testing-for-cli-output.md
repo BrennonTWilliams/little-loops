@@ -10,11 +10,11 @@ labels:
 - test-infrastructure
 - captured
 parent: EPIC-1967
-confidence_score: 92
-outcome_confidence: 84
+confidence_score: 97
+outcome_confidence: 86
 score_complexity: 19
 score_test_coverage: 20
-score_ambiguity: 20
+score_ambiguity: 22
 score_change_surface: 25
 decision_needed: false
 ---
@@ -139,6 +139,13 @@ def test_sprint_status_output(snapshot):
 
 ### Tests
 - New snapshot test files are the deliverable
+- `scripts/tests/test_cli_output.py` — existing test file for `table()`, `status_block()`, `progress()`, `sparkline()`, `strip_ansi()`; uses substring assertions today; snapshot tests for output primitives should be added here or in a new `test_snapshot_output_primitives.py` [Agent 3 finding]
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_layout.py` — has class-level autouse `_force_color` fixture (`TestColorizeLabel`) that patches both `little_loops.cli.loop.layout._USE_COLOR=True` and `little_loops.cli.output._USE_COLOR=True` via `monkeypatch`; if conftest adds a global autouse that sets these to False, the class fixture's monkeypatch will override it back to True (last-write-wins on same `monkeypatch` instance) — correct behavior but interaction is subtle [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_ll_loop_display.py` — 10+ `with patch.object(output_mod, "_USE_COLOR", True/False)` context managers; uses `unittest.mock.patch.object`, not `monkeypatch`, so these override the autouse pin independently; no conflict [Agent 3 finding]
 
 ### Documentation
 - `CONTRIBUTING.md` — add "Snapshot Testing" section with update workflow
@@ -211,6 +218,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 6. **Document** in both `CONTRIBUTING.md` (user-facing) and `docs/development/TESTING.md` (developer-facing): how to create new snapshots, update with `--snapshot-update`, and review diffs in PRs.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. **Do NOT put `_stable_snapshot_env` as `autouse=True` in root `conftest.py`** — this would run for all 200+ existing tests and flip `_USE_COLOR` state for tests that explicitly assert both color-on and color-off behavior. Scope it narrowly: either (a) make it a non-autouse fixture applied explicitly in each snapshot test class, or (b) put it in a dedicated per-directory `conftest.py` co-located with the snapshot test files. [Agent 2 + Agent 3 finding]
+
+8. **Pin all `terminal_width` import sites, not just `output.terminal_width`** — snapshot tests exercising sprint or loop paths must also patch `little_loops.cli.sprint._helpers.terminal_width` and `little_loops.cli.loop._helpers.terminal_width` separately; these are distinct re-import sites that the root `output.terminal_width` patch does not cover. Add these to each snapshot test method (or to the snapshot-specific fixture) as needed. [Agent 2 + Agent 3 finding]
+
 ## Backwards Compatibility
 
 - No breaking changes — purely additive (new dev dependency + new tests)
@@ -234,6 +249,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `test-infrastructure`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-05T21:30:00Z - `32b022a9-1839-42ef-b3f7-0faf3dfee73e.jsonl`
+- `/ll:wire-issue` - 2026-06-06T01:51:01 - `bb830a9b-0152-4e34-a1d6-73a18b175601.jsonl`
 - `/ll:decide-issue` - 2026-06-06T01:19:09 - `60252756-dfe4-4839-a040-9e695b6bbda9.jsonl`
 - `/ll:refine-issue` - 2026-06-06T01:15:28 - `29abb545-c9b4-44b9-a8c6-120d2bc97de8.jsonl`
 - `/ll:confidence-check` - 2026-06-05T00:00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/347e9484-c3e2-47a8-9a1c-7cc7a84bb3da.jsonl`

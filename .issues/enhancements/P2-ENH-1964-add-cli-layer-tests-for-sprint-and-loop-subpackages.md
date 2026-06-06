@@ -522,7 +522,10 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 
 ## Resolution
 
-**Phase 1 (Sprint CLI) completed.** Added 69 tests across 3 new test files:
+All three phases and the helper extraction are complete. **169 new tests** across 7 test files,
+**12 duplicated helper definitions** consolidated into 1 shared module.
+
+### Phase 1: Sprint CLI (69 tests across 3 files)
 
 | Test File | Tests | Coverage |
 |---|---|---|
@@ -530,14 +533,26 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 | `scripts/tests/test_cli_sprint_commands.py` | 8 | `_cmd_sprint_create` (uppercasing, invalid IDs, skip/type filters), `_cmd_sprint_delete`, `_cmd_sprint_list` (empty, non-verbose) |
 | `scripts/tests/test_cli_sprint_show.py` | 25 | `_score_suffix`, `_render_execution_plan`, `_render_dependency_graph`, `_render_health_summary`, `_cmd_sprint_show` (JSON, skip-analysis) |
 
-**Coverage impact on `cli/sprint/`**:
-- `__init__.py`: 0% → 99%
-- `create.py`: 0% → 100%
-- `show.py`: 0% → 88%
-- `_helpers.py`: 0% → 67%
-- `manage.py`: ~25% → 88% (with existing tests)
-- `edit.py`: ~25% → 84% (with existing tests)
-- `run.py`: ~25% → 66% (with existing tests)
-- **Overall `cli/sprint/`**: ~15% → 79%
+**Coverage impact on `cli/sprint/`**: ~15% → 79%
 
-**Remaining for future phases**: Phase 2 (Loop CLI non-TUI) and Phase 3 (TUI rendering) — tracked in this issue's Proposed Solution sections.
+### Phase 2: Loop CLI Non-TUI (100 tests across 3 files)
+
+| Test File | Tests | Coverage |
+|---|---|---|
+| `scripts/tests/test_cli_loop_dispatch.py` | 53 | `main_loop()` dispatcher: all 17 subcommands + 9 aliases, shorthand, run flag forwarding (11 flags), show/list/history/simulate/next-loop flag forwarding |
+| `scripts/tests/test_cli_loop_next.py` | 35 | `LoopCandidate` (5), `_recency_score()` (6), `_score_loop()` (5), `_build_command()` (5), `_build_rationale()` (7), `_resolve_params()` (2), `cmd_install()` (4) |
+| `scripts/tests/test_cli_loop_testing.py` | 12 | `cmd_simulate()`: all 5 scenarios + interactive, `--max-iterations`, error handling; `cmd_test()`: no-action state, file-not-found |
+
+**Coverage impact on `cli/loop/` non-TUI**: `config_cmds.py` 0% → 100%, `next_loop.py` pure functions 0% → 100%, `testing.py` simulate 0% → ~80%, `__init__.py` dispatcher 0% → ~90%
+
+### Phase 3: TUI Rendering (50 tests in 1 file)
+
+| Test File | Tests | Coverage |
+|---|---|---|
+| `scripts/tests/test_cli_loop_layout.py` | 50 | `_colorize_label()` (8), `_badge_display_width()` (4), `_box_inner_lines()` (8), `_bfs_order()` (5), `_trace_main_path()` (5), `_classify_edges()` (4), `TopologyDetector.classify()` (5), `_count_display_lines()` (6), `_render_single_line_status()` (5) |
+
+Previously these pure functions had zero direct test coverage — only exercised indirectly through snapshot/integration tests in `test_ll_loop_display.py` (4346 lines).
+
+### Helper Extraction
+
+Extracted `make_test_state()` and `make_test_fsm()` from 6 duplicated definitions into `scripts/tests/helpers.py`. Updated all callers (`test_ll_loop_display.py`, `test_ll_loop_execution.py`, `test_ll_loop_errors.py`, `test_ll_loop_integration.py`, `test_ll_loop_state.py`, `test_review_loop.py`) to import from `tests.helpers`. Zero regressions across 701 existing tests.
