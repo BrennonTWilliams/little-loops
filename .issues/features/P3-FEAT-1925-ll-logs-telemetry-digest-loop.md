@@ -3,8 +3,9 @@ id: FEAT-1925
 title: 'll-logs-telemetry-digest: FSM loop wrapping EPIC-1918 subcommands'
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-04T03:04:39Z'
+completed_at: '2026-06-06T05:42:20Z'
 discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1918
@@ -323,12 +324,12 @@ timeout: 3600
 
 ## Acceptance Criteria
 
-- [ ] `.loops/ll-logs-telemetry-digest.yaml` exists and passes `ll-loop validate`
-- [ ] Loop runs to `done` terminal state with only `discover` + `extract` available (all capability gates NOOP gracefully)
-- [ ] When ENH-1922 (`scan-failures`) ships: `scan_failures` state runs and findings route to `triage_failures`
-- [ ] When ENH-1923 (`dead-skills`) ships: `check_dead_skills` state runs and non-empty results route to `file_dead_skill_issues`
-- [ ] `commit_if_needed` never commits when no new `.issues/` files were created
-- [ ] All artifacts written under `${context.run_dir}/`, not `.loops/tmp/`
+- [x] `.loops/ll-logs-telemetry-digest.yaml` exists and passes `ll-loop validate`
+- [x] Loop runs to `done` terminal state with only `discover` + `extract` available (all capability gates NOOP gracefully)
+- [x] When ENH-1922 (`scan-failures`) ships: `scan_failures` state runs and findings route to `triage_failures`
+- [x] When ENH-1923 (`dead-skills`) ships: `check_dead_skills` state runs and non-empty results route to `file_dead_skill_issues`
+- [x] `commit_if_needed` never commits when no new `.issues/` files were created
+- [x] All artifacts written under `${context.run_dir}/`, not `.loops/tmp/`
 
 
 
@@ -348,7 +349,12 @@ timeout: 3600
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+## Resolution
+
+Created `.loops/ll-logs-telemetry-digest.yaml` — pure YAML FSM loop with 11 states, non-LLM routing throughout, run-dir isolation for all artifacts, and capability-detection gates for all four EPIC-1918 subcommands. Passes `ll-loop validate` cleanly.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T05:40:32 - `ab6f39bb-9672-4dfb-b684-97d4771b34ef.jsonl`
 - `/ll:confidence-check` - 2026-06-06T00:36:00Z - `8107f14f-4f99-41ee-b217-9335aae5bdbb.jsonl`
 - `/ll:format-issue` - 2026-06-06T05:22:27 - `06e1fd7f-9e9e-4f4e-85e5-c6c182434078.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

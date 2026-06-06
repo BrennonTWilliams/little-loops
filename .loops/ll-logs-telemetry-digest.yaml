@@ -1,0 +1,199 @@
+name: ll-logs-telemetry-digest
+category: telemetry
+description: |
+  One-pass telemetry digest: refresh the ll-logs corpus, run all available
+  EPIC-1918 analysis subcommands (stats, sequences, scan-failures,
+  dead-skill detection), triage findings into issues, and write a digest.
+  Subcommands not yet implemented are skipped gracefully via capability
+  detection — the loop gains depth as EPIC-1918 children land.
+initial: refresh_corpus
+on_handoff: spawn
+
+states:
+  refresh_corpus:
+    action: |
+      ll-logs discover --quiet 2>/dev/null || true
+      ll-logs extract --quiet 2>/dev/null && echo "REFRESHED" || echo "REFRESH_FAILED"
+    action_type: shell
+    evaluate:
+      type: output_contains
+      pattern: "REFRESHED"
+    on_yes: run_stats
+    on_no: done
+    on_error: done
+
+  run_stats:
+    action: |
+      OUT="${context.run_dir}/stats.txt"
+      if ll-logs stats --help >/dev/null 2>&1; then
+        ll-logs stats > "$OUT" 2>&1 && echo "STATS_OK" || echo "STATS_ERR"
+      else
+        echo "STATS_UNAVAILABLE"
+      fi
+    action_type: shell
+    capture: stats_check
+    next: scan_failures
+
+  scan_failures:
+    action: |
+      OUT="${context.run_dir}/failures.json"
+      if ll-logs scan-failures --help >/dev/null 2>&1; then
+        ll-logs scan-failures --json > "$OUT" 2>&1
+        COUNT=$(python3 -c "
+      import json
+      try:
+          d = json.load(open('$OUT'))
+          items = d.get('failures', d) if isinstance(d, dict) else d
+          print(len(items) if isinstance(items, list) else 0)
+      except Exception:
+          print(0)
+      " 2>/dev/null || echo 0)
+        [ "$COUNT" -eq 0 ] && echo "NO_FAILURES" || echo "FAILURES_FOUND:$COUNT"
+      else
+        echo "NO_FAILURES"
+      fi
+    action_type: shell
+    capture: failures_check
+    evaluate:
+      type: output_contains
+      source: "${captured.failures_check.output}"
+      pattern: "NO_FAILURES"
+    on_yes: run_sequences
+    on_no: triage_failures
+    on_error: run_sequences
+
+  triage_failures:
+    action_type: prompt
+    timeout: 600
+    action: |
+      ll-logs scan-failures found failed ll-* tool invocations in interactive
+      sessions. The JSON report is at ${context.run_dir}/failures.json.
+
+      For each distinct failure pattern:
+      1. Run `ll-issues list --filter=open --json` to check for existing coverage
+      2. If not already tracked, run `/ll:capture-issue` with the failure context
+      3. Skip one-off environment failures (missing auth, absent env vars, typos)
+      4. Capture at most 3 net-new issues to avoid backlog flooding
+
+      Print "TRIAGE_DONE" when finished.
+    capture: triage_status
+    next: run_sequences
+
+  run_sequences:
+    action: |
+      OUT="${context.run_dir}/sequences.txt"
+      if ll-logs sequences --help >/dev/null 2>&1; then
+        ll-logs sequences --top 20 --min-count 3 > "$OUT" 2>&1 \
+          && echo "SEQUENCES_OK" || echo "SEQUENCES_ERR"
+      else
+        echo "SEQUENCES_UNAVAILABLE"
+      fi
+    action_type: shell
+    capture: sequences_check
+    next: check_dead_skills
+
+  check_dead_skills:
+    action: |
+      OUT="${context.run_dir}/dead-skills.json"
+      if ll-logs dead-skills --help >/dev/null 2>&1; then
+        ll-logs dead-skills --json > "$OUT" 2>&1
+        COUNT=$(python3 -c "
+      import json
+      try:
+          d = json.load(open('$OUT'))
+          items = d.get('dead', d) if isinstance(d, dict) else d
+          print(len(items) if isinstance(items, list) else 0)
+      except Exception:
+          print(0)
+      " 2>/dev/null || echo 0)
+        [ "$COUNT" -eq 0 ] && echo "NO_DEAD_SKILLS" || echo "DEAD_SKILLS_FOUND:$COUNT"
+      else
+        echo "NO_DEAD_SKILLS"
+      fi
+    action_type: shell
+    capture: dead_check
+    evaluate:
+      type: output_contains
+      source: "${captured.dead_check.output}"
+      pattern: "NO_DEAD_SKILLS"
+    on_yes: synthesize_digest
+    on_no: file_dead_skill_issues
+    on_error: synthesize_digest
+
+  file_dead_skill_issues:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Dead-skill detection found skills with zero invocations in the log corpus.
+      The list is at ${context.run_dir}/dead-skills.json.
+
+      For each never-invoked skill:
+      1. Check if it is an intentional one-shot (migration, bootstrap) — skip those
+      2. If it appears genuinely undiscoverable or obsolete, run `/ll:capture-issue`
+         to propose improving its trigger documentation or deprecating it
+      3. Capture at most 2 issues per run
+
+      Print "DEAD_TRIAGE_DONE" when finished.
+    capture: dead_triage_status
+    next: synthesize_digest
+
+  synthesize_digest:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Synthesize a telemetry digest from this run. Read whichever of these
+      artifacts exist under ${context.run_dir}/:
+        stats.txt        → skill frequency / quality summary (ENH-1921)
+        sequences.txt    → top tool-chain n-grams (ENH-1919)
+        failures.json    → failed ll-* calls found (ENH-1922)
+        dead-skills.json → never-invoked skills (ENH-1923)
+
+      Write a concise Markdown file to ${context.run_dir}/digest.md with:
+
+      ## Run Summary
+      - Which subcommands ran vs. were skipped (not yet implemented)
+      - Key numbers: failure count, dead-skill count, top sequence if available
+
+      ## Issues Created This Run
+      - List any /ll:capture-issue calls made during triage steps
+
+      ## Remaining EPIC-1918 Coverage
+      - Which child issues (ENH-1919/1920/1921/1922/1923/1924) are still open,
+        limiting what this loop can observe on subsequent runs
+
+      Print "DIGEST_WRITTEN" when the file is saved.
+    capture: digest_status
+    evaluate:
+      type: output_contains
+      source: "${captured.digest_status.output}"
+      pattern: "DIGEST_WRITTEN"
+    on_yes: commit_if_needed
+    on_no: done
+    on_error: done
+
+  commit_if_needed:
+    action: |
+      NEW=$(git status --porcelain .issues/ 2>/dev/null | grep -c '^?' || echo 0)
+      [ "$NEW" -eq 0 ] && echo "NO_NEW_ISSUES" || echo "NEW_ISSUES:$NEW"
+    action_type: shell
+    evaluate:
+      type: output_contains
+      pattern: "NO_NEW_ISSUES"
+    on_yes: done
+    on_no: commit
+    on_error: done
+
+  commit:
+    action_type: prompt
+    timeout: 120
+    action: |
+      New issue files were created during this telemetry digest run.
+      Run `/ll:commit` with a message like:
+      "chore(telemetry): ll-logs digest — auto-filed bugs and dead-skill issues"
+    next: done
+
+  done:
+    terminal: true
+
+max_iterations: 2
+timeout: 3600
