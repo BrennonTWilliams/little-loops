@@ -10,66 +10,10 @@ from unittest.mock import patch
 
 import pytest
 
-from little_loops.fsm.schema import (
-    EvaluateConfig,
-    FSMLoop,
-    RouteConfig,
-    StateConfig,
-)
+from tests.helpers import make_test_fsm, make_test_state
 
 if TYPE_CHECKING:
     pass
-
-
-def make_test_state(
-    action: str | None = None,
-    on_yes: str | None = None,
-    on_no: str | None = None,
-    on_error: str | None = None,
-    next: str | None = None,
-    terminal: bool = False,
-    evaluate: EvaluateConfig | None = None,
-    route: RouteConfig | None = None,
-    capture: str | None = None,
-    timeout: int | None = None,
-    on_maintain: str | None = None,
-) -> StateConfig:
-    """Create StateConfig for testing."""
-    return StateConfig(
-        action=action,
-        on_yes=on_yes,
-        on_no=on_no,
-        on_error=on_error,
-        next=next,
-        terminal=terminal,
-        evaluate=evaluate,
-        route=route,
-        capture=capture,
-        timeout=timeout,
-        on_maintain=on_maintain,
-    )
-
-
-def make_test_fsm(
-    name: str = "test-loop",
-    initial: str = "start",
-    states: dict[str, StateConfig] | None = None,
-    max_iterations: int = 50,
-    timeout: int | None = None,
-) -> FSMLoop:
-    """Create FSMLoop for testing."""
-    if states is None:
-        states = {
-            "start": make_test_state(action="echo start", on_yes="done", on_no="done"),
-            "done": make_test_state(terminal=True),
-        }
-    return FSMLoop(
-        name=name,
-        initial=initial,
-        states=states,
-        max_iterations=max_iterations,
-        timeout=timeout,
-    )
 
 
 class TestMainLoopIntegration:

@@ -19,59 +19,12 @@ import yaml
 from little_loops.fsm import validate_fsm
 from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig
 from little_loops.fsm.validation import ValidationSeverity
+from tests.helpers import make_test_fsm, make_test_state
 
 # Project root, used to locate fixture and built-in loop files
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "fsm"
 LOOPS_DIR = PROJECT_ROOT / "loops"
-
-# ---------------------------------------------------------------------------
-# Helpers re-exported from test_ll_loop_errors for local use
-# ---------------------------------------------------------------------------
-
-
-def make_test_state(
-    action: str | None = None,
-    on_yes: str | None = None,
-    on_no: str | None = None,
-    on_error: str | None = None,
-    next: str | None = None,
-    terminal: bool = False,
-    evaluate: EvaluateConfig | None = None,
-    capture: str | None = None,
-    on_maintain: str | None = None,
-    route: object | None = None,
-) -> StateConfig:
-    """Create a StateConfig for testing."""
-    kwargs: dict = {
-        "action": action,
-        "on_yes": on_yes,
-        "on_no": on_no,
-        "on_error": on_error,
-        "next": next,
-        "terminal": terminal,
-        "evaluate": evaluate,
-        "capture": capture,
-        "on_maintain": on_maintain,
-    }
-    if route is not None:
-        kwargs["route"] = route
-    return StateConfig(**kwargs)
-
-
-def make_test_fsm(
-    name: str = "test-loop",
-    initial: str = "start",
-    states: dict[str, StateConfig] | None = None,
-    max_iterations: int = 50,
-) -> FSMLoop:
-    """Create an FSMLoop for testing."""
-    if states is None:
-        states = {
-            "start": make_test_state(action="echo start", on_yes="done", on_no="done"),
-            "done": make_test_state(terminal=True),
-        }
-    return FSMLoop(name=name, initial=initial, states=states, max_iterations=max_iterations)
 
 
 # =============================================================================
