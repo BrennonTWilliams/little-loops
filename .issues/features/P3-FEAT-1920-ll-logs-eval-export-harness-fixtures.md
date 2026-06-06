@@ -1,15 +1,28 @@
 ---
 id: FEAT-1920
-title: "ll-logs eval-export: sessions to ll-harness fixtures"
+title: 'll-logs eval-export: sessions to ll-harness fixtures'
 type: FEAT
 priority: P3
-status: open
-captured_at: "2026-06-04T02:27:34Z"
-discovered_date: "2026-06-04"
+status: done
+captured_at: '2026-06-04T02:27:34Z'
+discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1918
-relates_to: [EPIC-1918]
-labels: [captured, ll-logs, eval, harness]
+relates_to:
+- EPIC-1918
+labels:
+- captured
+- ll-logs
+- eval
+- harness
+confidence_score: 72
+outcome_confidence: 71
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 22
+decision_needed: true
+size: Very Large
 ---
 
 # FEAT-1920: ll-logs eval-export — sessions to ll-harness fixtures
@@ -123,7 +136,37 @@ open
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-05_
+
+**Readiness Score**: 72/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- The core implementation step (invocation+context+outcome → fixture record) defers all design decisions to implementation time, with no prior specification of the mapping logic
+- ENH-1919's `_extract_ll_event_streams` provides invocation n-gram sequences but not the user prompt that triggered the skill or any outcome quality signal
+
+### Outcome Risk Factors
+- Unresolved decision: how to define and extract "outcome" from session log data — logs capture what was invoked but not whether the invocation succeeded or produced quality results
+- Unresolved decision: what constitutes the "input context" extractable from logs vs just the skill name — the current extractor yields skill chains, not surrounding user prompts
+- "Redaction of sensitive prompt content" cited as edge case with no redaction specification
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-06-05
+- **Reason**: Issue too large for single session
+
+### Decomposed Into
+- FEAT-1968: eval-export design decisions — fixture schema + outcome extraction spec
+- FEAT-1969: eval-export implementation — subcommand, mapping, tests, docs
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-06-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8be904b6-a889-49bc-bc5f-f854cacc72bb.jsonl`
+- `/ll:confidence-check` - 2026-06-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcda12b7-b841-46b1-b6d5-858542528764.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:format-issue` - 2026-06-04T03:08:23 - `15dd654f-1592-42bb-8073-e029440f9e86.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`
