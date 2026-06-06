@@ -3,7 +3,8 @@ id: FEAT-1970
 title: eval-export CLI scaffold and selection filters
 type: FEAT
 priority: P3
-status: open
+status: done
+completed_at: 2026-06-06 05:04:29+00:00
 parent: FEAT-1969
 relates_to:
 - FEAT-1969
@@ -73,7 +74,7 @@ or no output until FEAT-1971 fills in the mapping body.
 ### Step 1 — Add subcommand scaffold
 
 In `scripts/little_loops/cli/logs.py`, add `eval-export` to `_build_parser` following
-the same pattern as `_cmd_extract`, `_cmd_discover`, `_cmd_tail`. Wire `_cmd_eval_export`
+the same pattern as `_cmd_extract`, `_cmd_tail`. Wire `_cmd_eval_export`
 as the handler with a stub body.
 
 ### Step 2 — Implement selection filters
@@ -105,11 +106,12 @@ ll-logs eval-export [--skill NAME] [--issue ID] [--limit N] [--out PATH] [--json
 - `scripts/little_loops/cli/logs.py` — add `eval-export` parser entry and `_cmd_eval_export` stub
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/logs.py` — `_build_parser` dispatches to `_cmd_eval_export` via subparser `set_defaults(func=...)`
+- `scripts/little_loops/cli/logs.py` — `main_logs` dispatches to `_cmd_eval_export` via `if args.command == "eval-export"` (not `set_defaults`; follow the existing if-chain pattern)
 - FEAT-1971 will fill in the body of `_cmd_eval_export`; no external callers at this stage
 
 ### Similar Patterns
-- `_cmd_extract`, `_cmd_discover`, `_cmd_tail` in `cli/logs.py` — follow same subcommand handler shape
+- `_cmd_extract`, `_cmd_tail` in `cli/logs.py` — follow same subcommand handler shape
+- `discover` command is handled inline in `main_logs` (no `_cmd_discover` function), not a pattern to follow here
 
 ### Tests
 - `scripts/tests/test_ll_logs.py` — add test cases for `eval-export --help` and flag parsing
@@ -150,6 +152,7 @@ _Added by `/ll:confidence-check` on 2026-06-05_
 - **FEAT-1968 is open**: The issue explicitly states "do not start until FEAT-1968 is done and its decisions are recorded in `.ll/decisions.yaml`." FEAT-1968 status is `open`. Practically, the 5 CLI flags are already fully enumerated in FEAT-1970 and don't depend on FEAT-1968's design decisions, so the implementation itself is unblocked — but the stated prerequisite is not yet cleared.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T04:57:14 - `97d712f6-0c8c-427a-8e09-00357f29a19b.jsonl`
 - `/ll:format-issue` - 2026-06-06T03:18:03 - `28c795c0-5fbc-487e-9101-6182dd58a8a0.jsonl`
 - `/ll:issue-size-review` - 2026-06-05T21:48:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bad2c36-ed0d-4b74-bdd5-ccfd01530ea6.jsonl`
 - `/ll:confidence-check` - 2026-06-05T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4f2a58f-fea9-4b2e-bd0f-cce4ab995bec.jsonl`

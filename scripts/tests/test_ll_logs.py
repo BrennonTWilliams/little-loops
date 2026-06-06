@@ -2339,3 +2339,62 @@ class TestDiff:
             result = main_logs()
 
         assert result == 1
+
+
+class TestEvalExport:
+    """Tests for the eval-export subcommand scaffold (FEAT-1970)."""
+
+    def test_help_shows_all_flags(self, capsys: pytest.CaptureFixture) -> None:
+        """eval-export --help exits with code 0 and lists all five filter flags."""
+        with (
+            patch("sys.argv", ["ll-logs", "eval-export", "--help"]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main_logs()
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        help_text = captured.out
+        assert "--skill" in help_text
+        assert "--issue" in help_text
+        assert "--limit" in help_text
+        assert "--out" in help_text
+        assert "--json" in help_text
+
+    def test_no_flags_returns_0(self, capsys: pytest.CaptureFixture) -> None:
+        """eval-export with no flags runs without crashing and returns 0."""
+        with patch("sys.argv", ["ll-logs", "eval-export"]):
+            result = main_logs()
+        assert result == 0
+
+    def test_skill_flag_parses(self, capsys: pytest.CaptureFixture) -> None:
+        """eval-export --skill foo runs without crashing and returns 0."""
+        with patch("sys.argv", ["ll-logs", "eval-export", "--skill", "foo"]):
+            result = main_logs()
+        assert result == 0
+
+    def test_all_flags_parse(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        """eval-export with all flags parses without error and returns 0."""
+        out_file = tmp_path / "out.yaml"
+        with patch(
+            "sys.argv",
+            [
+                "ll-logs", "eval-export",
+                "--skill", "manage-issue",
+                "--issue", "FEAT-1970",
+                "--limit", "10",
+                "--out", str(out_file),
+                "--json",
+            ],
+        ):
+            result = main_logs()
+        assert result == 0
+
+    def test_no_regression_extract(self, capsys: pytest.CaptureFixture) -> None:
+        """eval-export addition does not break the existing extract subcommand."""
+        with (
+            patch("sys.argv", ["ll-logs", "extract", "--help"]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main_logs()
+        assert exc_info.value.code == 0
+        assert "--project" in capsys.readouterr().out

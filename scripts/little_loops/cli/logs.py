@@ -1348,6 +1348,12 @@ def _cmd_diff(args: argparse.Namespace, logger: Logger) -> int:
     return 0
 
 
+def _cmd_eval_export(args: argparse.Namespace) -> int:
+    """Export eval fixtures from ll-harness session logs (stub — mapping logic lands in FEAT-1971)."""
+    print("eval-export: not yet implemented", file=sys.stderr)
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for ll-logs."""
     parser = argparse.ArgumentParser(
@@ -1546,6 +1552,38 @@ Examples:
     diff_parser.add_argument("session_b", metavar="SESSION_B", help="Second session ID or JSONL file path")
     add_json_arg(diff_parser)
 
+    eval_export_parser = subparsers.add_parser(
+        "eval-export",
+        help="Export eval fixtures from ll-harness session logs",
+    )
+    eval_export_parser.add_argument(
+        "--skill",
+        metavar="NAME",
+        help="Filter by skill name",
+    )
+    eval_export_parser.add_argument(
+        "--issue",
+        metavar="ID",
+        help="Filter by issue ID in session context",
+    )
+    eval_export_parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Cap output records (0 = unlimited)",
+    )
+    eval_export_parser.add_argument(
+        "--out",
+        metavar="PATH",
+        help="Write output to file (default: stdout)",
+    )
+    eval_export_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="JSON output instead of YAML (default: YAML)",
+    )
+
     return parser
 
 
@@ -1602,5 +1640,8 @@ def main_logs() -> int:
 
         if args.command == "diff":
             return _cmd_diff(args, logger)
+
+        if args.command == "eval-export":
+            return _cmd_eval_export(args)
 
         return 1
