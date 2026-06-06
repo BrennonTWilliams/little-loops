@@ -267,7 +267,7 @@ Create issues for these <N> proposals? [Y/n/select]
   select — choose which to create (comma-separated numbers)
 ```
 
-For each approved proposal, allocate an ID (`ll-issues next-id`) and write the issue file to the appropriate category dir. Stage with `git add .issues/`.
+For each approved proposal, allocate an ID (`ll-issues next-id`) and write the issue file to the appropriate category dir. Stage each written file by its explicit path (`git add "<issue-file-path>"`) — do **not** `git add .issues/`, which sweeps in unrelated untracked/modified files (BUG-1976).
 
 ---
 

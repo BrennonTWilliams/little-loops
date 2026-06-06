@@ -359,8 +359,12 @@ fi
 
 #### Stage All Changes
 
+Stage only the issue files this review modified or moved, by their explicit paths. Do
+**not** `git add {{config.issues.base_dir}}/` — a directory-level stage sweeps in unrelated
+untracked/modified files (BUG-1976).
+
 ```bash
-git add {{config.issues.base_dir}}/
+git add "<each modified/moved issue-file-path>"   # accumulate paths as you edit them
 ```
 
 ## Output Format

@@ -317,9 +317,20 @@ To find the current session JSONL: look in `~/.claude/projects/` for the directo
 To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
 
 4. **Stage all changes**:
+
+   Stage only the files this review touched — the parent issue and each newly created
+   child issue — by their explicit paths. Do **not** stage the whole `{{config.issues.base_dir}}/`
+   directory: a directory-level `git add` recursively sweeps in unrelated untracked/modified
+   files (e.g. draft issues from a concurrent skill), polluting the commit (BUG-1976).
+
    ```bash
-   git add {{config.issues.base_dir}}/
+   # Stage each reviewed/updated parent and each created child explicitly:
+   git add "<parent-issue-file-path>"
+   git add "<child-issue-file-path>"   # repeat for every child created in Phase 6
    ```
+
+   Accumulate the paths as you create/modify them and stage them one by one. After staging,
+   `git status` should show only the review's files staged.
 
 ## Output Format
 

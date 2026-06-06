@@ -203,9 +203,11 @@ ll-deps fix
 ll-deps validate
 ```
 
-3. Stage changes:
+3. Stage changes. `ll-deps fix` rewrites backlinks across an open-ended set of *tracked*
+   issue files, so stage tracked modifications only — do **not** add the whole directory,
+   which would also sweep in unrelated *untracked* drafts under `.issues/` (BUG-1976):
 ```bash
-git add {{config.issues.base_dir}}/
+git add -u {{config.issues.base_dir}}/
 ```
 
 ## Configuration

@@ -257,9 +257,11 @@ After user approval:
 
 3. **Write files** to `.issues/enhancements/`
 
-4. **Stage for commit**:
+4. **Stage for commit**: stage only the files written in step 3, by their explicit paths.
+   Do **not** `git add .issues/enhancements/` — a directory-level stage sweeps in unrelated
+   untracked/modified files (BUG-1976).
    ```bash
-   git add .issues/enhancements/
+   git add "<each written issue-file-path>"   # repeat per file from step 3
    ```
 
 5. **Output summary**:

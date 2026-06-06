@@ -395,9 +395,11 @@ After approval:
 3. **Create new FEAT issues** in `.issues/features/`
 4. **Update existing issues** by appending Architecture Audit Results section
 5. **Reopen completed issues** by moving and appending Reopened section
-6. **Stage changes**:
+6. **Stage changes**: stage only the issue files created, updated, or reopened above,
+   by their explicit paths. Do **not** `git add .issues/` — a directory-level stage
+   sweeps in unrelated untracked/modified files (BUG-1976).
    ```bash
-   git add .issues/
+   git add "<each created/updated/reopened issue-file-path>"
    ```
 7. **Output summary**:
    ```

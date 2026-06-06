@@ -378,10 +378,12 @@ Populate the issue file from the full markdown template in
 
 ### 6d. Stage the file
 
-After writing all issue files:
+After writing all issue files, stage each one by its explicit path. Do **not**
+`git add .issues/` — a directory-level stage sweeps in unrelated untracked/modified
+files (BUG-1976).
 
 ```bash
-git add .issues/
+git add "<each written issue-file-path>"   # repeat per file written above
 ```
 
 ---
