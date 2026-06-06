@@ -93,6 +93,13 @@ Examples:
         default=False,
         help="Include effort/velocity context (session count and cycle time)",
     )
+    parser.add_argument(
+        "--for-skill",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help="Exit 0 with no output if NAME is not in history.planning_skills.",
+    )
     return parser
 
 
@@ -139,6 +146,14 @@ def main_history_context() -> int:
             if block:
                 print(block)
             return 0
+
+        # --for-skill guard: exit 0 with no output if skill is not in history.planning_skills.
+        if args.for_skill is not None:
+            from little_loops.config import BRConfig
+
+            cfg = BRConfig(Path.cwd())
+            if args.for_skill not in cfg.history.planning_skills:
+                return 0
 
         # --effort: print effort/velocity context and exit.
         if args.effort:

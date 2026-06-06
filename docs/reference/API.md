@@ -3597,6 +3597,7 @@ Entry point for `ll-history-context` command. Query `.ll/history.db` for user co
 - `--file PATH` — Also include recent file events for this path (optional)
 - `--db PATH` — Path to the session database (default: `.ll/history.db`)
 - `--effort` — Output a `## Effort Context` block with per-issue session count and cycle time (ENH-1905)
+- `--for-skill NAME` — Exit 0 with no output if NAME is not in `history.planning_skills` (ENH-1909)
 
 **Behavior:**
 - Calls `find_user_corrections(topic=issue_id)` and `search(query=issue_id, kind="correction")` with deduplication

@@ -1901,6 +1901,7 @@ Pass `--project` instead of an issue ID to print the project-wide context digest
 | `--file PATH` | Also include recent file events for this path (issue-mode only) |
 | `--db PATH` | Path to the session database (default: `.ll/history.db`) |
 | `--effort` | Output a `## Effort Context` block with per-issue session count and cycle time (ENH-1905) |
+| `--for-skill NAME` | Exit 0 with no output if NAME is not in `history.planning_skills` (ENH-1909) |
 
 **Output cap:** At most 5 rows are rendered in issue mode. Project mode respects `history.session_digest.char_cap` (default 1200 chars).
 

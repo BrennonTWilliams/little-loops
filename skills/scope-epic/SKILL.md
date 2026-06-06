@@ -97,7 +97,7 @@ MAX_CHILDREN = {{config.epics.scope.max_children}}  (default 8)
 To calibrate child-issue size estimates, fetch recent velocity:
 
 ```bash
-EFFORT=$(ll-history-context PARENT_ISSUE_ID --effort 2>/dev/null || true)
+EFFORT=$(ll-history-context --for-skill scope-epic --effort PARENT_ISSUE_ID 2>/dev/null || true)
 ```
 
 If `$EFFORT` is non-empty, use session count and cycle time from historical data

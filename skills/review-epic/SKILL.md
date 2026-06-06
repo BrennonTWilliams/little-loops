@@ -118,7 +118,7 @@ Compute:
 For each child issue, fetch effort context to surface in the health report:
 
 ```bash
-EFFORT=$(ll-history-context CHILD_ISSUE_ID --effort 2>/dev/null || true)
+EFFORT=$(ll-history-context --for-skill review-epic --effort CHILD_ISSUE_ID 2>/dev/null || true)
 ```
 
 If `$EFFORT` is non-empty, include session count and cycle time in the health report

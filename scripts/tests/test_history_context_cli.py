@@ -243,3 +243,84 @@ class TestHistoryContextEffortFlag:
         out = capsys.readouterr().out
         assert result == 0
         assert out.strip() == ""
+
+
+class TestForSkillFlag:
+    """Tests for --for-skill flag in ll-history-context (ENH-1909)."""
+
+    def _write_config(self, tmp_path: Path, planning_skills: list) -> None:
+        import json
+
+        config = {"history": {"planning_skills": planning_skills}}
+        (tmp_path / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    def _setup_issue_session(self, db: Path, issue_id: str, session_id: str, ts: str) -> None:
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at, completed_at) "
+                "VALUES(?, ?, ?, ?, ?)",
+                (ts, issue_id, "open", ts, None),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                (ts, session_id, "working on it"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, f"/path/{session_id}.jsonl"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_skill_in_default_list_proceeds_normally(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, ["create-sprint", "scope-epic", "manage-issue", "review-epic"])
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._setup_issue_session(db, "ENH-1909", "sess-001", "2026-01-10T10:00:00Z")
+        with patch(
+            "sys.argv",
+            ["ll-history-context", "--for-skill", "manage-issue", "--effort", "--db", str(db), "ENH-1909"],
+        ):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "## Effort Context" in out
+
+    def test_skill_not_in_list_returns_zero_empty_output(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, ["create-sprint", "scope-epic", "review-epic"])
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._setup_issue_session(db, "ENH-1909", "sess-002", "2026-01-10T10:00:00Z")
+        with patch(
+            "sys.argv",
+            ["ll-history-context", "--for-skill", "manage-issue", "--effort", "--db", str(db), "ENH-1909"],
+        ):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert out.strip() == ""
+
+    def test_empty_planning_skills_list_returns_zero_empty_output(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, [])
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._setup_issue_session(db, "ENH-1909", "sess-003", "2026-01-10T10:00:00Z")
+        with patch(
+            "sys.argv",
+            ["ll-history-context", "--for-skill", "create-sprint", "--effort", "--db", str(db), "ENH-1909"],
+        ):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert out.strip() == ""

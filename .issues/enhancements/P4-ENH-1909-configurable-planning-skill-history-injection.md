@@ -3,9 +3,10 @@ id: ENH-1909
 title: Make planning-skill history injection configurable via history.planning_skills
 type: ENH
 priority: P4
-status: open
+status: done
 discovered_date: 2026-06-03
 captured_at: '2026-06-03T00:00:00Z'
+completed_at: '2026-06-06T20:02:23Z'
 discovered_by: review
 parent: EPIC-1707
 relates_to:
@@ -14,6 +15,12 @@ relates_to:
 labels:
 - history-db
 - configurability
+confidence_score: 98
+outcome_confidence: 77
+score_complexity: 16
+score_test_coverage: 18
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # ENH-1909: Make planning-skill history injection configurable via history.planning_skills
@@ -68,19 +75,23 @@ fallback-to-default contract.
 
 ## Proposed Solution
 
-1. Add `history.planning_skills` (list[str]) to `config-schema.json` with
-   default `["create-sprint", "scope-epic", "manage-issue", "review-epic"]`.
-2. Add a `--for-skill <name>` flag to `ll-history-context`. When provided, the
-   CLI checks whether `<name>` appears in `history.planning_skills` (config or
-   default) and exits with no output if it does not. In each wired planning
-   skill, replace the unconditional effort guard with a single self-gating
-   call:
+~~1. Add `history.planning_skills` (list[str]) to `config-schema.json` with default `["create-sprint", "scope-epic", "manage-issue", "review-epic"]`.~~ **DONE** — `config-schema.json:1454-1459` and `HistoryConfig.planning_skills` (`features.py:794`) are fully implemented including `from_dict` deserialization.
+
+2. Add a `--for-skill <name>` flag to `ll-history-context` (`history_context.py`). Flag type: `type=str, default=None` (string value, not boolean). In `_build_parser()` (lines 51–96), add alongside existing flags. In `main_history_context()`, insert the guard **after** the `--effort` dispatch block (lines 143–164) and before the main issue-context path (~line 165):
+   ```python
+   if args.for_skill is not None:
+       from little_loops.config import BRConfig
+       cfg = BRConfig(Path.cwd())
+       if args.for_skill not in cfg.history.planning_skills:
+           return 0
+   ```
+   In each wired planning skill, replace the unconditional effort guard with a single self-gating call:
    ```bash
    EFFORT=$(ll-history-context --for-skill create-sprint --effort {{issue_id}} 2>/dev/null || true)
    ```
-   Skills remain config-naive: if `EFFORT` is empty, they skip injection.
-3. Extend `scripts/tests/test_enh1905_doc_wiring.py` with cases covering the
-   opt-out path.
+   Skills remain config-naive: if `EFFORT` is empty (skill not in list), they skip injection.
+
+3. Extend `scripts/tests/test_history_context_cli.py` (class `TestHistoryContextEffortFlag`, lines 191–245) with a `TestForSkillFlag` class. Follow the established triplet: (a) skill in config → proceeds normally, (b) skill not in config → exits 0 with empty output, (c) empty list → exits 0 with empty output. Also add doc-wiring needles to `test_wiring_cli_registry.py` (`--for-skill` in `docs/reference/CLI.md`) and `test_wiring_skills_and_commands.py` (guard present in each of the four skill files).
 
 ## API/Interface
 
@@ -97,36 +108,55 @@ Config key addition:
 ## Integration Map
 
 ### Files to Modify
-- `config-schema.json` — add `history.planning_skills` (array of strings)
-- `scripts/little_loops/cli/history_context.py` — add `--for-skill <name>` flag; exit 0 with no output when skill not in `history.planning_skills`
-- `commands/create-sprint.md` — replace unconditional guard with `--for-skill create-sprint` call
-- `skills/scope-epic/SKILL.md` — same, `--for-skill scope-epic`
-- `skills/manage-issue/SKILL.md` — same, `--for-skill manage-issue`
-- `skills/review-epic/SKILL.md` — same, `--for-skill review-epic`
+- ~~`config-schema.json`~~ — **DONE** (`history.planning_skills` at `config-schema.json:1454-1459`)
+- `scripts/little_loops/cli/history_context.py` — add `--for-skill <name>` (string flag) in `_build_parser()` lines 51–96; insert guard in `main_history_context()` after `--effort` block (~line 165) reading `cfg.history.planning_skills` via `BRConfig(Path.cwd())`
+- `commands/create-sprint.md:366` — replace unconditional `ll-history-context ISSUE_ID --effort` with `ll-history-context --for-skill create-sprint --effort ISSUE_ID`
+- `skills/scope-epic/SKILL.md:100` — same, `--for-skill scope-epic`
+- `skills/manage-issue/SKILL.md:108` — same, `--for-skill manage-issue`
+- `skills/review-epic/SKILL.md:121` — same, `--for-skill review-epic`
 
 ### Tests
-- `scripts/tests/test_enh1905_doc_wiring.py` — extend with opt-out coverage
+- `scripts/tests/test_history_context_cli.py` — add `TestForSkillFlag` class modeled after `TestHistoryContextEffortFlag` (lines 191–245): triplet of (skill in list, skill not in list, empty list). **Config isolation**: use `monkeypatch.chdir(tmp_path)` and write a `ll-config.json` under `tmp_path` so `BRConfig(Path.cwd())` picks up the custom `planning_skills` list; or patch `BRConfig` directly. The `TestHistoryContextEffortFlag` class does not show this pattern — it must be added fresh.
+- `scripts/tests/test_wiring_skills_and_commands.py` — add `DOC_STRINGS_PRESENT` needle for `--for-skill` guard in each of the four planning skill files
+- `scripts/tests/test_wiring_cli_registry.py` — add needle asserting `--for-skill` appears in `docs/reference/CLI.md`
 
 ### Dependent Files (Callers/Importers)
 - The four skill files in `Files to Modify` are both modified and the consumers of the new config key
-- Any skill added to `history.planning_skills` by a user will become an additional caller
+- `scripts/little_loops/config/features.py:794` — `HistoryConfig.planning_skills` field (already done)
+- `scripts/little_loops/config/core.py:647` — `BRConfig.to_dict()` already serializes `planning_skills`
+- Any skill added to `history.planning_skills` by a user becomes an additional caller
 
 ### Documentation
-- N/A — new config key and CLI flag; check `docs/` if `history.effort_fields` config pattern is documented to add a matching entry for `history.planning_skills`; add `--for-skill` to `ll-history-context` man-page / `--help` output
+- `docs/reference/CLI.md` — add `--for-skill <name>` to `ll-history-context` flags table; verified by `test_wiring_cli_registry.py`
+- `docs/reference/API.md` — `### main_history_context` flags block currently lists `ISSUE_ID`, `--file PATH`, `--db PATH`, `--effort`; add `--for-skill NAME` row [Agent 2 finding]
+- `.claude/CLAUDE.md` — `ll-history-context` bullet in `## CLI Tools`; may need `--for-skill` mention
 
 ### Configuration
-- `config-schema.json` — already in Files to Modify; schema addition
+- `config-schema.json:1454-1459` — **DONE**; schema already has `planning_skills` with correct default and description
 - `.ll/ll-config.json` — user-facing config where `history.planning_skills` is set (no code change; users opt in/out here)
 
 ### Similar Patterns
-- `history.effort_fields` (ENH-1905) — same config-or-default contract
+- `history.effort_fields` (ENH-1905) — same config-or-default contract; `--effort` branch at `history_context.py:143-164` is the direct implementation model
 
 ## Implementation Steps
 
-1. Add `history.planning_skills` (list[str]) to `config-schema.json` with default `["create-sprint", "scope-epic", "manage-issue", "review-epic"]`
-2. Add `--for-skill <name>` flag to `ll-history-context` (`history_context.py`): read `history.planning_skills` from config, exit 0 with no output if `<name>` is not in the list
-3. Replace the unconditional effort guard in each of the four planning skill files with a single `--for-skill <name> --effort` invocation; skill logic: inject if non-empty, skip if empty
-4. Extend `scripts/tests/test_enh1905_doc_wiring.py` with opt-out path test cases (empty list → no invocations; custom list → only named skills invoke guard)
+1. ~~Add `history.planning_skills` to `config-schema.json`~~ — **DONE** (`config-schema.json:1454`, `features.py:HistoryConfig.planning_skills` at line 794)
+
+2. In `scripts/little_loops/cli/history_context.py`:
+   - In `_build_parser()` (line ~80, after `--effort` flag): add `parser.add_argument("--for-skill", type=str, default=None, metavar="NAME", help="Exit 0 with no output if NAME is not in history.planning_skills.")`
+   - In `main_history_context()` (line ~165, after the `if args.effort:` block ends): insert guard using `BRConfig(Path.cwd())` → `cfg.history.planning_skills` (same pattern as `--effort` branch at lines 143–164); return 0 with no output if skill not in list
+
+3. In each of the four planning skill files, replace the unconditional effort guard:
+   - `commands/create-sprint.md:366`: `EFFORT=$(ll-history-context --for-skill create-sprint --effort ISSUE_ID 2>/dev/null || true)`
+   - `skills/scope-epic/SKILL.md:100`: `EFFORT=$(ll-history-context --for-skill scope-epic --effort PARENT_ISSUE_ID 2>/dev/null || true)`
+   - `skills/manage-issue/SKILL.md:108`: `EFFORT=$(ll-history-context --for-skill manage-issue --effort {{issue_id}} 2>/dev/null || true)`
+   - `skills/review-epic/SKILL.md:121`: `EFFORT=$(ll-history-context --for-skill review-epic --effort CHILD_ISSUE_ID 2>/dev/null || true)`
+
+4. In `scripts/tests/test_history_context_cli.py`, add `TestForSkillFlag` class (modeled after `TestHistoryContextEffortFlag` lines 191–245) with three cases: (a) skill in default list → proceeds normally; (b) skill not in list → returns 0 with empty output; (c) `planning_skills: []` in config → returns 0 with empty output. Use `monkeypatch.chdir(tmp_path)` + write `ll-config.json` to `tmp_path` so `BRConfig(Path.cwd())` sees the test config. Add doc-wiring needles in `test_wiring_skills_and_commands.py` and `test_wiring_cli_registry.py`.
+
+5. Update `docs/reference/API.md` — add `--for-skill NAME` to the `### main_history_context` flags block (alongside existing `--effort`, `--file PATH`, `--db PATH`).
+
+6. Run `python -m pytest scripts/tests/test_history_context_cli.py scripts/tests/test_wiring_skills_and_commands.py scripts/tests/test_wiring_cli_registry.py -v`
 
 ## Scope Boundaries
 
@@ -165,6 +195,10 @@ _Added by `/ll:verify-issues` on 2026-06-04_
 - `/ll:verify-issues` - 2026-06-05 - Config schema and HistoryConfig class ARE implemented (`history.planning_skills` in config-schema.json:1432 and features.py:757). However, `--for-skill` flag does not exist on `ll-history-context`, and no planning skill files have per-skill guards. Issue body should acknowledge the completed config infrastructure as Step 1 done, and focus remaining work on the CLI flag (Step 2) and per-skill integration (Step 3).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-06T19:59:09 - `bc19e9f1-b796-4f10-896b-5f271b0c432a.jsonl`
+- `/ll:confidence-check` - 2026-06-06T20:00:00 - `b4bb0afc-7c58-48dd-b83b-753c7f275dfd.jsonl`
+- `/ll:wire-issue` - 2026-06-06T19:54:25 - `a9502e41-f43e-4d95-ba3c-278aac8cca71.jsonl`
+- `/ll:refine-issue` - 2026-06-06T19:49:39 - `8282f068-b0be-423b-87cf-845d27a0c02b.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:36 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`

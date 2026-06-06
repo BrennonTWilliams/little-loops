@@ -363,7 +363,7 @@ If a pattern returns no results, the issue is missing. Report any missing issues
 When sizing each issue, fetch historical effort context:
 
 ```bash
-EFFORT=$(ll-history-context ISSUE_ID --effort 2>/dev/null || true)
+EFFORT=$(ll-history-context --for-skill create-sprint --effort ISSUE_ID 2>/dev/null || true)
 ```
 
 If `$EFFORT` is non-empty, include session count and cycle time in the per-issue
