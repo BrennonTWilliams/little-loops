@@ -1,6 +1,6 @@
 ---
 id: FEAT-1992
-title: "rn-build — Core Loop YAML, Loaders, and Integration"
+title: "rn-build \u2014 Core Loop YAML, Loaders, and Integration"
 type: FEAT
 priority: P3
 status: open
@@ -9,7 +9,9 @@ captured_at: '2026-06-06T00:00:00Z'
 discovered_date: 2026-06-06
 discovered_by: capture-issue
 size: Large
-blocked_by: [FEAT-1988, FEAT-1991]
+blocked_by:
+- FEAT-1988
+- FEAT-1991
 relates_to:
 - FEAT-1990
 - FEAT-1988
@@ -18,6 +20,12 @@ labels:
 - orchestration
 - built-in
 - greenfield
+confidence_score: 92
+outcome_confidence: 84
+score_complexity: 16
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1992: `rn-build` — Core Loop YAML, Loaders, and Integration
@@ -212,4 +220,6 @@ FEAT-1990 Open Question 2.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-07T04:23:02 - `5683ead4-15c0-47d5-b180-859e88eabdf1.jsonl`
 - `/ll:format-issue` - 2026-06-07T01:12:10 - `cd798629-9859-4c97-9a7d-e737ade5c9fa.jsonl`
+- `/ll:confidence-check` - 2026-06-06T00:00:00Z - `2a99295f-12a5-41e0-8be2-477bd51f898c.jsonl`
