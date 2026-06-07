@@ -206,6 +206,7 @@ def run_with_continuation(
     sentinel_threshold: float = 0.60,
     guillotine_threshold: float = 0.90,
     issue_path: Path | None = None,
+    run_dir: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -318,26 +319,58 @@ def run_with_continuation(
         prompt_too_long = "prompt is too long" in (result.stderr or "").lower()
 
         # Option J: guillotine — context overflow with no handoff signal.
-        # Assemble transcript-summary prompt and start a FRESH session (not --resume).
+        # When run_dir is set (loop context), write a resume file and invoke /ll:resume.
+        # Otherwise fall back to the transcript-summary blob (non-loop ll-auto runs).
         if (
             prompt_too_long or usage_ratio >= guillotine_threshold
         ) and continuation_count < max_continuations:
             trigger_reason = "Prompt is too long" if prompt_too_long else f"usage {usage_ratio:.0%}"
             logger.warning(f"Option J triggered ({trigger_reason}): spawning fresh session")
-            try:
-                guillotine_cmd = assemble_guillotine_prompt(
-                    original_command=initial_command,
-                    captured_stdout="\n---CONTINUATION---\n".join(all_stdout),
-                    token_stats={
-                        "input_tokens": _last_input[0],
-                        "output_tokens": _last_output[0],
-                        "context_limit": context_limit,
-                        "trigger_reason": trigger_reason,
-                    },
-                )
-            except Exception as exc:
-                logger.warning(f"Failed to assemble guillotine prompt ({exc}), using bare restart")
-                guillotine_cmd = initial_command
+            if run_dir is not None:
+                try:
+                    guillotine_file = Path(run_dir) / "guillotine-prompt.md"
+                    guillotine_file.parent.mkdir(parents=True, exist_ok=True)
+                    task_first_line = (initial_command.strip().splitlines() or [""])[0]
+                    guillotine_file.write_text(
+                        f"## Intent\n"
+                        f"Resume an interrupted automation session that hit the context limit.\n"
+                        f"Original task: {task_first_line}\n"
+                        f"Trigger reason: {trigger_reason} "
+                        f"({_last_input[0] + _last_output[0]:,} / {context_limit:,} tokens)\n"
+                        f"\n"
+                        f"## Next Steps\n"
+                        f"1. Check `git log` to see what was committed in the previous session\n"
+                        f"2. Check the issue file status — if already done/cancelled, stop\n"
+                        f"3. Review `.loops/tmp/scratch/` for partial progress notes\n"
+                        f"4. Continue the original task from where it left off, "
+                        f"skipping already-completed work\n",
+                        encoding="utf-8",
+                    )
+                    guillotine_cmd = f"/ll:resume {guillotine_file}"
+                    logger.info(f"Option J resume file written: {guillotine_file}")
+                except Exception as exc:
+                    logger.warning(
+                        f"Failed to write guillotine resume file ({exc}), "
+                        "falling back to summary blob"
+                    )
+                    guillotine_cmd = initial_command
+            else:
+                try:
+                    guillotine_cmd = assemble_guillotine_prompt(
+                        original_command=initial_command,
+                        captured_stdout="\n---CONTINUATION---\n".join(all_stdout),
+                        token_stats={
+                            "input_tokens": _last_input[0],
+                            "output_tokens": _last_output[0],
+                            "context_limit": context_limit,
+                            "trigger_reason": trigger_reason,
+                        },
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        f"Failed to assemble guillotine prompt ({exc}), using bare restart"
+                    )
+                    guillotine_cmd = initial_command
             continuation_count += 1
             current_command = guillotine_cmd
             # Reset per-round usage tracking for the fresh session

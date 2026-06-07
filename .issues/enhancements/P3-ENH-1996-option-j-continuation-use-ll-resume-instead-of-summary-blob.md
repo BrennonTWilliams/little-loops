@@ -2,10 +2,11 @@
 id: ENH-1996
 title: Option J continuation should use /ll:resume instead of injecting summary blob
 type: ENH
-status: open
+status: done
 priority: P3
 confidence: 90
 captured_at: '2026-06-07T01:40:43Z'
+completed_at: '2026-06-07T02:16:28Z'
 discovered_date: '2026-06-06'
 discovered_by: capture-issue
 decision_needed: false
@@ -236,6 +237,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `automation`, `continuation`, `ll-auto`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-07T02:12:00 - `3384dda5-ded8-4449-b909-8788dde5fe51.jsonl`
 - `/ll:confidence-check` - 2026-06-06T00:00:00Z - `4618c901-07ca-4729-b2a0-eb75257e69a0.jsonl`
 - `/ll:wire-issue` - 2026-06-07T02:03:30 - `e5ce0b01-1132-43aa-ac74-dc946a564b11.jsonl`
 - `/ll:decide-issue` - 2026-06-07T01:57:15 - `0b2efaaf-5e08-4e86-a9ab-8d50d7d57abb.jsonl`

@@ -10,13 +10,13 @@ labels:
 - testing
 - session-store
 - isolation
-confidence_score: 82
-outcome_confidence: 76
+confidence_score: 100
+outcome_confidence: 80
 decision_needed: false
-score_complexity: 21
+score_complexity: 17
 score_test_coverage: 20
-score_ambiguity: 18
-score_change_surface: 17
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # BUG-1995: pytest opens the real `.ll/history.db` instead of an isolated temp DB
@@ -257,6 +257,33 @@ sites** and would pass even while `test_cli_history.py` / `test_ll_logs.py` (the
 (a) these read sites also resolve `LL_HISTORY_DB`, or (b) the guard is broadened to
 catch raw `sqlite3.connect` / chdir-pin the suite. Resolve in the Wiring Phase below.
 
+#### Refinement verification (2026-06-06) — anchors re-checked against current code
+
+_Added by `/ll:refine-issue --auto`. All file:line anchors above were re-verified
+and remain accurate (`DEFAULT_DB_PATH` `session_store.py:76`; `cli_event_context`
+`session_store.py:644`; read sites `cli/history.py:243,294,312`→`:319`,
+`cli/logs.py:1173,1282`). Two drift items found:_
+
+- **CLI wrapper count is now 29, not 28.** `grep -rln "cli_event_context(DEFAULT_DB_PATH" scripts/little_loops/cli/`
+  returns **29** files (the Decision Rationale already cites "29" — the Root Cause /
+  Integration Map "28" is stale). Modules beyond the partial list enumerated above
+  include `ctx_stats.py:269`, `auto.py:32`, `parallel.py:43`,
+  `verify_triggers.py`, `generate_skill_descriptions.py`, `migrate.py`,
+  `migrate_relationships.py`, `sprint/__init__.py`, `issues/__init__.py`,
+  `loop/__init__.py`. Option A's single-point fix still covers all 29 (it does not
+  depend on the count), so this is a documentation-accuracy correction, not a scope
+  change. Treat "29" as authoritative.
+- **A third raw `sqlite3.connect` read site exists:** `cli/logs.py:687`
+  (`_aggregate_skill_stats`), reached by the `stats` and `dead-skills` subcommands
+  (callers `:822`, `:1108`). Unlike the `diff` path, its `db_path` comes from
+  `discover_all_projects()` (absolute per-project `… / ".ll" / "history.db"` paths),
+  **not** the relative `DEFAULT_DB_PATH` — so it leaks the real DB only for the
+  *current* project when the suite runs `ll-logs stats`/`dead-skills` without
+  `--project tmp`. `LL_HISTORY_DB` resolution will **not** reach it (the path is
+  built from project discovery, not the default). The broadened regression guard
+  (Wiring Phase step 7) must therefore also cover this site, or these subcommands'
+  tests must pass an explicit `--project <tmp>`.
+
 #### Hook handlers (advisory — already test-isolated, construct cwd-relative path)
 
 These open the store **without** `DEFAULT_DB_PATH` (they build `cwd / ".ll" /
@@ -429,6 +456,9 @@ _Added by `/ll:confidence-check` on 2026-06-06_
 - After lsof identifies the site, confirm whether the autouse conftest monkeypatch alone is sufficient or whether explicit path fixes are also needed.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-06T14:00:00Z - `1cab2d29-91a7-43aa-b71c-cc0209970692.jsonl`
+- `/ll:refine-issue` - 2026-06-07T02:12:07 - `d1b83bd2-dc5e-4b2f-8ae5-fe406ad11ab8.jsonl`
+- `/ll:confidence-check` - 2026-06-07T02:30:00Z - `4618c901-07ca-4729-b2a0-eb75257e69a0.jsonl`
 - `/ll:wire-issue` - 2026-06-07T02:05:47 - `2cb24a85-125e-4b27-a053-03f6a227f78c.jsonl`
 - `/ll:decide-issue` - 2026-06-07T01:54:19 - `2e30f14e-9122-44f7-835e-70d8975352d8.jsonl`
 - `/ll:refine-issue` - 2026-06-07T01:51:38 - `ea615ab5-cdcf-4f14-a9f5-c2da8768d657.jsonl`

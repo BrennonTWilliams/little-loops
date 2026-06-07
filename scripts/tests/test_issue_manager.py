@@ -1432,6 +1432,105 @@ class TestRunWithContinuation:
         warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
         assert any("Option J" in w and "Prompt is too long" in w for w in warning_calls)
 
+    def test_guillotine_with_run_dir_writes_resume_file(self, tmp_path: Path) -> None:
+        """Option J + run_dir: writes guillotine-prompt.md and invokes /ll:resume."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+        run_dir = tmp_path / "runs" / "my-loop-20260101"
+        run_dir.mkdir(parents=True)
+
+        overflow_result = MagicMock()
+        overflow_result.returncode = 1
+        overflow_result.stdout = "Partial work..."
+        overflow_result.stderr = ""
+        overflow_result.args = ["claude"]
+
+        fresh_result = MagicMock()
+        fresh_result.returncode = 0
+        fresh_result.stdout = "Continued from resume"
+        fresh_result.stderr = ""
+        fresh_result.args = ["claude"]
+
+        call_count = [0]
+        commands_received: list[str] = []
+
+        def mock_run(command: str, *args, **kwargs):
+            call_count[0] += 1
+            commands_received.append(command)
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)  # 195K > 90% of 200K
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "/ll:manage-issue bug fix BUG-1377",
+                    mock_logger,
+                    repo_path=tmp_path,
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                    run_dir=str(run_dir),
+                )
+
+        assert call_count[0] == 2
+        # Second command must be a /ll:resume invocation, not the summary blob
+        assert commands_received[1].startswith("/ll:resume")
+        assert "CONTEXT LIMIT REACHED" not in commands_received[1]
+        # guillotine-prompt.md must be written inside run_dir
+        guillotine_file = run_dir / "guillotine-prompt.md"
+        assert guillotine_file.exists()
+        content = guillotine_file.read_text()
+        assert "## Intent" in content
+        assert "## Next Steps" in content
+
+    def test_guillotine_without_run_dir_uses_summary_blob(self, temp_project_dir: Path) -> None:
+        """Option J without run_dir: assemble_guillotine_prompt fallback preserved."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        overflow_result = MagicMock()
+        overflow_result.returncode = 1
+        overflow_result.stdout = "Partial work..."
+        overflow_result.stderr = ""
+        overflow_result.args = ["claude"]
+
+        fresh_result = MagicMock()
+        fresh_result.returncode = 0
+        fresh_result.stdout = "Done"
+        fresh_result.stderr = ""
+        fresh_result.args = ["claude"]
+
+        call_count = [0]
+        commands_received: list[str] = []
+
+        def mock_run(command: str, *args, **kwargs):
+            call_count[0] += 1
+            commands_received.append(command)
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "/ll:manage-issue bug fix BUG-1377",
+                    mock_logger,
+                    repo_path=temp_project_dir,
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                    # run_dir not provided — legacy fallback path
+                )
+
+        assert call_count[0] == 2
+        assert "CONTEXT LIMIT REACHED" in commands_received[1]
+        assert not commands_received[1].startswith("/ll:resume")
+
     def test_sentinel_written_on_high_usage(self, temp_project_dir: Path) -> None:
         """Option G: sentinel file written when on_usage reports >= sentinel_threshold."""
         from little_loops.issue_manager import run_with_continuation

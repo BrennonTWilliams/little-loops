@@ -2398,6 +2398,63 @@ class TestRunWithContinuation:
         assert call_count[0] == 2
         assert "CONTEXT LIMIT REACHED" in commands_received[1]
 
+    def test_guillotine_with_run_dir_writes_resume_file(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+        tmp_path: Path,
+    ) -> None:
+        """Option J + run_dir: writes guillotine-prompt.md and invokes /ll:resume."""
+        run_dir = tmp_path / "runs" / "my-loop-20260101"
+        run_dir.mkdir(parents=True)
+
+        overflow_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "test"],
+            returncode=1,
+            stdout="Partial work...",
+            stderr="",
+        )
+        fresh_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "fresh"],
+            returncode=0,
+            stdout="Done from resume",
+            stderr="",
+        )
+
+        call_count = [0]
+        commands_received: list[str] = []
+
+        def mock_run_claude(command, working_dir, **kwargs):
+            call_count[0] += 1
+            commands_received.append(command)
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)  # 195K > 90% of 200K
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
+            with patch(
+                "little_loops.parallel.worker_pool.detect_context_handoff", return_value=False
+            ):
+                worker_pool._run_with_continuation(
+                    "test",
+                    temp_repo_with_config,
+                    issue_id="BUG-1377",
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                    run_dir=str(run_dir),
+                )
+
+        assert call_count[0] == 2
+        assert commands_received[1].startswith("/ll:resume")
+        assert "CONTEXT LIMIT REACHED" not in commands_received[1]
+        guillotine_file = run_dir / "guillotine-prompt.md"
+        assert guillotine_file.exists()
+        content = guillotine_file.read_text()
+        assert "## Intent" in content
+        assert "## Next Steps" in content
+
 
 class TestWorkerPoolDecisionNeededGate:
     """Tests for conditional decide-issue invocation when decision_needed=True."""

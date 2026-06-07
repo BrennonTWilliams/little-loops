@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Option J guillotine now uses `/ll:resume` in loop contexts** — When `run_with_continuation` (and `WorkerPool._run_with_continuation`) receive a `run_dir`, the Option J fresh session is seeded with `/ll:resume <run_dir>/guillotine-prompt.md` instead of a lossy transcript-summary blob. Fallback to `assemble_guillotine_prompt` is preserved when `run_dir` is `None`. (ENH-1996)
+
 ### Added
 
 - **`ll-logs scan-failures` subcommand** — Mines failed `ll-*` Bash invocations from interactive session JSONL logs. Pairs assistant `tool_use` blocks with `tool_result` records to detect nonzero exits (`is_error: True`) and Python tracebacks. Suppresses transient errors (rate limits, timeouts) and expected-nonzero gates (`ll-verify-*`). Clusters failures by `(tool, normalized-error-signature)` and emits candidates as text or `--json`. `--capture` creates BUG issue files for each distinct cluster. (ENH-1922)
