@@ -7,6 +7,9 @@ status: open
 captured_at: '2026-06-07T00:00:00Z'
 discovered_date: '2026-06-07'
 discovered_by: rn-implement-vision-review
+blocked_by:
+- BUG-2003
+- BUG-2006
 relates_to:
 - BUG-2006
 - FEAT-1991
