@@ -165,7 +165,7 @@ def is_correction(text: str, extra_patterns: Sequence[str] = ()) -> bool:
 # not require a follow-up migration.
 _MIGRATIONS: list[str] = [
     """
-    CREATE TABLE tool_events (
+    CREATE TABLE IF NOT EXISTS tool_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ts TEXT NOT NULL,
         session_id TEXT,
@@ -176,7 +176,7 @@ _MIGRATIONS: list[str] = [
         bytes_out INTEGER,
         cache_hit INTEGER
     );
-    CREATE TABLE file_events (
+    CREATE TABLE IF NOT EXISTS file_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ts TEXT NOT NULL,
         session_id TEXT,
@@ -185,14 +185,14 @@ _MIGRATIONS: list[str] = [
         issue_id TEXT,
         git_sha TEXT
     );
-    CREATE TABLE issue_events (
+    CREATE TABLE IF NOT EXISTS issue_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ts TEXT NOT NULL,
         issue_id TEXT,
         transition TEXT,
         discovered_by TEXT
     );
-    CREATE TABLE loop_events (
+    CREATE TABLE IF NOT EXISTS loop_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ts TEXT NOT NULL,
         loop_name TEXT,
@@ -200,21 +200,21 @@ _MIGRATIONS: list[str] = [
         transition TEXT,
         retries INTEGER
     );
-    CREATE TABLE user_corrections (
+    CREATE TABLE IF NOT EXISTS user_corrections (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ts TEXT NOT NULL,
         session_id TEXT,
         content TEXT,
         source TEXT
     );
-    CREATE VIRTUAL TABLE search_index USING fts5(
+    CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
         content,
         kind UNINDEXED,
         ref UNINDEXED,
         anchor UNINDEXED,
         ts UNINDEXED
     );
-    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
     """,
     # v2 (ENH-1621): widen issue_events with completion-summary columns so
     # ll-history `summary` can be answered from the DB; add message_events for
@@ -381,26 +381,99 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# Milliseconds a contended open will wait for the write lock before giving up.
+# Every ``ll-*`` invocation opens this DB on startup; under ll-auto / ll-loop /
+# ll-parallel many processes contend at once, so without a busy_timeout an open
+# fails instantly with ``OperationalError: database is locked``.
+_BUSY_TIMEOUT_MS = 5000
+
+
+def _configure_connection(conn: sqlite3.Connection) -> None:
+    """Apply concurrency pragmas to a freshly opened connection.
+
+    ``busy_timeout`` makes a contended open wait instead of failing instantly
+    with ``database is locked``; WAL journal mode lets readers and writers
+    proceed concurrently — critical for the multi-process ll-auto / ll-loop /
+    ll-parallel workload, where rollback-journal mode otherwise serialises every
+    reader behind any active writer. WAL is a persistent property of the database
+    file, so re-applying it on every connection is idempotent. Both pragmas are
+    best-effort: a read-only filesystem or an older SQLite that rejects one must
+    not prevent the database from opening.
+    """
+    try:
+        conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
+        conn.execute("PRAGMA journal_mode = WAL")
+    except sqlite3.OperationalError:
+        logger.debug("session_store: could not apply connection pragmas", exc_info=True)
+
+
+def _split_sql_statements(script: str) -> list[str]:
+    """Split a migration's SQL into individual statements on ``;`` boundaries.
+
+    Used instead of :meth:`sqlite3.Connection.executescript` because the latter
+    issues an implicit ``COMMIT`` that would release the write lock held across
+    the migration sequence (see :func:`_apply_migrations`). The migration SQL in
+    ``_MIGRATIONS`` is fully controlled and contains no semicolons inside string
+    literals or column definitions, so a plain ``;`` split is safe here; do not
+    repurpose this for arbitrary user SQL.
+    """
+    return [stmt for raw in script.split(";") if (stmt := raw.strip())]
+
+
 def _current_version(conn: sqlite3.Connection) -> int:
-    """Return the applied schema version, or 0 if the meta table is absent."""
+    """Return the applied schema version, or 0 if the meta table is absent.
+
+    Only a genuinely missing ``meta`` table means "fresh database, version 0".
+    A transient ``database is locked`` (another process mid-write) is a different
+    ``OperationalError`` and must propagate — misreading it as 0 makes the caller
+    re-run migration 0 and crash with "table tool_events already exists".
+    """
     try:
         row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
-    except sqlite3.OperationalError:
-        return 0
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).lower():
+            return 0
+        raise
     return int(row[0]) if row else 0
 
 
 def _apply_migrations(conn: sqlite3.Connection) -> None:
-    """Apply every migration newer than the database's current version."""
-    version = _current_version(conn)
-    for index in range(version, len(_MIGRATIONS)):
-        conn.executescript(_MIGRATIONS[index])
-        conn.execute(
-            "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (str(index + 1),),
-        )
-        conn.commit()
+    """Apply every migration newer than the database's current version.
+
+    The whole sequence runs inside a single ``BEGIN IMMEDIATE`` transaction so
+    concurrent processes serialise: the first to acquire the write lock migrates
+    while the rest wait (``busy_timeout``), then re-read the now-current version
+    and apply nothing. The version is re-checked *inside* the lock to close the
+    fresh-database race where two processes both read version 0 and both try to
+    create the bootstrap tables. ``executescript`` is avoided because its implicit
+    leading ``COMMIT`` would drop the lock between migrations.
+
+    Fast path: when the schema is already current, return without taking the
+    write lock at all — in WAL mode this read never blocks on a concurrent
+    writer, so the steady-state ``ll-*`` startup stays lock-free.
+    """
+    if _current_version(conn) >= len(_MIGRATIONS):
+        return
+    prior_isolation = conn.isolation_level
+    conn.isolation_level = None  # manual transaction control
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            version = _current_version(conn)
+            for index in range(version, len(_MIGRATIONS)):
+                for statement in _split_sql_statements(_MIGRATIONS[index]):
+                    conn.execute(statement)
+                conn.execute(
+                    "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (str(index + 1),),
+                )
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.isolation_level = prior_isolation
 
 
 def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
@@ -437,6 +510,7 @@ def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     try:
+        _configure_connection(conn)
         _apply_migrations(conn)
     finally:
         conn.close()
@@ -450,6 +524,7 @@ def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """
     db_path = ensure_db(path)
     conn = sqlite3.connect(str(db_path))
+    _configure_connection(conn)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -694,6 +769,7 @@ class SQLiteTransport:
         try:
             ensure_db(self._path)
             self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
+            _configure_connection(self._conn)
         except sqlite3.Error:
             logger.warning(
                 "SQLiteTransport: could not open %s; sink disabled", self._path, exc_info=True
@@ -1874,6 +1950,7 @@ def prune(
     if result["pruned"] and not dry_run:
         try:
             vac_conn = sqlite3.connect(str(db_path))
+            _configure_connection(vac_conn)
             vac_conn.isolation_level = None
             try:
                 vac_conn.execute("VACUUM")

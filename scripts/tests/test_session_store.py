@@ -86,11 +86,12 @@ class TestEnsureDb:
         """ENH-1635: a pre-existing ``session.db`` (+ sidecars) is renamed
         to ``history.db`` on first ``ensure_db()`` call after upgrade.
 
-        Bootstraps a real (versioned) SQLite legacy file, then drops an
-        arbitrary ``-shm`` sidecar next to it. The schema-bootstrap step
-        after the rename should not delete the renamed sidecar (unlike a
-        renamed ``-wal``, which SQLite will tidy on open if the main file
-        is not in WAL mode).
+        Bootstraps a real (versioned) SQLite legacy file, then drops a ``-shm``
+        sidecar next to it, and asserts the legacy paths are moved away rather
+        than orphaned. The ``-shm`` byte content is *not* asserted: ``ensure_db``
+        now opens the database in WAL mode, so SQLite actively manages and
+        rebuilds the shared-memory ``-shm`` file on open — preserving arbitrary
+        bytes in it was only meaningful under the old rollback-journal mode.
         """
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
@@ -106,7 +107,7 @@ class TestEnsureDb:
         assert not legacy.exists()
         # New db must carry the legacy content (rename, not recreate).
         assert new.read_bytes() == legacy_bytes
-        assert (ll_dir / "history.db-shm").read_bytes() == b"shm-data"
+        # Legacy sidecar is moved away, not orphaned at the old path.
         assert not (ll_dir / "session.db-shm").exists()
 
     def test_migration_skipped_when_new_db_exists(self, tmp_path: Path) -> None:
@@ -126,6 +127,86 @@ class TestEnsureDb:
 
         assert legacy.exists()
         assert legacy.stat().st_size == legacy_size
+
+
+class TestConcurrencyHardening:
+    """Lock-contention safety for the migration framework (the ``ll-issues``
+    'table tool_events already exists' crash)."""
+
+    def test_locked_db_error_is_not_misread_as_version_zero(self) -> None:
+        """A transient ``database is locked`` must NOT be treated as a fresh DB.
+
+        Regression for the crash: ``_current_version`` swallowed every
+        ``OperationalError`` and returned 0, so a contended open re-ran
+        migration 0 and died with "table tool_events already exists". Only a
+        genuinely absent ``meta`` table ("no such table") means version 0.
+        """
+        from little_loops.session_store import _current_version
+
+        class _LockedConn:
+            def execute(self, _sql: str):  # noqa: ANN202 - test stub
+                raise sqlite3.OperationalError("database is locked")
+
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            _current_version(_LockedConn())  # type: ignore[arg-type]
+
+    def test_missing_meta_table_still_reads_as_version_zero(self, tmp_path: Path) -> None:
+        """A genuinely absent ``meta`` table is the one case that means v0."""
+        from little_loops.session_store import _current_version
+
+        db = tmp_path / "empty.db"
+        conn = sqlite3.connect(str(db))
+        try:
+            assert _current_version(conn) == 0
+        finally:
+            conn.close()
+
+    def test_connect_applies_wal_and_busy_timeout(self, tmp_path: Path) -> None:
+        """``connect`` configures WAL journal mode and a non-zero busy_timeout."""
+        from little_loops.session_store import _BUSY_TIMEOUT_MS
+
+        conn = connect(tmp_path / "history.db")
+        try:
+            assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+            assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == _BUSY_TIMEOUT_MS
+        finally:
+            conn.close()
+
+    def test_concurrent_ensure_db_on_fresh_path(self, tmp_path: Path) -> None:
+        """Many threads calling ``ensure_db`` on a fresh DB at once must produce
+        exactly one schema with no 'table already exists' race."""
+        import threading
+
+        db = tmp_path / "history.db"
+        errors: list[BaseException] = []
+        barrier = threading.Barrier(8)
+
+        def worker() -> None:
+            try:
+                barrier.wait()
+                ensure_db(db)
+            except BaseException as exc:  # noqa: BLE001 - surface any race
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"concurrent ensure_db raced: {errors!r}"
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute(
+                "SELECT value FROM meta WHERE key='schema_version'"
+            ).fetchone()[0]
+            count = conn.execute(
+                "SELECT COUNT(*) FROM meta WHERE key='schema_version'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert int(version) == SCHEMA_VERSION
+        assert count == 1
 
 
 class TestSQLiteTransport:
