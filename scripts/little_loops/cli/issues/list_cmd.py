@@ -138,13 +138,24 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         # resolve correctly when --type BUG is combined with --group-by epic
         parent_titles: dict[str, str] = {i.issue_id: i.title for i, _ in raw if i.title}
 
+        # Build parent map for walking up multi-level chains (e.g. FEAT → FEAT → EPIC)
+        _parent_map: dict[str, str] = {i.issue_id: i.parent for i, _ in raw if i.parent}
+
+        def _find_epic_ancestor(issue_id: str) -> str | None:
+            seen: set[str] = set()
+            current = _parent_map.get(issue_id)
+            while current and current not in seen:
+                if current.split("-", 1)[0] == "EPIC":
+                    return current
+                seen.add(current)
+                current = _parent_map.get(current)
+            return None
+
         parent_buckets: dict[str | None, list] = {}
         for issue, stat in issues_with_status:
             if issue.issue_id.split("-", 1)[0] == "EPIC":
                 continue
-            key = (
-                issue.parent if (issue.parent and issue.parent.split("-", 1)[0] == "EPIC") else None
-            )
+            key = _find_epic_ancestor(issue.issue_id)
             if key not in parent_buckets:
                 parent_buckets[key] = []
             parent_buckets[key].append((issue, stat))
