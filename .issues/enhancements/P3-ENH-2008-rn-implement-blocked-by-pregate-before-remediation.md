@@ -1,10 +1,11 @@
 ---
 id: ENH-2008
-title: "rn-implement: gate on blocked_by frontmatter before running remediation"
+title: 'rn-implement: gate on blocked_by frontmatter before running remediation'
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-07T00:00:00Z'
+completed_at: '2026-06-07T22:26:25Z'
 discovered_date: '2026-06-07'
 discovered_by: rn-implement-vision-review
 blocked_by:
@@ -175,10 +176,33 @@ string when `blocked_by_unmet_<ID>.txt` exists, so the deferred reason names the
 - **Risk**: Low — fail-open gate; happy path (no/satisfied deps) is unchanged
 - **Breaking Change**: No
 
+## Resolution
+
+**Done** — `check_blocked_by` + `route_blocked_by` states added to `rn-implement.yaml`,
+with `fifo_pop.on_yes` and `select_next.on_yes` repointed to the gate and `mark_deferred`
+enriched to name the specific unmet blocker.
+
+**Deviation from proposed solution (documented):** the proposed `check_blocked_by` shell
+used `ll-issues show "$ID" --json | jq -r '.blocked_by'`, but `ll-issues show --json` does
+**not** expose `blocked_by` (it returns `null`). The implemented gate instead parses the
+issue file's YAML frontmatter directly — the same `get_frontmatter` / `get_blocked_by`
+approach `select_next` already uses — handling both list and comma-separated scalar forms.
+Routing into `mark_deferred` (BUG-2006) and the `route_blocked_by` `output_contains`
+evaluator are as proposed.
+
+**Verification:**
+- `ll-loop validate rn-implement` → valid (30 states; both new states registered)
+- `python -m pytest scripts/tests/test_rn_implement.py` → 98 passed (4 routing/count tests
+  updated; new `TestBlockedByGate` class with 6 tests added)
+- Functional smoke test of the gate's frontmatter-parsing logic against the live `.issues/`
+  tree: `ENH-2008` → READY (BUG-2003, BUG-2006 both done); `FEAT-2002` (the motivating
+  example) → BLOCKED, `unmet=['FEAT-2001']`; `BUG-1408` → READY.
+
 ## Status
 
-**Open** | Created: 2026-06-07 | Priority: P3
+**Done** | Created: 2026-06-07 | Completed: 2026-06-07 | Priority: P3
 
 
 ## Session Log
 - `/ll:format-issue` - 2026-06-07T20:59:17 - `8f5b7fbd-10dd-41b7-b7e6-6117a812b179.jsonl`
+- `/ll:manage-issue` (improve) - 2026-06-07T22:26:25 - `eda4a5b4-c0c3-494c-92c5-c17e3f67c1f7.jsonl`

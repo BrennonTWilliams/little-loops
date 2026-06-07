@@ -121,11 +121,11 @@ class TestDequeueAndDepthTracking:
         fp = data["states"]["fifo_pop"]
         assert fp.get("capture") == "input"
 
-    def test_fifo_pop_routes_to_check_depth(self) -> None:
-        """fifo_pop routes to check_depth on success, report on empty queue."""
+    def test_fifo_pop_routes_to_check_blocked_by(self) -> None:
+        """fifo_pop routes to the blocked_by gate on success (ENH-2008), report on empty queue."""
         data = _load_loop()
         fp = data["states"]["fifo_pop"]
-        assert fp["on_yes"] == "check_depth"
+        assert fp["on_yes"] == "check_blocked_by"
         assert fp["on_no"] == "report"
 
     def test_fifo_pop_references_depth_map(self) -> None:
@@ -571,10 +571,11 @@ class TestValidation:
 
         FEAT-1991 added fifo_pop + select_next (+2 states), raising the ceiling to 26.
         BUG-2006 added route_dec_stalled_origin + mark_deferred (+2), raising it to 28.
+        ENH-2008 added check_blocked_by + route_blocked_by (+2), raising it to 30.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 28, f"Expected ≤28 states in orchestrator, got {state_count}"
+        assert state_count <= 30, f"Expected ≤30 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
@@ -743,6 +744,69 @@ class TestDeferredOnStall:
 
 
 # ============================================================================
+# TestBlockedByGate — ENH-2008: defer unmet-blocked_by issues before remediation
+# ============================================================================
+
+
+class TestBlockedByGate:
+    """The post-dequeue gate defers issues with unmet blocked_by deps before scoring."""
+
+    def test_check_blocked_by_state_exists(self) -> None:
+        """check_blocked_by exists, captures status, routes to route_blocked_by."""
+        data = _load_loop()
+        cbb = data["states"]["check_blocked_by"]
+        assert cbb["capture"] == "blocked_by_status"
+        assert cbb["next"] == "route_blocked_by"
+
+    def test_check_blocked_by_fails_open_on_error(self) -> None:
+        """A gate error must never block processing — it routes to check_depth."""
+        data = _load_loop()
+        cbb = data["states"]["check_blocked_by"]
+        assert cbb["on_error"] == "check_depth"
+
+    def test_check_blocked_by_parses_frontmatter_not_show_json(self) -> None:
+        """The gate reads blocked_by from the issue file frontmatter.
+
+        `ll-issues show --json` does NOT expose blocked_by (returns null), so the
+        gate parses the file's YAML frontmatter directly and diffs against the
+        done set from `ll-issues list --json --status done`.
+        """
+        action = _load_loop()["states"]["check_blocked_by"]["action"]
+        assert "blocked_by" in action
+        # Diffs against the done set (command appears as a subprocess arg list).
+        assert "ll-issues" in action and '"list"' in action
+        assert '"--status"' in action and '"done"' in action
+        # Reads the frontmatter block directly rather than a JSON projection.
+        assert "read_text()" in action and "---" in action
+        # Must not regress to the broken `show --json | jq .blocked_by` approach.
+        assert ".blocked_by" not in action
+
+    def test_check_blocked_by_writes_unmet_under_run_dir(self) -> None:
+        """Unmet deps are recorded per-run (run_dir), not a shared path (MR-3)."""
+        action = _load_loop()["states"]["check_blocked_by"]["action"]
+        assert "blocked_by_unmet_" in action
+        assert "${captured.run_dir.output}" in action
+
+    def test_route_blocked_by_defers_on_blocked(self) -> None:
+        """route_blocked_by sends BLOCKED → mark_deferred, else → check_depth."""
+        data = _load_loop()
+        rbb = data["states"]["route_blocked_by"]
+        evaluate = rbb["evaluate"]
+        assert evaluate["type"] == "output_contains"
+        assert evaluate["pattern"] == "BLOCKED"
+        assert "${captured.blocked_by_status.output}" in evaluate["source"]
+        assert rbb["on_yes"] == "mark_deferred"
+        assert rbb["on_no"] == "check_depth"
+        assert rbb["on_error"] == "check_depth"
+
+    def test_mark_deferred_names_unmet_blocker(self) -> None:
+        """mark_deferred reads blocked_by_unmet_<ID>.txt to name the specific blocker."""
+        action = _load_loop()["states"]["mark_deferred"]["action"]
+        assert "blocked_by_unmet_" in action
+        assert "not done" in action
+
+
+# ============================================================================
 # TestSelectNext — FEAT-1991: value-ranked dequeue
 # ============================================================================
 
@@ -767,11 +831,11 @@ class TestSelectNext:
         sn = data["states"]["select_next"]
         assert sn.get("capture") == "input"
 
-    def test_select_next_routes_to_check_depth(self) -> None:
-        """select_next routes to check_depth on success (item found in ready set)."""
+    def test_select_next_routes_to_check_blocked_by(self) -> None:
+        """select_next routes to the blocked_by gate on success (ENH-2008)."""
         data = _load_loop()
         sn = data["states"]["select_next"]
-        assert sn["on_yes"] == "check_depth"
+        assert sn["on_yes"] == "check_blocked_by"
 
     def test_select_next_routes_empty_ready_set_to_report(self) -> None:
         """select_next routes to report when ready set is empty (no ready items)."""
@@ -863,6 +927,6 @@ class TestSelectNext:
         # Both must increment dequeue_count.txt
         assert "dequeue_count.txt" in fp["action"]
         assert "dequeue_count.txt" in sn["action"]
-        # Both must route to check_depth on success
-        assert fp["on_yes"] == "check_depth"
-        assert sn["on_yes"] == "check_depth"
+        # Both must route to the blocked_by gate on success (ENH-2008)
+        assert fp["on_yes"] == "check_blocked_by"
+        assert sn["on_yes"] == "check_blocked_by"

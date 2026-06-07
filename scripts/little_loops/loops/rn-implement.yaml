@@ -158,7 +158,8 @@ states:
 
       echo "$CURRENT"
     capture: input
-    on_yes: check_depth
+    # ENH-2008: gate on blocked_by frontmatter before scoring (was check_depth)
+    on_yes: check_blocked_by
     on_no: report
     on_error: report
 
@@ -323,9 +324,123 @@ states:
 
       echo "$CHOSEN"
     capture: input
-    on_yes: check_depth
+    # ENH-2008: gate on blocked_by frontmatter before scoring (was check_depth).
+    # select_next already filters unmet-dep issues from the ready set, so the gate
+    # is a no-op here in practice — routed through it anyway for defense-in-depth
+    # and parity with the FIFO path.
+    on_yes: check_blocked_by
     on_no: report
     on_error: report
+
+  check_blocked_by:
+    # ENH-2008: cheap upfront gate. If the dequeued issue has unmet `blocked_by`
+    # frontmatter deps (any blocker not yet `done`), defer it BEFORE scoring —
+    # skipping run_remediation + run_decomposition, which can never move scores on a
+    # structural blocker. This honors issue frontmatter in the per-issue route, not
+    # just queue ordering (which is all select_next does).
+    #
+    # Note: deliberately parses the issue file's YAML frontmatter directly rather
+    # than `ll-issues show --json` — the JSON projection does NOT expose blocked_by
+    # (returns null). This mirrors select_next's get_frontmatter/get_blocked_by,
+    # handling both list and comma-separated scalar forms.
+    #
+    # Fail-open: unresolved issue file, parse error, or an inability to compute the
+    # done-set all yield no unmet deps -> READY -> check_depth. Processing is never
+    # blocked on a gate error (on_error: check_depth covers shell-level failures too).
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      UNMET=$(python3 << 'PYEOF'
+      import os, re, subprocess, json, sys
+      from pathlib import Path
+      try:
+          import yaml as _yaml
+          def _parse_yaml(text):
+              return _yaml.safe_load(text) or {}
+      except ImportError:
+          def _parse_yaml(text):
+              result = {}
+              for line in text.splitlines():
+                  m = re.match(r'^([\w-]+):\s*(.*)', line)
+                  if m:
+                      result[m.group(1)] = m.group(2).strip()
+              return result
+
+      issue_id = "${captured.input.output}"
+
+      # Resolve the issue file across active category dirs (mirrors select_next's index)
+      issue_path = None
+      for d in (".issues/bugs", ".issues/features", ".issues/enhancements", ".issues/epics"):
+          dp = Path(d)
+          if not dp.exists():
+              continue
+          for p in dp.glob("*.md"):
+              m = re.match(r'P\d-([A-Z]+-\d+)-', p.name)
+              if m and m.group(1) == issue_id:
+                  issue_path = p
+                  break
+          if issue_path:
+              break
+
+      if not issue_path:
+          sys.exit(0)  # unresolved -> fail-open (let downstream handle)
+
+      try:
+          content = issue_path.read_text()
+          m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+          fm = _parse_yaml(m.group(1)) if m else {}
+      except Exception:
+          sys.exit(0)  # parse error -> fail-open
+
+      val = fm.get("blocked_by") or []
+      if isinstance(val, str):
+          deps = [v.strip() for v in val.split(",") if v.strip()]
+      else:
+          deps = [str(v).strip() for v in (val if isinstance(val, list) else []) if v]
+
+      if not deps:
+          sys.exit(0)  # no deps -> ready
+
+      done_ids = set()
+      try:
+          r = subprocess.run(
+              ["ll-issues", "list", "--json", "--status", "done"],
+              capture_output=True, text=True, timeout=30,
+          )
+          if r.returncode == 0:
+              done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
+          else:
+              sys.exit(0)  # cannot determine done set -> fail-open
+      except Exception:
+          sys.exit(0)  # fail-open
+
+      unmet = [d for d in deps if d not in done_ids]
+      if unmet:
+          print(" ".join(unmet))
+      PYEOF
+      )
+      if [ -n "$UNMET" ]; then
+        echo "$UNMET" > "$RUN_DIR/blocked_by_unmet_$${ID}.txt"
+        echo "[BLOCKED_BY] $ID has unmet deps:$UNMET"
+        echo "BLOCKED"
+      else
+        echo "READY"
+      fi
+    capture: blocked_by_status
+    next: route_blocked_by
+    on_error: check_depth   # fail-open: never block processing on a gate error
+
+  route_blocked_by:
+    # ENH-2008: BLOCKED -> reuse BUG-2006's mark_deferred (which now names the
+    # specific unmet dep). READY / any error -> proceed to check_depth.
+    evaluate:
+      type: output_contains
+      source: "${captured.blocked_by_status.output}"
+      pattern: "BLOCKED"
+    on_yes: mark_deferred
+    on_no: check_depth
+    on_error: check_depth
 
   check_depth:
     action_type: shell
@@ -537,11 +652,23 @@ states:
     # human-readable reason in deferred.txt and sets the issue's status frontmatter
     # so it re-surfaces naturally once its blocker clears. Follows the mark_blocked
     # pattern.
+    #
+    # ENH-2008: also the target for the upfront blocked_by gate. When
+    # check_blocked_by deferred this issue it left blocked_by_unmet_<ID>.txt; use it
+    # to name the specific unmet blocker(s) in the reason instead of the generic
+    # stall message.
     action_type: shell
     action: |
       ID="${captured.input.output}"
-      REASON="remediation stalled (scores did not converge across passes) and decomposition declined to split; likely blocked on a dependency or otherwise un-actionable by automation"
-      echo "$ID  $REASON" >> "${captured.run_dir.output}/deferred.txt"
+      RUN_DIR="${captured.run_dir.output}"
+      UNMET_FILE="$RUN_DIR/blocked_by_unmet_$${ID}.txt"
+      if [ -f "$UNMET_FILE" ]; then
+        UNMET=$(tr -s ' ' < "$UNMET_FILE" | sed 's/^ *//;s/ *$//')
+        REASON="blocked_by $UNMET (not done)"
+      else
+        REASON="remediation stalled (scores did not converge across passes) and decomposition declined to split; likely blocked on a dependency or otherwise un-actionable by automation"
+      fi
+      echo "$ID  $REASON" >> "$RUN_DIR/deferred.txt"
       # Set issue status so it re-surfaces when the blocker clears
       ll-issues set-status "$ID" deferred 2>/dev/null || true
       echo "[DEFERRED] $ID — $REASON"
