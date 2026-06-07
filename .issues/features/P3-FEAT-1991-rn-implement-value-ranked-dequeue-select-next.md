@@ -1,11 +1,12 @@
 ---
 id: FEAT-1991
-title: "rn-implement — Value-Ranked Dequeue (select_next scheduler)"
+title: "rn-implement \u2014 Value-Ranked Dequeue (select_next scheduler)"
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: FEAT-1990
 captured_at: '2026-06-06T00:00:00Z'
+completed_at: '2026-06-07T03:00:01Z'
 discovered_date: 2026-06-06
 discovered_by: capture-issue
 size: Medium
@@ -15,6 +16,12 @@ labels:
 - loops
 - scheduling
 - rn-implement
+confidence_score: 86
+outcome_confidence: 76
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 18
+score_change_surface: 20
 ---
 
 # FEAT-1991: `rn-implement` — Value-Ranked Dequeue (`select_next`)
@@ -35,7 +42,7 @@ Decomposed from FEAT-1990: `rn-build` — Recursive Spec-to-Project Builder.
 
 ## Current Behavior
 
-`rn-implement`'s `dequeue_next` state (`rn-implement.yaml:101`) pops the head of
+`rn-implement`'s `dequeue_next` state (`scripts/little_loops/loops/rn-implement.yaml:100`) pops the head of
 `queue.txt` unconditionally (FIFO). `rn-decompose` prepends children depth-first.
 There is no ranking by value or dependency-readiness — the scheduler processes
 whatever is at the front of the queue regardless of whether its dependencies are
@@ -62,7 +69,7 @@ and may stall on a blocked issue or defer high-value work indefinitely.
 
 ## Motivation
 
-`rn-implement` today is blind: `dequeue_next` (`rn-implement.yaml:101`) pops the
+`rn-implement` today is blind: `dequeue_next` (`scripts/little_loops/loops/rn-implement.yaml:100`) pops the
 head of the queue, and `rn-decompose` prepends children depth-first. There is no
 notion of "which ready issue is most valuable to do next." `goal-cluster` does
 topo order; neither ranks by value. For a greenfield build (and for backlog
@@ -120,23 +127,23 @@ Ready-set gating (`blocked_by` all `done`) is a hard filter applied before ranki
 
 ## Implementation Steps
 
-1. Add `schedule_mode` context knob to `rn-implement.yaml` (default `fifo`)
+1. Add `schedule_mode` context knob to `scripts/little_loops/loops/rn-implement.yaml` (default `fifo`)
 2. Implement `select_next` shell state: read `queue.txt`/`depth_map.txt`/`blocked.txt`, shell to `ll-deps` for ready-set filtering, shell to `ll-issues impact-effort --json` for value scores, compute composite rank, pop chosen issue with the same post-conditions as `dequeue_next`
 3. Route `dequeue_next` → `select_next` when `schedule_mode: value_ranked`; keep existing `dequeue_next` path for `fifo`
 4. Add unit tests: ready-set gating, composite ranking, depth tie-break, FIFO regression
 5. Document `schedule_mode` in `docs/guides/LOOPS_GUIDE.md`
-6. Run `ll-loop validate rn-implement.yaml` and `pytest -k rn_implement` to confirm
+6. Run `ll-loop validate scripts/little_loops/loops/rn-implement.yaml` and `pytest -k rn_implement` to confirm
 
 ## Integration Map
 
 ### Files to Modify
-- `loops/rn-implement.yaml` — add `schedule_mode` context knob; add `select_next` state; route `dequeue_next` → mode dispatch when `value_ranked`
+- `scripts/little_loops/loops/rn-implement.yaml` — add `schedule_mode` context knob; add `select_next` state; route `dequeue_next` → mode dispatch when `value_ranked`
 
 ### Dependent Files (Callers/Importers)
-- `loops/rn-build.yaml` (FEAT-1990) — calls `rn-implement`; inherits `schedule_mode` knob via context pass-through
+- `loops/rn-build.yaml` (FEAT-1990) — would call `rn-implement` and inherit `schedule_mode` knob via context pass-through; **NOTE: FEAT-1990 was cancelled so rn-build.yaml does not yet exist; this feature is standalone and benefits all rn-implement callers**
 
 ### Similar Patterns
-- `loops/rn-implement.yaml` `dequeue_next` state — existing pop logic whose post-conditions `select_next` must replicate exactly (queue popped, `captured.input` set, counters/visited updated)
+- `scripts/little_loops/loops/rn-implement.yaml` `dequeue_next` state (line 100) — existing pop logic whose post-conditions `select_next` must replicate exactly (queue popped, `captured.input` set, counters/visited updated)
 
 ### Tests
 - `scripts/tests/test_rn_implement.py` — add ready-set gating tests, composite ranking tests, depth-tiebreak test, and FIFO regression test
@@ -177,5 +184,17 @@ Ready-set gating (`blocked_by` all `done`) is a hard filter applied before ranki
 **Open** | Created: 2026-06-06 | Priority: P3
 
 
+## Resolution
+
+Implemented `schedule_mode: value_ranked` as an opt-in context knob in `rn-implement.yaml`.
+
+- Transformed `dequeue_next` into a mode-dispatch state (exit-code branch on `schedule_mode`)
+- Added `fifo_pop`: exact copy of original FIFO pop logic, preserving all existing behavior when `schedule_mode: fifo` (the default)
+- Added `select_next`: Python-powered value-ranked pop that (1) builds a ready set by scanning `.issues/` frontmatter for `blocked_by` deps and filtering against `ll-issues list --status done`, (2) scores each ready issue with `priority_weight + impact/effort×10 + depth×0.001`, (3) removes the winner from `queue.txt` with the same post-conditions as `fifo_pop`
+- Both `fifo_pop` and `select_next` route to `check_depth` → all downstream states unchanged
+- 84 tests pass; `ll-loop validate` passes (warnings about validator not recognizing dual capture paths are false positives — both branches capture `input`)
+- Documented `schedule_mode` knob in `docs/guides/LOOPS_GUIDE.md`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-07T02:44:06 - `c2d5b8e6-fae3-4351-a44b-9e239c929a06.jsonl`
 - `/ll:format-issue` - 2026-06-07T01:12:06 - `1f0841d5-5a88-41d4-b01f-11af286f7931.jsonl`

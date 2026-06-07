@@ -72,6 +72,7 @@ keyed by input shape (1 goal / list of goals / issue IDs / project spec).
 - `skills/create-loop/templates.md`
 - `skills/create-loop/reference.md` (if config knobs need a row)
 - `docs/guides/LOOPS_GUIDE.md`
+- `docs/reference/API.md` — add `rn-build` loop reference entry (key phases, parameters, CLI invocation, `schedule_mode` knob, `propagate_context` flag)
 
 ## Acceptance Criteria
 
@@ -80,6 +81,7 @@ keyed by input shape (1 goal / list of goals / issue IDs / project spec).
 - `loop-types.md` has an `### Orch Builder` section with when-to-use guidance.
 - `LOOPS_GUIDE.md` has a decision table distinguishing all orchestration loops by
   input shape.
+- `docs/reference/API.md` has an `rn-build` entry covering CLI invocation, key phases, `schedule_mode`, and `propagate_context` parameters.
 - No broken references in updated skill/doc files (`ll-check-links`).
 
 ## Status

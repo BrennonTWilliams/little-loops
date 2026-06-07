@@ -3,7 +3,7 @@ id: FEAT-1990
 title: "rn-build — Recursive Spec-to-Project Builder (greenfield-builder successor)"
 type: FEAT
 priority: P3
-status: open
+status: cancelled
 parent: EPIC-1811
 captured_at: '2026-06-06T00:00:00Z'
 discovered_date: 2026-06-06
@@ -163,6 +163,7 @@ No new Python public API. All invocation is via the `ll-loop` CLI and loop YAML 
    `orchestration.cluster.max_batch_size` higher for greenfield (whole-project
    visibility) or keep the default 5 and rely on context propagation across
    batches?
+3. **`schedule_mode` propagation gap.** `goal-cluster`'s `dispatch_cluster` state only passes `input` in its `with:` block (`with: {input: "${captured.cluster_batch_input.output}"}`); it has no mechanism to forward additional parameters like `schedule_mode: value_ranked` to `rn-implement`. Three resolution paths: (a) extend `goal-cluster`'s `dispatch_cluster` to forward extra `with:` keys declared by the caller — requires modifying FEAT-1988; (b) declare `schedule_mode: value_ranked` as the default in `rn-implement`'s context block and guard against non-`rn-build` callers via a separate `schedule_mode` parameter in FEAT-1991; (c) encode `schedule_mode` in the batch `input` string that `rn-implement`'s `init` parses. **Recommended**: option (b) — add `schedule_mode` parameter to `rn-implement` with `default: "fifo"`, and have `rn-build` set `context.schedule_mode: value_ranked` at the loop level (flows to child via `context_passthrough` if that path is used, or via the batch input format). Confirm with FEAT-1991 owner.
 
 ## Relationship to Sibling Issues
 
@@ -183,14 +184,17 @@ No new Python public API. All invocation is via the `ll-loop` CLI and loop YAML 
 ### Dependent Files (Callers/Importers)
 - `loops/goal-cluster.yaml` — consumed as inter-batch engine by `cluster_execute` state
 - `loops/rn-remediate.yaml` — converge replaces eval-driven-development delegation
-- TBD: `scripts/little_loops/loop_loader.py` — verify new loop is auto-discovered
+- `scripts/little_loops/cli/loop/_helpers.py:resolve_loop_path` — 4-step built-in loop autodiscovery; placing `rn-build.yaml` in `scripts/little_loops/loops/` is sufficient for `ll-loop run rn-build` to resolve with no Python registration required
+- `scripts/little_loops/fsm/executor.py:_execute_sub_loop` — sub-loop dispatch machinery; handles `with:` context binding, child executor creation, and `on_yes`/`on_no` routing from child terminal state
 
 ### Similar Patterns
-- `loops/greenfield-builder.yaml` — source pattern; reuse `init`, `tech_research`, `design_artifacts`, `commit_design`, `refine_seed` states
-- `loops/loop-composer-adaptive.yaml` — example of a loop that composes other loops
+- `loops/greenfield-builder.yaml` — source pattern; reuse `init` (spec file validation via `IFS=',' read -ra SPEC_LIST`), `tech_research`, `design_artifacts`, `commit_design`, `refine_seed` states verbatim; replace `harness_planning/harness_issues/spec_decomposition/commit_issues/tradeoff_review/eval_driven_improvement` states
+- `loops/loop-composer-adaptive.yaml` — template for dynamic dispatch: 3-state `read_step_loop → read_step_input → dispatch_step` pattern; same pattern used by `goal-cluster`'s `read_cluster_loop → read_cluster_input → dispatch_cluster`
+- `loops/eval-driven-development.yaml` — `eval_gate` pattern: `action: ll-loop run ${context.harness_name}` shell state + `route_eval` routing state; provides `exit_code`-based harness run that satisfies MR-1
 
 ### Tests
-- `scripts/tests/test_loop_loader.py` — verify `rn-build` loads and validates
+- `scripts/tests/test_builtin_loops.py` — verify `rn-build` loads and validates (built-in loop autodiscovery test; `test_loop_loader.py` does not exist)
+- `scripts/tests/test_loop_composer_adaptive.py` — canonical test structure to model after: `TestFile`, `TestStates`, `TestReplanBudget`, `TestVerdictGateRouting`, `TestTerminalStates` class pattern with `load_and_validate` + `validate_fsm` fixtures
 - End-to-end integration test: sample spec → `rn-build` → harness eval passes
 
 ### Documentation
@@ -199,6 +203,16 @@ No new Python public API. All invocation is via the `ll-loop` CLI and loop YAML 
 
 ### Configuration
 - `.ll/ll-config.json` — `orchestration.cluster.*` (batch size, propagate_context default)
+- `scripts/little_loops/config/orchestration.py:ClusterConfig` — dataclass for cluster config fields (`max_batch_size`, `propagate_context`, `enable_dedup`, `max_replans`)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Suppressor flags**: `rn-build.yaml` should declare `meta_self_eval_ok: false`, `shared_state_ok: false`, `partial_route_ok: true` at the top level (matching the pattern in `rn-implement.yaml` lines 33–35 and `rn-remediate.yaml` lines 27–29). `partial_route_ok: true` is needed because `cluster_execute on_no → eval_gate` is a partial route.
+- **`category:` value**: Use `category: orchestration` (matches `goal-cluster.yaml` and `loop-composer*.yaml`; `rn-implement` uses `planning`, `greenfield-builder` uses `harness` — neither fits a composer-of-compositors).
+- **`with:` keys for `cluster_execute → goal-cluster`**: `goal-cluster` accepts `goals`, `auto`, `propagate_context`, `max_batch_size`, `enable_dedup`, `max_replans` via its `context` block. Bind as: `goals: "${captured.scope_project.output}"`, `auto: "true"`, `propagate_context: "true"`, `max_batch_size: "5"`.
+- **`scope_project` state**: `goal-cluster` reads `goals` as an EPIC-NNN ID via `ll-issues list --parent`; `scope_project` must capture only the EPIC ID string (not the full scope-epic output) in `captured.scope_project.output`.
 
 ## Impact
 
@@ -209,9 +223,10 @@ No new Python public API. All invocation is via the `ll-loop` CLI and loop YAML 
 
 ## Status
 
-- **State**: open
+- **State**: cancelled — superseded by child issues FEAT-1991, FEAT-1992, FEAT-1993, FEAT-1994, which carry all implementation work. Close this issue when all four children are done.
 - **Created**: 2026-06-06
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-07T02:31:28 - `8d013932-f377-4fd7-a7c6-e6bd8dd726cd.jsonl`
 - `/ll:format-issue` - 2026-06-07T01:13:13 - `cd798629-9859-4c97-9a7d-e737ade5c9fa.jsonl`

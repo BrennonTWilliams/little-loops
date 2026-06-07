@@ -138,16 +138,30 @@ Create `scripts/tests/test_rn_build.py` following `test_loop_composer.py` /
 - `eval_gate` re-entry bounded (retry counter present).
 - Router/composer exclusion tests for `rn-build`.
 
+End-to-end smoke test (step 9): run `ll-loop run rn-build` against a sample spec
+and confirm the dispatch path is `goal-cluster → rn-implement` (grep loop logs for
+`eval-driven-development` — must not appear) and the harness eval exits 0.
+
+### 5. Design Notes — Batch Sizing
+
+Keep `max_batch_size: 5` (goal-cluster default) for `cluster_execute`. A greenfield
+project benefits from whole-project visibility within a batch, but batches of 5 are
+large enough to carry meaningful cross-feature context while keeping each
+`rn-implement` invocation focused. Users who need larger batches can override via
+`orchestration.cluster.max_batch_size` in `.ll/ll-config.json`. This resolves
+FEAT-1990 Open Question 2.
+
 ## Implementation Steps
 
 1. Port `init`, `tech_research`, `design_artifacts`, `commit_design` phases from `greenfield-builder.yaml`
 2. Add `scope_project` (`scope-epic`) and `refine_seed` (`issue-refinement` loop) phases
 3. Add `eval_harness` phase (install + customize as-a-user harness; port from `greenfield-builder` phases 5/6)
-4. Implement `cluster_execute` → `goal-cluster` handoff; confirm/add `schedule_mode=value_ranked` passthrough for `rn-implement`
+4. Implement `cluster_execute` → `goal-cluster` handoff; confirm/add `schedule_mode=value_ranked` passthrough for `rn-implement`; set `max_batch_size: 5` (keep default — see Design Notes)
 5. Add `eval_gate` with bounded retry counter under `${context.run_dir}/`; re-enter `cluster_execute` on failure
 6. Add `synthesize_result` and `done`/`failed` terminals
 7. Register `rn-build` in builtin catalog and hard-exclude from `loop-router` + `lib/composer`
 8. Write `test_rn_build.py` and update `test_builtin_loops.py`
+9. Run `rn-build` against a sample spec (e.g. `specs/sample.md`) and verify harness eval passes and the dispatch path is `goal-cluster → rn-implement` (not `eval-driven-development`)
 
 ## Integration Map
 
@@ -182,6 +196,8 @@ Create `scripts/tests/test_rn_build.py` following `test_loop_composer.py` /
 - `eval-driven-development` is NOT in the dispatch path.
 - `loop-router`/`loop-composer` never offer `rn-build` as a candidate.
 - `python -m pytest scripts/tests/test_rn_build.py scripts/tests/test_builtin_loops.py -v` passes.
+- End-to-end smoke: `ll-loop run rn-build specs/sample.md` completes with harness eval exit 0 and no `eval-driven-development` in the dispatch log.
+- `cluster_execute` passes `max_batch_size: 5` to goal-cluster (default kept; config-overridable).
 
 ## Impact
 
