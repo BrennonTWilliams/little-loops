@@ -264,11 +264,16 @@ class TestSubLoopDelegation:
         state = data["states"]["run_remediation"]
         assert state["on_failure"] == "classify_remediation"
 
-    def test_run_remediation_routes_on_error_to_skip_issue(self) -> None:
-        """run_remediation routes to skip_issue on error."""
+    def test_run_remediation_routes_on_error_to_sub_loop_crash(self) -> None:
+        """ENH-2005: run_remediation routes on_error to record_sub_loop_crash.
+
+        A sub-loop crash/timeout can fire before the child writes its outcome
+        token, so on_error must NOT be laundered through classify_remediation
+        (which would hit the `|| echo IMPLEMENT_FAILED` fallback).
+        """
         data = _load_loop()
         state = data["states"]["run_remediation"]
-        assert state["on_error"] == "classify_remediation"
+        assert state["on_error"] == "record_sub_loop_crash"
 
     def test_run_remediation_routes_on_no_to_run_decomposition(self) -> None:
         """run_remediation routes to run_decomposition on no (timeout/max_iter/never-started)."""
@@ -310,11 +315,15 @@ class TestSubLoopDelegation:
         state = data["states"]["run_decomposition"]
         assert state["on_failure"] == "classify_decomposition"
 
-    def test_run_decomposition_routes_on_error_to_skip_issue(self) -> None:
-        """run_decomposition routes to skip_issue on error."""
+    def test_run_decomposition_routes_on_error_to_sub_loop_crash(self) -> None:
+        """ENH-2005: run_decomposition routes on_error to record_sub_loop_crash.
+
+        Same rationale as run_remediation: an infrastructure crash must not be
+        laundered into SIZE_REVIEW_FAILED via classify_decomposition's fallback.
+        """
         data = _load_loop()
         state = data["states"]["run_decomposition"]
-        assert state["on_error"] == "classify_decomposition"
+        assert state["on_error"] == "record_sub_loop_crash"
 
     def test_run_decomposition_routes_on_no_to_skip_issue(self) -> None:
         """run_decomposition routes to skip_issue on no (timeout/max_iter/never-started)."""
@@ -590,6 +599,7 @@ class TestParentClassifier:
             "route_dec_no_children",
             "route_dec_rate_limited",
             "record_failure",
+            "record_sub_loop_crash",
         ):
             assert name in data["states"], f"missing {name}"
 
@@ -610,9 +620,11 @@ class TestParentClassifier:
         rem = data["states"]["run_remediation"]
         assert rem["on_success"] == "classify_remediation"
         assert rem["on_failure"] == "classify_remediation"
-        assert rem["on_error"] == "classify_remediation"
+        # ENH-2005: on_error is split out to record_sub_loop_crash, not laundered.
+        assert rem["on_error"] == "record_sub_loop_crash"
         dec = data["states"]["run_decomposition"]
         assert dec["on_success"] == "classify_decomposition"
+        assert dec["on_error"] == "record_sub_loop_crash"
 
     def test_dead_rate_limit_routes_removed(self) -> None:
         data = _load_loop()
@@ -638,6 +650,22 @@ class TestParentClassifier:
         rf = data["states"]["record_failure"]
         assert "failures.txt" in rf["action"]
         assert rf["next"] == "dequeue_next"
+
+    def test_record_sub_loop_crash_records_distinct_marker(self) -> None:
+        """ENH-2005: record_sub_loop_crash writes a SUB_LOOP_CRASH-tagged line to
+        failures.txt (distinguishable from a clean IMPLEMENT_FAILED) and dequeues."""
+        data = _load_loop()
+        crash = data["states"]["record_sub_loop_crash"]
+        assert "failures.txt" in crash["action"]
+        assert "SUB_LOOP_CRASH" in crash["action"]
+        assert crash["next"] == "dequeue_next"
+
+    def test_report_tallies_sub_loop_crashes_distinctly(self) -> None:
+        """ENH-2005: report emits a sub_loop_crashes count separate from failed."""
+        data = _load_loop()
+        action = data["states"]["report"]["action"]
+        assert "sub_loop_crashes" in action
+        assert "SUB_LOOP_CRASH" in action
 
     def test_report_includes_rate_limited(self) -> None:
         data = _load_loop()
