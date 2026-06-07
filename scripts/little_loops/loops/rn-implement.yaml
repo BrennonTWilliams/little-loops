@@ -94,6 +94,7 @@ states:
       : > "$RUN_DIR/visited.txt"
       : > "$RUN_DIR/depth_capped.txt"
       : > "$RUN_DIR/skipped.txt"
+      : > "$RUN_DIR/deferred.txt"
       : > "$RUN_DIR/blocked.txt"
       : > "$RUN_DIR/cycles.txt"
       : > "$RUN_DIR/rate_limits.txt"
@@ -460,8 +461,27 @@ states:
       type: output_contains
       source: "${captured.dec_outcome.output}"
       pattern: "NO_CHILDREN"
-    on_yes: skip_issue
+    # BUG-2006: a NO_CHILDREN decline is no longer a flat skip. Disambiguate by
+    # the remediation origin: a stall (CONVERGED_STALLED / budget-exhausted)
+    # should defer with a reason and a status change; a genuinely-atomic
+    # diagnose-DECOMPOSE decline still skips.
+    on_yes: route_dec_stalled_origin
     on_no: route_dec_rate_limited
+    on_error: record_failure
+
+  route_dec_stalled_origin:
+    # BUG-2006: distinguish "remediation stalled, then decompose declined" from
+    # "issue is genuinely atomic/too-large, decompose declined". The stall paths
+    # in rn-remediate emit STALLED_NEEDS_DECOMPOSE; the diagnose-DECOMPOSE path
+    # emits plain NEEDS_DECOMPOSE. The retained rem_outcome capture tells them
+    # apart. Match the more-specific token (STALLED_NEEDS_DECOMPOSE) so only true
+    # stalls route to mark_deferred.
+    evaluate:
+      type: output_contains
+      source: "${captured.rem_outcome.output}"
+      pattern: "STALLED_NEEDS_DECOMPOSE"
+    on_yes: mark_deferred
+    on_no: skip_issue
     on_error: record_failure
 
   route_dec_rate_limited:
@@ -510,6 +530,23 @@ states:
       echo "[BLOCKED] $ID requires human decision before automation can proceed"
     next: dequeue_next
 
+  mark_deferred:
+    # BUG-2006: terminal state for an issue whose remediation stalled (scores did
+    # not converge) AND decomposition declined to split it — the honest outcome is
+    # "deferred, likely blocked on a dependency", not a silent skip. Records a
+    # human-readable reason in deferred.txt and sets the issue's status frontmatter
+    # so it re-surfaces naturally once its blocker clears. Follows the mark_blocked
+    # pattern.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      REASON="remediation stalled (scores did not converge across passes) and decomposition declined to split; likely blocked on a dependency or otherwise un-actionable by automation"
+      echo "$ID  $REASON" >> "${captured.run_dir.output}/deferred.txt"
+      # Set issue status so it re-surfaces when the blocker clears
+      ll-issues set-status "$ID" deferred 2>/dev/null || true
+      echo "[DEFERRED] $ID — $REASON"
+    next: dequeue_next
+
   skip_issue:
     action_type: shell
     action: |
@@ -542,6 +579,9 @@ states:
       IMPLEMENTED=$(cat "$RUN_DIR/implemented_count.txt" 2>/dev/null || echo 0)
       DECOMPOSED=$(cat "$RUN_DIR/decomposed_count.txt" 2>/dev/null || echo 0)
       SKIPPED=$(wc -l < "$RUN_DIR/skipped.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      # BUG-2006: deferred ≠ skipped — issues that stalled and could not be
+      # decomposed are recorded with a dependency reason and a status change.
+      DEFERRED=$(wc -l < "$RUN_DIR/deferred.txt" 2>/dev/null | tr -d ' ' || echo 0)
       BLOCKED=$(wc -l < "$RUN_DIR/blocked.txt" 2>/dev/null | tr -d ' ' || echo 0)
       DEPTH_CAPPED=$(wc -l < "$RUN_DIR/depth_capped.txt" 2>/dev/null | tr -d ' ' || echo 0)
       # ENH-2005: failures.txt holds both genuine implementation failures and
@@ -558,6 +598,7 @@ states:
       printf '  "implemented": %s,\n' "$IMPLEMENTED"
       printf '  "decomposed": %s,\n' "$DECOMPOSED"
       printf '  "skipped": %s,\n' "$SKIPPED"
+      printf '  "deferred": %s,\n' "$DEFERRED"
       printf '  "blocked": %s,\n' "$BLOCKED"
       printf '  "depth_capped": %s,\n' "$DEPTH_CAPPED"
       printf '  "failed": %s,\n' "$FAILURES"
@@ -567,7 +608,7 @@ states:
 
       echo "=== rn-implement Complete ==="
       echo "  Processed: $DEQUEUE_COUNT | Implemented: $IMPLEMENTED | Decomposed: $DECOMPOSED"
-      echo "  Skipped: $SKIPPED | Blocked: $BLOCKED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES | Sub-loop crashes: $SUB_LOOP_CRASHES | Rate-limited: $RATE_LIMITED"
+      echo "  Skipped: $SKIPPED | Deferred: $DEFERRED | Blocked: $BLOCKED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES | Sub-loop crashes: $SUB_LOOP_CRASHES | Rate-limited: $RATE_LIMITED"
       echo "  Summary written to: $RUN_DIR/summary.json"
     next: done
 

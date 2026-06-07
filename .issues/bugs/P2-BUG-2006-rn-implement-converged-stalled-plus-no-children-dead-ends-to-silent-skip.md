@@ -1,10 +1,12 @@
 ---
 id: BUG-2006
-title: "rn-implement: converged-stalled + no-children dead-ends to silent skip instead of defer/block with reason"
+title: 'rn-implement: converged-stalled + no-children dead-ends to silent skip instead
+  of defer/block with reason'
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-07T00:00:00Z'
+completed_at: '2026-06-07T22:14:20Z'
 discovered_date: '2026-06-07'
 discovered_by: audit-loop-run
 relates_to:
@@ -279,9 +281,37 @@ Discovered by `/ll:audit-loop-run rn-implement` on run `2026-06-07T172052`. Comp
 BUG-2003 (ID type mismatch), BUG-2004 (visited.txt double-write), ENH-2005 (verdict
 laundering annotation) from the same audit.
 
+## Resolution
+
+**Implemented Option A** (two-token stall distinction) as specified.
+
+`rn-remediate.yaml`:
+- Added `emit_stalled_needs_decompose` (writes `STALLED_NEEDS_DECOMPOSE`, `next: failed`).
+- Repointed the two stall paths to it: `route_conv_manual_review.on_no` and
+  `check_remediation_budget.on_no`. Left `route_d_refine.on_no → emit_needs_decompose`
+  (genuine "too large") and `route_conv_manual_review.on_error → emit_needs_decompose`
+  (a pattern-match error is not evidence of a stall) unchanged.
+
+`rn-implement.yaml`:
+- Rewired `route_dec_no_children.on_yes → route_dec_stalled_origin` (new state) which
+  matches `STALLED_NEEDS_DECOMPOSE` against the retained `${captured.rem_outcome.output}`:
+  `on_yes → mark_deferred`, `on_no → skip_issue` (no regression on the atomic/too-large path).
+- Added `mark_deferred` (follows the `mark_blocked` pattern): writes `"$ID  $REASON"` to
+  `deferred.txt` and calls `ll-issues set-status "$ID" deferred`.
+- `init` now seeds `deferred.txt`; `report` tallies and surfaces `deferred` in both
+  `summary.json` and the human-readable line.
+- `route_rem_decompose` confirmed to match `NEEDS_DECOMPOSE` as a substring, so
+  `STALLED_NEEDS_DECOMPOSE` still triggers a decomposition attempt.
+
+Docs: `docs/guides/LOOPS_GUIDE.md` updated (artifacts table, FSM flow, two-token stall note).
+
+Tests: added `TestDeferredOnStall` (rn-implement) and stall-token assertions (rn-remediate);
+updated the state-count ceiling (26→28) and the convergence/budget routing assertions.
+`ll-loop validate` passes for both loops; 873 loop tests pass.
+
 ## Status
 
-**Open** | Created: 2026-06-07 | Priority: P2
+**Done** | Created: 2026-06-07 | Completed: 2026-06-07 | Priority: P2
 
 
 ## Session Log

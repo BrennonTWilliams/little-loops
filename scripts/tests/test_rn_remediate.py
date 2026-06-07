@@ -449,9 +449,12 @@ class TestReassessAndConvergence:
         assert rci["on_yes"] == "check_remediation_budget"
         assert rci["on_no"] == "route_conv_manual_review"
         # route_conv_manual_review
+        # BUG-2006: convergence stall (on_no) emits the stall-specific token so the
+        # parent can defer rather than silently skip; on_error stays plain decompose.
         rcmr = data["states"]["route_conv_manual_review"]
         assert rcmr["on_yes"] == "emit_needs_manual_review"
-        assert rcmr["on_no"] == "emit_needs_decompose"
+        assert rcmr["on_no"] == "emit_stalled_needs_decompose"
+        assert rcmr["on_error"] == "emit_needs_decompose"
 
     def test_convergence_routers_use_output_contains_with_source(self) -> None:
         """Convergence routers use output_contains with captured source."""
@@ -549,10 +552,15 @@ class TestRemediationBudget:
         assert crb["on_yes"] == "diagnose"
 
     def test_check_remediation_budget_routes_exhausted_to_failed(self) -> None:
-        """Budget exhausted routes to failed (terminal) — decomposition stays in parent."""
+        """Budget exhausted routes to the stall-token emitter (BUG-2006).
+
+        Budget exhaustion is stall-adjacent: the automated moves ran out without
+        convergence, so the parent should defer (not silently skip) if decompose
+        also declines.
+        """
         data = _load_loop()
         crb = data["states"]["check_remediation_budget"]
-        assert crb["on_no"] == "emit_needs_decompose"
+        assert crb["on_no"] == "emit_stalled_needs_decompose"
 
     def test_context_max_remediation_passes_set(self) -> None:
         """max_remediation_passes context variable is set to 3."""
@@ -832,12 +840,26 @@ class TestOutcomeTokenChannel:
         assert data["states"]["implement"]["on_yes"] == "emit_implemented"
         assert data["states"]["implement"]["on_no"] == "emit_implement_failed"
 
-    def test_needs_decompose_only_on_stall_paths(self) -> None:
+    def test_decompose_token_distinguishes_stall_from_too_large(self) -> None:
+        """BUG-2006: the diagnose-DECOMPOSE path (genuinely too large) emits plain
+        NEEDS_DECOMPOSE, while the two stall paths (convergence stall, budget
+        exhausted) emit STALLED_NEEDS_DECOMPOSE so the parent can defer them."""
         data = _load_loop()
+        # Genuine "too big" — unchanged plain token.
         assert data["states"]["route_d_refine"]["on_no"] == "emit_needs_decompose"
         assert data["states"]["route_conv_improved"]["on_no"] == "route_conv_manual_review"
-        assert data["states"]["route_conv_manual_review"]["on_no"] == "emit_needs_decompose"
-        assert data["states"]["check_remediation_budget"]["on_no"] == "emit_needs_decompose"
+        # Stall paths — stall-specific token.
+        assert data["states"]["route_conv_manual_review"]["on_no"] == "emit_stalled_needs_decompose"
+        assert data["states"]["check_remediation_budget"]["on_no"] == "emit_stalled_needs_decompose"
+
+    def test_emit_stalled_needs_decompose_writes_superstring_token(self) -> None:
+        """BUG-2006: the stall emitter writes STALLED_NEEDS_DECOMPOSE (a superstring
+        of NEEDS_DECOMPOSE) to a non-done terminal, so the parent's substring match
+        still triggers a decomposition attempt."""
+        data = _load_loop()
+        esd = data["states"]["emit_stalled_needs_decompose"]
+        assert "STALLED_NEEDS_DECOMPOSE" in esd["action"]
+        assert esd["next"] == "failed"
 
     def test_check_convergence_detects_decision_needed(self) -> None:
         """check_convergence stall branch checks decision_needed for NEEDS_MANUAL_REVIEW."""

@@ -570,10 +570,11 @@ class TestValidation:
         """rn-implement orchestrator stays within orchestrator bounds.
 
         FEAT-1991 added fifo_pop + select_next (+2 states), raising the ceiling to 26.
+        BUG-2006 added route_dec_stalled_origin + mark_deferred (+2), raising it to 28.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 26, f"Expected ≤26 states in orchestrator, got {state_count}"
+        assert state_count <= 28, f"Expected ≤28 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
@@ -684,6 +685,61 @@ class TestParentClassifier:
         assert failed.get("terminal") is True
         assert "action" not in failed
         assert "checkpoint.json" not in str(failed)
+
+
+# ============================================================================
+# TestDeferredOnStall — BUG-2006: stall + no-children defers instead of skipping
+# ============================================================================
+
+
+class TestDeferredOnStall:
+    """A CONVERGED_STALLED → NO_CHILDREN issue defers (with reason + status), not skip."""
+
+    def test_route_dec_no_children_routes_to_stalled_origin(self) -> None:
+        """NO_CHILDREN no longer flat-skips — it disambiguates by stall origin first."""
+        data = _load_loop()
+        rdnc = data["states"]["route_dec_no_children"]
+        assert rdnc["on_yes"] == "route_dec_stalled_origin"
+        assert rdnc["on_no"] == "route_dec_rate_limited"
+
+    def test_route_dec_stalled_origin_exists_and_matches_stall_token(self) -> None:
+        """route_dec_stalled_origin matches STALLED_NEEDS_DECOMPOSE against rem_outcome."""
+        data = _load_loop()
+        rdso = data["states"]["route_dec_stalled_origin"]
+        evaluate = rdso["evaluate"]
+        assert evaluate["type"] == "output_contains"
+        assert evaluate["pattern"] == "STALLED_NEEDS_DECOMPOSE"
+        assert "${captured.rem_outcome.output}" in evaluate["source"]
+
+    def test_stalled_origin_routes_stall_to_defer_else_skip(self) -> None:
+        """Stall origin → mark_deferred; plain (too-large/atomic) decline → skip_issue."""
+        data = _load_loop()
+        rdso = data["states"]["route_dec_stalled_origin"]
+        assert rdso["on_yes"] == "mark_deferred"
+        assert rdso["on_no"] == "skip_issue"
+        assert rdso["on_error"] == "record_failure"
+
+    def test_mark_deferred_writes_reason_sets_status_and_dequeues(self) -> None:
+        """mark_deferred records a reason to deferred.txt, sets status, and continues."""
+        data = _load_loop()
+        md = data["states"]["mark_deferred"]
+        action = md["action"]
+        assert "deferred.txt" in action
+        assert "ll-issues set-status" in action and "deferred" in action
+        assert "REASON" in action
+        assert md["next"] == "dequeue_next"
+
+    def test_init_initializes_deferred_txt(self) -> None:
+        """init seeds an empty deferred.txt alongside the other tracking files."""
+        data = _load_loop()
+        assert "deferred.txt" in data["states"]["init"]["action"]
+
+    def test_report_tallies_deferred_distinctly(self) -> None:
+        """report counts and surfaces deferred separately from skipped."""
+        data = _load_loop()
+        action = data["states"]["report"]["action"]
+        assert "deferred.txt" in action
+        assert '"deferred"' in action
 
 
 # ============================================================================

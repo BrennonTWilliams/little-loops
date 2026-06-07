@@ -619,8 +619,9 @@ ll-loop run rn-implement "FEAT-1808,ENH-1842,BUG-1001" \
 | `visited.txt` | Set of all enqueued IDs for cycle detection |
 | `depth_map.txt` | Per-issue depth assignments (`<ID> <depth>`) |
 | `depth_capped.txt` | Issues skipped due to max_depth cap |
-| `skipped.txt` | Issues skipped (decomposition failure, errors) |
-| `summary.json` | Final run summary (processed, implemented, decomposed, skipped, depth-capped) |
+| `skipped.txt` | Issues skipped (genuinely atomic/too-large decline, errors) |
+| `deferred.txt` | Issues deferred after a remediation stall + no-children decline, with a dependency reason (BUG-2006); the issue's `status` is also set to `deferred` |
+| `summary.json` | Final run summary (processed, implemented, decomposed, skipped, deferred, blocked, depth-capped) |
 
 **FSM flow:**
 
@@ -637,8 +638,12 @@ init               (shell: seed queue from comma-separated input, init tracking 
       on_rate_limit_exhausted       → rate_limit_diagnostic
     → run_decomposition  (sub-loop: rn-decompose, max_rate_limit_retries: 3)
       on_success (children enqueued) → dequeue_next
-      on_failure (no children)       → skip_issue
+      on_failure (no children)       → route_dec_stalled_origin
       on_error                       → skip_issue
+  → route_dec_stalled_origin  (evaluate: rem_outcome contains STALLED_NEEDS_DECOMPOSE)
+      on_yes (stall origin)           → mark_deferred   (BUG-2006)
+      on_no  (genuinely atomic/large) → skip_issue
+  → mark_deferred            (shell: append reason to deferred.txt, set status=deferred) → dequeue_next
   → skip_issue               (shell: append to skipped.txt) → dequeue_next
   → rate_limit_diagnostic    (shell: log ISO timestamp + ID) → dequeue_next
   → report (shell: write summary.json + human-readable summary) → done
@@ -750,6 +755,8 @@ ll-loop run rn-remediate "<issue-id>" \
 | `delta_ambiguity` | pre − post | inverted (lower ambiguity = improved) |
 
 Convergence rules (first match wins): both scores at or above thresholds → `CONVERGED_PASS` → `implement`; `total_delta ≤ 2` + `decision_needed=true` → `NEEDS_MANUAL_REVIEW` → `failed` (parent marks issue blocked); `total_delta ≤ 2` + `decision_needed=false` → `CONVERGED_STALLED` → `failed`; otherwise → `CONVERGED_IMPROVED` → check remediation budget (under budget → re-enter `diagnose`; exhausted → `failed`).
+
+**Stall vs. too-large outcome tokens (BUG-2006):** the non-pass terminals emit one of two decompose tokens so the parent can tell a *stall* from a genuinely *too-large* issue. The diagnose-`DECOMPOSE` path (`route_d_refine.on_no`, i.e. `change_surface ≥ 15`) emits plain `NEEDS_DECOMPOSE` — a legitimate "split this" signal. The two stall paths — convergence `CONVERGED_STALLED` (`route_conv_manual_review.on_no`) and budget exhausted (`check_remediation_budget.on_no`) — emit `STALLED_NEEDS_DECOMPOSE`. Because the stall token is a superstring of `NEEDS_DECOMPOSE`, the parent's substring match still triggers a decomposition attempt for both; only after `rn-decompose` returns `NO_CHILDREN` does the parent's `route_dec_stalled_origin` disambiguate — a stall → `mark_deferred` (status set to `deferred`, reason logged), a too-large/atomic decline → `skip_issue`.
 
 **FSM flow** (abbreviated — 23 states across 5 phases):
 

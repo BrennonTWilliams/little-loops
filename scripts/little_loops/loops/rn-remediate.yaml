@@ -432,7 +432,11 @@ states:
       source: "${captured.convergence_result.output}"
       pattern: "NEEDS_MANUAL_REVIEW"
     on_yes: emit_needs_manual_review
-    on_no: emit_needs_decompose
+    # BUG-2006: convergence CONVERGED_STALLED is a true stall (scores did not
+    # move). Emit the stall-specific token so the parent can defer (not silently
+    # skip) when decomposition also declines. on_error stays on plain
+    # emit_needs_decompose — a pattern-match error is not evidence of a stall.
+    on_no: emit_stalled_needs_decompose
     on_error: emit_needs_decompose
 
   check_remediation_budget:
@@ -449,7 +453,10 @@ states:
       operator: lt
       target: "${context.max_remediation_passes}"
     on_yes: diagnose
-    on_no: emit_needs_decompose
+    # BUG-2006: remediation budget exhausted is stall-adjacent — the automated
+    # moves ran out without convergence. Emit the stall token so the parent
+    # defers rather than silently skipping.
+    on_no: emit_stalled_needs_decompose
     on_error: emit_implement_failed
 
   # =========================================================================
@@ -470,6 +477,18 @@ states:
     action_type: shell
     action: |
       echo "NEEDS_DECOMPOSE" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: failed
+
+  emit_stalled_needs_decompose:
+    # BUG-2006: stall-origin variant of NEEDS_DECOMPOSE. Reached only from the
+    # convergence-stall and budget-exhausted paths (NOT diagnose-DECOMPOSE). The
+    # token is a superstring of NEEDS_DECOMPOSE, so the parent's route_rem_decompose
+    # (substring match) still triggers a decomposition attempt; the parent's
+    # route_dec_stalled_origin disambiguates after NO_CHILDREN to defer rather than
+    # skip.
+    action_type: shell
+    action: |
+      echo "STALLED_NEEDS_DECOMPOSE" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
     next: failed
 
   emit_needs_manual_review:
