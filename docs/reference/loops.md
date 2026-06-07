@@ -512,3 +512,140 @@ prove  (sub-loop: ready-to-implement-gate; passes targets + max_retries)
 ### Fragment dependency
 
 Imports `lib/common.yaml` for the `parse_tagged_json` fragment used in `parse_enumeration`.
+
+---
+
+## `loop-composer`
+
+**Category**: orchestration  
+**File**: `scripts/little_loops/loops/loop-composer.yaml`
+
+Decomposes a natural-language goal into an ordered DAG of up to 8 loop invocations, presents the plan for HITL approval, then walks the DAG sequentially. Returns a structured JSON summary of all step results. Imports shared DAG-walk logic from `lib/composer.yaml`.
+
+### Invocation
+
+```bash
+ll-loop run loop-composer --input "your multi-step goal"
+
+# Skip HITL approval
+ll-loop run loop-composer --input "your goal" --context auto=true
+```
+
+### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `goal` | `""` | **Required.** Natural-language goal to decompose. Populated from `input_key: goal`. |
+| `auto` | `"false"` | When `"true"`, skip HITL plan approval. |
+| `exclude` | `""` | Comma-separated loop names to exclude from the catalog. |
+| `max_plan_nodes` | `"8"` | Maximum steps allowed in a single plan. |
+
+Config override: `orchestration.composer.max_plan_nodes` in `.ll/ll-config.json`.
+
+### State Graph
+
+```
+discover_loops
+  → decompose_goal
+      → (auto=true) execute_plan
+      → (auto=false) approve_plan
+          on_yes  → execute_plan
+          on_no   → revise_plan → approve_plan (loop)
+  execute_plan  (walks DAG: invokes each sub-loop via ll-loop run)
+      → summarize → done
+      on_error → failed
+```
+
+---
+
+## `loop-composer-adaptive`
+
+**Category**: orchestration  
+**File**: `scripts/little_loops/loops/loop-composer-adaptive.yaml`
+
+Fault-tolerant variant of `loop-composer`. When a sub-loop fails a reassess gate decides `CONTINUE` / `REPLAN_TAIL` / `ABORT`. Completed steps are checkpointed; `REPLAN_TAIL` replaces only the unexecuted portion of the plan. Replanning is bounded by `max_replans` (default 2).
+
+### Invocation
+
+```bash
+ll-loop run loop-composer-adaptive --input "your multi-step goal"
+
+# Allow more replan attempts
+ll-loop run loop-composer-adaptive --input "your goal" --context max_replans=3
+```
+
+### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `goal` | `""` | **Required.** Natural-language goal to decompose. |
+| `auto` | `"false"` | Skip HITL plan approval when `"true"`. |
+| `exclude` | `""` | Comma-separated loop names to exclude from catalog. |
+| `max_plan_nodes` | `"8"` | Maximum steps in a single plan. |
+| `max_replans` | `"2"` | Maximum tail-replan attempts before `ABORT`. |
+
+Config overrides: `orchestration.composer.max_plan_nodes`, `orchestration.composer.adaptive.*`.
+
+### State Graph
+
+```
+discover_loops → decompose_goal → [approve_plan] → execute_plan
+                                                      on_success → (more steps?) execute_plan | summarize → done
+                                                      on_failure → reassess
+                                                                    CONTINUE    → execute_plan (next step)
+                                                                    REPLAN_TAIL → replan_tail → execute_plan
+                                                                    ABORT       → failed
+                                                  (max_replans exhausted) → failed
+```
+
+---
+
+## `goal-cluster`
+
+**Category**: orchestration  
+**File**: `scripts/little_loops/loops/goal-cluster.yaml`
+
+Multi-goal batch orchestrator for sprint- or EPIC-shaped input. Normalizes a list of goals (raw multi-line, sprint name, EPIC ID, or JSON), groups them into batches by predicted loop, executes each batch sequentially with per-batch reassess gates, propagates cross-batch context hints, and synthesizes a cluster-wide summary.
+
+### Invocation
+
+```bash
+# Multi-line goals
+ll-loop run goal-cluster --input "Fix auth bug
+Add retry logic"
+
+# EPIC ID (expands to open child issues)
+ll-loop run goal-cluster --input "EPIC-1811"
+
+# JSON list
+ll-loop run goal-cluster --input '[{"goal_id":"g01","goal_text":"Fix auth bug"}]'
+```
+
+### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `goals` | `""` | **Required.** Raw multi-line, sprint name, EPIC-NNN, or JSON list. |
+| `auto` | `"false"` | Skip HITL plan review when `"true"`. |
+| `exclude` | `""` | Comma-separated loop names to exclude from dispatch suggestions. |
+| `max_batch_size` | `"5"` | Maximum goals per batch. |
+| `enable_dedup` | `"true"` | Merge or skip overlapping goals before batching. |
+| `propagate_context` | `"true"` | Extract cross-batch hints for injection into the next batch. |
+
+Config overrides: `orchestration.cluster.*` in `.ll/ll-config.json`.
+
+### State Graph
+
+```
+load_goals → normalize_goals → plan_batches → [approve_plan] → execute_batch
+                                                                  on_success → extract_hints
+                                                                                → (more batches) → execute_batch
+                                                                                → synthesize → done
+                                                                  on_failure → reassess
+                                                                                CONTINUE/REPLAN → execute_batch
+                                                                                ABORT → failed
+```
+
+### Dispatch guard
+
+`loop-router` and `loop-composer` variants exclude `goal-cluster` from their catalogs. `goal-cluster` excludes `loop-composer` and `loop-router` from its own dispatch suggestions. This prevents recursive orchestration cycles.

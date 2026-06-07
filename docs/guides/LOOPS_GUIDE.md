@@ -1926,6 +1926,142 @@ Three orchestration loops address different goal shapes:
 
 **Dispatch guard**: loop-router and loop-composer(s) exclude goal-cluster from their catalogs. goal-cluster excludes loop-composer and loop-router from its dispatch suggestions. This prevents recursive orchestration cycles.
 
+---
+
+### `loop-composer` — Multi-Loop DAG Orchestrator
+
+**Category**: orchestration  
+**File**: `scripts/little_loops/loops/loop-composer.yaml`
+
+Accepts a natural-language goal too large for a single loop, decomposes it into an ordered DAG of up to 8 loop invocations, presents the plan for HITL approval (unless `auto=true`), then walks the DAG sequentially, returning a JSON summary of all step results.
+
+Use when a goal naturally spans 3–6 existing loops in a fixed sequence and you want structured plan approval before execution begins. For mid-plan failure recovery, use `loop-composer-adaptive` instead.
+
+#### Invocation
+
+```bash
+ll-loop run loop-composer --input "your multi-step goal"
+
+# Skip HITL approval
+ll-loop run loop-composer --input "your goal" --context auto=true
+
+# Exclude specific loops from the catalog
+ll-loop run loop-composer --input "your goal" --context exclude="rn-plan,rn-refine"
+```
+
+#### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `goal` | `""` | **Required.** Natural-language goal to decompose. |
+| `auto` | `"false"` | When `"true"`, skip HITL plan-approval step. |
+| `exclude` | `""` | Comma-separated loop names to exclude from the candidate catalog. |
+| `max_plan_nodes` | `"8"` | Maximum steps allowed in a single plan. |
+
+Config knobs: `orchestration.composer.max_plan_nodes`.
+
+#### State Graph (summary)
+
+```
+discover_loops → decompose_goal → (auto=true → execute_plan | approve_plan) → execute_plan → summarize → done
+                                                                              ↑ (reject) ↓ (revise)
+                                                                            revise_plan ←─────────┘
+```
+
+---
+
+### `loop-composer-adaptive` — Fault-Tolerant Composer
+
+**Category**: orchestration  
+**File**: `scripts/little_loops/loops/loop-composer-adaptive.yaml`
+
+Adaptive variant of `loop-composer`. Decomposes a goal into a DAG the same way, but when a sub-loop fails the adaptive variant invokes a **reassess gate** that decides one of:
+
+- `CONTINUE` — treat the failure as non-blocking and proceed
+- `REPLAN_TAIL` — discard the unexecuted tail and re-decompose from the failure point (bounded by `max_replans`)
+- `ABORT` — surface the failure and halt
+
+Completed-step checkpoints are preserved on `REPLAN_TAIL` so successful steps are not re-run.
+
+Use when mid-plan failures are likely and you prefer structured recovery over a full restart. For goals where any sub-loop failure should terminate immediately, use `loop-composer`.
+
+#### Invocation
+
+```bash
+ll-loop run loop-composer-adaptive --input "your multi-step goal"
+
+# Allow up to 3 replan attempts (default 2)
+ll-loop run loop-composer-adaptive --input "your goal" --context max_replans=3
+```
+
+#### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `goal` | `""` | **Required.** Natural-language goal to decompose. |
+| `auto` | `"false"` | Skip HITL plan-approval when `"true"`. |
+| `exclude` | `""` | Comma-separated loop names to exclude from catalog. |
+| `max_plan_nodes` | `"8"` | Maximum steps in a single plan. |
+| `max_replans` | `"2"` | Maximum tail-replan attempts before `ABORT`. |
+
+Config knobs: `orchestration.composer.max_plan_nodes`, `orchestration.composer.adaptive.*`.
+
+---
+
+### `goal-cluster` — Multi-Goal Batch Orchestrator
+
+**Category**: orchestration  
+**File**: `scripts/little_loops/loops/goal-cluster.yaml`
+
+Multi-goal orchestrator for sprint- or EPIC-shaped input. Accepts a list of goals, normalizes them, groups related goals into batches by predicted loop, executes each batch sequentially with per-batch reassess gates on failure, propagates cross-cutting context ("hints") between batches, and synthesizes a cluster-wide summary.
+
+Use when you have **multiple related goals** that share context and benefit from sequential batch execution — rather than `loop-composer` (single decomposable goal) or `loop-router` (single goal routed to one loop).
+
+#### Invocation
+
+```bash
+# Multi-line goals (one per line)
+ll-loop run goal-cluster --input "Fix auth bug
+Add retry logic
+Update API docs"
+
+# EPIC ID — goals are the EPIC's open child issues
+ll-loop run goal-cluster --input "EPIC-1811"
+
+# Sprint name
+ll-loop run goal-cluster --input "sprint-2026-06"
+
+# JSON list
+ll-loop run goal-cluster --input '[{"goal_id":"g01","goal_text":"Fix auth bug"},{"goal_id":"g02","goal_text":"Add retry logic"}]'
+```
+
+#### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `goals` | `""` | **Required.** Raw multi-line, sprint name, EPIC-NNN, or JSON list of goals. |
+| `auto` | `"false"` | Skip HITL plan review when `"true"`. |
+| `exclude` | `""` | Comma-separated loop names to exclude from dispatch suggestions. |
+| `max_batch_size` | `"5"` | Maximum goals per batch. |
+| `enable_dedup` | `"true"` | Merge or skip overlapping goals before batching. |
+| `propagate_context` | `"true"` | Extract cross-batch hints from each batch summary for injection into the next. |
+
+Config knobs: `orchestration.cluster.*` (see [CONFIGURATION.md §orchestration.cluster](../reference/CONFIGURATION.md#orchestrationcluster)).
+
+#### State Graph (summary)
+
+```
+load_goals → normalize_goals → plan_batches → (auto=false → approve_plan) → execute_batch
+                                                                             ↓ (success)
+                                                                          extract_hints → (more batches?) → execute_batch
+                                                                             ↓ (all done)
+                                                                          synthesize → done
+                                                                (failure) ↓
+                                                                reassess → (CONTINUE/REPLAN → execute_batch | ABORT → failed)
+```
+
+---
+
 ## Beyond the Basics
 
 The sections below cover features you'll encounter as you move past simple loops: evaluators, variable interpolation, capture, routing, action types, retry and timing fields, handoff behavior, and scope-based concurrency. For full technical details — schema definitions, compiler internals, and advanced examples — see the [FSM Loop System Design](../generalized-fsm-loop.md).
