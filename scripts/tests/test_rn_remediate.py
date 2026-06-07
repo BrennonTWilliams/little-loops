@@ -120,11 +120,17 @@ class TestReadinessAndDecisionGates:
         co = data["states"]["check_outcome"]
         assert "${context.outcome_threshold}" in co["action"]
 
-    def test_check_outcome_routes_yes_to_diagnose(self) -> None:
-        """check_outcome routes to diagnose when outcome passes."""
+    def test_check_outcome_routes_yes_to_refine(self) -> None:
+        """check_outcome routes to refine when outcome passes (BUG-2007 Defect 4).
+
+        When check_readiness fails the joint gate but check_outcome passes the
+        outcome-only test, the deficiency is in confidence_score. Routing to
+        diagnose was a dead path — its IMPLEMENT branch requires both thresholds,
+        which check_readiness already found false. Route directly to refine.
+        """
         data = _load_loop()
         co = data["states"]["check_outcome"]
-        assert co["on_yes"] == "diagnose"
+        assert co["on_yes"] == "refine"
 
     def test_check_outcome_routes_no_to_check_decision_needed(self) -> None:
         """check_outcome routes to check_decision_needed when outcome fails."""
@@ -305,11 +311,18 @@ class TestRemediationActions:
         assert "/ll:wire-issue" in wire["action"]
         assert "--auto" in wire["action"]
 
-    def test_wire_chains_into_refine(self) -> None:
-        """wire always chains into refine (wiring may reveal gaps)."""
+    def test_wire_routes_to_re_assess_on_success(self) -> None:
+        """wire routes to re_assess on success (BUG-2007 Defect 1).
+
+        If wiring alone resolves the ambiguity/missing-artifacts condition, a full
+        --full-rewrite refine pass should NOT run unconditionally. wire routes to
+        re_assess; the re_assess → check_convergence path routes back to refine or
+        diagnose only if ambiguity/artifacts remain. on_error still falls back to
+        refine (a wiring failure still warrants a rewrite).
+        """
         data = _load_loop()
         wire = data["states"]["wire"]
-        assert wire["on_success"] == "refine"
+        assert wire["on_success"] == "re_assess"
         assert wire["on_error"] == "refine"
 
     def test_refine_uses_full_rewrite_flag(self) -> None:
@@ -458,6 +471,49 @@ class TestReassessAndConvergence:
 
 
 # ---------------------------------------------------------------------------
+# TestBug2007Fixes — Defect 2 (parameterized diagnose thresholds) and
+#   Defect 3 (pass-over-pass pre_scores refresh in check_convergence)
+# ---------------------------------------------------------------------------
+
+
+class TestBug2007Fixes:
+    """Regression tests for the four rn-remediate routing/convergence defects."""
+
+    def test_diagnose_uses_context_thresholds_not_literals(self) -> None:
+        """diagnose references context.diagnose_* keys, not hardcoded 15/50 (Defect 2)."""
+        data = _load_loop()
+        action = data["states"]["diagnose"]["action"]
+        assert "${context.diagnose_ambiguity_threshold}" in action
+        assert "${context.diagnose_complexity_threshold}" in action
+        assert "${context.diagnose_change_surface_threshold}" in action
+        assert "${context.diagnose_confidence_floor}" in action
+
+    def test_diagnose_routing_has_no_bare_magic_literals(self) -> None:
+        """diagnose routing comparisons no longer use bare -ge 15 / -lt 50 literals."""
+        data = _load_loop()
+        action = data["states"]["diagnose"]["action"]
+        # The routing chain below the IMPLEMENT gate must not compare against the
+        # old hardcoded magic numbers directly.
+        assert "-ge 15" not in action, "Found hardcoded '-ge 15' in diagnose routing"
+        assert "-lt 50" not in action, "Found hardcoded '-lt 50' in diagnose routing"
+
+    def test_check_convergence_refreshes_pre_scores(self) -> None:
+        """check_convergence overwrites pre_scores with post_scores (Defect 3).
+
+        Without this, TOTAL_DELTA accumulates across the whole session instead of
+        measuring the most recent pass, so a plateaued issue never emits
+        CONVERGED_STALLED.
+        """
+        data = _load_loop()
+        action = data["states"]["check_convergence"]["action"]
+        # A cp from the post-scores file to the pre-scores file must be present so
+        # the next pass measures pass-over-pass delta.
+        assert "cp " in action
+        assert "pre_scores_" in action
+        assert "post_scores_" in action
+
+
+# ---------------------------------------------------------------------------
 # TestRemediationBudget — State: check_remediation_budget
 # ---------------------------------------------------------------------------
 
@@ -583,6 +639,19 @@ class TestTopLevelDeclarations:
         assert ctx["readiness_threshold"] == 85
         assert ctx["outcome_threshold"] == 75
         assert ctx["max_remediation_passes"] == 3
+
+    def test_context_has_diagnose_thresholds(self) -> None:
+        """Context exposes overridable diagnose routing thresholds (BUG-2007 Defect 2).
+
+        Defaults preserve the prior hardcoded literals (15/15/15/50) so existing
+        callers remain backward-compatible.
+        """
+        data = _load_loop()
+        ctx = data["context"]
+        assert ctx["diagnose_ambiguity_threshold"] == 15
+        assert ctx["diagnose_complexity_threshold"] == 15
+        assert ctx["diagnose_change_surface_threshold"] == 15
+        assert ctx["diagnose_confidence_floor"] == 50
 
 
 class TestFSMHealth:

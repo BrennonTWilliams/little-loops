@@ -54,6 +54,13 @@ context:
   readiness_threshold: 85
   outcome_threshold: 75
   max_remediation_passes: 3
+  # BUG-2007 Defect 2: diagnose routing thresholds, overridable so callers can
+  # tune routing to match their score targets. Defaults preserve the prior
+  # hardcoded literals so existing callers stay backward-compatible.
+  diagnose_ambiguity_threshold: 15
+  diagnose_complexity_threshold: 15
+  diagnose_change_surface_threshold: 15
+  diagnose_confidence_floor: 50
 
 states:
   # =========================================================================
@@ -125,7 +132,13 @@ states:
       else
         exit 1
       fi
-    on_yes: diagnose
+    # BUG-2007 Defect 4: route on_yes directly to refine, not diagnose. When
+    # check_readiness fails the joint gate but check_outcome passes outcome-only,
+    # the deficiency is confidence_score. diagnose's first rule (IMPLEMENT) needs
+    # both thresholds — already found false by check_readiness — so the
+    # diagnose → route_d_implement branch is dead from here. refine targets the
+    # confidence gap directly.
+    on_yes: refine
     on_no: check_decision_needed
     on_error: check_decision_needed
 
@@ -179,11 +192,11 @@ states:
         echo "DECIDE"
       elif [ "$MISSING_ARTIFACTS" = "true" ]; then
         echo "WIRE"
-      elif [ "$AMBIGUITY" -ge 15 ]; then
+      elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ]; then
         echo "WIRE"
-      elif [ "$COMPLEXITY" -ge 15 ] || [ "$CONFIDENCE" -lt 50 ]; then
+      elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] || [ "$CONFIDENCE" -lt "${context.diagnose_confidence_floor}" ]; then
         echo "REFINE"
-      elif [ "$CHANGE_SURFACE" -ge 15 ]; then
+      elif [ "$CHANGE_SURFACE" -ge "${context.diagnose_change_surface_threshold}" ]; then
         echo "DECOMPOSE"
       else
         echo "REFINE"
@@ -261,7 +274,12 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:wire-issue ${context.issue_id} --auto"
     action_type: slash_command
-    on_success: refine
+    # BUG-2007 Defect 1: route to re_assess on success, not unconditionally to
+    # refine. If wiring alone resolves the condition, re_assess → check_convergence
+    # routes back to refine/diagnose only if ambiguity/artifacts remain — avoiding
+    # a wasted --full-rewrite pass that could overwrite valid wiring changes.
+    # on_error still falls back to refine: a wiring failure warrants a rewrite.
+    on_success: re_assess
     on_error: refine
     on_rate_limit_exhausted: rate_limit_diagnostic
 
@@ -365,6 +383,12 @@ states:
         "$ID" "$PRE_CONFIDENCE" "$POST_CONFIDENCE" "$PRE_OUTCOME" "$POST_OUTCOME" \
         "$DELTA_CONFIDENCE" "$DELTA_OUTCOME" "$DELTA_COMPLEXITY" "$DELTA_AMBIGUITY" "$TOTAL_DELTA" \
         > "$RUN_DIR/convergence_$${ID}.json"
+
+      # BUG-2007 Defect 3: refresh the pre-scores baseline with this pass's
+      # post-scores so the NEXT pass measures pass-over-pass delta rather than
+      # cumulative session delta. Without this, a plateaued issue keeps a large
+      # accumulated TOTAL_DELTA and never emits CONVERGED_STALLED.
+      cp "$POST" "$PRE"
 
       # Convergence rules (first match wins)
       if [ "$POST_CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$POST_OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
