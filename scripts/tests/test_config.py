@@ -15,6 +15,7 @@ from little_loops.config import (
     BRConfig,
     CaptureIssueConfig,
     CategoryConfig,
+    ClusterConfig,
     CliColorsConfig,
     CliColorsEdgeLabelsConfig,
     CliColorsLoggerConfig,

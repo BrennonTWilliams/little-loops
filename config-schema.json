@@ -1350,6 +1350,28 @@
             }
           },
           "additionalProperties": false
+        },
+        "cluster": {
+          "type": "object",
+          "description": "Settings for the goal-cluster multi-goal orchestration loop.",
+          "properties": {
+            "max_batch_size": {
+              "type": "integer",
+              "default": 5,
+              "description": "Maximum number of issues to process in a single cluster batch."
+            },
+            "enable_dedup": {
+              "type": "boolean",
+              "default": true,
+              "description": "When true, deduplicate issues with overlapping goals before batching."
+            },
+            "propagate_context": {
+              "type": "boolean",
+              "default": true,
+              "description": "When true, pass accumulated context from completed issues to subsequent batches."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

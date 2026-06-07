@@ -28,6 +28,24 @@ class ComposerAdaptiveConfig:
 
 
 @dataclass
+class ClusterConfig:
+    """Settings for the goal-cluster multi-goal orchestration loop."""
+
+    max_batch_size: int = 5
+    enable_dedup: bool = True
+    propagate_context: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ClusterConfig:
+        """Create ClusterConfig from dictionary."""
+        return cls(
+            max_batch_size=data.get("max_batch_size", 5),
+            enable_dedup=data.get("enable_dedup", True),
+            propagate_context=data.get("propagate_context", True),
+        )
+
+
+@dataclass
 class ComposerConfig:
     """Settings for the loop-composer built-in orchestration loop."""
 
@@ -53,6 +71,7 @@ class OrchestrationConfig:
 
     host_cli: str | None = None
     composer: ComposerConfig = field(default_factory=ComposerConfig)
+    cluster: ClusterConfig = field(default_factory=ClusterConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> OrchestrationConfig:
@@ -60,4 +79,5 @@ class OrchestrationConfig:
         return cls(
             host_cli=data.get("host_cli"),
             composer=ComposerConfig.from_dict(data.get("composer", {})),
+            cluster=ClusterConfig.from_dict(data.get("cluster", {})),
         )

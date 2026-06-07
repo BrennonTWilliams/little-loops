@@ -520,6 +520,35 @@ class TestConfigSchema:
         assert "claude-code" in host_cli["enum"]
         assert "codex" in host_cli["enum"]
 
+    def test_orchestration_cluster_in_schema(self) -> None:
+        """orchestration.cluster must be declared with its three properties in config-schema.json.
+
+        Follows the test_orchestration_host_cli_in_schema pattern: structural JSON-key
+        assertions only, no jsonschema runtime validation.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "orchestration" in data["properties"], (
+            "orchestration key is not declared in config-schema.json"
+        )
+        orch = data["properties"]["orchestration"]
+        assert "cluster" in orch["properties"], (
+            "orchestration.cluster is not declared in config-schema.json"
+        )
+        cluster = orch["properties"]["cluster"]
+        assert cluster["type"] == "object"
+        assert "max_batch_size" in cluster["properties"], (
+            "orchestration.cluster.max_batch_size is not declared in config-schema.json"
+        )
+        assert cluster["properties"]["max_batch_size"]["type"] == "integer"
+        assert "enable_dedup" in cluster["properties"], (
+            "orchestration.cluster.enable_dedup is not declared in config-schema.json"
+        )
+        assert cluster["properties"]["enable_dedup"]["type"] == "boolean"
+        assert "propagate_context" in cluster["properties"], (
+            "orchestration.cluster.propagate_context is not declared in config-schema.json"
+        )
+        assert cluster["properties"]["propagate_context"]["type"] == "boolean"
+
     def test_epics_scope_in_schema(self) -> None:
         """epics.scope must be declared as a top-level property in config-schema.json.
 
