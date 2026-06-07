@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import os
+import signal
 import subprocess
 import time
 from collections.abc import Generator
@@ -537,14 +538,16 @@ class TestRunClaudeCommandOutputCapture:
             subprocess.TimeoutExpired(cmd="test", timeout=10),
         ]
         mock_process.kill = Mock()
+        mock_process.pid = 12345
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
                 _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
-                result = run_claude_command("test")
+                with patch("os.getpgid", return_value=99), patch("os.killpg") as mock_killpg:
+                    result = run_claude_command("test")
 
-        mock_process.kill.assert_called_once()
+        mock_killpg.assert_called_once_with(99, signal.SIGKILL)
         assert result.returncode == -9, "Killed process must not report success"
 
 
@@ -681,6 +684,7 @@ class TestRunClaudeCommandTimeout:
         mock_process.returncode = None
         mock_process.wait.return_value = None
         mock_process.kill = Mock()
+        mock_process.pid = 12345
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
@@ -705,17 +709,19 @@ class TestRunClaudeCommandTimeout:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with pytest.raises(subprocess.TimeoutExpired):
-                        run_claude_command("test", timeout=1)
+                    with patch("os.getpgid", return_value=99), patch("os.killpg"):
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command("test", timeout=1)
 
     def test_kills_process_on_timeout(self) -> None:
-        """process.kill() called on timeout."""
+        """os.killpg() called on timeout."""
         mock_process = Mock()
         mock_process.stdout = io.StringIO("")
         mock_process.stderr = io.StringIO("")
         mock_process.returncode = None
         mock_process.wait.return_value = None
         mock_process.kill = Mock()
+        mock_process.pid = 12345
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
@@ -736,10 +742,11 @@ class TestRunClaudeCommandTimeout:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with pytest.raises(subprocess.TimeoutExpired):
-                        run_claude_command("test", timeout=1)
+                    with patch("os.getpgid", return_value=99), patch("os.killpg") as mock_killpg:
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command("test", timeout=1)
 
-        mock_process.kill.assert_called_once()
+        mock_killpg.assert_called_once_with(99, signal.SIGKILL)
         mock_process.wait.assert_called_once_with(timeout=10)
 
     def test_timeout_zero_means_no_timeout(self) -> None:
@@ -820,6 +827,7 @@ class TestRunClaudeCommandProcessCallbacks:
         mock_process.returncode = None
         mock_process.wait.return_value = None
         mock_process.kill = Mock()
+        mock_process.pid = 12345
 
         end_callback_calls: list[Any] = []
 
@@ -845,8 +853,9 @@ class TestRunClaudeCommandProcessCallbacks:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with pytest.raises(subprocess.TimeoutExpired):
-                        run_claude_command("test", timeout=1, on_process_end=on_end)
+                    with patch("os.getpgid", return_value=99), patch("os.killpg"):
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command("test", timeout=1, on_process_end=on_end)
 
         # on_process_end should still be called
         assert len(end_callback_calls) == 1
@@ -905,6 +914,7 @@ class TestRunClaudeCommandSelectorCleanup:
         mock_process.returncode = None
         mock_process.wait.return_value = None
         mock_process.kill = Mock()
+        mock_process.pid = 12345
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
@@ -927,8 +937,9 @@ class TestRunClaudeCommandSelectorCleanup:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with pytest.raises(subprocess.TimeoutExpired):
-                        run_claude_command("test", timeout=1)
+                    with patch("os.getpgid", return_value=99), patch("os.killpg"):
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command("test", timeout=1)
 
         selector_instance.__exit__.assert_called_once()
 
@@ -1017,6 +1028,7 @@ class TestRunClaudeCommandIdleTimeout:
         mock_process.returncode = None
         mock_process.wait.return_value = None
         mock_process.kill = Mock()
+        mock_process.pid = 12345
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
@@ -1040,11 +1052,12 @@ class TestRunClaudeCommandIdleTimeout:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with pytest.raises(subprocess.TimeoutExpired) as exc_info:
-                        run_claude_command("test", timeout=3600, idle_timeout=10)
+                    with patch("os.getpgid", return_value=99), patch("os.killpg") as mock_killpg:
+                        with pytest.raises(subprocess.TimeoutExpired) as exc_info:
+                            run_claude_command("test", timeout=3600, idle_timeout=10)
 
                 assert exc_info.value.timeout == 10
-                mock_process.kill.assert_called_once()
+                mock_killpg.assert_called_once_with(99, signal.SIGKILL)
 
     def test_idle_timeout_zero_means_disabled(self) -> None:
         """idle_timeout=0 never triggers idle timeout."""
@@ -1104,6 +1117,7 @@ class TestRunClaudeCommandIdleTimeout:
         mock_process.returncode = None
         mock_process.wait.return_value = None
         mock_process.kill = Mock()
+        mock_process.pid = 12345
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
@@ -1125,8 +1139,9 @@ class TestRunClaudeCommandIdleTimeout:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with pytest.raises(subprocess.TimeoutExpired) as exc_info:
-                        run_claude_command("test", timeout=3600, idle_timeout=10)
+                    with patch("os.getpgid", return_value=99), patch("os.killpg"):
+                        with pytest.raises(subprocess.TimeoutExpired) as exc_info:
+                            run_claude_command("test", timeout=3600, idle_timeout=10)
 
                 assert exc_info.value.output == "idle_timeout"
 
@@ -1138,6 +1153,7 @@ class TestRunClaudeCommandIdleTimeout:
         mock_process.returncode = None
         mock_process.wait.return_value = None
         mock_process.kill = Mock()
+        mock_process.pid = 12345
 
         end_callback_calls: list[Any] = []
 
@@ -1163,10 +1179,11 @@ class TestRunClaudeCommandIdleTimeout:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with pytest.raises(subprocess.TimeoutExpired):
-                        run_claude_command(
-                            "test", timeout=3600, idle_timeout=10, on_process_end=on_end
-                        )
+                    with patch("os.getpgid", return_value=99), patch("os.killpg"):
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command(
+                                "test", timeout=3600, idle_timeout=10, on_process_end=on_end
+                            )
 
         # on_process_end should still be called via finally block
         assert len(end_callback_calls) == 1
@@ -1181,7 +1198,7 @@ class TestRunClaudeCommandWaitTimeout:
     """Tests for timeout on process.wait() calls (BUG-420)."""
 
     def test_wait_has_timeout_after_kill_on_timeout(self) -> None:
-        """process.wait(timeout=10) called after kill on total timeout."""
+        """process.wait(timeout=10) called after killpg on total timeout."""
         mock_process = Mock()
         mock_process.stdout = io.StringIO("")
         mock_process.stderr = io.StringIO("")
@@ -1209,14 +1226,15 @@ class TestRunClaudeCommandWaitTimeout:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with pytest.raises(subprocess.TimeoutExpired):
-                        run_claude_command("test", timeout=1)
+                    with patch("os.getpgid", return_value=99), patch("os.killpg") as mock_killpg:
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command("test", timeout=1)
 
-        mock_process.kill.assert_called_once()
+        mock_killpg.assert_called_once_with(99, signal.SIGKILL)
         mock_process.wait.assert_called_once_with(timeout=10)
 
     def test_wait_has_timeout_after_kill_on_idle_timeout(self) -> None:
-        """process.wait(timeout=10) called after kill on idle timeout."""
+        """process.wait(timeout=10) called after killpg on idle timeout."""
         mock_process = Mock()
         mock_process.stdout = io.StringIO("")
         mock_process.stderr = io.StringIO("")
@@ -1244,10 +1262,11 @@ class TestRunClaudeCommandWaitTimeout:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with pytest.raises(subprocess.TimeoutExpired):
-                        run_claude_command("test", timeout=3600, idle_timeout=10)
+                    with patch("os.getpgid", return_value=99), patch("os.killpg") as mock_killpg:
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command("test", timeout=3600, idle_timeout=10)
 
-        mock_process.kill.assert_called_once()
+        mock_killpg.assert_called_once_with(99, signal.SIGKILL)
         mock_process.wait.assert_called_once_with(timeout=10)
 
     def test_wait_has_timeout_on_normal_completion(self) -> None:
@@ -1296,17 +1315,19 @@ class TestRunClaudeCommandWaitTimeout:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with patch("little_loops.subprocess_utils.logger") as mock_logger:
-                        with pytest.raises(subprocess.TimeoutExpired):
-                            run_claude_command("test", timeout=1)
+                    with patch("os.getpgid", return_value=99), patch("os.killpg") as mock_killpg:
+                        with patch("little_loops.subprocess_utils.logger") as mock_logger:
+                            with pytest.raises(subprocess.TimeoutExpired):
+                                run_claude_command("test", timeout=1)
 
-                        mock_logger.warning.assert_called_once_with(
-                            "Process %s did not terminate within 10s after kill",
-                            99999,
-                        )
+                            mock_killpg.assert_called_once_with(99, signal.SIGKILL)
+                            mock_logger.warning.assert_called_once_with(
+                                "Process %s did not terminate within 10s after kill",
+                                99999,
+                            )
 
     def test_kills_process_when_normal_wait_times_out(self) -> None:
-        """Process killed and waited again when normal wait(timeout=30) expires."""
+        """Process group killed and waited again when normal wait(timeout=30) expires."""
         mock_process = Mock()
         mock_process.stdout = io.StringIO("")
         mock_process.stderr = io.StringIO("")
@@ -1324,15 +1345,16 @@ class TestRunClaudeCommandWaitTimeout:
                 _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
 
-                with patch("little_loops.subprocess_utils.logger") as mock_logger:
-                    run_claude_command("test")
+                with patch("os.getpgid", return_value=99), patch("os.killpg") as mock_killpg:
+                    with patch("little_loops.subprocess_utils.logger") as mock_logger:
+                        run_claude_command("test")
 
-                    mock_logger.warning.assert_called_once_with(
-                        "Process %s did not exit within 30s after streams closed, killing",
-                        55555,
-                    )
+                        mock_logger.warning.assert_called_once_with(
+                            "Process %s did not exit within 30s after streams closed, killing",
+                            55555,
+                        )
 
-        mock_process.kill.assert_called_once()
+        mock_killpg.assert_called_once_with(99, signal.SIGKILL)
         assert mock_process.wait.call_count == 2
         mock_process.wait.assert_any_call(timeout=30)
         mock_process.wait.assert_any_call(timeout=10)
@@ -2180,3 +2202,221 @@ class TestRunClaudeCommandResultBreak:
         # Clean return (not a TimeoutExpired); process reaped via wait().
         assert result.returncode == 0
         mock_process.wait.assert_called_once_with(timeout=30)
+
+
+# =============================================================================
+# TestProcessGroupKill
+# =============================================================================
+
+
+class TestProcessGroupKill:
+    """Tests for process-group kill behaviour (ENH-1999)."""
+
+    def _make_mock_process(self, pid: int = 12345) -> Mock:
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        mock_process.wait.return_value = None
+        mock_process.kill = Mock()
+        mock_process.pid = pid
+        return mock_process
+
+    def _time_out_values(self, start: float = 1000.0) -> list:
+        return [start, start, start + 2.0]
+
+    def test_popen_uses_start_new_session(self) -> None:
+        """Popen is called with start_new_session=True."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        captured_kwargs: list[dict] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_kwargs.append(kwargs)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("test")
+
+        assert len(captured_kwargs) == 1
+        assert captured_kwargs[0].get("start_new_session") is True
+
+    def test_wall_clock_timeout_uses_killpg(self) -> None:
+        """Wall-clock timeout path calls os.killpg, not process.kill."""
+        mock_process = self._make_mock_process(pid=11111)
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {"stdout": True}
+                mock_selector.return_value.select.return_value = []
+                mock_selector.return_value.register = Mock()
+                mock_selector.return_value.unregister = Mock()
+
+                start_time = 1000.0
+                time_values = [start_time, start_time + 2.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    val = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return val
+
+                with patch("time.time", side_effect=mock_time):
+                    with patch("os.getpgid", return_value=55) as mock_getpgid:
+                        with patch("os.killpg") as mock_killpg:
+                            with pytest.raises(subprocess.TimeoutExpired):
+                                run_claude_command("test", timeout=1)
+
+        mock_getpgid.assert_called_once_with(11111)
+        mock_killpg.assert_called_once_with(55, signal.SIGKILL)
+        mock_process.kill.assert_not_called()
+
+    def test_idle_timeout_uses_killpg(self) -> None:
+        """Idle-timeout path calls os.killpg, not process.kill."""
+        mock_process = self._make_mock_process(pid=22222)
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {"stdout": True}
+                mock_selector.return_value.select.return_value = []
+                mock_selector.return_value.register = Mock()
+                mock_selector.return_value.unregister = Mock()
+
+                start_time = 1000.0
+                time_values = [start_time, start_time, start_time + 0.5, start_time + 11.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    val = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return val
+
+                with patch("time.time", side_effect=mock_time):
+                    with patch("os.getpgid", return_value=66) as mock_getpgid:
+                        with patch("os.killpg") as mock_killpg:
+                            with pytest.raises(subprocess.TimeoutExpired):
+                                run_claude_command("test", timeout=3600, idle_timeout=10)
+
+        mock_getpgid.assert_called_once_with(22222)
+        mock_killpg.assert_called_once_with(66, signal.SIGKILL)
+        mock_process.kill.assert_not_called()
+
+    def test_fallback_kill_uses_killpg(self) -> None:
+        """Post-stream-close fallback kill path calls os.killpg."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        mock_process.pid = 33333
+        mock_process.kill = Mock()
+        mock_process.wait.side_effect = [
+            subprocess.TimeoutExpired("cmd", 30),
+            None,
+        ]
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+
+                with patch("os.getpgid", return_value=77) as mock_getpgid:
+                    with patch("os.killpg") as mock_killpg:
+                        run_claude_command("test")
+
+        mock_getpgid.assert_called_once_with(33333)
+        mock_killpg.assert_called_once_with(77, signal.SIGKILL)
+        mock_process.kill.assert_not_called()
+
+    def test_falls_back_to_process_kill_on_process_lookup_error(self) -> None:
+        """_kill_process_group falls back to process.kill() when killpg raises ProcessLookupError."""
+        mock_process = self._make_mock_process(pid=44444)
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {"stdout": True}
+                mock_selector.return_value.select.return_value = []
+                mock_selector.return_value.register = Mock()
+                mock_selector.return_value.unregister = Mock()
+
+                start_time = 1000.0
+                time_values = [start_time, start_time + 2.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    val = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return val
+
+                with patch("time.time", side_effect=mock_time):
+                    with patch("os.getpgid", side_effect=ProcessLookupError("no such process")):
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command("test", timeout=1)
+
+        mock_process.kill.assert_called_once()
+
+    def test_falls_back_to_process_kill_on_permission_error(self) -> None:
+        """_kill_process_group falls back when killpg raises PermissionError."""
+        mock_process = self._make_mock_process(pid=55555)
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {"stdout": True}
+                mock_selector.return_value.select.return_value = []
+                mock_selector.return_value.register = Mock()
+                mock_selector.return_value.unregister = Mock()
+
+                start_time = 1000.0
+                time_values = [start_time, start_time + 2.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    val = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return val
+
+                with patch("time.time", side_effect=mock_time):
+                    with patch("os.getpgid", return_value=88):
+                        with patch("os.killpg", side_effect=PermissionError("denied")):
+                            with pytest.raises(subprocess.TimeoutExpired):
+                                run_claude_command("test", timeout=1)
+
+        mock_process.kill.assert_called_once()
+
+    def test_falls_back_to_process_kill_when_killpg_absent(self) -> None:
+        """_kill_process_group falls back when os.killpg raises AttributeError (non-POSIX)."""
+        mock_process = self._make_mock_process(pid=66666)
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {"stdout": True}
+                mock_selector.return_value.select.return_value = []
+                mock_selector.return_value.register = Mock()
+                mock_selector.return_value.unregister = Mock()
+
+                start_time = 1000.0
+                time_values = [start_time, start_time + 2.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    val = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return val
+
+                with patch("time.time", side_effect=mock_time):
+                    with patch("os.getpgid", side_effect=AttributeError("no killpg on Windows")):
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command("test", timeout=1)
+
+        mock_process.kill.assert_called_once()

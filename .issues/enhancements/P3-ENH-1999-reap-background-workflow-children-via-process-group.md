@@ -1,11 +1,23 @@
 ---
 id: ENH-1999
-status: open
-captured_at: 2026-06-07T03:43:15Z
-discovered_date: 2026-06-07T00:00:00Z
+status: done
+captured_at: 2026-06-07 03:43:15+00:00
+completed_at: 2026-06-07 04:17:33+00:00
+discovered_date: 2026-06-07 00:00:00+00:00
 discovered_by: capture-issue
-relates_to: [BUG-1997]
-labels: [subprocess, automation, hardening, ll-auto]
+relates_to:
+- BUG-1997
+labels:
+- subprocess
+- automation
+- hardening
+- ll-auto
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-1999: Reap background Workflow children via process group on subprocess kill
@@ -142,8 +154,11 @@ No public signature change to `run_claude_command`. Internal only:
 | `.claude/CLAUDE.md` § Host CLI Abstraction | Subprocess invocation goes through `host_runner`; this change is below that layer in `subprocess_utils`. |
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-07T04:08:55 - `747d5276-7607-4a6a-8f69-8154437e1ff3.jsonl`
+- `/ll:confidence-check` - 2026-06-06T00:00:00Z - `485f5a18-987f-47b8-baf1-80430c8e8af3.jsonl`
 - `/ll:format-issue` - 2026-06-07T03:46:28 - `32cf3ee0-7e8b-4b29-bb4f-4a7fbbff706f.jsonl`
 - `/ll:capture-issue` - 2026-06-07T03:43:15Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<session>.jsonl`
+- /ll:manage-issue - 2026-06-07T04:17:33Z - manage-issue-session
 
 ---
 

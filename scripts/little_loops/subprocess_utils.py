@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import selectors
+import signal
 import subprocess
 import time
 from collections.abc import Callable
@@ -235,6 +236,19 @@ def _list_scratch_files() -> str:
         return "None"
 
 
+def _kill_process_group(process: subprocess.Popen) -> None:
+    """Send SIGKILL to the process group; fall back to single-PID kill on error.
+
+    Uses os.getpgid / os.killpg (POSIX) so background Workflow/Task children
+    launched by the session are reaped together with the main process.
+    AttributeError catches platforms where os.killpg is absent (Windows).
+    """
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, AttributeError):
+        process.kill()
+
+
 def run_claude_command(
     command: str,
     timeout: int = 3600,
@@ -303,6 +317,7 @@ def run_claude_command(
         bufsize=1,  # Line buffered
         cwd=working_dir,
         env=env,
+        start_new_session=True,
     )
 
     if on_process_start:
@@ -334,7 +349,7 @@ def run_claude_command(
             while sel.get_map():
                 now = time.time()
                 if timeout and (now - start_time) > timeout:
-                    process.kill()
+                    _kill_process_group(process)
                     try:
                         process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
@@ -345,7 +360,7 @@ def run_claude_command(
                     raise subprocess.TimeoutExpired(cmd_args, timeout)
 
                 if idle_timeout and (now - last_output_time) > idle_timeout:
-                    process.kill()
+                    _kill_process_group(process)
                     try:
                         process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
@@ -450,7 +465,7 @@ def run_claude_command(
                     "Process %s did not exit within 30s after streams closed, killing",
                     process.pid,
                 )
-                process.kill()
+                _kill_process_group(process)
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
