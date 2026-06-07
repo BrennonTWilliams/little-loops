@@ -995,6 +995,16 @@ Tuning knobs for the `loop-composer-adaptive` built-in loop (fault-tolerant re-p
 | `max_replans` | `2` | Maximum re-plan attempts before aborting. |
 | `reassess_min_confidence` | `0.6` | Confidence threshold below which the reassess gate triggers a re-plan. |
 
+#### `orchestration.cluster`
+
+Settings for the `goal-cluster` multi-goal orchestration loop.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `max_batch_size` | `5` | Maximum number of issues to process in a single cluster batch. |
+| `enable_dedup` | `true` | When true, deduplicate issues with overlapping goals before batching. |
+| `propagate_context` | `true` | When true, pass accumulated context from completed issues to subsequent batches. |
+
 ### `hooks`
 
 Settings for hook adapter selection.

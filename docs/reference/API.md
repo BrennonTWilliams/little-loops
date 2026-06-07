@@ -115,7 +115,7 @@ BRConfig(project_root: Path)
 | `refine_status` | `RefineStatusConfig` | refine-status display settings |
 | `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
 | `design_tokens` | `DesignTokensConfig` | Design system token settings |
-| `orchestration` | `OrchestrationConfig` | Orchestration settings (host CLI selection) |
+| `orchestration` | `OrchestrationConfig` | Orchestration settings (host CLI selection, composer config, cluster config) |
 | `events` | `EventsConfig` | Event transport/emission settings |
 | `decisions` | `DecisionsConfig` | Decisions and rules log configuration |
 | `learning_tests` | `LearningTestsConfig` | Learning test registry settings |
