@@ -2421,6 +2421,62 @@ class TestCaptureReachabilityValidation:
         missing_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
         assert missing_errors == [], f"Sub-loop states should be skipped, got: {missing_errors}"
 
+    # --- ENH-1998: per-variable WARNING in sub-loop context ---
+
+    def test_missing_capture_in_sub_loop_context_emits_warning(self) -> None:
+        """ENH-1998: undefined ${captured.*} in a sub-loop loop emits WARNING, not silence."""
+        fsm = FSMLoop(
+            name="test-sub-loop-missing-warn",
+            initial="delegate",
+            states={
+                "delegate": make_state(
+                    loop="child-loop",
+                    action="child-loop",
+                    on_yes="use_result",
+                ),
+                "use_result": make_state(
+                    action="echo ${captured.typo_var.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        # Must emit a WARNING (not silent, not ERROR)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        warn_list = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert error_list == [], f"Should emit WARNING not ERROR in sub-loop context, got errors: {error_list}"
+        assert len(warn_list) >= 1, f"Expected WARNING for undefined capture in sub-loop context, got: {errors}"
+        assert any("typo_var" in w.message for w in warn_list)
+
+    def test_captured_var_present_locally_no_warning_with_sub_loop(self) -> None:
+        """ENH-1998: locally-captured var in sub-loop loop produces no warning."""
+        fsm = FSMLoop(
+            name="test-sub-loop-local-capture",
+            initial="capture_local",
+            states={
+                "capture_local": make_state(
+                    capture="local_result",
+                    action="echo capturing",
+                    on_yes="delegate",
+                ),
+                "delegate": make_state(
+                    loop="child-loop",
+                    action="child-loop",
+                    on_yes="use_local",
+                ),
+                "use_local": make_state(
+                    action="echo ${captured.local_result.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        # local_result is captured in this FSM — no error or warning for it
+        missing = [e for e in errors if "local_result" in e.message]
+        assert missing == [], f"Locally-captured var should not be flagged, got: {missing}"
+
     # --- Missing capture state → ERROR ---
 
     def test_missing_capture_state_emits_error(self) -> None:

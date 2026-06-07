@@ -1745,9 +1745,23 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
         for var_name in ref_vars:
             if var_name not in capture_map:
                 # Referenced capture variable has no capturing state in this FSM.
-                # If the loop uses sub-loops, the capture may live in a child
-                # namespace — skip (ENH-1961 scope: only flag same-loop captures).
+                # ENH-1998: downgrade to WARNING (not silent skip) when sub-loops
+                # are present — the capture may live in a child namespace, but a
+                # typo'd name should still surface rather than go completely dark.
                 if _has_sub_loop_state(fsm):
+                    errors.append(
+                        ValidationError(
+                            message=(
+                                f"References ${{captured.{var_name}.*}} but no state in "
+                                f"this loop captures '{var_name}'. "
+                                f"If '{var_name}' is produced by a sub-loop, this may be "
+                                f"intentional; otherwise add 'capture: {var_name}' to the "
+                                f"state that produces this value."
+                            ),
+                            path=f"states.{ref_state_name}.action",
+                            severity=ValidationSeverity.WARNING,
+                        )
+                    )
                     continue
                 # No sub-loops: this is genuinely missing.
                 errors.append(
