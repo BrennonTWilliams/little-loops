@@ -7,34 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### Planned
 
-- **Option J guillotine now uses `/ll:resume` in loop contexts** — When `run_with_continuation` (and `WorkerPool._run_with_continuation`) receive a `run_dir`, the Option J fresh session is seeded with `/ll:resume <run_dir>/guillotine-prompt.md` instead of a lossy transcript-summary blob. Fallback to `assemble_guillotine_prompt` is preserved when `run_dir` is `None`. (ENH-1996)
-- **`decide-issue --auto` skips resolved questions** — In `--auto` mode, Phase 3b now filters out `decision_needed` questions that already have an `outcome:` recorded in `.ll/decisions.yaml`, preventing re-prompts for decisions already made interactively. (ENH-1986)
+- Windows compatibility testing
+- Performance benchmarks for large repositories
+
+## [1.117.0] - 2026-06-06
 
 ### Added
 
+- **`rn-build` capstone orchestration loop** — New FSM loop that orchestrates the full rn-* sub-loop suite (refine, decompose, implement, remediate) as a capstone pipeline. Accepts a high-level goal, runs the rn-* suite in sequence, and returns a structured build summary. (FEAT-1992)
+- **`rn-build` orchestration loop + `value_ranked` schedule mode** — Intermediate `rn-build` loop wires `schedule_mode: value_ranked` into the `goal-cluster` executor, enabling priority-ordered dequeuing of implementation work. (FEAT-1991)
 - **`loop-composer` orchestration loop** — New built-in FSM loop that accepts a natural-language goal too large for a single loop, decomposes it into an ordered DAG of up to 8 loop-router (or direct sub-loop) invocations, presents the plan for HITL approval, then walks the DAG sequentially, returning a structured JSON summary of all step results. Use `ll-loop run loop-composer --input "your goal"`. Controlled by `orchestration.composer.*` config settings. (FEAT-1808)
 - **`loop-composer-adaptive` orchestration loop** — Fault-tolerant variant of `loop-composer`. When a sub-loop fails, a reassess gate decides `CONTINUE` / `REPLAN_TAIL` / `ABORT` — preserving completed-step checkpoints and replacing only the unexecuted tail on `REPLAN_TAIL`. Replanning is bounded by `max_replans` (default 2); `ABORT` fires on exhaustion or irrecoverable failure. Use when mid-plan recovery is preferred over a full restart. (FEAT-1983)
 - **`orchestration.composer.adaptive` config settings** — New config sub-object wiring the `loop-composer-adaptive` catalog (`enabled`, `max_replans`, `reassess_timeout`). Set `orchestration.composer.adaptive.enabled: true` to prefer the adaptive variant by default. (FEAT-1984)
 - **`ClusterConfig` / `orchestration.cluster` settings** — New `ClusterConfig` dataclass and `orchestration.cluster` config block for the `goal-cluster` loop: `max_batch_size` (default 5), `enable_dedup` (default true), `propagate_context` (default true). Controls how related goals are batched and how cross-batch hints are propagated. (FEAT-1987)
 - **`goal-cluster` orchestration loop** — New built-in FSM loop for sprint- or EPIC-shaped input. Accepts a list of goals (raw multi-line, sprint name, EPIC ID, or JSON list), normalizes them, groups related goals into batches by predicted loop, executes each batch sequentially with per-batch reassess gates, propagates cross-cutting context between batches, and synthesizes a cluster-wide summary. Use when you have multiple related goals that share context, rather than `loop-composer` (single decomposable goal) or `loop-router` (single goal). (FEAT-1988)
 - **`goal-cluster` as 4th option in `/ll:create-loop` orchestration wizard** — The orchestration branch of the `/ll:create-loop` wizard now offers `goal-cluster` as a fourth template choice alongside `loop-router`, `loop-composer`, and `loop-composer-adaptive`. Selects the multi-goal fan-out template with cross-batch context propagation.
+- **`ll-logs-telemetry-digest` FSM loop** — New loop that mines telemetry events from `ll-logs stats` output into a digest report, with configurable retention windows and structured JSON output. (FEAT-1925)
+- **Session-store retention/compaction policy** — `history.db` raw event tables now support configurable retention and compaction via the `history.*` config namespace, keeping DB size bounded on long-running projects.
+- **`ll-logs eval-export` subcommand** — New subcommand that reconstructs `ll-harness` EvalFixture files from session log JSONL, enabling replay-based regression testing of skill behavior. (FEAT-1971)
+- **`ll-logs diff` subcommand** — Session behavioral comparison tool: diffs two session logs to surface added/removed tool calls, changed outputs, and behavior regressions. (ENH-1924)
+- **EvalFixture v1 design spec** — Captured design specification for the eval-export fixture format, wired into `ll-harness` as a structured test primitive. (FEAT-1968)
+- **FSM static validation of captured variable reachability** — `ll-loop validate` now statically checks that every `{{ var }}` interpolation in a loop has a reachable `capture:` source in the FSM graph, surfacing missing-capture bugs before runtime. (ENH-1961)
+- **FSM `:default=` and `?` safe interpolation syntax** — Variables can now be written as `{{ var:default=fallback }}` or `{{ var? }}` to suppress "missing variable" errors when an optional context key is absent.
+- **`decisions` coupling entry type** — New `coupling:` decision entry type records architectural coupling decisions; surfaced in `/ll:wire-issue` static analysis layer. (FEAT-1736)
 - **`ll-logs scan-failures` subcommand** — Mines failed `ll-*` Bash invocations from interactive session JSONL logs. Pairs assistant `tool_use` blocks with `tool_result` records to detect nonzero exits (`is_error: True`) and Python tracebacks. Suppresses transient errors (rate limits, timeouts) and expected-nonzero gates (`ll-verify-*`). Clusters failures by `(tool, normalized-error-signature)` and emits candidates as text or `--json`. `--capture` creates BUG issue files for each distinct cluster. (ENH-1922)
 - **`ll-logs stats` subcommand** — Aggregates per-skill invocation frequency, correction count, and correction rate from `skill_events` in `.ll/history.db`. Prints a box-drawn table (or `--json` array) sorted by invocation count or correction count. (ENH-1921)
-- **`ll-logs sequences` subcommand** — Mines tool-level n-grams (ordered chains of ll skill/command/tool invocations) from extracted log corpora, with occurrence counts and per-edge transition frequencies. Reusable extraction primitive for `loop-suggester` and FEAT-1309. (ENH-1919)
+- **`ll-logs sequences` subcommand** — Mines tool-level n-grams (ordered chains of ll skill/command/tool invocations) from extracted log corpora, with occurrence counts and per-edge transition frequencies. Reusable extraction primitive for `loop-suggester`. (ENH-1919)
+- **`ll-logs dead-skills` subcommand** — Identifies skills that appear in SKILL.md definitions but have zero invocations in session history, flagging candidates for removal or consolidation.
 - **`ll-verify-triggers` CLI** — New CLI tool that validates skill description trigger accuracy against should-fire and should-NOT-fire phrasings. Reports per-skill precision/recall and cross-skill collision matrix. Exits non-zero when a skill falls below threshold or collides with another. (FEAT-1910)
+- **Syrupy snapshot testing for CLI output** — Added `syrupy` as a test dependency; CLI output snapshot tests now use snapshot assertions for regression detection. (ENH-1965)
+- **170+ new CLI-layer tests** — New parametrized test suites for loop subpackage (100 tests), sprint subpackage (69 tests), and dedicated P1 coverage-gap files. (ENH-1966)
+- **`ll-history-context --for-skill` flag** — Gates history-context injection on `history.planning_skills` config; exits 0 with no output when the calling skill is not configured, reducing noise.
+- **`rn-loops` parent↔sub-loop orchestration contract hardening** — Enforced the interface contract between `rn-implement` and its sub-loops (`rn-decompose`, `rn-remediate`), preventing silent contract drift. (ENH-1977)
+
+### Changed
+
+- **Option J guillotine now uses `/ll:resume` in loop contexts** — When `run_with_continuation` (and `WorkerPool._run_with_continuation`) receive a `run_dir`, the Option J fresh session is seeded with `/ll:resume <run_dir>/guillotine-prompt.md` instead of a lossy transcript-summary blob. Fallback to `assemble_guillotine_prompt` is preserved when `run_dir` is `None`. (ENH-1996)
+- **`decide-issue --auto` skips resolved questions** — In `--auto` mode, Phase 3b now filters out `decision_needed` questions that already have an `outcome:` recorded in `.ll/decisions.yaml`, preventing re-prompts for decisions already made interactively. (ENH-1986)
+- **Sub-loop missing-capture validation downgraded to WARNING** — `ll-loop validate` now emits WARNING (not ERROR) for missing captures inside included sub-loop fragments, reducing noise for optional sub-loop inputs. (ENH-1998)
+- **Background Workflow children reaped via process group** — `subprocess_utils` now sends `SIGKILL` to the entire process group of detached Workflow children on shutdown, preventing zombie background processes. (ENH-1999)
+- **FSM per-iteration artifact versioning** — Built-in FSM loops now snapshot intermediate artifacts per iteration under `${run_dir}/` instead of overwriting, enabling post-hoc inspection of generate→evaluate cycles.
+- **CodexRunner `sandbox_mode` parameter exposed** — `CodexRunner.build_streaming()` and `build_blocking_json()` now accept a `sandbox_mode` parameter, enabling per-call sandbox override.
+- **FSM `input_hash` auto-injected into loop context** — The FSM runner auto-injects `input_hash` at startup, providing a stable fingerprint for checkpoint deduplication across resume cycles.
 
 ### Fixed
 
-- **`rn-remediate` `CONVERGED_STALLED+decision_needed` routing** — The `converged` state now routes `CONVERGED_STALLED` verdicts that also have `decision_needed: true` set to `NEEDS_MANUAL_REVIEW` instead of silently terminating. Prevents stalled loops from dying without surfacing the unresolved decision. (BUG-1985)
-- **`session-store` migration race condition** — Migration now uses a file-level lock (`fcntl.flock`) around schema-version reads and `PRAGMA user_version` writes, preventing the `no such table` crash that occurred when two processes opened the DB concurrently during first-run migration.
-- **`ll-issues list --group-by epic` parent chain walk** — Epic grouping now walks the full parent chain (via `parent:` frontmatter) rather than only the direct parent, so issues that are grandchildren of an EPIC are correctly bucketed under it.
-
-### Planned
-
-- Windows compatibility testing
-- Performance benchmarks for large repositories
+- **BUG-1997: Multi-source capture in reachability check** — FSM static validator now correctly handles variables with multiple `capture:` sources (e.g., from different route branches), no longer flagging them as unreachable.
+- **BUG-1995: Test DB isolation via `LL_HISTORY_DB`** — Tests that exercise session-store code now set `LL_HISTORY_DB` to a temp path, preventing accidental writes to `.ll/history.db`.
+- **BUG-1985: `rn-remediate` `CONVERGED_STALLED+decision_needed` routing** — The `converged` state now routes `CONVERGED_STALLED` verdicts that also have `decision_needed: true` to `NEEDS_MANUAL_REVIEW` instead of silently terminating.
+- **BUG-1882: Session-store migration race condition** — Migration now uses a file-level lock (`fcntl.flock`) around schema-version reads and `PRAGMA user_version` writes, preventing the `no such table` crash when two processes opened the DB concurrently during first-run migration.
+- **BUG-1975: `rn-decompose` missing `on_partial`/`on_no` routes** — Added explicit routing from `run_size_review` for partial and no verdicts, preventing silent dead-ends.
+- **BUG-1972: `run_dir` not wired into `rn-implement` remediation delegation** — Sub-loop invocations from `rn-implement` now correctly forward `run_dir`, enabling per-run artifact isolation in nested loops.
+- **`ll-issues list --group-by epic` parent chain walk** — Epic grouping now walks the full parent chain (via `parent:` frontmatter) rather than only the direct parent, so grandchild issues are correctly bucketed under their EPIC.
+- **`context-monitor` 1M-model limit detection** — Corrected detection logic for models with 1M-token context windows; also clamps corrupt baseline reads to sane defaults.
+- **`loop-monitor` model display** — Now reads the current model name from `action_complete` events rather than stale session start state.
+- **`rn-remediate` `retry_counter` fragment replaced with `exit_code` evaluator** — Eliminated a self-evaluation loop in score-persistence states; satisfies MR-1.
+- **`general-task.yaml` migrated to per-run artifact isolation** — Intermediate files now written under `${run_dir}/` instead of shared `.loops/tmp/`, satisfying MR-3.
+- **Skills staging** — `/ll:commit` now stages only touched issue files rather than the entire `.issues/` directory, preventing accidental commits of unrelated changes.
+- **`subprocess_utils` pipe EOF blocking** — Fixed a hang where the event reader blocked waiting for pipe EOF instead of breaking on the `result` event.
 
 ## [1.116.0] - 2026-06-04
 
@@ -546,6 +578,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
 [Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...HEAD
+[1.117.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.116.0...v1.117.0
 [1.116.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.115.0...v1.116.0
 [1.115.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...v1.115.0
 [1.114.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.113.0...v1.114.0
