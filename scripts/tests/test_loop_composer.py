@@ -278,6 +278,12 @@ class TestComposerLibFragment:
             "discover_loops fragment must exclude 'loop-composer-adaptive' from the candidate catalog"
         )
 
+    def test_discover_loops_fragment_excludes_goal_cluster(self, lib_data: dict) -> None:
+        action = lib_data["fragments"]["discover_loops"].get("action", "")
+        assert "goal-cluster" in action, (
+            "discover_loops fragment must exclude 'goal-cluster' from the candidate catalog"
+        )
+
 
 class TestCatalogExclusivity:
     """Tests for the routing guard between loop-router, loop-composer, and goal-cluster."""
@@ -313,6 +319,14 @@ class TestCatalogExclusivity:
         assert "loop-composer-adaptive" in action, (
             "loop-router's discover_loops must add loop-composer-adaptive to excludes "
             "(wiring step 9 from FEAT-1983 spec)"
+        )
+
+    def test_loop_router_excludes_goal_cluster(self, router_data: dict) -> None:
+        """loop-router must exclude goal-cluster from its catalog discovery."""
+        action = router_data.get("states", {}).get("discover_loops", {}).get("action", "")
+        assert "goal-cluster" in action, (
+            "loop-router's discover_loops must add goal-cluster to excludes "
+            "(wiring step from FEAT-1988 spec)"
         )
 
 

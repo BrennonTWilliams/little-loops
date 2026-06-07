@@ -8,6 +8,7 @@
 - [Common Loop Patterns](#common-loop-patterns)
 - [Walkthrough: Creating and Running a Loop](#walkthrough-creating-and-running-a-loop)
 - [Built-in Loops](#built-in-loops)
+- [Cluster vs. Composer vs. Router](#cluster-vs-composer-vs-router)
 - [Beyond the Basics](#beyond-the-basics)
 - [Background Mode](#background-mode)
 - [Prompt Optimization Loops (APO)](#prompt-optimization-loops-apo)
@@ -1908,6 +1909,22 @@ ll-loop run cli-anything-bootstrap --context target="https://github.com/user/rep
 **Per-run artifact isolation (MR-3)**: Loops must write intermediate artifacts under `${context.run_dir}/`, not bare `.loops/tmp/`. The runner injects `run_dir` as `.loops/runs/<loop>-<timestamp>/` and creates the folder before execution. Writing to shared `.loops/tmp/` causes state corruption when two instances of the same loop run concurrently. Set `shared_state_ok: true` at the loop top-level to suppress this validation warning when cross-run sharing is intentional.
 
 **Partial-route dead-end guard (MR-4)**: An LLM-judged state (action_type: `prompt` or `slash_command`, or an explicit `llm_structured`/`check_semantic` evaluator) can receive `yes`, `no`, or `partial` verdicts from the default judge. If the state maps `on_yes` but provides no route for `no` or `partial` — and has no `next:` or `route:` table with a `default` — then a `no`/`partial` verdict causes `_route` to return `None`, silently terminating the loop. A parent loop reads this as a failure, discarding any progress made. `ll-loop validate` emits a WARNING (MR-4) for this shape so the dead-end is caught at authoring time. Fix by adding `on_no`/`on_partial`, using `next:` for an unconditional handoff, or providing a `route:` table. Set `partial_route_ok: true` at the loop top-level to suppress when intentional.
+
+## Cluster vs. Composer vs. Router
+
+Three orchestration loops address different goal shapes:
+
+| Loop | When to use |
+|---|---|
+| `loop-router` | Single goal, best-fit single loop. Use as the default entry point. |
+| `loop-composer` / `loop-composer-adaptive` | Single decomposable goal that requires multiple loops in sequence (DAG execution). |
+| `goal-cluster` | Multiple related goals that share context. Groups goals into batches, executes sequentially with cross-batch hint propagation. |
+
+**Decision rule**: Start with `loop-router` for a single goal. If the goal is clearly multi-step and benefits from explicit DAG decomposition, use `loop-composer` (or `loop-composer-adaptive` for failure recovery). If you have multiple goals at once (e.g., all issues in a sprint or all children of an EPIC), use `goal-cluster`.
+
+**Why not loop-router for multiple goals?** loop-router picks one loop for one goal. It cannot propagate context across goals or group related goals into efficient batches.
+
+**Dispatch guard**: loop-router and loop-composer(s) exclude goal-cluster from their catalogs. goal-cluster excludes loop-composer and loop-router from its dispatch suggestions. This prevents recursive orchestration cycles.
 
 ## Beyond the Basics
 

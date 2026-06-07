@@ -11,6 +11,8 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | Loop | Description |
 |---|---|
 | `loop-router` | Natural-language entry point — classifies a goal into the best-fit project or built-in loop (3-way: project / built-in / propose new), scores candidates, dispatches as a sub-loop, and summarises the result. Recommended starting point when you know *what* you want done but not *which loop* to run. |
+| `loop-composer-adaptive` | Adaptive loop composer with reassess gate — plans a multi-loop pipeline from a goal, executes each stage, and re-evaluates the remaining plan after each stage to adapt to new information before proceeding. |
+| `goal-cluster` | Multi-goal orchestrator for sprint- or EPIC-shaped input. Groups goals into batches by predicted loop, dispatches each batch sequentially with cross-batch context propagation and per-batch reassess gates, and synthesizes a cluster-wide summary. Use when you have multiple related goals that share context. |
 
 ## Issue Management
 

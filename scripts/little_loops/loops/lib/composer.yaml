@@ -20,7 +20,7 @@ fragments:
     description: |
       Discover available loops, write catalog to ${context.run_dir}/composer-catalog.json,
       and capture the full JSON under the `catalog` key.
-      Excludes loop-router, loop-composer, and loop-composer-adaptive from candidates; also applies
+      Excludes loop-router, loop-composer, loop-composer-adaptive, and goal-cluster from candidates; also applies
       ${context.exclude} comma-separated overrides.
       State must supply: timeout, next, on_error.
     action_type: shell
@@ -34,6 +34,7 @@ fragments:
       excludes.add('loop-router')
       excludes.add('loop-composer')
       excludes.add('loop-composer-adaptive')
+      excludes.add('goal-cluster')
       project = []
       builtin = []
       for loop in loops:

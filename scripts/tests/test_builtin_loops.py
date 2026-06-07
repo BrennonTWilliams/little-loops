@@ -145,6 +145,7 @@ class TestBuiltinLoopFiles:
             "migrate-sdk-version",
             "loop-composer",
             "loop-composer-adaptive",
+            "goal-cluster",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

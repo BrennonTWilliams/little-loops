@@ -33,6 +33,7 @@ states:
       excludes.add('loop-router')
       excludes.add('loop-composer')
       excludes.add('loop-composer-adaptive')
+      excludes.add('goal-cluster')
       project = []
       builtin = []
       for loop in loops:

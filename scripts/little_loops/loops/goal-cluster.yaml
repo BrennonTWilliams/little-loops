@@ -1,0 +1,756 @@
+name: goal-cluster
+description: |
+  Multi-goal orchestrator for sprint- or EPIC-shaped input. Accepts a list of goals
+  (raw multi-line, sprint name, EPIC ID, or JSON list), normalizes them, groups related
+  goals into batches by predicted loop, optionally reviews the plan via HITL, executes
+  each batch sequentially with per-batch reassess gates on failure, propagates
+  cross-cutting context between batches, and synthesizes a cluster-wide summary.
+
+  Use when you have multiple related goals that share context and benefit from sequential
+  batch execution with context propagation — rather than loop-composer (single
+  decomposable goal) or loop-router (single goal routed to a single loop).
+category: orchestration
+input_key: goals
+required_inputs: ["goals"]
+initial: load_goals
+max_iterations: 300
+timeout: 345600
+on_handoff: spawn
+
+import:
+  - lib/composer.yaml
+  - lib/common.yaml
+
+context:
+  goals: ""            # raw multi-line | sprint name | EPIC-NNN | JSON list
+  auto: "false"        # "true" = skip HITL plan approval
+  exclude: ""          # comma-separated loop names to exclude from dispatch
+  max_batch_size: "5"  # max goals per batch (mirrors ClusterConfig.max_batch_size)
+  enable_dedup: "true"         # merge/skip overlapping goals (ClusterConfig.enable_dedup)
+  propagate_context: "true"    # extract cross-batch hints (ClusterConfig.propagate_context)
+  max_replans: "1"             # max reassess replan attempts per cluster run
+
+states:
+  # ─── Phase 1: Load & Normalize Goals ──────────────────────────────────────────
+
+  load_goals:
+    action_type: shell
+    timeout: 60
+    action: |
+      python3 << 'PYEOF'
+      import json, re, subprocess, sys, os
+
+      run_dir = '${context.run_dir}'
+      os.makedirs(run_dir, exist_ok=True)
+      raw = """${context.goals}"""
+
+      goals = []
+
+      # Try JSON list first
+      stripped = raw.strip()
+      if stripped.startswith('['):
+          try:
+              items = json.loads(stripped)
+              for i, item in enumerate(items):
+                  if isinstance(item, str):
+                      goals.append({'goal_id': f'g{i+1:02d}', 'goal_text': item.strip(), 'hints': ''})
+                  elif isinstance(item, dict):
+                      goals.append({
+                          'goal_id': item.get('goal_id', f'g{i+1:02d}'),
+                          'goal_text': str(item.get('goal_text', item.get('text', ''))).strip(),
+                          'hints': str(item.get('hints', '')),
+                      })
+          except Exception:
+              pass
+
+      # Try EPIC-NNN shape
+      if not goals:
+          m = re.match(r'^(EPIC-\d+)$', stripped, re.IGNORECASE)
+          if m:
+              epic_id = m.group(1).upper()
+              try:
+                  result = subprocess.run(
+                      ['ll-issues', 'list', '--parent', epic_id, '--format', 'json'],
+                      capture_output=True, text=True, timeout=30
+                  )
+                  items = json.loads(result.stdout.strip() or '[]')
+                  if isinstance(items, list):
+                      for i, item in enumerate(items):
+                          iid = item.get('id', f'g{i+1:02d}')
+                          title = item.get('title', str(item))
+                          goals.append({'goal_id': iid, 'goal_text': title, 'hints': f'parent:{epic_id}'})
+              except Exception:
+                  pass
+
+      # Try sprint name shape (single non-JSON, non-EPIC line)
+      if not goals and stripped and '\n' not in stripped and not re.match(r'^(EPIC-\d+|\[)', stripped, re.IGNORECASE):
+          try:
+              result = subprocess.run(
+                  ['python3', '-c',
+                   'from little_loops.sprint import SprintManager; import json; '
+                   f'sm = SprintManager(); issues = sm.load_or_resolve({repr(stripped)}); '
+                   'print(json.dumps(issues if isinstance(issues, list) else []))'],
+                  capture_output=True, text=True, timeout=30
+              )
+              items = json.loads(result.stdout.strip() or '[]')
+              if isinstance(items, list) and items:
+                  for i, item in enumerate(items):
+                      if isinstance(item, dict):
+                          iid = item.get('id', item.get('issue_id', f'g{i+1:02d}'))
+                          title = item.get('title', str(item))
+                          goals.append({'goal_id': iid, 'goal_text': title, 'hints': f'sprint:{stripped}'})
+          except Exception:
+              pass
+
+      # Fallback: raw multi-line (one goal per non-empty line)
+      if not goals:
+          lines = [l.strip() for l in raw.splitlines() if l.strip()]
+          for i, line in enumerate(lines):
+              goals.append({'goal_id': f'g{i+1:02d}', 'goal_text': line, 'hints': ''})
+
+      if not goals:
+          print('ERROR: no goals could be parsed from input', file=sys.stderr)
+          sys.exit(1)
+
+      goals_file = os.path.join(run_dir, 'goals.json')
+      with open(goals_file, 'w') as f:
+          json.dump(goals, f, indent=2)
+
+      print(json.dumps(goals, indent=2))
+      PYEOF
+    capture: goals_list
+    evaluate:
+      type: exit_code
+    on_yes: dedup_and_batch
+    on_no: failed
+    on_error: failed
+
+  # ─── Phase 2: Dedup & Batch ────────────────────────────────────────────────────
+
+  dedup_and_batch:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are a goal cluster planner. Group the following goals into execution batches.
+
+      GOALS (JSON list):
+      ${captured.goals_list.output}
+
+      RULES:
+      1. Group goals likely served by the same loop into one batch (max ${context.max_batch_size} goals/batch).
+      2. If enable_dedup is "${context.enable_dedup}", identify overlapping goals and mark them merge or skip.
+      3. For each batch, suggest the best loop name or "loop-router" when uncertain.
+      4. NEVER suggest "loop-composer", "loop-composer-adaptive", or "goal-cluster" as a loop_name.
+      5. Order batches so dependencies run before dependents.
+
+      Think briefly (2-3 sentences), then emit your plan LAST as:
+      BATCH_PLAN:
+      ```json
+      {
+        "batches": [
+          {
+            "batch_id": "b01",
+            "goal_ids": ["g01"],
+            "suggested_loop": "loop-router",
+            "batch_goal": "combined goal description for this batch",
+            "reasoning": "why these goals are grouped"
+          }
+        ],
+        "overlaps": [
+          {
+            "goal_ids": ["g02", "g03"],
+            "action": "merge",
+            "reason": "both ask for the same thing"
+          }
+        ]
+      }
+      ```
+    capture: batch_plan_raw
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response end with a BATCH_PLAN: code block containing a JSON object with a 'batches' array?"
+      min_confidence: 0.5
+    on_yes: parse_batch_plan
+    on_no: parse_batch_plan
+    on_partial: parse_batch_plan
+    on_error: failed
+
+  parse_batch_plan:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re, sys, os
+
+      run_dir = '${context.run_dir}'
+      os.makedirs(run_dir, exist_ok=True)
+      output = """${captured.batch_plan_raw.output}"""
+
+      plan = None
+      m = re.search(r'BATCH_PLAN:\s*```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
+      if m:
+          try:
+              plan = json.loads(m.group(1))
+          except Exception:
+              pass
+
+      if plan is None:
+          m2 = re.search(r'(\{[\s\S]*"batches"[\s\S]*\})', output)
+          if m2:
+              try:
+                  plan = json.loads(m2.group(0))
+              except Exception:
+                  pass
+
+      if plan is None or not isinstance(plan.get('batches'), list):
+          print('ERROR: could not parse batch plan from LLM output')
+          sys.exit(1)
+
+      with open(os.path.join(run_dir, 'batch-plan.json'), 'w') as f:
+          json.dump(plan, f, indent=2)
+
+      batches = plan['batches']
+      lines = [f'Batches: {len(batches)}', '']
+      for i, b in enumerate(batches, 1):
+          loop = b.get('suggested_loop', 'loop-router')
+          gids = b.get('goal_ids', [])
+          goal_text = b.get('batch_goal', '')
+          lines.append(f'{i}. [{b["batch_id"]}] -> {loop}  ({len(gids)} goal(s))')
+          lines.append(f'   Goal: {goal_text[:120]}{"..." if len(goal_text) > 120 else ""}')
+          lines.append('')
+
+      overlaps = plan.get('overlaps', [])
+      if overlaps:
+          lines.append(f'Dedup ({len(overlaps)} overlapping group(s)):')
+          for o in overlaps:
+              lines.append(f'  {o.get("goal_ids")} -> {o.get("action","skip")}: {o.get("reason","")}')
+          lines.append('')
+
+      print('\n'.join(lines))
+      PYEOF
+    capture: batch_display
+    evaluate:
+      type: exit_code
+    on_yes: check_auto_plan
+    on_no: failed
+    on_error: failed
+
+  check_auto_plan:
+    action_type: shell
+    action: |
+      test "${context.auto}" = "true" && exit 0 || exit 1
+    evaluate:
+      type: exit_code
+    on_yes: init_cluster_queue
+    on_no: present_plan
+    on_error: init_cluster_queue
+
+  # ─── Phase 3: HITL Plan Approval ──────────────────────────────────────────────
+
+  present_plan:
+    action_type: prompt
+    timeout: 600
+    action: |
+      GOALS:
+      ${captured.goals_list.output}
+
+      CLUSTER EXECUTION PLAN:
+      ${captured.batch_display.output}
+
+      Each batch dispatches to its suggested loop in order.
+      Cross-batch context hints are propagated between batches.
+
+      Type APPROVE to execute this cluster plan.
+      To abort without executing, type: CANCEL
+    capture: user_plan_decision
+    evaluate:
+      type: output_contains
+      pattern: "CANCEL"
+    on_yes: present_result
+    on_no: init_cluster_queue
+    on_error: init_cluster_queue
+
+  # ─── Phase 4: Execute Cluster ─────────────────────────────────────────────────
+
+  init_cluster_queue:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os
+
+      run_dir = '${context.run_dir}'
+      with open(os.path.join(run_dir, 'batch-plan.json')) as f:
+          plan = json.load(f)
+
+      queue_dir = os.path.join(run_dir, 'batch-queue')
+      os.makedirs(queue_dir, exist_ok=True)
+
+      for i, batch in enumerate(plan.get('batches', [])):
+          fname = f'{i+1:04d}-{batch["batch_id"]}.json'
+          with open(os.path.join(queue_dir, fname), 'w') as f:
+              json.dump(batch, f, indent=2)
+
+      print(f'QUEUE_INIT:{len(plan.get("batches", []))}')
+      PYEOF
+    capture: queue_init
+    next: execute_cluster
+    on_error: failed
+
+  execute_cluster:
+    action_type: shell
+    timeout: 30
+    action: |
+      python3 << 'PYEOF'
+      import json, os, glob, sys
+
+      run_dir = '${context.run_dir}'
+      queue_dir = os.path.join(run_dir, 'batch-queue')
+      done_dir = os.path.join(run_dir, 'batch-done')
+      os.makedirs(done_dir, exist_ok=True)
+
+      files = sorted(glob.glob(os.path.join(queue_dir, '*.json')))
+      if not files:
+          print('QUEUE_EMPTY')
+          sys.exit(1)
+
+      next_file = files[0]
+      with open(next_file) as f:
+          batch = json.load(f)
+
+      with open(os.path.join(run_dir, 'current-batch.json'), 'w') as f:
+          json.dump(batch, f, indent=2)
+
+      done_path = os.path.join(done_dir, os.path.basename(next_file))
+      os.rename(next_file, done_path)
+
+      loop = batch.get('suggested_loop', 'loop-router')
+      batch_goal = batch.get('batch_goal', '${context.goals}')
+
+      with open(os.path.join(run_dir, 'current-batch-loop.txt'), 'w') as f:
+          f.write(loop)
+      with open(os.path.join(run_dir, 'current-batch-goal.txt'), 'w') as f:
+          f.write(batch_goal)
+
+      print(batch['batch_id'])
+      PYEOF
+    capture: current_batch_id
+    evaluate:
+      type: exit_code
+    on_yes: read_cluster_loop
+    on_no: synthesize_cluster_result
+    on_error: synthesize_cluster_result
+
+  read_cluster_loop:
+    action_type: shell
+    action: |
+      cat "${context.run_dir}/current-batch-loop.txt" 2>/dev/null || echo "loop-router"
+    capture: cluster_batch_loop
+    next: read_cluster_input
+    on_error: failed
+
+  read_cluster_input:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os
+
+      run_dir = '${context.run_dir}'
+      hints_file = os.path.join(run_dir, 'propagated-hints.json')
+      goal_file = os.path.join(run_dir, 'current-batch-goal.txt')
+
+      base_goal = ''
+      try:
+          with open(goal_file) as f:
+              base_goal = f.read().strip()
+      except Exception:
+          pass
+
+      hints = []
+      if '${context.propagate_context}' == 'true' and os.path.exists(hints_file):
+          try:
+              with open(hints_file) as f:
+                  hints = json.load(f)
+          except Exception:
+              pass
+
+      if hints:
+          recent = hints[-5:]
+          hint_lines = [f"- [{h.get('hint_type','')}] {h.get('hint_text','')}" for h in recent]
+          full_goal = base_goal + '\n\nCROSS-BATCH CONTEXT:\n' + '\n'.join(hint_lines)
+      else:
+          full_goal = base_goal
+
+      print(full_goal)
+      PYEOF
+    capture: cluster_batch_input
+    next: dispatch_cluster
+    on_error: failed
+
+  dispatch_cluster:
+    loop: "${captured.cluster_batch_loop.output}"
+    timeout: 3600
+    with:
+      input: "${captured.cluster_batch_input.output}"
+    capture: cluster_batch_output
+    on_yes: write_cluster_success
+    on_no: write_cluster_failed
+    on_error: write_cluster_failed
+
+  write_cluster_success:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os
+
+      run_dir = '${context.run_dir}'
+      batch_file = os.path.join(run_dir, 'current-batch.json')
+      cluster_state_file = os.path.join(run_dir, 'cluster-state.json')
+
+      batch = {}
+      try:
+          with open(batch_file) as f:
+              batch = json.load(f)
+      except Exception:
+          pass
+
+      subloop_out = """${captured.cluster_batch_output.output}"""
+      output_summary = ''
+      terminal_state = 'done'
+      for line in subloop_out.strip().split('\n'):
+          try:
+              event = json.loads(line)
+              if event.get('type') == 'output' and event.get('text'):
+                  output_summary = event['text'][:500]
+              if event.get('type') == 'terminal':
+                  terminal_state = event.get('state', 'done')
+          except Exception:
+              pass
+
+      cluster_state = []
+      try:
+          with open(cluster_state_file) as f:
+              cluster_state = json.load(f)
+      except Exception:
+          pass
+
+      cluster_state.append({
+          'batch_id': batch.get('batch_id', 'unknown'),
+          'goal_ids': batch.get('goal_ids', []),
+          'loop': batch.get('suggested_loop', ''),
+          'success': True,
+          'terminal_state': terminal_state,
+          'output_summary': output_summary,
+      })
+      with open(cluster_state_file, 'w') as f:
+          json.dump(cluster_state, f, indent=2)
+
+      verdict = {'success': True, 'confidence': 1.0, 'terminal_state': terminal_state}
+      with open(os.path.join(run_dir, 'last-verdict.json'), 'w') as f:
+          json.dump(verdict, f)
+
+      print(f'BATCH_DONE:{batch.get("batch_id","?")}')
+      PYEOF
+    capture: batch_success_record
+    next: propagate_context
+    on_error: failed
+
+  write_cluster_failed:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os
+
+      run_dir = '${context.run_dir}'
+      batch_file = os.path.join(run_dir, 'current-batch.json')
+      cluster_state_file = os.path.join(run_dir, 'cluster-state.json')
+
+      batch = {}
+      try:
+          with open(batch_file) as f:
+              batch = json.load(f)
+      except Exception:
+          pass
+
+      cluster_state = []
+      try:
+          with open(cluster_state_file) as f:
+              cluster_state = json.load(f)
+      except Exception:
+          pass
+
+      cluster_state.append({
+          'batch_id': batch.get('batch_id', 'unknown'),
+          'goal_ids': batch.get('goal_ids', []),
+          'loop': batch.get('suggested_loop', ''),
+          'success': False,
+          'terminal_state': 'failed',
+          'output_summary': '',
+      })
+      with open(cluster_state_file, 'w') as f:
+          json.dump(cluster_state, f, indent=2)
+
+      verdict = {'success': False, 'confidence': 0.0, 'terminal_state': 'failed'}
+      with open(os.path.join(run_dir, 'last-verdict.json'), 'w') as f:
+          json.dump(verdict, f)
+
+      print(f'BATCH_FAILED:{batch.get("batch_id","?")}')
+      PYEOF
+    capture: batch_failed_record
+    next: check_cluster_replan_budget
+    on_error: abort_cluster
+
+  check_cluster_replan_budget:
+    action_type: shell
+    action: |
+      COUNT=$(cat "${context.run_dir}/cluster-replan-count.txt" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "${context.run_dir}/cluster-replan-count.txt"
+      echo "$COUNT"
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_replans}"
+    on_yes: read_cluster_summaries
+    on_no: abort_cluster
+    on_error: abort_cluster
+
+  read_cluster_summaries:
+    action_type: shell
+    action: |
+      cat "${context.run_dir}/cluster-state.json" 2>/dev/null || echo "[]"
+    capture: completed_step_summaries
+    next: read_cluster_verdict
+    on_error: abort_cluster
+
+  read_cluster_verdict:
+    action_type: shell
+    action: |
+      cat "${context.run_dir}/last-verdict.json" 2>/dev/null || echo '{"success":false,"confidence":0.0,"terminal_state":"failed"}'
+    capture: last_verdict
+    next: reassess
+    on_error: abort_cluster
+
+  reassess:
+    fragment: reassess
+    on_yes: parse_cluster_reassess
+    on_no: parse_cluster_reassess
+    on_partial: parse_cluster_reassess
+    on_error: abort_cluster
+
+  parse_cluster_reassess:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re, sys
+
+      output = """${captured.reassess_decision.output}"""
+      m = re.search(r'REASSESS_DECISION:\s*```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
+      if m:
+          try:
+              data = json.loads(m.group(1))
+              decision = data.get('decision', 'ABORT')
+              if decision in ('CONTINUE', 'REPLAN_TAIL', 'ABORT'):
+                  print(decision)
+                  sys.exit(0)
+          except Exception:
+              pass
+      print('ABORT')
+      sys.exit(0)
+      PYEOF
+    capture: cluster_reassess_token
+    next: route_cluster_reassess
+    on_error: abort_cluster
+
+  route_cluster_reassess:
+    evaluate:
+      type: output_contains
+      source: "${captured.cluster_reassess_token.output}"
+      pattern: "CONTINUE"
+    on_yes: propagate_context
+    on_no: abort_cluster
+    on_error: abort_cluster
+
+  # ─── Phase 5: Propagate Context ───────────────────────────────────────────────
+
+  propagate_context:
+    action_type: prompt
+    timeout: 180
+    action: |
+      A cluster batch just completed. Extract cross-cutting findings for remaining batches.
+
+      ORIGINAL GOALS: ${captured.goals_list.output}
+
+      COMPLETED BATCH RECORD:
+      ${captured.batch_success_record.output:default=}${captured.batch_failed_record.output:default=}
+
+      Extract up to 3 actionable hints for downstream batches.
+      If nothing meaningful to propagate, return an empty array.
+
+      Emit LAST as:
+      HINTS:
+      ```json
+      [
+        {
+          "hint_type": "finding|blocker|context|recommendation",
+          "affected_goal_ids": ["g01"],
+          "hint_text": "concise actionable hint"
+        }
+      ]
+      ```
+    capture: propagate_output
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response end with a HINTS: code block containing a JSON array?"
+      min_confidence: 0.5
+    on_yes: save_hints
+    on_no: save_hints
+    on_partial: save_hints
+    on_error: execute_cluster
+
+  save_hints:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re, os
+
+      run_dir = '${context.run_dir}'
+      output = """${captured.propagate_output.output}"""
+      hints_file = os.path.join(run_dir, 'propagated-hints.json')
+
+      new_hints = []
+      m = re.search(r'HINTS:\s*```(?:json)?\s*(\[.*?\])\s*```', output, re.DOTALL)
+      if m:
+          try:
+              new_hints = json.loads(m.group(1))
+          except Exception:
+              pass
+
+      existing = []
+      try:
+          with open(hints_file) as f:
+              existing = json.load(f)
+      except Exception:
+          pass
+
+      all_hints = existing + new_hints
+      with open(hints_file, 'w') as f:
+          json.dump(all_hints, f, indent=2)
+
+      print(f'HINTS_SAVED:{len(new_hints)}_new,{len(all_hints)}_total')
+      PYEOF
+    capture: hints_saved
+    next: execute_cluster
+    on_error: execute_cluster
+
+  # ─── Phase 6: Synthesize Result ───────────────────────────────────────────────
+
+  synthesize_cluster_result:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Synthesize the results of this goal cluster execution.
+
+      GOALS: ${captured.goals_list.output}
+
+      CLUSTER EXECUTION STATE:
+      ${captured.batch_success_record.output:default=No batch data available.}
+
+      Write 3-5 sentences covering:
+      1. What was accomplished per goal
+      2. What is still open or failed
+      3. Recommended next batch or follow-up action
+    capture: cluster_summary
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response contain a substantive summary of goal cluster execution with accomplishments and recommendations?"
+      min_confidence: 0.5
+    on_yes: present_result
+    on_no: present_result
+    on_partial: present_result
+    on_error: present_result
+
+  # ─── Phase 7: Terminal Output ─────────────────────────────────────────────────
+
+  present_result:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 << 'PYEOF'
+      import json, os
+
+      run_dir = '${context.run_dir}'
+
+      def _read_json(p, default=None):
+          try:
+              with open(p) as f: return json.load(f)
+          except Exception: return default
+
+      goals = _read_json(os.path.join(run_dir, 'goals.json'), [])
+      cluster_state = _read_json(os.path.join(run_dir, 'cluster-state.json'), [])
+      batch_plan = _read_json(os.path.join(run_dir, 'batch-plan.json'), {})
+
+      cancelled = '${captured.user_plan_decision.output:default=}'
+      if 'CANCEL' in cancelled:
+          success = False
+          summary = 'Cluster plan cancelled by user before execution began.'
+      else:
+          success = bool(cluster_state) and all(b.get('success', False) for b in cluster_state)
+          summary_out = '${captured.cluster_summary.output:default=}'
+          if summary_out.strip():
+              summary = summary_out.strip()
+          else:
+              total = len(batch_plan.get('batches', []))
+              completed = len(cluster_state)
+              summary = f'Executed {completed}/{total} batches. ' + (
+                  'All batches succeeded.' if success else 'Some batches failed.')
+
+      per_goal_outcomes = {}
+      for batch in cluster_state:
+          for gid in batch.get('goal_ids', []):
+              per_goal_outcomes[gid] = {
+                  'batch_id': batch.get('batch_id'),
+                  'success': batch.get('success'),
+                  'terminal_state': batch.get('terminal_state'),
+                  'output_summary': batch.get('output_summary', ''),
+              }
+
+      result = {
+          'batches': cluster_state,
+          'per_goal_outcomes': per_goal_outcomes,
+          'cluster_summary': summary,
+          'recommended_next': '${captured.cluster_summary.output:default=}',
+          'success': success,
+      }
+      print(json.dumps(result, indent=2))
+      PYEOF
+
+  abort_cluster:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 -c "
+      import json
+      print(json.dumps({
+          'batches': [],
+          'per_goal_outcomes': {},
+          'cluster_summary': 'goal-cluster aborted: reassess budget exhausted or irrecoverable batch failure.',
+          'recommended_next': '',
+          'success': False
+      }, indent=2))
+      "
+      exit 1
+
+  failed:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 -c "
+      import json
+      print(json.dumps({
+          'batches': [],
+          'per_goal_outcomes': {},
+          'cluster_summary': 'goal-cluster encountered a fatal error during goal loading, batching, or plan initialization.',
+          'recommended_next': '',
+          'success': False
+      }, indent=2))
+      "
+      exit 1
