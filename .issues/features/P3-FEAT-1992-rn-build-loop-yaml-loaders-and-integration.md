@@ -3,9 +3,10 @@ id: FEAT-1992
 title: "rn-build \u2014 Core Loop YAML, Loaders, and Integration"
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-06T00:00:00Z'
+completed_at: 2026-06-07 04:31:43+00:00
 discovered_date: 2026-06-06
 discovered_by: capture-issue
 size: Large

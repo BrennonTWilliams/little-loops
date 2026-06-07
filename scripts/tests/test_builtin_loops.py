@@ -146,6 +146,7 @@ class TestBuiltinLoopFiles:
             "loop-composer",
             "loop-composer-adaptive",
             "goal-cluster",
+            "rn-build",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

@@ -345,6 +345,7 @@ Context knobs:
 | `sft-corpus` | Stage session transcripts, enrich with history.db session-quality metadata, filter by opt-in quality predicates, and publish SFT training corpus |
 | `general-task` | Definition-of-done driven task loop — define verifiable criteria first, then execute and verify until all criteria pass |
 | `greenfield-builder` | End-to-end greenfield project builder: spec analysis → tech research → design artifacts → eval harness → issue decomposition → refinement → eval-driven improvement cycle |
+| `rn-build` | Capstone recursive spec-to-project builder: spec validation → tech research → design artifacts → scope EPIC → issue refinement → eval harness → goal-cluster (rn-implement/value_ranked) → eval gate → structured JSON result. Prefer over `greenfield-builder` when you want value-ranked scheduling and no `eval-driven-development` in the dispatch path. |
 | `eval-driven-development` | Reusable eval-driven development cycle: implement issues, run eval harness, capture issues from failures, refine, and iterate until the harness passes |
 | `refine-to-ready-issue` | Single-issue refinement pipeline — refine → wire → confidence-check until the issue reaches ready status |
 | `cli-anything-bootstrap` | Meta-loop that bootstraps an agent-native CLI for target software (local path or repo URL), bakes a per-target rubric, caches the result, and emits a project-local task loop to `.loops/generated/` that downstream loops invoke to drive the target toward user goals |
