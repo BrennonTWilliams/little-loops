@@ -15,6 +15,12 @@ relates_to:
 - FEAT-1737
 - FEAT-1810
 size: Large
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1988: goal-cluster — Core FSM Loop, Loaders, and Integration
@@ -125,3 +131,4 @@ Update `scripts/tests/test_loop_composer.py`:
 
 ## Session Log
 - `/ll:issue-size-review` - 2026-06-06T00:00:00Z - `45b701af-a0ad-475b-a0bc-501c4f4df6dc.jsonl`
+- `/ll:confidence-check` - 2026-06-06T00:00:00Z - `df75b303-f05b-4938-ac22-e41b49d73b03.jsonl`

@@ -462,9 +462,11 @@ questions:
         description: "Decomposes a goal into an ordered DAG of existing loop invocations; run via ll-loop run loop-composer"
       - label: "Adaptive Composer — decompose goal, reassess on failure, re-plan tail"
         description: "Adaptive re-plan-on-failure orchestration; run via ll-loop run loop-composer-adaptive"
+      - label: "Cluster — fan-out a list of goals into batches"
+        description: "Accepts multiple goals (sprint, EPIC, JSON list), batches them by predicted loop, executes sequentially with cross-batch context propagation; run via ll-loop run goal-cluster"
 ```
 
-**Apply substitutions:** For the Router shape, clone `loop-router.yaml` via `ll-loop install loop-router` and customize context knobs (`auto`, `confidence_threshold`, `exclude`). For the Composer shape, run `ll-loop run loop-composer --input "your goal"` directly. For the Adaptive Composer shape, run `ll-loop run loop-composer-adaptive --input "your goal"` — no install step needed for either.
+**Apply substitutions:** For the Router shape, clone `loop-router.yaml` via `ll-loop install loop-router` and customize context knobs (`auto`, `confidence_threshold`, `exclude`). For the Composer shape, run `ll-loop run loop-composer --input "your goal"` directly. For the Adaptive Composer shape, run `ll-loop run loop-composer-adaptive --input "your goal"`. For the Cluster shape, run `ll-loop run goal-cluster --input "goal1\ngoal2\n..."` (or supply a sprint name or EPIC ID) — no install step needed for any of these built-in loops.
 
 ---
 

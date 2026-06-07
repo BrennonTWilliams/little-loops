@@ -151,6 +151,8 @@ questions:
         description: "Decompose a goal into a sequence of sub-loops run via depends_on. Maps to loop-composer built-in loop."
       - label: "Orch: Supervisor (adaptive re-plan)"
         description: "Run a loop, reassess on failure, re-plan the sub-loop sequence. Maps to loop-composer-adaptive built-in loop."
+      - label: "Orch: Cluster (multi-goal fan-out)"
+        description: "Orchestrate a list of goals (sprint, EPIC, backlog slice) as batches with cross-batch context propagation. Maps to goal-cluster built-in loop."
 ```
 
 **Type Mapping:**
@@ -168,6 +170,7 @@ questions:
 - "Orch: Router (dynamic dispatch)" -> `orch-router` type (states: classify, score, dispatch, review, done)
 - "Orch: Composer (goal → DAG)" -> `loop-composer` built-in loop (run via `ll-loop run loop-composer --input "..."`)
 - "Orch: Supervisor (adaptive re-plan)" -> `loop-composer-adaptive` built-in loop (run via `ll-loop run loop-composer-adaptive --input "..."`)
+- "Orch: Cluster (multi-goal fan-out)" -> `goal-cluster` built-in loop (run via `ll-loop run goal-cluster --input "goal1\ngoal2\n..."` or `--input "EPIC-NNN"`)
 
 ### Step 2: Type-Specific Questions
 

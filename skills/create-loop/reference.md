@@ -1179,6 +1179,36 @@ gate decides CONTINUE / REPLAN_TAIL / ABORT, preserving completed-step checkpoin
 
 ---
 
+### goal-cluster — Multi-Goal Fan-Out
+
+Run via `ll-loop run goal-cluster --input "goals"`. Accepts a multi-line goal list, sprint name, EPIC ID, or JSON array; groups goals into batches, executes each batch against its best-fit loop, propagates cross-batch context, and synthesizes a cluster-wide summary.
+
+```
+States: load_goals → dedup_and_batch → execute_cluster → propagate_context → synthesize_cluster_result → present_result
+Initial: load_goals
+
+Transitions:
+  load_goals:              exit_code yes -> dedup_and_batch
+  dedup_and_batch:         llm_structured -> parse_batch_plan
+  execute_cluster:         exit_code yes -> read_cluster_loop
+                           exit_code no  -> synthesize_cluster_result
+  propagate_context:       llm_structured -> save_hints -> execute_cluster
+  synthesize_cluster_result: -> present_result
+  present_result:          [terminal]
+```
+
+**Config knobs (`ll-config.json`) for goal-cluster**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `orchestration.cluster.max_batch_size` | integer | `5` | Maximum number of goals per execution batch. |
+| `orchestration.cluster.enable_dedup` | boolean | `true` | When true, an LLM-driven dedup pass merges or skips overlapping goals before batching. |
+| `orchestration.cluster.propagate_context` | boolean | `true` | When true, cross-cutting findings from each completed batch are extracted and injected as hints into subsequent batches. |
+
+These values are also overridable at run time via `--context` flags (e.g. `--context max_batch_size=3`), which take precedence over `ll-config.json` values.
+
+---
+
 ## RL Loop State Structures
 
 ### rl-bandit — Epsilon-Greedy Bandit

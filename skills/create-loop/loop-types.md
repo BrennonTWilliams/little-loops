@@ -1671,6 +1671,42 @@ The composer discovers available loops, decomposes the goal into an ordered DAG 
 | `orchestration.composer.adaptive.max_replans` | `2` | Maximum re-plan attempts before aborting. |
 | `orchestration.composer.adaptive.reassess_min_confidence` | `0.6` | Confidence threshold below which the reassess gate triggers a re-plan. |
 
+### Orch Cluster
+
+If user selected "Cluster — fan-out a list of goals into batches":
+
+The Cluster shape is available as a built-in loop. Direct the user to run it directly:
+
+```
+ll-loop run goal-cluster --input "goal1\ngoal2\ngoal3"
+# or supply a sprint name, EPIC ID, or JSON list:
+ll-loop run goal-cluster --input "EPIC-1811"
+ll-loop run goal-cluster --input '[{"goal_id":"g01","goal_text":"Fix auth bug"},{"goal_id":"g02","goal_text":"Add retry logic"}]'
+```
+
+**When to use Cluster vs. Composer:**
+- Use **Cluster** when you have a *list* of goals (sprint, EPIC, backlog slice) — each goal is independent and may map to a different loop.
+- Use **Composer** when you have a *single decomposable goal* that requires an ordered sequence of sub-steps.
+- Cluster fans out *across goals*; Composer decomposes *within a single goal*.
+
+**Key states:** `load_goals` → `dedup_and_batch` → `execute_cluster` → `propagate_context` → `synthesize_cluster_result`
+
+- `load_goals`: Normalizes the input (multi-line text, sprint name, EPIC ID, or JSON list) into a canonical goal list written to `${context.run_dir}/goals.json`.
+- `dedup_and_batch`: Groups goals into execution batches (max `max_batch_size` per batch), identifies overlaps, and suggests a loop per batch.
+- `execute_cluster`: Dequeues the next batch and dispatches it to its suggested loop via `ll-loop run`.
+- `propagate_context`: After each batch, extracts cross-cutting findings (blockers, recommendations) and injects them as hints into the next batch's input.
+- `synthesize_cluster_result`: Writes a cluster-wide summary covering accomplishments, failures, and recommended follow-up.
+
+Key context knobs (pass via `--context key=value`):
+- `auto: "true"` — skip the HITL plan-approval gate (default: `"false"`)
+- `max_batch_size: "5"` — max goals per batch (default: `"5"`)
+- `enable_dedup: "true"` — LLM-driven overlap merge/skip pass (default: `"true"`)
+- `propagate_context: "true"` — extract cross-batch hints between batches (default: `"true"`)
+- `exclude: "loop-a,loop-b"` — comma-separated loop names to exclude from dispatch candidates
+- `max_replans: "1"` — max reassess replan attempts per cluster run (default: `"1"`)
+
+See `goal-cluster.yaml` in the built-in loops and `reference.md` for the `orchestration.cluster.*` config-knob table.
+
 ---
 
 ## RL Loops
