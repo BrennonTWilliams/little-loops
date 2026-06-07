@@ -4,8 +4,9 @@ title: 'autodev/recursive-refine: find glob fails on issue ID type-prefix mismat
   and missing priority prefix'
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-07T21:35:32Z'
+completed_at: '2026-06-07T22:31:53Z'
 discovered_date: '2026-06-07'
 discovered_by: capture-issue
 relates_to:
@@ -188,11 +189,34 @@ _Added by `/ll:refine-issue` — verified against the current codebase (2026-06-
 - **Risk**: Low — additive tolerance; correctly-prefixed IDs unaffected.
 - **Breaking Change**: No
 
+## Resolution
+
+**Status**: done | Resolved: 2026-06-07
+
+Replaced all 10 `find .issues -name "*-$ID-*" ! -path "*/completed/*" | head -1` resolution
+sites with `ll-issues path "$ID" 2>/dev/null`, inheriting the type-prefix-tolerant shared
+resolver fixed in BUG-2003. The three multi-line continuation forms (autodev `child_file`,
+recursive-refine `child_file`, recursive-refine `ISSUE_FILE`) were collapsed to the single-call
+pattern; the trailing `grep -q "Decomposed from ..."` / `decision_needed` guards are unchanged.
+
+**Files modified**:
+- `scripts/little_loops/loops/autodev.yaml` — 5 sites (`INFLIGHT_FILE`, `child_file` ×2, `PARENT_FILE` ×2)
+- `scripts/little_loops/loops/recursive-refine.yaml` — 5 sites (`child_file` ×2, `PARENT_FILE` ×2, `ISSUE_FILE`)
+
+**Verification**:
+- No `find .issues -name "*-$..."` glob remains in either loop (grep: NONE).
+- `ll-loop validate autodev` → valid; `ll-loop validate recursive-refine` → valid (pre-existing
+  MR-3 shared-state warnings are unrelated and out of scope).
+- Smoke test: `ll-issues path FEAT-2009` resolves the on-disk `BUG-2009` file (mismatched-prefix
+  tolerance confirmed); correct-prefix lookup unchanged.
+- Resolver tolerance regression-covered by `TestPathPrefixTolerant` — 17 tests pass.
+
 ## Status
 
-**Open** | Created: 2026-06-07 | Priority: P3
+**Done** | Created: 2026-06-07 | Resolved: 2026-06-07 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-07T22:31:53 - `94001b17-192e-4675-8b12-449cc4ed8e69.jsonl`
 - `/ll:refine-issue` - 2026-06-07T22:19:00 - `ec3552fa-7077-4532-8b37-a0d09aeb3ffd.jsonl`
 - `/ll:format-issue` - 2026-06-07T21:41:33 - `0d7c59d4-7959-43a0-a3fb-6500f7a0b2b8.jsonl`
 - `/ll:capture-issue` - 2026-06-07T21:35:32 - `da163c1d-378a-4a58-b8d2-88910a03d4ca.jsonl`

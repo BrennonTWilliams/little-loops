@@ -304,7 +304,7 @@ states:
       INFLIGHT=$(cat "${context.run_dir}/autodev-inflight" 2>/dev/null | tr -d '[:space:]')
       CURRENT="${captured.input.output}"
       if [ -n "$INFLIGHT" ] && [ "$INFLIGHT" != "$CURRENT" ]; then
-        INFLIGHT_FILE=$(find .issues -name "*-$INFLIGHT-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+        INFLIGHT_FILE=$(ll-issues path "$INFLIGHT" 2>/dev/null)
         STATUS="open"
         if [ -n "$INFLIGHT_FILE" ]; then
           STATUS=$(grep '^status:' "$INFLIGHT_FILE" | awk '{print $2}' | tr -d "'\"" 2>/dev/null || echo "open")
@@ -341,8 +341,7 @@ states:
 
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
-        child_file=$(find .issues -name "*-$child_id-*" \
-          ! -path "*/completed/*" 2>/dev/null | head -1)
+        child_file=$(ll-issues path "$child_id" 2>/dev/null)
         if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
           echo "$child_id"
         fi
@@ -373,7 +372,7 @@ states:
         | grep -v '^[[:space:]]*$' \
         > ${context.run_dir}/autodev-queue.txt
       echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
-      PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
       if [ -n "$PARENT_FILE" ]; then
         mkdir -p .issues/completed
         git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
@@ -509,8 +508,7 @@ states:
 
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
-        child_file=$(find .issues -name "*-$child_id-*" \
-          ! -path "*/completed/*" 2>/dev/null | head -1)
+        child_file=$(ll-issues path "$child_id" 2>/dev/null)
         if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
           echo "$child_id"
         fi
@@ -524,7 +522,7 @@ states:
           | grep -v '^[[:space:]]*$' \
           > ${context.run_dir}/autodev-queue.txt
         echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
-        PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+        PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
         if [ -n "$PARENT_FILE" ]; then
           mkdir -p .issues/completed
           git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \

@@ -240,8 +240,7 @@ states:
 
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
-        child_file=$(find .issues -name "*-$child_id-*" \
-          ! -path "*/completed/*" 2>/dev/null | head -1)
+        child_file=$(ll-issues path "$child_id" 2>/dev/null)
         if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
           echo "$child_id"
         fi
@@ -299,7 +298,7 @@ states:
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .loops/tmp/recursive-refine-decomposition.tsv
       echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
       echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
-      PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
       if [ -n "$PARENT_FILE" ]; then
         mkdir -p .issues/completed
         git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
@@ -446,8 +445,7 @@ states:
     # Gate: skip size-review if the issue has decision_needed: true — a competing
     # option must be resolved via /ll:decide-issue before sizing makes sense.
     action: |
-      ISSUE_FILE=$(find .issues -name "*-${captured.input.output}-*" \
-        ! -path "*/completed/*" 2>/dev/null | head -1)
+      ISSUE_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
       if [ -n "$ISSUE_FILE" ] && grep -q "decision_needed: true" "$ISSUE_FILE"; then
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decision.txt
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
@@ -539,8 +537,7 @@ states:
 
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
-        child_file=$(find .issues -name "*-$child_id-*" \
-          ! -path "*/completed/*" 2>/dev/null | head -1)
+        child_file=$(ll-issues path "$child_id" 2>/dev/null)
         if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
           echo "$child_id"
         fi
@@ -587,7 +584,7 @@ states:
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .loops/tmp/recursive-refine-decomposition.tsv
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
-        PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+        PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
         if [ -n "$PARENT_FILE" ]; then
           mkdir -p .issues/completed
           git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
