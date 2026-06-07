@@ -2097,3 +2097,86 @@ class TestRunClaudeCommandHostRunner:
         ):
             with pytest.raises(HostNotConfigured):
                 run_claude_command("test")
+
+
+class _NeverEOFStdout:
+    """Fake stdout whose pipe never reaches EOF.
+
+    Simulates the hang regression: a background Workflow/Task child process
+    inherits the stdout pipe's write-end, so ``readline()`` never returns the
+    empty string (EOF) even though the ``claude`` turn finished. Each scripted
+    line is yielded once; any read *past* the scripted lines returns a sentinel
+    "LEAKED" assistant event, proving the reader failed to stop on the terminal
+    ``result`` event.
+    """
+
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = list(lines)
+        self.read_past_result = False
+
+    def readline(self) -> str:
+        if self._lines:
+            return self._lines.pop(0)
+        self.read_past_result = True
+        return '{"type": "assistant", "message": {"content": [{"type": "text", "text": "LEAKED"}]}}\n'
+
+
+class TestRunClaudeCommandResultBreak:
+    """The reader must stop on the stream-json ``result`` event rather than
+    waiting for pipe EOF, which inherited background-task FDs may never deliver
+    (ll-auto 3600s hang-on-success regression)."""
+
+    def _make_never_eof_selector(self, mock_selector: Any, mock_process: Mock) -> None:
+        """Selector whose get_map() is ALWAYS truthy (pipe never EOFs).
+
+        With the fix, the loop terminates only because ``result_seen`` triggers a
+        ``break``; without it the loop would spin until the wall-clock timeout.
+        """
+        _patch_selector_cm(mock_selector)
+        instance = mock_selector.return_value
+        instance.get_map.return_value = {"stdout": True}  # never empties -> no EOF exit
+        key = Mock()
+        key.fileobj = mock_process.stdout
+        instance.select.return_value = [(key, None)]
+        instance.register = Mock()
+        instance.unregister = Mock()
+
+    def test_breaks_on_result_event_without_pipe_eof(self) -> None:
+        """run_claude_command returns on the result event even though stdout never EOFs."""
+        assistant_event = (
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "text", "text": "Done implementing"}]}}\n'
+        )
+        result_event = (
+            '{"type": "result", "subtype": "success", '
+            '"usage": {"input_tokens": 1000, "output_tokens": 200}}\n'
+        )
+        fake_stdout = _NeverEOFStdout([assistant_event, result_event])
+        mock_process = Mock()
+        mock_process.stdout = fake_stdout
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        usage_calls: list[tuple[int, int]] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_never_eof_selector(mock_selector, mock_process)
+                # Short timeout: a regression (no break) fails fast instead of
+                # hanging CI. The fix returns near-instantly, well under this.
+                result = run_claude_command(
+                    "test",
+                    timeout=5,
+                    on_usage=lambda inp, out: usage_calls.append((inp, out)),
+                )
+
+        # Stopped on the result event: never read past it into the leak sentinel.
+        assert fake_stdout.read_past_result is False
+        assert "LEAKED" not in result.stdout
+        # Assistant text captured; usage callback fired before the break.
+        assert result.stdout == "Done implementing"
+        assert usage_calls == [(1000, 200)]
+        # Clean return (not a TimeoutExpired); process reaped via wait().
+        assert result.returncode == 0
+        mock_process.wait.assert_called_once_with(timeout=30)

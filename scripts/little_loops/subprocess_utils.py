@@ -321,6 +321,14 @@ def run_claude_command(
 
         start_time = time.time()
         last_output_time = start_time
+        # End-of-turn detection: the stream-json "result" event is the canonical
+        # signal that the headless `claude -p` session is done. We break on it
+        # instead of waiting for pipe EOF, because background Workflow/Task child
+        # processes inherit the stdout/stderr write-ends and a pipe only reports
+        # EOF when the *last* writer closes it — so EOF may never arrive even
+        # though the turn finished, hanging the reader until the wall-clock
+        # timeout fires on a successful run.
+        result_seen = False
 
         try:
             while sel.get_map():
@@ -409,6 +417,12 @@ def run_claude_command(
                                     error_text = event.get("error") or event.get("result", "")
                                     if error_text:
                                         stderr_lines.append(f"[result] {error_text}")
+                                # Turn is done. Finish draining the current ready
+                                # batch (so trailing buffered lines aren't lost),
+                                # then break the loop below instead of blocking on
+                                # a pipe EOF that inherited background-task FDs may
+                                # never deliver.
+                                result_seen = True
                                 continue  # skip other event types (tool_use, etc.)
                             else:
                                 continue  # skip other event types (tool_use, etc.)
@@ -422,6 +436,12 @@ def run_claude_command(
 
                     if stream_callback:
                         stream_callback(line, is_stderr)
+
+                # The "result" event ended the turn and the current ready batch
+                # has now been fully drained; stop reading rather than blocking
+                # for a pipe EOF that may never arrive.
+                if result_seen:
+                    break
 
             try:
                 process.wait(timeout=30)
