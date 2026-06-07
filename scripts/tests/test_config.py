@@ -15,13 +15,13 @@ from little_loops.config import (
     BRConfig,
     CaptureIssueConfig,
     CategoryConfig,
-    ClusterConfig,
     CliColorsConfig,
     CliColorsEdgeLabelsConfig,
     CliColorsLoggerConfig,
     CliColorsPriorityConfig,
     CliColorsTypeConfig,
     CliConfig,
+    ClusterConfig,
     CommandsConfig,
     CompactionConfig,
     ComposerAdaptiveConfig,
@@ -2536,6 +2536,30 @@ class TestDeepMerge:
         assert override == {"a": {"c": 2}}
 
 
+class TestClusterConfig:
+    """Tests for ClusterConfig dataclass."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        config = ClusterConfig.from_dict({})
+        assert config.max_batch_size == 5
+        assert config.enable_dedup is True
+        assert config.propagate_context is True
+
+    def test_from_dict_with_all_fields(self) -> None:
+        config = ClusterConfig.from_dict(
+            {"max_batch_size": 3, "enable_dedup": False, "propagate_context": False}
+        )
+        assert config.max_batch_size == 3
+        assert config.enable_dedup is False
+        assert config.propagate_context is False
+
+    def test_from_dict_partial_override(self) -> None:
+        config = ClusterConfig.from_dict({"max_batch_size": 10})
+        assert config.max_batch_size == 10
+        assert config.enable_dedup is True
+        assert config.propagate_context is True
+
+
 class TestOrchestrationConfig:
     """Tests for OrchestrationConfig dataclass."""
 
@@ -2574,6 +2598,24 @@ class TestOrchestrationConfig:
         config = ComposerConfig.from_dict({})
         assert isinstance(config.adaptive, ComposerAdaptiveConfig)
         assert config.adaptive.enabled is False
+
+    def test_from_dict_defaults_cluster(self) -> None:
+        config = OrchestrationConfig.from_dict({})
+        assert config.cluster.max_batch_size == 5
+        assert config.cluster.enable_dedup is True
+        assert config.cluster.propagate_context is True
+
+    def test_from_dict_cluster_with_values(self) -> None:
+        data = {"cluster": {"max_batch_size": 3, "enable_dedup": False, "propagate_context": False}}
+        config = OrchestrationConfig.from_dict(data)
+        assert config.cluster.max_batch_size == 3
+        assert config.cluster.enable_dedup is False
+        assert config.cluster.propagate_context is False
+
+    def test_cluster_config_defaults(self) -> None:
+        config = ClusterConfig.from_dict({})
+        assert isinstance(config, ClusterConfig)
+        assert config.max_batch_size == 5
 
 
 class TestBRConfigOrchestration:
@@ -2617,6 +2659,17 @@ class TestBRConfigOrchestration:
         assert config.orchestration.composer.adaptive.enabled is True
         assert config.orchestration.composer.adaptive.max_replans == 3
         assert config.orchestration.composer.adaptive.reassess_min_confidence == 0.6
+
+    def test_orchestration_cluster_from_file(self, temp_project_dir: Path) -> None:
+        """BRConfig.orchestration.cluster is read from ll-config.json."""
+        cfg = {"orchestration": {"cluster": {"max_batch_size": 2, "enable_dedup": False}}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+
+        config = BRConfig(temp_project_dir)
+        assert config.orchestration.cluster.max_batch_size == 2
+        assert config.orchestration.cluster.enable_dedup is False
+        assert config.orchestration.cluster.propagate_context is True
 
 
 class TestBRConfigAnalyticsCaptureIntegration:
