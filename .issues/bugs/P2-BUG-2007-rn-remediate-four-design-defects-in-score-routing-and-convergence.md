@@ -3,7 +3,7 @@ id: BUG-2007
 title: 'rn-remediate: four design defects in score-routing and convergence logic'
 priority: P2
 type: bug
-status: open
+status: done
 captured_at: '2026-06-07T20:43:39Z'
 discovered_date: '2026-06-07'
 discovered_by: capture-issue
@@ -15,6 +15,7 @@ score_complexity: 23
 score_test_coverage: 22
 score_ambiguity: 25
 score_change_surface: 23
+completed_at: '2026-06-07T21:52:05Z'
 ---
 
 # BUG-2007: rn-remediate: four design defects in score-routing and convergence logic
@@ -168,11 +169,26 @@ python -m pytest scripts/tests/test_rn_remediate.py -v
 - **Risk**: Low — all changes scoped to `rn-remediate.yaml`; no public API changes; fixes align routing with documented intent
 - **Breaking Change**: No
 
+## Resolution
+
+- **Status**: Closed - Already Fixed
+- **Fix Commit**: `c36343b7` — fix(loops): fix four BUG-2007 routing/convergence defects in rn-remediate
+- **Files Changed**: `scripts/little_loops/loops/rn-remediate.yaml`
+
+All four defects are resolved in the committed file:
+- Defect 1 — `wire` routes `on_success: re_assess` (was `refine`)
+- Defect 2 — `diagnose` thresholds reference `${context.diagnose_ambiguity_threshold|complexity|change_surface|confidence_floor}` (defaults preserve the prior literals `15`/`50`)
+- Defect 3 — `check_convergence` appends `cp "$POST" "$PRE"` to refresh the baseline so delta is pass-over-pass
+- Defect 4 — `check_outcome` routes `on_yes: refine` (was the dead `diagnose → route_d_implement` path)
+
+Verification: `ll-loop validate rn-remediate` passes; `python -m pytest scripts/tests/test_rn_remediate.py` → 88 passed.
+
 ## Labels
 
 `bug`, `loops`, `rn-remediate`, `routing`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-07T21:51:47 - `efdfae49-3d8e-46b7-b4ab-5247a691809a.jsonl`
 - `/ll:ready-issue` - 2026-06-07T21:37:08 - `85d65075-124a-476a-95ce-015fe34b76cd.jsonl`
 - `/ll:confidence-check` - 2026-06-07T22:05:00Z - `695b0c60-108f-4806-85cc-e8ef415d6462.jsonl`
 - `/ll:refine-issue` - 2026-06-07T21:04:04 - `2aee4fb9-54bc-419b-a3f0-d36753c8bc7b.jsonl`
