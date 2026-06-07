@@ -1,0 +1,502 @@
+name: vega-viz
+category: harness
+input_key: description
+required_inputs: ["description"]
+artifact_versioning: true
+description: |
+  Generator-evaluator harness for Vega / Vega-Lite data visualizations.
+  Turns a natural-language description into a refined, self-contained HTML
+  artifact that renders an interactive chart via vega-embed.
+
+  Sibling of pixi-data-viz, but swaps the hand-coded canvas engine for the
+  Vega grammar, which gives two things Pixi can't:
+    1. A real *compile gate*. A Vega-Lite / Vega spec either parses and
+       compiles or it doesn't, so a deterministic `validate` state hard-gates
+       broken specs (exit-code) BEFORE the browser ever opens, routing them
+       to a dedicated `repair` state fed the compiler's stderr verbatim.
+       This is the non-LLM evaluator paired with the LLM taste-scorer.
+    2. Path-optional real data. If the caller supplies a CSV/JSON file,
+       `resolve_data` derives its schema and the generator binds to real
+       fields; otherwise the generator fabricates labeled synthetic data.
+
+  The generator defaults to Vega-Lite (concise, high first-pass success) and
+  escalates to full Vega only when the request needs custom/interactive
+  composition. The evaluator SEES the chart: a Playwright pass captures three
+  interaction states (settled, hover/tooltip, brush/selection) as PNGs that
+  the LLM judge reads as multimodal input. faithfulness and honesty are
+  hard-gated; effectiveness and craft sit at the soft pass_threshold. Every
+  scored iteration is snapshotted to iter-N/ and best.html always points at
+  the highest-scoring version so far (the "a middle iteration often beat the
+  last" finding from Anthropic's harness-design work).
+initial: init
+max_iterations: 20
+on_handoff: spawn
+timeout: 7200
+
+# HARNESS: Context variables control grammar default, scoring thresholds, and
+# the optional data source.
+#   - description : populated from loop_input via input_key: description
+#   - data_path   : optional path to a CSV or JSON file. Set at invocation via
+#                   `ll-loop run vega-viz --context data_path=/abs/path.csv`.
+#                   Left empty → the generator synthesizes labeled sample data.
+#   - pass_threshold : soft floor (1-10) for effectiveness + craft
+#   - hard_gate      : hard floor (1-10) for faithfulness + honesty — a pretty
+#                      chart that misrepresents the data must still fail.
+context:
+  description: ""
+  data_path: ""
+  pass_threshold: 6
+  hard_gate: 7
+
+states:
+
+  init:
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an
+    # absolute path so every downstream state (including file:// URIs for
+    # Playwright) resolves against the same isolated per-run directory.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: resolve_data
+
+  resolve_data:
+    # HARNESS: Data resolution. If context.data_path points at a real file,
+    # normalize it to a JSON array at data.json and emit a schema.txt
+    # (field names, inferred types, row count) so the generator can bind to
+    # and the evaluator can check against the *actual* fields. Otherwise emit
+    # SYNTHETIC and the generator fabricates plausible, clearly-labeled data.
+    # CSV is coerced to numeric where possible; the first list found in a JSON
+    # object is treated as the row set.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
+      DP="${context.data_path}"
+      if [ -n "$DP" ] && [ -f "$DP" ]; then
+        cp "$DP" "$DIR/data.src"
+        python3 - "$DIR/data.src" "$DIR/data.json" "$DIR/schema.txt" <<'PY'
+      import sys, json, csv, io
+      src, outj, outs = sys.argv[1:4]
+      txt = open(src, encoding='utf-8', errors='replace').read().strip()
+      rows = []
+      try:
+          data = json.loads(txt)
+          if isinstance(data, dict):
+              for v in data.values():
+                  if isinstance(v, list):
+                      data = v
+                      break
+          rows = data if isinstance(data, list) else [data]
+      except Exception:
+          reader = csv.DictReader(io.StringIO(txt))
+          rows = list(reader)
+          for row in rows:
+              for k, v in list(row.items()):
+                  if v is None:
+                      continue
+                  s = str(v).strip()
+                  try:
+                      row[k] = int(s)
+                  except ValueError:
+                      try:
+                          row[k] = float(s)
+                      except ValueError:
+                          pass
+      json.dump(rows, open(outj, 'w'))
+      fields = {}
+      for row in rows[:200]:
+          if not isinstance(row, dict):
+              continue
+          for k, v in row.items():
+              t = 'number' if isinstance(v, (int, float)) and not isinstance(v, bool) else 'string'
+              fields.setdefault(k, set()).add(t)
+      with open(outs, 'w') as f:
+          f.write("rows: %d\n" % len(rows))
+          for k, ts in fields.items():
+              f.write("- %s: %s\n" % (k, '/'.join(sorted(ts))))
+      PY
+        echo "REAL_DATA"
+      else
+        echo "SYNTHETIC"
+      fi
+    capture: data_status
+    next: plan
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into a viz
+    # brief that commits to concrete data semantics BEFORE any spec is written.
+    # This is what stops the generator from defaulting to "looks like a chart"
+    # without actually encoding anything. The grammar decision lives here: the
+    # brief must justify Vega-Lite (the default) vs full Vega.
+    action_type: prompt
+    action: |
+      Write a visualization brief to ${captured.run_dir.output}/brief.md for:
+      "${context.description}"
+
+      Data status for this run: ${captured.data_status.output}
+      - If REAL_DATA: the caller supplied real data. Read
+        ${captured.run_dir.output}/schema.txt for the exact fields, types, and
+        row count. Your encoding MUST use those real field names.
+      - If SYNTHETIC: no data was supplied. Specify a plausible synthetic
+        dataset for the described domain; it will be fabricated and clearly
+        labeled as illustrative.
+
+      The brief must include:
+      - **Grammar**: Vega-Lite (DEFAULT — concise, reliable) or full Vega.
+        Choose Vega-Lite unless the request genuinely needs custom composition
+        Vega-Lite can't express (e.g. bespoke layout, custom interaction
+        signals, force layouts). Justify the choice in one sentence.
+      - **Dataset shape**: what is being visualized and its dimensions
+        (N rows × M fields; for graphs, |V| nodes / |E| edges). For REAL_DATA,
+        restate the fields from schema.txt and their roles.
+      - **Mark + encoding**: the chart type and which visual variable carries
+        which data field — position (most accurate per Cleveland-McGill),
+        length, angle, area, color hue, saturation, opacity (least accurate).
+        Justify against the perceptual ranking and the question being answered
+        (trend → line on position-x/position-y; parts-of-whole → stacked bar;
+        distribution → histogram; correlation → scatter). Picking pie/donut
+        for anything other than a few parts-of-whole is an anti-pattern.
+      - **Honesty constraints**: axis baselines (quantitative axes start at
+        zero unless there is a stated, sound reason not to), aggregation
+        method, and how overplotting is handled. No dual-axis tricks.
+      - **Annotations**: title, axis titles WITH UNITS, legend (when
+        categorical/multi-series), and value labels for notable points. Give
+        the exact text strings. Required, not optional.
+      - **Interactions**: tooltips on marks (required), plus an interval/point
+        selection where it aids the question (brush-to-filter, hover-highlight,
+        legend toggle). These are what the Playwright pass exercises.
+      - **Palette**: 3-6 hex colors and the palette TYPE (sequential for
+        ordered scalars, diverging for a meaningful midpoint, categorical for
+        unordered groups) — and confirm it matches the data type.
+      - **Anti-patterns to avoid**: unlabeled/unit-less axes; truncated
+        baselines exaggerating small deltas; rainbow-jet on sequential data;
+        3D / spinning anything; chartjunk; legends without units; pie charts
+        with many slices.
+
+      Be specific and opinionated. The generator uses this brief as its
+      primary reference, and faithfulness + honesty are hard-gated.
+    next: generate
+
+  generate:
+    # HARNESS: Generator phase — writes EXACTLY ONE spec file (spec.vl.json for
+    # Vega-Lite, spec.vg.json for full Vega) plus a self-contained index.html
+    # that renders it via vega-embed and exposes the live View on
+    # window.__vegaView for the interaction-capture pass. Data is inlined into
+    # the spec so both the headless compile gate and the file:// browser render
+    # are hermetic (no fetch / CORS issues over file://).
+    #
+    # On the first pass it uses only the brief; on later passes it also reads
+    # critique.md and resolves every "Issues to Address" item before adding new
+    # ideas. The refine-vs-pivot decision is the generator's: refine the
+    # current direction if scores trend up, pivot the mark/encoding (or
+    # escalate Vega-Lite → Vega) if the approach is stuck.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/brief.md for the visualization brief.
+
+      A previous iteration may have written
+      ${captured.run_dir.output}/critique.md. If it exists, read it and address
+      every item in its "Issues to Address" section specifically and completely
+      before introducing anything new. If scores are stuck across iterations,
+      consider pivoting the chart type/encoding, or escalating Vega-Lite → full
+      Vega. If it does not exist, proceed silently — do not narrate the check.
+
+      A repair note may exist at ${captured.run_dir.output}/compile_error.txt.
+      If non-empty, the previous spec failed to compile — fix that first.
+
+      Data:
+      - If ${captured.run_dir.output}/schema.txt exists, the caller supplied
+        real data in ${captured.run_dir.output}/data.json. Inline those EXACT
+        values into the spec's data ("data": {"values": [ ... ]}) and encode
+        the real fields from schema.txt. Do not invent or alter values.
+      - Otherwise fabricate plausible synthetic data, inline it the same way,
+        and add a subtitle or caption marking it "Illustrative data".
+
+      Write the spec and the HTML:
+
+      1. First delete any stale spec so exactly one grammar is present:
+         remove ${captured.run_dir.output}/spec.vl.json and
+         ${captured.run_dir.output}/spec.vg.json if they exist.
+
+      2. Write ONE spec file per the brief's grammar choice:
+         - Vega-Lite → ${captured.run_dir.output}/spec.vl.json
+           (a valid Vega-Lite spec with "$schema" set to the v5 vega-lite URL)
+         - full Vega → ${captured.run_dir.output}/spec.vg.json
+           (a valid Vega spec with "$schema" set to the v5 vega URL)
+         The spec MUST: inline its data; set an explicit width/height (>= 640
+         wide); include title, axis titles with units, legend where relevant,
+         and tooltips; start quantitative axes at zero unless the brief states
+         a sound exception.
+
+      3. Write ${captured.run_dir.output}/index.html — a single self-contained
+         file that loads vega-embed from CDN and embeds the SAME spec object
+         inline (copy the spec JSON directly into the script; do NOT fetch the
+         file). It must expose the view for the capture harness:
+
+             <!doctype html><html><head><meta charset="utf-8">
+               <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+               <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+               <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+             </head><body>
+               <div id="vis"></div>
+               <script>
+                 const SPEC = { /* the exact same spec JSON inlined here */ };
+                 vegaEmbed('#vis', SPEC, {actions: false, renderer: 'canvas'})
+                   .then(r => { window.__vegaView = r.view; window.__vegaReady = true; })
+                   .catch(e => { window.__vegaError = String(e); });
+               </script>
+             </body></html>
+
+         vega-embed renders both Vega-Lite and Vega specs, so the same wrapper
+         works for either grammar. window.__vegaReady = true is REQUIRED — the
+         capture harness waits on it.
+    next: validate
+
+  validate:
+    # HARNESS: Deterministic compile gate — the verifiable axis Pixi lacks.
+    # Vega-Lite is compiled with vl2vg then the compiled Vega is rendered to a
+    # throwaway PNG (catches data/scale errors too); full Vega is rendered
+    # directly. Any non-zero exit means the spec is broken; stderr is written
+    # to compile_error.txt and the broken spec routes to `repair` (NOT the
+    # taste scorer) so the generator fixes a *break* with the actual error
+    # rather than chasing quality feedback.
+    #
+    # NOTE: first invocation downloads vega-lite / vega-cli via npx (needs
+    # network). Pre-install with `npm i -g vega-cli vega-lite` to skip that.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
+      ERR="$DIR/compile_error.txt"
+      : > "$ERR"
+      OK=0
+      if [ -f "$DIR/spec.vl.json" ]; then
+        if npx -y -p vega-lite vl2vg "$DIR/spec.vl.json" "$DIR/spec.compiled.json" 2>"$ERR" \
+           && npx -y -p vega-cli vg2png "$DIR/spec.compiled.json" "$DIR/.validate.png" 2>>"$ERR"; then
+          OK=1
+        fi
+      elif [ -f "$DIR/spec.vg.json" ]; then
+        if npx -y -p vega-cli vg2png "$DIR/spec.vg.json" "$DIR/.validate.png" 2>"$ERR"; then
+          OK=1
+        fi
+      else
+        echo "no spec file (spec.vl.json / spec.vg.json) was written" > "$ERR"
+      fi
+      if [ "$OK" -eq 1 ]; then
+        : > "$ERR"
+        echo "COMPILE_OK"
+      else
+        echo "COMPILE_FAIL"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "COMPILE_OK"
+    on_yes: capture
+    on_no: repair
+    on_error: repair
+
+  repair:
+    # HARNESS: Spec-repair phase — distinct from generate/refine. It consumes
+    # the compiler's stderr verbatim and fixes ONLY the structural break,
+    # without changing the visual intent. Keeping break-fixing separate from
+    # taste-refinement means the generator always knows which problem it is
+    # solving. Routes back to validate to re-check.
+    action_type: prompt
+    action: |
+      The Vega spec failed to compile. The exact error is in
+      ${captured.run_dir.output}/compile_error.txt — read it.
+
+      Fix ONLY the structural / schema problem it reports. Do not redesign the
+      chart, change the encoding, or alter the data values — preserve the
+      visual intent from ${captured.run_dir.output}/brief.md.
+
+      Edit the offending spec in place (the same single file that exists:
+      ${captured.run_dir.output}/spec.vl.json OR
+      ${captured.run_dir.output}/spec.vg.json) and update the inlined SPEC in
+      ${captured.run_dir.output}/index.html to match exactly. Common causes:
+      invalid field references, wrong scale/encoding types, malformed
+      transforms, a "$schema" mismatch, or invalid JSON.
+    next: validate
+
+  capture:
+    # HARNESS: Interaction-capture gate. Loads the compiled chart in headless
+    # Chromium and captures three states the static spec can't reveal on its
+    # own: the settled chart, a hover (tooltip), and a brush-drag across the
+    # plot (interval selection / cross-filter). All three PNGs are fed to the
+    # scorer as multimodal input. Hover/brush are best-effort synthetic input
+    # at computed canvas coordinates — the interactivity criterion is soft, so
+    # a chart without a selection still scores on the other criteria.
+    #
+    # NODE_PATH points node at the global npm modules so
+    # require('@playwright/test') resolves without a local install. Routes
+    # mirror the pixi loops: on_yes → score, on_no → generate (retry transient
+    # render), on_error → failed (broken/missing Playwright bails cleanly).
+    action_type: shell
+    action: |
+      NODE_PATH="$(npm root -g)" node -e "
+      const { chromium } = require('@playwright/test');
+      const dir = '${captured.run_dir.output}';
+      const url = 'file://' + dir + '/index.html';
+      (async () => {
+        const browser = await chromium.launch();
+        const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        await page.goto(url);
+        await page.waitForFunction(() => window.__vegaReady === true || window.__vegaError, { timeout: 30000 });
+        const err = await page.evaluate(() => window.__vegaError || null);
+        if (err) { console.error('RENDER_FAIL:', err); await browser.close(); process.exit(1); }
+        const vis = await page.\$('#vis');
+        await vis.screenshot({ path: dir + '/frame_settled.png' });
+        const box = await vis.boundingBox();
+        const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+        await page.mouse.move(cx, cy);
+        await page.waitForTimeout(400);
+        await page.screenshot({ path: dir + '/frame_hover.png' });
+        await page.mouse.move(box.x + box.width * 0.25, cy);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width * 0.75, cy, { steps: 12 });
+        await page.mouse.up();
+        await page.waitForTimeout(400);
+        await vis.screenshot({ path: dir + '/frame_brush.png' });
+        await browser.close();
+        console.log('CAPTURED');
+      })().catch(e => { console.error('CAPTURE_FAIL:', e.message); process.exit(1); });
+      "
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: score
+    on_no: generate
+    on_error: failed
+
+  score:
+    # HARNESS: Evaluator phase — a SKEPTICAL LLM judge reads the three-frame
+    # strip as images, plus the spec and (for REAL_DATA) schema.txt, and grades
+    # four criteria. faithfulness + honesty are hard-gated at context.hard_gate
+    # because a beautiful chart that shows the wrong thing, or lies with its
+    # axes, is a broken data viz regardless of polish. Per-criterion gating —
+    # NOT a weighted average — so a single hard-gate miss fails the iteration.
+    # Writes critique.md with machine-readable SCORE_TOTAL and VERDICT lines
+    # that the deterministic `record` state parses for routing. The state does
+    # not route on its own output; its job is to write an honest critique.
+    action_type: prompt
+    action: |
+      You are a skeptical data-visualization reviewer. Default to withholding a
+      pass — make the chart earn it. Read:
+        ${captured.run_dir.output}/frame_settled.png  — the settled chart
+        ${captured.run_dir.output}/frame_hover.png    — after hovering a mark (tooltip?)
+        ${captured.run_dir.output}/frame_brush.png    — after a brush drag (selection?)
+        ${captured.run_dir.output}/brief.md           — the intended viz
+        the spec file (spec.vl.json or spec.vg.json)  — confirm what is ACTUALLY encoded
+        ${captured.run_dir.output}/schema.txt if it exists — the REAL fields the chart must honor
+
+      Score each criterion 1-10 and write ${captured.run_dir.output}/critique.md
+      in EXACTLY this format:
+
+      ```
+      # Evaluation
+
+      faithfulness: N/10 — [Does the chart answer the brief's question with the
+        right mark + encoding, against the REAL fields when schema.txt exists?
+        Inspect the spec, not just the picture: a line where the question needs
+        a distribution, color used for a quantitative value better shown by
+        position, or fields silently dropped/swapped all fail here. HARD GATE.]
+      honesty: N/10 — [Does the chart tell the truth? Truncated/non-zero
+        quantitative baselines that exaggerate deltas, dual axes, misleading
+        aggregation, overplotting that hides data, or rainbow-jet on sequential
+        data all fail. A pretty lie scores low here. HARD GATE.]
+      effectiveness: N/10 — [Perceptual quality of the encoding per
+        Cleveland-McGill, legibility at rendered size, sensible scales,
+        appropriate palette type for the data, and whether the interactions
+        (hover tooltip in frame_hover, selection in frame_brush) actually aid
+        reading.]
+      craft: N/10 — [Technical polish: title and axis titles WITH UNITS,
+        legend where needed, typography hierarchy, spacing/alignment, color
+        contrast/accessibility, tick legibility.]
+
+      ## Issues to Address
+      [Specific, actionable items the generator can fix directly next pass. If
+       everything passes, write "No issues — all criteria pass."]
+
+      SCORE_TOTAL: <sum of the four scores, 4-40>
+      VERDICT: <ALL_PASS or ITERATE>
+      ```
+
+      Compute VERDICT with per-criterion thresholds (NOT an average):
+        faithfulness  >= ${context.hard_gate}   (HARD GATE)
+        honesty       >= ${context.hard_gate}   (HARD GATE)
+        effectiveness >= ${context.pass_threshold}
+        craft         >= ${context.pass_threshold}
+      If all four meet their thresholds, VERDICT: ALL_PASS. Otherwise
+      VERDICT: ITERATE. Write the file; do not output anything else.
+    next: record
+
+  record:
+    # HARNESS: Deterministic bookkeeping + routing. Parses SCORE_TOTAL and
+    # VERDICT from the critique the judge wrote, snapshots this iteration's
+    # artifacts to iter-N/ (per-iteration versioning — MR-5), and keeps
+    # best.html / best_score.txt pointed at the highest-scoring version so far.
+    # Because best.html is updated every pass, the best result survives even if
+    # the loop ends by hitting max_iterations mid-cycle. Routing is a
+    # deterministic read of the judge's written VERDICT, which is more robust
+    # than trusting a final stdout token.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
+      CRIT="$DIR/critique.md"
+      SCORE=$(grep -oE 'SCORE_TOTAL:[[:space:]]*[0-9]+' "$CRIT" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+      [ -z "$SCORE" ] && SCORE=0
+      N=$(cat "$DIR/.iter" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      echo "$N" > "$DIR/.iter"
+      ID="$DIR/iter-$N"
+      mkdir -p "$ID"
+      cp "$DIR"/index.html "$ID"/ 2>/dev/null || true
+      cp "$DIR"/spec.vl.json "$DIR"/spec.vg.json "$ID"/ 2>/dev/null || true
+      cp "$DIR"/frame_*.png "$ID"/ 2>/dev/null || true
+      cp "$CRIT" "$ID"/ 2>/dev/null || true
+      echo "$SCORE" > "$ID/score.txt"
+      BEST=$(cat "$DIR/best_score.txt" 2>/dev/null || echo -1)
+      if [ "$SCORE" -gt "$BEST" ]; then
+        echo "$SCORE" > "$DIR/best_score.txt"
+        cp "$DIR"/index.html "$DIR"/best.html 2>/dev/null || true
+        cp "$CRIT" "$DIR"/best.critique.md 2>/dev/null || true
+      fi
+      if grep -qE 'VERDICT:[[:space:]]*ALL_PASS' "$CRIT" 2>/dev/null; then
+        echo "PASS"
+      else
+        echo "ITERATE"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "PASS"
+    on_yes: done
+    on_no: generate
+    on_error: generate
+
+  done:
+    # HARNESS: Success terminal — all criteria passed. best.html is the highest
+    # scoring iteration (== the passing one). Iter snapshots and per-iteration
+    # scores remain for inspection / picking a different favorite.
+    action_type: prompt
+    action: |
+      The Vega visualization loop passed.
+
+      Report these paths to the user and confirm the viz is ready:
+      - ${captured.run_dir.output}/best.html          — final visualization (open in a browser)
+      - ${captured.run_dir.output}/best.critique.md   — winning scores + notes
+      - ${captured.run_dir.output}/brief.md           — the planning brief
+      - ${captured.run_dir.output}/iter-*/            — every scored iteration (index.html, spec, frames, score.txt)
+      - ${captured.run_dir.output}/best_score.txt     — winning SCORE_TOTAL
+
+      If the loop instead ended by exhausting max_iterations, best.html still
+      holds the highest-scoring version produced.
+    terminal: true
+
+  failed:
+    # HARNESS: Failure terminal — reached when the Playwright capture errors
+    # out (missing/broken browser tooling). Signals explicit failure vs. silent
+    # max_iterations exhaustion. Whatever was produced — brief.md, the last
+    # spec, best.html if any iteration scored, and any iter-N/ snapshots —
+    # remains in ${captured.run_dir.output} for inspection.
+    terminal: true
