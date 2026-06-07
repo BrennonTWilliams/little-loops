@@ -4,7 +4,7 @@ title: "rn-build — create-loop Wizard, Docs, and Guide"
 type: FEAT
 priority: P3
 status: open
-parent: FEAT-1990
+parent: EPIC-1811
 captured_at: '2026-06-06T00:00:00Z'
 discovered_date: 2026-06-06
 discovered_by: capture-issue

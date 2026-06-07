@@ -98,8 +98,32 @@ No public signature change to `run_claude_command`. Internal only:
    the group-kill helper (patch `os.killpg`/`os.getpgid`) and degrade gracefully
    when `killpg` raises `ProcessLookupError`.
 
+## Scope Boundaries
+
+**In scope:**
+- `run_claude_command` in `scripts/little_loops/subprocess_utils.py`: launch the
+  child with `start_new_session=True` and signal the process group at all three
+  kill sites.
+- A `_kill_process_group` helper with a POSIX guard and a single-PID fallback.
+- Unit tests in `scripts/tests/test_subprocess_utils.py`.
+
+**Out of scope:**
+- The post-`result` stream-break fix — already landed separately; this is the
+  structural follow-up, not a re-do.
+- Any change to the `host_runner` abstraction layer; this fix lives strictly
+  below it in `subprocess_utils`.
+- Restarting, retrying, or rescheduling background children that were killed —
+  the goal is to reap them, not recover their work.
+- Windows-native process-tree reaping beyond the graceful single-PID fallback
+  (the project targets darwin/Linux automation).
+
 ## Impact
 
+- **Priority**: P3 — hardening follow-up. The companion `result`-break fix
+  already removed the common hang-on-success symptom, so this is
+  defense-in-depth for the genuine-kill path, not a live failure.
+- **Effort**: Small — one function plus a small module-level helper and its
+  tests; no public API change.
 - **Severity**: Low–Medium. The companion `result`-break fix already prevents the
   most common symptom (hang-on-success). This addresses the remaining
   orphaned-children case on genuine kills.
@@ -118,6 +142,7 @@ No public signature change to `run_claude_command`. Internal only:
 | `.claude/CLAUDE.md` § Host CLI Abstraction | Subprocess invocation goes through `host_runner`; this change is below that layer in `subprocess_utils`. |
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-07T03:46:28 - `32cf3ee0-7e8b-4b29-bb4f-4a7fbbff706f.jsonl`
 - `/ll:capture-issue` - 2026-06-07T03:43:15Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<session>.jsonl`
 
 ---

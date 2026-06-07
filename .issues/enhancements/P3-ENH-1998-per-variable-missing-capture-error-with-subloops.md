@@ -95,7 +95,8 @@ N/A — No public API changes; `_validate_capture_reachability()` is internal to
 - `scripts/tests/test_fsm_validation.py` — add tests for (a) genuine missing capture in sub-loop loop flagged, (b) legitimate child-provided capture still suppressed
 
 ### Dependent Files (Callers/Importers)
-- TBD — `grep -r "_validate_capture_reachability\|validate_loop" scripts/`
+- `validate_fsm()` in `scripts/little_loops/fsm/validation.py` (line 1013) — direct caller; exported via `scripts/little_loops/fsm/__init__.py`
+- `load_and_validate()` in `scripts/little_loops/fsm/validation.py` (line 1924) — calls `validate_fsm()`; used by `cli/loop/run.py`, `cli/loop/_helpers.py`, `cli/loop/config_cmds.py`, `cli/loop/info.py`, `fsm/executor.py`
 
 ### Similar Patterns
 - `_has_sub_loop_state()` in `validation.py` — existing helper; may be extended or replaced
@@ -117,4 +118,5 @@ legitimate "capture lives in a child namespace" pattern that ENH-1961 protected.
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-07T03:47:36 - `32cf3ee0-7e8b-4b29-bb4f-4a7fbbff706f.jsonl`
 - `/ll:format-issue` - 2026-06-07T03:33:19 - `aecc5331-8f02-406f-ab88-92ece2b456b7.jsonl`
