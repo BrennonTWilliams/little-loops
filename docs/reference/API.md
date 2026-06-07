@@ -2128,6 +2128,8 @@ Host-agnostic CLI command invocation with output streaming (delegates to `host_r
 
 **Returns:** `CompletedProcess` with stdout/stderr captured. When a `result` event with `is_error=True` is present in the stream-json output, `CompletedProcess.stderr` will include a `[result] <error>` line containing the error text from the result event's `error` field (falling back to the `result` field).
 
+**Turn-end detection**: The reader breaks on the stream-json `result` event rather than waiting for pipe EOF. This is necessary because background `Workflow`/`Task` child processes spawned by the headless `claude -p` session inherit the stdout/stderr write-ends; a pipe only reports EOF when the *last* writer closes it, so EOF may never arrive even after the turn completes, causing the reader to hang until the wall-clock timeout fires. Stopping on `result` bounds read latency to the actual turn duration regardless of whether background children are still running.
+
 #### verify_issue_completed
 
 ```python

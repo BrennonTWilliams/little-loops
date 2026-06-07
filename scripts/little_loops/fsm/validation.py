@@ -1580,24 +1580,29 @@ def _validate_progress_paths_isolation(fsm: FSMLoop) -> list[ValidationError]:
     return errors
 
 
-def _dominates(fsm: FSMLoop, dominator: str, dominated: str) -> bool:
-    """Return True if dominator dominates dominated in the FSM graph.
+def _dominated_by_any(fsm: FSMLoop, dominators: set[str], dominated: str) -> bool:
+    """Return True if the set ``dominators`` collectively dominates ``dominated``.
 
-    A state D dominates S if every path from the initial state to S must pass
-    through D. This is checked by removing D from the graph and testing whether
-    S is still reachable from the initial state.
+    Group domination: every path from the initial state to ``dominated`` must
+    pass through at least one state in ``dominators``. Checked by removing all
+    dominator states from the graph and testing whether ``dominated`` is still
+    reachable from the initial state.
+
+    This generalizes single-state domination — used when a capture variable is
+    produced by more than one state on mutually-exclusive branches, where the
+    reference is safe as long as *some* capturing state runs on every path.
 
     Args:
         fsm: The FSM loop to analyze
-        dominator: Name of the state that should dominate
+        dominators: Names of the states that should collectively dominate
         dominated: Name of the state that should be dominated
 
     Returns:
-        True if dominator dominates dominated
+        True if the dominators collectively dominate ``dominated``
     """
-    if dominator == dominated:
+    if dominated in dominators:
         return True
-    if dominator not in fsm.states or dominated not in fsm.states:
+    if dominated not in fsm.states:
         return False
 
     visited: set[str] = set()
@@ -1607,13 +1612,13 @@ def _dominates(fsm: FSMLoop, dominator: str, dominated: str) -> bool:
         current = to_visit.popleft()
         if current in visited or current not in fsm.states:
             continue
-        if current == dominator:
+        if current in dominators:
             continue  # Block this node (simulate removal)
 
         visited.add(current)
 
         if current == dominated:
-            # Reached dominated without going through dominator
+            # Reached dominated without going through any dominator
             return False
 
         state = fsm.states[current]
@@ -1621,15 +1626,29 @@ def _dominates(fsm: FSMLoop, dominator: str, dominated: str) -> bool:
             if ref != "$current" and ref not in visited:
                 to_visit.append(ref)
 
-    # Dominated not reachable without dominator → dominator dominates
+    # Dominated not reachable without the dominators → they dominate
     return True
 
 
-def _find_bypass_path(fsm: FSMLoop, dominator: str, dominated: str) -> list[str]:
-    """Find an example path from initial to dominated that bypasses dominator.
+def _dominates(fsm: FSMLoop, dominator: str, dominated: str) -> bool:
+    """Return True if dominator dominates dominated in the FSM graph.
 
-    Uses BFS to find shortest path. Returns empty list if no bypass exists
-    (should not happen when called after _dominates returns False).
+    A state D dominates S if every path from the initial state to S must pass
+    through D. Thin single-state wrapper around :func:`_dominated_by_any`.
+    """
+    if dominator not in fsm.states:
+        return False
+    return _dominated_by_any(fsm, {dominator}, dominated)
+
+
+def _find_bypass_path_any(
+    fsm: FSMLoop, dominators: set[str], dominated: str
+) -> list[str]:
+    """Find an example path from initial to dominated that bypasses all dominators.
+
+    Uses BFS to find the shortest path that avoids every state in ``dominators``.
+    Returns empty list if no bypass exists (should not happen when called after
+    :func:`_dominated_by_any` returns False).
     """
     parent: dict[str, str] = {}
     to_visit: deque[str] = deque([fsm.initial])
@@ -1639,7 +1658,7 @@ def _find_bypass_path(fsm: FSMLoop, dominator: str, dominated: str) -> list[str]
         current = to_visit.popleft()
         if current in visited or current not in fsm.states:
             continue
-        if current == dominator:
+        if current in dominators:
             continue
 
         visited.add(current)
@@ -1660,6 +1679,14 @@ def _find_bypass_path(fsm: FSMLoop, dominator: str, dominated: str) -> list[str]
                 to_visit.append(ref)
 
     return []
+
+
+def _find_bypass_path(fsm: FSMLoop, dominator: str, dominated: str) -> list[str]:
+    """Find an example path from initial to dominated that bypasses dominator.
+
+    Thin single-state wrapper around :func:`_find_bypass_path_any`.
+    """
+    return _find_bypass_path_any(fsm, {dominator}, dominated)
 
 
 def _has_sub_loop_state(fsm: FSMLoop) -> bool:
@@ -1685,11 +1712,14 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
     """
     errors: list[ValidationError] = []
 
-    # Step 1: Build capture map (var_name → capturing_state_name)
-    capture_map: dict[str, str] = {}
+    # Step 1: Build capture map (var_name → set of capturing state names).
+    # A variable may be captured by more than one state on mutually-exclusive
+    # branches (e.g. fifo_pop vs select_next dispatched by schedule_mode); the
+    # reference is safe as long as the *set* collectively dominates it.
+    capture_map: dict[str, set[str]] = {}
     for state_name, state in fsm.states.items():
         if state.capture:
-            capture_map[state.capture] = state_name
+            capture_map.setdefault(state.capture, set()).add(state_name)
 
     # Step 2: Build reference map (state_name → set of captured var names referenced)
     reference_map: dict[str, set[str]] = {}
@@ -1733,22 +1763,28 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
                 )
                 continue
 
-            cap_state_name = capture_map[var_name]
-
-            # Skip if capturing state is not in this FSM (shouldn't happen)
-            if cap_state_name not in fsm.states:
+            # Capturing states present in this FSM (shouldn't drop any normally)
+            cap_states = {s for s in capture_map[var_name] if s in fsm.states}
+            if not cap_states:
                 continue
 
-            # Dominance check: does cap_state_name dominate ref_state_name?
-            if not _dominates(fsm, cap_state_name, ref_state_name):
-                bypass_path = _find_bypass_path(fsm, cap_state_name, ref_state_name)
+            # Group dominance check: do the capturing states collectively
+            # dominate ref_state_name (does at least one run on every path)?
+            if not _dominated_by_any(fsm, cap_states, ref_state_name):
+                bypass_path = _find_bypass_path_any(fsm, cap_states, ref_state_name)
                 path_str = " → ".join(bypass_path) if bypass_path else "unknown path"
+
+                if len(cap_states) == 1:
+                    captured_by = f"state '{next(iter(cap_states))}' which may not"
+                else:
+                    names = ", ".join(f"'{s}'" for s in sorted(cap_states))
+                    captured_by = f"states {names}, none of which"
 
                 errors.append(
                     ValidationError(
                         message=(
                             f"References ${{captured.{var_name}.*}} but '{var_name}' "
-                            f"is captured by state '{cap_state_name}' which may not "
+                            f"is captured by {captured_by} "
                             f"execute on all paths to '{ref_state_name}'. "
                             f"Path(s) bypassing capture: {path_str}"
                         ),

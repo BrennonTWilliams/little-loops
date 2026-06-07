@@ -2628,3 +2628,77 @@ class TestCaptureReachabilityValidation:
         )
         errors = _validate_capture_reachability(fsm)
         assert errors == [], f"Expected no warnings, got: {errors}"
+
+    def test_alternative_capture_branches_no_warning(self) -> None:
+        """Same var captured on both branches of a fork → no warning (rn-implement).
+
+        The rn-implement shape: dequeue_next dispatches to either fifo_pop or
+        select_next, both of which capture 'input'. Exactly one runs per tick,
+        so the downstream reference is always safe — the validator must treat
+        the two capturing states as collective dominators, not pick one.
+        """
+        fsm = FSMLoop(
+            name="test-alt-capture-branches",
+            initial="dispatch",
+            states={
+                "dispatch": make_state(
+                    action="echo dispatch",
+                    on_yes="branch_a",
+                    on_no="branch_b",
+                ),
+                "branch_a": make_state(
+                    action="echo a",
+                    capture="input",
+                    next="check",
+                ),
+                "branch_b": make_state(
+                    action="echo b",
+                    capture="input",
+                    next="check",
+                ),
+                "check": make_state(
+                    action="echo ${captured.input.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Expected no warnings, got: {errors}"
+
+    def test_partial_capture_branches_still_warn(self) -> None:
+        """One fork branch lacks the capture → WARNING still emitted.
+
+        Guards against over-suppression: if only branch_a captures 'input',
+        the branch_b path genuinely bypasses the capture and must be flagged.
+        """
+        fsm = FSMLoop(
+            name="test-partial-capture-branches",
+            initial="dispatch",
+            states={
+                "dispatch": make_state(
+                    action="echo dispatch",
+                    on_yes="branch_a",
+                    on_no="branch_b",
+                ),
+                "branch_a": make_state(
+                    action="echo a",
+                    capture="input",
+                    next="check",
+                ),
+                "branch_b": make_state(
+                    action="echo b",
+                    next="check",
+                ),
+                "check": make_state(
+                    action="echo ${captured.input.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert len(warnings) >= 1, f"Expected bypass WARNING, got: {errors}"
+        assert any("input" in e.message for e in warnings)
+        assert any("branch_b" in e.message for e in warnings)
