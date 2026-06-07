@@ -129,3 +129,7 @@ harmful for resume correctness.
 ## Status
 
 **Open** | Created: 2026-06-07 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-07T20:59:38 - `8f5b7fbd-10dd-41b7-b7e6-6117a812b179.jsonl`

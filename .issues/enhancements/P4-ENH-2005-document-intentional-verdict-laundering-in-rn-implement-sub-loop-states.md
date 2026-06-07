@@ -151,7 +151,7 @@ add a `sub_loop_crashes` tally to the `report` summary (distinct from `failed`).
 ## Scope Boundaries
 
 - Part 1 is annotation-only; Part 2 changes routing for the error path only — neither alters the
-  happy-path (`on_yes`/`on_no`) runtime behavior
+  happy-path (`on_success`/`on_failure`) runtime behavior
 - Does not implement a new per-state suppression mechanism in `ll-loop validate` if one does not yet
   exist (track that as a separate enhancement; fall back to the top-level flag)
 - Does not modify other loops that may have similar sidecar-routing patterns
@@ -162,7 +162,7 @@ add a `sub_loop_crashes` tally to the `report` summary (distinct from `failed`).
   is a low-severity observability fix. Neither blocks the loop's primary function, so P4 holds.
 - **Effort**: Small — annotation + one new shell state + repointing two `on_error` routes in one
   file; no Python code changes
-- **Risk**: Low — happy-path routing (`on_yes`/`on_no`) is unchanged; only the error path moves,
+- **Risk**: Low — happy-path routing (`on_success`/`on_failure`) is unchanged; only the error path moves,
   from a laundered fallback to an explicit record. Worst case is an extra `failures.txt` line
 - **Breaking Change**: No
 
