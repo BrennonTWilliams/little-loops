@@ -2130,6 +2130,8 @@ Host-agnostic CLI command invocation with output streaming (delegates to `host_r
 
 **Turn-end detection**: The reader breaks on the stream-json `result` event rather than waiting for pipe EOF. This is necessary because background `Workflow`/`Task` child processes spawned by the headless `claude -p` session inherit the stdout/stderr write-ends; a pipe only reports EOF when the *last* writer closes it, so EOF may never arrive even after the turn completes, causing the reader to hang until the wall-clock timeout fires. Stopping on `result` bounds read latency to the actual turn duration regardless of whether background children are still running.
 
+**Process-group cleanup**: On timeout or idle-timeout, cleanup sends `SIGKILL` to the entire process group via `os.killpg(os.getpgid(pid), SIGKILL)` rather than just the direct child PID. The subprocess is started with `start_new_session=True` so it leads its own isolated process group. This ensures background `Workflow`/`Task` children spawned during the session are reaped together with the main process; otherwise they would linger as orphans holding pipe write-ends open. Falls back to `process.kill()` on platforms where `os.killpg` is absent (Windows). (ENH-1999)
+
 #### verify_issue_completed
 
 ```python
