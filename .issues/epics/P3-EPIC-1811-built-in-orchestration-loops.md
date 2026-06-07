@@ -13,13 +13,16 @@ labels:
 - built-in
 relates_to:
 - FEAT-1808
-- FEAT-1810
 - FEAT-1806
 - FEAT-1807
 - ENH-1912
 - EPIC-1694
 - FEAT-1983
 - FEAT-1984
+- FEAT-1987
+- FEAT-1988
+- FEAT-1989
+- FEAT-1990
 ---
 
 # EPIC-1811: Built-in Orchestration Loops
@@ -75,6 +78,7 @@ When this epic is done, users can:
 - **FEAT-1810** — `goal-cluster` — Multi-Goal Orchestrator for Sprint- or EPIC-Shaped Input
 - **FEAT-1806** — Opponent-Aware Market Strategy Optimization Loop
 - ✅ **FEAT-1807** — Adversarial-Redesign Figure Loop with AutoFigure
+- **FEAT-1990** — `rn-build` — Recursive Spec-to-Project Builder (integration capstone; greenfield-builder successor). Children: FEAT-1991 (`select_next` scheduler), FEAT-1992 (loop YAML), FEAT-1993 (deprecate greenfield-builder), FEAT-1994 (wizard/docs)
 
 ## Verification Notes
 

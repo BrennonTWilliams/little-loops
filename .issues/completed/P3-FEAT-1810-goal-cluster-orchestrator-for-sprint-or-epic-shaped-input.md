@@ -20,6 +20,7 @@ score_test_coverage: 15
 score_ambiguity: 17
 score_change_surface: 15
 size: Very Large
+completed_at: '2026-06-07T00:49:11Z'
 ---
 
 # FEAT-1810: `goal-cluster` — Multi-Goal Orchestrator for Sprint- or EPIC-Shaped Input
@@ -232,3 +233,13 @@ _Added by `/ll:confidence-check` on 2026-06-06; updated 2026-06-06 after `/ll:re
 **Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): Shared integration test requirement with FEAT-1808. Both issues must include a test that verifies `loop-router`'s catalog discovery never returns both `loop-composer` and `goal-cluster` as candidates for the same input: single-goal input must route to composer only; multi-goal input must route to cluster only. Add to FEAT-1810's test plan: `test_loop_router_catalog_exclusivity` in `scripts/tests/test_goal_cluster.py`.
 
 **Note** (added by `/ll:audit-issue-conflicts` on 2026-06-04): After EPIC-1811 orchestration loops ship, ensure `goal-cluster`'s `load_goals` input shapes and batch API are general enough that domain-specific loops (FEAT-1806 market-strategy, future analysis loops) can be re-expressed as cluster input batches. The cluster's dedup/batching + shared-context propagation is the orchestration-layer primitive most likely to absorb standalone domain loops. Design the `goal_text` schema and `hints` mechanism with this forward-compatibility in mind.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-06-07
+- **Decomposed into**: FEAT-1987, FEAT-1988, FEAT-1989
+
+Work for FEAT-1810 is now carried by its child issues; this parent was closed by rn-decompose.

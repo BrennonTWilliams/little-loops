@@ -1,10 +1,10 @@
 ---
 id: FEAT-1988
-title: "goal-cluster — Core FSM Loop, Loaders, and Integration"
+title: "goal-cluster \u2014 Core FSM Loop, Loaders, and Integration"
 type: FEAT
 priority: P3
 status: open
-parent: FEAT-1810
+parent: EPIC-1811
 captured_at: '2026-06-06T00:00:00Z'
 discovered_date: 2026-06-06
 discovered_by: issue-size-review
@@ -13,6 +13,7 @@ relates_to:
 - FEAT-1808
 - FEAT-1809
 - FEAT-1737
+- FEAT-1810
 size: Large
 ---
 
