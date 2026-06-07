@@ -30,6 +30,44 @@ FEAT-1990), reusing `greenfield-builder`'s front-half phases, wiring the
 `eval_gate` re-entry, registering the loop in the builtin catalog and router
 exclusions, and writing all core tests.
 
+## Current Behavior
+
+`rn-build.yaml` does not exist. The phases it would orchestrate (spec parsing →
+tech research → design → scope epic → issue refinement → eval harness →
+cluster execute → eval gate → synthesize) can only be run manually by invoking
+each sub-loop individually with no automation between them.
+
+## Expected Behavior
+
+`ll-loop run rn-build --spec <path>` executes the full recursive project build
+pipeline automatically:
+
+- Parses spec, researches tech landscape, generates design artifacts
+- Scopes an EPIC + feature stubs; refines seed issues
+- Installs an as-a-user eval harness
+- Dispatches to `goal-cluster` (which dispatches batches to `rn-implement` with
+  `schedule_mode=value_ranked`)
+- Runs `eval_gate` with bounded re-entry on failure
+- Synthesizes a structured JSON result (accomplished / still-open / recommended
+  next batch)
+
+## Motivation
+
+`rn-build` is the capstone loop of the FEAT-1990 feature tree. Without it, the
+`scope-epic → goal-cluster → rn-implement` pipeline requires manual invocation of
+each loop in sequence with no automated handoff. This loop enables fully automated
+spec-to-implementation project generation — the primary user-facing value of the
+recursive builder system. It also validates that the three upstream loops
+(FEAT-1988, FEAT-1991) compose correctly end-to-end.
+
+## Use Case
+
+A developer has a spec document (`specs/my-project.md`) describing a new tool.
+They run `ll-loop run rn-build --spec specs/my-project.md`. The loop handles all
+phases end-to-end: tech research, architecture design, issue scoping, incremental
+implementation via goal-cluster, and harness-driven quality gates — delivering a
+code-complete project without manual orchestration between phases.
+
 ## Parent Issue
 
 Decomposed from FEAT-1990: `rn-build` — Recursive Spec-to-Project Builder.
@@ -100,15 +138,40 @@ Create `scripts/tests/test_rn_build.py` following `test_loop_composer.py` /
 - `eval_gate` re-entry bounded (retry counter present).
 - Router/composer exclusion tests for `rn-build`.
 
-## Files to Modify
+## Implementation Steps
 
-- `scripts/little_loops/loops/rn-build.yaml` (new)
-- `scripts/little_loops/loops/loop-router.yaml` (exclusion)
-- `scripts/little_loops/loops/lib/composer.yaml` (exclusion)
-- `scripts/little_loops/loops/README.md` (append `rn-build` entry)
-- `scripts/tests/test_rn_build.py` (new)
-- `scripts/tests/test_builtin_loops.py` (expected set)
-- `docs/guides/LOOPS_GUIDE.md` (rn-build vs greenfield-builder section)
+1. Port `init`, `tech_research`, `design_artifacts`, `commit_design` phases from `greenfield-builder.yaml`
+2. Add `scope_project` (`scope-epic`) and `refine_seed` (`issue-refinement` loop) phases
+3. Add `eval_harness` phase (install + customize as-a-user harness; port from `greenfield-builder` phases 5/6)
+4. Implement `cluster_execute` → `goal-cluster` handoff; confirm/add `schedule_mode=value_ranked` passthrough for `rn-implement`
+5. Add `eval_gate` with bounded retry counter under `${context.run_dir}/`; re-enter `cluster_execute` on failure
+6. Add `synthesize_result` and `done`/`failed` terminals
+7. Register `rn-build` in builtin catalog and hard-exclude from `loop-router` + `lib/composer`
+8. Write `test_rn_build.py` and update `test_builtin_loops.py`
+
+## Integration Map
+
+### Files to Create
+- `scripts/little_loops/loops/rn-build.yaml` — new capstone loop
+- `scripts/tests/test_rn_build.py` — test suite following `test_goal_cluster.py` pattern
+
+### Files to Modify
+- `scripts/little_loops/loops/loop-router.yaml` — add `rn-build` to hard-exclude set
+- `scripts/little_loops/loops/lib/composer.yaml` — add `rn-build` to hard-exclude set
+- `scripts/little_loops/loops/README.md` — append `rn-build` entry
+- `scripts/tests/test_builtin_loops.py` — add `rn-build` to `expected` set
+- `docs/guides/LOOPS_GUIDE.md` — add `rn-build` vs `greenfield-builder` comparison section
+
+### Callers/Importers
+- N/A — top-level orchestration loop; excluded from `loop-router` and `lib/composer`; not imported by other loops
+
+### Similar Patterns
+- `scripts/little_loops/loops/greenfield-builder.yaml` — shares init/tech_research/design_artifacts phases (port from here)
+- `scripts/little_loops/loops/goal-cluster.yaml` (FEAT-1988) — upstream dependency; `cluster_execute` delegates to it
+- `scripts/little_loops/loops/loop-composer.yaml` — same router/composer exclusion treatment
+
+### Configuration
+- N/A
 
 ## Acceptance Criteria
 
@@ -120,7 +183,17 @@ Create `scripts/tests/test_rn_build.py` following `test_loop_composer.py` /
 - `loop-router`/`loop-composer` never offer `rn-build` as a candidate.
 - `python -m pytest scripts/tests/test_rn_build.py scripts/tests/test_builtin_loops.py -v` passes.
 
+## Impact
+
+- **Priority**: P3 — orchestration capstone; blocked by FEAT-1988 and FEAT-1991 so not on critical path yet
+- **Effort**: Large — 11-state loop YAML, bounded retry logic, cross-loop handoff contract, full test suite
+- **Risk**: Medium — depends on two upstream loops; `goal-cluster → rn-implement` handoff contract requires coordination with FEAT-1988 author
+- **Breaking Change**: No
+
 ## Status
 
-- **State**: open
-- **Created**: 2026-06-06
+**Open** | Created: 2026-06-06 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-07T01:12:10 - `cd798629-9859-4c97-9a7d-e737ade5c9fa.jsonl`
