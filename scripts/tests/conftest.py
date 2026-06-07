@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
@@ -380,3 +381,35 @@ def many_events_file(tmp_path: Path) -> Path:
     ]
     events_path.write_text("\n".join(events))
     return events_path
+
+
+# =============================================================================
+# DB Isolation Fixtures (BUG-1995)
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _isolate_history_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """Redirect all session-store DB opens to a per-test temp directory.
+
+    Sets LL_HISTORY_DB so cli_event_context and resolve_history_db route
+    writes to tmp_path instead of the real .ll/history.db.
+    """
+    db = tmp_path / "history.db"
+    monkeypatch.setenv("LL_HISTORY_DB", str(db))
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _guard_real_history_db() -> Generator[None, None, None]:
+    """Fail if the real .ll/history.db is modified by any test."""
+    real_db = Path(__file__).parent.parent.parent / ".ll" / "history.db"
+    before = (real_db.stat().st_mtime_ns, real_db.stat().st_size) if real_db.exists() else None
+    yield
+    if before is not None and real_db.exists():
+        after = (real_db.stat().st_mtime_ns, real_db.stat().st_size)
+        assert before == after, (
+            f"Real .ll/history.db was modified during tests. "
+            f"A test opened the production database without isolation. "
+            f"Before: {before}, After: {after}"
+        )

@@ -39,6 +39,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import sqlite3
 import subprocess
@@ -69,11 +70,22 @@ __all__ = [
     "record_correction",
     "record_skill_event",
     "cli_event_context",
+    "resolve_history_db",
 ]
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
+
+
+def resolve_history_db(path: Path | str | None = None) -> Path:
+    """Return the DB path; LL_HISTORY_DB env var takes unconditional precedence."""
+    env_val = os.environ.get("LL_HISTORY_DB")
+    if env_val:
+        return Path(env_val)
+    return Path(path) if path is not None else DEFAULT_DB_PATH
+
+
 SCHEMA_VERSION = 12
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill", "cli"})
@@ -654,7 +666,8 @@ def cli_event_context(
     """
     if args is None:
         args = []
-    conn = connect(db_path)
+    effective_path = resolve_history_db(db_path) if Path(db_path) == DEFAULT_DB_PATH else Path(db_path)
+    conn = connect(effective_path)
     start = time.time()
     ts = _now()
     cursor = conn.execute(

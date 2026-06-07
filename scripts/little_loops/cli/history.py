@@ -10,7 +10,7 @@ from little_loops.cli.output import configure_output, print_json, use_color_enab
 from little_loops.cli_args import add_config_arg, add_json_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
 
 
 def main_history() -> int:
@@ -240,7 +240,7 @@ Examples:
         if args.command == "summary":
             # Prefer the unified session DB when populated; fall back to the
             # file-parsing path when the DB is missing or empty (ENH-1621).
-            db_path = project_root / DEFAULT_DB_PATH
+            db_path = resolve_history_db(project_root / DEFAULT_DB_PATH)
             issues = scan_completed_issues_from_db(db_path)
             if not issues:
                 issues = scan_completed_issues(issues_dir)
@@ -291,9 +291,8 @@ Examples:
 
         if args.command == "sessions":
             from little_loops.history_reader import sessions_for_issue
-            from little_loops.session_store import DEFAULT_DB_PATH as _SS_DB
 
-            db_path = project_root / _SS_DB
+            db_path = resolve_history_db(project_root / DEFAULT_DB_PATH)
             refs = sessions_for_issue(args.issue_id, limit=args.limit, db=db_path)
             if args.json:
                 from dataclasses import asdict
@@ -309,9 +308,8 @@ Examples:
 
         if args.command == "root":
             from little_loops.history_reader import ll_describe, ll_expand
-            from little_loops.session_store import DEFAULT_DB_PATH as _SS_DB
 
-            db_path = project_root / _SS_DB
+            db_path = resolve_history_db(project_root / DEFAULT_DB_PATH)
             conn = None
             try:
                 import sqlite3

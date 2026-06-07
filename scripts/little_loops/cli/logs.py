@@ -21,7 +21,7 @@ from little_loops.cli.output import configure_output, print_json, table, use_col
 from little_loops.cli_args import add_json_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
 from little_loops.user_messages import get_project_folder
 
 _COMMAND_NAME_RE = re.compile(r"<command-name>/ll:")
@@ -1279,7 +1279,7 @@ def _compute_session_diff(
 
 def _cmd_diff(args: argparse.Namespace, logger: Logger) -> int:
     """Compare two sessions' ll-invocation behavior."""
-    db_path = DEFAULT_DB_PATH
+    db_path = resolve_history_db()
 
     path_a = _resolve_session_log(args.session_a, db_path)
     if path_a is None:

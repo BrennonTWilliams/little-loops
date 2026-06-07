@@ -1598,6 +1598,38 @@ class TestCliEventContext:
         assert SCHEMA_VERSION == 12
         assert int(row[0]) == 12
 
+    def test_cli_event_context_respects_LL_HISTORY_DB(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """LL_HISTORY_DB env var must redirect DB writes when the default path is used."""
+        from little_loops.session_store import DEFAULT_DB_PATH
+
+        isolated_db = tmp_path / "isolated.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(isolated_db))
+        with cli_event_context(DEFAULT_DB_PATH, binary="ll-test-env-var", args=["--check"]):
+            pass
+        rows = recent(isolated_db, kind="cli")
+        assert len(rows) == 1
+        assert rows[0]["binary"] == "ll-test-env-var"
+
+    def test_cli_event_context_explicit_path_not_redirected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An explicit path passed to cli_event_context must not be overridden by LL_HISTORY_DB."""
+        from little_loops.session_store import DEFAULT_DB_PATH
+
+        explicit_db = tmp_path / "explicit.db"
+        env_db = tmp_path / "env.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(env_db))
+        # Pass a path that is NOT DEFAULT_DB_PATH — must write to explicit_db
+        with cli_event_context(explicit_db, binary="ll-explicit", args=[]):
+            pass
+        rows = recent(explicit_db, kind="cli")
+        assert len(rows) == 1
+        assert rows[0]["binary"] == "ll-explicit"
+        # env_db must be empty (not written to)
+        assert not env_db.exists()
+
 
 class TestMineCorrectionsFromMessages:
     """Unit tests for mine_corrections_from_messages() (ENH-1904)."""
