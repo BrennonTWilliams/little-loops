@@ -29,6 +29,7 @@ context:
   enable_dedup: "true"         # merge/skip overlapping goals (ClusterConfig.enable_dedup)
   propagate_context: "true"    # extract cross-batch hints (ClusterConfig.propagate_context)
   max_replans: "1"             # max reassess replan attempts per cluster run
+  schedule_mode: "fifo"        # "value_ranked" passes value-ranked scheduling to rn-implement batches
 
 states:
   # ─── Phase 1: Load & Normalize Goals ──────────────────────────────────────────
@@ -390,6 +391,7 @@ states:
     timeout: 3600
     with:
       input: "${captured.cluster_batch_input.output}"
+      schedule_mode: "${context.schedule_mode}"
     capture: cluster_batch_output
     on_yes: write_cluster_success
     on_no: write_cluster_failed

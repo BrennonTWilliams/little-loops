@@ -1,0 +1,375 @@
+name: rn-build
+category: orchestration
+input_key: spec
+description: |
+  Capstone orchestration loop for the recursive spec-to-project builder. Takes a spec
+  file path and drives the full automated pipeline: spec validation → tech research →
+  design artifacts → commit → scope EPIC + feature stubs → issue refinement →
+  eval harness install → goal-cluster execution (dispatching batches to rn-implement
+  with value_ranked scheduling) → eval gate with bounded re-entry → synthesize result.
+
+  Use when you have a spec document and want a fully automated spec-to-implementation
+  pipeline with no manual handoffs between phases. Delegates batch execution to
+  goal-cluster which dispatches each batch to rn-implement(value_ranked).
+
+  Run as: ll-loop run rn-build --context spec=<path>
+
+  Architecture:
+  - Front-half (ports from greenfield-builder): init → tech_research → design_artifacts
+    → commit_design → scope_project → refine_seed → eval_harness
+  - Execution: cluster_execute (goal-cluster → rn-implement/value_ranked)
+  - Quality gate: eval_gate → check_eval_retry_budget → capture_eval_failures → re-cluster
+  - Terminal: synthesize_result → done
+initial: init
+max_iterations: 30
+timeout: 86400
+on_handoff: spawn
+
+context:
+  spec: ""              # required: path(s) to spec file(s), comma-separated
+  max_issues: "30"      # max issues per decomposition pass
+  max_eval_retries: "2" # max eval_gate retry cycles before accepting partial result
+  harness_name: ""      # auto-populated: name of created harness loop
+  epic_id: ""           # auto-populated: EPIC ID from scope_project
+
+states:
+
+  # ─── Phase 1: Validate spec file(s) and read their contents ──────────────────
+
+  init:
+    action_type: shell
+    action: |
+      SPECS="${context.spec}"
+      if [ -z "$SPECS" ]; then
+        echo "ERROR: spec context variable is required. Pass --context spec=<path>"
+        exit 1
+      fi
+      RUN_DIR="${context.run_dir}"
+      mkdir -p "$RUN_DIR"
+      IFS=',' read -ra SPEC_LIST <<< "$SPECS"
+      for S in "${SPEC_LIST[@]}"; do
+        S=$(echo "$S" | xargs)
+        if [ ! -f "$S" ]; then
+          echo "ERROR: Spec file not found: $S"
+          exit 1
+        fi
+        echo "=== $S ==="
+        cat "$S"
+        echo ""
+      done
+    capture: spec_content
+    evaluate:
+      type: exit_code
+    on_yes: tech_research
+    on_no: failed
+    on_error: failed
+
+  # ─── Phase 2: Research technology decisions ───────────────────────────────────
+
+  tech_research:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Analyze the project spec and research technology decisions. Write `docs/research.md`
+      containing:
+      1. **Technology Decisions** — table of chosen technologies with rationale
+      2. **Library Comparisons** — alternatives considered for key dependencies
+      3. **Rejected Alternatives** — what was not chosen and why
+      4. **Security & Platform Notes** — relevant security considerations
+
+      Spec content:
+      ${captured.spec_content.output}
+
+      Create the `docs/` directory if it doesn't exist.
+    capture: tech_research
+    next: design_artifacts
+
+  # ─── Phase 3: Produce design artifacts ────────────────────────────────────────
+
+  design_artifacts:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Using the spec and technology research, create the following design artifacts:
+      1. `docs/data-model.md` — key entities with fields, types, relationships, constraints
+         (every entity must trace back to a spec requirement)
+      2. `docs/contracts/` — one file per major interface boundary (operation name, inputs,
+         outputs, error cases)
+      3. `docs/quickstart.md` — 3-5 observable validation scenarios in prose
+
+      Spec: ${captured.spec_content.output}
+      Research: ${captured.tech_research.output}
+
+      Create directories as needed.
+    capture: design_artifacts
+    next: commit_design
+
+  # ─── Phase 4: Commit research and design artifacts ────────────────────────────
+
+  commit_design:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit all research and design artifacts.
+      Use message: "docs: add technology research and design artifacts from spec"
+    next: scope_project
+
+  # ─── Phase 5: Scope EPIC + feature stubs from spec + design artifacts ─────────
+
+  scope_project:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Scope the project into an EPIC with child feature stubs.
+
+      Run `/ll:scope-epic` using the spec and design artifacts as context:
+        /ll:scope-epic "Project from spec" --from-doc docs/data-model.md
+
+      After scope-epic completes:
+      1. Run `ll-issues list --format json` and identify the newly created EPIC ID
+         (format: EPIC-NNN — the highest-numbered EPIC in the list)
+      2. Write the EPIC ID to ${context.run_dir}/epic-id.txt
+      3. Output the EPIC ID on its own line as: EPIC_ID:<id>
+         Example: EPIC_ID:EPIC-042
+    capture: scope_project
+    evaluate:
+      type: output_contains
+      pattern: "EPIC_ID:"
+    on_yes: write_epic_id
+    on_no: write_epic_id
+    on_partial: write_epic_id
+    on_error: failed
+
+  write_epic_id:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import re, sys, os
+
+      run_dir = '${context.run_dir}'
+      os.makedirs(run_dir, exist_ok=True)
+      output = """${captured.scope_project.output}"""
+
+      # Try tagged format first: EPIC_ID:EPIC-NNN
+      m = re.search(r'EPIC_ID:(EPIC-\d+)', output)
+      if not m:
+          # Fall back to any EPIC-NNN mention
+          m = re.search(r'\b(EPIC-\d+)\b', output)
+      if not m:
+          print('ERROR: Could not extract EPIC ID from scope_project output')
+          sys.exit(1)
+
+      epic_id = m.group(1)
+      epic_file = os.path.join(run_dir, 'epic-id.txt')
+      with open(epic_file, 'w') as f:
+          f.write(epic_id)
+      print(epic_id)
+      PYEOF
+    capture: epic_id
+    evaluate:
+      type: exit_code
+    on_yes: refine_seed
+    on_no: failed
+    on_error: failed
+
+  # ─── Phase 6: Refine seed issues to readiness ─────────────────────────────────
+
+  refine_seed:
+    loop: issue-refinement
+    context_passthrough: true
+    on_yes: eval_harness
+    on_no: eval_harness
+
+  # ─── Phase 7: Install and customize an as-a-user eval harness ────────────────
+
+  eval_harness:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Plan and install an as-a-user eval harness for the project.
+      Read `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` for the three harness variants
+      (single-shot, multi-item, specialist-role pipeline).
+
+      Using the design artifacts:
+      ${captured.design_artifacts.output}
+
+      1. Determine which variant fits:
+         - Variant A (harness-single-shot): single validation scenario
+         - Variant B (harness-multi-item): multiple test cases or items
+         - Variant C (harness-plan-research-implement-report): Plan → Research → Implement → Report
+      2. Run the appropriate install command:
+         `ll-loop install harness-single-shot`, `ll-loop install harness-multi-item`, or
+         `ll-loop install harness-plan-research-implement-report`
+      3. Customize the installed harness YAML in `.loops/`:
+         - Set `name` to a project-specific name (e.g., `myproject-harness`)
+         - Configure `execute.action` to run the project
+         - Configure `check_concrete.action` to run tests
+         - Configure `check_semantic.evaluate.prompt` for semantic validation
+         - Configure `check_invariants.evaluate.target` for diff size gates
+      4. Write the harness name to ${context.run_dir}/harness-name.txt
+      5. Output the harness name as: HARNESS_NAME:<name>
+         Example: HARNESS_NAME:myproject-harness
+    capture: harness_plan
+    evaluate:
+      type: output_contains
+      pattern: "HARNESS_NAME:"
+    on_yes: read_harness_name
+    on_no: read_harness_name
+    on_partial: read_harness_name
+    on_error: cluster_execute
+
+  read_harness_name:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import re, sys, os
+
+      run_dir = '${context.run_dir}'
+      os.makedirs(run_dir, exist_ok=True)
+
+      # Try file written by the harness_plan prompt
+      harness_file = os.path.join(run_dir, 'harness-name.txt')
+      if os.path.exists(harness_file):
+          with open(harness_file) as f:
+              name = f.read().strip()
+          if name:
+              print(name)
+              sys.exit(0)
+
+      # Fall back: parse HARNESS_NAME: tag from prompt output
+      output = """${captured.harness_plan.output}"""
+      m = re.search(r'HARNESS_NAME:(\S+)', output)
+      if not m:
+          print('ERROR: Could not extract harness name')
+          sys.exit(1)
+      name = m.group(1)
+      with open(harness_file, 'w') as f:
+          f.write(name)
+      print(name)
+      PYEOF
+    capture: harness_name
+    evaluate:
+      type: exit_code
+    on_yes: cluster_execute
+    on_no: cluster_execute
+    on_error: cluster_execute
+
+  # ─── Phase 8: Execute goal-cluster → rn-implement(value_ranked) pipeline ─────
+  # goal-cluster.yaml threads schedule_mode through dispatch_cluster.with so
+  # each batch dispatched to rn-implement receives schedule_mode=value_ranked.
+  # max_batch_size=5: keeps batches large enough for cross-feature context while
+  # remaining focused (see FEAT-1992 Design Notes §5).
+
+  cluster_execute:
+    loop: goal-cluster
+    timeout: 345600
+    with:
+      goals: "${captured.epic_id.output}"
+      auto: "true"
+      propagate_context: "true"
+      schedule_mode: "value_ranked"
+      max_batch_size: "5"
+    capture: cluster_result
+    on_yes: eval_gate
+    on_no: eval_gate
+    on_error: eval_gate
+
+  # ─── Phase 9: Run eval harness; re-enter cluster_execute on failure (bounded) ─
+
+  eval_gate:
+    loop: "${captured.harness_name.output}"
+    timeout: 7200
+    capture: eval_result
+    on_yes: synthesize_result
+    on_no: check_eval_retry_budget
+    on_error: synthesize_result
+
+  check_eval_retry_budget:
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      COUNT=$(cat "$RUN_DIR/eval-retry-count.txt" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$RUN_DIR/eval-retry-count.txt"
+      echo "$COUNT"
+    capture: eval_retry_count
+    evaluate:
+      type: output_numeric
+      operator: le
+      target: "${context.max_eval_retries}"
+    on_yes: capture_eval_failures
+    on_no: synthesize_result
+    on_error: synthesize_result
+
+  capture_eval_failures:
+    action_type: prompt
+    timeout: 300
+    action: |
+      The eval harness reported failures (retry ${captured.eval_retry_count.output} of
+      ${context.max_eval_retries}). Capture issues for failing scenarios so goal-cluster
+      can address them in the next execution cycle.
+
+      Eval result:
+      ${captured.eval_result.output}
+
+      For each distinct failing scenario:
+      1. Run `/ll:capture-issue` to create a FEAT or BUG issue describing what needs fixing
+      2. Run `/ll:normalize-issues` after all issues are created
+    next: cluster_execute
+
+  # ─── Phase 10: Synthesize cluster-wide result as structured JSON ──────────────
+
+  synthesize_result:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Synthesize the rn-build pipeline results into a structured JSON report.
+
+      SPEC: ${captured.spec_content.output}
+      CLUSTER RESULT: ${captured.cluster_result.output}
+      EVAL RESULT: ${captured.eval_result.output:default=not run}
+
+      Write a summary covering:
+      1. What was accomplished per goal
+      2. What is still open or incomplete
+      3. Recommended next batch or follow-up actions
+
+      Output the JSON block LAST, prefixed with: SYNTHESIS_RESULT:
+      ```json
+      {
+        "accomplished": ["list of completed features/goals"],
+        "still_open": ["list of incomplete items"],
+        "recommended_next_batch": ["list of suggested next actions"],
+        "eval_passed": true,
+        "eval_retry_count": 0
+      }
+      ```
+    capture: synthesis
+    evaluate:
+      type: output_contains
+      pattern: "SYNTHESIS_RESULT:"
+    on_yes: done
+    on_no: done
+    on_partial: done
+    on_error: done
+
+  # ─── Terminal States ───────────────────────────────────────────────────────────
+
+  done:
+    terminal: true
+
+  failed:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 -c "
+      import json
+      print(json.dumps({
+          'accomplished': [],
+          'still_open': [],
+          'recommended_next_batch': [],
+          'eval_passed': False,
+          'eval_retry_count': 0,
+          'error': 'rn-build encountered a fatal error during initialization or spec validation.'
+      }, indent=2))
+      "
+      exit 1

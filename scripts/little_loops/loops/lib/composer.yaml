@@ -35,6 +35,7 @@ fragments:
       excludes.add('loop-composer')
       excludes.add('loop-composer-adaptive')
       excludes.add('goal-cluster')
+      excludes.add('rn-build')
       project = []
       builtin = []
       for loop in loops:
