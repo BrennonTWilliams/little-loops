@@ -65,7 +65,25 @@ states:
       fi
 
       # Seed queue with input (support comma-separated list)
-      echo "$INPUT" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' > "$RUN_DIR/queue.txt"
+      echo "$INPUT" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' > "$RUN_DIR/queue_raw.txt"
+
+      # BUG-2003 Layer 1: normalize each ID to its canonical TYPE-NNN form before
+      # seeding the queue. A stale/mismatched type prefix (e.g. FEAT-1903 for a file
+      # named ENH-1903) and cross-type duplicate refs collapse to one identity, so
+      # the visited-set / cycle detection keys on a single canonical ID downstream.
+      : > "$RUN_DIR/queue.txt"
+      while IFS= read -r raw_id; do
+        [ -z "$raw_id" ] && continue
+        resolved=$(ll-issues path "$raw_id" 2>/dev/null)
+        if [ -n "$resolved" ]; then
+          canon=$(basename "$resolved" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' | head -1)
+          echo "${canon:-$raw_id}" >> "$RUN_DIR/queue.txt"
+        else
+          # Unresolvable now -> keep raw so existing downstream error handling fires.
+          echo "$raw_id" >> "$RUN_DIR/queue.txt"
+        fi
+      done < "$RUN_DIR/queue_raw.txt"
+      rm -f "$RUN_DIR/queue_raw.txt"
       QUEUE_COUNT=$(wc -l < "$RUN_DIR/queue.txt" | tr -d ' ')
       if [ "$QUEUE_COUNT" -eq 0 ]; then
         echo "ERROR: No valid issue IDs parsed from input: $INPUT"

@@ -1,10 +1,12 @@
 ---
 id: BUG-2003
-title: "rn-remediate: verify_scores_persisted fails when issue ID type prefix mismatches filename"
+title: 'rn-remediate: verify_scores_persisted fails when issue ID type prefix mismatches
+  filename'
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-07T00:00:00Z'
+completed_at: '2026-06-07T21:33:43Z'
 discovered_date: '2026-06-07'
 discovered_by: audit-loop-run
 relates_to:
@@ -164,10 +166,46 @@ an explicit error/token instead.
 - **Risk**: Low — additive fallback; the exact-match path is preserved, so correctly-prefixed IDs are unaffected. Substring glob `*$ID*` is marginally broader; the numeric fallback and `! -path "*/completed/*"` filter keep matches scoped
 - **Breaking Change**: No
 
+## Resolution
+
+Fixed at the **root cause** plus the requested defense-in-depth layers:
+
+- **Layer 0 (root cause)** — `_resolve_issue_id` in `scripts/little_loops/cli/issues/show.py`
+  now treats the type prefix and priority as *advisory*. Because issue numbers are globally
+  unique across types (`get_next_issue_number`), a numeric match is unambiguous: the resolver
+  prefers an exact-type (then exact-priority) match but falls back to the numeric match when the
+  caller's prefix is stale (`FEAT-1903` → `ENH-1903`). The resolver's existing `*-{num}-*.md`
+  glob already tolerated a missing priority prefix. This single fix aligns every `ll-issues`
+  subcommand (`path`, `show`, `check-flag`, `check-readiness`, `set-scores`, `set-status`) — all
+  of which share this resolver — with confidence-check's tolerant resolution.
+- **Layer 1 (normalize at entry)** — `rn-implement.yaml` `init` normalizes each seeded queue ID
+  to canonical `TYPE-NNN` via `ll-issues path`, so a stale prefix and cross-type duplicate refs
+  collapse to one identity before the visited-set / cycle detection keys on them.
+- **Layer 2 (dedupe resolution at the 5 sites)** — replaced `find .issues -name "*-$ID-*"` (which
+  fails on both type-mismatch and missing priority prefix) with `ll-issues path "$ID"` at
+  `verify_scores_persisted`, `check_outcome`, `verify_re_assess_scores` (rn-remediate.yaml) and
+  `detect_children` (rn-decompose.yaml). `diagnose`'s empty-`--json` guard now `exit 1`s (routing
+  to `emit_implement_failed`) instead of silently echoing `DECOMPOSE` (AC5).
+
+**Tests**: added `TestPathPrefixTolerant` (6 cases) to `scripts/tests/test_issues_path.py`
+covering mismatched type prefix, missing priority prefix, both-at-once, numeric-only on an
+un-prefixed file, exact-type preference, and a preserved not-found path. TDD red→green confirmed.
+
+**Verification**: `ll-issues show FEAT-1903 --json` now resolves to `ENH-1903` (previously
+"not found"). Full suite compared against a pristine-tree baseline: identical 315 pre-existing
+environmental failures / 78 errors on both, with **+6 new passing tests** from this change — zero
+regressions. ruff + mypy clean on the changed Python. All three loops pass `ll-loop validate`.
+
+**Follow-up (out of scope)**: the same defective `find .issues -name "*-$ID-*"` glob remains in
+`loops/autodev.yaml` and `loops/recursive-refine.yaml` (which use raw `find`, not `ll-issues path`,
+so the Layer 0 fix does not reach them). Worth a separate issue.
+
 ## Status
 
-**Open** | Created: 2026-06-07 | Priority: P2
+**Done** | Created: 2026-06-07 | Completed: 2026-06-07 | Priority: P2
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-07T21:09:39 - `43eafcad-fab4-4d06-bb01-972d6fe15051.jsonl`
 - `/ll:format-issue` - 2026-06-07T20:47:02 - `57f27ab7-f753-43a9-be87-54b2970f859d.jsonl`
+- `/ll:manage-issue` - 2026-06-07T21:33:43 - `da163c1d-378a-4a58-b8d2-88910a03d4ca.jsonl`

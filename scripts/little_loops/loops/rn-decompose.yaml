@@ -105,7 +105,8 @@ states:
       > "$RUN_DIR/children_$${ID}.txt"
       while IFS= read -r child_id; do
         [ -z "$child_id" ] && continue
-        CHILD_FILE=$(find .issues -name "*-$child_id-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+        # BUG-2003: tolerant resolution (handles cross-type prefix + no-priority-prefix children).
+        CHILD_FILE=$(ll-issues path "$child_id" 2>/dev/null)
         if [ -n "$CHILD_FILE" ]; then
           # Check for parent reference
           if grep -q "parent:.*$PARENT_ID" "$CHILD_FILE" 2>/dev/null || \

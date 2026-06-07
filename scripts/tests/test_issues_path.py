@@ -253,6 +253,148 @@ class TestPathAlias:
         assert out.endswith("P3-FEAT-1009-my-feature.md")
 
 
+class TestPathPrefixTolerant:
+    """Tests that resolution treats the type prefix as advisory (BUG-2003).
+
+    Issue numbers are globally unique across types, so a stale or mismatched type
+    prefix (e.g. ``BUG-1009`` for a file named ``FEAT-1009``) must still resolve to
+    the one file bearing that number. A missing priority prefix must also resolve.
+    """
+
+    def test_mismatched_type_prefix_resolves(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A mismatched type prefix still resolves to the numeric match."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir, _, _ = _setup_dirs(temp_project_dir)
+        _make_issue(features_dir, "P3-FEAT-1009-my-feature.md", "FEAT-1009: My Feature")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "path", "BUG-1009", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        assert out.endswith("P3-FEAT-1009-my-feature.md")
+
+    def test_no_priority_prefix_resolves_with_type(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A file with no priority prefix (FEAT-1725-foo.md) resolves by TYPE-NNN."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir, _, _ = _setup_dirs(temp_project_dir)
+        _make_issue(features_dir, "FEAT-1725-foo.md", "FEAT-1725: No Priority")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "path", "FEAT-1725", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        assert out.endswith("FEAT-1725-foo.md")
+
+    def test_no_priority_prefix_and_mismatched_type_resolves(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Both failure modes at once: no priority prefix AND a mismatched type."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir, _, _ = _setup_dirs(temp_project_dir)
+        _make_issue(features_dir, "FEAT-1725-foo.md", "FEAT-1725: No Priority")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "path", "BUG-1725", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        assert out.endswith("FEAT-1725-foo.md")
+
+    def test_numeric_only_resolves_unprefixed_file(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Numeric-only input resolves a file with no priority prefix."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir, _, _ = _setup_dirs(temp_project_dir)
+        _make_issue(features_dir, "FEAT-1725-foo.md", "FEAT-1725: No Priority")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "path", "1725", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        assert out.endswith("FEAT-1725-foo.md")
+
+    def test_exact_type_preferred_over_other_numeric_match(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """When two files share a number, the exact type prefix wins."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir, _, _ = _setup_dirs(temp_project_dir)
+        epics_dir = temp_project_dir / ".issues" / "epics"
+        epics_dir.mkdir(parents=True, exist_ok=True)
+        _make_issue(features_dir, "P3-FEAT-1009-a.md", "FEAT-1009: Feature")
+        _make_issue(epics_dir, "P3-EPIC-1009-b.md", "EPIC-1009: Epic")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "path", "EPIC-1009", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        assert out.endswith("P3-EPIC-1009-b.md")
+
+    def test_still_not_found_when_number_absent(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tolerance does not weaken the not-found path for an absent number."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir, _, _ = _setup_dirs(temp_project_dir)
+        _make_issue(features_dir, "P3-FEAT-1009-my-feature.md", "FEAT-1009: My Feature")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "path", "BUG-9999", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+
+
 class TestPathSearchesTypeDirs:
     """Tests that path searches type-scoped directories regardless of status."""
 

@@ -72,7 +72,9 @@ states:
     action_type: shell
     action: |
       ID="${context.issue_id}"
-      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      # BUG-2003: resolve via the shared (type-prefix-tolerant) resolver so a stale
+      # type prefix or a file with no priority prefix still locates the issue.
+      ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
       if [ -z "$ISSUE_FILE" ]; then
         echo "ERROR: Issue file not found for $ID"
         exit 1
@@ -109,7 +111,9 @@ states:
     fragment: shell_exit
     action: |
       ID="${context.issue_id}"
-      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      # BUG-2003: resolve via the shared (type-prefix-tolerant) resolver so a stale
+      # type prefix or a file with no priority prefix still locates the issue.
+      ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
       if [ -z "$ISSUE_FILE" ]; then
         echo "ERROR: Issue file not found for $ID"
         exit 1
@@ -147,9 +151,11 @@ states:
       # Fetch scores via ll-issues show --json
       SCORES_JSON=$(ll-issues show "$ID" --json 2>/dev/null)
       if [ -z "$SCORES_JSON" ]; then
-        echo "ERROR: ll-issues show --json returned empty for $ID"
-        echo "DECOMPOSE"
-        exit 0
+        # BUG-2003 AC5: an unresolved ID must surface as an explicit failure, not
+        # silently route to DECOMPOSE (which masks a resolution miss as a real
+        # routing decision). Exit non-zero -> on_error: emit_implement_failed.
+        echo "ERROR: ll-issues show --json returned empty for $ID (unresolved issue ID)"
+        exit 1
       fi
 
       # Parse scores (use JSON keys: confidence, outcome, not frontmatter names)
@@ -283,7 +289,9 @@ states:
     action_type: shell
     action: |
       ID="${context.issue_id}"
-      ISSUE_FILE=$(find .issues -name "*-$ID-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      # BUG-2003: resolve via the shared (type-prefix-tolerant) resolver so a stale
+      # type prefix or a file with no priority prefix still locates the issue.
+      ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
       if [ -z "$ISSUE_FILE" ]; then
         echo "ERROR: Issue file not found for $ID"
         exit 1

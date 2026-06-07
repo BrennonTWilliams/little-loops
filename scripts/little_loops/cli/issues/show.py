@@ -44,7 +44,14 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     - Type + ID: "FEAT-518"
     - Priority + Type + ID: "P3-FEAT-518"
 
-    Searches all active category directories, the completed directory, and the deferred directory.
+    Searches the type-scoped category directories. Status (open/done/deferred)
+    lives in frontmatter, so active and inactive issues alike resolve here.
+
+    Issue numbers are globally unique across types (see ``get_next_issue_number``),
+    so a numeric match is unambiguous. The type prefix and priority are therefore
+    treated as **advisory**: an exact match is preferred, but a stale or mismatched
+    prefix (e.g. ``FEAT-1903`` for a file now named ``ENH-1903``) still resolves to
+    the one file bearing that number rather than reporting "not found" (BUG-2003).
 
     Args:
         config: Project configuration
@@ -86,26 +93,35 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     for category in config.issue_categories:
         search_dirs.append(config.get_issue_dir(category))
 
-    # Search for matching files
+    # Collect every file matching the numeric ID. Because numbers are globally
+    # unique, this is normally a single candidate; the prefix/priority hints only
+    # disambiguate the rare artificial case of two files sharing a number.
+    candidates: list[Path] = []
     for search_dir in search_dirs:
         if not search_dir.is_dir():
             continue
-        for path in search_dir.glob(f"*-{numeric_id}-*.md"):
-            filename = path.name
-            # Verify type prefix if provided
-            upper = filename.upper()
-            if (
-                type_prefix
-                and f"-{type_prefix}-" not in upper
-                and not upper.startswith(f"{type_prefix}-")
-            ):
-                continue
-            # Verify priority if provided
-            if priority and not filename.upper().startswith(f"{priority}-"):
-                continue
-            return path
+        candidates.extend(sorted(search_dir.glob(f"*-{numeric_id}-*.md")))
 
-    return None
+    if not candidates:
+        return None
+
+    def _matches_type(path: Path) -> bool:
+        upper = path.name.upper()
+        return f"-{type_prefix}-" in upper or upper.startswith(f"{type_prefix}-")
+
+    # Prefer an exact-type match; fall back to the unambiguous numeric match when
+    # the caller's type prefix is stale or mismatched (advisory, not required).
+    pool = [p for p in candidates if _matches_type(p)] if type_prefix else candidates
+    if not pool:
+        pool = candidates
+
+    # Within the chosen pool, prefer an exact priority match if one exists.
+    if priority:
+        prioritized = [p for p in pool if p.name.upper().startswith(f"{priority}-")]
+        if prioritized:
+            return prioritized[0]
+
+    return pool[0]
 
 
 def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
