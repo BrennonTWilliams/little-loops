@@ -4,13 +4,27 @@ title: Implement ll-sprint FSM wave driver and shim
 type: FEAT
 priority: P3
 status: open
-captured_at: 2026-06-03T19:12:39Z
+captured_at: 2026-06-03 19:12:39+00:00
 discovered_date: 2026-06-03
 discovered_by: scope-epic
 parent: EPIC-1867
-relates_to: [FEAT-1901, FEAT-1902]
-blocked_by: [FEAT-1901, FEAT-1902]
-labels: [feature, orchestration, fsm, sprint]
+relates_to:
+- FEAT-1901
+- FEAT-1902
+blocked_by:
+- FEAT-1901
+- FEAT-1902
+labels:
+- feature
+- orchestration
+- fsm
+- sprint
+confidence_score: 90
+outcome_confidence: 84
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 20
+score_change_surface: 25
 ---
 
 # FEAT-1899: Implement ll-sprint FSM wave driver and shim
@@ -86,6 +100,24 @@ This feature completes the EPIC-1867 FSM decomposition at the sprint/wave level:
 
 **Step 4 — Validate**: `ll-loop validate ll-sprint`; fix any MR-1/MR-3 violations.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`plan --json` mode-field derivation** — the `mode` field comes from `refine_waves_for_contention()` output: `mode = "sequential" if (len(wave) == 1 or contention_note is not None) else "parallel"`. Both `get_execution_waves()` and `refine_waves_for_contention()` already exist in `_cmd_sprint_run()` and `_cmd_sprint_show()`; `plan --json` can share the same call sequence. See `_show_json()` in `scripts/little_loops/cli/sprint/show.py` and `_cmd_sprint_analyze()` in `scripts/little_loops/cli/sprint/manage.py` for the JSON wave-output templates.
+
+**FSM loop structure** — `scripts/little_loops/loops/goal-cluster.yaml` is the closest structural reference for the wave-driver pattern: it writes wave items to `${context.run_dir}/wave-queue/NNNN.json`, pops the front file per iteration, routes to sub-loop delegation via `loop:` + `with:`, and tracks success/failure in `${context.run_dir}/cluster-state.json`. Use this as the FSM template rather than the older `sprint-refine-and-implement.yaml` (which uses bare `.loops/tmp/` paths, violating MR-3).
+
+**MR-1 will NOT trigger for `ll-sprint.yaml`** — `_is_meta_loop()` in `scripts/little_loops/fsm/validation.py` only flags loops whose action strings write to `loops/*.yaml`, `skills/*/SKILL.md`, `agents/*.md`, `commands/*.md`, or `.claude/CLAUDE.md`. A wave-driver that only calls `ll-loop run` and `ll-sprint run` is not a meta-loop. Use `exit_code` evaluators throughout for clean `ll-loop validate` passes.
+
+**CRITICAL — `.sprint-state.json` CWD compatibility**: `scripts/little_loops/loops/sprint-build-and-validate.yaml`'s `extract_unresolved` state reads `.sprint-state.json` from `Path.cwd()` via `jq`:
+```yaml
+ISSUES=$(jq -r '[...] | flatten | unique | join(",")' .sprint-state.json 2>/dev/null)
+```
+If the FSM driver moves state persistence to `${context.run_dir}/sprint-state.json`, this upstream loop will silently stop recovering failed issues (empty `ISSUES` var). Resolution options: (a) keep writing `.sprint-state.json` at CWD for the shim path (consistent with existing `_save_sprint_state()`/`_cleanup_sprint_state()` helpers in `run.py`), or (b) update `sprint-build-and-validate.yaml` to read from `${context.run_dir}/`. **Option (a) is safer** — the shim must preserve the state-file location at CWD.
+
+**`lib/cli.yaml` fragment** — `scripts/little_loops/loops/lib/cli.yaml` already defines an `ll_loop_run` fragment (`action: "ll-loop run ${context.loop_name}"`). The shim in `run.py` can delegate using the same pattern, substituting `ll-sprint` as the loop name.
+
 ## API/Interface
 
 ```
@@ -108,24 +140,65 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 ### Files to Modify
 - `scripts/little_loops/sprint.py` — add `plan --json` subcommand; refactor `execute` to thin shim
 - `loops/ll-sprint.yaml` — new FSM wave driver (create)
+- `scripts/little_loops/cli/sprint/__init__.py` — register `plan` subparser in `main_sprint()` argparse table; add dispatch branch `_cmd_sprint_plan`; update `__all__` and epilog examples
+- `scripts/little_loops/cli/sprint/run.py` — convert `_cmd_sprint_run()` wave orchestration logic to thin shim delegating to `ll-loop run ll-sprint`
+
+_Wiring pass added by `/ll:wire-issue`:_
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/parallel_orchestrator.py` — invoked by `delegate_parallel` state
+- `scripts/little_loops/parallel/orchestrator.py` — invoked by `delegate_parallel` state (path corrected; was incorrectly listed as standalone `parallel_orchestrator.py`)
 - FEAT-1902 Layer-1 per-issue loop YAML — referenced by `run_sequential` state
-- `ll-sprint` CLI entry point (`scripts/little_loops/__main__.py` or equivalent)
+- `scripts/little_loops/cli/sprint/__init__.py` — imports `SprintManager`; houses `main_sprint()` dispatch; primary site for `plan` subparser registration
+- `scripts/little_loops/cli/sprint/run.py` — contains `_cmd_sprint_run()` with all wave orchestration logic that becomes the shim target; also exports `_sprint_signal_handler`, `_sprint_shutdown_requested`, state-file helpers
+- `scripts/little_loops/cli/sprint/create.py` — imports `SprintManager` for CRUD; not modified but depends on sprint module
+- `scripts/little_loops/cli/sprint/show.py` — imports `SprintManager`; `_cmd_sprint_show()` used in dry-run tests
+- `scripts/little_loops/cli/sprint/manage.py` — imports `SprintManager` for list/delete/analyze
+- `scripts/little_loops/cli/sprint/edit.py` — imports `SprintManager` for modification
+- `scripts/little_loops/cli/__init__.py` — re-exports `main_sprint` and all sprint CLI symbols at package level
+- `scripts/little_loops/dependency_graph.py` — `DependencyGraph.get_execution_waves()` is the wave-ordering method called by the new `plan --json` subcommand
+- `scripts/little_loops/cli/loop/run.py` — `ll-loop run` entry point; invoked by the `execute` thin shim
+- `scripts/little_loops/fsm/validation.py` — used by `ll-loop validate ll-sprint` (MR-1/MR-3 enforcement gate)
+- `scripts/little_loops/loops/sprint-build-and-validate.yaml` — contains a `run_sprint` state that calls `ll-sprint run ${captured.sprint_name.output}`; external interface must be preserved or this loop breaks
+
+_Wiring pass added by `/ll:wire-issue`:_
 
 ### Similar Patterns
 - Existing loop YAMLs in `loops/` — structural reference for FSM state design
 - CLAUDE.md § Loop Authoring — meta-loop rules (diagnosis-first, MR-1, MR-3)
-- `scripts/little_loops/parallel_orchestrator.py` — delegation interface to understand
+- `scripts/little_loops/parallel/orchestrator.py` — `ParallelOrchestrator` public interface: `__init__(parallel_config, br_config, repo_path, verbose, wave_label, event_bus)`, `run() -> int`, `execution_duration` property; read `queue.completed_ids`/`queue.failed_ids` after `run()`; invoked with `clean_start=True`, `overlap_detection=False` in sprint context
 
 ### Tests
-- `scripts/tests/test_sprint.py` (or equivalent) — add tests for `plan --json` subcommand output schema
-- Integration test: verify `ll-sprint plan --json` emits valid wave list; verify shim invokes FSM driver
+
+**Tests to update (behavior changes when `execute`/`run` becomes a thin shim):**
+- `scripts/tests/test_sprint.py` — `TestSprintErrorHandling`: `test_keyboard_interrupt_returns_130`, `test_unexpected_exception_returns_1`, `test_exception_saves_state` — all call `_cmd_sprint_run` directly and monkeypatch internals that disappear in the shim
+- `scripts/tests/test_sprint.py` — `TestSprintDependencyAnalysis`: `test_run_shows_dependency_analysis`, `test_run_skip_analysis_flag` — assert on stdout strings produced inside old `_cmd_sprint_run` body
+- `scripts/tests/test_sprint_integration.py` — `TestMultiWaveExecution`: `test_sprint_run_multiple_waves`, `test_sprint_disables_runtime_overlap_detection`, `test_sprint_wires_transports_per_wave` — patch `ParallelOrchestrator` inside old runner; bypassed by shim
+- `scripts/tests/test_sprint_integration.py` — `TestErrorRecovery` (all ~8 tests) — call `_cmd_sprint_run` and assert `.sprint-state.json` written at repo root; FSM driver writes state to `${context.run_dir}/`
+- `scripts/tests/test_cli_sprint.py` — `TestMainSprintDispatch.test_run_routes_to_handler` — mock target changes if handler is renamed
+
+**New tests to write:**
+- `scripts/tests/test_ll_sprint_loop.py` — NEW file following `test_rn_build.py`/`test_loop_router.py` pattern:
+  - `TestLlSprintFile` — file exists, parses, `name == "ll-sprint"`, passes `is_runnable_loop()`
+  - `TestLlSprintFSMValidation` — `load_and_validate` returns no ERROR-severity violations; no MR-1/MR-3 violations
+  - `TestLlSprintStates` — required states (`load_plan`, `dispatch_wave`, `run_sequential`, `delegate_parallel`, `check_wave_complete`, `done`, `failed`) exist with correct routing fields
+  - `TestLlSprintMr3Compliance` — no bare `.loops/tmp` writes; all artifacts under `${context.run_dir}/`
+- `scripts/tests/test_cli_sprint_commands.py` (or `test_sprint.py`) — `TestCmdSprintPlan`:
+  - `test_plan_json_emits_wave_list` — assert `list` of `{wave, issues, mode}` objects; follow `test_show_json_output` pattern
+  - `test_plan_json_wave_ordering_respects_dependencies`
+  - `test_plan_sprint_not_found_returns_1`
+- `scripts/tests/test_cli_sprint.py` — add `test_plan_routes_to_handler` to `TestMainSprintDispatch` following the existing `_mock_handlers` pattern
+
+_Wiring pass added by `/ll:wire-issue`:_
 
 ### Documentation
-- `docs/guides/` — update sprint usage guide to reflect FSM-backed execution
-- `docs/reference/API.md` — document `plan --json` subcommand
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/SPRINT_GUIDE.md` — `## Running a Sprint` (flag table), `## How Waves Work` (dispatch description), `## Handling Interruptions / Resume` (state-file location changes from `.sprint-state.json` to `${context.run_dir}/`)
+- `docs/reference/CLI.md` — `#### ll-sprint run` exhaustive flag reference; `## Common Flags` table row; milestone write-back note (currently states `_cmd_sprint_run` writes `milestone:` frontmatter — shim must preserve or doc must update)
+- `docs/ARCHITECTURE.md` — `## Sprint Mode (ll-sprint)` Mermaid sequence diagram (`ll-sprint run → SprintManager → DependencyGraph → ParallelOrchestrator` becomes FSM-mediated); EventBus wiring table row
+- `docs/reference/API.md` — document `plan --json` subcommand; add `plan` row to subcommand table in `main_sprint()` entry
+- `.claude/CLAUDE.md` — `## CLI Tools` entry for `ll-sprint` omits `plan` subcommand — update description
+- `commands/create-sprint.md` — `## Integration` section states "Sprint execution uses `ParallelOrchestrator` from `parallel/orchestrator.py`" directly — update to reflect FSM-mediated dispatch
 
 ### Configuration
 - N/A — uses existing sprint config in `.ll/ll-config.json`; no new keys required
@@ -135,10 +208,44 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 1. Add `ll-sprint plan --json` subcommand to emit ordered wave definitions.
 2. Author `loops/ll-sprint.yaml` FSM wave driver with `load_plan`, `dispatch_wave`, `run_sequential`, `delegate_parallel`, `check_wave_complete`, `done` states.
 3. Wire Layer-1 per-issue states (FEAT-1902) into `run_sequential` state.
-4. Wire `ParallelOrchestrator` into `delegate_parallel` state.
+4. Wire `ParallelOrchestrator` (`scripts/little_loops/parallel/orchestrator.py`) into `delegate_parallel` state.
 5. Refactor `ll-sprint execute` to thin shim invoking `ll-loop run ll-sprint`.
 6. Run `ll-loop validate ll-sprint`; resolve any MR-1/MR-3 violations.
 7. Run existing `ll-sprint` tests; verify CLI interface is preserved.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `scripts/little_loops/cli/sprint/__init__.py` — add `plan` subparser to `main_sprint()` argparse table; add dispatch branch; update `__all__` and epilog examples
+9. Update `scripts/little_loops/cli/sprint/run.py` — convert `_cmd_sprint_run()` wave logic to thin shim; preserve `_sprint_signal_handler` and `_sprint_shutdown_requested` module-level globals (test coverage depends on them); ensure milestone write-back to issue frontmatter still occurs before delegating
+10. Update `TestSprintErrorHandling` tests in `scripts/tests/test_sprint.py` — adapt for shim exit-code propagation; update `.sprint-state.json` assertions to reflect `${context.run_dir}/` state location
+11. Update `TestMultiWaveExecution` + `TestErrorRecovery` in `scripts/tests/test_sprint_integration.py` — patch points change when `ParallelOrchestrator` is invoked by FSM rather than directly by `_cmd_sprint_run`
+12. Create `scripts/tests/test_ll_sprint_loop.py` — FSM YAML structural tests following `test_rn_build.py`/`test_loop_router.py` pattern (MR-1, MR-3, required states, `is_runnable_loop`)
+13. Add `TestCmdSprintPlan` tests (plan JSON schema, wave ordering, sprint-not-found) and `test_plan_routes_to_handler` in `TestMainSprintDispatch`
+14. Update `docs/guides/SPRINT_GUIDE.md`, `docs/reference/CLI.md`, `docs/ARCHITECTURE.md`, `.claude/CLAUDE.md`, `commands/create-sprint.md` — reflect FSM-mediated execution model, updated sequence diagram, new `plan` subcommand
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Step 1 anchors** — `plan --json` subcommand: register `plan_parser` in `main_sprint()` at `scripts/little_loops/cli/sprint/__init__.py:196` (follows `analyze_parser` pattern); handler `_cmd_sprint_plan()` in a new file `scripts/little_loops/cli/sprint/plan.py`; call `dep_graph.get_execution_waves()` at `scripts/little_loops/dependency_graph.py:172` then `refine_waves_for_contention()` at line 388; map `contention_notes[i] is not None or len(wave)==1` → `mode: "sequential"`, else `mode: "parallel"`.
+
+**Step 2 anchors** — FSM state structure: `initial: load_plan` → `read_wave` (pop next wave from `${context.run_dir}/wave-queue/`) → `dispatch_wave` (route on `mode` captured from wave JSON) → `run_sequential` (call `ll-loop run ll-auto --only <id>` per issue, or delegate to Layer-1 FEAT-1902 loop) → `delegate_parallel` (call `ParallelOrchestrator` via `ll-sprint run --only <ids>` or shell invocation) → `check_wave_complete` → loop back to `read_wave` or → `done`/`failed`. Model after `scripts/little_loops/loops/goal-cluster.yaml` queue dispatch pattern.
+
+**Step 5 anchors** — thin shim: replace `_cmd_sprint_run()` orchestration body in `scripts/little_loops/cli/sprint/run.py` with `subprocess.run(["ll-loop", "run", "ll-sprint", "--args", wave_plan_path])` after completing pre-flight steps (filter pipeline, `validate_issues()`, milestone write-back via `update_frontmatter()`, dependency graph cycle check). Milestone write-back via `update_frontmatter()` at `scripts/little_loops/sprint.py` MUST occur before shim delegates. Preserve `_sprint_signal_handler` and `_sprint_shutdown_requested` module-level globals — tests mock them directly.
+
+**Step 5 — `.sprint-state.json` compatibility**: shim MUST continue writing `.sprint-state.json` at `Path.cwd()` (not `${context.run_dir}/`). The FSM driver writes its internal checkpoints under `${context.run_dir}/` but the final state summary (failed/skipped issues) must be at CWD for `sprint-build-and-validate.yaml`'s `extract_unresolved` state to read it.
+
+**Step 12 test anchors** — `test_ll_sprint_loop.py` setup:
+```python
+from little_loops.fsm import is_runnable_loop
+from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+LOOP_FILE = Path(__file__).parent.parent / "little_loops" / "loops" / "ll-sprint.yaml"
+```
+Four test classes following `scripts/tests/test_rn_build.py`: `TestLlSprintFile`, `TestLlSprintFSMValidation` (check `load_and_validate()` no ERROR, no MR-3 `".loops/tmp"` violations), `TestLlSprintStates`, `TestLlSprintMr3Compliance`.
+
+**Step 13 test anchors** — `TestCmdSprintPlan`: follow `_setup_show_project()` helper from `scripts/tests/test_cli_sprint_show.py:421`; use `capsys.readouterr()` + `json.loads(captured.out)` to validate output schema; assert `"mode"` key in each wave dict. Add `"_cmd_sprint_plan"` to `_mock_handlers()` in `scripts/tests/test_cli_sprint.py:25`.
 
 ## Impact
 
@@ -157,7 +264,24 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `ll-sprint execute` shim follows the canonical thin-shim pattern established by FEAT-1902 (`<cli> → ll-loop run <loop>`). Coordinate shim implementation approach with FEAT-1902 to avoid divergent patterns.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-07_
+
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- **FEAT-1901 is unresolved**: Issue is declared `blocked_by: FEAT-1901` (Stabilize shared orchestration core) which is still `Open`. Either wait for FEAT-1901 to complete, or reassess whether the dependency is hard-blocking (DependencyGraph code already exists in sprint.py:348 — the declared blocker may be softer than it appears).
+
+### Concerns
+- Integration Map has an incorrect path: `scripts/little_loops/parallel_orchestrator.py` should be `scripts/little_loops/parallel/orchestrator.py` (flagged in Verification Notes but not yet corrected — fix before implementation).
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92309da-4e12-4435-9943-a5af8ba8057d.jsonl`
+- `/ll:refine-issue` - 2026-06-07T18:48:53 - `f6435e9b-344b-4a99-b530-899f95d858ea.jsonl`
+- `/ll:wire-issue` - 2026-06-07T18:43:17 - `aa353b88-f16e-4347-9174-4ecbe1ab3f27.jsonl`
+- `/ll:confidence-check` - 2026-06-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d266d950-9156-4f39-841f-f5de8aa33820.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:33 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 

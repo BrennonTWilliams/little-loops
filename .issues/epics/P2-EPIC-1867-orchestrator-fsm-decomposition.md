@@ -3,11 +3,17 @@ id: EPIC-1867
 title: Orchestrator FSM Decomposition (ll-auto / ll-sprint / ll-parallel)
 type: EPIC
 priority: P2
-captured_at: "2026-06-02T02:18:04Z"
+captured_at: '2026-06-02T02:18:04Z'
 discovered_date: 2026-06-02
 discovered_by: capture-issue
 status: open
-relates_to: [FEAT-1901, FEAT-1902, FEAT-1899, ENH-1903]
+relates_to:
+- FEAT-1901
+- FEAT-1899
+- ENH-1903
+- FEAT-2000
+- FEAT-2001
+- FEAT-2002
 ---
 
 # EPIC-1867: Orchestrator FSM Decomposition (ll-auto / ll-sprint / ll-parallel)

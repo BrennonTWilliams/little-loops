@@ -3,13 +3,24 @@ id: FEAT-1902
 title: Author loops/ll-auto.yaml FSM + ll-auto shim + A/B parity harness
 type: FEAT
 priority: P2
-status: open
-captured_at: 2026-06-03T19:12:39Z
+status: done
+captured_at: 2026-06-03 19:12:39+00:00
 discovered_date: 2026-06-03
 discovered_by: scope-epic
 parent: EPIC-1867
-relates_to: [FEAT-1901]
-blocked_by: [FEAT-1901]
+relates_to:
+- FEAT-1901
+blocked_by:
+- FEAT-1901
+confidence_score: 85
+outcome_confidence: 60
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 10
+missing_artifacts: true
+size: Very Large
+completed_at: '2026-06-07T17:47:47Z'
 ---
 
 # FEAT-1902: Author loops/ll-auto.yaml FSM + ll-auto shim + A/B parity harness
@@ -79,7 +90,7 @@ This feature would:
 
 ### Files to Modify
 - `loops/ll-auto.yaml` — new FSM loop definition (create)
-- `scripts/little_loops/issue_manager.py` — add deprecation notice to `AutoManager.run()` (class at L988, `run()` at L1165; `auto_manager.py` does not exist)
+- `scripts/little_loops/issue_manager.py` — add deprecation notice to `AutoManager.run()` (class at L1021, `run()` at L1198; `auto_manager.py` does not exist)
 - `scripts/little_loops/cli/auto.py` — `main_auto()` entrypoint; convert to thin shim over `ll-loop run ll-auto` (preserve all existing CLI flags)
 
 ### Dependent Files (Callers/Importers)
@@ -113,7 +124,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **AutoManager.run() internals (scripts/little_loops/issue_manager.py:AutoManager):**
-- `run()` at L1165: `while not self._shutdown_requested` loop; terminates when `self.max_issues > 0 and self.processed_count >= self.max_issues`, or `_get_next_issue()` returns `None`
+- `AutoManager` class at L1021, `run()` at L1198: `while not self._shutdown_requested` loop; terminates when `self.max_issues > 0 and self.processed_count >= self.max_issues`, or `_get_next_issue()` returns `None`
 - The FSM equivalent of `max_iterations` is the loop's `max_iterations` YAML field — a separate concept from `AutoManager.max_issues`. The shim should forward `--max-issues` as `--max-iterations $(ll-issues list --json | jq length) * states_per_issue` or use a static ceiling (500+) and rely on queue depletion (same as `autodev.yaml`)
 - Phase sequence in `process_issue_inplace()`: (1) ready-issue gate, (2) optional decide-issue if `decision_needed`, (3) implement with continuation handling, (4) verify via `verify_issue_completed()` / `verify_work_was_done()`
 - Failure classification in `scripts/little_loops/issue_lifecycle.py:classify_failure()` — returns `(FailureType.TRANSIENT, reason)` or `(FailureType.REAL, reason)` by pattern-matching stderr/stdout; no subprocess needed for FSM `classify_failure` state — can call `ll-issues classify-failure` (FEAT-1901)
@@ -145,6 +156,19 @@ Test with: `pytest.warns(DeprecationWarning, match="AutoManager.run")`
 **A/B parity test pattern (scripts/tests/test_generate_schemas.py:test_idempotent_on_second_run(), scripts/tests/test_issues_search.py:test_confidence_first_matches_legacy_lambda()):**
 - Create shared fixture (fixed backlog); run `AutoManager(tmp_path).run()` and capture `issue_events` rows; run FSM via `ll-loop run ll-auto` and capture same; assert `{issue_id: transition}` dicts are identical
 
+**ll-issues next-issue output format:**
+- `ll-issues next-issue` prints the full issue ID (e.g. `FEAT-1902`), exit 0 when found, exit 1 when no issues remain — use this as the FSM queue-depletion signal; `--skip ID1,ID2`, `--json`, `--path` flags also supported
+
+**fragment: queue_pop vs fragment: shell_exit:**
+- `fragment: queue_pop` (from `scripts/little_loops/loops/lib/common.yaml:131-139`) is the canonical choice for `dequeue_next` state — supplies `action_type: shell` + `evaluate.type: exit_code`, designed for head-pop operations; add `capture: input` at the state level so subsequent states reference the popped ID as `${captured.input.output}`
+- `fragment: shell_exit` is appropriate for `init`, `implement`, `verify_work`, `classify_failure`, `done` states
+
+**on_handoff: spawn for context overflow:**
+- `autodev.yaml` uses `on_handoff: spawn` as a top-level field to resume in a fresh session when context fills — `ll-auto.yaml` should do the same since a full backlog sweep can exceed context limits; pair with `timeout: 28800` (8 hours)
+
+**--context KEY=VALUE flag mechanics (scripts/little_loops/cli/loop/__init__.py:211-217):**
+- `--context` uses `action="append"`, accepts repeated `KEY=VALUE` pairs; processed last in `cmd_run()` so they override positional `input`, `program.md` sections, and `run_dir`; values are plain strings; the shim should forward CLI flags (e.g. `--max-issues 10`) as `--context max_issues=10`
+
 **MR-1 exit_code evaluator pattern:**
 ```yaml
 verify_work:
@@ -170,6 +194,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_cli.py` — `TestMainAutoIntegration` and `TestMainAutoAdditionalCoverage` patch `little_loops.cli.auto.AutoManager` and assert `mock_manager_cls.assert_called_once()`; after shim conversion `AutoManager` is never instantiated inside `main_auto()` — replace with subprocess/`ll-loop` invocation assertions
 - `scripts/tests/test_cli_e2e.py` — `test_ll_auto_dry_run()` (line 235) asserts `mock_popen.call_count == 0`; after shim, `main_auto()` invokes `ll-loop run ll-auto` via subprocess — update assertion; `test_ll_auto_max_issues_limit()` (line 279) and `test_ll_auto_category_filter()` (line 295) instantiate `AutoManager` directly — rewrite to test shim behavior
 
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_workflow_integration.py` — `TestSequentialWorkflowIntegration.test_dry_run_makes_no_changes` calls `manager.run()` directly (~L109) and will emit unhandled `DeprecationWarning` after step 8; wrap with `pytest.warns(DeprecationWarning, match="AutoManager.run")` — not covered by step 11 which only targets `test_issue_manager.py` [Agent 3 finding]
+
 ### Documentation
 - `docs/` — update any references to `AutoManager.run()` to note soft-deprecation
 
@@ -179,6 +206,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` — transport section note mentioning `AutoManager.__init__()` (line ~1166) must be updated; this is the anchor asserted by `test_wiring_reference_docs.py` parametrized case `("docs/reference/CONFIGURATION.md", "AutoManager", "ENH-1734")`
 - `docs/reference/CLI.md` — `### ll-auto` section (lines 217–256) describes current `AutoManager`-backed behavior; update to describe shim and FSM delegation
 
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `docs/development/E2E_TESTING.md` — section "3. Sequential Execution Workflow (ll-auto)" describes `TestSequentialExecutionWorkflow` class structure; must be updated after step 13 rewrites those tests to reflect new shim assertion patterns [Agent 2 finding]
+- `docs/development/TESTING.md` — contains `main_auto` and `AutoManager` code-snippet annotations in test class docstrings; update after shim conversion to reflect that `main_auto()` no longer constructs `AutoManager` directly [Agent 2 finding]
+
 ### Configuration
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -187,8 +218,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Implementation Steps
 
 1. Confirm FEAT-1901 Layer-0 CLI subcommands are available (`ll-issues next`, `ll-issues verify-work`, `ll-issues classify-failure`); stub the `verify_work` state with a placeholder shell command if FEAT-1901 is not yet merged
-2. Author `loops/ll-auto.yaml` FSM: model on `loops/autodev.yaml` queue-orchestration shape; states: `init` (count queue), `dequeue_next`, `implement`, `verify_work` (exit_code evaluator calling `ll-issues verify-work ${context.current_issue} --baseline ${context.baseline_sha}`), `classify_failure`, `done`; set `max_iterations: 500` static ceiling + queue depletion (not hard-coded backlog count); use `fragment: shell_exit` for all shell states; write all intermediate files to `${context.run_dir}/`
-3. Convert `scripts/little_loops/cli/auto.py:main_auto()` to thin shim over `ll-loop run ll-auto`; forward all existing flags (`--max-issues`, `--resume`, `--only`, `--skip`, `--type`, `--priority`, `--label`, `--category`, `--quiet`, `--verbose`) as context overrides (`ll-loop run ll-auto --context key=value ...`); preserve `cli_event_context(DEFAULT_DB_PATH, ...)` wrapper
+2. Author `loops/ll-auto.yaml` FSM: model on `loops/autodev.yaml` queue-orchestration shape; top-level fields: `initial: init`, `max_iterations: 500`, `timeout: 28800`, `on_handoff: spawn`, `import: - lib/common.yaml`; states: `init` (count backlog), `dequeue_next` (use `fragment: queue_pop` + `capture: input`; subsequent states reference dequeued ID as `${captured.input.output}`), `implement`, `verify_work` (exit_code evaluator calling `ll-issues verify-work ${captured.input.output} --baseline ${context.baseline_sha}`), `classify_failure`, `done`; use `fragment: shell_exit` for `init`, `implement`, `verify_work`, `classify_failure`; write all intermediate files to `${context.run_dir}/`; set `on_handoff: spawn` to handle context overflow across a full backlog
+3. Convert `scripts/little_loops/cli/auto.py:main_auto()` to thin shim over `ll-loop run ll-auto`; forward all existing flags as `--context KEY=VALUE` overrides: `--max-issues` → `max_issues`, `--resume` → `resume`, `--only` → `only_ids`, `--skip` → `skip_ids`, `--type` → `type_prefixes`, `--priority` → `priority_filter`, `--label` → `label_filter`, `--category` → `category`, `--quiet`/`--verbose` → `verbose`, `--dry-run` → `dry_run`, `--config` → `config`, `--idle-timeout` → `idle_timeout`, `--handoff-threshold` → `handoff_threshold`, `--context-limit` → `context_limit`; preserve `cli_event_context(DEFAULT_DB_PATH, ...)` wrapper around the `ll-loop run` subprocess call
 4. Run `ll-loop validate ll-auto` — fix MR-1/MR-3 violations until clean
 5. Run `ll-loop diagnose-evaluators ll-auto` over ≥10 runs — confirm `verify_work` verdict variance `p(1-p) ≥ 0.05`
 6. Run `ll-loop run ll-auto --baseline` — confirm harness ≥ unguided baseline
@@ -207,6 +238,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 14. Update `config-schema.json` `"sqlite"` description (line 1293) — replace `"AutoManager.__init__() wires SQLiteTransport directly for ll-auto runs"` with a note that reflects FSM shim ownership; update the corresponding parametrized assertion in `test_wiring_skills_and_commands.py` (`("config-schema.json", "AutoManager", "ENH-1734")`) to match the new anchor string
 15. Update documentation: `docs/ARCHITECTURE.md` (Mermaid diagrams + transport table), `docs/reference/API.md` (`### AutoManager` + `### main_auto`), `docs/reference/CONFIGURATION.md` (transport section), `docs/reference/CLI.md` (`### ll-auto` section) — reflect soft-deprecation of `AutoManager.run()` and shim behavior
 16. Audit `loops/autodev.yaml`, `loops/oracles/implement-issue-chain.yaml`, `loops/rn-remediate.yaml`, `loops/eval-driven-development.yaml`, `loops/lib/cli.yaml` — confirm exit-code routing still works after shim; no changes expected if `ll-auto` preserves exit codes, but verify before merge
+17. Wrap `manager.run()` call in `scripts/tests/test_issue_workflow_integration.py:TestSequentialWorkflowIntegration.test_dry_run_makes_no_changes` (~L82) with `pytest.warns(DeprecationWarning, match="AutoManager.run")` — separate from step 11 which covers only `test_issue_manager.py` call sites
+18. After steps 12–13 rewrite the E2E test classes, update `docs/development/E2E_TESTING.md` (section "3. Sequential Execution Workflow (ll-auto)") and `docs/development/TESTING.md` to reflect the new shim assertion patterns
 
 ## Impact
 
@@ -235,7 +268,40 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue defines the canonical thin-shim pattern for EPIC-1867 CLI migrations (`<cli> → ll-loop run <loop>`). FEAT-1899 (`ll-sprint execute`) should follow this pattern for consistency rather than implementing an independent shim approach.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-07_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 60/100 → MODERATE
+
+### Concerns
+- FEAT-1901 is still open (formal `blocked_by`); `ll-issues verify-work` and `ll-issues classify-failure` subcommands do not exist — the `verify_work` FSM state must use a placeholder stub, and acceptance criteria 5 (evaluator variance p(1-p) ≥ 0.05) and 6 (baseline comparison) cannot be validated until the dependency lands.
+
+### Outcome Risk Factors
+- **Broad change surface**: 16 files across 4 subsystems (FSM YAML, Python CLI, tests, docs/config) — Breadth > 15 penalizes Criterion A to 5/12; coordination failure across touchpoints is the primary integration risk.
+- **Moderate blast radius**: ~10-11 callers/dependents of `AutoManager` and `main_auto()` must be consistently updated after shim conversion (6 loop files + 3 test class groups + `__init__.py`); `test_cli.py` requires a full class rewrite.
+- **Missing prerequisite**: `ll-issues verify-work` does not exist yet (pending FEAT-1901) — the `verify_work` FSM state requires a stub; the A/B parity harness can still be built, but parity of the real verification path needs FEAT-1901.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-06-07
+- **Reason**: Issue too large for single session (score 11/11)
+
+### Decomposed Into
+- FEAT-2000: Author loops/ll-auto.yaml FSM definition and validate
+- FEAT-2001: Convert ll-auto CLI to thin shim over ll-loop and build A/B parity harness
+- FEAT-2002: Update docs and config for ll-auto FSM migration and AutoManager soft-deprecation
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-06-07T00:00:00Z - `5db94c28-db76-4bed-885c-95a49da744cb.jsonl`
+- `/ll:confidence-check` - 2026-06-07T00:00:00Z - `e8764177-a179-44c4-9ca9-3f2696ce0963.jsonl`
+- `/ll:refine-issue` - 2026-06-07T17:38:54 - `6214237c-b270-42ac-a4cf-ca15ba6ea67c.jsonl`
+- `/ll:wire-issue` - 2026-06-07T17:33:58 - `a55668b4-c556-4d7d-9ea0-414f6469420e.jsonl`
+- `/ll:confidence-check` - 2026-06-07T00:00:00Z - `e286ef25-ca50-473e-9751-1a34064b1849.jsonl`
 - `/ll:wire-issue` - 2026-06-06T00:00:00 - `current-session.jsonl`
 - `/ll:refine-issue` - 2026-06-07T00:00:06 - `7dd0b9eb-6086-431f-a60e-1813df9e769a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
@@ -248,3 +314,13 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:22:56 - `1489a8f1-014d-4d2b-9f62-365c703f374a.jsonl`
 - `/ll:scope-epic` - 2026-06-03T19:12:39Z - `87e9f36b-36c2-4e9e-a0c8-3a57aa45d1f5.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-06-07
+- **Decomposed into**: FEAT-2000, FEAT-2001, FEAT-2002
+
+Work for FEAT-1902 is now carried by its child issues; this parent was closed by rn-decompose.
