@@ -3,7 +3,7 @@ id: FEAT-1988
 title: "goal-cluster \u2014 Core FSM Loop, Loaders, and Integration"
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-06T00:00:00Z'
 discovered_date: 2026-06-06
