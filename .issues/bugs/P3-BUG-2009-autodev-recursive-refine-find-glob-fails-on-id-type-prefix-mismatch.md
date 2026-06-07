@@ -35,6 +35,22 @@ BUG-2003 fixed the `rn-*` sites by (a) making `_resolve_issue_id` in
 the shell sites through `ll-issues path`. That Layer-0 resolver fix does **not** reach these
 loops because they call `find` directly rather than `ll-issues path`.
 
+## Current Behavior
+
+`autodev.yaml` and `recursive-refine.yaml` resolve issue files via a raw shell glob at 10
+sites:
+
+```bash
+find .issues -name "*-$ID-*" ! -path "*/completed/*" | head -1
+```
+
+This returns an empty string in two scenarios, causing the loop to operate on a missing file
+path:
+1. **Type-prefix mismatch** — `$ID` contains a type token (e.g. `FEAT-1903`) that differs
+   from the file's actual prefix (`ENH-1903`), so no filename matches.
+2. **Missing priority prefix** — a file like `FEAT-1725-foo.md` (no `P#-`) is missed because
+   the leading `-` before `$ID` requires at least one character before the token.
+
 ## Affected Sites
 
 | Site (var) | File:Line | Resolves |
@@ -59,12 +75,31 @@ a character before it. Issue numbers are globally unique across types
 (`get_next_issue_number`), so the type prefix is redundant strictness and the leading hyphen
 is an incorrect anchor.
 
+## Steps to Reproduce
+
+1. Create a `.issues/` file whose on-disk type prefix differs from the ID used by the loop
+   (e.g. file is `P4-ENH-1903-*.md` but loop state references `FEAT-1903`), or create a
+   file without a `P#-` priority prefix (e.g. `FEAT-1725-foo.md`).
+2. Trigger `autodev.yaml` or `recursive-refine.yaml` with that issue ID (via `ll-loop run`
+   or an in-progress session that reaches one of the 10 resolution sites).
+3. Observe: the `INFLIGHT_FILE`, `child_file`, or `PARENT_FILE` variable resolves to an
+   empty string — the loop either mis-routes, drops the slot, or exits with an empty file path.
+
 ## Expected Behavior
 
 - Each site locates the issue/child/parent file regardless of a stale/mismatched type prefix
   (e.g. `FEAT-1903` resolves `ENH-1903`).
 - A file with no priority prefix (e.g. `FEAT-1725-foo.md`) is located at every site.
 - Behavior matches the now-tolerant `rn-*` loops.
+
+## Motivation
+
+BUG-2003 confirmed this defect class causes real loop failures: consumed slots, mis-routed
+children, unresolved parents. The 10 unpatched sites in `autodev.yaml` and
+`recursive-refine.yaml` present identical risk — it is only a matter of when a
+type-prefix mismatch or un-prefixed ID flows through. The fix is a mechanical 10-site swap
+that mirrors an already-proven patch, carries negligible risk, and requires no new resolver
+logic.
 
 ## Proposed Solution
 
@@ -75,6 +110,15 @@ sites that span multiple lines (continuation `\`) should be collapsed to the sin
 
 Note the `${captured.input.output}` interpolation at several sites — substitute the resolved
 context value into the `ll-issues path` argument the same way the existing `find` arg does.
+
+## Implementation Steps
+
+1. Replace all 5 `find .issues -name "*-$ID-*"` resolution sites in `autodev.yaml`
+   (at `INFLIGHT_FILE`, `child_file` ×2, `PARENT_FILE` ×2) with `ll-issues path "$ID" 2>/dev/null`.
+2. Replace all 5 corresponding sites in `recursive-refine.yaml` with `ll-issues path "$ID" 2>/dev/null`.
+3. Collapse any multi-line continuation (`\`) forms to the single-call pattern used by `rn-*` post BUG-2003.
+4. Run `ll-loop validate autodev` and `ll-loop validate recursive-refine` — both must pass.
+5. Smoke-test by running either loop with a mismatched-prefix ID and confirming the file is located.
 
 ## Integration Map
 
@@ -113,4 +157,5 @@ context value into the `ll-issues path` argument the same way the existing `find
 **Open** | Created: 2026-06-07 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-07T21:41:33 - `0d7c59d4-7959-43a0-a3fb-6500f7a0b2b8.jsonl`
 - `/ll:capture-issue` - 2026-06-07T21:35:32 - `da163c1d-378a-4a58-b8d2-88910a03d4ca.jsonl`
