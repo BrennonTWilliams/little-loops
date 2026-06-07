@@ -170,6 +170,11 @@ states:
                   cf.write(f'{cid} (cycle detected, parent=$${ID})\n')
               print(f'WARN: skipping cycle candidate {cid}', file=sys.stderr)
           else:
+              # In-memory dedup: a child repeated within this same candidate
+              # list must not be enqueued twice. Updating the in-memory set
+              # (NOT visited.txt) is the correct dedup mechanism for a single
+              # enqueue_children pass (BUG-2004).
+              visited.add(cid)
               survivors.append(cid)
 
       with open(f'{run_dir}/children_$${ID}.txt', 'w') as f:
@@ -189,11 +194,14 @@ states:
         | grep -v '^[[:space:]]*$' \
         > "$RUN_DIR/queue.txt"
 
-      # Assign depth to each child
+      # Assign depth to each child. visited.txt is the authoritative "dequeued"
+      # log written by rn-implement's fifo_pop/select_next at dequeue time;
+      # enqueue_children must NOT write it here, or queued-but-not-yet-dequeued
+      # children would be falsely treated as visited on a resumed run and
+      # silently dropped by cycle detection (BUG-2004).
       while IFS= read -r child; do
         [ -z "$child" ] && continue
         echo "$child $CHILD_DEPTH" >> "$RUN_DIR/depth_map.txt"
-        echo "$child" >> "$RUN_DIR/visited.txt"
       done < "$RUN_DIR/children_$${ID}.txt"
 
       # Mark parent as skipped (decomposed)
