@@ -1,6 +1,7 @@
 ---
 id: BUG-2009
-title: "autodev/recursive-refine: find glob fails on issue ID type-prefix mismatch and missing priority prefix"
+title: 'autodev/recursive-refine: find glob fails on issue ID type-prefix mismatch
+  and missing priority prefix'
 type: BUG
 priority: P3
 status: open
@@ -13,6 +14,12 @@ labels:
 - autodev
 - recursive-refine
 - loop-defect
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 25
+score_test_coverage: 15
+score_ambiguity: 25
+score_change_surface: 20
 ---
 
 # BUG-2009: autodev/recursive-refine find glob fails on ID type-prefix mismatch
@@ -129,6 +136,35 @@ context value into the `ll-issues path` argument the same way the existing `find
 ### Similar Patterns
 - BUG-2003 (the `rn-*` fix) is the exact template; reuse `ll-issues path` rather than
   re-implementing the glob.
+- Concrete reference implementations to mirror: `rn-decompose.yaml:109`
+  (`CHILD_FILE=$(ll-issues path "$child_id" 2>/dev/null)`), `rn-implement.yaml:77`
+  (`resolved=$(ll-issues path "$raw_id" 2>/dev/null)`), `rn-remediate.yaml:84,123,312`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — verified against the current codebase (2026-06-07):_
+
+- **All 10 sites confirmed verbatim** at the claimed line numbers (autodev: 307, 344, 376,
+  512, 527; recursive-refine: 243, 302, 449, 542, 590), each using
+  `find .issues -name "*-$ID-*" ! -path "*/completed/*"`. The three multi-line continuation
+  forms are autodev:344, recursive-refine:243, and recursive-refine:449 — collapse these to
+  the single-call form (the trailing `grep -q "Decomposed from $PARENT_ID"`/`decision_needed`
+  guards stay unchanged; only the assignment line changes).
+- **The swap preserves the `! -path "*/completed/*"` exclusion implicitly.**
+  `_resolve_issue_id` (`scripts/little_loops/cli/issues/show.py:91-103`) searches **only**
+  `config.issue_categories` dirs (`bugs/`, `features/`, `enhancements/`, `epics/`). `completed/`
+  exists on disk but is **not** a category, so `ll-issues path` never returns a completed file.
+  No separate exclusion flag is needed in the replacement — dropping `! -path "*/completed/*"`
+  is safe and behavior-preserving.
+- **Tolerance verified empirically**: `ll-issues path FEAT-2009` resolves the on-disk
+  `BUG-2009` file. The resolver prefers an exact-type match but falls back to the unambiguous
+  numeric match when the type prefix is stale (`show.py:108-116`), and globs `*-{numeric_id}-*.md`
+  with no leading-character requirement (`show.py:103`) — covering both failure modes in the bug.
+- **Out-of-scope inconsistency (note for the implementer, do not fix here)**: the
+  `child_file` guards in `autodev.yaml`/`recursive-refine.yaml` test only
+  `grep -q "Decomposed from $PARENT_ID"`, whereas the post-BUG-2003 `rn-decompose.yaml:111-113`
+  guard also accepts `parent:.*$PARENT_ID` frontmatter. Aligning that guard is a separate
+  enhancement; this bug is scoped to the resolution swap only.
 
 ### Tests
 - N/A at the YAML level — validated via `ll-loop validate` + `ll-loop run` integration. The
@@ -157,5 +193,6 @@ context value into the `ll-issues path` argument the same way the existing `find
 **Open** | Created: 2026-06-07 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-07T22:19:00 - `ec3552fa-7077-4532-8b37-a0d09aeb3ffd.jsonl`
 - `/ll:format-issue` - 2026-06-07T21:41:33 - `0d7c59d4-7959-43a0-a3fb-6500f7a0b2b8.jsonl`
 - `/ll:capture-issue` - 2026-06-07T21:35:32 - `da163c1d-378a-4a58-b8d2-88910a03d4ca.jsonl`
