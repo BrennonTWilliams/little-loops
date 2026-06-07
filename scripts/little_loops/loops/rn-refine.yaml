@@ -12,6 +12,8 @@ scope:
 initial: init
 max_iterations: 30
 timeout: 7200
+on_handoff: spawn
+required_inputs: ["plan_file"]
 artifact_versioning: true
 
 context:
