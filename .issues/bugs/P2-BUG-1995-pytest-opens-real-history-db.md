@@ -2,8 +2,9 @@
 id: BUG-1995
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-07T01:32:37Z'
+completed_at: '2026-06-07T03:08:31Z'
 discovered_date: '2026-06-07'
 discovered_by: capture-issue
 labels:
@@ -466,10 +467,23 @@ _Added by `/ll:confidence-check` on 2026-06-06_
 - `/ll:format-issue` - 2026-06-07T01:34:42 - `784755b2-ee36-4dab-b9ae-65246aa23931.jsonl`
 - `/ll:capture-issue` - 2026-06-07T01:32:37Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5141031e-db2a-4193-90dd-496d74847e81.jsonl`
 - `/ll:confidence-check` - 2026-06-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c5d80b8-1a92-406b-86d8-7de5a29b6f5b.jsonl`
+- `/ll:manage-issue` - 2026-06-07T03:08:31Z - `8d013932-f377-4fd7-a7c6-e6bd8dd726cd.jsonl`
 
 ---
 
+## Resolution
+
+Implemented Option A: added `resolve_history_db()` to `session_store.py` that returns `LL_HISTORY_DB`
+env var path when set. Updated `cli_event_context` to use it when the default path is passed.
+Fixed raw `sqlite3.connect` read-path leaks in `cli/history.py` (3 sites) and `cli/logs.py` (1 site).
+Added autouse `_isolate_history_db` fixture to `conftest.py` that sets `LL_HISTORY_DB` per test,
+plus a session-scoped `_guard_real_history_db` regression guard. Added 2 unit tests in
+`TestCliEventContext`. Documented `LL_HISTORY_DB` in ARCHITECTURE.md, HISTORY_SESSION_GUIDE.md,
+CONFIGURATION.md, and HOST_COMPATIBILITY.md.
+
+Commits: `db5a0894`, `478a1ec6`
+
 ## Status
 
-- **Status**: open
+- **Status**: done
 - **Priority**: P2
