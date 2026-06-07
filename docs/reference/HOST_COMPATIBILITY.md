@@ -199,6 +199,15 @@ without invoking the adapter.
 | Host identification env var         | (default, no var needed)      | `LL_HOOK_HOST=opencode`                  | `LL_HOOK_HOST=codex`                     |
 | Adapter runtime                     | Bash + Python                 | TypeScript / Bun + Python                | Bash + Python                            |
 
+## Environment variables
+
+| Env var          | Description |
+| ---------------- | ----------- |
+| `LL_HOST_CLI`    | Override host runner selection (`claude-code`, `codex`, `opencode`, `pi`). Takes precedence over binary probe and `orchestration.host_cli` config. |
+| `LL_HOOK_HOST`   | Identify the host to hook adapters (`claude-code`, `opencode`, `codex`). Set by each adapter before invoking the Python hook layer. |
+| `LL_STATE_DIR`   | Scope config probe to a host-specific directory (e.g. `.codex`). Affects config resolution only — other state paths are unaffected (see [^state]). |
+| `LL_HISTORY_DB`  | Override the default `.ll/history.db` session-store path (e.g. for test isolation). |
+
 ## Adapter locations
 
 - Claude Code: [`hooks/adapters/claude-code/`](../../hooks/adapters/claude-code/) — Bash shim

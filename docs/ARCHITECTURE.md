@@ -638,7 +638,7 @@ flowchart TB
 | `EventBus.emit()` | `events.py` | Dispatches events to registered transports |
 | `post_tool_use` hook | `hooks/post_tool_use.py` | Writes `tool_events` / `file_events` per call |
 | `user_prompt_submit` hook | `hooks/user_prompt_submit.py` | Writes `user_corrections` / `skill_events` via `is_correction()` heuristic |
-| `cli_event_context()` | `session_store.py` | Context manager that records `ll-` CLI entry-point invocations to `cli_events` (ENH-1849) |
+| `cli_event_context()` | `session_store.py` | Context manager that records `ll-` CLI entry-point invocations to `cli_events` (ENH-1849). Honors `LL_HISTORY_DB` env var for path override. |
 | `history_reader.py` | `history_reader.py` | Public read API: 10 query functions, 7 dataclasses, `ll_grep` / `ll_expand` / `ll_describe` (FEAT-1712), `project_digest` / `render_project_context` (ENH-1907) |
 | `ll-history-context` CLI | `cli/history_context.py` | Primary consumer: `## Historical Context` block (issue mode) + project digest dry-run (`--project`) |
 | `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions, `grep`/`expand`/`describe` (FEAT-1712) |

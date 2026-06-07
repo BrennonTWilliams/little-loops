@@ -1173,6 +1173,8 @@ Records FSM loop events into the per-project session store (`.ll/history.db`) fo
 |-----|------|---------|-------------|
 | `events.sqlite.path` | `string` | `".ll/history.db"` | Filesystem path for the SQLite session database. |
 
+**Env-var override**: `LL_HISTORY_DB` takes precedence if set (e.g. for test isolation).
+
 The session store is a SQLite database with an FTS5 full-text index. `SQLiteTransport` writes events as they are emitted; `ll-session search`/`recent`/`backfill` query and seed it. As of ENH-1691, `ll-auto` writes issue lifecycle events live via `AutoManager`'s internal transport — no additional config is required. Use `ll-session backfill` to import historical data captured before ENH-1691. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread for each interactive session, so new data is indexed without manual intervention.
 
 ```json

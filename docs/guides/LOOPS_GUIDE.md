@@ -592,7 +592,23 @@ ll-loop run rn-implement "FEAT-1808,ENH-1842"
 | `outcome_threshold` | `75` | Outcome confidence threshold for implementation success (int, 0–100) |
 | `max_depth` | `3` | Maximum decomposition depth; issues at or beyond this depth are capped |
 | `max_remediation_passes` | `3` | Maximum remediation attempts per issue before escalation to decomposition |
+| `schedule_mode` | `"fifo"` | Scheduler: `"fifo"` (default, pop queue head) or `"value_ranked"` (select highest-value ready issue each tick) |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-implement-{timestamp}/`); created automatically before the `init` state |
+
+**`schedule_mode: value_ranked`**
+
+When set, each tick the scheduler:
+1. **Filters** the queue to the *ready set* — issues whose `blocked_by` deps are all `done` and that are not in `blocked.txt`.
+2. **Ranks** the ready set by composite score: `priority_weight` (P0=100 … P5=10) + `impact/effort` ratio × 10 (from `ll-issues impact-effort`), tie-broken by depth (deeper/more-recently-decomposed issues win at equal score to preserve subtree-first resolution).
+3. **Pops** the highest-score issue, replicating the same post-conditions as FIFO (`captured.input`, `current_depth.txt`, `visited.txt`, `dequeue_count.txt`).
+
+If the ready set is empty (all remaining issues are blocked), the scheduler exits as if the queue were empty and the run terminates with a summary. Use `"fifo"` (the default) to preserve the original unconditional head-pop behaviour.
+
+```bash
+# Value-ranked scheduling
+ll-loop run rn-implement "FEAT-1808,ENH-1842,BUG-1001" \
+  --context schedule_mode=value_ranked
+```
 
 **Output artifacts** (written to `${context.run_dir}`):
 
