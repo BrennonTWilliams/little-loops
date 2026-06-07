@@ -395,7 +395,10 @@ def _isolate_history_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Gene
     Sets LL_HISTORY_DB so cli_event_context and resolve_history_db route
     writes to tmp_path instead of the real .ll/history.db.
     """
-    db = tmp_path / "history.db"
+    # Use a .ll/ subdirectory so ensure_db's legacy migration (session.db →
+    # history.db) never sees a session.db sibling left by other fixtures.
+    db = tmp_path / ".ll" / "history.db"
+    db.parent.mkdir(exist_ok=True)
     monkeypatch.setenv("LL_HISTORY_DB", str(db))
     yield
 

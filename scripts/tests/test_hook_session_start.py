@@ -41,7 +41,7 @@ class TestSessionStartConfigLoad:
         assert "No config found" in result.feedback
 
     def test_loads_base_config_when_present(self, in_tmp: Path) -> None:
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({"a": 1}))
 
         result = handle(_event())
@@ -70,7 +70,7 @@ class TestSessionStartConfigLoad:
         (in_tmp / ".codex").mkdir()
         (in_tmp / ".codex" / "ll-config.json").write_text(json.dumps({"codex": True}))
         # Also write `.ll/ll-config.json` to confirm `.codex/` wins.
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({"ll": True}))
 
         result = handle(LLHookEvent(host="codex", intent="session_start", payload={}))
@@ -82,7 +82,7 @@ class TestSessionStartConfigLoad:
 
 class TestSessionStartContextStateCleanup:
     def test_removes_prior_session_state(self, in_tmp: Path) -> None:
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         state_file = in_tmp / ".ll" / "ll-context-state.json"
         state_file.write_text("{}")
 
@@ -100,7 +100,7 @@ class TestSessionStartDbMigration:
     """ENH-1635: session_start triggers the session.db -> history.db rename."""
 
     def test_migrates_legacy_session_db(self, in_tmp: Path) -> None:
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         # Need a config so the ensure_db() block runs.
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
         legacy = in_tmp / ".ll" / "session.db"
@@ -221,7 +221,7 @@ class TestSessionStartLargeConfigWarning:
     def test_large_config_warning_appears(self, in_tmp: Path) -> None:
         # Build a config whose JSON repr exceeds the 5000-char threshold.
         big = {"items": ["x" * 100 for _ in range(60)]}
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps(big))
 
         result = handle(_event())
@@ -230,7 +230,7 @@ class TestSessionStartLargeConfigWarning:
         assert "Warning: Large config (" in result.feedback
 
     def test_small_config_no_warning(self, in_tmp: Path) -> None:
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({"a": 1}))
 
         result = handle(_event())
@@ -256,7 +256,7 @@ class TestSessionStartBackfillThread:
     def test_spawns_subprocess_when_config_present(
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
         calls = self._mock_popen(monkeypatch)
         import little_loops.user_messages as um
@@ -277,7 +277,7 @@ class TestSessionStartBackfillThread:
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """If Popen raises, contextlib.suppress isolates it — handle() must return 0."""
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
 
         def _raise(*a, **kw):
@@ -294,7 +294,7 @@ class TestSessionStartBackfillThread:
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Subprocess receives the db path and project folder as positional args."""
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
         calls = self._mock_popen(monkeypatch)
         import little_loops.user_messages as um
@@ -330,7 +330,7 @@ class TestSessionStartCodexTranscriptPath:
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When transcript_path is in the Codex payload, subprocess receives it directly."""
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
 
         transcript = in_tmp / "codex-session.jsonl"
@@ -346,7 +346,7 @@ class TestSessionStartCodexTranscriptPath:
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When transcript_path is absent, falls back to directory probing."""
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
         calls = self._mock_popen(monkeypatch)
         import little_loops.user_messages as um
@@ -364,7 +364,7 @@ class TestSessionStartCodexTranscriptPath:
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When transcript_path points to a missing file and no project folder, no Popen."""
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
         calls = self._mock_popen(monkeypatch)
         import little_loops.user_messages as um
@@ -379,7 +379,7 @@ class TestSessionStartCodexTranscriptPath:
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """transcript_path from payload is read synchronously and passed to subprocess args."""
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
 
         transcript = in_tmp / "codex-session.jsonl"
@@ -396,7 +396,7 @@ class TestSessionStartProjectDigest:
     """Tests for gated project-context digest injection (ENH-1907)."""
 
     def test_gate_off_no_project_context_block(self, in_tmp: Path) -> None:
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(
             json.dumps({"history": {"session_digest": {"enabled": False}}})
         )
@@ -405,7 +405,7 @@ class TestSessionStartProjectDigest:
         assert "<project_context>" not in (result.stdout or "")
 
     def test_gate_on_empty_db_no_block(self, in_tmp: Path) -> None:
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(
             json.dumps({"history": {"session_digest": {"enabled": True}}})
         )
@@ -416,7 +416,7 @@ class TestSessionStartProjectDigest:
     def test_gate_on_populated_db_block_present(self, in_tmp: Path) -> None:
         from little_loops.session_store import record_correction
 
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(
             json.dumps({"history": {"session_digest": {"enabled": True}}})
         )
@@ -430,7 +430,7 @@ class TestSessionStartProjectDigest:
     def test_gate_on_block_respects_char_cap(self, in_tmp: Path) -> None:
         from little_loops.session_store import record_correction
 
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(
             json.dumps({"history": {"session_digest": {"enabled": True, "char_cap": 300}}})
         )
@@ -452,7 +452,7 @@ class TestSessionStartProjectDigest:
     def test_digest_failure_does_not_block_startup(
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(
             json.dumps({"history": {"session_digest": {"enabled": True}}})
         )

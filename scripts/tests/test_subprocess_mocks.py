@@ -113,12 +113,13 @@ class TestRunClaudeCommand:
     def test_timeout_kills_process(self, mock_logger: MagicMock) -> None:
         """Process is killed when timeout expires."""
         mock_process = Mock()
+        mock_process.pid = 99999
         mock_process.stdout = io.StringIO("")
         mock_process.stderr = io.StringIO("")
         mock_process.kill = Mock()
 
         with patch("subprocess.Popen", return_value=mock_process):
-            with patch("selectors.DefaultSelector") as mock_selector_cls:
+            with patch("os.getpgid", side_effect=ProcessLookupError), patch("selectors.DefaultSelector") as mock_selector_cls:
                 mock_selector = MagicMock()
                 mock_selector_cls.return_value = mock_selector
                 mock_selector.__enter__ = Mock(return_value=mock_selector)

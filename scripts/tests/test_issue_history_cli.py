@@ -154,7 +154,7 @@ class TestSummaryDbSource:
         (issues / name).write_text(body, encoding="utf-8")
 
     def test_summary_uses_db_when_populated(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When the session DB has done rows, summary reads from it (no file scan needed)."""
         from little_loops.session_store import backfill
@@ -173,6 +173,7 @@ class TestSummaryDbSource:
         project_root.mkdir()
         db_path = project_root / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
         backfill(db_path, issues_dir=tmp_path / "seed-issues", loops_dir=tmp_path / "no")
 
         # Empty issues directory: file-scan path would yield zero.
@@ -201,7 +202,7 @@ class TestSummaryDbSource:
         assert data["type_counts"].get("ENH") == 1
 
     def test_summary_uses_live_written_db_rows(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """summary reads rows seeded via SQLiteTransport.send() (live-write path)."""
         from little_loops.session_store import SQLiteTransport, ensure_db
@@ -210,6 +211,7 @@ class TestSummaryDbSource:
         project_root.mkdir()
         db_path = project_root / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
         ensure_db(db_path)
 
         transport = SQLiteTransport(db_path)
@@ -954,7 +956,7 @@ class TestSessionsSubcommand:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir(parents=True)
+        ll_dir.mkdir(parents=True, exist_ok=True)
         db_path = ll_dir / "history.db"
         self._setup_db(db_path, "ENH-1710", "sess-77", "/path/sess-77.jsonl")
 
@@ -974,7 +976,7 @@ class TestSessionsSubcommand:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir(parents=True)
+        ll_dir.mkdir(parents=True, exist_ok=True)
         db_path = ll_dir / "history.db"
         self._setup_db(db_path, "ENH-88", "sess-88", "/path/sess-88.jsonl")
 
@@ -998,7 +1000,7 @@ class TestSessionsSubcommand:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir(parents=True)
+        ll_dir.mkdir(parents=True, exist_ok=True)
         (ll_dir / "history.db")  # ensure_db happens inside main_history
 
         with patch.object(

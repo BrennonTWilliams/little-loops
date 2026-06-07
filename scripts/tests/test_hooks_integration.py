@@ -2156,7 +2156,7 @@ class TestContextHandoffSentinel:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            (tmp_path / ".ll").mkdir()
+            (tmp_path / ".ll").mkdir(exist_ok=True)
 
             # Write state with high usage (75% of 200000 = 150000 tokens)
             state = {
@@ -2197,7 +2197,7 @@ class TestContextHandoffSentinel:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            (tmp_path / ".ll").mkdir()
+            (tmp_path / ".ll").mkdir(exist_ok=True)
 
             # Write state with low usage (20% of 200000 = 40000 tokens)
             state = {
@@ -2233,7 +2233,7 @@ class TestContextHandoffSentinel:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            (tmp_path / ".ll").mkdir()
+            (tmp_path / ".ll").mkdir(exist_ok=True)
 
             state = {
                 "estimated_tokens": 180000,
@@ -2268,7 +2268,7 @@ class TestContextHandoffSentinel:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            (tmp_path / ".ll").mkdir()
+            (tmp_path / ".ll").mkdir(exist_ok=True)
 
             # Write sentinel and state files
             sentinel_file = tmp_path / ".ll" / "ll-context-handoff-needed"
@@ -2300,7 +2300,7 @@ class TestContextHandoffSentinel:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            (tmp_path / ".ll").mkdir()
+            (tmp_path / ".ll").mkdir(exist_ok=True)
 
             # estimated_tokens is low (heuristic underestimate) but result_token_count is high
             state = {
@@ -2369,7 +2369,7 @@ class TestSessionCleanupWorktrees:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            (tmp_path / ".ll").mkdir()
+            (tmp_path / ".ll").mkdir(exist_ok=True)
             worker_dir = self._make_worktree(tmp_path)
             (worker_dir / f".ll-session-{os.getpid()}").write_text("")
 
@@ -2390,7 +2390,7 @@ class TestSessionCleanupWorktrees:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            (tmp_path / ".ll").mkdir()
+            (tmp_path / ".ll").mkdir(exist_ok=True)
             worker_dir = self._make_worktree(tmp_path)
             (worker_dir / ".ll-session-99999").write_text("")
 
@@ -2411,7 +2411,7 @@ class TestSessionCleanupWorktrees:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            (tmp_path / ".ll").mkdir()
+            (tmp_path / ".ll").mkdir(exist_ok=True)
             worker_dir = self._make_worktree(tmp_path)
             # No marker — simulates an orphan from an interrupted run
 

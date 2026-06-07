@@ -137,7 +137,7 @@ class TestMainCtxStats:
     def test_returns_zero_when_data_present(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.chdir(tmp_path)
         db = tmp_path / ".ll" / "history.db"
-        db.parent.mkdir()
+        db.parent.mkdir(exist_ok=True)
         _populate_tool_events(
             db,
             [
@@ -164,7 +164,7 @@ class TestMainCtxStats:
     def test_falls_back_to_state_file(self, tmp_path: Path, monkeypatch) -> None:
         """When .ll/history.db is absent, render the ll-context-state.json fallback."""
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll").mkdir(exist_ok=True)
         (tmp_path / ".ll" / "ll-context-state.json").write_text(
             json.dumps(
                 {
@@ -200,7 +200,7 @@ class TestMainCtxStats:
         """--json emits parseable JSON with bytes_processed/reduction_pct."""
         monkeypatch.chdir(tmp_path)
         db = tmp_path / ".ll" / "history.db"
-        db.parent.mkdir()
+        db.parent.mkdir(exist_ok=True)
         _populate_tool_events(db, [("Read", 100, 900, 0)])
         lines, side_effect = _capture_print()
         with (

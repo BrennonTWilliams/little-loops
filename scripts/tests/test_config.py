@@ -958,7 +958,7 @@ class TestResolveConfigPath:
         """``.ll/ll-config.json`` is returned when present (preferred over root-level)."""
         from little_loops.config.core import resolve_config_path
 
-        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll").mkdir(exist_ok=True)
         ll_dir_cfg = tmp_path / ".ll" / "ll-config.json"
         ll_dir_cfg.write_text('{"a": 1}')
         # Also write a root-level one to confirm the .ll/ dir wins.
@@ -985,8 +985,11 @@ class TestResolveConfigPath:
         """Lookup does NOT create ``.ll/`` (vs. bash version's ``mkdir -p .ll`` side effect)."""
         from little_loops.config.core import resolve_config_path
 
-        resolve_config_path(tmp_path)
-        assert not (tmp_path / ".ll").exists()
+        # Use a fresh sub-directory isolated from the test fixture's tmp_path/.ll/
+        probe = tmp_path / "probe"
+        probe.mkdir()
+        resolve_config_path(probe)
+        assert not (probe / ".ll").exists()
 
     def test_brconfig_picks_up_root_level_fallback(self, tmp_path: Path) -> None:
         """``BRConfig._load_config`` now reads root-level ``ll-config.json`` via resolve_config_path."""
@@ -1008,7 +1011,7 @@ class TestResolveConfigPath:
         (tmp_path / ".codex").mkdir()
         codex_cfg = tmp_path / ".codex" / "ll-config.json"
         codex_cfg.write_text('{"codex": true}')
-        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll").mkdir(exist_ok=True)
         ll_cfg = tmp_path / ".ll" / "ll-config.json"
         ll_cfg.write_text('{"ll": true}')
 
@@ -1026,7 +1029,7 @@ class TestResolveConfigPath:
         (tmp_path / ".codex").mkdir()
         codex_cfg = tmp_path / ".codex" / "ll-config.json"
         codex_cfg.write_text('{"codex": true}')
-        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll").mkdir(exist_ok=True)
         (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
         (tmp_path / "ll-config.json").write_text('{"root": true}')
 
@@ -1043,7 +1046,7 @@ class TestResolveConfigPath:
         (tmp_path / ".codex").mkdir()
         codex_cfg = tmp_path / ".codex" / "ll-config.json"
         codex_cfg.write_text('{"codex": true}')
-        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll").mkdir(exist_ok=True)
         (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
 
         assert resolve_config_path(tmp_path) == codex_cfg
@@ -1056,7 +1059,7 @@ class TestResolveConfigPath:
 
         monkeypatch.setenv("LL_HOOK_HOST", "codex")
         # No .codex/ll-config.json exists.
-        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll").mkdir(exist_ok=True)
         ll_cfg = tmp_path / ".ll" / "ll-config.json"
         ll_cfg.write_text('{"ll": true}')
 
@@ -1071,7 +1074,7 @@ class TestResolveConfigPath:
         monkeypatch.setenv("LL_HOOK_HOST", "opencode")
         (tmp_path / ".codex").mkdir()
         (tmp_path / ".codex" / "ll-config.json").write_text('{"codex": true}')
-        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll").mkdir(exist_ok=True)
         ll_cfg = tmp_path / ".ll" / "ll-config.json"
         ll_cfg.write_text('{"ll": true}')
 

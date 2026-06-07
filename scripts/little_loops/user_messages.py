@@ -832,12 +832,13 @@ def extract_conversation_turns(
         alternating between "user" and "assistant".
     """
     from little_loops.history_reader import conversation_turns as db_conversation_turns
+    from little_loops.session_store import resolve_history_db
 
     reader = reader.lower()
 
     # -- DB path: try history_reader first, optionally fall back to JSONL --
     if reader in ("auto", "db"):
-        db_path = Path(".ll/history.db")
+        db_path = resolve_history_db(project_folder / ".ll" / "history.db")
         db_windows = db_conversation_turns(
             db_path=db_path,
             since=since,
