@@ -28,6 +28,9 @@ context:
   # directory without re-seeding the queue:
   #   ll-loop run rn-implement --context resume=1 --context run_dir=<prior_run_dir>
   resume: ""
+  # FEAT-1991: "fifo" (default) preserves existing FIFO pop. "value_ranked" selects
+  # the highest-value ready issue at each tick using dependency-readiness + impact/effort.
+  schedule_mode: "fifo"
 import:
   - lib/common.yaml
 meta_self_eval_ok: false
@@ -98,6 +101,20 @@ states:
     on_error: failed
 
   dequeue_next:
+    # FEAT-1991: mode dispatch — routes to fifo_pop (default) or select_next (value_ranked).
+    # All downstream states that loop back to dequeue_next continue to target this state so
+    # the schedule_mode is re-evaluated at every tick.
+    action_type: shell
+    action: |
+      test "${context.schedule_mode}" = "value_ranked" && exit 0 || exit 1
+    evaluate:
+      type: exit_code
+    on_yes: select_next
+    on_no: fifo_pop
+    on_error: fifo_pop
+
+  fifo_pop:
+    # Original FIFO pop — unchanged behavior for schedule_mode: fifo (the default).
     fragment: queue_pop
     action: |
       QUEUE="${captured.run_dir.output}/queue.txt"
@@ -121,6 +138,171 @@ states:
       echo $((COUNT + 1)) > "${captured.run_dir.output}/dequeue_count.txt"
 
       echo "$CURRENT"
+    capture: input
+    on_yes: check_depth
+    on_no: report
+    on_error: report
+
+  select_next:
+    # FEAT-1991: value-ranked dequeue for schedule_mode: value_ranked.
+    # Computes ready set (blocked_by deps all done, not in blocked.txt), ranks by composite
+    # score (priority weight + impact/effort ratio), depth-first tie-break. Post-conditions
+    # are identical to fifo_pop so downstream states are unchanged.
+    fragment: queue_pop
+    action: |
+      QUEUE="${captured.run_dir.output}/queue.txt"
+      if [ ! -f "$QUEUE" ] || [ ! -s "$QUEUE" ]; then
+        exit 1
+      fi
+
+      # Python selects the highest-value ready issue from the queue.
+      # Note: all Python lines are indented to the YAML block-scalar level; YAML
+      # strips the common prefix so the Python interpreter sees column-0 code.
+      CHOSEN=$(python3 << 'PYEOF'
+      import os, re, subprocess, json, sys
+      from pathlib import Path
+      try:
+          import yaml as _yaml
+          def _parse_yaml(text):
+              return _yaml.safe_load(text) or {}
+      except ImportError:
+          def _parse_yaml(text):
+              result = {}
+              for line in text.splitlines():
+                  m = re.match(r'^([\w-]+):\s*(.*)', line)
+                  if m:
+                      result[m.group(1)] = m.group(2).strip()
+              return result
+
+      run_dir = "${captured.run_dir.output}"
+      queue_path = os.path.join(run_dir, "queue.txt")
+      blocked_path = os.path.join(run_dir, "blocked.txt")
+      depth_path = os.path.join(run_dir, "depth_map.txt")
+
+      queue_lines = [l.strip() for l in open(queue_path).readlines() if l.strip()]
+      if not queue_lines:
+          sys.exit(1)
+
+      blocked = set()
+      if os.path.exists(blocked_path):
+          blocked = {l.strip() for l in open(blocked_path).readlines() if l.strip()}
+
+      depth_map = {}
+      if os.path.exists(depth_path):
+          for line in open(depth_path).readlines():
+              parts = line.strip().split()
+              if len(parts) >= 2:
+                  try:
+                      depth_map[parts[0]] = int(parts[1])
+                  except ValueError:
+                      pass
+
+      issue_idx = {}
+      for d in (".issues/bugs", ".issues/features", ".issues/enhancements", ".issues/epics"):
+          dp = Path(d)
+          if not dp.exists():
+              continue
+          for p in dp.glob("*.md"):
+              m = re.match(r'P\d-([A-Z]+-\d+)-', p.name)
+              if m:
+                  issue_idx[m.group(1)] = p
+
+      def get_frontmatter(issue_id):
+          p = issue_idx.get(issue_id)
+          if not p or not p.exists():
+              return {}
+          try:
+              content = p.read_text()
+              m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+              return _parse_yaml(m.group(1)) if m else {}
+          except Exception:
+              return {}
+
+      def get_blocked_by(fm):
+          val = fm.get("blocked_by") or []
+          if isinstance(val, str):
+              return [v.strip() for v in val.split(",") if v.strip()]
+          return [str(v).strip() for v in (val if isinstance(val, list) else []) if v]
+
+      done_ids = set()
+      try:
+          r = subprocess.run(
+              ["ll-issues", "list", "--json", "--status", "done"],
+              capture_output=True, text=True, timeout=30,
+          )
+          if r.returncode == 0:
+              done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
+      except Exception:
+          pass
+
+      ie_map = {}
+      try:
+          r = subprocess.run(
+              ["ll-issues", "impact-effort", "--json"],
+              capture_output=True, text=True, timeout=30,
+          )
+          if r.returncode == 0:
+              for items in json.loads(r.stdout).values():
+                  if isinstance(items, list):
+                      for item in items:
+                          if "id" in item:
+                              ie_map[item["id"]] = {
+                                  "impact": item.get("impact", 2),
+                                  "effort": item.get("effort", 2),
+                              }
+      except Exception:
+          pass
+
+      PRIO_WEIGHT = {"P0": 100, "P1": 80, "P2": 60, "P3": 40, "P4": 20, "P5": 10}
+
+      def composite_score(issue_id, priority, depth):
+          pw = PRIO_WEIGHT.get(priority, 40)
+          v = ie_map.get(issue_id, {"impact": 2, "effort": 2})
+          ie_ratio = v["impact"] / max(v["effort"], 1)
+          depth_bonus = depth * 0.001
+          return pw + ie_ratio * 10 + depth_bonus
+
+      candidates = []
+      for issue_id in queue_lines:
+          if issue_id in blocked:
+              continue
+          fm = get_frontmatter(issue_id)
+          deps = get_blocked_by(fm)
+          if not all(d in done_ids for d in deps):
+              continue
+          priority = fm.get("priority", "P3")
+          depth = depth_map.get(issue_id, 0)
+          candidates.append((composite_score(issue_id, priority, depth), issue_id))
+
+      if not candidates:
+          sys.exit(1)
+
+      candidates.sort(key=lambda x: -x[0])
+      print(candidates[0][1])
+      PYEOF
+      )
+
+      if [ -z "$CHOSEN" ]; then
+        exit 1
+      fi
+
+      # Remove chosen issue from queue (not necessarily the head)
+      grep -vxF "$CHOSEN" "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
+
+      # Read depth for chosen issue
+      DEPTH_MAP="${captured.run_dir.output}/depth_map.txt"
+      DEPTH=$(grep "^$CHOSEN " "$DEPTH_MAP" 2>/dev/null | awk '{print $2}')
+      DEPTH=$${DEPTH:-0}
+      echo "$DEPTH" > "${captured.run_dir.output}/current_depth.txt"
+
+      # Mark as visited
+      echo "$CHOSEN" >> "${captured.run_dir.output}/visited.txt"
+
+      # Increment dequeue count
+      COUNT=$(cat "${captured.run_dir.output}/dequeue_count.txt" 2>/dev/null || echo 0)
+      echo $((COUNT + 1)) > "${captured.run_dir.output}/dequeue_count.txt"
+
+      echo "$CHOSEN"
     capture: input
     on_yes: check_depth
     on_no: report

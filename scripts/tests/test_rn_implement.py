@@ -88,24 +88,52 @@ class TestInitAndInputValidation:
 class TestDequeueAndDepthTracking:
     """Tests for queue management and depth tracking."""
 
-    def test_dequeue_next_uses_queue_pop_fragment(self) -> None:
-        """dequeue_next uses the queue_pop fragment."""
+    def test_dequeue_next_is_mode_dispatch(self) -> None:
+        """dequeue_next is a schedule_mode dispatch (FEAT-1991), not the FIFO pop itself."""
         data = _load_loop()
         deq = data["states"]["dequeue_next"]
-        assert deq.get("fragment") == "queue_pop"
+        assert deq.get("action_type") == "shell"
+        assert "schedule_mode" in deq["action"]
+        assert "value_ranked" in deq["action"]
 
-    def test_dequeue_next_routes_to_check_depth(self) -> None:
-        """dequeue_next routes to check_depth on success."""
+    def test_dequeue_next_routes_value_ranked_to_select_next(self) -> None:
+        """dequeue_next routes to select_next when schedule_mode=value_ranked (on_yes)."""
         data = _load_loop()
         deq = data["states"]["dequeue_next"]
-        assert deq["on_yes"] == "check_depth"
-        assert deq["on_no"] == "report"
+        assert deq["on_yes"] == "select_next"
 
-    def test_dequeue_next_captures_input(self) -> None:
-        """dequeue_next captures the popped issue ID as input."""
+    def test_dequeue_next_routes_fifo_to_fifo_pop(self) -> None:
+        """dequeue_next routes to fifo_pop for default fifo mode (on_no)."""
         data = _load_loop()
         deq = data["states"]["dequeue_next"]
-        assert deq.get("capture") == "input"
+        assert deq["on_no"] == "fifo_pop"
+        assert deq["on_error"] == "fifo_pop"
+
+    def test_fifo_pop_uses_queue_pop_fragment(self) -> None:
+        """fifo_pop uses the queue_pop fragment (FIFO path)."""
+        data = _load_loop()
+        fp = data["states"]["fifo_pop"]
+        assert fp.get("fragment") == "queue_pop"
+
+    def test_fifo_pop_captures_input(self) -> None:
+        """fifo_pop captures the popped issue ID as input."""
+        data = _load_loop()
+        fp = data["states"]["fifo_pop"]
+        assert fp.get("capture") == "input"
+
+    def test_fifo_pop_routes_to_check_depth(self) -> None:
+        """fifo_pop routes to check_depth on success, report on empty queue."""
+        data = _load_loop()
+        fp = data["states"]["fifo_pop"]
+        assert fp["on_yes"] == "check_depth"
+        assert fp["on_no"] == "report"
+
+    def test_fifo_pop_references_depth_map(self) -> None:
+        """fifo_pop references depth_map.txt and current_depth.txt."""
+        data = _load_loop()
+        fp = data["states"]["fifo_pop"]
+        assert "depth_map.txt" in fp["action"]
+        assert "current_depth.txt" in fp["action"]
 
     def test_check_depth_uses_output_numeric(self) -> None:
         """check_depth uses output_numeric evaluator comparing depth to max_depth."""
@@ -134,7 +162,7 @@ class TestDequeueAndDepthTracking:
         )
 
     def test_mark_depth_capped_transitions_to_dequeue_next(self) -> None:
-        """mark_depth_capped always transitions to dequeue_next."""
+        """mark_depth_capped always transitions to dequeue_next (the dispatch)."""
         data = _load_loop()
         mdc = data["states"]["mark_depth_capped"]
         assert mdc["next"] == "dequeue_next"
@@ -144,13 +172,6 @@ class TestDequeueAndDepthTracking:
         data = _load_loop()
         mdc = data["states"]["mark_depth_capped"]
         assert "depth_capped.txt" in mdc["action"]
-
-    def test_depth_map_references_in_dequeue(self) -> None:
-        """dequeue_next references depth_map.txt for depth tracking."""
-        data = _load_loop()
-        deq = data["states"]["dequeue_next"]
-        assert "depth_map.txt" in deq["action"]
-        assert "current_depth.txt" in deq["action"]
 
 
 # ---------------------------------------------------------------------------
@@ -519,6 +540,7 @@ class TestValidation:
         assert ctx["outcome_threshold"] == 75
         assert ctx["max_depth"] == 3
         assert ctx["max_remediation_passes"] == 3
+        assert ctx["schedule_mode"] == "fifo", "schedule_mode must default to fifo"
 
     def test_meta_self_eval_ok_is_false(self) -> None:
         """meta_self_eval_ok is false (MR-1 enforced)."""
@@ -536,10 +558,13 @@ class TestValidation:
         assert data["initial"] in data["states"]
 
     def test_state_count_is_orchestrator_sized(self) -> None:
-        """rn-implement orchestrator has ≤14 states (down from 32-state monolith)."""
+        """rn-implement orchestrator stays within orchestrator bounds.
+
+        FEAT-1991 added fifo_pop + select_next (+2 states), raising the ceiling to 26.
+        """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 24, f"Expected ≤24 states in orchestrator, got {state_count}"
+        assert state_count <= 26, f"Expected ≤26 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
@@ -631,3 +656,129 @@ class TestParentClassifier:
         assert failed.get("terminal") is True
         assert "action" not in failed
         assert "checkpoint.json" not in str(failed)
+
+
+# ============================================================================
+# TestSelectNext — FEAT-1991: value-ranked dequeue
+# ============================================================================
+
+
+class TestSelectNext:
+    """Tests for the select_next value-ranked scheduler (FEAT-1991)."""
+
+    def test_select_next_state_exists(self) -> None:
+        """select_next state is present in the FSM."""
+        data = _load_loop()
+        assert "select_next" in data["states"], "select_next must exist (FEAT-1991)"
+
+    def test_select_next_uses_queue_pop_fragment(self) -> None:
+        """select_next uses the queue_pop fragment for consistent exit-code evaluation."""
+        data = _load_loop()
+        sn = data["states"]["select_next"]
+        assert sn.get("fragment") == "queue_pop"
+
+    def test_select_next_captures_input(self) -> None:
+        """select_next captures the chosen issue ID as input (same post-condition as fifo_pop)."""
+        data = _load_loop()
+        sn = data["states"]["select_next"]
+        assert sn.get("capture") == "input"
+
+    def test_select_next_routes_to_check_depth(self) -> None:
+        """select_next routes to check_depth on success (item found in ready set)."""
+        data = _load_loop()
+        sn = data["states"]["select_next"]
+        assert sn["on_yes"] == "check_depth"
+
+    def test_select_next_routes_empty_ready_set_to_report(self) -> None:
+        """select_next routes to report when ready set is empty (no ready items)."""
+        data = _load_loop()
+        sn = data["states"]["select_next"]
+        assert sn["on_no"] == "report"
+        assert sn["on_error"] == "report"
+
+    def test_select_next_reads_blocked_txt(self) -> None:
+        """select_next filters manually-blocked issues via blocked.txt."""
+        data = _load_loop()
+        action = data["states"]["select_next"]["action"]
+        assert "blocked.txt" in action
+
+    def test_select_next_references_depth_map(self) -> None:
+        """select_next reads depth_map.txt for depth tie-breaking."""
+        data = _load_loop()
+        action = data["states"]["select_next"]["action"]
+        assert "depth_map.txt" in action
+
+    def test_select_next_writes_current_depth(self) -> None:
+        """select_next writes current_depth.txt (same post-condition as fifo_pop)."""
+        data = _load_loop()
+        action = data["states"]["select_next"]["action"]
+        assert "current_depth.txt" in action
+
+    def test_select_next_increments_dequeue_count(self) -> None:
+        """select_next increments dequeue_count.txt (same post-condition as fifo_pop)."""
+        data = _load_loop()
+        action = data["states"]["select_next"]["action"]
+        assert "dequeue_count.txt" in action
+
+    def test_select_next_marks_visited(self) -> None:
+        """select_next appends to visited.txt (same post-condition as fifo_pop)."""
+        data = _load_loop()
+        action = data["states"]["select_next"]["action"]
+        assert "visited.txt" in action
+
+    def test_select_next_uses_impact_effort(self) -> None:
+        """select_next calls ll-issues impact-effort for value scoring."""
+        data = _load_loop()
+        action = data["states"]["select_next"]["action"]
+        assert "impact-effort" in action
+
+    def test_select_next_uses_done_status_filter(self) -> None:
+        """select_next filters ready set by checking blocked_by deps against done issues."""
+        data = _load_loop()
+        action = data["states"]["select_next"]["action"]
+        assert "done" in action
+        assert "blocked_by" in action
+
+    def test_select_next_implements_composite_ranking(self) -> None:
+        """select_next computes priority weight + impact/effort composite score."""
+        data = _load_loop()
+        action = data["states"]["select_next"]["action"]
+        assert "PRIO_WEIGHT" in action or "priority" in action
+        assert "composite_score" in action or "ie_ratio" in action
+
+    def test_select_next_uses_depth_first_tiebreak(self) -> None:
+        """select_next uses depth as a tie-breaker (deeper = preferred)."""
+        data = _load_loop()
+        action = data["states"]["select_next"]["action"]
+        assert "depth" in action.lower()
+        # Must prefer deeper issues: higher depth = higher score
+        assert "depth_bonus" in action or "depth *" in action
+
+    def test_fifo_regression_schedule_mode_default(self) -> None:
+        """schedule_mode defaults to 'fifo' — existing FIFO behavior is unchanged."""
+        data = _load_loop()
+        assert data["context"]["schedule_mode"] == "fifo"
+        # dequeue_next dispatch routes fifo → fifo_pop (on_no path when mode != value_ranked)
+        deq = data["states"]["dequeue_next"]
+        assert deq["on_no"] == "fifo_pop"
+
+    def test_fifo_pop_post_conditions_match_select_next(self) -> None:
+        """fifo_pop and select_next set identical post-conditions (capture, depth, visited, count)."""
+        data = _load_loop()
+        fp = data["states"]["fifo_pop"]
+        sn = data["states"]["select_next"]
+        # Both must capture input
+        assert fp.get("capture") == "input"
+        assert sn.get("capture") == "input"
+        # Both must write current_depth.txt
+        assert "current_depth.txt" in fp["action"]
+        assert "current_depth.txt" in sn["action"]
+        # Both must update visited.txt
+        assert "visited.txt" in fp["action"]
+        assert "visited.txt" in sn["action"]
+        # Both must increment dequeue_count.txt
+        assert "dequeue_count.txt" in fp["action"]
+        assert "dequeue_count.txt" in sn["action"]
+        # Both must route to check_depth on success
+        assert fp["on_yes"] == "check_depth"
+        assert sn["on_yes"] == "check_depth"
