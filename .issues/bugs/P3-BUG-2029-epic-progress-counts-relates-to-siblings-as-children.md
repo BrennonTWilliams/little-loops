@@ -18,6 +18,10 @@ labels: [epic-progress, issue-management, relates_to]
 
 **Observed**: EPIC-2027 (`relates_to: [EPIC-1707, EPIC-1918, ENH-1911]`) reports `0/3 done` with oldest-open `EPIC-1707 (13 days)`, even though only ENH-1911 has `parent: EPIC-2027`. The real child count is 1.
 
+## Current Behavior
+
+`compute_epic_progress` builds its child set as the union of `relates_to:` (forward) and `parent:` (backward) edges. Any issue referenced in an EPIC's `relates_to:` field is counted as a child, inflating progress totals and oldest-open displays regardless of whether those issues are true children or sibling/context cross-references.
+
 ## Root Cause
 
 `scripts/little_loops/issue_progress.py:85` — `compute_epic_progress`:
@@ -40,7 +44,7 @@ child_ids = forward_ids | backward_ids
 
 `epic-progress` child set = issues where `parent: <EPIC-ID>` only. The `relates_to:` field should not contribute to the child set.
 
-## Proposed Fix
+## Proposed Solution
 
 Remove the `forward_ids` union from `compute_epic_progress`. Use only `backward_ids` (the `parent:` reverse edge):
 
@@ -58,6 +62,13 @@ If forward-declared children are still desired, introduce a separate `children:`
 4. Check `ll-issues list` progress column for the same EPIC.
 5. Run existing tests: `python -m pytest scripts/tests/ -k epic`.
 
+## Impact
+
+- **Priority**: P3 — epic progress counts are inaccurate when EPICs use `relates_to:` for sibling/context cross-references; misleading but not blocking
+- **Effort**: Small — single-function change in `compute_epic_progress`; remove the `forward_ids` union and update the docstring
+- **Risk**: Low — removes an incorrect code path; EPICs that rely solely on `parent:` back-links are unaffected
+- **Breaking Change**: No
+
 ## Acceptance Criteria
 
 - `ll-issues epic-progress EPIC-2027` reports `0/1 done` (ENH-1911 only).
@@ -66,4 +77,5 @@ If forward-declared children are still desired, introduce a separate `children:`
 - No regression: EPICs that rely solely on `parent:` back-links continue to work correctly.
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-08T23:29:42 - `ebb63dbd-49fa-42fb-81b2-2bb56096c150.jsonl`
 - `/ll:capture-issue` - 2026-06-08T23:16:56Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8518210d-a8fb-472f-a76d-946f02b2ae27.jsonl`
