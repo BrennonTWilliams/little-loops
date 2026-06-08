@@ -1,11 +1,12 @@
 ---
 id: ENH-2017
-title: "rn-build — Auto-normalize malformed spec before tech_research"
+title: "rn-build \u2014 Auto-normalize malformed spec before tech_research"
 type: ENH
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-08T01:43:18Z'
+completed_at: '2026-06-08T03:39:08Z'
 discovered_date: 2026-06-08
 discovered_by: capture-issue
 size: Small
@@ -17,6 +18,12 @@ relates_to:
 labels:
 - loops
 - rn-build
+confidence_score: 92
+outcome_confidence: 81
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2017: `rn-build` — Auto-normalize malformed spec before `tech_research`
@@ -166,6 +173,20 @@ normalize_spec
 
 **Open** | Created: 2026-06-08
 
+## Resolution
+
+Added a `normalize_spec` pre-gate (5 states: `check_structure`, `llm_normalize`,
+`verify_structure`, `load_normalized`, `abort_normalize`) to `rn-build.yaml`
+immediately before `tech_research`. Well-formed specs bypass normalization via
+`check_structure → tech_research`. Malformed specs are normalized by the LLM,
+verified by a second non-LLM `exit_code` evaluator (`verify_structure`), and
+their content loaded back into `spec_content` for seamless downstream consumption.
+Unrecoverable specs abort with a message pointing to `specs/SPEC_TEMPLATE.md`.
+`ll-loop validate rn-build` reports no MR-1, MR-3, or MR-4 violations.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-08T03:39:08Z - `manage-issue`
+- `/ll:ready-issue` - 2026-06-08T03:35:20 - `f4856a12-3ffd-4acf-93a4-0550bec3061d.jsonl`
 - `/ll:format-issue` - 2026-06-08T03:27:31 - `8ca79972-3964-4396-bf2e-0ac0f3566189.jsonl`
 - `/ll:capture-issue` - 2026-06-08T01:43:18Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-06-07T00:00:00Z - `bca3f22d-8e8c-4b43-95d5-4d1bdb6f75d1.jsonl`

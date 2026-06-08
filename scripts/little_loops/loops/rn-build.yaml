@@ -18,7 +18,8 @@ description: |
 
   Spec format: specs/SPEC_TEMPLATE.md is the authoritative template. Required sections
   are Overview, Core Features, and Acceptance Criteria; all other sections are optional.
-  See specs/sample.md for a worked example.
+  See specs/sample.md for a worked example. Loosely-structured specs (missing required
+  sections) are auto-normalized before tech_research; the original file is never modified.
 
   Architecture:
   - Front-half (ports from greenfield-builder): init → tech_research → design_artifacts
@@ -65,9 +66,101 @@ states:
     capture: spec_content
     evaluate:
       type: exit_code
-    on_yes: tech_research
+    on_yes: check_structure
     on_no: failed
     on_error: failed
+
+  # ─── Phase 1.5: Normalize malformed spec (pre-gate before tech_research) ─────
+  # check_structure: non-LLM exit_code gate — satisfies MR-1 for llm_normalize.
+  # Combines all spec files and greps for the three required section headers.
+  # Well-formed specs skip normalization entirely (check_structure → tech_research).
+
+  check_structure:
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      mkdir -p "$RUN_DIR"
+      SPECS="${context.spec}"
+      IFS=',' read -ra SPEC_LIST <<< "$SPECS"
+      COMBINED="$RUN_DIR/spec_combined.tmp"
+      for S in "${SPEC_LIST[@]}"; do
+        S=$(echo "$S" | xargs)
+        cat "$S"
+      done > "$COMBINED"
+      COUNT=$(grep -c "## Overview\|## Core Features\|## Acceptance Criteria" "$COMBINED" 2>/dev/null || echo 0)
+      echo "Required section count: $COUNT / 3"
+      [ "$COUNT" -eq 3 ] && exit 0 || exit 1
+    evaluate:
+      type: exit_code
+    on_yes: tech_research
+    on_no: llm_normalize
+    on_error: tech_research
+
+  llm_normalize:
+    action_type: prompt
+    timeout: 300
+    action: |
+      The spec provided is missing one or more required sections. Normalize it to
+      the standard format defined in specs/SPEC_TEMPLATE.md.
+
+      Required sections: `## Overview`, `## Core Features`, `## Acceptance Criteria`
+      Optional sections: `## Data Model`, `## Non-Goals`, `## Tech Constraints`
+
+      Spec content (original):
+      ${captured.spec_content.output}
+
+      Instructions:
+      1. Read the spec content above carefully — infer intent from whatever is present.
+      2. Populate any missing required sections derived from the existing content.
+         Do NOT fabricate features not implied by the text. Preserve all existing text.
+      3. Write the complete normalized spec (with all required sections present) to:
+         ${context.run_dir}/spec_normalized.md
+      4. If the content is empty or too vague to derive any project description,
+         do NOT write the file — instead output exactly this line:
+         NORMALIZE_FAILED: Cannot normalize — spec is empty or contains no project description.
+    capture: normalize_result
+    next: verify_structure
+
+  verify_structure:
+    action_type: shell
+    action: |
+      NORMALIZED="${context.run_dir}/spec_normalized.md"
+      if [ ! -f "$NORMALIZED" ]; then
+        echo "ERROR: normalized spec was not written to $NORMALIZED"
+        exit 1
+      fi
+      COUNT=$(grep -c "## Overview\|## Core Features\|## Acceptance Criteria" "$NORMALIZED" 2>/dev/null || echo 0)
+      echo "Required section count in normalized spec: $COUNT / 3"
+      [ "$COUNT" -eq 3 ] && exit 0 || exit 1
+    evaluate:
+      type: exit_code
+    on_yes: load_normalized
+    on_no: abort_normalize
+    on_error: abort_normalize
+
+  load_normalized:
+    action_type: shell
+    action: |
+      cat "${context.run_dir}/spec_normalized.md"
+    capture: spec_content
+    evaluate:
+      type: exit_code
+    on_yes: tech_research
+    on_no: tech_research
+    on_error: tech_research
+
+  abort_normalize:
+    action_type: shell
+    terminal: true
+    action: |
+      echo "ERROR: Spec normalization failed."
+      echo ""
+      echo "The spec could not be normalized to include all required sections:"
+      echo "  ## Overview, ## Core Features, ## Acceptance Criteria"
+      echo ""
+      echo "Please provide a more complete spec or start from the template:"
+      echo "  specs/SPEC_TEMPLATE.md"
+      exit 1
 
   # ─── Phase 2: Research technology decisions ───────────────────────────────────
 
