@@ -1,6 +1,6 @@
 # CLI Tools Reference
 
-Complete reference for all `ll-` command-line tools. Install from PyPI:
+Complete reference for `ll-` command-line tools and related utilities (including `mcp-call`). Install from PyPI:
 
 ```bash
 pip install little-loops
