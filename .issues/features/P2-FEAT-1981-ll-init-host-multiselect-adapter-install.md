@@ -34,6 +34,27 @@ install. This is the shared seam EPIC-1978 identified between the Codex
 (EPIC-1463) and Pi (EPIC-1622) tracks — host choice has install-time
 consequences (which adapter files to write), so it belongs in one place.
 
+## Current Behavior
+
+`ll-init` (via `cli.py`) auto-detects Codex via `which codex` / `.codex/` and
+installs the Codex adapter silently. There is no Pi adapter path and no explicit
+user-facing host selection — host wiring is opaque and not overridable.
+
+## Expected Behavior
+
+`ll-init` presents a host multi-select (TUI) or accepts `--hosts
+claude-code,codex,pi` (headless). Detection-seeded defaults are shown but
+overridable. Each selected host's adapter is installed; Pi surfaces a graceful
+"not yet available" message until its adapter lands.
+
+## Use Case
+
+A developer sets up little-loops on a machine that runs both Claude Code and
+Codex. They run `ll-init` and see a multi-select pre-checked with both detected
+hosts. They confirm, and `ll-init` installs both adapters in one pass with
+per-host post-install notes. On a CI machine with `--yes`, they pass `--hosts
+codex` and get a deterministic headless install.
+
 ## Motivation
 
 Today `/ll:init` only conditionally installs the Codex adapter (Step 8.5),
@@ -77,6 +98,7 @@ install exactly those adapters.
 ## Integration Map
 
 ### Files to Modify
+- `scripts/little_loops/init/cli.py` — replace `--codex` bool flag with `--hosts` list arg; replace `if codex: install_codex_adapter()` dispatch block with per-host dispatch table; update `_print_dry_run` and `_build_init_info` host detection logic.
 - `scripts/little_loops/init/core.py` (FEAT-1979) — host dispatch table.
 - `scripts/little_loops/init/tui.py` (FEAT-1980) — host multi-select screen.
 - `scripts/little_loops/host_runner.py` — reuse `resolve_host()` for defaults.
@@ -118,6 +140,7 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - `cli.py` is missing from "Files to Modify" but is the primary implementation site: it holds the `--hosts` argparse flag, the existing `codex: bool` parameter to replace/alias, and the `if codex: install_codex_adapter()` dispatch block (lines 86–93) that this feature generalizes into a host dispatch table.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-08T16:11:45 - `708619f8-a0aa-4b4a-aeb3-262397c809bd.jsonl`
 - `/ll:confidence-check` - 2026-06-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df2f8f5e-bc85-4400-9a3a-fc89cc3407c8.jsonl`
 
 ## Status

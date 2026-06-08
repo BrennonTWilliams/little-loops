@@ -36,15 +36,32 @@ _FEATURE_LABELS: dict[str, str] = {
     "context_monitor": "Context monitor",
 }
 
+# Host choices for the multi-select screen
+_HOST_CHOICES: list[tuple[str, str]] = [
+    ("Claude Code  (global plugin — no adapter file needed)", "claude-code"),
+    ("Codex CLI  (writes .codex/hooks.json)", "codex"),
+    ("Pi  (not yet available — EPIC-1622)", "pi"),
+]
+
+_HOST_LABELS: dict[str, str] = {
+    "claude-code": "Claude Code",
+    "codex": "Codex CLI",
+    "pi": "Pi",
+}
+
 
 def run_tui(
     project_root: Path,
     templates_dir: Path,
     plugin_root: Path,
     force: bool = False,
-    codex: bool = False,
+    hosts: list[str] | None = None,
 ) -> int:
     """Run the interactive TUI for ll-init.
+
+    Args:
+        hosts: Detection-seeded default host list shown pre-checked.
+               When None, defaults to ["claude-code"].
 
     Returns:
         0 on success, 1 on user-abort/config-exists/error, 130 on Ctrl-C.
@@ -78,8 +95,10 @@ def run_tui(
         f" — detected [cyan]{template.name}[/cyan]\n"
     )
 
+    default_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
+
     # --- Screen 1: Project basics ---
-    console.rule("[bold]1 / 3  Project Basics[/bold]")
+    console.rule("[bold]1 / 4  Project Basics[/bold]")
 
     name = questionary.text("Project name:", default=project_root.name).ask()
     if name is None:
@@ -119,7 +138,7 @@ def run_tui(
 
     # --- Screen 2: Features ---
     console.print()
-    console.rule("[bold]2 / 3  Features[/bold]")
+    console.rule("[bold]2 / 4  Features[/bold]")
 
     selected_features: list[str] | None = questionary.checkbox(
         "Enable features:",
@@ -147,9 +166,23 @@ def run_tui(
             console.print("[yellow]Invalid worker count; defaulting to 4.[/yellow]")
             parallel_workers = 4
 
-    # --- Screen 3: Settings target ---
+    # --- Screen 3: Hosts ---
     console.print()
-    console.rule("[bold]3 / 3  Settings[/bold]")
+    console.rule("[bold]3 / 4  Hosts[/bold]")
+
+    selected_hosts: list[str] | None = questionary.checkbox(
+        "Which host harnesses should ll-init wire adapters for?",
+        choices=[
+            questionary.Choice(label, value=val, checked=(val in default_hosts))
+            for label, val in _HOST_CHOICES
+        ],
+    ).ask()
+    if selected_hosts is None:
+        return 130
+
+    # --- Screen 4: Settings target ---
+    console.print()
+    console.rule("[bold]4 / 4  Settings[/bold]")
 
     settings_target: str | None = questionary.select(
         "Where should ll tool permissions be written?",
@@ -182,7 +215,7 @@ def run_tui(
 
     # --- Summary ---
     console.print()
-    _render_summary(console, config, project_root, selected_set, settings_target)
+    _render_summary(console, config, project_root, selected_set, selected_hosts, settings_target)
     console.print()
 
     confirmed: bool | None = questionary.confirm(
@@ -202,7 +235,7 @@ def run_tui(
         config_path=config_path,
         templates_dir=templates_dir,
         plugin_root=plugin_root,
-        codex=codex,
+        hosts=selected_hosts,
         settings_target=settings_target,
         force=force,
         console=console,
