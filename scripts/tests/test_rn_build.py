@@ -614,6 +614,30 @@ class TestRnBuildResumeState:
             "synthesize_result action must reference resume_epic in the resume_command template"
         )
 
+    def test_resume_read_harness_scans_prior_rn_build_runs(self, loop_data: dict) -> None:
+        action = loop_data["states"]["resume_read_harness"].get("action", "")
+        assert "rn-build-*" in action, (
+            "resume_read_harness must scan prior rn-build-* run dirs for harness-name.txt "
+            "(Change #4: resume harness fallback discovery)"
+        )
+
+    def test_resume_read_harness_scans_installed_harness_yamls(self, loop_data: dict) -> None:
+        action = loop_data["states"]["resume_read_harness"].get("action", "")
+        assert ".loops/harness-*.yaml" in action, (
+            "resume_read_harness must scan .loops/harness-*.yaml for installed harness loops "
+            "(Change #4: resume harness fallback discovery)"
+        )
+
+    def test_resume_read_harness_emits_loud_warning_when_no_harness(self, loop_data: dict) -> None:
+        action = loop_data["states"]["resume_read_harness"].get("action", "")
+        assert "WARNING" in action, (
+            "resume_read_harness must emit a visible WARNING when no harness is found "
+            "(Change #4: no silent eval skip)"
+        )
+        assert "SKIPPED" in action, (
+            "resume_read_harness warning must state eval gate will be SKIPPED"
+        )
+
 
 @pytest.mark.slow
 class TestRnBuildLiveValidation:

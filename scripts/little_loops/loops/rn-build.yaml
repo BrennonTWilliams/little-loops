@@ -207,11 +207,12 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
-      import sys, os
+      import sys, os, glob
 
-      run_dir = '${context.run_dir}'
+      run_dir = '${context.run_dir}'.rstrip('/')
       os.makedirs(run_dir, exist_ok=True)
 
+      # Step 1: harness-name.txt from this run (written if --context resume_harness was provided)
       harness_file = os.path.join(run_dir, 'harness-name.txt')
       if os.path.exists(harness_file):
           with open(harness_file) as f:
@@ -220,8 +221,37 @@ states:
               print(name)
               sys.exit(0)
 
-      # No harness file — proceed without harness name; check_harness_name will
-      # route directly to synthesize_result when harness_name is empty.
+      # Step 2: most recent prior rn-build run that recorded a harness
+      runs_dir = os.path.dirname(run_dir)
+      prior_files = sorted(glob.glob(os.path.join(runs_dir, 'rn-build-*', 'harness-name.txt')))
+      for hf in reversed(prior_files):
+          if os.path.dirname(hf) == run_dir:
+              continue  # skip the current run already checked above
+          with open(hf) as f:
+              name = f.read().strip()
+          if name:
+              print(f'[resume] auto-discovered harness "{name}" from prior run: {os.path.dirname(hf)}', file=sys.stderr)
+              print(name)
+              sys.exit(0)
+
+      # Step 3: installed harness loop YAML in .loops/harness-*.yaml
+      for hf in sorted(glob.glob('.loops/harness-*.yaml'), key=os.path.getmtime, reverse=True):
+          name = os.path.splitext(os.path.basename(hf))[0]
+          if name:
+              print(f'[resume] auto-discovered installed harness loop: {name}', file=sys.stderr)
+              print(name)
+              sys.exit(0)
+
+      # Step 4: no harness found — emit loud warning; eval gate will be skipped via check_harness_name
+      print('', file=sys.stderr)
+      print('=' * 64, file=sys.stderr)
+      print('WARNING: no eval harness found for this resume.', file=sys.stderr)
+      print('  Eval gate will be SKIPPED — build results will not be verified.', file=sys.stderr)
+      print('  To enable verification on resume, either:', file=sys.stderr)
+      print('    (a) pass --context resume_harness=<name>', file=sys.stderr)
+      print('    (b) install a harness: ll-loop install harness-*', file=sys.stderr)
+      print('=' * 64, file=sys.stderr)
+      print('', file=sys.stderr)
       print('')
       sys.exit(0)
       PYEOF
