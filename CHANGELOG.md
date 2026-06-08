@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`vega-viz` generator-evaluator loop** — New FSM harness for Vega / Vega-Lite data visualizations. Compile-gates broken specs via deterministic exit-code before LLM scoring; supports optional real data (CSV/JSON path via `--context data_path=`); defaults to Vega-Lite and escalates to full Vega only for custom/interactive composition; Playwright captures three interaction states as multimodal PNG input for the judge. `on_handoff: spawn`, `max_iterations: 20`, 2h timeout. (ENH-2010)
+- **`canvas-sketch-generator` generator-evaluator loop** — New FSM harness for canvas-sketch (Matt DesLauriers) still-image generative art. Objective non-blank render gate (pixel statistics) hard-gates blank sketches before the LLM judge runs; per-iteration snapshots with deterministic best-iteration selection (`best.html`); `on_max_iterations: finalize` ensures `best.html` is always published. `on_handoff: spawn`, `max_iterations: 40`, 2h timeout.
+- **`rn-implement` `blocked_by` pre-gate** — New `check_blocked_by` + `route_blocked_by` states gate all scheduling modes: issues with unmet `blocked_by` frontmatter deps are deferred (with named blockers) before entering the remediation budget, preventing the full `max_remediation_passes` budget from being spent on a structural blocker that prose remediation cannot clear. Fail-open: malformed frontmatter passes the gate. (ENH-2008)
+
 ### Planned
 
 - Windows compatibility testing

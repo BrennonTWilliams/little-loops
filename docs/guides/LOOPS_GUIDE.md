@@ -611,6 +611,15 @@ ll-loop run rn-implement "FEAT-1808,ENH-1842,BUG-1001" \
   --context schedule_mode=value_ranked
 ```
 
+**`blocked_by` pre-gate** (ENH-2008)
+
+Before entering the remediation budget, every dequeued issue passes through a lightweight two-state gate:
+
+1. `check_blocked_by` (shell) — parses the issue's frontmatter directly and writes the set of unmet `blocked_by` IDs to `blocked_by_unmet_<ID>.txt`.
+2. `route_blocked_by` (output_contains) — if any unmet blockers were found, routes to `mark_deferred` with a message naming the specific blockers; otherwise routes to `check_depth`.
+
+This gate applies to **both** `fifo` and `value_ranked` scheduling — it is not the same as `value_ranked`'s ready-set filter (which also checks `blocked.txt`). The pre-gate catches structural blockers *before* spending the `max_remediation_passes` budget on an issue that prose remediation cannot unblock. Fail-open: if `ll-issues show` cannot parse the frontmatter the gate passes, so a missing or malformed `blocked_by` field never stalls the queue.
+
 **Output artifacts** (written to `${context.run_dir}`):
 
 | File | Description |
@@ -628,6 +637,10 @@ ll-loop run rn-implement "FEAT-1808,ENH-1842,BUG-1001" \
 ```
 init               (shell: seed queue from comma-separated input, init tracking files)
   → dequeue_next   (fragment: queue_pop — pop head of queue, mark visited, increment counter)
+    → check_blocked_by  (shell: parse frontmatter, write blocked_by_unmet_<ID>.txt)
+      → route_blocked_by  (evaluate: output_contains — any unmet blockers?)
+        on_yes → mark_deferred (named blockers) → dequeue_next
+        on_no  → check_depth
     → check_depth  (evaluate: output_numeric lt max_depth)
       on_yes → run_remediation
       on_no  → mark_depth_capped → dequeue_next
@@ -1333,10 +1346,12 @@ run_eval → score_results → analyze_failures
 | `p5js-sketch-generator` | Generator-evaluator harness for p5.js creative coding sketches — multi-frame screenshots at deterministic frameCounts evaluate motion, not just composition; GAN-style architecture with p5.js loaded from CDN |
 | `pixi-data-viz` | Generator-evaluator harness for animated PixiJS data visualizations — embeds synthetic-but-plausible data inline; hard-gates `encoding_clarity` at threshold 7; evaluates whether motion aids comprehension |
 | `pixi-generative-art` | Generator-evaluator harness for PixiJS generative art sketches — GPU-accelerated idioms (filters, blend modes, container hierarchies); rewards Pixi-distinctive patterns over p5.js conventions |
+| `vega-viz` | Generator-evaluator harness for Vega / Vega-Lite data visualizations — compile-gates broken specs via deterministic exit-code before LLM scoring, supports optional real data (CSV/JSON path), defaults to Vega-Lite and escalates to full Vega only for custom/interactive composition; Playwright captures three interaction states (settled, hover/tooltip, brush/selection) as multimodal PNG input for the judge (ENH-2010) |
+| `canvas-sketch-generator` | Generator-evaluator harness for canvas-sketch (Matt DesLauriers) still-image generative art — objective non-blank render gate (parsed pixel statistics) hard-gates blank sketches before the LLM judge runs; per-iteration snapshots with deterministic best-iteration selection; `on_max_iterations: finalize` ensures `best.html` is always published even when the pass threshold is never crossed |
 | `loop-specialist-eval` | Behavioral eval harness for the `loop-specialist` agent — drives the agent against a seeded `broken-verify-loop.yaml` fixture (ambiguous-output failure mode) and verifies that the diagnosis artifact is written and the failure mode is correctly classified |
 | `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --input concept="how a transformer attends"` |
 
-For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, and `pixi-generative-art`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
+For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, and `canvas-sketch-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
 > **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_iterations` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available. After ENH-1869, these states (`evaluate`, `score`) live inside `oracles/generator-evaluator`; the rule applies to the oracle's internal state machine, not the calling thin-wrapper loops.
 
@@ -1899,6 +1914,156 @@ init → plan → generate → evaluate
 - If Playwright is unavailable, the `evaluate` state's `on_no` route retries with fresh HTML rather than scoring without visual evidence.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - Prefer `p5js-sketch-generator` when the p5.js ecosystem (global mode, built-in `noise()`) is the right tool; reach for `pixi-generative-art` when GPU filters, blend modes, or `ParticleContainer` density are central to the aesthetic.
+
+---
+
+### `vega-viz` — Vega / Vega-Lite Visualization Harness
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Node.js must be available in `PATH` with `@playwright/test` in the global npm tree. `vega-cli` and `vega-lite` are installed on first run via `npx -y` — pre-install them to skip the download: `npm install -g vega-cli vega-lite`.
+
+**Technique**: GAN-style generator-evaluator harness for Vega / Vega-Lite data visualizations — sibling of `pixi-data-viz` but with two capabilities the PixiJS loops lack:
+
+1. **Deterministic compile gate.** A Vega-Lite or Vega spec either compiles and renders or it doesn't. The `validate` state runs `vl2vg` + `vg2png` (or `vg2png` directly) and uses an exit-code evaluator as a hard gate before the browser or the LLM judge ever runs. Broken specs route to a dedicated `repair` state that receives compiler stderr verbatim and fixes only the structural break — keeping break-fixing entirely separate from taste-refinement.
+
+2. **Optional real-data binding.** The `resolve_data` state normalises a caller-supplied CSV or JSON file into `data.json` + `schema.txt` (field names, inferred types, row count). The `plan` and `generate` states consume `schema.txt` to bind the spec's encodings to real field names. When no file is supplied, the generator fabricates clearly-labeled synthetic data.
+
+The `plan` state commits to a grammar (Vega-Lite by default, full Vega only when justified) and produces a `brief.md` that specifies mark + encoding with perceptual justification, honesty constraints, annotation text, interaction requirements, and palette. The `capture` state uses Playwright to load the compiled chart headless and capture three interaction states — settled, hover/tooltip, brush-drag selection — as PNGs, which the `score` state reads as multimodal input. `faithfulness` and `honesty` are hard-gated at `hard_gate` (default 7); `effectiveness` and `craft` at `pass_threshold` (default 6). Every scored iteration is versioned to `iter-N/`; `best.html` always points at the highest-scoring version so far.
+
+**When to use**: When you need a data visualization with rigorous faithfulness + honesty evaluation, and especially when you have real data to bind to. Vs `pixi-data-viz`: `vega-viz` gives a deterministic compile gate, optional real-data binding, and three interaction captures; `pixi-data-viz` gives animated GPU-rendered charts with frame-sampled evaluation. Vs `svg-image-generator` / `p5js-sketch-generator`: those are for illustration and generative art, not data visualization.
+
+**Usage:**
+
+```bash
+# Natural-language description → synthetic data
+ll-loop run vega-viz "grouped bar chart comparing quarterly revenue across product lines"
+
+# Bind to real data (CSV or JSON)
+ll-loop run vega-viz "scatter plot of price vs customer rating" \
+  --context data_path=/path/to/products.csv
+
+# Raise quality thresholds
+ll-loop run vega-viz "choropleth map of sales by region" \
+  --context pass_threshold=7 --context hard_gate=8
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language visualization description — passed as the positional argument |
+| `data_path` | `""` | Optional path to a CSV or JSON file; empty → generator fabricates labeled synthetic data |
+| `pass_threshold` | `6` | Minimum score for `effectiveness` and `craft` (1–10) |
+| `hard_gate` | `7` | Hard floor for `faithfulness` and `honesty` — a chart that misrepresents data fails regardless of polish |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/vega-viz-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and interaction-frame PNGs; created automatically. Override with `--context run_dir=path/`. |
+
+Override per-run:
+
+```bash
+ll-loop run vega-viz "line chart of weekly active users" \
+  --context data_path=metrics.json \
+  --context pass_threshold=7 \
+  --context hard_gate=8
+```
+
+**FSM flow:**
+
+```
+init → resolve_data → plan → generate → validate
+                                            ├─ COMPILE_OK  → capture
+                                            │                  ├─ CAPTURED → score → record
+                                            │                  │                        ├─ EVAL_PASS → done
+                                            │                  │                        └─ ITERATE   → generate (with critique)
+                                            │                  └─ ERROR    → failed
+                                            └─ COMPILE_FAIL → repair → validate (← re-checks after fix)
+```
+
+**Evaluation criteria:**
+
+| Criterion | Threshold | What it checks |
+|-----------|-----------|----------------|
+| `faithfulness` | `hard_gate` (**hard**) | Right mark + encoding for the brief's question; real field names used when `schema.txt` exists — inspects the spec, not just the picture |
+| `honesty` | `hard_gate` (**hard**) | No truncated/non-zero-baseline exaggeration, dual axes, misleading aggregation, rainbow-jet on sequential data, overplotting that hides data |
+| `effectiveness` | `pass_threshold` (soft) | Perceptual quality per Cleveland-McGill ranking, legibility at rendered size, tooltip in `frame_hover`, selection filter in `frame_brush` |
+| `craft` | `pass_threshold` (soft) | Title and axis titles with units, legend where needed, typography hierarchy, spacing, color contrast |
+
+**Notes:**
+- `vega-cli` and `vega-lite` are installed on first run via `npx -y` (requires network). Pre-install to skip: `npm install -g vega-cli vega-lite`.
+- `resolve_data` normalises the first list found in a JSON object; CSV rows are coerced to numeric values where possible; field types are inferred and written to `schema.txt` for the `plan` and `score` states to reference.
+- The grammar decision (Vega-Lite vs full Vega) lives in `plan`, not `generate`. The brief commits to one; `generate` may escalate on stuck iterations but must justify in a code comment. Vega-Lite is the default — it has a higher first-pass success rate and the compile gate validates it equally.
+- The spec is inlined into `index.html` (`vegaEmbed` handles both grammars from the same inline object). File-URI rendering requires this — no fetch, no CORS.
+- `window.__vegaReady = true` must be set in the `vegaEmbed` `.then()` callback; the `capture` state polls it before taking screenshots.
+- `repair` fixes only the structural break reported in `compile_error.txt` — schema errors, invalid field references, wrong encoding types, malformed transforms. It does not redesign the chart.
+- `on_handoff: spawn`, `max_iterations: 20`, `timeout: 7200`.
+
+---
+
+### `canvas-sketch-generator` — canvas-sketch Still-Image Harness
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Node.js must be available in `PATH` with `@playwright/test` in the global npm tree. canvas-sketch itself is loaded at runtime from the esm.sh ESM CDN — no local npm install required.
+
+**Technique**: GAN-style generator-evaluator harness for canvas-sketch (Matt DesLauriers) still-image generative art, implementing the same GAN-inspired pattern as `p5js-sketch-generator` and `pixi-generative-art` with two additions specific to this library:
+
+1. **Objective non-blank render gate.** The `evaluate` state reads the 2D pixel buffer and computes the fraction of pixels that differ from the modal background color (the `min_nonblank_ratio` gate, default 0.03). A sketch that renders nothing exits cleanly with no JavaScript error, so exit-code alone would wave it through. The ratio gate catches blank renders before the LLM judge ever runs.
+
+2. **Infrastructure vs. sketch error split.** Sketch-level failures (JS error thrown by the sketch, no canvas element created, WebGL context used instead of 2D, never-ready, blank render) write an "Issues to Address" `critique.md` and emit `RENDER_BAD`, routing back to `generate` for self-repair. Only true infrastructure failures (browser won't launch, CDN unreachable) exit nonzero → `failed`. This means the generate→refine loop fixes its own bugs without human intervention.
+
+The `plan` state writes `brief.md` committing to a specific generative rule, palette, and composition before the generator writes a single line of code. The `score` state (LLM) assigns four criteria and writes `critique.md`; the `snapshot` state (shell) parses scores deterministically and gates on the minimum — the LLM assigns, a non-LLM state decides (MR-1 compliant). The `finalize` state reads `scores.tsv` and publishes the iteration with the highest minimum-criterion score as `best.html` / `best.png` — because score progression is non-monotonic, a middle iteration is often the strongest. `on_max_iterations: finalize` routes budget-exhausted runs through `finalize` so `best.html` is always published.
+
+**v1 scope:** still images only (no animation), 2D canvas only (WebGL/three/regl would need a different pixel-readback path).
+
+**When to use**: When you want a still-image generative artwork using the canvas-sketch library. Vs `p5js-sketch-generator`: canvas-sketch API (`canvasSketch()`, ESM CDN import, `random.setSeed()`) vs p5.js global mode (`setup()`/`draw()`); still-image vs animated/multi-frame; non-blank pixel gate vs frameCount-based motion evaluation. Vs `pixi-generative-art`: 2D canvas vs GPU/WebGL filters and blend modes.
+
+**Usage:**
+
+```bash
+ll-loop run canvas-sketch-generator "a recursive Truchet tiling with a cool monochrome palette"
+
+# Raise quality bar and tighten render gate
+ll-loop run canvas-sketch-generator "flow field with particle accumulation along attractor curves" \
+  --context pass_threshold=7 --context min_nonblank_ratio=0.05
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language description of the generative artwork — passed as the positional argument |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
+| `min_nonblank_ratio` | `0.03` | Objective gate: fraction of non-background pixels required to count as "drew something" (spike-confirmed: good sketch ≈ 0.41, blank sketch = 0.00) |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values; empty string when tokens are disabled or the tokens path is missing |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/canvas-sketch-generator-{timestamp}/`) for `index.html`, `screenshot.png`, `brief.md`, `critique.md`, `scores.tsv`, and `iter-N/` snapshots; created automatically. Override with `--context run_dir=path/`. |
+
+**FSM flow:**
+
+```
+init → plan → generate → evaluate
+                            ├─ RENDER_OK  → score → snapshot
+                            │                           ├─ min score ≥ pass_threshold → finalize → done
+                            │                           └─ min score < pass_threshold → generate (with critique)
+                            ├─ RENDER_BAD → generate (critique written — self-repair loop)
+                            └─ ERROR (infra) → failed
+
+on_max_iterations: finalize → done  (best.html always published)
+```
+
+**Evaluation criteria** (all four must meet `pass_threshold`):
+
+| Criterion | Weight | What it checks |
+|-----------|--------|----------------|
+| `composition` | 2× | Balance, focal point, use of negative space, density gradient. Penalizes empty canvases, centered-blob compositions, no clear focal structure |
+| `originality` | 2× | Evidence of a specific generative rule vs tutorial output. Penalizes vanilla Perlin flow fields, rainbow HSL cycling without purpose, anything that looks like the first Google result for "generative art" |
+| `fidelity_to_brief` | 1× | Does the image depict what the brief's "Fidelity to brief" sentence specified? An attractive image that ignores the instruction fails |
+| `craft` | 1× | Color harmony, edge/anti-alias quality, stroke consistency, compositing, intentional vs accidental artifacts |
+
+**Notes:**
+- canvas-sketch and canvas-sketch-util are loaded from the esm.sh ESM CDN inside `<script type="module">` — the only external resource permitted. All sketch code is inline so the file renders correctly under a `file://` URL without a web server.
+- Deterministic seeding is required: `random.setSeed('<constant>')` called once before drawing; all randomness via `canvas-sketch-util/random`. Unseeded `Math.random()` or `Date.now()` breaks per-iteration reproducibility.
+- The sketch MUST signal readiness for the `evaluate` harness: `canvasSketch(sketch, settings).then(() => { window.__sketchReady = true; }).catch(e => { window.__sketchError = String(e && e.stack || e); })`. The `evaluate` state polls `window.__sketchReady === true` before screenshotting.
+- Still images only (v1): do NOT set `settings.animate: true`. Draw the full composition in the single render call.
+- `max_iterations: 40` caps **state executions**, not refine cycles. One scored cycle ≈ 4 states (`generate`, `evaluate`, `score`, `snapshot`), plus ~2 extra whenever a blank/broken render triggers the self-repair path, plus `init` + `plan` + `finalize` + `done` overhead. 40 steps ≈ 6–8 scored cycles, matching the 5–15 iterations in Anthropic's harness-design article.
+- `on_max_iterations: finalize` ensures `best.html` is always published, even when the pass threshold is never crossed. A run that exhausts its budget without ever scoring above threshold still produces the best artifact it found.
+- `finalize` reads `scores.tsv` (one `iteration<tab>min_score` row per `snapshot` call) and copies the highest-scoring iteration's `index.html` and `screenshot.png` to `best.html` and `best.png` at the run-dir root. Ties go to the latest iteration.
+- `on_handoff: spawn`, `max_iterations: 40`, `timeout: 7200`.
 
 ### `cli-anything-bootstrap` — Agent-Native CLI Bootstrapper
 

@@ -1,6 +1,8 @@
 name: rn-build
 category: orchestration
 input_key: spec
+required_inputs:
+  - spec
 description: |
   Capstone orchestration loop for the recursive spec-to-project builder. Takes a spec
   file path and drives the full automated pipeline: spec validation → tech research →
