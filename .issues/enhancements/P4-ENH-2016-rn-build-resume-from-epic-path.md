@@ -33,6 +33,24 @@ re-work of phases whose artifacts already exist. A `resume_epic` context knob
 that skips the front half and enters directly at `cluster_execute` would make
 `rn-build` usable across multiple sessions.
 
+## Current Behavior
+
+When `rn-build` exhausts `max_eval_retries`, the loop ends after
+`synthesize_result` emits `still_open` items. Re-entering `rn-build` for a
+project with an already-scoped EPIC requires running the full front half from
+scratch (`init → tech_research → design_artifacts → commit_design →
+scope_project → refine_seed → eval_harness`). EPIC IDs, harness names, and
+design artifacts generated in the prior run are not reused.
+
+## Expected Behavior
+
+`rn-build` supports a `--initial resume` invocation that reads `resume_epic`
+and `resume_harness` from context, writes them to `${context.run_dir}/`, and
+enters directly at `cluster_execute`. The 7 front-half phases are skipped.
+When `eval_passed: false`, `synthesize_result` includes a `resume_command`
+field with the exact invocation needed to resume the build in a subsequent
+session.
+
 ## Motivation
 
 A 24-hour timeout and 30-iteration cap make `rn-build` susceptible to
@@ -168,5 +186,6 @@ When `eval_passed: false`, add a `resume_command` field to the synthesis JSON:
 **Open** | Created: 2026-06-08
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-08T03:27:09 - `c8af87dd-4322-43dc-b305-4be76e1c1339.jsonl`
 - `/ll:format-issue` - 2026-06-08T01:37:02 - `6443e1b2-a4d1-4257-be1b-aa306b6f46e7.jsonl`
 - `/ll:capture-issue` - 2026-06-08T01:29:25Z - `00fefddf-56f7-43f8-8a57-dd53f6c3526d.jsonl`

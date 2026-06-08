@@ -29,6 +29,28 @@ useful output. Users should be able to provide a loosely structured spec and
 have the loop normalize it to the standard format before research begins, rather
 than needing to pre-format it correctly.
 
+## Current Behavior
+
+`rn-build` accepts a user-provided Markdown spec file and passes it directly to
+the `tech_research` state without validating that it contains the required
+sections (`## Overview`, `## Core Features`, `## Acceptance Criteria`). Users
+who provide a loosely-structured spec — such as a single descriptive paragraph —
+encounter downstream states that receive incomplete input, producing
+lower-quality research and design artifacts.
+
+## Expected Behavior
+
+When `rn-build` receives a spec missing the three required sections, a
+`normalize_spec` pre-gate runs: a non-LLM `check_structure` evaluator detects
+the gap, an `llm_normalize` prompt state infers and populates the missing
+sections from the content present, and a `verify_structure` evaluator confirms
+all three sections exist in the output. The normalized spec is written to
+`${context.run_dir}/spec_normalized.md`; the original file is never modified.
+Downstream states receive the normalized path. Specs that already contain all
+three required sections skip normalization entirely. Specs that cannot be
+normalized (e.g., empty file) cause the loop to abort with a clear error
+message referencing `specs/SPEC_TEMPLATE.md`.
+
 ## Motivation
 
 ENH-2012 establishes `specs/SPEC_TEMPLATE.md` as the ideal input format
@@ -102,6 +124,16 @@ normalize_spec
 ### Similar Patterns
 - `rn-refine.yaml` pre-gate states for input validation
 
+### Tests
+- N/A — YAML-only change; validate with `ll-loop validate rn-build` (see Implementation Steps #7) and manual integration tests per Acceptance Criteria
+
+### Documentation
+- `specs/SPEC_GUIDE.md` — update if present to note that malformed specs are auto-normalized before research begins
+- N/A for other docs
+
+### Configuration
+- N/A
+
 ## Acceptance Criteria
 
 - Running `ll-loop run rn-build path/to/minimal_spec.md` with a spec that has
@@ -135,4 +167,5 @@ normalize_spec
 **Open** | Created: 2026-06-08
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-08T03:27:31 - `8ca79972-3964-4396-bf2e-0ac0f3566189.jsonl`
 - `/ll:capture-issue` - 2026-06-08T01:43:18Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
