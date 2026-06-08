@@ -43,6 +43,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     priority_filter: set[str] | None = parse_priorities(getattr(args, "priority", None))
     label_filters: list[str] = getattr(args, "label", None) or []
     milestone_filter: str | None = getattr(args, "milestone", None) or None
+    parent_filter: str | None = getattr(args, "parent", None) or None
 
     filtered = [
         (issue, stat)
@@ -54,6 +55,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             or any(lf.lower() in [lb.lower() for lb in issue.labels] for lf in label_filters)
         )
         and (not milestone_filter or issue.milestone == milestone_filter)
+        and (not parent_filter or issue.parent == parent_filter)
     ]
 
     # Sort

@@ -203,6 +203,12 @@ Examples:
             help="Filter by milestone name (matches issues whose milestone: frontmatter equals MILESTONE)",
         )
         ls.add_argument(
+            "--parent",
+            dest="parent",
+            metavar="ISSUE_ID",
+            help="Filter to children of a specific parent issue (e.g. EPIC-001)",
+        )
+        ls.add_argument(
             "--group-by",
             choices=["type", "epic"],
             default="type",
