@@ -389,7 +389,9 @@ def many_events_file(tmp_path: Path) -> Path:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _isolate_history_db_session(tmp_path_factory: pytest.TempPathFactory) -> Generator[None, None, None]:
+def _isolate_history_db_session(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[None, None, None]:
     """Set LL_HISTORY_DB for the entire session so no module-level or session-scoped
     code accidentally opens the real .ll/history.db before function-scoped fixtures run.
     """
@@ -401,7 +403,9 @@ def _isolate_history_db_session(tmp_path_factory: pytest.TempPathFactory) -> Gen
 
 
 @pytest.fixture(autouse=True)
-def _isolate_history_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+def _isolate_history_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[None, None, None]:
     """Redirect all session-store DB opens to a per-test temp directory.
 
     Sets LL_HISTORY_DB so cli_event_context and resolve_history_db route

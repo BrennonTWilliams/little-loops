@@ -2140,7 +2140,9 @@ class _NeverEOFStdout:
         if self._lines:
             return self._lines.pop(0)
         self.read_past_result = True
-        return '{"type": "assistant", "message": {"content": [{"type": "text", "text": "LEAKED"}]}}\n'
+        return (
+            '{"type": "assistant", "message": {"content": [{"type": "text", "text": "LEAKED"}]}}\n'
+        )
 
 
 class TestRunClaudeCommandResultBreak:

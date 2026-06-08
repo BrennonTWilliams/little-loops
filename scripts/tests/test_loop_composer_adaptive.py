@@ -137,8 +137,7 @@ class TestLoopComposerAdaptiveStates:
     def test_uses_run_dir_for_artifacts(self, states: dict) -> None:
         """At least one state must reference ${context.run_dir} for per-run isolation."""
         any_run_dir = any(
-            "${context.run_dir}" in (state.get("action", "") or "")
-            for state in states.values()
+            "${context.run_dir}" in (state.get("action", "") or "") for state in states.values()
         )
         assert any_run_dir, "No state references ${context.run_dir} — artifact isolation missing"
 

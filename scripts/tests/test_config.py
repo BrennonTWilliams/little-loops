@@ -2585,7 +2585,11 @@ class TestOrchestrationConfig:
         assert config.composer.adaptive.reassess_min_confidence == 0.6
 
     def test_from_dict_composer_adaptive_with_values(self) -> None:
-        data = {"composer": {"adaptive": {"enabled": True, "max_replans": 5, "reassess_min_confidence": 0.8}}}
+        data = {
+            "composer": {
+                "adaptive": {"enabled": True, "max_replans": 5, "reassess_min_confidence": 0.8}
+            }
+        }
         config = OrchestrationConfig.from_dict(data)
         assert config.composer.adaptive.enabled is True
         assert config.composer.adaptive.max_replans == 5

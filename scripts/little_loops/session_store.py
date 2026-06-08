@@ -670,7 +670,9 @@ def cli_event_context(
     """
     if args is None:
         args = []
-    effective_path = resolve_history_db(db_path) if Path(db_path) == DEFAULT_DB_PATH else Path(db_path)
+    effective_path = (
+        resolve_history_db(db_path) if Path(db_path) == DEFAULT_DB_PATH else Path(db_path)
+    )
     conn = connect(effective_path)
     start = time.time()
     ts = _now()
@@ -1836,7 +1838,9 @@ def backfill_incremental(
         _asst_raw = _asst_row[0] if (_asst_row and _asst_row[0]) else None
         if _asst_raw:
             try:
-                _asst_since = datetime.fromisoformat(str(_asst_raw).replace("Z", "+00:00")).timestamp()
+                _asst_since = datetime.fromisoformat(
+                    str(_asst_raw).replace("Z", "+00:00")
+                ).timestamp()
             except ValueError:
                 _asst_since = 0.0
         else:

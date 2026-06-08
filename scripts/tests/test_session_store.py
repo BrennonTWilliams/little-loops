@@ -197,12 +197,12 @@ class TestConcurrencyHardening:
         assert not errors, f"concurrent ensure_db raced: {errors!r}"
         conn = sqlite3.connect(str(db))
         try:
-            version = conn.execute(
-                "SELECT value FROM meta WHERE key='schema_version'"
-            ).fetchone()[0]
-            count = conn.execute(
-                "SELECT COUNT(*) FROM meta WHERE key='schema_version'"
-            ).fetchone()[0]
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[
+                0
+            ]
+            count = conn.execute("SELECT COUNT(*) FROM meta WHERE key='schema_version'").fetchone()[
+                0
+            ]
         finally:
             conn.close()
         assert int(version) == SCHEMA_VERSION
@@ -1305,9 +1305,7 @@ class TestBackfillIncrementalAssistantMessages:
                     "type": "assistant",
                     "sessionId": session_id,
                     "timestamp": "2026-05-22T00:00:00Z",
-                    "message": {
-                        "content": [{"type": "text", "text": "hello from assistant"}]
-                    },
+                    "message": {"content": [{"type": "text", "text": "hello from assistant"}]},
                 }
             )
             + "\n",
@@ -1616,7 +1614,6 @@ class TestCliEventContext:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An explicit path passed to cli_event_context must not be overridden by LL_HISTORY_DB."""
-        from little_loops.session_store import DEFAULT_DB_PATH
 
         explicit_db = tmp_path / "explicit.db"
         env_db = tmp_path / "env.db"
@@ -2024,7 +2021,9 @@ class TestCompactSession:
         # (which would trigger SessionStart hooks writing to the production db).
         short_summary = "Condensed summary."
         with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response(short_summary))
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
             compact_session(session_id, db, config=config)
         conn = connect(db)
         try:

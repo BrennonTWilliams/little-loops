@@ -108,19 +108,23 @@ class TestGoalClusterFSMValidation:
     def test_no_mr1_violations(self) -> None:
         fsm, warnings = load_and_validate(LOOP_FILE)
         mr1_errors = [
-            w for w in warnings
-            if w.severity == ValidationSeverity.ERROR and "MR-1" in w.message
+            w for w in warnings if w.severity == ValidationSeverity.ERROR and "MR-1" in w.message
         ]
-        assert not mr1_errors, f"goal-cluster.yaml has MR-1 violations: {[str(e) for e in mr1_errors]}"
+        assert not mr1_errors, (
+            f"goal-cluster.yaml has MR-1 violations: {[str(e) for e in mr1_errors]}"
+        )
 
     def test_no_mr3_violations(self) -> None:
         fsm, warnings = load_and_validate(LOOP_FILE)
         mr3_warnings = [
-            w for w in warnings
+            w
+            for w in warnings
             if w.severity in (ValidationSeverity.WARNING, ValidationSeverity.ERROR)
             and "MR-3" in w.message
         ]
-        assert not mr3_warnings, f"goal-cluster.yaml has MR-3 violations: {[str(w) for w in mr3_warnings]}"
+        assert not mr3_warnings, (
+            f"goal-cluster.yaml has MR-3 violations: {[str(w) for w in mr3_warnings]}"
+        )
 
 
 class TestGoalClusterInputNormalization:
@@ -135,9 +139,12 @@ class TestGoalClusterInputNormalization:
 
     def test_load_goals_handles_json_list_shape(self, loop_data: dict) -> None:
         action = loop_data["states"]["load_goals"].get("action", "")
-        assert "startswith('['" in action or "startswith('[')" in action or "startswith('[')" in action or "stripped.startswith('['" in action, (
-            "load_goals must handle JSON list input shape"
-        )
+        assert (
+            "startswith('['" in action
+            or "startswith('[')" in action
+            or "startswith('[')" in action
+            or "stripped.startswith('['" in action
+        ), "load_goals must handle JSON list input shape"
 
     def test_load_goals_handles_epic_shape(self, loop_data: dict) -> None:
         action = loop_data["states"]["load_goals"].get("action", "")
@@ -157,9 +164,7 @@ class TestGoalClusterInputNormalization:
 
     def test_load_goals_exits_on_empty(self, loop_data: dict) -> None:
         action = loop_data["states"]["load_goals"].get("action", "")
-        assert "sys.exit(1)" in action, (
-            "load_goals must exit 1 when no goals can be parsed"
-        )
+        assert "sys.exit(1)" in action, "load_goals must exit 1 when no goals can be parsed"
 
     def test_load_goals_evaluates_exit_code(self, loop_data: dict) -> None:
         state = loop_data["states"]["load_goals"]
@@ -211,10 +216,7 @@ class TestGoalClusterReassessIntegration:
 
     def test_reassess_fragment_referenced(self, loop_data: dict) -> None:
         states = loop_data.get("states", {})
-        reassess_states = [
-            name for name, s in states.items()
-            if s.get("fragment") == "reassess"
-        ]
+        reassess_states = [name for name, s in states.items() if s.get("fragment") == "reassess"]
         assert reassess_states, (
             "goal-cluster must reference the 'reassess' fragment from lib/composer.yaml"
         )
@@ -266,6 +268,7 @@ class TestGoalClusterLiveValidation:
 
     def test_ll_loop_validate_passes(self) -> None:
         import subprocess
+
         result = subprocess.run(
             ["ll-loop", "validate", str(LOOP_FILE)],
             capture_output=True,

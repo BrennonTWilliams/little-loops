@@ -119,7 +119,10 @@ class TestRunClaudeCommand:
         mock_process.kill = Mock()
 
         with patch("subprocess.Popen", return_value=mock_process):
-            with patch("os.getpgid", side_effect=ProcessLookupError), patch("selectors.DefaultSelector") as mock_selector_cls:
+            with (
+                patch("os.getpgid", side_effect=ProcessLookupError),
+                patch("selectors.DefaultSelector") as mock_selector_cls,
+            ):
                 mock_selector = MagicMock()
                 mock_selector_cls.return_value = mock_selector
                 mock_selector.__enter__ = Mock(return_value=mock_selector)

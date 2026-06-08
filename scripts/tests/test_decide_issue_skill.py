@@ -285,16 +285,24 @@ class TestPhase3bResolvedFilter:
 
     def test_resolved_filter_subsection_exists(self) -> None:
         text = self._phase_text()
-        assert "Phase 3b-i" in text, "Phase 3b must include a Phase 3b-i resolved-question filter subsection"
+        assert "Phase 3b-i" in text, (
+            "Phase 3b must include a Phase 3b-i resolved-question filter subsection"
+        )
 
     def test_resolved_markers_documented(self) -> None:
         text = self._phase_text()
         assert "✅ RESOLVED" in text, "Phase 3b-i must document the ✅ RESOLVED marker variant"
-        assert "NO_ACTIONABLE_DECISIONS" in text, "Phase 3b-i must document the NO_ACTIONABLE_DECISIONS output token"
+        assert "NO_ACTIONABLE_DECISIONS" in text, (
+            "Phase 3b-i must document the NO_ACTIONABLE_DECISIONS output token"
+        )
 
     def test_decision_needed_not_cleared_on_no_actionable(self) -> None:
         text = self._phase_text()
-        assert "decision_needed remains true" in text or "leave it as `true`" in text or "leave `decision_needed`" in text, (
+        assert (
+            "decision_needed remains true" in text
+            or "leave it as `true`" in text
+            or "leave `decision_needed`" in text
+        ), (
             "Phase 3b-i must document that decision_needed is NOT cleared on the NO_ACTIONABLE_DECISIONS path"
         )
 

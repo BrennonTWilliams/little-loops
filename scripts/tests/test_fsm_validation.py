@@ -2445,8 +2445,12 @@ class TestCaptureReachabilityValidation:
         # Must emit a WARNING (not silent, not ERROR)
         error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
         warn_list = [e for e in errors if e.severity == ValidationSeverity.WARNING]
-        assert error_list == [], f"Should emit WARNING not ERROR in sub-loop context, got errors: {error_list}"
-        assert len(warn_list) >= 1, f"Expected WARNING for undefined capture in sub-loop context, got: {errors}"
+        assert error_list == [], (
+            f"Should emit WARNING not ERROR in sub-loop context, got errors: {error_list}"
+        )
+        assert len(warn_list) >= 1, (
+            f"Expected WARNING for undefined capture in sub-loop context, got: {errors}"
+        )
         assert any("typo_var" in w.message for w in warn_list)
 
     def test_captured_var_present_locally_no_warning_with_sub_loop(self) -> None:

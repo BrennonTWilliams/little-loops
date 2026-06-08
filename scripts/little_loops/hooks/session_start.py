@@ -128,7 +128,12 @@ def handle(event: LLHookEvent) -> LLHookResult:
         # never commits. Path discovery runs synchronously here (fast) to produce
         # the concrete path arg passed to the worker.
         import os as _os
-        _db_path = Path(_os.environ["LL_HISTORY_DB"]) if _os.environ.get("LL_HISTORY_DB") else cwd / ".ll" / "history.db"
+
+        _db_path = (
+            Path(_os.environ["LL_HISTORY_DB"])
+            if _os.environ.get("LL_HISTORY_DB")
+            else cwd / ".ll" / "history.db"
+        )
 
         with contextlib.suppress(Exception):
             from little_loops.user_messages import get_project_folder
@@ -144,8 +149,13 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
             if _backfill_path is not None:
                 subprocess.Popen(
-                    [sys.executable, "-m", "little_loops.cli.backfill_worker",
-                     str(_db_path), _backfill_path],
+                    [
+                        sys.executable,
+                        "-m",
+                        "little_loops.cli.backfill_worker",
+                        str(_db_path),
+                        _backfill_path,
+                    ],
                     start_new_session=True,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,

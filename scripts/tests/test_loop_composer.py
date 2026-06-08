@@ -174,8 +174,7 @@ class TestLoopComposerStates:
     def test_uses_run_dir_for_artifacts(self, states: dict) -> None:
         """At least one state must reference ${context.run_dir} for per-run isolation."""
         any_run_dir = any(
-            "${context.run_dir}" in (state.get("action", "") or "")
-            for state in states.values()
+            "${context.run_dir}" in (state.get("action", "") or "") for state in states.values()
         )
         assert any_run_dir, "No state references ${context.run_dir} — artifact isolation missing"
 
@@ -196,7 +195,9 @@ class TestComposerLibFragment:
         assert isinstance(lib_data, dict)
 
     def test_lib_has_fragments_key(self, lib_data: dict) -> None:
-        assert "fragments" in lib_data, "lib/composer.yaml must have a top-level 'fragments:' mapping"
+        assert "fragments" in lib_data, (
+            "lib/composer.yaml must have a top-level 'fragments:' mapping"
+        )
 
     def test_lib_has_no_initial_key(self, lib_data: dict) -> None:
         """lib/composer.yaml must not have an initial: key — fragment libraries are not runnable."""
@@ -270,7 +271,9 @@ class TestComposerLibFragment:
     def test_reassess_fragment_contains_decision_tokens(self, lib_data: dict) -> None:
         action = lib_data["fragments"]["reassess"].get("action", "")
         for token in ("CONTINUE", "REPLAN_TAIL", "ABORT"):
-            assert token in action, f"reassess fragment action must mention decision token {token!r}"
+            assert token in action, (
+                f"reassess fragment action must mention decision token {token!r}"
+            )
 
     def test_discover_loops_fragment_excludes_adaptive_composer(self, lib_data: dict) -> None:
         action = lib_data["fragments"]["discover_loops"].get("action", "")

@@ -126,15 +126,15 @@ class TestRnBuildFSMValidation:
     def test_no_mr1_violations(self) -> None:
         _, warnings = load_and_validate(LOOP_FILE)
         mr1_errors = [
-            w for w in warnings
-            if w.severity == ValidationSeverity.ERROR and "MR-1" in w.message
+            w for w in warnings if w.severity == ValidationSeverity.ERROR and "MR-1" in w.message
         ]
         assert not mr1_errors, f"rn-build.yaml has MR-1 violations: {[str(e) for e in mr1_errors]}"
 
     def test_no_mr3_violations(self) -> None:
         _, warnings = load_and_validate(LOOP_FILE)
         mr3_warnings = [
-            w for w in warnings
+            w
+            for w in warnings
             if w.severity in (ValidationSeverity.WARNING, ValidationSeverity.ERROR)
             and "MR-3" in w.message
         ]
@@ -148,9 +148,7 @@ class TestRnBuildClusterExecute:
 
     def test_cluster_execute_targets_goal_cluster(self, loop_data: dict) -> None:
         state = loop_data["states"]["cluster_execute"]
-        assert state.get("loop") == "goal-cluster", (
-            "cluster_execute must delegate to goal-cluster"
-        )
+        assert state.get("loop") == "goal-cluster", "cluster_execute must delegate to goal-cluster"
 
     def test_cluster_execute_passes_value_ranked_schedule_mode(self, loop_data: dict) -> None:
         state = loop_data["states"]["cluster_execute"]
@@ -487,6 +485,7 @@ class TestRnBuildLiveValidation:
 
     def test_ll_loop_validate_passes(self) -> None:
         import subprocess
+
         result = subprocess.run(
             ["ll-loop", "validate", str(LOOP_FILE)],
             capture_output=True,
@@ -499,6 +498,7 @@ class TestRnBuildLiveValidation:
 
     def test_ll_loop_list_includes_rn_build(self) -> None:
         import subprocess
+
         result = subprocess.run(
             ["ll-loop", "list"],
             capture_output=True,

@@ -7,7 +7,6 @@ this module exercises the pure-function handler under unit conditions.
 from __future__ import annotations
 
 import json
-import logging
 import os
 from pathlib import Path
 

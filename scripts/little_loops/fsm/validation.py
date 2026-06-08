@@ -1641,9 +1641,7 @@ def _dominates(fsm: FSMLoop, dominator: str, dominated: str) -> bool:
     return _dominated_by_any(fsm, {dominator}, dominated)
 
 
-def _find_bypass_path_any(
-    fsm: FSMLoop, dominators: set[str], dominated: str
-) -> list[str]:
+def _find_bypass_path_any(fsm: FSMLoop, dominators: set[str], dominated: str) -> list[str]:
     """Find an example path from initial to dominated that bypasses all dominators.
 
     Uses BFS to find the shortest path that avoids every state in ``dominators``.
