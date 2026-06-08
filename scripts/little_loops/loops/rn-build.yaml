@@ -252,7 +252,37 @@ states:
 
       Create the `docs/` directory if it doesn't exist.
     capture: tech_research
-    next: design_artifacts
+    next: check_research_written
+
+  # check_research_written: timeout guard for tech_research. The prompt action has
+  # a 600s timeout but (like all prompt actions) only supports `next:` routing — a
+  # timeout (exit 124) silently yields empty captured output and would otherwise let
+  # design_artifacts + commit_design proceed as if research existed, producing a
+  # misleading "technology research AND design artifacts" commit. This shell state
+  # writes a stub so the file always exists and downstream states have something to
+  # reference. See rn-build-audit-2026-06-08.md fault #1.
+  check_research_written:
+    action_type: shell
+    action: |
+      mkdir -p docs
+      if [ ! -s docs/research.md ]; then
+        echo "WARNING: docs/research.md missing or empty — tech_research likely timed out; writing stub"
+        {
+          echo "# Technology Research"
+          echo ""
+          echo "> **Auto-stub:** \`tech_research\` produced no output (timeout or empty"
+          echo "> response). Populate this file manually, or re-run the research step."
+        } > docs/research.md
+      else
+        echo "docs/research.md present ($(wc -l < docs/research.md) lines)"
+      fi
+      exit 0
+    capture: research_check
+    evaluate:
+      type: exit_code
+    on_yes: design_artifacts
+    on_no: design_artifacts
+    on_error: design_artifacts
 
   # ─── Phase 3: Produce design artifacts ────────────────────────────────────────
 
@@ -280,7 +310,15 @@ states:
     action_type: prompt
     action: |
       Run `/ll:commit` to commit all research and design artifacts.
-      Use message: "docs: add technology research and design artifacts from spec"
+
+      First check whether `docs/research.md` is a real research document or the
+      auto-stub written when tech_research timed out (the stub begins with
+      "> **Auto-stub:**"). Choose the commit message accordingly so it never
+      over-claims:
+        - Real research present:
+          "docs: add technology research and design artifacts from spec"
+        - Stub only (tech_research timed out):
+          "docs: add design artifacts from spec (research.md stubbed — research step timed out)"
     next: scope_project
 
   # ─── Phase 5: Scope EPIC + feature stubs from spec + design artifacts ─────────
@@ -291,8 +329,11 @@ states:
     action: |
       Scope the project into an EPIC with child feature stubs.
 
-      Run `/ll:scope-epic` using the spec and design artifacts as context:
-        /ll:scope-epic "Project from spec" --from-doc docs/data-model.md
+      Run `/ll:scope-epic` using the spec and design artifacts as context.
+      Pass `--auto` so scope-epic skips its interactive review (AskUserQuestion)
+      and creates all proposed children non-interactively — this loop cannot
+      answer interactive prompts and will hang permanently without it:
+        /ll:scope-epic "Project from spec" --from-doc docs/data-model.md --auto
 
       After scope-epic completes:
       1. Run `ll-issues list --format json` and identify the newly created EPIC ID
@@ -301,13 +342,11 @@ states:
       3. Output the EPIC ID on its own line as: EPIC_ID:<id>
          Example: EPIC_ID:EPIC-042
     capture: scope_project
-    evaluate:
-      type: output_contains
-      pattern: "EPIC_ID:"
-    on_yes: write_epic_id
-    on_no: write_epic_id
-    on_partial: write_epic_id
-    on_error: failed
+    # No evaluate gate: write_epic_id is the real validator — it regex-extracts the
+    # EPIC ID and routes to `failed` when none is found (covering the timeout/empty
+    # case too). A separate output_contains gate here was degenerate (every verdict
+    # routed to write_epic_id) and added no signal. See rn-build-audit-2026-06-08.md.
+    next: write_epic_id
 
   write_epic_id:
     action_type: shell
@@ -343,6 +382,10 @@ states:
 
   # ─── Phase 6: Refine seed issues to readiness ─────────────────────────────────
 
+  # Intentional fire-and-proceed: refinement quality is non-fatal to the pipeline.
+  # Even if issue-refinement reports `no`, the seed issues still exist and the
+  # downstream eval harness + goal-cluster execution can proceed against them.
+  # We advance to eval_harness regardless rather than dead-ending the build.
   refine_seed:
     loop: issue-refinement
     context_passthrough: true
@@ -439,6 +482,10 @@ states:
       schedule_mode: "value_ranked"
       max_batch_size: "5"
     capture: cluster_result
+    # Intentional fire-and-proceed: always advance to the eval gate regardless of
+    # goal-cluster's verdict. A partial/failed cluster still produces work worth
+    # validating, and check_harness_name → eval_gate is where real pass/fail is
+    # measured externally. cluster_result is captured for synthesize_result either way.
     on_yes: check_harness_name
     on_no: check_harness_name
     on_error: check_harness_name
