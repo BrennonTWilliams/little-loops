@@ -4,11 +4,18 @@ title: Quantified evolution triggers from history (recurring feedback + skill by
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-03T20:59:38Z"
+captured_at: '2026-06-03T20:59:38Z'
 discovered_date: 2026-06-03
 discovered_by: capture-issue
-depends_on: [ENH-1906]
+depends_on:
+- ENH-1906
 parent: EPIC-2027
+confidence_score: 96
+outcome_confidence: 76
+score_complexity: 16
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # ENH-1911: Quantified evolution triggers from history (recurring feedback + skill bypass)
@@ -248,6 +255,7 @@ rigorous "propose, don't auto-grade" stance for the action side.
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `7b77c952-e0f3-4d17-9910-f90fb3b15400.jsonl`
 - `/ll:wire-issue` - 2026-06-08T23:59:00 - `7fa034e8-b10d-497f-82ed-c69aea9b71df.jsonl`
 - `/ll:refine-issue` - 2026-06-08T23:24:10 - `7fa034e8-b10d-497f-82ed-c69aea9b71df.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
