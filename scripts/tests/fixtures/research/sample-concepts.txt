@@ -1,0 +1,21 @@
+Research Notes: FSM Design Patterns
+
+Pattern: State Entry/Exit Actions
+Each FSM state can have optional on_enter and on_exit hooks that run
+unconditionally when the state is entered or exited. This makes state-local
+setup and teardown explicit without polluting the main action body.
+
+Pattern: Timeout Escalation
+Short per-state timeouts with escalation to longer fallback timeouts.
+If a state times out, retry with 2x timeout before routing to on_error.
+Prevents transient slowdowns from causing premature failures.
+
+Pattern: Idempotent Actions
+Design shell actions to be safely re-runnable: check before creating,
+use atomic rename instead of direct write, use >> for append rather than
+overwriting. This enables safe retries without corrupting state.
+
+Pattern: Structured Output Contracts
+Define explicit output schemas (sentinel strings + JSON blocks) for LLM
+states. The extractor is then deterministic: grep for sentinel, parse JSON.
+Avoid free-form text outputs that require NLP to parse.

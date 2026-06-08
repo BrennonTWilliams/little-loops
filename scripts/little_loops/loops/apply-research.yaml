@@ -1,0 +1,410 @@
+name: apply-research
+category: research
+input_key: files
+required_inputs: ["files"]
+description: |
+  Document ingestion pipeline for local research files. Accepts one or more paths to
+  text, Markdown, or PDF files (space-separated via input_key: files), reads and
+  understands each, identifies project-relevant ideas, synthesizes actionable
+  recommendations, and captures Issues via /ll:capture-issue. Produces a summary
+  report of all captured issues, filtered items, and reasoning. Run as:
+    ll-loop run apply-research "paper.pdf notes.md rfc.txt"
+  Requires pandoc >= 2.x on PATH for PDF conversion (optional; .txt/.md read directly).
+initial: init
+max_iterations: 200
+timeout: 7200
+on_handoff: spawn
+meta_self_eval_ok: true  # not a meta-loop; validator false-positive suppressed
+
+context:
+  files: ""                   # space-separated file paths (populated via input_key: files)
+  relevance_threshold: "0.5"  # items below this score are filtered (0.0–1.0)
+  max_issues_per_file: "10"   # cap on captured issues per file
+
+states:
+
+  # ─── Phase 1: Initialize run ──────────────────────────────────────────────────
+
+  init:
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      : > "$DIR/captured-issues.txt"
+      echo "0" > "$DIR/total-extracted.txt"
+      echo "0" > "$DIR/total-filtered.txt"
+      echo "0" > "$DIR/total-captured.txt"
+      FILES="${context.files}"
+      if [ -z "$FILES" ]; then
+        echo "ERROR: no files provided. Pass paths as positional arg." >&2
+        exit 1
+      fi
+      # Write one file per line (word-splits on spaces; paths with spaces unsupported)
+      printf '%s\n' $FILES > "$DIR/pending-files.txt"
+      COUNT=$(wc -l < "$DIR/pending-files.txt" | tr -d ' ')
+      echo "Queue initialized: $COUNT file(s)"
+    evaluate:
+      type: exit_code
+    on_yes: load_context
+    on_no: failed
+    on_error: failed
+
+  # ─── Phase 2: Load project context ────────────────────────────────────────────
+
+  load_context:
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      {
+        echo "## Project Overview"
+        head -60 .claude/CLAUDE.md 2>/dev/null || echo "(no CLAUDE.md)"
+        echo ""
+        echo "## Open Issues (recent)"
+        ll-issues list --status open --format table 2>/dev/null | head -30 || echo "(none)"
+      } > "$DIR/project-context.md"
+      cat "$DIR/project-context.md"
+    capture: project_context
+    next: read_file
+    on_error: read_file
+
+  # ─── Phase 3: File loop (read → extract → validate → filter → synthesize → capture) ──
+
+  read_file:
+    action_type: shell
+    timeout: 120
+    action: |
+      DIR="${context.run_dir}"
+      PENDING="$DIR/pending-files.txt"
+      if [ ! -s "$PENDING" ]; then
+        echo "QUEUE_EMPTY" >&2
+        exit 1
+      fi
+      FILE=$(head -1 "$PENDING")
+      tail -n +2 "$PENDING" > "$DIR/pending-files.tmp"
+      mv "$DIR/pending-files.tmp" "$PENDING"
+      echo "$FILE" > "$DIR/current-file.txt"
+      EXT="${FILE##*.}"
+      EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+      if [ "$EXT_LOWER" = "pdf" ]; then
+        MDFILE="${FILE%.pdf}.md"
+        if pandoc "$FILE" -o "$MDFILE" 2>/dev/null; then
+          echo "$MDFILE" > "$DIR/current-content-file.txt"
+          echo "PDF_CONVERTED:$MDFILE"
+        else
+          echo "$FILE" > "$DIR/current-content-file.txt"
+          echo "PDF_FALLBACK:$FILE"
+        fi
+      else
+        echo "$FILE" > "$DIR/current-content-file.txt"
+        echo "FILE_READY:$FILE"
+      fi
+    capture: read_file_status
+    evaluate:
+      type: exit_code
+    on_yes: extract_and_score
+    on_no: report
+    on_error: report
+
+  extract_and_score:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are a research analyst. Your task:
+
+      1. Read the metadata file at: ${context.run_dir}/current-content-file.txt
+         This file contains the path to the document you should analyze.
+      2. Read the document at that path using the Read tool.
+      3. Extract every distinct idea, technique, algorithm, pattern, or recommendation
+         that could be applicable to this project.
+
+      PROJECT CONTEXT:
+      ${captured.project_context.output}
+
+      For each extracted item, assign:
+      - relevance (0.0–1.0): how directly applicable to this specific project
+      - novelty (0.0–1.0): how much this isn't already captured in open issues above
+
+      Think step by step about which ideas are relevant. Then emit ALL extracted items
+      LAST as:
+      RELEVANCE_SCORES:
+      ```json
+      [
+        {
+          "item_id": "i01",
+          "title": "short descriptive title",
+          "description": "what the idea is (2-4 sentences)",
+          "relevance": 0.8,
+          "novelty": 0.9,
+          "reasoning": "why this is relevant to the project"
+        }
+      ]
+      ```
+
+      If nothing is relevant, emit: RELEVANCE_SCORES:
+      ```json
+      []
+      ```
+    capture: scored_items_raw
+    evaluate:
+      type: output_contains
+      pattern: "RELEVANCE_SCORES:"
+    on_yes: validate_scores
+    on_no: validate_scores
+    on_partial: validate_scores
+    on_error: next_file
+
+  # Non-LLM evaluator (MR-1): validates relevance scores are numeric 0–1
+  validate_scores:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re, sys, os
+
+      run_dir = '${context.run_dir}'
+      output = """${captured.scored_items_raw.output}"""
+
+      items = []
+      m = re.search(r'RELEVANCE_SCORES:\s*```(?:json)?\s*(\[.*?\])\s*```', output, re.DOTALL)
+      if m:
+          try:
+              items = json.loads(m.group(1))
+          except Exception as e:
+              print(f'JSON parse error: {e}', file=sys.stderr)
+
+      valid = []
+      for item in items:
+          r = item.get('relevance')
+          n = item.get('novelty', 1.0)
+          if not isinstance(r, (int, float)) or not (0.0 <= float(r) <= 1.0):
+              print(f'Skipping item {item.get("item_id","?")} with invalid relevance {r!r}', file=sys.stderr)
+              continue
+          item['relevance'] = float(r)
+          item['novelty'] = float(n) if isinstance(n, (int, float)) and 0.0 <= float(n) <= 1.0 else 1.0
+          valid.append(item)
+
+      with open(os.path.join(run_dir, 'scored-items.json'), 'w') as f:
+          json.dump(valid, f, indent=2)
+
+      total_file = os.path.join(run_dir, 'total-extracted.txt')
+      prev = int(open(total_file).read().strip() or '0') if os.path.exists(total_file) else 0
+      with open(total_file, 'w') as f:
+          f.write(str(prev + len(valid)))
+
+      # Output ONLY the count — required by output_numeric evaluator
+      print(len(valid))
+      PYEOF
+    capture: valid_score_count
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: 0
+    on_yes: filter_items
+    on_no: next_file
+    on_error: next_file
+
+  filter_items:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os, sys
+
+      run_dir = '${context.run_dir}'
+      threshold = float('${context.relevance_threshold}')
+      max_issues = int('${context.max_issues_per_file}')
+
+      with open(os.path.join(run_dir, 'scored-items.json')) as f:
+          items = json.load(f)
+
+      ranked = sorted(items, key=lambda x: x['relevance'] * x.get('novelty', 1.0), reverse=True)
+      surviving = [i for i in ranked if i['relevance'] >= threshold][:max_issues]
+      filtered_count = len(items) - len(surviving)
+
+      total_file = os.path.join(run_dir, 'total-filtered.txt')
+      prev = int(open(total_file).read().strip() or '0') if os.path.exists(total_file) else 0
+      with open(total_file, 'w') as f:
+          f.write(str(prev + filtered_count))
+
+      with open(os.path.join(run_dir, 'filtered-items.json'), 'w') as f:
+          json.dump(surviving, f, indent=2)
+
+      # Output ONLY the surviving count — required by output_numeric evaluator
+      print(len(surviving))
+      PYEOF
+    capture: surviving_count
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: 1
+    on_yes: synthesize_recommendations
+    on_no: next_file
+    on_error: next_file
+
+  synthesize_recommendations:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Convert the filtered research items into actionable issue descriptions.
+
+      Read the file at: ${context.run_dir}/filtered-items.json
+
+      For each item in that file, write one RECOMMENDATION block. Each description must
+      stand alone — no references to "the paper" or "this research". Write as concrete
+      project issues.
+
+      Format each as:
+      RECOMMENDATION:
+      ```json
+      {
+        "title": "concise issue title (max 80 chars)",
+        "type": "FEAT|ENH|BUG",
+        "motivation": "why this matters for the project (2-3 sentences)",
+        "proposed_solution": "concrete implementation approach (3-5 sentences)",
+        "priority": "P3"
+      }
+      ```
+
+      Write one RECOMMENDATION: block per item, ordered by relevance (highest first).
+    capture: recommendations_raw
+    evaluate:
+      type: output_contains
+      pattern: "RECOMMENDATION:"
+    on_yes: capture_issues
+    on_no: next_file
+    on_partial: capture_issues
+    on_error: next_file
+
+  capture_issues:
+    action_type: prompt
+    timeout: 600
+    action: |
+      For each RECOMMENDATION block below, invoke /ll:capture-issue to create a new
+      issue. Use the title, type, motivation, and proposed_solution as the issue
+      description. Include type (FEAT/ENH/BUG) and priority in the description.
+
+      After all captures, list the created issue IDs on a single line:
+      CAPTURED_IDS: ID1, ID2, ID3, ...
+
+      If no issues could be captured, output: CAPTURED_IDS: none
+
+      RECOMMENDATIONS:
+      ${captured.recommendations_raw.output}
+    capture: captured_issues_raw
+    next: verify_captures
+
+  # Non-LLM evaluator (MR-1): counts actual .issues/ files written to disk
+  verify_captures:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import re, os, glob, sys
+
+      run_dir = '${context.run_dir}'
+      output = """${captured.captured_issues_raw.output}"""
+
+      ids = []
+      m = re.search(r'CAPTURED_IDS:\s*(.+)', output)
+      if m:
+          raw = m.group(1).strip()
+          if raw.lower() != 'none':
+              ids = [x.strip() for x in raw.split(',') if x.strip()]
+
+      confirmed = 0
+      confirmed_ids = []
+      for iid in ids:
+          for pat in ['.issues/bugs', '.issues/features', '.issues/enhancements']:
+              matches = glob.glob(os.path.join(pat, f'*{iid}*.md'))
+              if matches:
+                  confirmed += 1
+                  confirmed_ids.append(iid)
+                  break
+
+      issues_file = os.path.join(run_dir, 'captured-issues.txt')
+      with open(issues_file, 'a') as f:
+          for iid in confirmed_ids:
+              f.write(iid + '\n')
+
+      total_file = os.path.join(run_dir, 'total-captured.txt')
+      prev = int(open(total_file).read().strip() or '0') if os.path.exists(total_file) else 0
+      with open(total_file, 'w') as f:
+          f.write(str(prev + confirmed))
+
+      # Output ONLY the count — required by output_numeric evaluator
+      print(confirmed)
+      PYEOF
+    capture: verified_count
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: 0
+    on_yes: next_file
+    on_no: next_file
+    on_error: next_file
+
+  next_file:
+    action_type: shell
+    action: |
+      PENDING="${context.run_dir}/pending-files.txt"
+      if [ -s "$PENDING" ]; then
+        REMAINING=$(wc -l < "$PENDING" | tr -d ' ')
+        echo "FILES_REMAINING:$REMAINING"
+        exit 0
+      else
+        echo "QUEUE_COMPLETE"
+        exit 1
+      fi
+    evaluate:
+      type: exit_code
+    on_yes: read_file
+    on_no: report
+    on_error: report
+
+  # ─── Phase 4: Report ──────────────────────────────────────────────────────────
+
+  report:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 << 'PYEOF'
+      import os
+
+      run_dir = '${context.run_dir}'
+
+      def _read_int(p):
+          try:
+              return int(open(p).read().strip())
+          except Exception:
+              return 0
+
+      extracted = _read_int(os.path.join(run_dir, 'total-extracted.txt'))
+      filtered_count = _read_int(os.path.join(run_dir, 'total-filtered.txt'))
+      captured = _read_int(os.path.join(run_dir, 'total-captured.txt'))
+      surviving = extracted - filtered_count
+
+      ids = []
+      try:
+          with open(os.path.join(run_dir, 'captured-issues.txt')) as f:
+              ids = [l.strip() for l in f if l.strip()]
+      except Exception:
+          pass
+
+      print('=' * 60)
+      print('apply-research: Summary Report')
+      print('=' * 60)
+      print(f'Items extracted  : {extracted}')
+      print(f'Items filtered   : {filtered_count}  (below threshold or cap)')
+      print(f'Items surviving  : {surviving}')
+      print(f'Issues captured  : {captured}')
+      if ids:
+          print(f'Captured IDs     : {", ".join(ids)}')
+      else:
+          print('Captured IDs     : (none confirmed on disk)')
+      print(f'Run artifacts    : {run_dir}')
+      print('=' * 60)
+      PYEOF
+
+  failed:
+    action_type: shell
+    terminal: true
+    action: |
+      echo "apply-research: fatal error during initialization." >&2
+      exit 1

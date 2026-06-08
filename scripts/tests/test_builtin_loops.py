@@ -149,6 +149,7 @@ class TestBuiltinLoopFiles:
             "rn-build",
             "vega-viz",
             "canvas-sketch-generator",
+            "apply-research",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -5797,3 +5798,154 @@ class TestMigrateSdkVersionLoop:
         """reprove_next must capture: reprove so classify_outcome can access old/new records."""
         state = data["states"].get("reprove_next", {})
         assert state.get("capture") == "reprove"
+
+
+class TestApplyResearchLoop:
+    """Structural tests for the apply-research built-in loop (FEAT-2024)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "apply-research.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "apply-research"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "files"
+        assert data.get("required_inputs") == ["files"]
+        assert isinstance(data.get("states"), dict)
+
+    def test_category_is_research(self, data: dict) -> None:
+        assert data.get("category") == "research"
+
+    def test_context_defaults(self, data: dict) -> None:
+        ctx = data.get("context", {})
+        assert "files" in ctx
+        assert "relevance_threshold" in ctx
+        assert "max_issues_per_file" in ctx
+
+    def test_required_states_exist(self, data: dict) -> None:
+        states = data.get("states", {})
+        for name in (
+            "init",
+            "load_context",
+            "read_file",
+            "extract_and_score",
+            "validate_scores",
+            "filter_items",
+            "synthesize_recommendations",
+            "capture_issues",
+            "verify_captures",
+            "next_file",
+            "report",
+            "failed",
+        ):
+            assert name in states, f"required state '{name}' missing"
+
+    def test_init_uses_exit_code_evaluator(self, data: dict) -> None:
+        state = data["states"]["init"]
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+        assert state.get("on_yes") == "load_context"
+        assert state.get("on_no") == "failed"
+
+    def test_validate_scores_is_non_llm_evaluator(self, data: dict) -> None:
+        state = data["states"]["validate_scores"]
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_numeric"
+        assert evaluator.get("operator") == "ge"
+        assert state.get("action_type") == "shell"
+
+    def test_filter_items_uses_output_numeric(self, data: dict) -> None:
+        state = data["states"]["filter_items"]
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_numeric"
+        assert evaluator.get("operator") == "ge"
+        assert state.get("action_type") == "shell"
+
+    def test_verify_captures_is_non_llm_evaluator(self, data: dict) -> None:
+        state = data["states"]["verify_captures"]
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_numeric"
+        assert evaluator.get("operator") == "ge"
+        assert state.get("action_type") == "shell"
+
+    def test_extract_and_score_uses_relevance_sentinel(self, data: dict) -> None:
+        state = data["states"]["extract_and_score"]
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "RELEVANCE_SCORES:"
+        assert state.get("action_type") == "prompt"
+
+    def test_synthesize_uses_recommendation_sentinel(self, data: dict) -> None:
+        state = data["states"]["synthesize_recommendations"]
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "RECOMMENDATION:"
+        assert state.get("action_type") == "prompt"
+
+    def test_read_file_routes_to_extract_or_report(self, data: dict) -> None:
+        state = data["states"]["read_file"]
+        assert state.get("on_yes") == "extract_and_score"
+        assert state.get("on_no") == "report"
+        assert state.get("on_error") == "report"
+
+    def test_next_file_loops_back_to_read_file(self, data: dict) -> None:
+        state = data["states"]["next_file"]
+        assert state.get("on_yes") == "read_file"
+        assert state.get("on_no") == "report"
+
+    def test_capture_issues_uses_prompt_with_next(self, data: dict) -> None:
+        state = data["states"]["capture_issues"]
+        assert state.get("action_type") == "prompt"
+        assert state.get("next") == "verify_captures"
+        assert "on_yes" not in state
+
+    def test_report_is_terminal(self, data: dict) -> None:
+        assert data["states"].get("report", {}).get("terminal") is True
+
+    def test_failed_is_terminal(self, data: dict) -> None:
+        assert data["states"].get("failed", {}).get("terminal") is True
+
+    def test_all_prompt_states_with_on_yes_have_on_no(self, data: dict) -> None:
+        """MR-4: prompt states with on_yes must also have on_no."""
+        for name, state in data.get("states", {}).items():
+            if state.get("action_type") == "prompt" and "on_yes" in state:
+                assert "on_no" in state, f"state '{name}' has on_yes but missing on_no (MR-4)"
+
+    def test_no_bare_loops_tmp_writes(self, data: dict) -> None:
+        """MR-3: no writes to bare .loops/tmp/."""
+        for name, state in data.get("states", {}).items():
+            action = state.get("action", "")
+            assert ".loops/tmp/" not in action, (
+                f"state '{name}' writes to .loops/tmp/ (MR-3 violation)"
+            )
+
+    def test_input_key_populates_context_files(self, data: dict) -> None:
+        assert data.get("input_key") == "files"
+        assert data.get("context", {}).get("files") == ""
+
+    def test_context_files_referenced_in_init(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert "${context.files}" in action
+
+    def test_relevance_threshold_used_in_filter_items(self, data: dict) -> None:
+        action = data["states"]["filter_items"].get("action", "")
+        assert "${context.relevance_threshold}" in action
+
+    def test_max_issues_per_file_used_in_filter_items(self, data: dict) -> None:
+        action = data["states"]["filter_items"].get("action", "")
+        assert "${context.max_issues_per_file}" in action
+
+    def test_run_dir_used_throughout(self, data: dict) -> None:
+        """All shell states reference run_dir for artifact isolation."""
+        shell_states = [
+            "init", "load_context", "read_file", "validate_scores",
+            "filter_items", "verify_captures", "next_file",
+        ]
+        for name in shell_states:
+            action = data["states"][name].get("action", "")
+            assert "${context.run_dir}" in action or "run_dir" in action, (
+                f"state '{name}' does not reference run_dir"
+            )

@@ -188,6 +188,88 @@ Knowledge accumulation: `knowledge-base.md` **appends** across iterations (sourc
 
 ---
 
+## `apply-research`
+
+**Category**: research
+**File**: `scripts/little_loops/loops/apply-research.yaml`
+
+Document ingestion pipeline for local research files. Accepts one or more paths to text, Markdown, or PDF files (space-separated), reads and understands each, scores ideas by relevance to the project, filters below a configurable threshold, synthesizes actionable issue descriptions, and captures Issues via `/ll:capture-issue`. Produces a summary report listing captured issue IDs, filtered counts, and run artifacts. PDF files are converted to Markdown sidecars via `pandoc` before reading (requires `pandoc ≥ 2.x` on PATH; `.txt` and `.md` files are read directly).
+
+### Invocation
+
+```bash
+# Single file
+ll-loop run apply-research "path/to/paper.pdf"
+
+# Multiple files (space-separated)
+ll-loop run apply-research "paper1.pdf notes.md rfc.txt"
+
+# With higher relevance threshold
+ll-loop run apply-research "paper.pdf" \
+  --context relevance_threshold=0.7
+
+# Cap issues per file
+ll-loop run apply-research "paper.pdf notes.md" \
+  --context max_issues_per_file=3
+```
+
+### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `files` | `""` | **Required.** Space-separated file paths (injected from positional arg via `input_key: files`). |
+| `relevance_threshold` | `"0.5"` | Items scoring below this relevance (0.0–1.0) are filtered and logged. Overridable via `--context relevance_threshold=0.7`. |
+| `max_issues_per_file` | `"10"` | Cap on captured issues per file; survivors are ranked by `relevance × novelty` before the cap is applied. |
+
+### State Graph
+
+```
+init  (shell: create run_dir artifacts; write pending-files.txt queue from context.files)
+  → load_context  (shell: read CLAUDE.md + open issues into project-context.md)
+    → read_file  (shell: pop next file from queue; pandoc PDF→MD if needed)
+        on_yes (file popped) → extract_and_score
+        on_no  (queue empty) → report
+      → extract_and_score  (prompt: read file via Read tool; emit RELEVANCE_SCORES: JSON)
+        → validate_scores  (shell: parse JSON, validate 0–1 range; output count)
+          on_yes (ge 0) → filter_items
+          → filter_items  (shell: drop below threshold; cap at max_issues_per_file; output surviving count)
+            on_yes (ge 1) → synthesize_recommendations
+            on_no  (0 survivors) → next_file
+          → synthesize_recommendations  (prompt: read filtered-items.json; emit RECOMMENDATION: blocks)
+            → capture_issues  (prompt: invoke /ll:capture-issue per recommendation)
+              → verify_captures  (shell: count confirmed .issues/ files; output count)
+                → next_file
+    → next_file  (shell: check pending-files.txt; exit 0=more, exit 1=empty)
+        on_yes → read_file
+        on_no  → report
+  report  (shell: terminal; emit summary table)
+```
+
+### Output Artifacts
+
+All artifacts are written to `${context.run_dir}` (injected by the runner):
+
+| File | Description |
+|------|-------------|
+| `pending-files.txt` | Remaining file queue; drained as files are processed |
+| `project-context.md` | Snapshot of CLAUDE.md head + open issues table |
+| `current-content-file.txt` | Path to the content file being processed (set each iteration) |
+| `scored-items.json` | Validated relevance-scored items for the current file |
+| `filtered-items.json` | Items surviving threshold and cap; input to synthesis |
+| `captured-issues.txt` | Newline-separated list of confirmed captured issue IDs |
+| `total-extracted.txt` | Running count of extracted items across all files |
+| `total-filtered.txt` | Running count of filtered (dropped) items |
+| `total-captured.txt` | Running count of confirmed captured issues |
+
+### Non-LLM Evaluators (MR-1)
+
+Two shell states provide non-LLM external validation:
+
+- **`validate_scores`**: parses the `RELEVANCE_SCORES:` JSON block, validates each item's relevance is a float in `[0.0, 1.0]`, and outputs the count via `output_numeric`. Items with invalid scores are silently dropped before filtering.
+- **`verify_captures`**: after `/ll:capture-issue` runs, counts how many claimed issue IDs actually exist on disk under `.issues/`; outputs the confirmed count via `output_numeric`. Accumulates IDs into `captured-issues.txt`.
+
+---
+
 ## `sft-corpus`
 
 **Category**: data

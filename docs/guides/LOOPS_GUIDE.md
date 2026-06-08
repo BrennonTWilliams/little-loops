@@ -448,6 +448,7 @@ ll-loop run integrate-sdk --context target="anthropic" --context goal="streaming
 |------|-------------|
 | `deep-research` | Iterative web research synthesis — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured Markdown report with citations; delegates inner FSM chain to `oracles/research-coverage` (ENH-1876) |
 | `deep-research-arxiv` | Arxiv-only sibling of `deep-research` — constrains web search to `site:arxiv.org`, scores sources on relevance + recency (derived from arxiv submission date) instead of credibility, and emits an arxiv-ID-keyed sources table plus a `## BibTeX` section ready to drop into a `.bib` file; delegates inner FSM chain to `oracles/research-coverage` with `academic_mode=true` (ENH-1876) |
+| `apply-research` | Document ingestion pipeline — reads local `.txt`, `.md`, or `.pdf` files; scores each extracted idea by relevance to the project (0–1); filters below threshold; synthesizes actionable issue descriptions; and captures Issues via `/ll:capture-issue`. Use when you have research papers, RFCs, or design docs and want them translated into project issues automatically. |
 | `rn-plan` | Recursive task planning with self-scoring rubric — accepts a natural language task description, generates a 8-dimension rubric (breadth, depth, complexity, clarity, consistency, logic_strategy, feasibility, testability, risk_mitigation), then iteratively researches and refines the plan until all dimensions reach VERY-HIGH |
 | `rn-refine` | Recursive refinement loop for an existing plan document — accepts a path to a plan `.md` file, calibrates a 9-dimension rubric to the plan's current state, then iteratively researches and refines until all dimensions reach VERY-HIGH |
 | `rn-implement` | Queue orchestrator for recursive plan-and-implement — manages a depth-bounded issue queue, delegating per-issue remediation to `rn-remediate` and decomposition to `rn-decompose` |
@@ -471,6 +472,22 @@ The loop writes all artifacts to `.loops/research/<slug>/`:
 - `query-log.md` — all search queries issued, grouped by iteration
 
 See [`## deep-research`](../reference/loops.md#deep-research) in the loop reference for context variables, state graph, and invocation details.
+
+#### `apply-research` — Translating Local Documents into Issues
+
+For translating *local* research files (papers, RFCs, design docs) into project issues, use `apply-research` instead of `deep-research`:
+
+```bash
+# Single PDF (converted to Markdown via pandoc before reading)
+ll-loop run apply-research "path/to/paper.pdf"
+
+# Multiple files, higher relevance bar
+ll-loop run apply-research "paper.pdf notes.md" \
+  --context relevance_threshold=0.7 \
+  --context max_issues_per_file=5
+```
+
+The loop scores each extracted idea (0–1 relevance), drops below-threshold items, synthesizes concrete issue descriptions, and calls `/ll:capture-issue` for each. A summary report lists captured IDs and filtered counts. See [`## apply-research`](../reference/loops.md#apply-research) for the full state graph and output artifacts.
 
 ### `rn-plan` — Recursive Task Planning with Self-Scoring Rubric
 

@@ -2,11 +2,12 @@
 id: FEAT-2024
 type: FEAT
 priority: P3
-status: open
+status: done
 decision_needed: false
 discovered_date: 2026-06-08
 discovered_by: capture-issue
 captured_at: '2026-06-08T18:32:45Z'
+completed_at: '2026-06-08T21:05:03Z'
 confidence_score: 90
 outcome_confidence: 72
 score_complexity: 15
@@ -116,7 +117,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/cli/loop/__init__.py` — `main_loop()`: defines the `--context KEY=VALUE` flag used for `relevance_threshold` and `max_issues_per_file` overrides
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/loop/validate.py` — `cmd_validate()` scans the loops directory and auto-exercises `apply-research.yaml` when created; no code changes needed, but this is the mechanism that enforces MR-1/MR-3/MR-4 compliance at CI time
+- `scripts/little_loops/cli/loop/config_cmds.py` — `cmd_validate()` scans the loops directory and auto-exercises `apply-research.yaml` when created; no code changes needed, but this is the mechanism that enforces MR-1/MR-3/MR-4 compliance at CI time
 
 ### Similar Patterns
 - `scripts/little_loops/loops/deep-research.yaml` — web research synthesis; uses `input_key: topic`, delegates to oracle via `loop: oracles/research-coverage`; closest FSM analog
@@ -270,7 +271,21 @@ _Updated by `/ll:confidence-check` on 2026-06-08 (prior run: 86/72 → current: 
 - **8 coordinated change sites across 3 subsystems** — loop YAML, 2 test additions, and 5 documentation updates (`docs/reference/loops.md`, `loops/README.md`, `README.md` FSM count at line 163, `CONTRIBUTING.md` YAML count at line 122, `docs/guides/LOOPS_GUIDE.md`); `ll-verify-docs` will fail CI until all count assertions are updated
 - **State output schemas under-specified** — `assess_relevance` LLM structured output (0–1 relevance score) and `synthesize_recommendations` output fields (passed to `/ll:capture-issue`) are described conceptually but not as concrete YAML schemas; implementer must design these during authoring
 
+## Resolution
+
+Implemented `apply-research` as a 12-state research-category FSM loop under `scripts/little_loops/loops/apply-research.yaml`. Uses `input_key: files` (Option A — no CLI changes). Key design choices:
+
+- `validate_scores` and `verify_captures` are shell states with `output_numeric` evaluators (MR-1 compliance)
+- All inter-iteration artifacts written to `${context.run_dir}/` (MR-3 compliant)
+- All prompt states with `on_yes` also have `on_no`, `on_partial`, `on_error` (MR-4 compliant)
+- `capture_issues` uses `action_type: prompt` with `next: verify_captures` (per codebase pattern)
+- PDF→Markdown via `pandoc` with fallback to raw file if pandoc unavailable
+- `meta_self_eval_ok: true` suppresses false-positive meta-loop validator warning
+
+23 structural tests added to `TestApplyResearchLoop` in `test_builtin_loops.py`. Test fixtures created under `scripts/tests/fixtures/research/`. All 714 tests pass. Loop validates clean (`ll-loop validate apply-research` exits 0). README.md loop count corrected to 82 (root 77 + oracles 5).
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-08T20:49:52 - `4f8486be-fff7-4b6e-9bac-8236f0a63559.jsonl`
 - `/ll:confidence-check` - 2026-06-08T23:00:00 - `2c3fbaa7-2397-4ead-8e81-58f893bcf942.jsonl`
 - `/ll:refine-issue` - 2026-06-08T20:37:19 - `9bbdda2c-8cab-43ab-90fc-8bf9011921ae.jsonl`
 - `/ll:confidence-check` - 2026-06-08T22:00:00 - `b11c9e94-9a39-44c0-9cb3-c9022529cb42.jsonl`
