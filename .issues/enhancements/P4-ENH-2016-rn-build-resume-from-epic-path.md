@@ -1,11 +1,13 @@
 ---
 id: ENH-2016
-title: "rn-build — Resume-from-epic path for continuing a partial build across sessions"
+title: "rn-build \u2014 Resume-from-epic path for continuing a partial build across\
+  \ sessions"
 type: ENH
 priority: P4
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-08T01:29:25Z'
+completed_at: '2026-06-08T04:19:37Z'
 discovered_date: 2026-06-08
 discovered_by: capture-issue
 size: Medium
@@ -19,6 +21,12 @@ labels:
 - loops
 - orchestration
 - rn-build
+confidence_score: 98
+outcome_confidence: 89
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # ENH-2016: `rn-build` — Resume-from-epic path for continuing a partial build across sessions
@@ -45,7 +53,7 @@ design artifacts generated in the prior run are not reused.
 
 ## Expected Behavior
 
-`rn-build` supports a `--initial resume` invocation that reads `resume_epic`
+`rn-build` supports a context-knob resume invocation (`--context resume_epic=EPIC-NNN --context resume_harness=<name>`) that reads `resume_epic`
 and `resume_harness` from context, writes them to `${context.run_dir}/`, and
 enters directly at `cluster_execute`. The 7 front-half phases are skipped.
 When `eval_passed: false`, `synthesize_result` includes a `resume_command`
@@ -65,11 +73,11 @@ should be able to read them rather than regenerate them.
 
 - **Resume time**: Skips 7 front-half phases (init → tech_research → design_artifacts → commit_design → scope_project → refine_seed → eval_harness) on re-entry
 - **Re-work eliminated**: EPIC scoping and design artifacts generated once per project, not once per session
-- **Validation**: `ll-loop run rn-build --initial resume` completes successfully on a project that previously hit `max_eval_retries`
+- **Validation**: `ll-loop run rn-build --context resume_epic=EPIC-042 --context resume_harness=myproject-harness` completes successfully on a project that previously hit `max_eval_retries`
 
 ## Scope Boundaries
 
-- **In scope**: `resume_epic` / `resume_harness` context knobs; `resume` initial state; `synthesize_result` `resume_command` field; `--initial resume` invocation; tests and docs
+- **In scope**: `resume_epic` / `resume_harness` context knobs; `resume` state (via `init` routing); `synthesize_result` `resume_command` field; context-knob resume invocation; tests and docs
 - **Out of scope**: Mid-state resume (resuming from within a running state); automatic resume detection without explicit flag; persistent FSM checkpoint state beyond `epic-id.txt` and `harness-name.txt`
 
 ## Proposed Solution
@@ -114,14 +122,12 @@ resume:
 ```
 
 Override `initial:` dynamically by checking `resume_epic` in `init` and
-routing to `resume` instead of `tech_research`. Alternatively, document
-`--initial resume` as the invocation pattern:
+routing to `resume` instead of `tech_research` (Option B — selected). Invocation:
 
 ```bash
 ll-loop run rn-build \
   --context resume_epic=EPIC-042 \
-  --context resume_harness=myproject-harness \
-  --initial resume
+  --context resume_harness=myproject-harness
 ```
 
 ### `synthesize_result` — resume hint
@@ -131,7 +137,7 @@ When `eval_passed: false`, add a `resume_command` field to the synthesis JSON:
 ```json
 {
   "eval_passed": false,
-  "resume_command": "ll-loop run rn-build --context resume_epic=EPIC-042 --context resume_harness=myproject-harness --initial resume"
+  "resume_command": "ll-loop run rn-build --context resume_epic=EPIC-042 --context resume_harness=myproject-harness"
 }
 ```
 
@@ -156,7 +162,7 @@ Decided by `/ll:decide-issue` on 2026-06-07.
 
 ## Implementation Steps
 
-1. **Decide Option A vs B** (see Codebase Research Findings in Integration Map): Option B (init-routing) is lower-risk and matches rn-implement's proven pattern; Option A adds `--initial` CLI flag support usable by any loop but requires 3 extra files.
+1. **Decision made — Option B selected** (init-routing, see Decision Rationale): lower-risk, matches rn-implement's proven pattern, no CLI changes required.
 2. Add `resume_epic: ""` and `resume_harness: ""` context knobs to the `context:` block in `scripts/little_loops/loops/rn-build.yaml`
 3. Add `resume` state (shell, writes `epic-id.txt`, captures `epic_id`, routes to `resume_read_harness`)
 4. Add `resume_read_harness` state (shell, reads `harness-name.txt`, captures `harness_name`, routes to `cluster_execute`) — mirrors `read_harness_name` (lines 225–259); required to populate `${captured.harness_name.output}` for `check_harness_name`
@@ -164,8 +170,9 @@ Decided by `/ll:decide-issue` on 2026-06-07.
 6. **Option A only**: add `--initial` to `run_parser` in `scripts/little_loops/cli/loop/__init__.py`; wire through `run.py` → `executor.py:PersistentExecutor`
 7. Update `synthesize_result` action to include `resume_command` field in JSON when `eval_passed: false`; dynamically populate epic_id from `${context.run_dir}/epic-id.txt`
 8. Add `"resume"` and `"resume_read_harness"` to `REQUIRED_STATES` in `scripts/tests/test_rn_build.py` (line 22); add tests: resume state exists, resume routes to `resume_read_harness`, `resume_read_harness` routes to `cluster_execute`, `synthesize_result` emits `resume_command` when `eval_passed: false`
-9. Document invocation in `docs/guides/LOOPS_GUIDE.md` under `rn-build`
-10. Run `ll-loop validate rn-build` and `python -m pytest scripts/tests/test_rn_build.py -v`
+9. Document resume invocation in `docs/guides/LOOPS_GUIDE.md` under `rn-build`; add `resume_epic` and `resume_harness` rows to the "Context variables" table in that section
+10. Update `docs/reference/API.md` — add `resume_epic` and `resume_harness` rows to the "Context knobs" table under `### rn-build` (lines ~7391–7398)
+11. Run `ll-loop validate rn-build` and `python -m pytest scripts/tests/test_rn_build.py -v`
 
 ## Integration Map
 
@@ -208,17 +215,31 @@ _Added by `/ll:refine-issue` — based on direct codebase analysis:_
 **`captured.harness_name` capture gap (both options):** The proposed `resume` state writes `harness-name.txt` to `run_dir` but uses `capture: epic_id` — it does NOT populate `captured.harness_name`. The `check_harness_name` state (lines 286–299 in `rn-build.yaml`) reads `${captured.harness_name.output}`, which will be empty after the resume path. Even with `resume_harness` set, the eval gate will be bypassed and flow routes directly to `synthesize_result`. Mitigation: add a `resume_read_harness` shell state between `resume` and `cluster_execute` that reads `harness-name.txt` and captures `harness_name` (mirroring `read_harness_name` at lines 225–259).
 
 ### Tests
-- `scripts/tests/test_rn_build.py` — resume state exists, routes to cluster_execute, synthesis emits `resume_command` when `eval_passed: false`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_rn_build.py` — existing coverage; update `REQUIRED_STATES` (line 22) to add `"resume"` and `"resume_read_harness"`; add new class `TestRnBuildResumeState` with these methods:
+  - `test_resume_context_knobs_exist` — assert `resume_epic` and `resume_harness` in `context` block with empty-string defaults (pattern: `test_context_defaults` in `test_harness_optimize.py:58`)
+  - `test_resume_state_exists` — assert `"resume"` in `loop_data["states"]` with `action_type == "shell"`
+  - `test_resume_checks_resume_epic` — assert `"${context.resume_epic}"` and `"epic-id.txt"` in `resume` action (pattern: `test_init_supports_resume` in `test_rn_implement.py:676`)
+  - `test_resume_routes_to_resume_read_harness` — assert `resume.on_yes == "resume_read_harness"` and `resume.on_no == "failed"`
+  - `test_resume_uses_exit_code_evaluator` — assert `resume.evaluate.type == "exit_code"`
+  - `test_resume_read_harness_reads_harness_name_txt` — assert `"harness-name.txt"` in `resume_read_harness` action
+  - `test_resume_read_harness_routes_to_cluster_execute` — assert `resume_read_harness` routes to `cluster_execute`
+  - `test_init_branches_to_resume_on_resume_epic` — assert `"${context.resume_epic}"` in `init` action (pattern: `test_init_supports_resume` in `test_rn_implement.py:676`)
+  - `test_synthesize_result_emits_resume_command` — assert `"resume_command"` and `"resume_epic"` in `synthesize_result` action
 
 ### Documentation
-- `docs/guides/LOOPS_GUIDE.md` — document `--initial resume` invocation under `rn-build`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — document resume invocation under `rn-build`; **also** add rows for `resume_epic` (default `""`) and `resume_harness` (default `""`) to the "Context variables" table [Agent 2 finding]
+- `docs/reference/API.md` — "Context knobs" table under `### rn-build` (lines ~7391–7398) currently lists `spec`, `max_eval_retries`, `harness_name`, `epic_id`; add rows for `resume_epic` and `resume_harness`; optionally add a "0 — Resume" row to the "Key phases" table [Agent 2 finding]
 
 ### Configuration
 - N/A — context knobs live in `rn-build.yaml` context block; no new config files
 
 ## Acceptance Criteria
 
-- `ll-loop run rn-build --context resume_epic=EPIC-042 --initial resume` skips the front half and enters `cluster_execute`.
+- `ll-loop run rn-build --context resume_epic=EPIC-042 --context resume_harness=myproject-harness` skips the front half and enters `cluster_execute`.
 - `resume` state writes `epic-id.txt` and (optionally) `harness-name.txt` to `${context.run_dir}/`.
 - `synthesize_result` JSON includes `resume_command` when `eval_passed: false`.
 - `ll-loop validate rn-build.yaml` passes.
@@ -232,11 +253,23 @@ _Added by `/ll:refine-issue` — based on direct codebase analysis:_
 - **Risk**: Low — resume path is strictly additive; the default (no resume_epic) is unchanged
 - **Breaking Change**: No
 
+## Resolution
+
+Implemented Option B (init-routing via context knob). Added `resume_epic` and
+`resume_harness` context knobs; `resume` and `resume_read_harness` states for the
+resume path; updated `init` to use `output_contains` evaluator (RESUME_MODE: marker
+enables 3-way routing without a separate gate state); updated `synthesize_result` to
+emit `resume_command` when `eval_passed: false`. Nine new tests in
+`TestRnBuildResumeState`; docs updated in LOOPS_GUIDE.md and API.md.
+
 ## Status
 
-**Open** | Created: 2026-06-08
+**Done** | Created: 2026-06-08
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-08T04:01:03 - `dadbcbf7-c373-4033-a24b-07aa94be3e2b.jsonl`
+- `/ll:confidence-check` - 2026-06-07T00:00:00Z - `68893e4c-e94e-407f-bff4-d02d3bd60472.jsonl`
+- `/ll:wire-issue` - 2026-06-08T03:54:26 - `54d220fe-a422-4aa0-add9-f4136f7d61fb.jsonl`
 - `/ll:decide-issue` - 2026-06-08T03:46:43 - `0d230446-bc14-4aff-9a59-c35c0682b646.jsonl`
 - `/ll:refine-issue` - 2026-06-08T03:39:40 - `bbcdc3b4-32cc-4f1a-b941-25eb18e3048a.jsonl`
 - `/ll:format-issue` - 2026-06-08T03:27:09 - `c8af87dd-4322-43dc-b305-4be76e1c1339.jsonl`

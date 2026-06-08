@@ -7380,13 +7380,14 @@ ll-loop run rn-build --context spec=specs/backend.md,specs/frontend.md
 
 | Phase | States | Description |
 |-------|--------|-------------|
+| 0 — Resume (optional) | `resume`, `resume_read_harness` | Skip front half; re-enter `cluster_execute` for an already-scoped EPIC. Entered when `resume_epic` is set |
 | 1 — Spec validation | `init` | Reads and validates the spec file(s); halts with clear error if required sections are missing |
 | 2 — Research & design | `tech_research`, `design_artifacts`, `commit_design` | LLM tech research → generates architecture and design artifacts → commits them to the working tree |
 | 3 — Scope | `scope_project`, `write_epic_id`, `refine_seed` | Runs `/ll:scope-epic` to create EPIC + feature stubs, captures EPIC ID, refines seed issues |
 | 4 — Eval harness | `eval_harness`, `read_harness_name` | Installs an eval harness loop keyed to the spec's acceptance criteria |
 | 5 — Execution | `cluster_execute` | Delegates to `goal-cluster` which batches issues and dispatches each batch to `rn-implement` with `schedule_mode=value_ranked` |
 | 6 — Eval gate | `check_harness_name`, `eval_gate`, `check_eval_retry_budget`, `capture_eval_failures` | Runs eval harness; on failure, captures failing scenarios as new issues and re-enters `cluster_execute` (bounded by `max_eval_retries`) |
-| 7 — Result | `synthesize_result`, `done` | Emits a structured JSON summary of the build outcome |
+| 7 — Result | `synthesize_result`, `done` | Emits a structured JSON summary of the build outcome; includes `resume_command` when `eval_passed: false` |
 
 **Context knobs:**
 
@@ -7396,6 +7397,8 @@ ll-loop run rn-build --context spec=specs/backend.md,specs/frontend.md
 | `max_eval_retries` | `"2"` | Maximum `eval_gate` retry cycles before accepting a partial result. |
 | `harness_name` | `""` | Auto-populated: name of the installed eval harness loop. Do not set manually. |
 | `epic_id` | `""` | Auto-populated: EPIC ID from `scope_project`. Do not set manually. |
+| `resume_epic` | `""` | **Resume only.** EPIC ID from a prior run. When set, `init` skips spec validation and routes to `resume`, which re-enters `cluster_execute`. |
+| `resume_harness` | `""` | **Resume only.** Harness loop name from a prior run. Passed to `eval_gate` via `resume_read_harness`. |
 
 **Internal dispatch flags** (fixed; set automatically, not user-facing):
 

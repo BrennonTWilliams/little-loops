@@ -37,6 +37,9 @@ REQUIRED_STATES = {
     "synthesize_result",
     "done",
     "failed",
+    # ENH-2016: resume path states
+    "resume",
+    "resume_read_harness",
 }
 
 
@@ -352,11 +355,12 @@ class TestRnBuildInitState:
             "init must validate that spec context variable is provided"
         )
 
-    def test_init_uses_exit_code_evaluator(self, loop_data: dict) -> None:
+    def test_init_uses_output_contains_evaluator(self, loop_data: dict) -> None:
         state = loop_data["states"]["init"]
         evaluate = state.get("evaluate", {})
-        assert evaluate.get("type") == "exit_code", (
-            "init must use exit_code evaluator (non-LLM gate for spec validation)"
+        assert evaluate.get("type") == "output_contains", (
+            "init uses output_contains evaluator to distinguish resume mode (RESUME_MODE: pattern) "
+            "from normal spec content; BUG-1815 ensures non-zero exits still route to on_error"
         )
 
     def test_init_writes_to_run_dir(self, loop_data: dict) -> None:
@@ -477,6 +481,78 @@ class TestE2E:
                 pytest.fail(f"synthesize_result JSON is malformed: {exc}")
             assert "accomplished" in synthesis, "synthesize_result JSON must have 'accomplished'"
             assert "eval_passed" in synthesis, "synthesize_result JSON must have 'eval_passed'"
+
+
+class TestRnBuildResumeState:
+    """Tests for the resume-from-epic path (ENH-2016)."""
+
+    def test_resume_context_knobs_exist(self, loop_data: dict) -> None:
+        context = loop_data.get("context", {})
+        assert "resume_epic" in context, (
+            "resume_epic context knob must exist with empty-string default"
+        )
+        assert "resume_harness" in context, (
+            "resume_harness context knob must exist with empty-string default"
+        )
+        assert context["resume_epic"] == "", "resume_epic default must be empty string"
+        assert context["resume_harness"] == "", "resume_harness default must be empty string"
+
+    def test_resume_state_exists(self, loop_data: dict) -> None:
+        assert "resume" in loop_data["states"], "resume state must exist (ENH-2016)"
+        state = loop_data["states"]["resume"]
+        assert state.get("action_type") == "shell", "resume state must be a shell action"
+
+    def test_resume_checks_resume_epic(self, loop_data: dict) -> None:
+        action = loop_data["states"]["resume"].get("action", "")
+        assert "${context.resume_epic}" in action, (
+            "resume action must reference ${context.resume_epic}"
+        )
+        assert "epic-id.txt" in action, "resume action must write epic-id.txt to ${context.run_dir}"
+
+    def test_resume_routes_to_resume_read_harness(self, loop_data: dict) -> None:
+        state = loop_data["states"]["resume"]
+        assert state.get("on_yes") == "resume_read_harness", (
+            "resume on_yes must route to resume_read_harness"
+        )
+        assert state.get("on_no") == "failed", (
+            "resume on_no must route to failed (resume_epic is required)"
+        )
+
+    def test_resume_uses_exit_code_evaluator(self, loop_data: dict) -> None:
+        state = loop_data["states"]["resume"]
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "exit_code", (
+            "resume must use exit_code evaluator (non-LLM, MR-1 compatible)"
+        )
+
+    def test_resume_read_harness_reads_harness_name_txt(self, loop_data: dict) -> None:
+        action = loop_data["states"]["resume_read_harness"].get("action", "")
+        assert "harness-name.txt" in action, (
+            "resume_read_harness action must read harness-name.txt from run_dir"
+        )
+
+    def test_resume_read_harness_routes_to_cluster_execute(self, loop_data: dict) -> None:
+        state = loop_data["states"]["resume_read_harness"]
+        assert state.get("on_yes") == "cluster_execute", (
+            "resume_read_harness on_yes must route to cluster_execute"
+        )
+
+    def test_init_branches_to_resume_on_resume_epic(self, loop_data: dict) -> None:
+        action = loop_data["states"]["init"].get("action", "")
+        assert "${context.resume_epic}" in action, (
+            "init action must check ${context.resume_epic} to detect resume mode "
+            "(pattern: test_init_supports_resume in test_rn_implement.py)"
+        )
+
+    def test_synthesize_result_emits_resume_command(self, loop_data: dict) -> None:
+        action = loop_data["states"]["synthesize_result"].get("action", "")
+        assert "resume_command" in action, (
+            "synthesize_result action must reference resume_command field "
+            "for use when eval_passed is false"
+        )
+        assert "resume_epic" in action, (
+            "synthesize_result action must reference resume_epic in the resume_command template"
+        )
 
 
 @pytest.mark.slow

@@ -37,6 +37,11 @@ context:
   max_eval_retries: "2" # max eval_gate retry cycles before accepting partial result
   harness_name: ""      # auto-populated: name of created harness loop
   epic_id: ""           # auto-populated: EPIC ID from scope_project
+  # ENH-2016: resume support. Re-enter cluster_execute for an already-scoped EPIC
+  # without re-running the front half (init → … → eval_harness):
+  #   ll-loop run rn-build --context resume_epic=EPIC-NNN --context resume_harness=<name>
+  resume_epic: ""       # EPIC-NNN: skip front half, re-enter cluster_execute
+  resume_harness: ""    # harness name for eval_gate when resuming
 
 states:
 
@@ -45,13 +50,23 @@ states:
   init:
     action_type: shell
     action: |
+      RUN_DIR="${context.run_dir}"
+      mkdir -p "$RUN_DIR"
+
+      # ENH-2016: resume path — if ${context.resume_epic} is set, skip spec validation
+      # and signal the output_contains evaluator to route to the resume state.
+      RESUME_EPIC="${context.resume_epic}"
+      if [ -n "$RESUME_EPIC" ]; then
+        echo "RESUME_MODE:$RESUME_EPIC"
+        exit 0
+      fi
+
+      # Normal mode: validate and read spec file(s)
       SPECS="${context.spec}"
       if [ -z "$SPECS" ]; then
         echo "ERROR: spec context variable is required. Pass --context spec=<path>"
         exit 1
       fi
-      RUN_DIR="${context.run_dir}"
-      mkdir -p "$RUN_DIR"
       IFS=',' read -ra SPEC_LIST <<< "$SPECS"
       for S in "${SPEC_LIST[@]}"; do
         S=$(echo "$S" | xargs)
@@ -65,9 +80,10 @@ states:
       done
     capture: spec_content
     evaluate:
-      type: exit_code
-    on_yes: check_structure
-    on_no: failed
+      type: output_contains
+      pattern: "RESUME_MODE:"
+    on_yes: resume
+    on_no: check_structure
     on_error: failed
 
   # ─── Phase 1.5: Normalize malformed spec (pre-gate before tech_research) ─────
@@ -161,6 +177,62 @@ states:
       echo "Please provide a more complete spec or start from the template:"
       echo "  specs/SPEC_TEMPLATE.md"
       exit 1
+
+  # ─── Phase 0 (resume only): Re-enter cluster_execute from a prior run ─────────
+  # ENH-2016: Entered when init detects resume_epic is non-empty. Writes the
+  # caller-supplied EPIC ID and optional harness name to run_dir so that
+  # cluster_execute and check_harness_name can read them via captured variables,
+  # exactly as the normal scope_project → eval_harness path would have done.
+
+  resume:
+    action_type: shell
+    action: |
+      EPIC="${context.resume_epic}"
+      HARNESS="${context.resume_harness:-}"
+      RUN_DIR="${context.run_dir}"
+      mkdir -p "$RUN_DIR"
+      if [ -z "$EPIC" ]; then
+        echo "ERROR: resume_epic is required for resume mode"
+        exit 1
+      fi
+      echo "$EPIC" > "$RUN_DIR/epic-id.txt"
+      [ -n "$HARNESS" ] && echo "$HARNESS" > "$RUN_DIR/harness-name.txt"
+      echo "$EPIC"
+    capture: epic_id
+    evaluate:
+      type: exit_code
+    on_yes: resume_read_harness
+    on_no: failed
+    on_error: failed
+
+  resume_read_harness:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import sys, os
+
+      run_dir = '${context.run_dir}'
+      os.makedirs(run_dir, exist_ok=True)
+
+      harness_file = os.path.join(run_dir, 'harness-name.txt')
+      if os.path.exists(harness_file):
+          with open(harness_file) as f:
+              name = f.read().strip()
+          if name:
+              print(name)
+              sys.exit(0)
+
+      # No harness file — proceed without harness name; check_harness_name will
+      # route directly to synthesize_result when harness_name is empty.
+      print('')
+      sys.exit(0)
+      PYEOF
+    capture: harness_name
+    evaluate:
+      type: exit_code
+    on_yes: cluster_execute
+    on_no: cluster_execute
+    on_error: cluster_execute
 
   # ─── Phase 2: Research technology decisions ───────────────────────────────────
 
@@ -446,6 +518,10 @@ states:
       CLUSTER RESULT: ${captured.cluster_result.output}
       EVAL RESULT: ${captured.eval_result.output:default=not run}
 
+      Read the EPIC ID from ${context.run_dir}/epic-id.txt if it exists (fall back to
+      captured epic_id if the file is absent). Read the harness name from
+      ${context.run_dir}/harness-name.txt if it exists.
+
       Write a summary covering:
       1. What was accomplished per goal
       2. What is still open or incomplete
@@ -461,6 +537,18 @@ states:
         "eval_retry_count": 0
       }
       ```
+
+      IMPORTANT: When `eval_passed` is false and `still_open` is non-empty, add a
+      `resume_command` field containing the exact invocation to resume this build in a
+      subsequent session:
+
+      ```
+      "resume_command": "ll-loop run rn-build --context resume_epic=<EPIC-NNN> --context resume_harness=<harness-name>"
+      ```
+
+      Populate `resume_epic` with the EPIC ID (from epic-id.txt or captured epic_id)
+      and `resume_harness` with the harness name (from harness-name.txt). When
+      `eval_passed` is true, omit `resume_command` from the JSON entirely.
     capture: synthesis
     evaluate:
       type: output_contains

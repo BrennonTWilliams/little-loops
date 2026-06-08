@@ -820,6 +820,25 @@ ll-loop run rn-build --context spec=specs/sample.md
 |----------|---------|-------------|
 | `spec` | `""` | **Required.** Path(s) to spec file(s), comma-separated |
 | `max_eval_retries` | `"2"` | Max `eval_gate` retry cycles before accepting a partial result |
+| `resume_epic` | `""` | **Resume only.** EPIC ID from a prior run; skips the front half and re-enters `cluster_execute` |
+| `resume_harness` | `""` | **Resume only.** Harness loop name from a prior run; passed to `eval_gate` when resuming |
+
+#### Resuming a partial build (ENH-2016)
+
+When `rn-build` exhausts `max_eval_retries`, `synthesize_result` emits a `resume_command`
+field in its JSON output. Copy and run that command in a new session to re-enter
+`cluster_execute` for the same EPIC without repeating the front half:
+
+```bash
+# Resume an interrupted build — skips init → tech_research → … → eval_harness
+ll-loop run rn-build \
+  --context resume_epic=EPIC-042 \
+  --context resume_harness=myproject-harness
+```
+
+`resume_epic` and `resume_harness` are both required for a full eval-gate cycle on
+resume. If `resume_harness` is omitted, `check_harness_name` will route directly to
+`synthesize_result` (no eval gate run).
 
 #### Spec file format
 
