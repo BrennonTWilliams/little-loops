@@ -1034,7 +1034,10 @@ class TestCmdRunHandoffThreshold:
         from little_loops.cli.loop.run import cmd_run
         from little_loops.logger import Logger
 
-        monkeypatch.delenv("LL_HANDOFF_THRESHOLD", raising=False)
+        # setenv("") + delenv() ensures monkeypatch registers a teardown even when
+        # the var doesn't exist yet — prevents cmd_run's os.environ write from leaking.
+        monkeypatch.setenv("LL_HANDOFF_THRESHOLD", "")
+        monkeypatch.delenv("LL_HANDOFF_THRESHOLD")
         loops_dir = self._make_loop(tmp_path)
         args = self._make_args(handoff_threshold=40)
         logger = Logger(use_color=False)
@@ -1127,7 +1130,8 @@ class TestCmdRunYAMLConfigOverrides:
         from little_loops.cli.loop.run import cmd_run
         from little_loops.logger import Logger
 
-        monkeypatch.delenv("LL_HANDOFF_THRESHOLD", raising=False)
+        monkeypatch.setenv("LL_HANDOFF_THRESHOLD", "")
+        monkeypatch.delenv("LL_HANDOFF_THRESHOLD")
         loops_dir = self._make_loop(tmp_path, config_block="config:\n  handoff_threshold: 60\n")
         args = self._make_args(handoff_threshold=None)
         logger = Logger(use_color=False)
