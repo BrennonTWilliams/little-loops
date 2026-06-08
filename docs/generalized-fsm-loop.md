@@ -1029,6 +1029,7 @@ states:
 | `run_dir` | `cmd_run` / `cmd_resume` | Per-run artifact directory (`.loops/runs/<loop>-<timestamp>/`). Set before `--context` overrides so CLI flags take precedence. |
 | `design_tokens_context` | `cmd_run` / `cmd_resume` | Resolved design-token values rendered as a prompt-context snippet (empty string when disabled). |
 | `input_hash` | `cmd_run` / `cmd_resume` | SHA-256 hex digest (12 chars) of `context.input`. Available when input is a non-empty string; use for checkpoint fingerprinting to prevent cross-task contamination. Override with `--context input_hash=VALUE`. |
+| `max_iterations` | `cmd_run` | The loop's effective iteration cap (from YAML `max_iterations:` or `--max-iterations` CLI override). Use `${context.max_iterations}` in state actions or evaluator prompts to reference the budget without hard-coding it. A `--context max_iterations=VALUE` override takes precedence. |
 
 #### `captured` - Stored Action Results
 
