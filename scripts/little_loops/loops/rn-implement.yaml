@@ -77,7 +77,7 @@ states:
         resolved=$(ll-issues path "$raw_id" 2>/dev/null)
         if [ -n "$resolved" ]; then
           canon=$(basename "$resolved" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' | head -1)
-          echo "${canon:-$raw_id}" >> "$RUN_DIR/queue.txt"
+          echo "$${canon:-$raw_id}" >> "$RUN_DIR/queue.txt"
         else
           # Unresolvable now -> keep raw so existing downstream error handling fires.
           echo "$raw_id" >> "$RUN_DIR/queue.txt"
