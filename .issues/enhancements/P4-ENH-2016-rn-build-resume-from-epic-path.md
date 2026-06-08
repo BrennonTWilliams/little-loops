@@ -42,6 +42,17 @@ to repeat just because a subsequent `rn-implement` batch failed. EPIC IDs,
 harness names, and design artifacts already exist on disk — a resume path
 should be able to read them rather than regenerate them.
 
+## Success Metrics
+
+- **Resume time**: Skips 7 front-half phases (init → tech_research → design_artifacts → commit_design → scope_project → refine_seed → eval_harness) on re-entry
+- **Re-work eliminated**: EPIC scoping and design artifacts generated once per project, not once per session
+- **Validation**: `ll-loop run rn-build --initial resume` completes successfully on a project that previously hit `max_eval_retries`
+
+## Scope Boundaries
+
+- **In scope**: `resume_epic` / `resume_harness` context knobs; `resume` initial state; `synthesize_result` `resume_command` field; `--initial resume` invocation; tests and docs
+- **Out of scope**: Mid-state resume (resuming from within a running state); automatic resume detection without explicit flag; persistent FSM checkpoint state beyond `epic-id.txt` and `harness-name.txt`
+
 ## Proposed Solution
 
 ### Context knob
@@ -121,6 +132,21 @@ When `eval_passed: false`, add a `resume_command` field to the synthesis JSON:
 - `scripts/tests/test_rn_build.py` — add resume tests
 - `docs/guides/LOOPS_GUIDE.md` — document resume invocation under `rn-build`
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/rn-implement.yaml` — downstream loop; unaffected (no changes needed)
+
+### Similar Patterns
+- `ll-loop run --initial <state>` — existing flag reused; no new mechanism required
+
+### Tests
+- `scripts/tests/test_rn_build.py` — resume state exists, routes to cluster_execute, synthesis emits `resume_command` when `eval_passed: false`
+
+### Documentation
+- `docs/guides/LOOPS_GUIDE.md` — document `--initial resume` invocation under `rn-build`
+
+### Configuration
+- N/A — context knobs live in `rn-build.yaml` context block; no new config files
+
 ## Acceptance Criteria
 
 - `ll-loop run rn-build --context resume_epic=EPIC-042 --initial resume` skips the front half and enters `cluster_execute`.
@@ -142,4 +168,5 @@ When `eval_passed: false`, add a `resume_command` field to the synthesis JSON:
 **Open** | Created: 2026-06-08
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-08T01:37:02 - `6443e1b2-a4d1-4257-be1b-aa306b6f46e7.jsonl`
 - `/ll:capture-issue` - 2026-06-08T01:29:25Z - `00fefddf-56f7-43f8-8a57-dd53f6c3526d.jsonl`

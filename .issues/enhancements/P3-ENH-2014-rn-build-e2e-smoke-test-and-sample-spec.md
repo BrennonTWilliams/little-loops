@@ -33,6 +33,29 @@ exist and no sample spec was created. `rn-build` is structurally validated by
 `test_rn_build.py` but has never been exercised end-to-end. This ENH fulfils
 the outstanding FEAT-1992 acceptance criterion.
 
+## Current Behavior
+
+- `specs/` directory does not exist in the repository.
+- No sample spec file (`specs/sample.md`) has been created.
+- `rn-build` has structural unit-test coverage (`test_rn_build.py`) but has never
+  been executed end-to-end against a real spec.
+- The `goal-cluster → rn-implement` handoff contract, the `eval_gate` re-entry path,
+  and the `synthesize_result` JSON output are all untested at runtime.
+- FEAT-1992's acceptance criterion (E2E smoke passes, no `eval-driven-development` in
+  dispatch log) remains unfulfilled.
+
+## Expected Behavior
+
+- `specs/sample.md` exists as a minimal, realistic project spec (4–6 core features,
+  2–3 observable acceptance criteria).
+- `ll-loop run rn-build --context spec=specs/sample.md` completes without an FSM
+  executor crash.
+- The dispatch log contains `goal-cluster` and `rn-implement`; does **not** contain
+  `eval-driven-development`.
+- `${run_dir}/epic-id.txt` is written (confirming `scope_project` completed).
+- `TestE2E` class in `scripts/tests/test_rn_build.py` passes when
+  `PYTEST_INTEGRATION=1` is set.
+
 ## Motivation
 
 A loop that has never run end-to-end is not a shipped feature — it is a
@@ -94,6 +117,22 @@ so it is excluded from the default `pytest` run but included in CI when
 - `scripts/tests/test_rn_build.py` — add `TestE2E` integration test class
 - `docs/guides/LOOPS_GUIDE.md` — document smoke-test procedure under `rn-build`
 
+### Dependent Files (Callers/Importers)
+- N/A — test files and documentation additions; no exported APIs
+
+### Similar Patterns
+- `scripts/tests/test_rn_build.py` — existing `TestRnBuild` and `TestRnBuildYaml` classes show pytest patterns to follow
+- Other `@pytest.mark.integration` tests in the test suite (if any) for slow-test gating conventions
+
+### Tests
+- `scripts/tests/test_rn_build.py` — primary file being modified; existing tests remain unchanged
+
+### Documentation
+- `docs/guides/LOOPS_GUIDE.md` — smoke-test procedure added under `rn-build` section
+
+### Configuration
+- N/A — no new config keys; `PYTEST_INTEGRATION=1` env var is already a project convention
+
 ## Acceptance Criteria
 
 - `specs/sample.md` exists and is a valid rn-build input.
@@ -103,6 +142,18 @@ so it is excluded from the default `pytest` run but included in CI when
   `eval-driven-development`.
 - `${run_dir}/epic-id.txt` is written (scope_project completed).
 - `TestE2E` class in `test_rn_build.py` passes when `PYTEST_INTEGRATION=1`.
+
+## Scope Boundaries
+
+- **Not in scope**: Validating the quality of the generated React Native app (only the
+  pipeline's dispatch behavior is tested).
+- **Not in scope**: A full E2E test suite covering all `rn-build` scenarios (single smoke
+  path only).
+- **Not in scope**: Modifying `rn-build.yaml` or any pipeline loop YAML files.
+- **Not in scope**: Deep testing of the `eval_gate` retry path — `max_eval_retries=0`
+  is passed explicitly to skip it for speed.
+- **Not in scope**: Wiring the integration test into CI automatically; the
+  `@pytest.mark.slow` / `PYTEST_INTEGRATION=1` convention keeps it opt-in.
 
 ## Impact
 
@@ -118,4 +169,5 @@ so it is excluded from the default `pytest` run but included in CI when
 **Open** | Created: 2026-06-08
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-08T01:36:06 - `b59e4b87-6e2b-4690-bb43-64f1327b0c7e.jsonl`
 - `/ll:capture-issue` - 2026-06-08T01:29:25Z - `00fefddf-56f7-43f8-8a57-dd53f6c3526d.jsonl`
