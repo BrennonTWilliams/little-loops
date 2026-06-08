@@ -7,6 +7,12 @@ decision_needed: false
 discovered_date: 2026-06-08
 discovered_by: capture-issue
 captured_at: '2026-06-08T18:32:45Z'
+confidence_score: 80
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # FEAT-2024: Add apply-research built-in FSM loop for synthesizing local research files into actionable issues
@@ -100,6 +106,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/loop_runner.py` — must support `--files` multi-value arg passthrough to the loop's `args` context
 - `ll-loop` CLI — validate that `--files` args are accessible as `context.args.files` inside FSM states
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/validate.py` — `cmd_validate()` scans the loops directory and auto-exercises `apply-research.yaml` when created; no code changes needed, but this is the mechanism that enforces MR-1/MR-3/MR-4 compliance at CI time
+
 ### Similar Patterns
 - `loops/deep-research.yaml` (FEAT-1540, done) — web research synthesis; similar FSM shape but input is web queries, not local files
 - `loops/harness-optimize.yaml` — meta-loop that reads artifacts and generates harness changes; similar read→analyze→capture pattern
@@ -107,6 +116,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Tests
 - `scripts/tests/test_apply_research_loop.py` — validate FSM state transitions, relevance filtering threshold, exit-code evaluator wiring
 - Add fixture PDFs/text files under `scripts/tests/fixtures/research/`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_loop_parsing.py` — `TestLoopArgumentParsing`: if Option B (`--files` multi-value arg) is implemented, add parsing tests following the `test_context_flag_parses_key_value` pattern; not needed for Option A
+- `scripts/tests/test_cli_loop_dispatch.py` — `TestMainLoopDispatch`: if Option B, add `test_files_forwarded` following `test_context_forwarded` (line 640) to confirm `--files` is forwarded to `cmd_run()`; not needed for Option A
+- Note: `TestBuiltinLoopFiles.test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`, and `test_all_have_description_field` use `rglob("*.yaml")` and will auto-run against `apply-research.yaml` with no changes needed
 
 ### Documentation
 - `docs/guides/LOOP_AUTHORING_GUIDE.md` — add example of `apply-research` as a document-ingestion pattern
@@ -133,6 +147,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **`context.args.files` and `--files` do not exist.** The `ll-loop run` CLI only has `--context KEY=VALUE` (no `--files` flag). The `context.args` nested namespace does not exist — context is a flat `dict[str, Any]`. The established convention for multi-value file inputs is a space-separated string in one context variable (e.g., `context.targets` in `harness-optimize.yaml`). Two viable approaches:
 - **Option A (no CLI changes):** use `input_key: files` so `ll-loop run apply-research "paper1.pdf notes.md"` populates `context.files` as a space-separated string; shell states split with word expansion
+
+> **Selected:** Option A (no CLI changes) — zero CLI changes, matches `input_key:` convention used by 27 existing loops
+
 - **Option B (new CLI work):** add a `--files` flag to `scripts/little_loops/cli/loop/__init__.py` that populates `context.files` as a list — adds scope to Implementation Step 2
 
 **Similar pattern paths (corrected):**
@@ -151,6 +168,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `config-schema.json` has `"additionalProperties": false` on its `"loops"` block (line 863); no per-loop config sub-blocks exist anywhere in the schema
 - To add `apply_research.*` config, add a new root-level `"apply_research"` property object (parallel to `"loops"`, `"project"`, etc.)
 - **Simpler alternative:** declare defaults as context variables in the loop YAML (`relevance_threshold: 0.5`, `max_issues_per_file: 10`) and allow `--context relevance_threshold=0.7` override — no schema changes required
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-08.
+
+**Selected**: Option A (no CLI changes)
+
+**Reasoning**: Option A directly reuses the `input_key:` convention used by 27 existing loops with zero CLI changes. `hitl-compare.yaml` provides exact precedent for `input_key:` with whitespace-separated file paths, and `rn-build.yaml` demonstrates `input_key:` with multi-path shell iteration. Option B achieves a higher testability score (test scaffold fully in place) but adds scope across 4 files for functionality already coverable via `--context files=...`.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (no CLI changes) | 3/3 | 3/3 | 2/3 | 2/3 | 10/12 |
+| Option B (new CLI work) | 2/3 | 1/3 | 3/3 | 1/3 | 7/12 |
+
+**Key evidence**:
+- Option A: `input_key:` used by 27 loops; `hitl-compare.yaml` uses `input_key: inputs` for whitespace-separated file paths; `rn-build.yaml` uses `input_key: spec` with multi-path IFS-split iteration; zero CLI changes needed
+- Option B: `action="append"` pattern matches existing CLI flags but adds scope to 4 files (`__init__.py`, `run.py`, two test files); `--context files=...` already covers the use case as a workaround
 
 ## Implementation Steps
 
@@ -207,7 +243,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-06-08 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-08_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Concerns
+- **AC#6 contradiction**: Acceptance criterion "context.args.files is accessible when --files is passed" references a non-existent CLI flag and contradicts the established `input_key`/positional arg convention. Either update AC#6 to reference `context.files` populated via `input_key: files` (Option A), or explicitly commit to Option B (new CLI flag) before starting.
+- **oracle-capture-issue is a scoring oracle, not a creation oracle**: The integration map suggests reusing it "with context_passthrough: true instead of rolling custom capture logic" — this is wrong. The oracle evaluates existing captures via `invocation`/`output` bindings and returns a score; it cannot create issues. Disregard this reuse note; call `/ll:capture-issue` directly.
+- **Impact section understates scope**: States "isolated new loop file; no changes to existing loops or core runner" but 7 files require changes: `README.md` FSM count (`79→80`), `CONTRIBUTING.md` YAML count (`76→77`), `loops/README.md` catalog row, `docs/reference/loops.md` entry, `docs/guides/LOOPS_GUIDE.md` table row. `ll-verify-docs` will fail CI until all count assertions are updated.
+
+### Outcome Risk Factors
+- **Open decision on input interface (Option A/B)**: Choosing Option B (dedicated `--files` CLI flag) expands scope to `scripts/little_loops/cli/loop/__init__.py` + `run.py` + test fixtures; Option A (`input_key: files` with space-separated positional arg) stays isolated and matches `harness-optimize`'s `context.targets` convention. Recommend deciding before implementation starts to avoid mid-flight scope expansion.
+- **Seven required change sites vs stated three**: The `README.md` FSM count, `CONTRIBUTING.md` YAML count, `loops/README.md` catalog entry, `docs/reference/loops.md` full entry, and `docs/guides/LOOPS_GUIDE.md` table row are all required or CI fails. The issue's risk estimate of "Low — isolated new loop file" should be revised to reflect this broader surface.
+- **oracle-capture-issue integration note is incorrect**: The refine-issue research recommended reusing the oracle for issue capture, but it is a rubric-scoring oracle (returns SCORE=0-100) incompatible with the creation use case. Following this note would result in a broken capture state.
+
 ## Session Log
+- `/ll:decide-issue` - 2026-06-08T20:01:57 - `7ca27d70-ae36-4cb7-90a0-e6b796735d0c.jsonl`
+- `/ll:confidence-check` - 2026-06-08T19:30:00 - `f85e77c0-412f-4a1e-932b-aeac2a4797f2.jsonl`
+- `/ll:wire-issue` - 2026-06-08T18:58:14 - `d331825d-7e3c-457a-94d7-e13a9bf83a9d.jsonl`
 - `/ll:refine-issue` - 2026-06-08T18:50:33 - `2a44cb62-9300-4369-8e0e-768735b76625.jsonl`
 - `/ll:format-issue` - 2026-06-08T18:38:07 - `a728ce61-598a-41b4-88fb-5495fbc177b9.jsonl`
 - `/ll:capture-issue` - 2026-06-08T18:32:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2487f4bf-03ad-45d6-b19b-7a8cbbb8e999.jsonl`

@@ -73,6 +73,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — append `(see [Loop Authoring Guidelines](LOOPS-GUIDELINES.md) § Meta-Loop Design Rules)` after the MR-1 usage note in `§ check_contract` (~line 217) and `§ comparator` (~line 328); add LOOPS-GUIDELINES to the `## See Also` section (~line 1055)
 - Update `scripts/little_loops/loops/README.md` — change the "loop authoring guidance" pointer at line 173 (currently `docs/ARCHITECTURE.md`) to include a reference to `docs/guides/LOOPS-GUIDELINES.md`
 - Update `skills/create-loop/loop-types.md` — add `(see [Loop Authoring Guidelines](../../docs/guides/LOOPS-GUIDELINES.md) § Meta-Loop Design Rules)` after each of the two inline MR-1 compliance assertions (lines ~1488 and ~1505)
+- Add wiring assertions to `scripts/tests/test_wiring_guides_and_meta.py` and `scripts/tests/test_wiring_skills_and_commands.py` — new `DOC_FILES_MUST_EXIST` and `DOC_STRINGS_PRESENT` entries confirming `docs/guides/LOOPS-GUIDELINES.md` was created and all pointer replacements landed in the primary source files
 
 ## Integration Map
 
@@ -98,6 +99,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` | ~217, ~328, ~1055 | Add `(see [LOOPS-GUIDELINES.md](LOOPS-GUIDELINES.md) § Meta-Loop Design Rules)` after two inline MR-1 usage notes (§ `check_contract` and § `comparator`); add LOOPS-GUIDELINES to `## See Also` |
 | `scripts/little_loops/loops/README.md` | 173 | Update "loop authoring guidance" pointer to reference `docs/guides/LOOPS-GUIDELINES.md` |
 | `skills/create-loop/loop-types.md` | ~1488, ~1505 | Add `(see [LOOPS-GUIDELINES.md](../../docs/guides/LOOPS-GUIDELINES.md) § Meta-Loop Design Rules)` pointer after each MR-1 compliance assertion in the meta-optimize template section |
+| `scripts/tests/test_wiring_guides_and_meta.py` | `DOC_FILES_MUST_EXIST`, `DOC_STRINGS_PRESENT` | Add existence assertion for `docs/guides/LOOPS-GUIDELINES.md` and pointer-presence assertions in `mkdocs.yml`, `docs/index.md`, `.claude/CLAUDE.md` [wiring pass 2] |
+| `scripts/tests/test_wiring_skills_and_commands.py` | `DOC_STRINGS_PRESENT` | Add assertion that `agents/loop-specialist.md` contains `LOOPS-GUIDELINES.md` pointer after inline taxonomy is replaced [wiring pass 2] |
 
 ### Codebase Research Findings
 
@@ -118,12 +121,35 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Anchor conventions** for headings in LOOPS-GUIDELINES.md: GitHub-style — lowercase, spaces → hyphens, backticks stripped, parens stripped. Example: `## The Design Rules (MR-1…MR-5)` → `#the-design-rules-mr-1mr-5`.
 
+**All 18 line-number claims in the Integration Map verified accurate** against the current codebase (second refinement pass, 2026-06-08). No stale anchors found.
+
+**`.codex/agents/loop-specialist.toml`** — auto-generated Codex mirror of `agents/loop-specialist.md` containing the full 7-mode failure taxonomy (lines 32–38). Since `agents/loop-specialist.md` is in "Files to Modify", the implementer must regenerate this mirror after the edit: run `ll-adapt-agents-for-codex` as a cleanup step. Add this to the post-implementation checklist.
+
+**`scripts/little_loops/loops/integrate-sdk.yaml` lines 205–211** — embeds the full 7-mode taxonomy as a literal table inside a loop YAML action prompt. Out of scope for this doc-only issue, but a latent drift risk if the taxonomy names ever change.
+
+**Expected remaining grep matches after implementation** (not errors — these are intentional or out-of-scope):
+- `docs/reference/CLI.md:568–577` — full MR-1…MR-5 inline (out-of-scope per issue note; CLI reference self-contains rules for `validate` command)
+- `docs/reference/API.md:4157–4772` — suppress flags in `FSMLoop` pseudocode, MR-1–MR-4 in `validate_fsm` checks (note: MR-5 absent from the 4769–4772 list — pre-existing gap, out of scope)
+- `skills/review-loop/reference.md:40–44` — compact MR-1…MR-5 table (out-of-scope per issue note)
+- `scripts/little_loops/loops/integrate-sdk.yaml:205–211` — taxonomy in action prompt (operational loop, out-of-scope)
+- `.codex/agents/loop-specialist.toml` — regenerate via `ll-adapt-agents-for-codex` after source update
+- `CHANGELOG.md` — historical release notes, expected
+- `scripts/tests/test_fsm_validation.py`, `test_fsm_schema.py`, `test_rn_implement.py` — test infrastructure, expected
+- `scripts/little_loops/fsm/validation.py`, `schema.py` — authoritative code source of truth, expected
+
 ### Tests
 - `scripts/tests/test_fsm_validation.py` — existing coverage for `validation.py` MR rules; no changes needed (doc-only issue)
 - `scripts/tests/test_fsm_schema.py` — existing schema coverage; no changes needed
 
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `scripts/tests/test_wiring_guides_and_meta.py` — add `DOC_FILES_MUST_EXIST` entry `("docs/guides/LOOPS-GUIDELINES.md", "ENH-2023")` and `DOC_STRINGS_PRESENT` entries for `"LOOPS-GUIDELINES.md"` in `mkdocs.yml`, `docs/index.md`, and `.claude/CLAUDE.md` to confirm pointer replacements landed [Agent 3 finding]
+- `scripts/tests/test_wiring_skills_and_commands.py` — add `DOC_STRINGS_PRESENT` entry `("agents/loop-specialist.md", "LOOPS-GUIDELINES.md", "ENH-2023")` to confirm taxonomy pointer was added after the inline table is replaced [Agent 3 finding]
+
 ### Documentation
 - `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` — the empirical study behind the MR rules; LOOPS-GUIDELINES.md should link to it in the See Also section (as HARNESS_OPTIMIZATION_GUIDE.md line 244 already does)
+
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `docs/ARCHITECTURE.md` — references MR-1…MR-4 and loop-specialist agent; advisory review for whether an additional `[Loop Authoring Guidelines](guides/LOOPS-GUIDELINES.md)` mention benefits readers here (not required; no inline rule duplication confirmed) [Agent 1 finding]
 
 ## Division of Responsibility
 
@@ -144,6 +170,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Grep that MR-1…MR-5 / "Optimizer Error Taxonomy" / "never route evaluate failures back to generate" / the 7 mode names now appear authoritatively only in `LOOPS-GUIDELINES.md` (plus the kept CLAUDE.md summary table and code).
 - `ll-loop validate <any meta-loop>` still runs unchanged.
 - Manual read-through: every "replaced" section resolves to a working LOOPS-GUIDELINES anchor.
+- Run `ll-adapt-agents-for-codex` after updating `agents/loop-specialist.md` to regenerate `.codex/agents/loop-specialist.toml` with the updated failure taxonomy pointer.
 
 ## Impact
 
@@ -165,6 +192,8 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - Grep verification is manual — the completeness check ("MR-1…MR-5 now appear only in LOOPS-GUIDELINES.md") is a manual grep, not a CI gate; run it explicitly post-implementation
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-08T19:09:30 - `56fd44d8-174d-4ee6-8034-5fd93973393c.jsonl`
+- `/ll:refine-issue` - 2026-06-08T18:58:34 - `832c6be5-7dd6-4f1a-a8db-8c7f44c41c9f.jsonl`
 - `/ll:confidence-check` - 2026-06-08T18:40:00Z - `a728ce61-598a-41b4-88fb-5495fbc177b9.jsonl`
 - `/ll:wire-issue` - 2026-06-08T18:35:23 - `f3c9a78c-ed08-41a1-bd9a-0a5eec650264.jsonl`
 - `/ll:refine-issue` - 2026-06-08T18:26:48 - `a7baee9f-1f49-4f76-a6cf-ba753c6eb490.jsonl`
