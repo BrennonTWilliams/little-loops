@@ -7,12 +7,12 @@ decision_needed: false
 discovered_date: 2026-06-08
 discovered_by: capture-issue
 captured_at: '2026-06-08T18:32:45Z'
-confidence_score: 80
-outcome_confidence: 67
-score_complexity: 14
+confidence_score: 90
+outcome_confidence: 72
+score_complexity: 15
 score_test_coverage: 18
-score_ambiguity: 10
-score_change_surface: 25
+score_ambiguity: 17
+score_change_surface: 22
 ---
 
 # FEAT-2024: Add apply-research built-in FSM loop for synthesizing local research files into actionable issues
@@ -36,7 +36,7 @@ This is time-consuming, inconsistent, and incomplete — nuanced applicable cont
 Users can run:
 
 ```bash
-ll-loop run apply-research --files paper1.pdf paper2.md notes.txt
+ll-loop run apply-research "paper1.pdf paper2.md notes.txt"
 ```
 
 or via Claude Code:
@@ -63,7 +63,7 @@ This is particularly valuable for projects like little-loops itself, where AI al
 A developer reads a research paper on FSM evaluation strategies (e.g., a PDF from arXiv or an internal design doc) and wants to identify which ideas are applicable to little-loops. Rather than manually re-reading and writing up issue descriptions, they run:
 
 ```bash
-ll-loop run apply-research --files paper.pdf notes.md
+ll-loop run apply-research "paper.pdf notes.md"
 ```
 
 The loop reads each file, identifies relevant techniques (e.g., a new evaluator pattern, a loop termination heuristic), and automatically captures 2–4 issues with synthesized descriptions. The developer reviews the captured issues in `.issues/` and immediately proceeds to prioritize or implement them — no manual write-up required.
@@ -74,7 +74,7 @@ Implement as an FSM loop YAML under `loops/apply-research.yaml` following the `d
 
 **States:**
 1. `load_context` — read project context (CLAUDE.md, open issues, recent commits) to understand what's already known
-2. `read_file` — read and chunk the target file; extract key claims, techniques, and ideas
+2. `read_file` — read and chunk the target file; extract key claims, techniques, and ideas. **Mechanism**: if the file is a `.pdf`, a `shell` action first converts it to a `.md` sidecar using `pandoc "$file" -o "${file%.pdf}.md"` (requires `pandoc` ≥ 2.x on `PATH`); the resulting `.md` (or the original `.txt`/`.md`) is then read via `action_type: prompt` using Claude Code's `Read` tool. All content entering the extraction step is plain Markdown — no pagination handling required
 3. `assess_relevance` — for each extracted item, score relevance to the project (0–1 scale) using structured LLM evaluation
 4. `filter_items` — drop items below threshold (configurable, default 0.5); rank survivors by relevance × novelty
 5. `synthesize_recommendations` — convert each surviving item into a structured issue description (title, type, motivation, proposed solution)
@@ -95,27 +95,36 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **`diff_stall` is the wrong evaluator for "zero new issues."** `diff_stall` compares `git diff --stat` between iterations (detects working-tree changes), not issue capture counts. To detect when a file produces zero new issues, use `output_numeric` with `operator: eq` / `target: 0` on a shell state that counts newly captured issues. Or rely on the file-iteration loop completing naturally via the `next_file → done` transition without a stall detector.
 
+**`capture_issues` state should use `action_type: prompt`** — `exit_code` evaluators cannot be placed directly on multi-call `/ll:capture-issue` invocations; each run may call the skill N times (once per surviving recommendation). Existing loops that invoke `/ll:capture-issue` (`rn-build.yaml` `capture_eval_failures`, `greenfield-builder.yaml` `create_feature_issues`, `eval-driven-development.yaml` `capture_failures`) consistently use `action_type: prompt` with explicit per-item instructions. For MR-1 compliance, add a separate `verify_captures` shell state after `capture_issues` that counts newly-created issue files under `.issues/` and uses `output_numeric` with `operator: ge` / `target: 1` to confirm at least one was written.
+
+**`$${...}` escaping required in shell states using bash array syntax** — If using `read -ra FILE_LIST <<< "${context.files}"` for per-file iteration, array expansion must be written `"$${FILE_LIST[@]}"` (double `$`), not `"${FILE_LIST[@]}"`. The FSM interpolator resolves `${...}` first; unescaped references that don't match a context variable raise "expected namespace.path." See `rn-build.yaml` lines 68–78 for the exact pattern.
+
+**Declare `required_inputs: ["files"]`** at loop top level alongside `input_key: files` to enforce a non-empty input at run time. Without it, `ll-loop run apply-research` with no argument uses the empty-string default silently. Pattern from `goal-cluster.yaml` and `canvas-sketch-generator.yaml`.
+
+**Queue-based file iteration alternative** — If per-file processing is complex, the `init` → pop-one → `advance` queue pattern (used by `prompt-across-issues.yaml` and `harness-optimize.yaml` `dequeue_state`) is more robust and observable. The `next_file` state pops from a queue file under `${context.run_dir}/pending-files.txt` via `head -1` / `tail -n +2`. A simple `for F in $FILES; do` loop is sufficient for shallow lists.
+
 ## Integration Map
 
 ### Files to Modify
-- `loops/apply-research.yaml` — new loop definition (primary artifact)
-- `docs/reference/LOOPS.md` — add `apply-research` to built-in loop inventory
+- `scripts/little_loops/loops/apply-research.yaml` — new loop definition (primary artifact)
+- `docs/reference/loops.md` — add `apply-research` to built-in loop inventory
+- `scripts/little_loops/loops/README.md` — add catalog entry row
 - `skills/create-loop/SKILL.md` — optionally add `apply-research` as an example in the "Harness a research paper" template branch
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loop_runner.py` — must support `--files` multi-value arg passthrough to the loop's `args` context
-- `ll-loop` CLI — validate that `--files` args are accessible as `context.args.files` inside FSM states
+- `scripts/little_loops/cli/loop/run.py` — `cmd_run()`: handles `input_key:` binding that populates `context.files` from the positional arg; no code changes needed for Option A
+- `scripts/little_loops/cli/loop/__init__.py` — `main_loop()`: defines the `--context KEY=VALUE` flag used for `relevance_threshold` and `max_issues_per_file` overrides
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/loop/validate.py` — `cmd_validate()` scans the loops directory and auto-exercises `apply-research.yaml` when created; no code changes needed, but this is the mechanism that enforces MR-1/MR-3/MR-4 compliance at CI time
 
 ### Similar Patterns
-- `loops/deep-research.yaml` (FEAT-1540, done) — web research synthesis; similar FSM shape but input is web queries, not local files
-- `loops/harness-optimize.yaml` — meta-loop that reads artifacts and generates harness changes; similar read→analyze→capture pattern
+- `scripts/little_loops/loops/deep-research.yaml` — web research synthesis; uses `input_key: topic`, delegates to oracle via `loop: oracles/research-coverage`; closest FSM analog
+- `scripts/little_loops/loops/harness-optimize.yaml` — uses `context.targets` as space-separated file paths; demonstrates queue-drain multi-file iteration
 
 ### Tests
-- `scripts/tests/test_apply_research_loop.py` — validate FSM state transitions, relevance filtering threshold, exit-code evaluator wiring
-- Add fixture PDFs/text files under `scripts/tests/fixtures/research/`
+- `scripts/tests/test_builtin_loops.py` — add `"apply-research"` to `TestBuiltinLoopFiles.test_expected_loops_exist` (line 75); add `TestApplyResearchLoop` class following `TestResearchCoverageOracle` pattern (line 5627)
+- Add sample text/md fixture files under `scripts/tests/fixtures/research/` (not real papers)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_loop_parsing.py` — `TestLoopArgumentParsing`: if Option B (`--files` multi-value arg) is implemented, add parsing tests following the `test_context_flag_parses_key_value` pattern; not needed for Option A
@@ -123,12 +132,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Note: `TestBuiltinLoopFiles.test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`, and `test_all_have_description_field` use `rglob("*.yaml")` and will auto-run against `apply-research.yaml` with no changes needed
 
 ### Documentation
-- `docs/guides/LOOP_AUTHORING_GUIDE.md` — add example of `apply-research` as a document-ingestion pattern
-- `docs/reference/LOOPS.md` — inventory entry
+- `docs/guides/LOOPS_GUIDE.md` — add example of `apply-research` as a document-ingestion pattern
+- `docs/reference/loops.md` — inventory entry (see also Files to Modify above)
+- `README.md` — update FSM loop count (line 163); `CONTRIBUTING.md` — update YAML count (line 122); both checked by `ll-verify-docs`
 
 ### Configuration
-- Add `apply_research.relevance_threshold` (default 0.5) to `config-schema.json`
-- Add `apply_research.max_issues_per_file` (default 10) to prevent runaway capture on large documents
+- Declare `relevance_threshold: 0.5` and `max_issues_per_file: 10` as context defaults in `apply-research.yaml` — no `config-schema.json` changes needed (overridable via `--context KEY=VALUE`)
 
 ### Codebase Research Findings
 
@@ -156,13 +165,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/loops/deep-research.yaml` — closest analog; `input_key: topic`, `init` shell state, oracle delegation via `loop: oracles/research-coverage`
 - `scripts/little_loops/loops/harness-optimize.yaml` — space-separated `context.targets` for multi-path input
 
-**`oracle-capture-issue.yaml` reuse opportunity:**
-- `scripts/little_loops/loops/oracles/oracle-capture-issue.yaml` — existing oracle sub-loop wrapping `/ll:capture-issue` with mechanical+semantic evaluators; invocable via `loop: oracles/oracle-capture-issue` with `context_passthrough: true` instead of rolling custom capture logic
+**`oracle-capture-issue.yaml` is a scoring oracle, not a creation tool:**
+- `oracle-capture-issue.yaml` evaluates prior capture-issue invocations (scores tool selection, file relevance, completion status) — it does NOT call `/ll:capture-issue`. For the `capture_issues` state, invoke `/ll:capture-issue` directly via `action_type: slash_command` and verify with an `exit_code` evaluator.
 
 **Test file location — structural tests belong in `test_builtin_loops.py`, not a standalone file:**
 - Add a `TestApplyResearchLoop` class to `scripts/tests/test_builtin_loops.py` (following `TestResearchCoverageOracle` pattern at line ~5627)
 - Also add `"apply-research"` to the `expected` set in `TestBuiltinLoopFiles.test_expected_loops_exist` at line 73; the test suite fails until this entry is added
 - Shell-logic fixture files can still go in `scripts/tests/fixtures/research/`
+
+**`scripts/tests/fixtures/research/` does not yet exist** — this directory must be created during implementation. It should contain sample `.txt` and `.md` snippets (not real papers); `TestApplyResearchLoop` shell-logic tests will reference these fixtures.
+
+**`test_expected_loops_exist` expected set spans lines 73–154** (line 73 reference is the `expected` set start, not the exact insert line) — add `"apply-research"` alphabetically within the set literal; the set currently enumerates root-level loop stems only (not `oracles/` or `lib/`).
+
+**Related test class templates** — `scripts/tests/test_deep_research.py` and `scripts/tests/test_harness_optimize.py` demonstrate full test class structure; `TestApplyResearchLoop` should follow this pattern (YAML parsing, FSM validation, state graph assertions via `test_required_states_exist`, context variable checks). `TestResearchCoverageOracle` at `test_builtin_loops.py:5627–5710` is the closest structural template.
 
 **Config schema constraint:**
 - `config-schema.json` has `"additionalProperties": false` on its `"loops"` block (line 863); no per-loop config sub-blocks exist anywhere in the schema
@@ -190,24 +205,24 @@ Decided by `/ll:decide-issue` on 2026-06-08.
 
 ## Implementation Steps
 
-1. Implement `loops/apply-research.yaml` with all 8 FSM states, non-LLM evaluators for MR-1 compliance, and `--files` args passthrough
-2. Add `--files` multi-value arg support to `ll-loop run` CLI (if not already supported via `context.args`)
-3. Add config schema entries for `apply_research.relevance_threshold` and `apply_research.max_issues_per_file`
-4. Write test fixtures (sample research text snippets, not real papers) and unit tests for FSM transitions
-5. Update `docs/reference/LOOPS.md` inventory
+1. Implement `scripts/little_loops/loops/apply-research.yaml` with all 8 FSM states and non-LLM evaluators for MR-1 compliance; use `input_key: files` (Option A — no CLI changes needed)
+2. Add `"apply-research"` to the `expected` set in `TestBuiltinLoopFiles.test_expected_loops_exist` (line 75, `scripts/tests/test_builtin_loops.py`); add a `TestApplyResearchLoop` class following the `TestResearchCoverageOracle` pattern (line 5627)
+3. Declare `relevance_threshold: 0.5` and `max_issues_per_file: 10` as context defaults in the loop YAML — no `config-schema.json` changes needed (overridable via `--context KEY=VALUE`)
+4. Add test fixtures under `scripts/tests/fixtures/research/` (sample text/md snippets, not real papers)
+5. Update all documentation sites: `docs/reference/loops.md` inventory entry, `scripts/little_loops/loops/README.md` catalog entry, `CONTRIBUTING.md` loop count (line 122), and `docs/guides/LOOPS_GUIDE.md`
 6. Run `ll-loop validate apply-research` to confirm MR-1/MR-3/MR-4 compliance
 
 ## API/Interface
 
 ```bash
-# Single file
-ll-loop run apply-research --files path/to/paper.pdf
+# Single file (positional arg via input_key: files)
+ll-loop run apply-research "path/to/paper.pdf"
 
-# Multiple files
-ll-loop run apply-research --files paper1.pdf notes.md rfc.txt
+# Multiple files (space-separated in positional arg)
+ll-loop run apply-research "paper1.pdf notes.md rfc.txt"
 
 # With relevance threshold override
-ll-loop run apply-research --files paper.pdf --arg relevance_threshold=0.7
+ll-loop run apply-research "paper.pdf" --context relevance_threshold=0.7
 
 # Via Claude Code
 /ll:create-loop apply-research
@@ -215,20 +230,21 @@ ll-loop run apply-research --files paper.pdf --arg relevance_threshold=0.7
 
 ## Acceptance Criteria
 
-- Given one or more `--files` paths (`.txt`, `.md`, `.pdf`), the loop reads each file and extracts candidate recommendations
+- Given one or more file paths passed as a positional arg (via `input_key: files`), supporting `.txt`, `.md`, `.pdf` formats, the loop reads each file and extracts candidate recommendations
 - Relevance scores are numeric values in range 0–1; items scoring below the configured threshold (default 0.5) are dropped and logged as "filtered"
 - For each surviving recommendation, `/ll:capture-issue` is invoked and its exit code is checked (`exit_code` evaluator); a non-zero exit causes the loop to retry or surface an error — no silent swallow
 - A summary report is emitted after all files are processed: files processed count, items extracted count, items filtered count, and list of captured issue IDs
 - `ll-loop validate apply-research` exits 0 with no MR-1, MR-3, or MR-4 violations
-- `context.args.files` is accessible inside FSM states when `--files` is passed to `ll-loop run`
-- Config schema accepts `apply_research.relevance_threshold` (float, default 0.5) and `apply_research.max_issues_per_file` (int, default 10)
+- `context.files` is populated from the positional CLI arg (via `input_key: files`) and accessible inside FSM states as `${context.files}`
+- PDF files are converted to Markdown sidecars before reading: the `read_file` state runs `pandoc "$file" -o "${file%.pdf}.md"` (shell action, requires `pandoc` ≥ 2.x on `PATH`) and then reads the resulting `.md`; `.txt` and `.md` files are read directly without conversion. All content entering the extraction prompt is plain Markdown — no pagination needed
+- Loop YAML declares `relevance_threshold: 0.5` and `max_issues_per_file: 10` as context defaults; both overridable via `--context KEY=VALUE` (no `config-schema.json` changes required)
 - Running with `max_issues_per_file=1` on a multi-recommendation document captures exactly 1 issue (cap enforced)
 
 ## Impact
 
 - **Priority**: P3 - Valuable workflow automation; not blocking
 - **Effort**: Medium — FSM loop YAML authoring + CLI arg passthrough + test fixtures (~1–2 days)
-- **Risk**: Low — isolated new loop file; no changes to existing loops or core runner
+- **Risk**: Low-Medium — primary artifact is the new loop YAML, but requires coordinated updates to: `scripts/tests/test_builtin_loops.py` (`test_expected_loops_exist` expected set, line 75), `docs/reference/loops.md`, `scripts/little_loops/loops/README.md`, `README.md` (FSM loop count, line 163), `CONTRIBUTING.md` (YAML count, line 122), and `docs/guides/LOOPS_GUIDE.md`. `ll-verify-docs` will fail CI until documented counts are updated.
 - **Breaking Change**: No
 
 ## Related Key Documentation
@@ -245,22 +261,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-08_
+_Updated by `/ll:confidence-check` on 2026-06-08 (prior run: 86/72 → current: 90/72)_
 
-**Readiness Score**: 80/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 67/100 → MODERATE
-
-### Concerns
-- **AC#6 contradiction**: Acceptance criterion "context.args.files is accessible when --files is passed" references a non-existent CLI flag and contradicts the established `input_key`/positional arg convention. Either update AC#6 to reference `context.files` populated via `input_key: files` (Option A), or explicitly commit to Option B (new CLI flag) before starting.
-- **oracle-capture-issue is a scoring oracle, not a creation oracle**: The integration map suggests reusing it "with context_passthrough: true instead of rolling custom capture logic" — this is wrong. The oracle evaluates existing captures via `invocation`/`output` bindings and returns a score; it cannot create issues. Disregard this reuse note; call `/ll:capture-issue` directly.
-- **Impact section understates scope**: States "isolated new loop file; no changes to existing loops or core runner" but 7 files require changes: `README.md` FSM count (`79→80`), `CONTRIBUTING.md` YAML count (`76→77`), `loops/README.md` catalog row, `docs/reference/loops.md` entry, `docs/guides/LOOPS_GUIDE.md` table row. `ll-verify-docs` will fail CI until all count assertions are updated.
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Open decision on input interface (Option A/B)**: Choosing Option B (dedicated `--files` CLI flag) expands scope to `scripts/little_loops/cli/loop/__init__.py` + `run.py` + test fixtures; Option A (`input_key: files` with space-separated positional arg) stays isolated and matches `harness-optimize`'s `context.targets` convention. Recommend deciding before implementation starts to avoid mid-flight scope expansion.
-- **Seven required change sites vs stated three**: The `README.md` FSM count, `CONTRIBUTING.md` YAML count, `loops/README.md` catalog entry, `docs/reference/loops.md` full entry, and `docs/guides/LOOPS_GUIDE.md` table row are all required or CI fails. The issue's risk estimate of "Low — isolated new loop file" should be revised to reflect this broader surface.
-- **oracle-capture-issue integration note is incorrect**: The refine-issue research recommended reusing the oracle for issue capture, but it is a rubric-scoring oracle (returns SCORE=0-100) incompatible with the creation use case. Following this note would result in a broken capture state.
+- **8 coordinated change sites across 3 subsystems** — loop YAML, 2 test additions, and 5 documentation updates (`docs/reference/loops.md`, `loops/README.md`, `README.md` FSM count at line 163, `CONTRIBUTING.md` YAML count at line 122, `docs/guides/LOOPS_GUIDE.md`); `ll-verify-docs` will fail CI until all count assertions are updated
+- **State output schemas under-specified** — `assess_relevance` LLM structured output (0–1 relevance score) and `synthesize_recommendations` output fields (passed to `/ll:capture-issue`) are described conceptually but not as concrete YAML schemas; implementer must design these during authoring
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-08T23:00:00 - `2c3fbaa7-2397-4ead-8e81-58f893bcf942.jsonl`
+- `/ll:refine-issue` - 2026-06-08T20:37:19 - `9bbdda2c-8cab-43ab-90fc-8bf9011921ae.jsonl`
+- `/ll:confidence-check` - 2026-06-08T22:00:00 - `b11c9e94-9a39-44c0-9cb3-c9022529cb42.jsonl`
+- `/ll:refine-issue` - 2026-06-08T20:17:21 - `3f0b2e7b-44ae-42c4-9637-de465af2a71b.jsonl`
+- `/ll:refine-issue` - 2026-06-08T20:15:11 - `6392fbc2-f8f1-4751-8018-9e14c0b2037d.jsonl`
+- `/ll:confidence-check` - 2026-06-08T21:00:00 - `c36c1c68-9f6e-46e8-8abb-d442d3aac92e.jsonl`
 - `/ll:decide-issue` - 2026-06-08T20:01:57 - `7ca27d70-ae36-4cb7-90a0-e6b796735d0c.jsonl`
 - `/ll:confidence-check` - 2026-06-08T19:30:00 - `f85e77c0-412f-4a1e-932b-aeac2a4797f2.jsonl`
 - `/ll:wire-issue` - 2026-06-08T18:58:14 - `d331825d-7e3c-457a-94d7-e13a9bf83a9d.jsonl`

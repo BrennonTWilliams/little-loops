@@ -6,7 +6,7 @@ priority: P4
 captured_at: '2026-05-22T19:19:39Z'
 discovered_date: 2026-05-22
 discovered_by: capture-issue
-status: open
+status: cancelled
 parent: EPIC-1745
 depends_on: [ENH-494]
 ---
@@ -109,7 +109,27 @@ Optionally set `llm_discoverable: false` on the 4 sub-skills to demote them to T
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on 2026-06-08_ — **NO-GO (CLOSE)**
+
+**Deciding Factor**: The issue's core premise — that five audit skills consume five Tier 1 slots — is factually false today. Only one slot is consumed (`ll-audit-architecture`, 18 tokens), and ENH-1615 (open, P3) will eliminate it as a `ll-*` bridge stub without ENH-1618 doing anything. Adding the meta-skill after ENH-1615 lands adds a net slot — a regression vs. doing nothing.
+
+### Key Arguments For
+- Dependencies ENH-494 and ENH-977 are both `status: done` — implementation is fully unblocked in principle
+- Only a two-file change; `skill_expander.py` resolves `skills/audit/SKILL.md` automatically with no plumbing changes
+
+### Key Arguments Against
+- `ll-verify-skill-budget` confirms only 1 audit Tier-1 entry today (not 5); ENH-1394 (commit `2bc2e2f2`, May 10) already demoted 4 of 5 skills before this issue was captured on May 22
+- The implementation spec uses `llm_discoverable: false` — a key absent from all 63 SKILL.md files and all Python tooling; the functional key is `disable-model-invocation`, which all four demoted sub-skills already carry
+- ENH-1617 (`status: cancelled`) was the sole downstream consumer driving the sequencing rationale — this work currently unblocks nothing
+- The four disabled skills were intentionally removed from auto-routing by ENH-1394 due to side effects; a meta-skill surfacing them would reverse a deliberate architectural decision
+
+### Rationale
+The four audit sub-skills already carry `disable-model-invocation: true` (Tier 2) and are already excluded from the listing budget. The only Tier-1 audit entry is `ll-audit-architecture` (18 tokens), which ENH-1615 will remove as part of suppressing all 30 `ll-*` bridge stubs. After ENH-1615 lands, the audit budget is zero without ENH-1618; implementing ENH-1618 afterward adds back a slot that ENH-1615 already eliminated. This issue is overtaken by events and should be closed.
+
 ## Session Log
+- `/ll:go-no-go` - 2026-06-08T00:00:00Z - `e74b10f6-368b-4cc1-a196-ec969edf8887.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-06-03T00:30:18 - `288ea8fe-1443-4178-9435-e6f8b106cc59.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:34 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`

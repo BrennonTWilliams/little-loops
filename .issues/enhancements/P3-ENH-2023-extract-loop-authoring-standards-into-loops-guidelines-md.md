@@ -136,6 +136,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `CHANGELOG.md` — historical release notes, expected
 - `scripts/tests/test_fsm_validation.py`, `test_fsm_schema.py`, `test_rn_implement.py` — test infrastructure, expected
 - `scripts/little_loops/fsm/validation.py`, `schema.py` — authoritative code source of truth, expected
+- `docs/reference/loops.md` — additional reference file with rule citations; add to grep checklist post-implementation if matches surface
+
+**MR-2 suppress flag** (`validation.py:_validate_meta_loop_evaluation()` lines 1043–1096): MR-1 and MR-2 are both suppressed by `meta_self_eval_ok: true`; there is no separate MR-2 flag. Function docstring at line 1044–1049 states this explicitly.
+
+**Optimizer Error Taxonomy — exact 8 row names** (from `HARNESS_OPTIMIZATION_GUIDE.md:113–133`): Redundant Duplication, Hardcoding, Task-specific Addition, Hallucination, Overengineering, Direct Performance-degrading Update, Overgeneralized Heuristic, Safety Violation. (8 entries — use these exact names when drafting `## The Optimizer Error Taxonomy` in LOOPS-GUIDELINES.md.)
+
+**FSM authoring convention heading names confirmed** (from `generalized-fsm-loop.md:1668–1717`):
+- `### Failure Terminals Must Include a Diagnostic Action` (lines 1670–1697): `action_type: prompt` must NOT be placed on the `terminal: true` state; use a preceding `diagnose` state and route `on_error: diagnose`.
+- `### Generator-Evaluator Loops: Never Route Evaluate Failures Back to Generate` (lines 1699–1715): `on_no` and `on_error` route forward (to `score`), never back to `generate`.
 
 ### Tests
 - `scripts/tests/test_fsm_validation.py` — existing coverage for `validation.py` MR rules; no changes needed (doc-only issue)
@@ -144,6 +153,29 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _Wiring pass added by `/ll:wire-issue` (second pass):_
 - `scripts/tests/test_wiring_guides_and_meta.py` — add `DOC_FILES_MUST_EXIST` entry `("docs/guides/LOOPS-GUIDELINES.md", "ENH-2023")` and `DOC_STRINGS_PRESENT` entries for `"LOOPS-GUIDELINES.md"` in `mkdocs.yml`, `docs/index.md`, and `.claude/CLAUDE.md` to confirm pointer replacements landed [Agent 3 finding]
 - `scripts/tests/test_wiring_skills_and_commands.py` — add `DOC_STRINGS_PRESENT` entry `("agents/loop-specialist.md", "LOOPS-GUIDELINES.md", "ENH-2023")` to confirm taxonomy pointer was added after the inline table is replaced [Agent 3 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` (third pass) — exact test entry tuples:_
+
+**`test_wiring_guides_and_meta.py` — append to `DOC_FILES_MUST_EXIST`:**
+```python
+("docs/guides/LOOPS-GUIDELINES.md", "ENH-2023"),
+```
+
+**`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_PRESENT`:**
+```python
+("mkdocs.yml", "LOOPS-GUIDELINES.md", "ENH-2023"),
+("docs/index.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+(".claude/CLAUDE.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+("docs/guides/LOOPS-GUIDELINES.md", "MR-1", "ENH-2023"),
+("docs/guides/LOOPS-GUIDELINES.md", "diagnose → propose → apply → measure-externally", "ENH-2023"),
+```
+
+**`test_wiring_skills_and_commands.py` — append to `DOC_STRINGS_PRESENT`:**
+```python
+("agents/loop-specialist.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+```
 
 ### Documentation
 - `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` — the empirical study behind the MR rules; LOOPS-GUIDELINES.md should link to it in the See Also section (as HARNESS_OPTIMIZATION_GUIDE.md line 244 already does)
@@ -192,6 +224,8 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - Grep verification is manual — the completeness check ("MR-1…MR-5 now appear only in LOOPS-GUIDELINES.md") is a manual grep, not a CI gate; run it explicitly post-implementation
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-08T20:30:00Z - `6392fbc2-f8f1-4751-8018-9e14c0b2037d.jsonl`
+- `/ll:refine-issue` - 2026-06-08T20:08:50 - `c36c1c68-9f6e-46e8-8abb-d442d3aac92e.jsonl`
 - `/ll:wire-issue` - 2026-06-08T19:09:30 - `56fd44d8-174d-4ee6-8034-5fd93973393c.jsonl`
 - `/ll:refine-issue` - 2026-06-08T18:58:34 - `832c6be5-7dd6-4f1a-a8db-8c7f44c41c9f.jsonl`
 - `/ll:confidence-check` - 2026-06-08T18:40:00Z - `a728ce61-598a-41b4-88fb-5495fbc177b9.jsonl`
