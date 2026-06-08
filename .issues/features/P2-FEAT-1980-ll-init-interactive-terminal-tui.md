@@ -2,7 +2,7 @@
 id: FEAT-1980
 title: ll-init interactive terminal TUI
 type: feature
-status: open
+status: done
 priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue
@@ -15,12 +15,13 @@ labels:
 - cli
 - tui
 - dx
-confidence_score: 94
+confidence_score: 93
 outcome_confidence: 80
 score_complexity: 18
 score_test_coverage: 16
 score_ambiguity: 21
 score_change_surface: 25
+completed_at: 2026-06-08 16:00:26+00:00
 ---
 
 # FEAT-1980: ll-init interactive terminal TUI
@@ -33,6 +34,31 @@ Build the interactive terminal frontend for `ll-init` over the headless core
 feature toggles, single-select where appropriate, a confirmation summary, and a
 completion message. This is the "quick and easy" first-run surface EPIC-1978
 targets.
+
+## Current Behavior
+
+`ll-init` falls back to the 12-round LLM-interpreted prose wizard
+(`skills/init/interactive.md`) for first-run configuration. Each round requires
+a separate LLM invocation to interpret free-text instructions, producing a slow,
+token-heavy setup flow with a high risk of dropped configuration steps. There is
+no native TUI path.
+
+## Expected Behavior
+
+Running `ll-init` with no flags launches a fast native TUI using `questionary`
+and `rich`. Users complete project configuration through a few keyboard-driven
+screens (project basics, feature toggles, settings target). Conditional
+follow-ups appear only when their gate is selected. Non-TTY invocations exit
+cleanly with a `--yes` hint. The resulting config is equivalent to what the
+prose wizard would produce.
+
+## Use Case
+
+A developer setting up `ll` on a new project runs `ll-init`. Instead of a
+multi-round LLM dialogue, they see a bordered terminal form with pre-filled
+defaults from auto-detection (FEAT-1979). They toggle features on/off, confirm
+a summary screen, and have a working `.ll/ll-config.json` in under 30 seconds —
+no tokens spent, no steps dropped.
 
 ## Motivation
 
@@ -99,6 +125,10 @@ keyboard-driven screens with no token cost and no dropped steps.
 ## Labels
 
 `init`, `cli`, `tui`, `dx`
+
+## Session Log
+- `/ll:ready-issue` - 2026-06-08T15:48:24 - `a8859efc-ecc5-4c6a-ae4c-d2649dab9cf6.jsonl`
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/547ec2f7-49f5-40d9-a1ed-db108b895933.jsonl`
 
 ## Status
 

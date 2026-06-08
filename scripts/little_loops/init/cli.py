@@ -331,5 +331,12 @@ Exit codes:
                 codex=args.codex,
             )
 
-        parser.print_help()
-        return 2
+        from little_loops.init.tui import run_tui
+
+        return run_tui(
+            project_root=project_root,
+            templates_dir=templates_dir,
+            plugin_root=plug_root,
+            force=args.force,
+            codex=args.codex,
+        )

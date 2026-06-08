@@ -867,12 +867,15 @@ class TestValidateDeps:
 
 
 class TestMainInit:
-    def test_no_args_prints_help(self, capsys: pytest.CaptureFixture) -> None:
+    def test_no_args_launches_tui_non_tty(self, capsys: pytest.CaptureFixture) -> None:
+        # No flags → TUI path. In a non-TTY test runner stdin.isatty() returns False,
+        # so run_tui exits with 1 and emits a --yes hint to stderr.
         from little_loops.init.cli import main_init
 
         with patch.object(sys, "argv", ["ll-init"]):
             code = main_init([])
-        assert code == 2
+        assert code == 1
+        assert "--yes" in capsys.readouterr().err
 
     def test_dry_run_yes_exits_zero(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init

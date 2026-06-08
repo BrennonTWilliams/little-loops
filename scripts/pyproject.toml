@@ -38,6 +38,8 @@ dependencies = [
     "pyyaml>=6.0",
     "ruamel.yaml>=0.18",
     "wcwidth>=0.2",
+    "questionary>=2.0",
+    "rich>=13.0",
 ]
 
 [project.urls]
