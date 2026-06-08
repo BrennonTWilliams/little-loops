@@ -1540,7 +1540,8 @@ def _cmd_eval_export(args: argparse.Namespace) -> int:
     if project_folder is None:
         print(f"No session project folder found for: {cwd_path}", file=sys.stderr)
         return 1
-    db_path = cwd_path / ".ll" / "history.db"
+    from little_loops.session_store import resolve_history_db
+    db_path = resolve_history_db(cwd_path / ".ll" / "history.db")
 
     # Single JSONL pass: collect raw invocations + per-session error flags together
     # (avoids the double-parse the decision warns against).

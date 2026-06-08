@@ -503,6 +503,10 @@ def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
     diagnostic context).
     """
     db_path = Path(path)
+    if db_path == DEFAULT_DB_PATH:
+        env_val = os.environ.get("LL_HISTORY_DB")
+        if env_val:
+            db_path = Path(env_val)
     legacy = db_path.parent / "session.db"
     if legacy.exists() and not db_path.exists():
         for suffix in ("", "-shm", "-wal"):
@@ -776,7 +780,12 @@ class SQLiteTransport:
     """
 
     def __init__(self, db_path: Path | str = DEFAULT_DB_PATH) -> None:
-        self._path = Path(db_path)
+        resolved = Path(db_path)
+        if resolved == DEFAULT_DB_PATH:
+            env_val = os.environ.get("LL_HISTORY_DB")
+            if env_val:
+                resolved = Path(env_val)
+        self._path = resolved
         self._lock = threading.Lock()
         self._conn: sqlite3.Connection | None = None
         try:

@@ -118,16 +118,17 @@ def handle(event: LLHookEvent) -> LLHookResult:
     _project_context_block = ""
     if config_path is not None:
         with contextlib.suppress(Exception):
-            from little_loops.session_store import ensure_db
+            from little_loops.session_store import ensure_db, resolve_history_db
 
-            ensure_db(cwd / ".ll" / "history.db")
+            ensure_db(resolve_history_db(cwd / ".ll" / "history.db"))
 
         # ENH-1830 / BUG-1882: trigger incremental JSONL backfill in a detached
         # subprocess so it outlives the short-lived hook process. A daemon thread
         # is killed when the hook subprocess exits (typically in <0.5s), so it
         # never commits. Path discovery runs synchronously here (fast) to produce
         # the concrete path arg passed to the worker.
-        _db_path = cwd / ".ll" / "history.db"
+        import os as _os
+        _db_path = Path(_os.environ["LL_HISTORY_DB"]) if _os.environ.get("LL_HISTORY_DB") else cwd / ".ll" / "history.db"
 
         with contextlib.suppress(Exception):
             from little_loops.user_messages import get_project_folder
