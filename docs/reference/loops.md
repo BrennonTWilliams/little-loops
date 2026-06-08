@@ -56,7 +56,7 @@ See [`.ll/program.md` convention](program-md.md) for the steering file format an
 ### State Graph
 
 ```
-init_run  (shell: create .ll/runs/harness-optimize/<run-id>/ dir, capture traj_path)
+init_run  (shell: create ${context.run_dir}/states/whole-file/ dir, capture traj_path)
   → load_directive  (reads .ll/program.md; builds state queue when targets is a loop YAML)
       on_yes (state-mode: queue non-empty) → check_queue
         on_yes → dequeue_state  (pops STATE_NAME + EXAMPLES_FILE from queue)
@@ -82,14 +82,14 @@ init_run  (shell: create .ll/runs/harness-optimize/<run-id>/ dir, capture traj_p
 
 ### Trajectory
 
-Each iteration appends one JSON line to `.ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl`:
+Each iteration appends one JSON line to `.loops/runs/harness-optimize-<timestamp>/states/<state>/trajectory.jsonl`:
 
 ```json
 {"iter": 3, "score": 0.82, "accepted": true, "commit_sha": "abc1234"}
 {"iter": 4, "score": 0.79, "accepted": false, "commit_sha": ""}
 ```
 
-In whole-file mode `<state>` is `whole-file`. In state mode `<state>` is the name of the state being optimized (e.g. `propose`, `apply`). The `<run-id>` is a nanosecond timestamp captured by `init_run`.
+In whole-file mode `<state>` is `whole-file`. In state mode `<state>` is the name of the state being optimized (e.g. `propose`, `apply`). The `<timestamp>` is the runner-injected run timestamp embedded in `${context.run_dir}`.
 
 ### Resume Behavior
 
@@ -110,7 +110,7 @@ Imports `lib/benchmark.yaml` for the `run_benchmark` fragment.
 
 > **Runner-written files**: every loop run also produces `usage.jsonl` under `<run_dir>/` when at least one LLM action (prompt/slash_command) executes. Each line records `{iteration, state, action_type, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model, timestamp}`. Shell and mcp_tool actions produce no row. The file lives permanently at `.loops/runs/<id>/usage.jsonl` and is **not** archived to `.loops/.history/`.
 
-In addition to trajectory JSONL files written to `.ll/runs/harness-optimize/<run-id>/`, `harness-optimize` is a meta-loop and produces:
+In addition to trajectory JSONL files written under `${context.run_dir}/states/`, `harness-optimize` is a meta-loop and produces:
 
 | File | Location | Description |
 |------|----------|-------------|

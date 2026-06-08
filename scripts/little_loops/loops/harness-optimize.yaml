@@ -5,7 +5,7 @@ description: |
   Each iteration proposes an edit to a declared target file set, runs a benchmark
   via lib/benchmark.yaml, accepts the change if score rises (or meets target),
   and reverts otherwise. Commits accepted mutations to the current branch.
-  Trajectory persists to .ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl.
+  Trajectory persists to .loops/runs/harness-optimize-<timestamp>/states/<state>/trajectory.jsonl.
 initial: init_run
 max_iterations: 30
 timeout: 7200
@@ -25,8 +25,7 @@ states:
   init_run:
     action_type: shell
     action: |
-      RUN_ID=$(date +%s%N)
-      TRAJ=".ll/runs/harness-optimize/$${RUN_ID}/states/whole-file/trajectory.jsonl"
+      TRAJ="${context.run_dir}/states/whole-file/trajectory.jsonl"
       mkdir -p "$(dirname "$TRAJ")"
       echo "$TRAJ"
     capture: traj_path
@@ -47,7 +46,7 @@ states:
       else
         TRAJ_PATH="*/states/whole-file/*"
       fi
-      TRAJ_FILES=$(find .ll/runs/harness-optimize -name "trajectory.jsonl" -path "$TRAJ_PATH" 2>/dev/null)
+      TRAJ_FILES=$(find ${context.run_dir} -name "trajectory.jsonl" -path "$TRAJ_PATH" 2>/dev/null)
       if [ -n "$TRAJ_FILES" ]; then
         BEST=$(echo "$TRAJ_FILES" | xargs cat 2>/dev/null | jq -r 'select(.accepted==true) | .commit_sha' | tail -1)
         [ -n "$BEST" ] && git checkout "$BEST" -- ${context.targets}
@@ -208,8 +207,7 @@ states:
     action: |
       STATE_NAME=$(cat ${context.run_dir}/harness-optimize-state-name.txt 2>/dev/null || echo "")
       if [ -n "$STATE_NAME" ]; then
-        RUN_ID=$(echo "${captured.traj_path.output}" | sed 's|.*/harness-optimize/\([^/]*\)/.*|\1|')
-        TRAJ=".ll/runs/harness-optimize/$${RUN_ID}/states/$${STATE_NAME}/trajectory.jsonl"
+        TRAJ="${context.run_dir}/states/$${STATE_NAME}/trajectory.jsonl"
         mkdir -p "$(dirname "$TRAJ")"
       else
         TRAJ="${captured.traj_path.output}"
@@ -231,8 +229,7 @@ states:
     action: |
       STATE_NAME=$(cat ${context.run_dir}/harness-optimize-state-name.txt 2>/dev/null || echo "")
       if [ -n "$STATE_NAME" ]; then
-        RUN_ID=$(echo "${captured.traj_path.output}" | sed 's|.*/harness-optimize/\([^/]*\)/.*|\1|')
-        TRAJ=".ll/runs/harness-optimize/$${RUN_ID}/states/$${STATE_NAME}/trajectory.jsonl"
+        TRAJ="${context.run_dir}/states/$${STATE_NAME}/trajectory.jsonl"
         mkdir -p "$(dirname "$TRAJ")"
       else
         TRAJ="${captured.traj_path.output}"

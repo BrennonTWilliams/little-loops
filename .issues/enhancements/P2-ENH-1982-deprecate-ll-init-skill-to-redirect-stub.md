@@ -7,8 +7,22 @@ priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1978
-relates_to: [EPIC-1978, FEAT-1979, FEAT-1980, FEAT-1981]
-labels: [init, cleanup, skill]
+relates_to:
+- EPIC-1978
+- FEAT-1979
+- FEAT-1980
+- FEAT-1981
+labels:
+- init
+- cleanup
+- skill
+confidence_score: 92
+outcome_confidence: 68
+score_complexity: 17
+score_test_coverage: 15
+score_ambiguity: 16
+score_change_surface: 20
+decision_needed: true
 ---
 
 # ENH-1982: Deprecate /ll:init skill to a redirect stub
@@ -91,6 +105,21 @@ Cleanup:
 ## Labels
 
 `init`, `cleanup`, `skill`
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-08_
+
+**Readiness Score**: 92/100 → PROCEED
+**Outcome Confidence**: 68/100 → MODERATE
+
+### Outcome Risk Factors
+- **Open decision requires resolution before starting**: Whether `/ll:init` should auto-invoke `ll-init --yes` or print a redirect message is left for implementation time. This is a user-facing behavior choice — resolve before implementing the stub body to avoid rewriting it mid-PR.
+- **Wiring tests will regress on doc updates**: `scripts/tests/test_wiring_reference_docs.py` (lines 101–102) asserts `/ll:init` appears in `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` and `docs/reference/CONFIGURATION.md`. When those references are updated to `ll-init`, the test fixture list must be updated in the same commit or the test suite will fail.
+- **No direct unit tests for skill file content**: The stub in `skills/init/SKILL.md` has no automated tests — correctness relies entirely on the acceptance criteria (manual verification that flags pass through, redirect is non-confusing).
+
+## Session Log
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f4b8008-562a-49e0-b070-2b75fe480d05.jsonl`
 
 ## Status
 
