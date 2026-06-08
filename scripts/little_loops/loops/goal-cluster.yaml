@@ -65,13 +65,15 @@ states:
               pass
 
       # Try EPIC-NNN shape
+      epic_matched = None
       if not goals:
           m = re.match(r'^(EPIC-\d+)$', stripped, re.IGNORECASE)
           if m:
-              epic_id = m.group(1).upper()
+              epic_matched = m.group(1).upper()
+              epic_id = epic_matched
               try:
                   result = subprocess.run(
-                      ['ll-issues', 'list', '--parent', epic_id, '--format', 'json'],
+                      ['ll-issues', 'list', '--parent', epic_id, '--json'],
                       capture_output=True, text=True, timeout=30
                   )
                   items = json.loads(result.stdout.strip() or '[]')
@@ -82,6 +84,16 @@ states:
                           goals.append({'goal_id': iid, 'goal_text': title, 'hints': f'parent:{epic_id}'})
               except Exception:
                   pass
+
+      # An EPIC was named but enumerated zero children: fail loudly rather than
+      # falling through to the raw-text fallback (which would re-add the EPIC id
+      # as a literal goal and silently route the wrong work).
+      if epic_matched and not goals:
+          print(f'ERROR: {epic_matched} has no child issues to enumerate '
+                f'(ll-issues list --parent {epic_matched} --json returned []). '
+                'Add child issues to the EPIC before dispatching goal-cluster.',
+                file=sys.stderr)
+          sys.exit(1)
 
       # Try sprint name shape (single non-JSON, non-EPIC line)
       if not goals and stripped and '\n' not in stripped and not re.match(r'^(EPIC-\d+|\[)', stripped, re.IGNORECASE):
@@ -390,7 +402,7 @@ states:
     loop: "${captured.cluster_batch_loop.output}"
     timeout: 3600
     with:
-      input: "${captured.cluster_batch_input.output}"
+      goal: "${captured.cluster_batch_input.output}"
       schedule_mode: "${context.schedule_mode}"
     capture: cluster_batch_output
     on_yes: write_cluster_success

@@ -10,7 +10,7 @@ discovered_by: capture-issue
 labels:
   - epic
   - captured
-relates_to: [ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1830, FEAT-1680, ENH-1839, ENH-1846, ENH-1847, ENH-1887, ENH-1888, ENH-1904, ENH-1905, ENH-1906, ENH-1907, ENH-1909, ENH-1911, ENH-1913, ENH-1914, ENH-1915, ENH-1916, BUG-1926, ENH-1927, BUG-1928, ENH-1945, ENH-1946]
+relates_to: [ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1830, FEAT-1680, ENH-1839, ENH-1846, ENH-1847, ENH-1887, ENH-1888, ENH-1904, ENH-1905, ENH-1906, ENH-1907, ENH-1909, ENH-1911, ENH-1913, ENH-1914, ENH-1915, ENH-1916, BUG-1926, ENH-1927, BUG-1928, ENH-1945, ENH-1946, ENH-2028]
 ---
 
 # EPIC-1707: history.db as Agent Context Layer
@@ -53,7 +53,7 @@ Without a consumer surface, the DB is dead weight: writers cost overhead, the sc
 
 ### Scope Boundary: ENH-1911
 
-ENH-1911 (Quantified evolution triggers from history) is `relates_to` this EPIC, not a child. It reads from the same `.ll/history.db` but serves **batch harness-evolution analysis** (`analyze-history` / `improve-claude-md`) rather than **runtime agent context injection**. Its recurrence detection may produce evidence toward this EPIC's success metric ("measurable reduction in repeated user_corrections") but is tracked and evaluated separately — it does not count toward the "at least 3 skills query history.db" wiring metric.
+ENH-1911 (Quantified evolution triggers from history) is `relates_to` this EPIC, not a child. It reads from the same `.ll/history.db` but serves **batch harness-evolution analysis** (`analyze-history` / `improve-claude-md`) rather than **runtime agent context injection**. Its recurrence detection may produce evidence toward this EPIC's success metric ("measurable reduction in repeated user_corrections") but is tracked and evaluated separately — it does not count toward the "at least 3 skills query history.db" wiring metric. ENH-1911's canonical EPIC home is **EPIC-2027** (Harness evolution via session history).
 
 ## Children
 
@@ -90,6 +90,7 @@ ENH-1911 (Quantified evolution triggers from history) is `relates_to` this EPIC,
 - **ENH-1839** — Populate `captured_at` in live-emitted issue events (bookkeeping — was missing from children list).
 - **ENH-1945** — Make session log discovery host-aware for Codex/OpenCode/Pi backfill (root-cause fix for multi-host log gap).
 - **ENH-1946** — Add ENH-1839 to EPIC-1707 children list (bookkeeping fix; this issue).
+- **ENH-2028** — session_digest.enabled defaults off — ambient history context never fires (default/config gap; depends on ENH-1907).
 
 ## Integration Map
 

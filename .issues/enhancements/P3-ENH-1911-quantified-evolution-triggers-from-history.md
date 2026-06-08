@@ -8,6 +8,7 @@ captured_at: "2026-06-03T20:59:38Z"
 discovered_date: 2026-06-03
 discovered_by: capture-issue
 depends_on: [ENH-1906]
+parent: EPIC-2027
 ---
 
 # ENH-1911: Quantified evolution triggers from history (recurring feedback + skill bypass)
@@ -69,26 +70,77 @@ recurring manual work but not recurring *feedback* or *bypass*.
    `recurrence_exempt_tables: [user_corrections, message_events]` override in the retention
    config before pruning is enabled.
 
-1. **Recurring-feedback detector.** Cluster `memory/feedback_*` files + correction-shaped
-   turns in `.ll/history.db` (FTS5) by topic; count recurrence; rank clusters with count ≥ N
-   (default 2) as candidate permanent rules.
-2. **Skill-bypass detector.** From session history, identify episodes where the user manually
-   performed work that a registered skill/loop covers (match against skill descriptions /
-   trigger keywords) without invoking it; count per skill.
-3. **Surface in `analyze-history`.** Add an "Evolution Triggers" section to its report:
-   recurring corrections (with counts + example sessions) and bypassed skills (with counts).
-4. **Feed `improve-claude-md`.** Pass the ranked candidates so it can propose a CLAUDE.md rule
-   or a description tweak, each annotated with its recurrence count as justification.
-5. Make thresholds configurable under `analysis.*` in `.ll/ll-config.json`.
+1. **Define models** in `scripts/little_loops/issue_history/models.py` (after `ManualPatternAnalysis` at line 414). Add four dataclasses following the `ManualPattern`/`ManualPatternAnalysis` field conventions (required positional first, then `occurrence_count: int = 0`, `list[str]` fields with `field(default_factory=list)`, string fields defaulting to `""`; `to_dict()` with slice caps):
+   - `RecurringFeedback(topic, occurrence_count, example_sessions, example_content, candidate_rule)`
+   - `RecurringFeedbackAnalysis(feedbacks, total_recurring_corrections, threshold_used, rule_candidates)`
+   - `SkillBypass(skill_name, bypass_count, example_sessions, evidence, suggested_improvement)`
+   - `SkillBypassAnalysis(bypasses, total_bypassed_invocations, threshold_used, improvement_suggestions)`
+   Also add two optional fields to `HistoryAnalysis` (after line 672): `recurring_feedback_analysis: RecurringFeedbackAnalysis | None = None` and `skill_bypass_analysis: SkillBypassAnalysis | None = None`.
+
+2. **Implement `detect_recurring_feedback()`** in new `scripts/little_loops/issue_history/evolution.py`. Reuse `_query_recurring_corrections()` pattern from `history_reader.py:869` (`GROUP BY content`, `COUNT(*) AS seen_count`) over `user_corrections`; filter by `seen_count >= threshold` (from `EvolutionConfig.feedback_min_recurrence`). Enrich each row with `session_id` list via a secondary query. Use `_connect_readonly()` + `_stale_cutoff()` from `history_reader.py`. Also scan `memory/feedback_*` files for curated signal (topic as filename stem, content as `candidate_rule` seed).
+
+3. **Implement `detect_skill_bypass()`** in `evolution.py`. Enumerate registered skills using the `_load_skill_descriptions()` + `_extract_keywords()` / `_match_phrasing()` pattern from `cli/verify_triggers.py`. For each session, check whether correction-shaped `message_events` content matches a skill's keywords but no `skill_events.skill_name` row for that skill exists in the same session window. Count per-skill bypass sessions; surface those meeting `EvolutionConfig.bypass_min_count`. Start conservative (require ≥2 keyword tokens to match, not just 1) to reduce false positives per Open Question #1.
+
+4. **Wire into orchestrator** at `scripts/little_loops/issue_history/analysis.py` after line 134 (after `detect_manual_patterns`). Call both detectors, thread `EvolutionConfig` thresholds from `HistoryConfig.evolution`, assign to `HistoryAnalysis.recurring_feedback_analysis` and `skill_bypass_analysis`. `calculate_analysis()` signature does not yet accept `db_path` — add it as an optional `Path | None = None` parameter defaulting to `session_store.DEFAULT_DB_PATH`.
+
+5. **Add report sections** to `scripts/little_loops/issue_history/formatting.py`. In `format_analysis_markdown()` (after line 883) and `format_analysis_text()` (after line 362), add an `## Evolution Triggers` section guarded by `if analysis.recurring_feedback_analysis or analysis.skill_bypass_analysis:`. Render two subsections: `### Recurring Corrections` (table: Topic | Count | Example Sessions | Candidate Rule) and `### Skill Bypasses` (table: Skill | Bypass Count | Example Sessions | Suggested Improvement).
+
+6. **Export from `__init__.py`**: add `RecurringFeedback`, `RecurringFeedbackAnalysis`, `SkillBypass`, `SkillBypassAnalysis` at both the import block (lines 103–104) and `__all__` (lines 150–151). Add `detect_recurring_feedback`, `detect_skill_bypass` from the new `evolution` module.
+
+7. **Update skill files**: `skills/analyze-history/SKILL.md` — document `## Evolution Triggers` output format. `skills/improve-claude-md/SKILL.md` and `algorithm.md` — document consumption of `RecurringFeedbackAnalysis.rule_candidates` and `SkillBypassAnalysis.improvement_suggestions` as additional input signals.
+
+8. **Tests**: new `scripts/tests/test_evolution_triggers.py` with `TestDetectRecurringFeedback` and `TestDetectSkillBypass` classes following `TestDetectManualPatterns` structure in `test_issue_history_quality.py` (empty-input early-return, threshold filtering, session grouping). Extend `test_issue_history_advanced_analytics.py` with model `to_dict()` round-trip tests. Extend `test_issue_history_formatting.py` with Evolution Triggers markdown section tests.
+
+9. **Config**: `config-schema.json` already has `analysis.evolution.*` keys (lines 1549–1565); `EvolutionConfig` in `config/features.py` already exists. Verify thresholds are passed through `calculate_analysis()` → detector calls — no new schema work needed.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+10. Update `scripts/little_loops/cli/history.py:main_history()` — In the `analyze` branch (lines 256–289), compute and pass `db_path` to `calculate_analysis()` using the `DEFAULT_DB_PATH` / `resolve_history_db` pattern already used in the `summary` and `sessions` branches. This threads the `db_path` parameter added in Step 4 through to the new detectors.
+11. Update `scripts/tests/test_cli_history.py` — Add test verifying the `analyze` branch resolves and passes `db_path` correctly to the mocked `calculate_analysis`; follow the existing mock pattern in that file.
 
 ## API/Interface
 
-- `analyze-history` report gains an `## Evolution Triggers` section.
-- New model(s) alongside `ManualPattern` in `scripts/little_loops/issue_history/models.py`,
-  e.g. `RecurringFeedback{topic, occurrence_count, example_sessions}` and
-  `SkillBypass{skill, bypass_count, example_sessions}`.
-- Config: `analysis.evolution.feedback_min_recurrence` (default 2),
-  `analysis.evolution.bypass_min_count` (default 2).
+- `analyze-history` report gains an `## Evolution Triggers` section (rendered by `formatting.py:format_analysis_markdown()` after the Manual Pattern Analysis section).
+- Four new dataclasses in `scripts/little_loops/issue_history/models.py` (after `ManualPatternAnalysis` at line 414):
+
+```python
+@dataclass
+class RecurringFeedback:
+    topic: str                                          # content excerpt or cluster key
+    occurrence_count: int = 0
+    example_sessions: list[str] = field(default_factory=list)  # capped at 5
+    example_content: list[str] = field(default_factory=list)   # capped at 3
+    candidate_rule: str = ""                           # proposed CLAUDE.md rule text
+
+@dataclass
+class RecurringFeedbackAnalysis:
+    feedbacks: list[RecurringFeedback] = field(default_factory=list)
+    total_recurring_corrections: int = 0
+    threshold_used: int = 2
+    rule_candidates: list[str] = field(default_factory=list)   # capped at 10
+
+@dataclass
+class SkillBypass:
+    skill_name: str                                    # skill that was bypassed
+    bypass_count: int = 0
+    example_sessions: list[str] = field(default_factory=list)  # capped at 5
+    evidence: list[str] = field(default_factory=list)          # user message snippets, capped at 3
+    suggested_improvement: str = ""                  # sharper trigger or lighter skill suggestion
+
+@dataclass
+class SkillBypassAnalysis:
+    bypasses: list[SkillBypass] = field(default_factory=list)
+    total_bypassed_invocations: int = 0
+    threshold_used: int = 2
+    improvement_suggestions: list[str] = field(default_factory=list)  # capped at 10
+```
+
+- Two new optional fields on `HistoryAnalysis` (after `cross_cutting_analysis` at line 672):
+  `recurring_feedback_analysis: RecurringFeedbackAnalysis | None = None`
+  `skill_bypass_analysis: SkillBypassAnalysis | None = None`
+- Config: `analysis.evolution.feedback_min_recurrence` (default 2), `analysis.evolution.bypass_min_count` (default 2) — **already in `config-schema.json` and `EvolutionConfig`**.
 
 ## Scope Boundaries
 
@@ -118,33 +170,54 @@ recurring manual work but not recurring *feedback* or *bypass*.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_history/models.py` — add `RecurringFeedback` / `SkillBypass` models
+- `scripts/little_loops/issue_history/models.py` — add `RecurringFeedback`, `RecurringFeedbackAnalysis`, `SkillBypass`, `SkillBypassAnalysis` dataclasses after `ManualPatternAnalysis` (line 414); add two new `| None` fields to `HistoryAnalysis` after line 672
+- `scripts/little_loops/issue_history/analysis.py` — wire new detectors in `calculate_analysis()` after the `detect_manual_patterns` call at line 134; pass `EvolutionConfig` thresholds
+- `scripts/little_loops/issue_history/formatting.py` — add `## Evolution Triggers` rendering in `format_analysis_markdown()` after line 883 and `format_analysis_text()` after line 362, following the `ManualPatternAnalysis` guard pattern (`if analysis.recurring_feedback_analysis:`)
+- `scripts/little_loops/issue_history/__init__.py` — add 4 new model names at both the import block (lines 103–104) and `__all__` (lines 150–151); add new detector functions
 - `skills/analyze-history/SKILL.md` — add the `## Evolution Triggers` report section
 - `skills/improve-claude-md/SKILL.md` — consume the ranked candidates
-- `.ll/ll-config.json` schema (`config-schema.json`) — new `analysis.evolution.*` keys
-- `scripts/tests/test_issue_history*.py` — detector unit tests
+- `skills/improve-claude-md/algorithm.md` — update algorithm to accept evolution trigger proposals as input
+- `scripts/little_loops/cli/history.py` — update `main_history()` analyze branch to compute and pass `db_path` to `calculate_analysis()`, using the `DEFAULT_DB_PATH` pattern already established in the `summary` and `sessions` branches [Wiring pass finding]
+
+### New Files
+- `scripts/little_loops/issue_history/evolution.py` — new dedicated module (parallel to `quality.py`) for `detect_recurring_feedback()` and `detect_skill_bypass()` detector functions; separate from `quality.py` because these query history.db directly rather than scanning issue file text
 
 ### Similar Patterns
-- `scripts/little_loops/issue_history/models.py` — `ManualPattern` / `ManualPatternAnalysis` (≥2-issue recurrence detector to mirror)
-- `ll-history` / `ll-history-context` — FTS5 + topic-excerpt machinery to reuse
-- `agents/loop-specialist.md` — post-hoc failure-mode taxonomy (related "evolve the harness" surface)
+
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/issue_history/models.py:366` — `ManualPattern` dataclass (exact field template: required positional `pattern_type`/`pattern_description`, then `occurrence_count: int = 0`, `list[str]` fields with `field(default_factory=list)`, string fields defaulting to `""`; `to_dict()` caps lists at 10/5 with slice)
+- `scripts/little_loops/issue_history/quality.py:272` — `detect_manual_patterns()` (full detector pattern: early-return on empty input, module-level config dict, per-issue content scan, sort descending by count, build suggestions list filtered by threshold ≥ 2)
+- `scripts/little_loops/history_reader.py:869` — `_query_recurring_corrections()` — **directly reusable**: already `GROUP BY content` with `COUNT(*) AS seen_count` over `user_corrections`; just needs threshold filter and session-ID enrichment
+- `scripts/little_loops/history_reader.py:196` — `find_user_corrections()` — `LIKE %topic%` fuzzy search over `user_corrections` (30-day stale filter by default)
+- `scripts/little_loops/history_reader.py` — `_connect_readonly()` / `_stale_cutoff()` — standard read-only DB connection + stale cutoff helpers; all detector functions must use this pattern
+- `scripts/little_loops/cli/verify_triggers.py` — `_load_skill_descriptions()`, `_extract_keywords()`, `_match_phrasing()`, `STOPWORDS` — skill registry enumeration + keyword tokenization primitives needed for bypass detection
+- `scripts/little_loops/issue_history/quality.py` — `detect_config_gaps()` — shows how to enumerate skills from `project_root / "skills"` when DB-level enumeration is not enough
+- `scripts/little_loops/session_store.py:142` — `is_correction()` — three-regex correction classifier used by `mine_corrections_from_messages()`; `user_corrections` table is the pre-aggregated result
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_history/__init__.py` — exports `ManualPattern`/`ManualPatternAnalysis`; must export new `RecurringFeedback`/`SkillBypass` models
 - `skills/analyze-history/SKILL.md` — consumes `ManualPatternAnalysis` output; must consume new evolution trigger models
+- `scripts/little_loops/config/features.py` — `EvolutionConfig` dataclass **already exists** with `feedback_min_recurrence: int = 2` and `bypass_min_count: int = 2`; `HistoryConfig.evolution` already wired; verify thresholds are threaded into `calculate_analysis()` call sites
 
 ### Tests
 - `scripts/tests/test_issue_history_advanced_analytics.py` — extend with `RecurringFeedback`/`SkillBypass` model tests
-- `scripts/tests/test_issue_history_analysis.py` — extend with evolution-trigger analysis integration tests
-- `scripts/tests/test_evolution_triggers.py` (new) — detector logic unit tests (threshold filtering, cluster dedup, bypass matching)
+- `scripts/tests/test_issue_history_analysis.py` — extend with evolution-trigger analysis integration tests (follow call-site pattern at `analysis.py:134`)
+- `scripts/tests/test_issue_history_formatting.py` — extend with `## Evolution Triggers` markdown section rendering tests
+- `scripts/tests/test_evolution_triggers.py` (new) — detector logic unit tests; follow `TestDetectManualPatterns` class structure in `test_issue_history_quality.py` (empty-input early-return, threshold filtering, cluster dedup, bypass matching)
+- `scripts/tests/test_config.py` — `TestHistoryConfig.test_evolution_defaults()` **already exists**; no changes needed for config defaults
+- `scripts/tests/test_cli_history.py` — tests `main_history()` subcommands with mocked `calculate_analysis`; add test verifying the `analyze` branch correctly resolves and passes `db_path` [Wiring pass finding]
 
 ### Documentation
 - `docs/reference/API.md` — update `little_loops.issue_history.models` section with new models
+- `docs/reference/CONFIGURATION.md` — document `analysis.evolution.*` config keys
 - `skills/analyze-history/SKILL.md` — document the `## Evolution Triggers` report section and output format
 
 ### Configuration
-- `analysis.evolution.feedback_min_recurrence` (default 2)
-- `analysis.evolution.bypass_min_count` (default 2)
+- `config-schema.json` — `analysis.evolution.feedback_min_recurrence` and `analysis.evolution.bypass_min_count` **already added** at lines 1549–1565 (ENH-1911 attribution); no schema changes needed
+- `EvolutionConfig` dataclass in `scripts/little_loops/config/features.py` **already exists** with correct defaults; verify it is passed into detector calls in `analysis.py`
 
 ## Impact
 
@@ -175,6 +248,8 @@ rigorous "propose, don't auto-grade" stance for the action side.
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-08T23:59:00 - `7fa034e8-b10d-497f-82ed-c69aea9b71df.jsonl`
+- `/ll:refine-issue` - 2026-06-08T23:24:10 - `7fa034e8-b10d-497f-82ed-c69aea9b71df.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T04:34:19 - `e1e6b264-2dd0-4d92-92be-102681aa7fbc.jsonl`
 - `/ll:format-issue` - 2026-06-03T21:05:33 - `b833547d-130c-42f1-b9a5-75900748b2de.jsonl`

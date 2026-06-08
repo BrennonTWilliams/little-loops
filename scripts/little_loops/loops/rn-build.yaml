@@ -364,7 +364,7 @@ states:
         /ll:scope-epic "Project from spec" --from-doc docs/data-model.md --auto
 
       After scope-epic completes:
-      1. Run `ll-issues list --format json` and identify the newly created EPIC ID
+      1. Run `ll-issues list --json` and identify the newly created EPIC ID
          (format: EPIC-NNN — the highest-numbered EPIC in the list)
       2. Write the EPIC ID to ${context.run_dir}/epic-id.txt
       3. Output the EPIC ID on its own line as: EPIC_ID:<id>

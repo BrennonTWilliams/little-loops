@@ -95,17 +95,17 @@ class TestComputeEpicProgress:
         assert child_ids == {"BUG-010", "ENH-011"}
 
     def test_forward_resolution_via_relates_to(self, tmp_path: Path) -> None:
+        # relates_to is a cross-reference field, not a child edge — should not contribute to children
         epic = _make_issue(tmp_path, "EPIC-002", relates_to=["FEAT-030", "ENH-040"])
         feat = _make_issue(tmp_path, "FEAT-030")
         enh = _make_issue(tmp_path, "ENH-040")
 
         result = compute_epic_progress("EPIC-002", [epic, feat, enh])
         assert result is not None
-        child_ids = {c.issue_id for c in result.children}
-        assert child_ids == {"FEAT-030", "ENH-040"}
+        assert result.children == []
 
     def test_union_deduplication(self, tmp_path: Path) -> None:
-        # EPIC has relates_to: BUG-001 AND BUG-001 also has parent: EPIC-003
+        # Only parent: back-reference counts; relates_to on the EPIC is ignored
         epic = _make_issue(tmp_path, "EPIC-003", relates_to=["BUG-001"])
         bug = _make_issue(tmp_path, "BUG-001", parent="EPIC-003")
 
@@ -114,9 +114,9 @@ class TestComputeEpicProgress:
         assert len(result.children) == 1
 
     def test_all_done_100_percent(self, tmp_path: Path) -> None:
-        epic = _make_issue(tmp_path, "EPIC-004", relates_to=["BUG-002", "BUG-003"])
-        b1 = _make_issue(tmp_path, "BUG-002", status="done")
-        b2 = _make_issue(tmp_path, "BUG-003", status="cancelled")
+        epic = _make_issue(tmp_path, "EPIC-004")
+        b1 = _make_issue(tmp_path, "BUG-002", status="done", parent="EPIC-004")
+        b2 = _make_issue(tmp_path, "BUG-003", status="cancelled", parent="EPIC-004")
 
         result = compute_epic_progress("EPIC-004", [epic, b1, b2])
         assert result is not None
@@ -125,10 +125,10 @@ class TestComputeEpicProgress:
         assert result.by_status.get("cancelled", 0) == 1
 
     def test_mixed_statuses(self, tmp_path: Path) -> None:
-        epic = _make_issue(tmp_path, "EPIC-005", relates_to=["BUG-010", "BUG-011", "BUG-012"])
-        b1 = _make_issue(tmp_path, "BUG-010", status="done")
-        b2 = _make_issue(tmp_path, "BUG-011", status="open")
-        b3 = _make_issue(tmp_path, "BUG-012", status="blocked")
+        epic = _make_issue(tmp_path, "EPIC-005")
+        b1 = _make_issue(tmp_path, "BUG-010", status="done", parent="EPIC-005")
+        b2 = _make_issue(tmp_path, "BUG-011", status="open", parent="EPIC-005")
+        b3 = _make_issue(tmp_path, "BUG-012", status="blocked", parent="EPIC-005")
 
         result = compute_epic_progress("EPIC-005", [epic, b1, b2, b3])
         assert result is not None
@@ -139,8 +139,10 @@ class TestComputeEpicProgress:
         assert abs(result.percent_blocked - 33.3) < 1.0
 
     def test_blocked_only_no_open(self, tmp_path: Path) -> None:
-        epic = _make_issue(tmp_path, "EPIC-006", relates_to=["BUG-020"])
-        blocked = _make_issue(tmp_path, "BUG-020", status="blocked", blocked_by=["BUG-099"])
+        epic = _make_issue(tmp_path, "EPIC-006")
+        blocked = _make_issue(
+            tmp_path, "BUG-020", status="blocked", parent="EPIC-006", blocked_by=["BUG-099"]
+        )
 
         result = compute_epic_progress("EPIC-006", [epic, blocked])
         assert result is not None
@@ -149,10 +151,10 @@ class TestComputeEpicProgress:
         assert result.oldest_open.issue_id == "BUG-020"
 
     def test_done_children_included_in_totals(self, tmp_path: Path) -> None:
-        epic = _make_issue(tmp_path, "EPIC-007", relates_to=["BUG-030", "BUG-031", "BUG-032"])
-        b1 = _make_issue(tmp_path, "BUG-030", status="done")
-        b2 = _make_issue(tmp_path, "BUG-031", status="done")
-        b3 = _make_issue(tmp_path, "BUG-032", status="open")
+        epic = _make_issue(tmp_path, "EPIC-007")
+        b1 = _make_issue(tmp_path, "BUG-030", status="done", parent="EPIC-007")
+        b2 = _make_issue(tmp_path, "BUG-031", status="done", parent="EPIC-007")
+        b3 = _make_issue(tmp_path, "BUG-032", status="open", parent="EPIC-007")
 
         result = compute_epic_progress("EPIC-007", [epic, b1, b2, b3])
         assert result is not None
@@ -160,9 +162,13 @@ class TestComputeEpicProgress:
         assert abs(result.percent_done - 66.7) < 1.0
 
     def test_oldest_open_prefers_captured_at(self, tmp_path: Path) -> None:
-        epic = _make_issue(tmp_path, "EPIC-008", relates_to=["BUG-040", "BUG-041"])
-        newer = _make_issue(tmp_path, "BUG-040", status="open", captured_at="2026-05-01T00:00:00Z")
-        older = _make_issue(tmp_path, "BUG-041", status="open", captured_at="2026-01-01T00:00:00Z")
+        epic = _make_issue(tmp_path, "EPIC-008")
+        newer = _make_issue(
+            tmp_path, "BUG-040", status="open", parent="EPIC-008", captured_at="2026-05-01T00:00:00Z"
+        )
+        older = _make_issue(
+            tmp_path, "BUG-041", status="open", parent="EPIC-008", captured_at="2026-01-01T00:00:00Z"
+        )
 
         result = compute_epic_progress("EPIC-008", [epic, newer, older])
         assert result is not None
@@ -170,8 +176,10 @@ class TestComputeEpicProgress:
         assert result.oldest_open.issue_id == "BUG-041"
 
     def test_oldest_open_age_days_is_non_negative(self, tmp_path: Path) -> None:
-        epic = _make_issue(tmp_path, "EPIC-009", relates_to=["BUG-050"])
-        child = _make_issue(tmp_path, "BUG-050", status="open", captured_at="2020-01-01T00:00:00Z")
+        epic = _make_issue(tmp_path, "EPIC-009")
+        child = _make_issue(
+            tmp_path, "BUG-050", status="open", parent="EPIC-009", captured_at="2020-01-01T00:00:00Z"
+        )
 
         result = compute_epic_progress("EPIC-009", [epic, child])
         assert result is not None
@@ -179,8 +187,8 @@ class TestComputeEpicProgress:
         assert result.oldest_open_age_days > 0
 
     def test_oldest_open_none_when_all_terminal(self, tmp_path: Path) -> None:
-        epic = _make_issue(tmp_path, "EPIC-010", relates_to=["BUG-060"])
-        child = _make_issue(tmp_path, "BUG-060", status="done")
+        epic = _make_issue(tmp_path, "EPIC-010")
+        child = _make_issue(tmp_path, "BUG-060", status="done", parent="EPIC-010")
 
         result = compute_epic_progress("EPIC-010", [epic, child])
         assert result is not None
@@ -188,8 +196,8 @@ class TestComputeEpicProgress:
         assert result.oldest_open_age_days is None
 
     def test_to_dict_structure(self, tmp_path: Path) -> None:
-        epic = _make_issue(tmp_path, "EPIC-011", relates_to=["BUG-070"])
-        child = _make_issue(tmp_path, "BUG-070", status="open")
+        epic = _make_issue(tmp_path, "EPIC-011")
+        child = _make_issue(tmp_path, "BUG-070", status="open", parent="EPIC-011")
 
         result = compute_epic_progress("EPIC-011", [epic, child])
         assert result is not None
@@ -204,9 +212,9 @@ class TestComputeEpicProgress:
         json.dumps(d)
 
     def test_deferred_children_included_unlike_sprint(self, tmp_path: Path) -> None:
-        epic = _make_issue(tmp_path, "EPIC-012", relates_to=["BUG-080", "BUG-081"])
-        deferred = _make_issue(tmp_path, "BUG-080", status="deferred")
-        active = _make_issue(tmp_path, "BUG-081", status="open")
+        epic = _make_issue(tmp_path, "EPIC-012")
+        deferred = _make_issue(tmp_path, "BUG-080", status="deferred", parent="EPIC-012")
+        active = _make_issue(tmp_path, "BUG-081", status="open", parent="EPIC-012")
 
         result = compute_epic_progress("EPIC-012", [epic, deferred, active])
         assert result is not None

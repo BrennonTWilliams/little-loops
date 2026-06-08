@@ -173,6 +173,26 @@ class TestGoalClusterInputNormalization:
             "load_goals must use exit_code evaluator (MR-1 non-LLM gate)"
         )
 
+    def test_load_goals_epic_enumeration_uses_valid_json_flag(self, loop_data: dict) -> None:
+        # BUG-015: '--format json' is not a valid `ll-issues list` flag; the valid flag
+        # is '--json'. Using the wrong flag silently fails and falls through to the raw
+        # fallback, yielding the EPIC id as a literal goal instead of its children.
+        action = loop_data["states"]["load_goals"].get("action", "")
+        assert "--format" not in action, (
+            "load_goals must not use '--format json' (invalid ll-issues list flag); use '--json'"
+        )
+        assert "'--parent', epic_id, '--json'" in action, (
+            "load_goals must enumerate EPIC children via 'll-issues list --parent <id> --json'"
+        )
+
+    def test_load_goals_fails_loudly_on_empty_epic(self, loop_data: dict) -> None:
+        # BUG-015 AC#3: a named EPIC with zero children must fail loudly, not fall
+        # through to the raw-text fallback (which re-adds the EPIC id as a literal goal).
+        action = loop_data["states"]["load_goals"].get("action", "")
+        assert "epic_matched" in action and "has no child issues" in action, (
+            "load_goals must exit 1 with a warning when a named EPIC enumerates zero children"
+        )
+
 
 class TestGoalClusterDedupBatch:
     """Tests for the dedup_and_batch state structure."""
@@ -228,6 +248,24 @@ class TestGoalClusterReassessIntegration:
                 assert "on_yes" in s, f"reassess state '{name}' missing on_yes"
                 assert "on_no" in s, f"reassess state '{name}' missing on_no"
                 assert "on_partial" in s, f"reassess state '{name}' missing on_partial"
+
+
+class TestGoalClusterDispatch:
+    """Tests for the dispatch_cluster sub-loop hand-off contract."""
+
+    def test_dispatch_cluster_passes_goal_key_not_input(self, loop_data: dict) -> None:
+        # BUG-016: sub-loops (loop-router et al.) declare their primary input as
+        # `goal` (input_key: goal). Passing `with: {input: ...}` leaves context.goal
+        # empty, so classify_goal sees an empty GOAL and routes to propose_new_loop.
+        with_block = loop_data["states"]["dispatch_cluster"].get("with", {})
+        assert "goal" in with_block, (
+            "dispatch_cluster must pass the batch goal under the 'goal' key "
+            "(sub-loops declare input_key: goal)"
+        )
+        assert "input" not in with_block, (
+            "dispatch_cluster must not pass the batch goal under 'input' — "
+            "loop-router ignores context.input and reads context.goal"
+        )
 
 
 class TestCatalogExclusivity:

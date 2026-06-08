@@ -70,7 +70,9 @@ def compute_epic_progress(
 ) -> EpicProgress | None:
     """Compute progress aggregates for an EPIC from all loaded issues.
 
-    Resolution uses union of ``relates_to:`` (forward) + ``parent:`` (backward), deduplicated.
+    Child resolution uses only the ``parent:`` back-reference on child issues.
+    ``relates_to:`` is a cross-reference field (siblings, dependencies) and is
+    intentionally excluded to avoid inflating counts with non-child references.
     All statuses (including done/cancelled/deferred) are included in totals.
 
     Returns None when the EPIC ID is not found in all_issues.
@@ -82,9 +84,7 @@ def compute_epic_progress(
         return None
     epic_info = epic_matches[0]
 
-    forward_ids: set[str] = set(epic_info.relates_to)
-    backward_ids: set[str] = {i.issue_id for i in all_issues if i.parent == epic_id}
-    child_ids = forward_ids | backward_ids
+    child_ids: set[str] = {i.issue_id for i in all_issues if i.parent == epic_id}
 
     children = [i for i in all_issues if i.issue_id in child_ids]
 
