@@ -2207,6 +2207,115 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "\033[?1049l" in out
 
+    @staticmethod
+    def _failing_executor(
+        events: list[dict[str, Any]] | None = None, final_state: str = "failed"
+    ) -> MockExecutor:
+        """A MockExecutor that emits failure events then lands on a failure terminal."""
+        fail_events = (
+            events
+            if events is not None
+            else [
+                {
+                    "event": "action_complete",
+                    "state": "init",
+                    "exit_code": 1,
+                    "output": "ERROR: Spec file not found: PROJECT-SPEC.md",
+                }
+            ]
+        )
+
+        class _Failing(MockExecutor):
+            def __init__(self) -> None:
+                super().__init__(events=fail_events)
+
+            def run(self) -> ExecutionResult:
+                for event in self._events:
+                    if self._on_event:
+                        self._on_event(event)
+                return ExecutionResult(
+                    final_state=final_state,
+                    iterations=1,
+                    terminated_by="terminal",
+                    duration_ms=0,
+                    captured={},
+                )
+
+        return _Failing()
+
+    def test_failure_reason_reprinted_after_alt_screen_teardown(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A failure terminal under --clear --show-diagrams re-prints the failing state's output."""
+        executor = self._failing_executor()
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True)
+            )
+        out = capsys.readouterr().out
+        assert "Failure reason:" in out
+        assert "ERROR: Spec file not found: PROJECT-SPEC.md" in out
+
+    def test_failure_reason_printed_in_nonverbose_without_alt_screen(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """In non-verbose mode the per-state output is never shown inline, so surface it."""
+        executor = self._failing_executor()
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args())
+        out = capsys.readouterr().out
+        assert "Failure reason:" in out
+        assert "ERROR: Spec file not found: PROJECT-SPEC.md" in out
+
+    def test_failure_reason_surfaces_action_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """An on_error/exception route (empty prev_result) surfaces the action_error message."""
+        executor = self._failing_executor(
+            events=[
+                {
+                    "event": "action_error",
+                    "state": "init",
+                    "error": "Invalid variable: ${SPEC_LIST[@]} (expected namespace.path)",
+                    "route": "on_error",
+                }
+            ]
+        )
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args())
+        out = capsys.readouterr().out
+        assert "Failure reason:" in out
+        assert "Invalid variable: ${SPEC_LIST[@]}" in out
+
+    def test_failure_reason_not_double_printed_in_verbose(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """In verbose (non-alt-screen) mode the live renderer already echoed the output."""
+        executor = self._failing_executor()
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        assert "Failure reason:" not in out
+
+    def test_success_terminal_no_failure_reason(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """A `done` terminal under alt-screen prints no failure-reason block."""
+        executor = MockExecutor(events=[])  # base returns final_state="done"
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True)
+            )
+        out = capsys.readouterr().out
+        assert "Failure reason:" not in out
+
+    def test_failed_terminal_not_colored_green(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """A non-`done` terminal is coloured as failure (orange), never success-green."""
+        import little_loops.cli.output as output_mod
+
+        executor = self._failing_executor()
+        with patch.object(output_mod, "_USE_COLOR", True):
+            run_foreground(executor, self._make_fsm(), self._make_args())
+        out = capsys.readouterr().out
+        assert "\033[38;5;208mfailed\033[0m" in out
+        assert "\033[32mfailed" not in out
+
     def test_scroll_region_set_when_alt_screen_active(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

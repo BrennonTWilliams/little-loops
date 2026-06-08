@@ -7,8 +7,20 @@ priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1978
-relates_to: [EPIC-1978, FEAT-1979]
-labels: [init, cli, tui, dx]
+relates_to:
+- EPIC-1978
+- FEAT-1979
+labels:
+- init
+- cli
+- tui
+- dx
+confidence_score: 94
+outcome_confidence: 80
+score_complexity: 18
+score_test_coverage: 16
+score_ambiguity: 21
+score_change_surface: 25
 ---
 
 # FEAT-1980: ll-init interactive terminal TUI

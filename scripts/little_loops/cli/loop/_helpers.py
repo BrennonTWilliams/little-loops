@@ -1179,6 +1179,36 @@ def run_foreground(
             else:
                 executor._on_event = renderer.handle_event
 
+        # Capture the last failure-relevant message from the event stream so the
+        # completion summary can surface *why* a run failed. This is the only reliable
+        # source: on on_error / exception routes the executor leaves prev_result and
+        # captured empty, and alt-screen teardown or non-verbose mode hide the live
+        # output. action_error carries interpolation/exception reasons; a non-zero
+        # action_complete carries the failing state's stdout.
+        _failure_capture: dict[str, str] = {}
+
+        def _capture_failure(event: dict[str, Any]) -> None:
+            ev = event.get("event")
+            if ev == "action_error" and event.get("error"):
+                _failure_capture["error"] = str(event["error"])
+            elif ev == "action_complete" and event.get("exit_code") not in (0, None):
+                out = event.get("output") or event.get("output_preview") or ""
+                if out:
+                    _failure_capture["output"] = str(out)
+
+        if not renderer.quiet:
+            if hasattr(executor, "event_bus"):
+                executor.event_bus.register(_capture_failure)
+            else:
+                _prev_capture_cb = executor._on_event
+
+                def _chained_capture(event: dict[str, Any]) -> None:
+                    if _prev_capture_cb:
+                        _prev_capture_cb(event)
+                    _capture_failure(event)
+
+                executor._on_event = _chained_capture
+
         # Wire follow mode — streams history-formatted events independently of quiet
         if getattr(args, "follow", False):
             from little_loops.cli.loop.info import _format_history_event
@@ -1222,6 +1252,10 @@ def run_foreground(
             else:
                 result = executor.run()
         finally:
+            # Remember whether we were in the alt-screen so the summary block can
+            # decide whether the failing state's output still needs re-printing
+            # (alt-screen teardown wipes it from scrollback).
+            _was_alt_screen = _using_alt_screen
             if _using_alt_screen:
                 # Reset DECSTBM scroll region BEFORE exiting alt-screen, otherwise
                 # the main buffer is left with a restricted scroll region (one of
@@ -1240,10 +1274,34 @@ def run_foreground(
                 minutes = int(duration_sec // 60)
                 seconds = duration_sec % 60
                 duration_str = f"{minutes}m {seconds:.0f}s"
-            if result.terminated_by == "terminal":
+            # A terminal state whose name is not "done" represents failure (the
+            # established convention; see sub-FSM routing in executor.py). Colour
+            # only genuine success green so a `failed` terminal doesn't read as a pass.
+            _is_success = result.terminated_by in ("terminal", "signal", "handoff") and not (
+                result.terminated_by == "terminal" and result.final_state != "done"
+            )
+            if _is_success:
                 state_colored = colorize(result.final_state, "32")
             else:
                 state_colored = colorize(result.final_state, "38;5;208")
+
+            # Surface the failing state's output as the failure reason. It is otherwise
+            # invisible: the alt-screen wipes it on teardown, and in non-verbose mode the
+            # per-state stdout is never printed inline at all. Skip only the verbose
+            # non-alt-screen case, where the live renderer already echoed it.
+            if not _is_success and (_was_alt_screen or not renderer.verbose):
+                reason_text = (
+                    _failure_capture.get("error")
+                    or _failure_capture.get("output")
+                    or result.error
+                    or ""
+                ).strip()
+                if reason_text:
+                    print()
+                    print(colorize("Failure reason:", "1"))
+                    for _line in reason_text.splitlines()[-40:]:  # cap to bound scrollback
+                        print(colorize("│ " + _line, "2"))
+
             completion_prefix = "Resumed and completed" if mode == "resume" else "Loop completed"
             rejection_count = 0
             for _t in getattr(getattr(executor, "event_bus", None), "_transports", []):
