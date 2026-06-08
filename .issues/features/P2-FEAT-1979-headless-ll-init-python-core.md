@@ -2,13 +2,25 @@
 id: FEAT-1979
 title: Headless ll-init Python core
 type: feature
-status: open
+status: done
 priority: P2
 discovered_date: 2026-06-05
+captured_at: 2026-06-05 00:00:00+00:00
+completed_at: 2026-06-08 15:32:40+00:00
 discovered_by: capture-issue
 parent: EPIC-1978
-relates_to: [EPIC-1978]
-labels: [init, cli, refactor]
+relates_to:
+- EPIC-1978
+labels:
+- init
+- cli
+- refactor
+confidence_score: 93
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1979: Headless ll-init Python core
@@ -140,4 +152,6 @@ Entry points (non-interactive only here):
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-08T15:15:01 - `87ce94e4-991b-4645-ac6f-c267adbf0fbd.jsonl`
 - `/ll:format-issue` - 2026-06-06T20:37:51 - `b4ac5d16-b4a5-41a6-9803-9cd80b05ce08.jsonl`
+- `/ll:confidence-check` - 2026-06-08T00:00:00 - `4bf3936f-1553-4edf-b555-64c4f6f6e835.jsonl`
