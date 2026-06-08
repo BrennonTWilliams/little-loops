@@ -823,9 +823,9 @@ ll-loop run rn-build --context spec=specs/sample.md
 
 #### Spec file format
 
-`rn-build` accepts any Markdown file as its spec, but output quality (depth of tech research, accuracy of design artifacts, scope of the EPIC) scales directly with spec quality. Use `specs/SPEC_TEMPLATE.md` as a starting point.
+`rn-build` accepts any Markdown file as its spec. If the three target sections are present, the spec is used as-is. If any are missing, a `normalize_spec` pre-gate runs automatically before `tech_research` — output quality still scales with spec quality, but you are not required to pre-format the file correctly. Use `specs/SPEC_TEMPLATE.md` as a starting point.
 
-**Required sections** (minimum viable spec):
+**Target sections** (used by `normalize_spec` as the canonical format):
 
 | Section | Purpose |
 |---------|---------|
@@ -836,6 +836,16 @@ ll-loop run rn-build --context spec=specs/sample.md
 **Optional sections**: `## Data Model`, `## Non-Goals`, `## Tech Constraints`. When omitted, `rn-build` infers them from the required sections. Including them narrows the design space and reduces hallucinated constraints.
 
 See `specs/SPEC_TEMPLATE.md` for a fully annotated template and `specs/sample.md` for a worked example.
+
+**Spec normalization pre-gate** (ENH-2017)
+
+When any of the three target sections are missing, `rn-build` runs a normalization pass before `tech_research`:
+
+1. `check_structure` (non-LLM) — counts present sections via `grep`; routes to `llm_normalize` if fewer than 3 are found, or proceeds directly to `tech_research` if all 3 exist.
+2. `llm_normalize` — infers and populates missing sections from whatever content is present; writes the normalized spec to `${context.run_dir}/spec_normalized.md`. The original file is never modified.
+3. `verify_structure` (non-LLM) — confirms all 3 sections exist in the normalized output; proceeds to `tech_research` on success.
+
+If normalization fails (e.g., the spec file is empty or contains no project description), the loop aborts with a clear error message referencing `specs/SPEC_TEMPLATE.md`. Specs that already contain all three sections skip normalization entirely.
 
 #### Smoke test
 
