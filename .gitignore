@@ -84,6 +84,13 @@ docs/demo
 .loops/cli-anything/
 *.Cast
 
+# Loop runtime state (inside scripts/little_loops/loops/)
+scripts/little_loops/loops/.running/
+scripts/little_loops/loops/.history/
+
+# Scratch / investigation notes
+*-bash-array-collision.md
+
 # Debug output files
 deepcodebase-*.txt
 

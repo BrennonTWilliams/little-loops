@@ -68,7 +68,7 @@ states:
         exit 1
       fi
       IFS=',' read -ra SPEC_LIST <<< "$SPECS"
-      for S in "${SPEC_LIST[@]}"; do
+      for S in "$${SPEC_LIST[@]}"; do
         S=$(echo "$S" | xargs)
         if [ ! -f "$S" ]; then
           echo "ERROR: Spec file not found: $S"
@@ -99,7 +99,7 @@ states:
       SPECS="${context.spec}"
       IFS=',' read -ra SPEC_LIST <<< "$SPECS"
       COMBINED="$RUN_DIR/spec_combined.tmp"
-      for S in "${SPEC_LIST[@]}"; do
+      for S in "$${SPEC_LIST[@]}"; do
         S=$(echo "$S" | xargs)
         cat "$S"
       done > "$COMBINED"
@@ -188,7 +188,7 @@ states:
     action_type: shell
     action: |
       EPIC="${context.resume_epic}"
-      HARNESS="${context.resume_harness:-}"
+      HARNESS="${context.resume_harness}"
       RUN_DIR="${context.run_dir}"
       mkdir -p "$RUN_DIR"
       if [ -z "$EPIC" ]; then
