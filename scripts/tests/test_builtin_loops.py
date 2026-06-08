@@ -147,6 +147,8 @@ class TestBuiltinLoopFiles:
             "loop-composer-adaptive",
             "goal-cluster",
             "rn-build",
+            "vega-viz",
+            "canvas-sketch-generator",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -2713,8 +2715,8 @@ class TestRecursiveRefineLoop:
         """enqueue_children must find and move the parent file to .issues/completed/ after decomposition."""
         state = data["states"].get("enqueue_children", {})
         action = state.get("action", "")
-        assert "find .issues" in action, (
-            "enqueue_children must use 'find .issues' to locate the parent file"
+        assert "ll-issues path" in action, (
+            "enqueue_children must use 'll-issues path' to locate the parent file"
         )
         assert "completed" in action, (
             "enqueue_children must reference 'completed' directory for the move"
@@ -2727,10 +2729,10 @@ class TestRecursiveRefineLoop:
         """enqueue_or_skip children-found branch must find and move the parent file to .issues/completed/."""
         state = data["states"].get("enqueue_or_skip", {})
         action = state.get("action", "")
-        # The find+mv block must appear before the 'else' (no-children branch)
+        # The ll-issues path + mv block must appear before the 'else' (no-children branch)
         children_branch = action.split("else")[0] if "else" in action else action
-        assert "find .issues" in children_branch, (
-            "enqueue_or_skip children-found branch must use 'find .issues' to locate the parent file"
+        assert "ll-issues path" in children_branch, (
+            "enqueue_or_skip children-found branch must use 'll-issues path' to locate the parent file"
         )
         assert "completed" in children_branch, (
             "enqueue_or_skip children-found branch must reference 'completed' directory"

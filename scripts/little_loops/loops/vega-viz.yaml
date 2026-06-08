@@ -463,13 +463,13 @@ states:
         cp "$CRIT" "$DIR"/best.critique.md 2>/dev/null || true
       fi
       if grep -qE 'VERDICT:[[:space:]]*ALL_PASS' "$CRIT" 2>/dev/null; then
-        echo "PASS"
+        echo "EVAL_PASS"
       else
         echo "ITERATE"
       fi
     evaluate:
       type: output_contains
-      pattern: "PASS"
+      pattern: "EVAL_PASS"
     on_yes: done
     on_no: generate
     on_error: generate

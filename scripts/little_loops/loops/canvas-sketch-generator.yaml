@@ -1,0 +1,366 @@
+name: canvas-sketch-generator
+category: harness
+input_key: description
+required_inputs: ["description"]
+description: |
+  Generator-evaluator harness for canvas-sketch (Matt DesLauriers) still-image
+  generative art. Accepts a natural-language description via loop_input and
+  iteratively generates → renders → scores → refines a single self-contained
+  HTML file that embeds a canvas-sketch sketch loaded from an ESM CDN. Implements
+  the GAN-style generator/evaluator architecture from Anthropic's harness-design
+  article, with two additions over the p5js/pixi sketch loops: (1) an objective
+  non-blank render gate (parsed pixel statistics, not an LLM read) catches the
+  most common failure — a sketch that renders nothing — before the LLM judge ever
+  runs; (2) per-iteration snapshots plus a deterministic best-iteration selection,
+  because score progression is not monotonic — a middle iteration is sometimes the
+  strongest (per the article).
+
+  v1 targets STILL images (no animation). 2D canvas sketches only — the non-blank
+  gate reads back the 2D context; WebGL/three/regl sketches would need a different
+  readback path.
+initial: init
+# NOTE: max_iterations caps STATE EXECUTIONS, not refine cycles (see BUG-2011).
+# One scored cycle ≈ 4 steps (generate, evaluate, score, snapshot), plus ~2 extra
+# whenever the render gate self-repairs a broken sketch, plus init+plan+finalize+
+# done overhead. 40 steps ≈ 6–8 scored cycles, in line with the 5–15 iterations
+# the harness-design article runs. Raise for more refinement (and higher cost:
+# each generate/score is an LLM call); lower for a quick draft.
+max_iterations: 40
+# On budget exhaustion, route through finalize so best.html is ALWAYS published
+# from the strongest scored iteration — otherwise a run that never crosses the
+# pass threshold would terminate with no selected artifact.
+on_max_iterations: finalize
+on_handoff: spawn
+timeout: 7200
+artifact_versioning: true
+
+# HARNESS: Context variables control quality threshold and the objective render gate.
+context:
+  description: ""              # populated from loop_input via input_key: description
+  pass_threshold: 6           # minimum score per criterion (1-10) to accept
+  min_nonblank_ratio: 0.03    # objective gate: fraction of non-background pixels
+                              # required for a render to count as "drew something"
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
+
+states:
+
+  init:
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute
+    # path (via $(pwd)) so every later state writes to the same isolated per-run
+    # directory and the path is valid for file:// URIs.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: plan
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into a sketch brief,
+    # mirroring the "generator receives a spec" role from the harness-design article.
+    # The brief commits to a specific generative rule and palette so the generator
+    # has strong direction on iteration 1, before any evaluator feedback exists.
+    action_type: prompt
+    action: |
+      Write a sketch brief to ${captured.run_dir.output}/brief.md for the following
+      canvas-sketch STILL-image generative artwork:
+      "${context.description}"
+
+      The brief must include:
+      - **Generative concept**: the specific rule or system being explored — flow
+        field, recursive subdivision, packing/poisson-disc, signed-distance
+        composition, reaction-diffusion, Truchet tiling, particle accumulation,
+        etc. Name the mechanism precisely; the more specific the rule, the more
+        identity the image has.
+      - **Visual palette**: 3–6 hex colors, background color, stroke weights, and
+        compositing (globalAlpha layering, 'multiply'/'screen'/'lighter' blend
+        modes). Be specific.
+      - **Composition**: where is the focal point? How is negative space used? Is
+        there a deliberate sense of balance, density gradient, or asymmetry? A
+        still image lives or dies on composition — commit to one.
+      - **Fidelity to brief**: restate, in one sentence, what the finished image
+        must depict so the evaluator can check the result against the instruction.
+      - **Unique creative angle**: what makes this distinctive? Avoid clichés.
+      - **Anti-patterns to avoid**: vanilla Perlin flow fields with rainbow HSL
+        cycling, unmodified canvas-sketch demo output, tiny canvases on white
+        backgrounds, centered-blob-on-gradient AI-slop, anything that looks like
+        the first Google result for "generative art".
+
+      Be specific and opinionated. The generator will use this brief as its primary
+      reference.
+    next: generate
+
+  generate:
+    # HARNESS: Generator phase — creates or refines a single self-contained HTML
+    # file embedding a canvas-sketch sketch. On the first pass it uses only the
+    # brief; on later iterations it also resolves the evaluator's critique.
+    #
+    # canvas-sketch-specific rules (verified by spike, .loops/tmp/sketch-spike):
+    # 1. canvas-sketch + canvas-sketch-util import from the esm.sh ESM CDN inside a
+    #    <script type="module"> — they resolve and run in headless Chromium with no
+    #    bundler, keeping the output a single portable .html. This is the ONLY
+    #    external resource permitted; everything else stays inline.
+    # 2. canvas-sketch returns a promise. The sketch MUST signal completion by
+    #    setting window.__sketchReady = true on resolve and
+    #    window.__sketchError = String(err) on reject, so the render harness can
+    #    wait on a real readiness flag instead of a fixed sleep.
+    # 3. Deterministic seeding is required (random.setSeed(...) with a constant
+    #    string/int). Without it the screenshot would differ run-to-run and the
+    #    critique would chase noise.
+    # 4. STILL image only in v1 — do NOT set settings.animate. Draw the full
+    #    composition in the single render call.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/brief.md for the sketch brief.
+
+      A previous iteration may have written ${captured.run_dir.output}/critique.md.
+      If that file exists, read it and address every issue in its "Issues to
+      Address" section specifically and completely. If it does not exist, proceed
+      silently — do not narrate the check.
+
+      ${context.design_tokens_context}
+
+      Write a single self-contained HTML file to
+      ${captured.run_dir.output}/index.html that:
+      - Loads canvas-sketch from the esm.sh CDN inside an inline
+        <script type="module"> in the <body> (the ONLY external resource permitted;
+        all other code stays inline):
+          import canvasSketch from 'https://esm.sh/canvas-sketch@0.7.7';
+          import random from 'https://esm.sh/canvas-sketch-util@1.10.0/random';
+        (canvas-sketch-util/math and /color may also be imported the same way.)
+      - Uses a still-image settings object — `{ dimensions: [1200, 1200] }` or
+        larger. Do NOT set `animate: true`; this harness judges a single frame.
+      - Calls `random.setSeed('<constant>')` once before drawing and uses `random`
+        for ALL randomness. Never use unseeded `Math.random()` or `Date.now()`.
+      - Signals readiness for the render harness, exactly:
+          canvasSketch(sketch, settings)
+            .then(() => { window.__sketchReady = true; })
+            .catch((err) => { window.__sketchError = String(err && err.stack || err); });
+      - Implements the generative concept from the brief — no canned canvas-sketch
+        examples, no unmodified flow-field tutorial code.
+      - If design tokens are provided above, use their semantic names and resolved
+        values for the palette; do not invent colors outside the token palette.
+      - Achieves a distinctive, museum-quality still composition — avoid AI-slop
+        patterns (vanilla Perlin gradients, rainbow HSL cycling for its own sake,
+        centered blob on a gradient, anything that looks like a tutorial screenshot).
+      - If critique exists, resolves every specific issue before introducing new ideas.
+    next: evaluate
+
+  evaluate:
+    # HARNESS: Objective render gate with self-repair feedback. Loads the sketch
+    # headless via Playwright, waits on the real window.__sketchReady flag (or
+    # __sketchError), screenshots the canvas, and reads back the 2D pixel buffer to
+    # compute a non-blank ratio (fraction of pixels differing from the modal/
+    # background color). This is the key divergence from the p5js/pixi loops: a
+    # blank canvas EXITS CLEANLY (no JS error), so an exit-code/"CAPTURED" check
+    # alone would wave it through. The non-blank ratio distinguishes "rendered
+    # nothing" from "rendered something" — a non-LLM signal that gates before the
+    # LLM judge ever runs (spike confirmed: good=0.41, blank=0.00).
+    #
+    # CRITICAL routing distinction (the smoke run that motivated this): a SKETCH
+    # error (the generator wrote broken code — e.g. an undefined color channel) is
+    # exactly the last-mile bug this generate→refine loop exists to fix, so it must
+    # route BACK to generate with the error as feedback, NOT terminate. Only a true
+    # INFRA failure (browser won't launch, CDN unreachable) terminates. So the
+    # script splits the two: fixable render problems (sketch JS error, no canvas,
+    # WebGL-not-2D, never-ready, blank) write an "Issues to Address" critique.md the
+    # generator reads next pass and print "RENDER_BAD"; a clean render prints
+    # "RENDER_OK"; only infra errors exit nonzero. Routing is output_contains on
+    # "RENDER_OK": on_yes → score, on_no → generate (self-repair), on_error → failed.
+    #
+    # NODE_PATH points node at the global npm modules so `require('@playwright/test')`
+    # resolves without a local install — same convention as every other visual loop.
+    action_type: shell
+    action: |
+      NODE_PATH="$(npm root -g)" node -e "
+      const { chromium } = require('@playwright/test');
+      const fs = require('fs');
+      const runDir = '${captured.run_dir.output}';
+      const url = 'file://' + runDir + '/index.html';
+      const MIN = Number('${context.min_nonblank_ratio}') || 0.03;
+      // Fixable render problem → write feedback the generator will read, signal RENDER_BAD.
+      function bad(msg, browser) {
+        try { fs.writeFileSync(runDir + '/critique.md',
+          '# Evaluation\n\nThe sketch did not produce a scorable render this pass.\n\n' +
+          '## Issues to Address\n- ' + msg + '\n'); } catch (e) {}
+        if (browser) browser.close().catch(() => {});
+        console.log('RENDER_BAD');
+        process.exit(0);
+      }
+      let browser;
+      (async () => {
+        try { browser = await chromium.launch(); }
+        catch (e) { console.error('INFRA_FAIL (browser launch): ' + e.message); process.exit(1); }
+        const page = await browser.newPage({ viewport: { width: 1280, height: 1280 } });
+        try { await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }); }
+        catch (e) { console.error('INFRA_FAIL (page load / CDN): ' + e.message); await browser.close(); process.exit(1); }
+        try {
+          await page.waitForFunction(
+            () => window.__sketchReady === true || typeof window.__sketchError === 'string',
+            { timeout: 30000 });
+        } catch (e) {
+          return bad('The sketch never signalled readiness within 30s. Ensure canvasSketch(sketch, settings).then(() => { window.__sketchReady = true; }) runs, the esm.sh imports resolve, and the render function does not loop forever.', browser);
+        }
+        const err = await page.evaluate(() => window.__sketchError || null);
+        if (err) return bad('The sketch threw at render time — fix this exact error: ' + String(err).split('\n')[0], browser);
+        const stats = await page.evaluate(() => {
+          const c = document.querySelector('canvas');
+          if (!c) return { error: 'No <canvas> element was created — call canvasSketch with a 2D sketch.' };
+          const ctx = c.getContext('2d');
+          if (!ctx) return { error: 'Canvas has no 2D context. This harness (v1) supports 2D canvas sketches only — do NOT use WebGL, three.js, or regl.' };
+          const { data } = ctx.getImageData(0, 0, c.width, c.height);
+          const step = 4 * Math.max(1, Math.floor((c.width * c.height) / 40000));
+          const buckets = new Map(); let n = 0;
+          for (let i = 0; i < data.length; i += step) {
+            const k = (data[i] >> 4) + ',' + (data[i+1] >> 4) + ',' + (data[i+2] >> 4);
+            buckets.set(k, (buckets.get(k) || 0) + 1); n++;
+          }
+          let bg = 0; for (const v of buckets.values()) if (v > bg) bg = v;
+          return { nonBlankRatio: n ? 1 - bg / n : 0 };
+        });
+        if (stats.error) return bad(stats.error, browser);
+        if (stats.nonBlankRatio < MIN)
+          return bad('The canvas rendered but is essentially blank (non-blank ratio ' + stats.nonBlankRatio.toFixed(4) + ' < ' + MIN + '). The drawing code ran but produced almost no visible marks — check that shapes are within bounds, colors differ from the background, and alpha is non-zero.', browser);
+        const el = await page.\$('canvas');
+        await el.screenshot({ path: runDir + '/screenshot.png' });
+        await browser.close();
+        console.log('RENDER_OK ' + stats.nonBlankRatio.toFixed(4));
+      })().catch(e => { console.error('INFRA_FAIL: ' + e.message); if (browser) browser.close().catch(() => {}); process.exit(1); });
+      "
+    evaluate:
+      type: output_contains
+      pattern: "RENDER_OK"
+    on_yes: score
+    on_no: generate
+    on_error: failed
+
+  score:
+    # HARNESS: Evaluator phase — the LLM judges the rendered screenshot against four
+    # still-image criteria and writes a fixed-format critique for the generator's
+    # next pass AND for the deterministic gate in `snapshot`. Note the role split
+    # from the article: the LLM ASSIGNS the scores (subjective taste), but a non-LLM
+    # state (snapshot) PARSES them and makes the routing decision — the generator
+    # never grades its own work and the pass/fail call is deterministic.
+    # The screenshot is read as a multimodal image input.
+    action_type: prompt
+    action: |
+      Read the rendered still image at ${captured.run_dir.output}/screenshot.png.
+      Also read ${captured.run_dir.output}/brief.md to recall the intent and
+      ${captured.run_dir.output}/index.html if you need to inspect the generative rule.
+
+      Be a skeptical evaluator — LLM-generated art skews generic, and your job is to
+      catch that, not to praise it. Score each criterion 1–10 and write the
+      evaluation to ${captured.run_dir.output}/critique.md using this EXACT format
+      (the next state parses these lines, so keep "criterion: N/10" verbatim):
+
+      ```
+      # Evaluation
+
+      composition: N/10 — [balance, focal point, use of negative space, density.
+        Does it read as a coherent whole rather than scattered parts? Penalize:
+        empty canvases, centered-blob compositions, no clear focal structure.]
+      originality: N/10 — [evidence of a specific generative idea vs tutorial output.
+        The best work is museum-quality. Penalize: vanilla Perlin flow fields,
+        rainbow HSL cycling without purpose, anything that could be the first Google
+        result for "generative art".]
+      fidelity_to_brief: N/10 — [does the image actually depict what the brief's
+        "Fidelity to brief" sentence asked for? An attractive image that ignores the
+        instruction fails this criterion.]
+      craft: N/10 — [technical execution: color harmony, edge/anti-alias quality,
+        intentional vs accidental artifacts, stroke consistency, compositing.]
+
+      ## Issues to Address
+      [Specific, actionable critique for the generator — list each problem concisely
+       so it can be fixed directly on the next pass. If all criteria meet threshold,
+       write "No issues — all criteria pass."]
+      ```
+
+      Weighting guidance (composition 2×, originality 2×, fidelity 1×, craft 1×):
+      invest your harshest scrutiny in composition and originality. After writing
+      the file, briefly confirm you wrote it. Do not output a pass/fail verdict —
+      the harness computes that from the scores you recorded.
+    next: snapshot
+
+  snapshot:
+    # HARNESS: Per-iteration versioning + deterministic gate (clears MR-5). Bumps a
+    # .iter_counter, copies this iteration's index.html / screenshot / critique into
+    # iter-N/, then PARSES the four scores from critique.md and gates on the minimum:
+    # "ALL criteria >= pass_threshold" is the same bar the sibling loops apply, but
+    # decided here by grep+arithmetic instead of an LLM's self-report. The per-iter
+    # minimum is appended to scores.tsv so `finalize` can pick the strongest run.
+    # If parsing yields anything other than four scores, MIN defaults to 0 → on_no
+    # (regenerate) — a parse failure never falsely passes.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      N=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0); N=$((N + 1))
+      echo "$N" > "$RUN_DIR/.iter_counter"
+      mkdir -p "$RUN_DIR/iter-$N"
+      cp "$RUN_DIR/index.html"   "$RUN_DIR/iter-$N/" 2>/dev/null || true
+      cp "$RUN_DIR/screenshot.png" "$RUN_DIR/iter-$N/" 2>/dev/null || true
+      cp "$RUN_DIR/critique.md"  "$RUN_DIR/iter-$N/" 2>/dev/null || true
+      SCORES=$(grep -oE '(composition|originality|fidelity_to_brief|craft): [0-9]+/10' \
+                 "$RUN_DIR/critique.md" 2>/dev/null | grep -oE '[0-9]+/10' | grep -oE '^[0-9]+')
+      COUNT=$(printf '%s\n' "$SCORES" | grep -c '[0-9]')
+      if [ "$COUNT" -eq 4 ]; then
+        MIN=$(printf '%s\n' "$SCORES" | sort -n | head -1)
+      else
+        MIN=0
+      fi
+      printf '%s\t%s\n' "$N" "$MIN" >> "$RUN_DIR/scores.tsv"
+      echo "$MIN"
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: "${context.pass_threshold}"
+    on_yes: finalize
+    on_no: generate
+    on_error: generate
+
+  finalize:
+    # HARNESS: Best-iteration selection. Score progression is not monotonic (per the
+    # article — a middle iteration is sometimes the strongest), so rather than assume
+    # the last iteration is best, pick the iteration with the highest minimum-criterion
+    # score from scores.tsv (ties → latest) and publish it as best.html / best.png at
+    # the run-dir root. Reached both on a passing gate and on max_iterations
+    # exhaustion, so the user always gets the strongest artifact produced.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      BEST=$(sort -k2,2n -k1,1n "$RUN_DIR/scores.tsv" 2>/dev/null | tail -1 | cut -f1)
+      if [ -n "$BEST" ] && [ -d "$RUN_DIR/iter-$BEST" ]; then
+        cp "$RUN_DIR/iter-$BEST/index.html"   "$RUN_DIR/best.html" 2>/dev/null || true
+        cp "$RUN_DIR/iter-$BEST/screenshot.png" "$RUN_DIR/best.png"  2>/dev/null || true
+        echo "Best iteration: $BEST"
+      else
+        cp "$RUN_DIR/index.html" "$RUN_DIR/best.html" 2>/dev/null || true
+        echo "Best iteration: (fallback to latest)"
+      fi
+    next: done
+
+  done:
+    # HARNESS: Success terminal — reached when a render passes the threshold gate or
+    # max_iterations is exhausted; finalize has published the strongest artifact.
+    action_type: prompt
+    action: |
+      The canvas-sketch generation loop has completed.
+
+      Final output files (in ${captured.run_dir.output}):
+      - best.html       — the strongest sketch produced (open directly in a browser)
+      - best.png        — its rendered still
+      - scores.tsv      — per-iteration minimum-criterion score (selection record)
+      - iter-N/         — every iteration's index.html, screenshot, and critique
+      - brief.md        — the sketch planning brief
+
+      Report these paths to the user, name which iteration won, and confirm the
+      sketch is ready.
+    terminal: true
+
+  failed:
+    # HARNESS: Failure terminal — reached when the render harness errors (broken
+    # Playwright/Chromium, a sketch JS error, a non-2D canvas, or a CDN fetch
+    # failure). Distinct from silent max_iterations exhaustion so the outer loop /
+    # log reader can tell "bailed cleanly" from "still iterating". Any artifacts
+    # already produced remain under ${captured.run_dir.output} for inspection.
+    terminal: true
