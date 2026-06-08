@@ -6,9 +6,11 @@ priority: P3
 captured_at: '2026-05-22T19:19:39Z'
 discovered_date: 2026-05-22
 discovered_by: capture-issue
-status: open
+status: cancelled
 parent: EPIC-1745
-depends_on: [ENH-1618, ENH-1615]
+depends_on:
+- ENH-1618
+- ENH-1615
 ---
 
 # ENH-1617: Add negative routing instructions to Tier 1 skill descriptions
@@ -105,7 +107,25 @@ Each disambiguation adds ~20-40 chars; verify total description stays within bud
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on 2026-06-08_ — **NO-GO (SKIP)**
+
+**Deciding Factor**: The primary adjacency cluster `go-no-go` ↔ `confidence-check` ↔ `issue-size-review` cannot be authored as described because `issue-size-review` already has `disable-model-invocation: true` (Tier 2) — writing disambiguation to a Tier 2 skill is immediately stale, confirming the dependency concern is real, not merely bureaucratic.
+
+### Key Arguments For
+- `skills/product-analyzer/SKILL.md` line 1 already carries the exact disambiguation pattern in production, proving the convention is established and implementation is mechanical text changes within verified budget headroom (1420/2000 → 1560/2000 tokens)
+- `ll-verify-triggers` (`scripts/little_loops/cli/verify_triggers.py`) is fully built infrastructure waiting for `trigger_fixtures` content — ENH-1617 would activate it as a complete routing-validation pipeline
+
+### Key Arguments Against
+- One of the three named adjacency clusters includes `issue-size-review` (`skills/issue-size-review/SKILL.md` line 4: `disable-model-invocation: true`), which is already Tier 2 — the cluster is stale as-written before implementation begins
+- `ready-issue` and `verify-issues` do not exist as native Tier 1 skill directories; only `ll-ready-issue` and `ll-verify-issues` bridge stubs exist, which are slated for suppression by ENH-1615; three consecutive tradeoff reviews unanimously concluded topology must stabilize before this work proceeds
+
+### Rationale
+The issue's named adjacency clusters are factually incorrect about the current Tier 1 landscape: `issue-size-review` is already Tier 2, and `ready-issue`/`verify-issues` exist only as bridge stubs. The claimed three clusters are "clean of dependency concerns" but one already contains a demoted skill. Both blocking dependencies (ENH-1615, ENH-1618) remain open, and implementing now forces rework when ENH-1618 resolves audit skill consolidation.
+
 ## Session Log
+- `/ll:go-no-go` - 2026-06-08T00:00:00Z - `373826e9-155a-427b-8b26-e6ff1266f796.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-06-05T22:31:17 - `6ff15632-2780-465b-907d-c2f1dc8463da.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-06-03T00:30:18 - `288ea8fe-1443-4178-9435-e6f8b106cc59.jsonl`
