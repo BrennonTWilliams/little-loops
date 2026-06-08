@@ -2139,16 +2139,27 @@ ll-loop run cli-anything-bootstrap --context target="https://github.com/user/rep
 
 ## Cluster vs. Composer vs. Router
 
-Four orchestration loops address different goal shapes:
+**Quick-pick by input shape:**
+
+| You have… | Use |
+|---|---|
+| A natural-language goal | `loop-router` (classifies + dispatches to best-fit loop) |
+| One decomposable goal (multi-step) | `loop-composer` / `loop-composer-adaptive` |
+| A list of goals / EPIC / sprint | `goal-cluster` |
+| A single issue to implement | `rn-implement` |
+| A spec file, zero-to-project | `rn-build` |
+
+Five orchestration loops address different goal shapes:
 
 | Loop | When to use |
 |---|---|
 | `loop-router` | Single goal, best-fit single loop. Use as the default entry point. |
 | `loop-composer` / `loop-composer-adaptive` | Single decomposable goal that requires multiple loops in sequence (DAG execution). |
 | `goal-cluster` | Multiple related goals that share context. Groups goals into batches, executes sequentially with cross-batch hint propagation. |
+| `rn-implement` | A single issue (or comma-separated list) to implement recursively — depth-bounded decompose-and-implement until the queue is empty. |
 | `rn-build` | Spec file → zero-to-project. Orchestrates the full pipeline: tech research → design → scope EPIC → `goal-cluster` (batched `rn-implement`) → eval gate. Use when you have a spec document and want fully automated spec-to-implementation with no manual handoffs. |
 
-**Decision rule**: Start with `loop-router` for a single goal. If the goal is clearly multi-step and benefits from explicit DAG decomposition, use `loop-composer` (or `loop-composer-adaptive` for failure recovery). If you have multiple goals at once (e.g., all issues in a sprint or all children of an EPIC), use `goal-cluster`. For spec-driven greenfield projects (you have a spec file and want a full automated build), use `rn-build`.
+**Decision rule**: Start with `loop-router` for a single goal. If the goal is clearly multi-step and benefits from explicit DAG decomposition, use `loop-composer` (or `loop-composer-adaptive` for failure recovery). If you have multiple goals at once (e.g., all issues in a sprint or all children of an EPIC), use `goal-cluster`. For a single issue that may need recursive decomposition, use `rn-implement`. For spec-driven greenfield projects (you have a spec file and want a full automated build), use `rn-build`.
 
 **Why not loop-router for multiple goals?** loop-router picks one loop for one goal. It cannot propagate context across goals or group related goals into efficient batches.
 

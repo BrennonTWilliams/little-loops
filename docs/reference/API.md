@@ -7352,3 +7352,56 @@ Specialized sub-agents live in `agents/*.md` and are registered in `.claude-plug
 | [`prompt-optimizer`](../../agents/prompt-optimizer.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch, Write | Gather codebase context so vague user prompts can be rewritten with specific references and conventions. |
 | [`web-search-researcher`](../../agents/web-search-researcher.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch, Bash | Fetch current external documentation, release notes, and best-practice references beyond the training cutoff. |
 | [`workflow-pattern-analyzer`](../../agents/workflow-pattern-analyzer.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch, Write | Categorize extracted user messages and emit `step1-patterns.yaml` for the three-step workflow-analysis pipeline. |
+
+## Loops
+
+Built-in loops live in `scripts/little_loops/loops/`. Full documentation and a decision guide are in [LOOPS_GUIDE.md](../guides/LOOPS_GUIDE.md).
+
+### `rn-build` — Spec-to-Project Capstone Orchestrator
+
+**Category**: orchestration  
+**File**: `scripts/little_loops/loops/rn-build.yaml`  
+**Required input**: `spec` (path to spec Markdown file)
+
+End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives: spec validation → tech research → design artifacts → commit → scope EPIC + feature stubs → issue refinement → eval harness → `goal-cluster` (batched `rn-implement`, `value_ranked` scheduling) → eval gate with bounded re-entry → structured JSON result.
+
+Prefer over `greenfield-builder` when you want value-ranked scheduling and no `eval-driven-development` in the dispatch path.
+
+**CLI invocation:**
+
+```bash
+ll-loop run rn-build --context spec=specs/sample.md
+
+# Multiple spec files (comma-separated)
+ll-loop run rn-build --context spec=specs/backend.md,specs/frontend.md
+```
+
+**Key phases:**
+
+| Phase | States | Description |
+|-------|--------|-------------|
+| 1 — Spec validation | `init` | Reads and validates the spec file(s); halts with clear error if required sections are missing |
+| 2 — Research & design | `tech_research`, `design_artifacts`, `commit_design` | LLM tech research → generates architecture and design artifacts → commits them to the working tree |
+| 3 — Scope | `scope_project`, `write_epic_id`, `refine_seed` | Runs `/ll:scope-epic` to create EPIC + feature stubs, captures EPIC ID, refines seed issues |
+| 4 — Eval harness | `eval_harness`, `read_harness_name` | Installs an eval harness loop keyed to the spec's acceptance criteria |
+| 5 — Execution | `cluster_execute` | Delegates to `goal-cluster` which batches issues and dispatches each batch to `rn-implement` with `schedule_mode=value_ranked` |
+| 6 — Eval gate | `check_harness_name`, `eval_gate`, `check_eval_retry_budget`, `capture_eval_failures` | Runs eval harness; on failure, captures failing scenarios as new issues and re-enters `cluster_execute` (bounded by `max_eval_retries`) |
+| 7 — Result | `synthesize_result`, `done` | Emits a structured JSON summary of the build outcome |
+
+**Context knobs:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `spec` | `""` | **Required.** Path(s) to spec Markdown file(s), comma-separated. |
+| `max_eval_retries` | `"2"` | Maximum `eval_gate` retry cycles before accepting a partial result. |
+| `harness_name` | `""` | Auto-populated: name of the installed eval harness loop. Do not set manually. |
+| `epic_id` | `""` | Auto-populated: EPIC ID from `scope_project`. Do not set manually. |
+
+**Internal dispatch flags** (fixed; set automatically, not user-facing):
+
+| Flag | Value | Effect |
+|------|-------|--------|
+| `schedule_mode` | `value_ranked` | Passed to each `rn-implement` batch via `goal-cluster`; issues are implemented in value-ranked order |
+| `propagate_context` | `true` | Cluster propagates context across batches so later batches can incorporate earlier-batch results |
+
+**Loop settings**: `max_iterations: 30`, `timeout: 86400s` (24h), `on_handoff: spawn` (auto-resumes across session boundaries).

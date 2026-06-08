@@ -1,15 +1,18 @@
 ---
 id: FEAT-1994
-title: "rn-build — Orchestration Decision Guide"
+title: "rn-build \u2014 Orchestration Decision Guide"
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-06T00:00:00Z'
+completed_at: '2026-06-08T02:35:05Z'
 discovered_date: 2026-06-06
 discovered_by: capture-issue
 size: XSmall
-blocked_by: [FEAT-1992]
+testable: false
+blocked_by:
+- FEAT-1992
 relates_to:
 - FEAT-1990
 - FEAT-1992
@@ -17,6 +20,12 @@ labels:
 - loops
 - docs
 - greenfield
+confidence_score: 90
+outcome_confidence: 83
+score_complexity: 22
+score_test_coverage: 18
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # FEAT-1994: `rn-build` — Orchestration Decision Guide
@@ -28,6 +37,18 @@ when to reach for it vs. `goal-cluster`, `loop-composer`, or `rn-implement`
 directly. The create-loop wizard integration was descoped — wizard entries for
 built-in loops that can't be meaningfully customized add discoverability noise
 without value; `ll-loop list` already surfaces it.
+
+## Use Case
+
+A developer has a React Native spec file and wants to build a project from scratch. They are unsure whether to use `rn-build`, `rn-implement`, `goal-cluster`, or `loop-composer`. They open `docs/guides/LOOPS_GUIDE.md`, find the decision table keyed by input shape, and immediately identify "spec file, zero-to-project → `rn-build`." They also check `docs/reference/API.md` to understand the key context knobs before running the loop.
+
+## Current Behavior
+
+No orchestration decision guide exists. Users must read individual loop YAML files or rely on trial-and-error to determine which loop fits their input shape (`goal-cluster`, `rn-implement`, `loop-composer`, `rn-build`, etc.). `LOOPS_GUIDE.md` and `API.md` have no entry for `rn-build`.
+
+## Expected Behavior
+
+`docs/guides/LOOPS_GUIDE.md` contains a decision table covering all orchestration loops keyed by input shape, with `rn-build` as the spec-file entry. `docs/reference/API.md` has an `rn-build` reference entry documenting CLI invocation, key phases, and context knobs. `ll-check-links` passes with no broken references.
 
 ## Parent Issue
 
@@ -71,6 +92,17 @@ knobs (`spec`, `max_issues`, `max_eval_retries`), `schedule_mode`, and
 - `docs/reference/API.md` has an `rn-build` entry covering CLI invocation, key
   phases, and context knobs.
 - No broken references (`ll-check-links`).
+
+## Impact
+
+- **Priority**: P3 — Documentation only; does not block feature delivery but improves discoverability of `rn-build` for new users
+- **Effort**: XSmall — Two targeted doc edits, no code changes
+- **Risk**: Low — Documentation-only; no runtime impact, no breaking changes
+- **Breaking Change**: No
+
+## Session Log
+- `/ll:ready-issue` - 2026-06-08T02:27:44 - `f78b9e74-067f-4988-ae03-4cff78299674.jsonl`
+- `/ll:confidence-check` - 2026-06-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f945aa86-605c-4cbf-bb67-7303f3eadbea.jsonl`
 
 ## Status
 
