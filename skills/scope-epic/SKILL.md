@@ -1,7 +1,7 @@
 ---
 name: scope-epic
 description: Use when asked to decompose a theme or goal into an EPIC with 3–8 child issues. Creates the EPIC file, pre-wired child stubs, and stages everything for git.
-args: "<theme> [--from-doc <path>] [--priority P2]"
+args: "<theme> [--from-doc <path>] [--priority P2] [--auto]"
 argument-hint: "<theme>"
 model: sonnet
 allowed-tools:
@@ -18,7 +18,7 @@ arguments:
     description: Natural-language theme or goal description to decompose into an EPIC + children
     required: true
   - name: flags
-    description: Optional flags (--from-doc <path> to load theme from a file, --priority P2 to override default EPIC priority)
+    description: Optional flags (--from-doc <path> to load theme from a file, --priority P2 to override default EPIC priority, --auto to skip the interactive review and create all proposed children non-interactively)
     required: false
 metadata:
   short-description: Decompose a theme into an EPIC with 3–8 pre-wired child issue stubs.
@@ -45,6 +45,7 @@ $ARGUMENTS
 - **flags** (optional):
   - `--from-doc <path>` — Read the theme from a markdown file instead of the argument string
   - `--priority <P0-P5>` — Override the default EPIC priority (default: P2)
+  - `--auto` — Non-interactive mode for automation callers (e.g. the `rn-build` loop). Skips Phase 3's `AskUserQuestion` checkpoints and creates **all** proposed children without prompting. Count warnings are still emitted, but never block.
 
 ## Process
 
@@ -56,6 +57,7 @@ $ARGUMENTS
 THEME="${theme:-}"
 FROM_DOC=""
 PRIORITY="P2"
+AUTO=false
 
 if [[ "$ARGUMENTS" =~ --from-doc[[:space:]]+([^[:space:]]+) ]]; then
   FROM_DOC="${BASH_REMATCH[1]}"
@@ -64,7 +66,15 @@ fi
 if [[ "$ARGUMENTS" =~ --priority[[:space:]]+(P[0-5]) ]]; then
   PRIORITY="${BASH_REMATCH[1]}"
 fi
+
+if [[ "$ARGUMENTS" =~ (^|[[:space:]])--auto($|[[:space:]]) ]]; then
+  AUTO=true
+fi
 ```
+
+When `--auto` is set, you are running on behalf of an automation caller with no
+human at the keyboard. Carry `AUTO` through to Phase 3 and follow its
+non-interactive branch instead of calling `AskUserQuestion`.
 
 **Extract theme text:**
 
@@ -141,6 +151,13 @@ IF child_count > MAX_CHILDREN:
 
 ### Phase 3: Interactive Review
 
+> **Non-interactive (`--auto`) shortcut:** If `AUTO` is `true`, **skip Steps 2 and 3
+> entirely** — do not call `AskUserQuestion`. Print the Step 1 proposal table for the
+> log, keep **all** proposed children, and proceed directly to Phase 4. The count
+> warnings from Phase 2 are still printed but never block. This is the path the
+> `rn-build` loop's `scope_project` state depends on; calling `AskUserQuestion` here
+> would halt the automated pipeline permanently.
+
 #### Step 1: Present the proposal
 
 Display a markdown table summarizing the EPIC and all proposed children:
@@ -173,6 +190,8 @@ Follow the table with per-child detail sections:
 
 #### Step 2: AskUserQuestion — select which children to keep
 
+**Skip this step if `AUTO` is `true`** (keep all children; go to Phase 4).
+
 Use `AskUserQuestion` with `multiSelect: true` to let the user select which children to proceed with:
 
 ```yaml
@@ -194,6 +213,8 @@ No children selected. Cancelling — nothing was written.
 ```
 
 #### Step 3: AskUserQuestion — confirm, edit, or cancel
+
+**Skip this step if `AUTO` is `true`** (proceed directly to Phase 4 — files are created without confirmation).
 
 After children are selected, present a summary of what will be created and ask for confirmation:
 
