@@ -128,7 +128,7 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 
 ## Orchestration CLI
 
-The orchestration tools (`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`,
+The orchestration tools (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-action`, `ll-loop`,
 FSM evaluators, FSM handoff) route every host CLI invocation through
 `scripts/little_loops/host_runner.py`. The `HostRunner` Protocol is
 satisfied by four concrete runners — `ClaudeCodeRunner` (production),
@@ -144,6 +144,7 @@ call sites.
 | `ll-action`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
 | `ll-loop`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
 | `ll-harness`                  | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
+| `ll-sprint`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
 | FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
 
 [^orch]: All seven call sites now route through
