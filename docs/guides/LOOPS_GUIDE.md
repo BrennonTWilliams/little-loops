@@ -799,6 +799,44 @@ Phase 5 — Convergence:
 
 **Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > DECOMPOSE). The `DECOMPOSE` token is a terminal diagnosis — it falls through the routing chain to `failed`, signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_iterations: 100`, `timeout: 14400`, `on_handoff: spawn`.
 
+### `rn-build` — Spec-to-Project Capstone Orchestrator
+
+**Category**: orchestration  
+**File**: `scripts/little_loops/loops/rn-build.yaml`
+
+End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives the full automated build: spec validation → tech research → design artifacts → commit → scope EPIC + feature stubs → issue refinement → eval harness → goal-cluster (batched `rn-implement`) → eval gate → structured JSON result.
+
+Prefer over `greenfield-builder` when you want value-ranked scheduling and no `eval-driven-development` in the dispatch path.
+
+**Usage:**
+
+```bash
+ll-loop run rn-build --context spec=specs/sample.md
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `spec` | `""` | **Required.** Path(s) to spec file(s), comma-separated |
+| `max_eval_retries` | `"2"` | Max `eval_gate` retry cycles before accepting a partial result |
+
+#### Spec file format
+
+`rn-build` accepts any Markdown file as its spec, but output quality (depth of tech research, accuracy of design artifacts, scope of the EPIC) scales directly with spec quality. Use `specs/SPEC_TEMPLATE.md` as a starting point.
+
+**Required sections** (minimum viable spec):
+
+| Section | Purpose |
+|---------|---------|
+| `## Overview` | 2–4 sentences describing what the project does and why it exists |
+| `## Core Features` | Bulleted list of top-level capabilities (aim for 5–15); each bullet becomes a candidate feature issue after `scope-epic` runs |
+| `## Acceptance Criteria` | 2–3 high-level observable outcomes; `rn-build` uses these to configure the eval harness |
+
+**Optional sections**: `## Data Model`, `## Non-Goals`, `## Tech Constraints`. When omitted, `rn-build` infers them from the required sections. Including them narrows the design space and reduces hallucinated constraints.
+
+See `specs/SPEC_TEMPLATE.md` for a fully annotated template and `specs/sample.md` for a worked example.
+
 **Issue Management**
 
 | Loop | Description |
@@ -2101,15 +2139,16 @@ ll-loop run cli-anything-bootstrap --context target="https://github.com/user/rep
 
 ## Cluster vs. Composer vs. Router
 
-Three orchestration loops address different goal shapes:
+Four orchestration loops address different goal shapes:
 
 | Loop | When to use |
 |---|---|
 | `loop-router` | Single goal, best-fit single loop. Use as the default entry point. |
 | `loop-composer` / `loop-composer-adaptive` | Single decomposable goal that requires multiple loops in sequence (DAG execution). |
 | `goal-cluster` | Multiple related goals that share context. Groups goals into batches, executes sequentially with cross-batch hint propagation. |
+| `rn-build` | Spec file → zero-to-project. Orchestrates the full pipeline: tech research → design → scope EPIC → `goal-cluster` (batched `rn-implement`) → eval gate. Use when you have a spec document and want fully automated spec-to-implementation with no manual handoffs. |
 
-**Decision rule**: Start with `loop-router` for a single goal. If the goal is clearly multi-step and benefits from explicit DAG decomposition, use `loop-composer` (or `loop-composer-adaptive` for failure recovery). If you have multiple goals at once (e.g., all issues in a sprint or all children of an EPIC), use `goal-cluster`.
+**Decision rule**: Start with `loop-router` for a single goal. If the goal is clearly multi-step and benefits from explicit DAG decomposition, use `loop-composer` (or `loop-composer-adaptive` for failure recovery). If you have multiple goals at once (e.g., all issues in a sprint or all children of an EPIC), use `goal-cluster`. For spec-driven greenfield projects (you have a spec file and want a full automated build), use `rn-build`.
 
 **Why not loop-router for multiple goals?** loop-router picks one loop for one goal. It cannot propagate context across goals or group related goals into efficient batches.
 

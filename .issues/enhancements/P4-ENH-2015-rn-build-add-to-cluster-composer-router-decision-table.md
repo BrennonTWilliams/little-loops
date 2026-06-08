@@ -1,6 +1,6 @@
 ---
 id: ENH-2015
-title: "rn-build — Add to Cluster vs. Composer vs. Router decision table in LOOPS_GUIDE"
+title: "rn-build \u2014 Add to Cluster vs. Composer vs. Router decision table in LOOPS_GUIDE"
 type: ENH
 priority: P4
 status: open
@@ -20,6 +20,12 @@ labels:
 - loops
 - docs
 - rn-build
+confidence_score: 88
+outcome_confidence: 82
+score_complexity: 22
+score_test_coverage: 15
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-2015: `rn-build` — Add to "Cluster vs. Composer vs. Router" decision table in LOOPS_GUIDE
@@ -82,6 +88,12 @@ Also update the **Decision rule** paragraph below the table to mention `rn-build
 3. Update the "Decision rule" paragraph to reference `rn-build` for spec-driven use
 4. Run `ll-check-links` to verify no broken references
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Update `scripts/tests/test_wiring_guides_and_meta.py` — add two `DOC_STRINGS_PRESENT` tuples: `("docs/guides/LOOPS_GUIDE.md", "rn-build", "ENH-2015")` and `("docs/guides/LOOPS_GUIDE.md", "spec-driven greenfield", "ENH-2015")`
+
 ## Integration Map
 
 ### Files to Modify
@@ -95,6 +107,9 @@ Also update the **Decision rule** paragraph below the table to mention `rn-build
 
 ### Tests
 - Run `ll-check-links` after edit to verify no broken anchors or references
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_wiring_guides_and_meta.py` — add two tuples to `DOC_STRINGS_PRESENT` for ENH-2015: `("docs/guides/LOOPS_GUIDE.md", "rn-build", "ENH-2015")` and `("docs/guides/LOOPS_GUIDE.md", "spec-driven greenfield", "ENH-2015")`; this is the established pattern for every LOOPS_GUIDE doc enhancement [Agent 3 finding]
 
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` only
@@ -127,5 +142,8 @@ Also update the **Decision rule** paragraph below the table to mention `rn-build
 **Open** | Created: 2026-06-08
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-07T00:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:wire-issue` - 2026-06-08T02:06:24 - `f5ec0a1a-1f1e-4223-8bf3-25b8469fe5df.jsonl`
+- `/ll:refine-issue` - 2026-06-08T01:55:23 - `90bc903f-c36f-4fd0-87a7-5f71bc83027c.jsonl`
 - `/ll:format-issue` - 2026-06-08T01:36:13 - `b59e4b87-6e2b-4690-bb43-64f1327b0c7e.jsonl`
 - `/ll:capture-issue` - 2026-06-08T01:29:25Z - `00fefddf-56f7-43f8-8a57-dd53f6c3526d.jsonl`

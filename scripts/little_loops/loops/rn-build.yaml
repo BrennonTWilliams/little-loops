@@ -16,6 +16,10 @@ description: |
 
   Run as: ll-loop run rn-build --context spec=<path>
 
+  Spec format: specs/SPEC_TEMPLATE.md is the authoritative template. Required sections
+  are Overview, Core Features, and Acceptance Criteria; all other sections are optional.
+  See specs/sample.md for a worked example.
+
   Architecture:
   - Front-half (ports from greenfield-builder): init → tech_research → design_artifacts
     → commit_design → scope_project → refine_seed → eval_harness

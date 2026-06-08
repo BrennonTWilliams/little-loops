@@ -1,11 +1,12 @@
 ---
 id: ENH-2012
-title: "rn-build — Spec file format guide and sample spec"
+title: "rn-build \u2014 Spec file format guide and sample spec"
 type: ENH
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-08T01:29:25Z'
+completed_at: '2026-06-08T02:12:59Z'
 discovered_date: 2026-06-08
 discovered_by: capture-issue
 size: Small
@@ -21,6 +22,12 @@ labels:
 - rn-build
 - greenfield
 testable: false
+confidence_score: 95
+outcome_confidence: 82
+score_complexity: 22
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2012: `rn-build` — Spec file format guide and sample spec
@@ -171,5 +178,7 @@ sections are optional).
 **Open** | Created: 2026-06-08
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-08T02:07:22 - `cfaae224-6c75-4be2-a190-d396c5953cc1.jsonl`
+- `/ll:confidence-check` - 2026-06-07T00:00:00Z - `d1242914-e28a-4faa-8021-a40096d2724c.jsonl`
 - `/ll:format-issue` - 2026-06-08T01:35:43 - `6443e1b2-a4d1-4257-be1b-aa306b6f46e7.jsonl`
 - `/ll:capture-issue` - 2026-06-08T01:29:25Z - `00fefddf-56f7-43f8-8a57-dd53f6c3526d.jsonl`
