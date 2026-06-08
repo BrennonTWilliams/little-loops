@@ -7,16 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`vega-viz` generator-evaluator loop** — New FSM harness for Vega / Vega-Lite data visualizations. Compile-gates broken specs via deterministic exit-code before LLM scoring; supports optional real data (CSV/JSON path via `--context data_path=`); defaults to Vega-Lite and escalates to full Vega only for custom/interactive composition; Playwright captures three interaction states as multimodal PNG input for the judge. `on_handoff: spawn`, `max_iterations: 20`, 2h timeout. (ENH-2010)
-- **`canvas-sketch-generator` generator-evaluator loop** — New FSM harness for canvas-sketch (Matt DesLauriers) still-image generative art. Objective non-blank render gate (pixel statistics) hard-gates blank sketches before the LLM judge runs; per-iteration snapshots with deterministic best-iteration selection (`best.html`); `on_max_iterations: finalize` ensures `best.html` is always published. `on_handoff: spawn`, `max_iterations: 40`, 2h timeout.
-- **`rn-implement` `blocked_by` pre-gate** — New `check_blocked_by` + `route_blocked_by` states gate all scheduling modes: issues with unmet `blocked_by` frontmatter deps are deferred (with named blockers) before entering the remediation budget, preventing the full `max_remediation_passes` budget from being spent on a structural blocker that prose remediation cannot clear. Fail-open: malformed frontmatter passes the gate. (ENH-2008)
-
 ### Planned
 
 - Windows compatibility testing
 - Performance benchmarks for large repositories
+
+## [1.118.0] - 2026-06-07
+
+### Added
+
+- **`rn-build` resume-from-epic path** — Multi-session builds can now resume from a prior epic checkpoint, re-reading completed children and seeding the implementation queue from unfinished leaves. (ENH-2016)
+- **`vega-viz` generator-evaluator loop** — New FSM harness for Vega / Vega-Lite data visualizations. Compile-gates broken specs via deterministic exit-code before LLM scoring; supports optional real data (CSV/JSON path via `--context data_path=`); defaults to Vega-Lite and escalates to full Vega only for custom/interactive composition; Playwright captures three interaction states as multimodal PNG input for the judge. `on_handoff: spawn`, `max_iterations: 20`, 2h timeout. (ENH-2010)
+- **`canvas-sketch-generator` generator-evaluator loop** — New FSM harness for canvas-sketch (Matt DesLauriers) still-image generative art. Objective non-blank render gate (pixel statistics) hard-gates blank sketches before the LLM judge runs; per-iteration snapshots with deterministic best-iteration selection (`best.html`); `on_max_iterations: finalize` ensures `best.html` is always published. `on_handoff: spawn`, `max_iterations: 40`, 2h timeout.
+- **`rn-implement` `blocked_by` pre-gate** — New `check_blocked_by` + `route_blocked_by` states gate all scheduling modes: issues with unmet `blocked_by` frontmatter deps are deferred (with named blockers) before entering the remediation budget, preventing the full `max_remediation_passes` budget from being spent on a structural blocker that prose remediation cannot clear. Fail-open: malformed frontmatter passes the gate. (ENH-2008)
+- **`ll-auto` FSM loop + A/B parity harness** — New `ll-auto.yaml` FSM loop with an `ll-auto` shim and A/B parity harness for automated sequential issue processing. (FEAT-1902)
+
+### Changed
+
+- **`rn-build` normalize_spec pre-gate** — Validates and normalizes malformed specs before the first loop iteration, surfacing schema errors early rather than propagating them into sub-loop state. (ENH-2017)
+- **`rn-refine` required_inputs + handoff mode** — `rn-refine` now declares `required_inputs` and sets `on_handoff: spawn` to match the autonomous rn-* contract.
+
+### Fixed
+
+- **FSM `max_iterations` context injection** — `max_iterations` is now injected into the FSM context at loop start, allowing loop body templates to reference `{{ max_iterations }}`. (ff45e10)
+- **`rn-implement` init queue seed bash escaping** — Fixed unquoted bash parameter expansion that could corrupt queue entries when issue titles contained special characters. (83ecdab)
+- **`rn-build` empty-loop crash** — Added `check_harness_name` guard to prevent a crash when the sub-loop name resolved to an empty string. (254bb29)
+- **`vega-viz` EVAL_PASS token** — Corrected the evaluation pass token; added `canvas-sketch-generator` loop entries. (ed1d061)
+- **Session store / logs path redirection** — `resolve_history_db` is now the single path-resolution entry point for both the session store and logs paths, fixing `LL_HISTORY_DB` overrides not propagating to the logs writer. (69e81a5)
+- **BUG-2009: autodev/recursive-refine issue resolution routing** — Routes issue resolution through `ll-issues` path instead of autodev, preventing silent loss of unresolved issues. (e2b297f)
+- **`rn-implement` stall+no-children routing** — Routes stalled issues with no children to `defer` instead of silently skipping them. (a5fd199)
+- **`rn-implement` sub-loop `on_error` classifier laundering** — Splits `on_error` routing from classifier laundering to prevent error states from being misclassified as completions. (21162f0)
+- **`rn-decompose` early `visited.txt` write** — `enqueue_children` no longer writes `visited.txt` before children are confirmed, preventing premature exclusion of valid subtasks. (b1ca34c)
+- **BUG-2007: `rn-remediate` routing/convergence defects** — Fixed four routing defects: stale convergence detection, missed `CONVERGED_STALLED` route, premature budget exhaustion, and duplicate result emission. (c36343b)
+- **`rn-*` issue ID type-prefix mismatch tolerance** — Resolution logic now tolerates ID mismatches where the file prefix doesn't match the stored reference prefix. (b49dc70)
 
 ## [1.117.0] - 2026-06-06
 
@@ -584,6 +607,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
 [Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...HEAD
+[1.118.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.117.0...v1.118.0
 [1.117.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.116.0...v1.117.0
 [1.116.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.115.0...v1.116.0
 [1.115.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...v1.115.0
