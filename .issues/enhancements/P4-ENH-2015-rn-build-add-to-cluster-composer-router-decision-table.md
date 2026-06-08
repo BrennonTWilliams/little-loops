@@ -3,7 +3,7 @@ id: ENH-2015
 title: "rn-build \u2014 Add to Cluster vs. Composer vs. Router decision table in LOOPS_GUIDE"
 type: ENH
 priority: P4
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-08T01:29:25Z'
 discovered_date: 2026-06-08
@@ -26,6 +26,7 @@ score_complexity: 22
 score_test_coverage: 15
 score_ambiguity: 23
 score_change_surface: 22
+completed_at: '2026-06-08T02:23:29Z'
 ---
 
 # ENH-2015: `rn-build` — Add to "Cluster vs. Composer vs. Router" decision table in LOOPS_GUIDE
@@ -142,8 +143,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Open** | Created: 2026-06-08
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-08T02:23:07 - `a286ed01-af5a-44e2-854c-062487345949.jsonl`
 - `/ll:confidence-check` - 2026-06-07T00:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:wire-issue` - 2026-06-08T02:06:24 - `f5ec0a1a-1f1e-4223-8bf3-25b8469fe5df.jsonl`
 - `/ll:refine-issue` - 2026-06-08T01:55:23 - `90bc903f-c36f-4fd0-87a7-5f71bc83027c.jsonl`
 - `/ll:format-issue` - 2026-06-08T01:36:13 - `b59e4b87-6e2b-4690-bb43-64f1327b0c7e.jsonl`
 - `/ll:capture-issue` - 2026-06-08T01:29:25Z - `00fefddf-56f7-43f8-8a57-dd53f6c3526d.jsonl`
+
+
+---
+
+## Resolution
+
+- **Status**: Closed - Already Fixed
+- **Closed**: 2026-06-07
+- **Reason**: already_fixed
+- **Closure**: Automated (ready-issue validation)
+
+### Closure Notes
+Issue was automatically closed during validation.
+The issue was determined to be invalid, already resolved, or not actionable.
