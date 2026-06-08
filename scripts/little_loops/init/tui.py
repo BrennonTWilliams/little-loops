@@ -296,6 +296,7 @@ def _render_summary(
     config: dict[str, Any],
     project_root: Path,
     selected_set: set[str],
+    selected_hosts: list[str],
     settings_target: str,
 ) -> None:
     """Render a rich bordered summary panel of the proposed configuration."""
@@ -322,6 +323,9 @@ def _render_summary(
     if enabled:
         table.add_row("Features", ", ".join(enabled))
 
+    host_labels = [_HOST_LABELS.get(h, h) for h in selected_hosts]
+    table.add_row("Hosts", ", ".join(host_labels) if host_labels else "none")
+
     sf = (
         ".claude/settings.local.json"
         if settings_target == "local"
@@ -341,17 +345,17 @@ def _apply_config(
     config_path: Path,
     templates_dir: Path,
     plugin_root: Path,
-    codex: bool,
+    hosts: list[str],
     settings_target: str,
     force: bool,
     console: Console,
 ) -> None:
     """Write all ll-init artifacts to disk."""
     from little_loops import __version__
+    from little_loops.init.cli import _dispatch_host_adapters
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
         deploy_goals,
-        install_codex_adapter,
         make_issue_dirs,
         make_learning_tests_dir,
         merge_settings,
@@ -379,10 +383,7 @@ def _apply_config(
     )
     merge_settings(project_root, settings_file=settings_file)
 
-    if codex:
-        installed = install_codex_adapter(project_root, plugin_root, force=force)
-        if installed:
-            console.print("[Codex] Hook adapter installed to .codex/hooks.json")
+    _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 
     warnings = validate_deps(config, __version__, project_root)
     for w in warnings:

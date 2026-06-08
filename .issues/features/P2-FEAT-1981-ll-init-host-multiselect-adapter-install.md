@@ -2,9 +2,10 @@
 id: FEAT-1981
 title: ll-init host multi-select and adapter install dispatch
 type: feature
-status: open
+status: done
 priority: P2
 discovered_date: 2026-06-05
+completed_at: 2026-06-08 16:31:04+00:00
 discovered_by: capture-issue
 parent: EPIC-1978
 relates_to:
@@ -143,6 +144,10 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - `/ll:ready-issue` - 2026-06-08T16:11:45 - `708619f8-a0aa-4b4a-aeb3-262397c809bd.jsonl`
 - `/ll:confidence-check` - 2026-06-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df2f8f5e-bc85-4400-9a3a-fc89cc3407c8.jsonl`
 
+## Resolution
+
+Implemented `--hosts HOST…` flag in `ll-init` replacing the old `--codex` bool flag (retained as hidden deprecated alias). Added `_detect_hosts()` for multi-host auto-detection (claude-code, codex, pi) and `_dispatch_host_adapters()` dispatch table. TUI gained a 4th screen (3/4 Hosts) with detection-seeded defaults using `questionary.checkbox`. Pi shows a graceful "not yet available" message. All acceptance criteria met; 11 new unit tests added.
+
 ## Status
 
-**Open** | Created: 2026-06-05 | Priority: P2
+**Done** | Created: 2026-06-05 | Completed: 2026-06-08 | Priority: P2

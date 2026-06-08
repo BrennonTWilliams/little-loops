@@ -97,7 +97,7 @@ little-loops/
 │   │       ├── session-start.sh  # SessionStart matcher=startup → session_start (sets LL_HOOK_HOST=codex)
 │   │       ├── pre-compact.sh    # PreCompact → pre_compact (sets LL_HOOK_HOST=codex)
 │   │       ├── prompt-submit.sh  # UserPromptSubmit → user_prompt_submit (sets LL_HOOK_HOST=codex)
-│   │       ├── hooks.json        # Template written to .codex/hooks.json by ll:init --codex
+│   │       ├── hooks.json        # Template written to .codex/hooks.json by ll-init --hosts codex
 │   │       └── README.md
 │   └── scripts/             # Hook scripts
 │       ├── check-duplicate-issue-id.sh

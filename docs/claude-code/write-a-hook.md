@@ -187,7 +187,7 @@ The three concrete adapters:
 
 - **OpenCode** (`hooks/adapters/opencode/index.ts`) — a `Bun.spawn(["python", "-m", "little_loops.hooks", intent], { cwd, env: { ...process.env, LL_HOOK_HOST: "opencode" } })` call that writes `JSON.stringify(payload)` to stdin and awaits stdout/stderr/exit. See [`hooks/adapters/opencode/README.md`](../../hooks/adapters/opencode/README.md) for the full subprocess contract, including the latency budget that gates hot-path intents.
 
-- **Codex CLI** (`hooks/adapters/codex/{session-start,pre-compact}.sh`) — a bash shim that exports `LL_HOOK_HOST=codex` before piping stdin into `python -m little_loops.hooks <intent>`. Registered by `/ll:init --codex` in the user project's `.codex/hooks.json` from the [`hooks.json`](../../hooks/adapters/codex/hooks.json) template. The SessionStart MatcherGroup uses `"matcher": "startup"` to avoid re-emitting identifiers on Codex's `resume`/`clear` session variants. See [`hooks/adapters/codex/README.md`](../../hooks/adapters/codex/README.md) for the trust-model and trust-hash-churn guidance.
+- **Codex CLI** (`hooks/adapters/codex/{session-start,pre-compact}.sh`) — a bash shim that exports `LL_HOOK_HOST=codex` before piping stdin into `python -m little_loops.hooks <intent>`. Registered by `ll-init --hosts codex` in the user project's `.codex/hooks.json` from the [`hooks.json`](../../hooks/adapters/codex/hooks.json) template. The SessionStart MatcherGroup uses `"matcher": "startup"` to avoid re-emitting identifiers on Codex's `resume`/`clear` session variants. See [`hooks/adapters/codex/README.md`](../../hooks/adapters/codex/README.md) for the trust-model and trust-hash-churn guidance.
 
   ```bash
   export LL_HOOK_HOST=codex

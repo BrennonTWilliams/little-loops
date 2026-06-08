@@ -194,7 +194,7 @@ without invoking the adapter.
 
 | Action                              | Claude Code                   | OpenCode                                 | Codex CLI                                |
 | ----------------------------------- | ----------------------------- | ---------------------------------------- | ---------------------------------------- |
-| Install command                     | Plugin auto-enables           | `bun install` under `hooks/adapters/opencode/` | `/ll:init --codex` writes `.codex/hooks.json` |
+| Install command                     | Plugin auto-enables           | `bun install` under `hooks/adapters/opencode/` | `ll-init --hosts codex` writes `.codex/hooks.json` |
 | Trust prompt on first run           | N/A (plugin trust model)      | N/A                                      | **Yes** — Codex shows a hook-trust dialog; user must "Trust All" or "Review Hooks" before hooks fire |
 | Host identification env var         | (default, no var needed)      | `LL_HOOK_HOST=opencode`                  | `LL_HOOK_HOST=codex`                     |
 | Adapter runtime                     | Bash + Python                 | TypeScript / Bun + Python                | Bash + Python                            |

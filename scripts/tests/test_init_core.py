@@ -948,3 +948,141 @@ class TestMainInit:
             )
         assert code == 0
         assert (apply_dest / ".ll" / "ll-config.json").exists()
+
+
+# ===========================================================================
+# TestDetectHosts
+# ===========================================================================
+
+
+class TestDetectHosts:
+    def test_codex_binary_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        with patch("little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "codex" else None):
+            hosts = _detect_hosts(tmp_path)
+        assert "codex" in hosts
+
+    def test_codex_dir_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        (tmp_path / ".codex").mkdir()
+        with patch("little_loops.init.cli.shutil.which", return_value=None):
+            hosts = _detect_hosts(tmp_path)
+        assert "codex" in hosts
+
+    def test_claude_binary_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        with patch("little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "claude" else None):
+            hosts = _detect_hosts(tmp_path)
+        assert "claude-code" in hosts
+
+    def test_pi_binary_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        with patch("little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "pi" else None):
+            hosts = _detect_hosts(tmp_path)
+        assert "pi" in hosts
+
+    def test_nothing_detected_defaults_to_claude_code(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        with patch("little_loops.init.cli.shutil.which", return_value=None):
+            hosts = _detect_hosts(tmp_path)
+        assert hosts == ["claude-code"]
+
+    def test_multiple_hosts_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        with patch("little_loops.init.cli.shutil.which", side_effect=lambda b: b if b in ("claude", "codex") else None):
+            hosts = _detect_hosts(tmp_path)
+        assert "claude-code" in hosts
+        assert "codex" in hosts
+
+
+# ===========================================================================
+# TestHostDispatch
+# ===========================================================================
+
+
+class TestHostDispatch:
+    def test_hosts_codex_installs_adapter(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        # Use the real plugin root so templates and adapter template both exist
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "codex", "--root", str(tmp_project)])
+        assert code == 0
+        assert (tmp_project / ".codex" / "hooks.json").exists()
+
+    def test_hosts_claude_code_no_adapter_file(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "claude-code", "--root", str(tmp_project)])
+        assert code == 0
+        assert not (tmp_project / ".codex" / "hooks.json").exists()
+
+    def test_hosts_pi_graceful_unavailable(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "pi", "--root", str(tmp_project)])
+        assert code == 0
+        assert "not yet available" in capsys.readouterr().out
+
+    def test_hosts_comma_separated(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                ["--yes", "--hosts", "claude-code,codex", "--root", str(tmp_project)]
+            )
+        assert code == 0
+        assert (tmp_project / ".codex" / "hooks.json").exists()
+
+    def test_codex_deprecated_alias_still_works(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--codex", "--root", str(tmp_project)])
+        assert code == 0
+        assert (tmp_project / ".codex" / "hooks.json").exists()
+
+    def test_dry_run_codex_shows_write_line(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                ["--yes", "--dry-run", "--hosts", "codex", "--root", str(tmp_project)]
+            )
+        assert code == 0
+        assert ".codex/hooks.json" in capsys.readouterr().out
+
+    def test_dry_run_pi_shows_unavailable(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                ["--yes", "--dry-run", "--hosts", "pi", "--root", str(tmp_project)]
+            )
+        assert code == 0
+        assert "not yet available" in capsys.readouterr().out
+
+    def test_plan_includes_has_pi(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--plan", "--root", str(tmp_project)])
+        assert code == 0
+        plan = json.loads(capsys.readouterr().out)
+        assert "has_pi" in plan["host_options"]

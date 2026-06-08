@@ -85,9 +85,9 @@ Run `/ll:init` once per project. It auto-detects your project type and generates
 | `--yes` | Accepts all auto-detected defaults without any confirmation prompts | When you trust the defaults and want a fast, non-interactive setup |
 | `--force` | Overwrites an existing `.ll/ll-config.json` | Re-initializing a project that already has a config |
 | `--dry-run` | Previews what would be generated without writing any files | Checking what `/ll:init` would produce before committing |
-| `--codex` | Also installs the OpenAI Codex CLI hook adapter (writes `.codex/hooks.json`). Auto-enabled only on non-Claude-Code hosts when the `codex` binary is on `PATH` or a `.codex/` directory already exists. | Setting up little-loops for a project you also use with Codex CLI |
+| `--hosts HOST…` | Specifies which host harnesses to wire adapters for (`claude-code`, `codex`, `pi`). Accepts space- or comma-separated values. Defaults to auto-detected hosts. | Setting up little-loops for a project you also use with Codex CLI (`--hosts codex`) |
 
-`--interactive` and `--yes` are mutually exclusive. All other combinations are valid — for example, `--interactive --force` runs the wizard and overwrites the existing config, `--dry-run --force` previews what an overwrite would produce, and `--codex --dry-run` previews the Codex hook adapter without touching `.codex/`.
+`--interactive` and `--yes` are mutually exclusive. All other combinations are valid — for example, `--interactive --force` runs the wizard and overwrites the existing config, `--dry-run --force` previews what an overwrite would produce, and `--hosts codex --dry-run` previews the Codex hook adapter without touching `.codex/`.
 
 Use `--interactive` the first time you set up a project with non-standard tooling. The wizard walks through source directories, test and lint commands, parallel worker counts, GitHub sync, and more. For a straightforward project where auto-detection gets it right, `--yes` is faster.
 

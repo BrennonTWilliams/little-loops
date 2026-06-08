@@ -38,22 +38,30 @@ def _wire_q(
     format_cmd: str = "ruff format .",
     features: list[str] | None = None,
     workers: str = "4",
+    hosts: list[str] | None = None,
     settings: str = "local",
     confirmed: bool | None = True,
 ) -> None:
-    """Wire a questionary mock for a complete TUI interaction."""
+    """Wire a questionary mock for a complete TUI interaction.
+
+    There are now two checkbox() calls: one for features (screen 2) and one for
+    hosts (screen 3). Use side_effect to return the right value per call.
+    """
     if features is None:
         features = ["parallel", "product", "learning_tests", "analytics", "context_monitor"]
+    if hosts is None:
+        hosts = ["claude-code"]
 
     text_returns = [name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd]
     if "parallel" in features:
         text_returns.append(workers)
 
     mock_q.text.side_effect = [_mock_ask(v) for v in text_returns]
-    mock_q.checkbox.return_value.ask.return_value = features
+    # Two checkbox calls: first is features, second is hosts
+    mock_q.checkbox.side_effect = [_mock_ask(features), _mock_ask(hosts)]
     mock_q.select.return_value.ask.return_value = settings
     mock_q.confirm.return_value.ask.return_value = confirmed
-    # Choice is used only to build the checkbox list; let it return a plain MagicMock
+    # Choice is used only to build the checkbox lists; let it return a plain MagicMock
     mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
 
 
@@ -157,7 +165,7 @@ class TestConditionalParallel:
             _wire_q(mock_q, features=["parallel"], workers="6")
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
-        # 6 basics + 1 workers question = 7 text() calls
+        # 6 basics + 1 workers question = 7 text() calls (hosts is a checkbox, not text)
         assert mock_q.text.call_count == 7
         assert rc == 0
 
@@ -222,7 +230,7 @@ class TestCtrlC:
     ) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
-            # Basics answer normally, features returns None (Ctrl-C)
+            # Basics answer normally, features returns None (Ctrl-C on first checkbox)
             mock_q.text.side_effect = [
                 _mock_ask("myapp"),
                 _mock_ask("src/"),
@@ -231,7 +239,7 @@ class TestCtrlC:
                 _mock_ask("mypy"),
                 _mock_ask("ruff format ."),
             ]
-            mock_q.checkbox.return_value.ask.return_value = None
+            mock_q.checkbox.side_effect = [_mock_ask(None)]
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
         assert rc == 130
@@ -413,3 +421,75 @@ class TestBuildFinalConfig:
             parallel_workers=4,
         )
         assert "product" not in config
+
+
+# ---------------------------------------------------------------------------
+# Host multi-select screen
+# ---------------------------------------------------------------------------
+
+
+class TestHostSelection:
+    @patch("little_loops.init.tui.questionary")
+    def test_ctrl_c_on_hosts_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            # Features returns normally, hosts returns None (Ctrl-C on second checkbox)
+            mock_q.text.side_effect = [
+                _mock_ask("myapp"),
+                _mock_ask("src/"),
+                _mock_ask("pytest"),
+                _mock_ask("ruff check ."),
+                _mock_ask("mypy"),
+                _mock_ask("ruff format ."),
+            ]
+            mock_q.checkbox.side_effect = [
+                _mock_ask(["analytics"]),  # features
+                _mock_ask(None),           # hosts — Ctrl-C
+            ]
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert rc == 130
+
+    @patch("little_loops.init.tui.questionary")
+    def test_codex_host_installs_adapter(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        plugin_root = _PLUGIN_ROOT  # real plugin root has the adapter template
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], hosts=["codex"])
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, plugin_root)
+
+        assert rc == 0
+        assert (tmp_path / ".codex" / "hooks.json").exists()
+
+    @patch("little_loops.init.tui.questionary")
+    def test_claude_code_host_no_adapter_file(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], hosts=["claude-code"])
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert rc == 0
+        # No .codex/hooks.json for claude-code (plugin hooks fire via global plugin)
+        assert not (tmp_path / ".codex" / "hooks.json").exists()
+
+    @patch("little_loops.init.tui.questionary")
+    def test_pi_host_graceful_unavailable(
+        self, mock_q: MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], hosts=["pi"])
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert rc == 0
+        assert "not yet available" in capsys.readouterr().out
+
+    @patch("little_loops.init.tui.questionary")
+    def test_detection_seeded_defaults_shown(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, hosts=["codex"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, hosts=["codex"])
+
+        # Verify two checkbox() calls were made (features + hosts)
+        assert mock_q.checkbox.call_count == 2
