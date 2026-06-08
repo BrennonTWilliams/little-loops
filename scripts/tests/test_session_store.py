@@ -94,7 +94,7 @@ class TestEnsureDb:
         bytes in it was only meaningful under the old rollback-journal mode.
         """
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         legacy = ll_dir / "session.db"
         ensure_db(legacy)
         legacy_bytes = legacy.read_bytes()
@@ -113,7 +113,7 @@ class TestEnsureDb:
     def test_migration_skipped_when_new_db_exists(self, tmp_path: Path) -> None:
         """If both legacy and new exist, leave legacy alone (don't clobber)."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         # Create the new db first so ``new.exists()`` is true when the
         # shim sees both. (Creating ``legacy`` first would trigger the
         # very migration we want to verify is skipped here.)
@@ -308,7 +308,7 @@ class TestBackfill:
 
     def test_backfill_issues(self, tmp_path: Path) -> None:
         issues = tmp_path / ".issues" / "bugs"
-        issues.mkdir(parents=True)
+        issues.mkdir(parents=True, exist_ok=True)
         (issues / "P1-BUG-1-x.md").write_text(
             "---\nid: BUG-1\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
         )
@@ -320,7 +320,7 @@ class TestBackfill:
 
     def test_backfill_loops(self, tmp_path: Path) -> None:
         running = tmp_path / ".loops" / ".running"
-        running.mkdir(parents=True)
+        running.mkdir(parents=True, exist_ok=True)
         (running / "docs-sync.json").write_text(
             json.dumps({"loop_name": "docs-sync", "current_state": "verify"}), encoding="utf-8"
         )
@@ -398,7 +398,7 @@ class TestBackfill:
 
     def test_backfilled_issue_is_searchable(self, tmp_path: Path) -> None:
         issues = tmp_path / ".issues"
-        issues.mkdir()
+        issues.mkdir(exist_ok=True)
         (issues / "P1-BUG-2-y.md").write_text(
             "---\nid: BUG-2\nstatus: done\ntype: BUG\n---\n", encoding="utf-8"
         )
@@ -680,7 +680,7 @@ class TestBackfillIssuesV2Columns:
 
     def test_v2_columns_populated_from_frontmatter(self, tmp_path: Path) -> None:
         issues = tmp_path / ".issues" / "enhancements"
-        issues.mkdir(parents=True)
+        issues.mkdir(parents=True, exist_ok=True)
         (issues / "P2-ENH-99-foo.md").write_text(
             "---\n"
             "id: ENH-99\n"
@@ -703,7 +703,7 @@ class TestBackfillIssuesV2Columns:
 
     def test_v2_columns_derived_from_filename_when_fm_absent(self, tmp_path: Path) -> None:
         issues = tmp_path / ".issues" / "bugs"
-        issues.mkdir(parents=True)
+        issues.mkdir(parents=True, exist_ok=True)
         (issues / "P3-BUG-7-no-meta.md").write_text(
             "---\nid: BUG-7\nstatus: done\n---\n", encoding="utf-8"
         )
@@ -1149,7 +1149,7 @@ class TestBackfillDedup:
 
     def test_double_backfill_produces_single_row(self, tmp_path: Path) -> None:
         issues = tmp_path / ".issues" / "bugs"
-        issues.mkdir(parents=True)
+        issues.mkdir(parents=True, exist_ok=True)
         (issues / "P1-BUG-10-x.md").write_text(
             "---\nid: BUG-10\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
         )
@@ -2020,7 +2020,12 @@ class TestCompactSession:
         db = self._make_db_with_messages(tmp_path, session_id, messages)
         # Use a very small budget (10 tokens ~ 40 chars) to force multiple leaf blocks
         config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
-        compact_session(session_id, db, config=config)
+        # Mock subprocess so _call_llm_for_summary never invokes the real claude binary
+        # (which would trigger SessionStart hooks writing to the production db).
+        short_summary = "Condensed summary."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response(short_summary))
+            compact_session(session_id, db, config=config)
         conn = connect(db)
         try:
             leaf_count = conn.execute(

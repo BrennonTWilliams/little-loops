@@ -132,7 +132,7 @@ def temp_project_dir() -> Generator[Path, None, None]:
     with tempfile.TemporaryDirectory() as tmpdir:
         project_root = Path(tmpdir)
         ll_dir = project_root / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         yield project_root
 
 
@@ -209,9 +209,9 @@ def issues_dir(temp_project_dir: Path) -> Path:
     features_dir = issues_base / "features"
     epics_dir = issues_base / "epics"
 
-    bugs_dir.mkdir(parents=True)
-    features_dir.mkdir(parents=True)
-    epics_dir.mkdir(parents=True)
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    features_dir.mkdir(parents=True, exist_ok=True)
+    epics_dir.mkdir(parents=True, exist_ok=True)
 
     # Create sample bug issues
     (bugs_dir / "P0-BUG-001-critical-crash.md").write_text(
@@ -304,8 +304,8 @@ The reported issue has already been resolved in a previous commit.
 def temp_project(tmp_path: Path) -> Path:
     """Create a temporary project directory for loop tests."""
     project_dir = tmp_path / "test_project"
-    project_dir.mkdir()
-    (project_dir / ".loops").mkdir()
+    project_dir.mkdir(exist_ok=True)
+    (project_dir / ".loops").mkdir(exist_ok=True)
     return project_dir
 
 
@@ -349,7 +349,7 @@ states:
 def loops_dir(tmp_path: Path) -> Path:
     """Create a .loops directory with test loop files."""
     loops_dir = tmp_path / ".loops"
-    loops_dir.mkdir()
+    loops_dir.mkdir(exist_ok=True)
     (loops_dir / "loop1.yaml").write_text(
         "name: loop1\ninitial: start\nstates:\n  start:\n    terminal: true"
     )
@@ -388,6 +388,18 @@ def many_events_file(tmp_path: Path) -> Path:
 # =============================================================================
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_history_db_session(tmp_path_factory: pytest.TempPathFactory) -> Generator[None, None, None]:
+    """Set LL_HISTORY_DB for the entire session so no module-level or session-scoped
+    code accidentally opens the real .ll/history.db before function-scoped fixtures run.
+    """
+    session_db_dir = tmp_path_factory.mktemp("session_db") / ".ll"
+    session_db_dir.mkdir(exist_ok=True)
+    os.environ["LL_HISTORY_DB"] = str(session_db_dir / "history.db")
+    yield
+    os.environ.pop("LL_HISTORY_DB", None)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_history_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     """Redirect all session-store DB opens to a per-test temp directory.
@@ -397,22 +409,51 @@ def _isolate_history_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Gene
     """
     # Use a .ll/ subdirectory so ensure_db's legacy migration (session.db →
     # history.db) never sees a session.db sibling left by other fixtures.
+    # Do NOT pre-create the directory here; tests that assert ".ll/" is absent
+    # on entry would fail. ensure_db() creates the parent on first open.
     db = tmp_path / ".ll" / "history.db"
-    db.parent.mkdir(exist_ok=True)
     monkeypatch.setenv("LL_HISTORY_DB", str(db))
     yield
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _guard_real_history_db() -> Generator[None, None, None]:
-    """Fail if the real .ll/history.db is modified by any test."""
-    real_db = Path(__file__).parent.parent.parent / ".ll" / "history.db"
-    before = (real_db.stat().st_mtime_ns, real_db.stat().st_size) if real_db.exists() else None
-    yield
-    if before is not None and real_db.exists():
-        after = (real_db.stat().st_mtime_ns, real_db.stat().st_size)
-        assert before == after, (
-            f"Real .ll/history.db was modified during tests. "
-            f"A test opened the production database without isolation. "
-            f"Before: {before}, After: {after}"
+    """Fail fast if any test opens the real .ll/history.db without isolation.
+
+    Intercepts the single choke point every DB open routes through —
+    ``little_loops.session_store.sqlite3.connect`` (used by ``ensure_db``,
+    ``connect``, ``SessionStore._connect``, and vacuum) — and raises if a test
+    targets the production database. Unlike the previous mtime/size snapshot,
+    this is immune to concurrent external writers (live ``ll-auto`` / ``ll-loop``
+    runs touch ``.ll/history.db`` continuously) and attributes a genuine leak to
+    the actual offending test rather than the last test in the session.
+
+    ``LL_HISTORY_DB`` is set per-test by ``_isolate_history_db``, so legitimate
+    DB opens resolve to ``tmp_path/.ll/history.db`` and pass straight through.
+    """
+    import sqlite3
+
+    from little_loops import session_store
+
+    real_db = (Path(__file__).parent.parent.parent / ".ll" / "history.db").resolve()
+    real_connect = sqlite3.connect
+
+    def guarded_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+        try:
+            resolved = Path(database).resolve()
+        except TypeError:
+            # Non-path targets (e.g. ":memory:") never alias the real DB.
+            return real_connect(database, *args, **kwargs)
+        assert resolved != real_db, (
+            f"A test opened the production database without isolation: {resolved}. "
+            f"Route the open through LL_HISTORY_DB / resolve_history_db() so it "
+            f"lands in the per-test tmp_path instead of {real_db}."
         )
+        return real_connect(database, *args, **kwargs)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(session_store.sqlite3, "connect", guarded_connect)
+    try:
+        yield
+    finally:
+        mp.undo()
