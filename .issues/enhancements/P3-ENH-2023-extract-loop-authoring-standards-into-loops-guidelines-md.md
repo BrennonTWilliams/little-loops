@@ -177,6 +177,12 @@ _Added by `/ll:refine-issue` (third pass) — exact test entry tuples:_
 ("agents/loop-specialist.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
 ```
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` (fourth pass) — code accuracy note:_
+
+**`action_stall` missing from CLAUDE.md prose list**: `validation.py:NON_LLM_EVALUATOR_TYPES` (line 81) includes `action_stall` as a valid MR-1-satisfying evaluator type, as does the MR-1 error message (`validation.py:1069`): `"exit_code, output_numeric, convergence, diff_stall, action_stall, mcp_result"`. The current CLAUDE.md § Loop Authoring prose list and `HARNESS_OPTIMIZATION_GUIDE.md` both omit it. When authoring the MR-1 row in LOOPS-GUIDELINES.md, source the non-LLM evaluator type list from `NON_LLM_EVALUATOR_TYPES` in `validation.py:81` for accuracy. Code-accurate list: `exit_code`, `output_numeric`, `convergence`, `diff_stall`, `action_stall`, `mcp_result`.
+
 ### Documentation
 - `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` — the empirical study behind the MR rules; LOOPS-GUIDELINES.md should link to it in the See Also section (as HARNESS_OPTIMIZATION_GUIDE.md line 244 already does)
 
@@ -224,6 +230,8 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - Grep verification is manual — the completeness check ("MR-1…MR-5 now appear only in LOOPS-GUIDELINES.md") is a manual grep, not a CI gate; run it explicitly post-implementation
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-08T21:00:00Z - `8b26e8eb-6fcd-4951-9ead-09b00eede5aa.jsonl`
+- `/ll:refine-issue` - 2026-06-08T20:47:03 - `0c6be1b2-0553-4e28-bb1f-1f06c6ddae23.jsonl`
 - `/ll:confidence-check` - 2026-06-08T20:30:00Z - `6392fbc2-f8f1-4751-8018-9e14c0b2037d.jsonl`
 - `/ll:refine-issue` - 2026-06-08T20:08:50 - `c36c1c68-9f6e-46e8-8abb-d442d3aac92e.jsonl`
 - `/ll:wire-issue` - 2026-06-08T19:09:30 - `56fd44d8-174d-4ee6-8034-5fd93973393c.jsonl`
