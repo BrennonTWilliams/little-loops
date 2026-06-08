@@ -837,6 +837,31 @@ ll-loop run rn-build --context spec=specs/sample.md
 
 See `specs/SPEC_TEMPLATE.md` for a fully annotated template and `specs/sample.md` for a worked example.
 
+#### Smoke test
+
+Run the built-in integration test to confirm the full pipeline fires without an FSM crash:
+
+```bash
+# Manual one-shot run (30–120 min wall time)
+ll-loop run rn-build \
+    --context spec=specs/sample.md \
+    --context max_eval_retries=0
+
+# Automated integration test (requires PYTEST_INTEGRATION=1)
+PYTEST_INTEGRATION=1 python -m pytest scripts/tests/test_rn_build.py::TestE2E -v -s
+```
+
+**Manual checklist** — after `ll-loop run` completes, verify:
+
+1. Exit code is 0 (no FSM crash)
+2. `.loops/runs/rn-build-<timestamp>/epic-id.txt` exists (`scope_project` completed)
+3. Dispatch output does **not** contain `eval-driven-development`
+4. Dispatch output contains `goal-cluster` (sub-loop header `== loop: goal-cluster …`)
+5. Dispatch output contains `rn-implement` (dispatched by `goal-cluster`)
+6. Output contains `SYNTHESIS_RESULT:` followed by valid JSON
+
+Pass `--context max_eval_retries=0` to skip the `eval_gate` retry cycle and reduce wall time.
+
 **Issue Management**
 
 | Loop | Description |

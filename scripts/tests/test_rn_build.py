@@ -368,6 +368,119 @@ class TestRnBuildInitState:
         )
 
 
+@pytest.mark.integration
+@pytest.mark.slow
+class TestE2E:
+    """End-to-end smoke test for rn-build (ENH-2014).
+
+    Validates the full pipeline: spec → scope_project → goal-cluster → rn-implement,
+    with no eval-driven-development in the dispatch log and a well-formed
+    synthesize_result JSON output.
+
+    Run with:
+        PYTEST_INTEGRATION=1 python -m pytest scripts/tests/test_rn_build.py::TestE2E -v -s
+
+    Wall time: 30–120 min (spawns real Claude Code sessions).
+    """
+
+    def test_rn_build_smoke(self) -> None:
+        """Full pipeline: spec/sample.md → epic-id.txt, goal-cluster, rn-implement dispatched."""
+        import json
+        import os
+        import re
+        import subprocess
+
+        if not os.environ.get("PYTEST_INTEGRATION"):
+            pytest.skip("Set PYTEST_INTEGRATION=1 to run E2E integration tests")
+
+        repo_root = Path(__file__).parent.parent.parent
+        spec_path = repo_root / "specs" / "sample.md"
+        assert spec_path.exists(), f"specs/sample.md not found at {spec_path}"
+
+        runs_dir = repo_root / ".loops" / "runs"
+        existing_rn_builds: set[str] = (
+            {d.name for d in runs_dir.iterdir() if d.is_dir() and d.name.startswith("rn-build-")}
+            if runs_dir.exists()
+            else set()
+        )
+
+        result = subprocess.run(
+            [
+                "ll-loop",
+                "run",
+                "rn-build",
+                "--context",
+                "spec=specs/sample.md",
+                "--context",
+                "max_eval_retries=0",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=7200,
+            cwd=str(repo_root),
+        )
+
+        combined = result.stdout + result.stderr
+
+        # Locate the new run directory created by this invocation.
+        new_runs: set[Path] = (
+            {
+                d
+                for d in runs_dir.iterdir()
+                if d.is_dir()
+                and d.name.startswith("rn-build-")
+                and d.name not in existing_rn_builds
+            }
+            if runs_dir.exists()
+            else set()
+        )
+        assert new_runs, (
+            f"No new rn-build run directory found under {runs_dir}.\n"
+            f"stdout: {result.stdout[:1000]}\nstderr: {result.stderr[:500]}"
+        )
+        run_dir = sorted(new_runs)[-1]
+
+        # 1. Loop completed without FSM crash.
+        assert result.returncode == 0, (
+            f"ll-loop run exited {result.returncode}.\n"
+            f"stdout: {result.stdout[:2000]}\nstderr: {result.stderr[:1000]}"
+        )
+
+        # 2. epic-id.txt written — scope_project state completed.
+        assert (run_dir / "epic-id.txt").exists(), (
+            f"epic-id.txt not found in {run_dir} — scope_project did not complete"
+        )
+
+        # 3. Dispatch log must NOT contain eval-driven-development.
+        assert "eval-driven-development" not in combined, (
+            "Dispatch log must not reference eval-driven-development — "
+            "rn-build routes via goal-cluster → rn-implement, not the legacy eval-driven path"
+        )
+
+        # 4. goal-cluster must appear in the dispatch log (sub-loop header).
+        assert "goal-cluster" in combined, (
+            f"Expected 'goal-cluster' in dispatch output.\nOutput: {combined[:2000]}"
+        )
+
+        # 5. rn-implement must appear in the dispatch log (dispatched by goal-cluster).
+        assert "rn-implement" in combined, (
+            f"Expected 'rn-implement' in dispatch output.\nOutput: {combined[:2000]}"
+        )
+
+        # 6. synthesize_result produced a well-formed JSON report.
+        assert "SYNTHESIS_RESULT:" in combined, (
+            f"synthesize_result must emit 'SYNTHESIS_RESULT:' marker.\nOutput: {combined[:2000]}"
+        )
+        json_block = re.search(r"```json\s*(\{.*?\})\s*```", combined, re.DOTALL)
+        if json_block:
+            try:
+                synthesis = json.loads(json_block.group(1))
+            except json.JSONDecodeError as exc:
+                pytest.fail(f"synthesize_result JSON is malformed: {exc}")
+            assert "accomplished" in synthesis, "synthesize_result JSON must have 'accomplished'"
+            assert "eval_passed" in synthesis, "synthesize_result JSON must have 'eval_passed'"
+
+
 @pytest.mark.slow
 class TestRnBuildLiveValidation:
     """Optional live validation tests (skipped unless --run-slow flag is passed)."""

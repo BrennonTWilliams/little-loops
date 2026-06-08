@@ -1,11 +1,12 @@
 ---
 id: ENH-2014
-title: "rn-build — E2E smoke test and sample spec for integration validation"
+title: "rn-build \u2014 E2E smoke test and sample spec for integration validation"
 type: ENH
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-08T01:29:25Z'
+completed_at: '2026-06-08T02:49:03Z'
 discovered_date: 2026-06-08
 discovered_by: capture-issue
 size: Medium
@@ -20,6 +21,12 @@ labels:
 - loops
 - testing
 - rn-build
+confidence_score: 96
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 25
 ---
 
 # ENH-2014: `rn-build` — E2E smoke test and sample spec for integration validation
@@ -164,10 +171,20 @@ so it is excluded from the default `pytest` run but included in CI when
 - **Risk**: Low — additive; no loop YAML changes
 - **Breaking Change**: No
 
+## Resolution
+
+Implemented `TestE2E` class in `scripts/tests/test_rn_build.py` with 6 assertions:
+exit-0, `epic-id.txt` exists, no `eval-driven-development` in dispatch log, `goal-cluster`
+dispatched, `rn-implement` dispatched, `SYNTHESIS_RESULT:` JSON well-formed.
+`specs/sample.md` was already created by ENH-2012. Smoke-test procedure documented in
+`docs/guides/LOOPS_GUIDE.md` under the `rn-build` section.
+
 ## Status
 
-**Open** | Created: 2026-06-08
+**Done** | Created: 2026-06-08 | Completed: 2026-06-08
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-08T02:40:33 - `e4b624a8-cfdf-44d3-8a76-379e9c661941.jsonl`
+- `/ll:confidence-check` - 2026-06-07T00:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:format-issue` - 2026-06-08T01:36:06 - `b59e4b87-6e2b-4690-bb43-64f1327b0c7e.jsonl`
 - `/ll:capture-issue` - 2026-06-08T01:29:25Z - `00fefddf-56f7-43f8-8a57-dd53f6c3526d.jsonl`
