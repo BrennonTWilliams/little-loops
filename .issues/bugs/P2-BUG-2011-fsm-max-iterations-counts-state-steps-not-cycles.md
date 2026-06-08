@@ -7,7 +7,7 @@ captured_at: "2026-06-07T22:42:29Z"
 discovered_date: 2026-06-07
 discovered_by: capture-issue
 labels: [fsm, loop-runner, dx, footgun]
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-2011: FSM max_iterations counts state-steps, not loop cycles
@@ -184,12 +184,36 @@ Evaluate, in order of preference:
    backstop. Requires migrating existing loops' `max_iterations` values.
 2. **Clarify + dual counter:** keep `max_iterations` as the step cap but expose
    it as `max_steps`, add an optional `max_cycles`, and document both.
+
+   > **Selected:** Option 2 — Clarify + dual counter — The `max_iterations`+`max_edge_revisits` dual-counter pattern and the `on_success`→`on_yes` field-alias pattern are both directly established in `FSMLoop`/`schema.py:from_dict()`, making this the highest-consistency option. It delivers the console message and docs improvements of Option 3 as a subset, plus a concrete `max_cycles` API that eliminates the magic-number budgeting offset in 77+ existing loop YAMLs — all with no breaking changes and no YAML migrations.
+
 3. **Minimum (docs-only):** document the per-state-step semantics in
    `ll-loop run --help`, the loop README, and the loop-authoring guide, and emit
    a clearer termination reason when the cap fires before any terminal state.
 
 Whichever path: improve the terminal signal so "cap hit before terminal" is
 distinguishable from a clean finish.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-07.
+
+**Selected**: Option 2 — Clarify + dual counter
+
+**Reasoning**: The `max_iterations`+`max_edge_revisits` pair in `FSMLoop` is the established dual-counter precedent, and the `on_success`→`on_yes` alias in `schema.py:from_dict()` provides a direct template for exposing `max_iterations` as `max_steps` without any YAML migrations. Option 2 is a strict superset of Option 3's improvements (console message, help string, docs) and additionally provides a `max_cycles` field that eliminates the manual step-to-cycle math encoded as magic-number comments across 77+ loop YAMLs (`max_iterations: 20` for ~5 real cycles). Option 1 is blocked by a breaking change requiring 80-file YAML migration, a triple-duty `self.iteration` separation across executor/persistence/event-schema, and the loss of the `-n 1` single-step debugging idiom.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option 1 (cycle-based rewrite) | 1/3 | 0/3 | 1/3 | 0/3 | 2/12 |
+| Option 2 (dual counter) | 3/3 | 2/3 | 2/3 | 2/3 | 9/12 |
+| Option 3 (docs-only) | 2/3 | 3/3 | 2/3 | 3/3 | 10/12 |
+
+**Key evidence**:
+- Option 1: `self.iteration` serves triple duty (cap counter, `state_enter` payload, `LoopState` persistence field) with no cycle-boundary event; 80 YAML files need re-tuning; `-n 1` debugging idiom breaks. Reuse score: 1/3.
+- Option 2: `max_edge_revisits` coexists as a second cap field in `schema.py:953`; `on_success`/`on_failure` alias at `schema.py:from_dict()` is the backwards-compat rename template; `canvas-sketch-generator.yaml:22-27` BUG-2011 comment confirms the magic-number pattern Option 2 eliminates. Reuse score: 2/3.
+- Option 3: All deliverables are string edits or a single conditional print before `_helpers.py:1275`; doesn't prevent future authors from re-encoding the step-to-cycle offset as magic numbers. Reuse score: 3/3.
 
 ## Implementation Steps
 
@@ -221,6 +245,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Discovered**: 2026-06-07 (smoke run of canvas-sketch-generator)
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-08T00:32:10 - `f4c7bf77-d0d5-4c99-aeeb-85249c64bdfe.jsonl`
 - `/ll:refine-issue` - 2026-06-08T00:18:43 - `828a4616-25c3-4af4-bb64-459468e94960.jsonl`
 - `/ll:format-issue` - 2026-06-07T23:31:25 - `28dd97b0-82a8-4f71-a133-64fc6f2c6a75.jsonl`
 - `/ll:capture-issue` - 2026-06-07T22:42:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94001b17-192e-4675-8b12-449cc4ed8e69.jsonl`
