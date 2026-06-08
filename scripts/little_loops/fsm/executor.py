@@ -543,6 +543,15 @@ class FSMExecutor:
                     )
             # Merge: child's own context block provides base; with: bindings override
             child_fsm.context = {**child_fsm.context, **resolved}
+            # Runner-managed runtime invariants must survive explicit `with:` binding. run_dir is
+            # injected into the parent context by the runner (cli/loop/run.py) and every loop
+            # assumes its presence (writes goals.json, batch-plan.json, etc.). The
+            # context_passthrough branch inherits it via **self.fsm.context; the with: branch
+            # must re-inject it explicitly or the child's first os.makedirs('${context.run_dir}')
+            # -> os.makedirs('') crashes. setdefault keeps an explicit `with: run_dir:` override
+            # winning if a caller ever sets one.
+            if "run_dir" in self.fsm.context:
+                child_fsm.context.setdefault("run_dir", self.fsm.context["run_dir"])
         elif state.context_passthrough:
             # Extract .output strings from capture result dicts so ${context.key} resolves
             # to the plain output string (e.g. "ENH-123") rather than the full capture object.

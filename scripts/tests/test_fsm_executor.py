@@ -6441,6 +6441,91 @@ class TestSubLoopWithBindings:
         # (verified by the implementation: child_fsm.context = {**child_fsm.context, **resolved}
         #  where resolved only contains with_ bindings)
 
+    def test_with_inherits_parent_run_dir(self, tmp_path: Path) -> None:
+        """The runner-injected run_dir invariant survives an explicit with: binding.
+
+        Regression: a sub-loop invoked with a with: block must still see the parent's
+        run_dir even when the with: block does not name it. Without re-injection,
+        ${context.run_dir} resolves to '' in the child and the child's first
+        os.makedirs('${context.run_dir}') -> os.makedirs('') crashes (the rn-build ->
+        goal-cluster failure). The with: branch re-injects run_dir via setdefault.
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child references ${context.run_dir} but does NOT declare it as a parameter,
+        # exactly like goal-cluster: it relies on the runner-managed invariant flowing in.
+        self._write_child(
+            loops_dir,
+            "needs-run-dir",
+            (
+                "name: needs-run-dir\ninitial: step\n"
+                "parameters:\n  goals:\n    type: string\n    required: true\n"
+                "states:\n"
+                "  step:\n    action: 'echo ${context.run_dir}'\n    capture: rd\n    next: done\n"
+                "  done:\n    terminal: true\n"
+            ),
+        )
+        run_dir = str(tmp_path / "runs" / "parent-run") + "/"
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            context={"run_dir": run_dir},  # injected by the runner in production
+            states={
+                "run_child": StateConfig(
+                    loop="needs-run-dir",
+                    # with: binds only goals — run_dir is intentionally NOT named here
+                    with_={"goals": "EPIC-001"},
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "success"
+        child_run_dir = executor.captured["run_child"]["rd"]["output"].strip()
+        # Child saw the parent's run_dir (verbatim, trailing slash preserved) despite
+        # not binding it in with:
+        assert child_run_dir == run_dir
+
+    def test_with_explicit_run_dir_overrides_parent(self, tmp_path: Path) -> None:
+        """An explicit with: run_dir wins over the inherited parent run_dir (setdefault)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_child(
+            loops_dir,
+            "run-dir-echo",
+            (
+                "name: run-dir-echo\ninitial: step\n"
+                "parameters:\n  run_dir:\n    type: string\n    required: true\n"
+                "states:\n"
+                "  step:\n    action: 'echo ${context.run_dir}'\n    capture: rd\n    next: done\n"
+                "  done:\n    terminal: true\n"
+            ),
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            context={"run_dir": "/parent/run/"},
+            states={
+                "run_child": StateConfig(
+                    loop="run-dir-echo",
+                    with_={"run_dir": "/child/override"},
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "success"
+        child_run_dir = executor.captured["run_child"]["rd"]["output"].strip()
+        assert child_run_dir == "/child/override"
+
     def test_with_applies_declared_defaults(self, tmp_path: Path) -> None:
         """Unbound optional parameters receive their ParameterSpec defaults."""
         loops_dir = tmp_path / ".loops"

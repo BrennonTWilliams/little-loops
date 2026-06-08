@@ -480,13 +480,53 @@ states:
       schedule_mode: "value_ranked"
       max_batch_size: "5"
     capture: cluster_result
-    # Intentional fire-and-proceed: always advance to the eval gate regardless of
-    # goal-cluster's verdict. A partial/failed cluster still produces work worth
-    # validating, and check_harness_name → eval_gate is where real pass/fail is
-    # measured externally. cluster_result is captured for synthesize_result either way.
+    # Route every verdict to check_build_outcome, NOT directly to the eval gate. The
+    # sub-loop verdict carries no usable success signal here: goal-cluster has no terminal
+    # named `done` (success ends at `present_result`), so per _execute_sub_loop a child
+    # terminal != "done" always routes the parent's on_no — for both success AND a hard
+    # crash. check_build_outcome distinguishes them from CONTENT (cluster-state.json),
+    # which goal-cluster writes into the shared run_dir. See rn-build-failure-findings.md.
+    on_yes: check_build_outcome
+    on_no: check_build_outcome
+    on_error: check_build_outcome
+
+  # ─── Phase 8.4: Content-based build-outcome gate (masking fix) ─────────────────
+  # The reported "done but built nothing" bug: a goal-cluster hard crash (e.g. the
+  # run_dir os.makedirs('') crash) was masked because every cluster_execute verdict
+  # advanced to the eval gate and synthesize_result always terminated `done`. This gate
+  # reads goal-cluster's own cluster-state.json and applies its success logic
+  # (bool(state) and all(batch.success)). Zero successful work → build_failed terminal
+  # (displayed as a failure, not "done"); any successful batch (partial included, still
+  # worth validating) → continue to check_harness_name.
+  check_build_outcome:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, os, sys
+
+      run_dir = '${context.run_dir}'
+      state_file = os.path.join(run_dir, 'cluster-state.json')
+      try:
+          with open(state_file) as f:
+              state = json.load(f)
+      except Exception:
+          print("no cluster-state.json — goal-cluster produced no work")
+          sys.exit(1)
+
+      if state and any(b.get('success', False) for b in state):
+          n_ok = sum(1 for b in state if b.get('success', False))
+          print(f"{n_ok}/{len(state)} batches succeeded — proceeding to validation")
+          sys.exit(0)
+
+      print("no successful batches — goal-cluster produced no work")
+      sys.exit(1)
+      PYEOF
+    capture: build_outcome
+    evaluate:
+      type: exit_code
     on_yes: check_harness_name
-    on_no: check_harness_name
-    on_error: check_harness_name
+    on_no: build_failed
+    on_error: build_failed
 
   # ─── Phase 8.5: Guard — skip eval_gate if harness name was never captured ──────
   # eval_harness on_error bypasses read_harness_name, leaving harness_name empty.
@@ -607,6 +647,39 @@ states:
 
   done:
     terminal: true
+
+  # build_failed: reached when goal-cluster produced zero successful work (hard crash or
+  # empty cluster). Distinct from `failed:` (front-half/init faults). A non-`done` terminal
+  # name makes ll-loop DISPLAY the run as a failure instead of "done" — this is the
+  # codebase convention (mirrors `failed:`, goal-cluster `failed:`/`abort_cluster`). The
+  # trailing `exit 1` is cosmetic: ll-loop's process exit code derives from terminated_by,
+  # not the shell exit. Emits resume_command so the build stays resumable.
+  build_failed:
+    action_type: shell
+    terminal: true
+    action: |
+      RUN_DIR="${context.run_dir}"
+      EPIC=$(cat "$RUN_DIR/epic-id.txt" 2>/dev/null || echo "")
+      HARNESS=$(cat "$RUN_DIR/harness-name.txt" 2>/dev/null || echo "")
+      python3 -c "
+      import json, sys
+      epic, harness = sys.argv[1], sys.argv[2]
+      d = {
+          'accomplished': [],
+          'still_open': ['goal-cluster produced no successful batches'],
+          'recommended_next_batch': [],
+          'eval_passed': False,
+          'eval_retry_count': 0,
+          'error': 'rn-build: goal-cluster produced no successful work (hard crash or empty cluster).',
+      }
+      if epic:
+          cmd = f'll-loop run rn-build --context resume_epic={epic}'
+          if harness:
+              cmd += f' --context resume_harness={harness}'
+          d['resume_command'] = cmd
+      print(json.dumps(d, indent=2))
+      " "$EPIC" "$HARNESS"
+      exit 1
 
   failed:
     action_type: shell

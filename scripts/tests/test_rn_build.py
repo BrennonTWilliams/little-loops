@@ -30,12 +30,14 @@ REQUIRED_STATES = {
     "eval_harness",
     "read_harness_name",
     "cluster_execute",
+    "check_build_outcome",
     "check_harness_name",
     "eval_gate",
     "check_eval_retry_budget",
     "capture_eval_failures",
     "synthesize_result",
     "done",
+    "build_failed",
     "failed",
     # ENH-2016: resume path states
     "resume",
@@ -218,17 +220,75 @@ class TestCheckHarnessNameGuard:
             "check_harness_name on_error must route to synthesize_result on shell error"
         )
 
-    def test_cluster_execute_routes_to_check_harness_name(self, loop_data: dict) -> None:
+    def test_cluster_execute_routes_to_check_build_outcome(self, loop_data: dict) -> None:
+        # All verdicts converge on check_build_outcome: the sub-loop verdict carries no
+        # success signal (goal-cluster has no `done` terminal), so success/failure is
+        # distinguished by content in check_build_outcome, not by route here.
         state = loop_data["states"]["cluster_execute"]
         for route_key in ("on_yes", "on_no", "on_error"):
-            assert state.get(route_key) == "check_harness_name", (
-                f"cluster_execute.{route_key} must route to check_harness_name, not eval_gate directly"
+            assert state.get(route_key) == "check_build_outcome", (
+                f"cluster_execute.{route_key} must route to check_build_outcome, not "
+                "check_harness_name/eval_gate directly"
             )
 
     def test_check_harness_name_checks_harness_name_output(self, loop_data: dict) -> None:
         action = loop_data["states"]["check_harness_name"].get("action", "")
         assert "harness_name" in action, (
             "check_harness_name action must reference captured.harness_name.output"
+        )
+
+
+class TestCheckBuildOutcomeGate:
+    """Tests for the content-based build-outcome gate (masking fix)."""
+
+    def test_check_build_outcome_exists(self, loop_data: dict) -> None:
+        assert "check_build_outcome" in loop_data["states"], (
+            "check_build_outcome gate state must exist (masking fix)"
+        )
+
+    def test_check_build_outcome_uses_exit_code_evaluator(self, loop_data: dict) -> None:
+        state = loop_data["states"]["check_build_outcome"]
+        assert state.get("evaluate", {}).get("type") == "exit_code", (
+            "check_build_outcome must use a non-LLM exit_code evaluator: success/failure is "
+            "read from goal-cluster's cluster-state.json, not judged by an LLM"
+        )
+
+    def test_check_build_outcome_reads_cluster_state(self, loop_data: dict) -> None:
+        action = loop_data["states"]["check_build_outcome"].get("action", "")
+        assert "cluster-state.json" in action, (
+            "check_build_outcome must inspect cluster-state.json (goal-cluster's own batch "
+            "tracking) to distinguish real work from a hard crash"
+        )
+
+    def test_check_build_outcome_routes_success_to_harness_check(self, loop_data: dict) -> None:
+        state = loop_data["states"]["check_build_outcome"]
+        assert state.get("on_yes") == "check_harness_name", (
+            "successful work (partial included) must proceed to validation"
+        )
+
+    def test_check_build_outcome_routes_zero_work_to_build_failed(self, loop_data: dict) -> None:
+        state = loop_data["states"]["check_build_outcome"]
+        assert state.get("on_no") == "build_failed", (
+            "zero successful work must route to the build_failed terminal, not be masked"
+        )
+        assert state.get("on_error") == "build_failed", (
+            "a gate error must fail safe to build_failed, not silently continue"
+        )
+
+    def test_build_failed_is_terminal(self, loop_data: dict) -> None:
+        state = loop_data["states"]["build_failed"]
+        assert state.get("terminal") is True, "build_failed must be a terminal state"
+
+    def test_build_failed_is_not_named_done(self, loop_data: dict) -> None:
+        # The display layer treats any non-`done` terminal as a failure; this is the entire
+        # mechanism by which the run stops reading as "done" when nothing was built.
+        assert "build_failed" != "done"
+        assert "build_failed" in loop_data["states"]
+
+    def test_build_failed_emits_resume_command(self, loop_data: dict) -> None:
+        action = loop_data["states"]["build_failed"].get("action", "")
+        assert "resume_command" in action, (
+            "build_failed must emit a resume_command so the build stays resumable"
         )
 
 
