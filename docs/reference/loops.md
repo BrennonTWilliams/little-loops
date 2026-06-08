@@ -82,7 +82,7 @@ init_run  (shell: create ${context.run_dir}/states/whole-file/ dir, capture traj
 
 ### Trajectory
 
-Each iteration appends one JSON line to `.loops/runs/harness-optimize-<timestamp>/states/<state>/trajectory.jsonl`:
+Each iteration appends one JSON line to `.ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl`:
 
 ```json
 {"iter": 3, "score": 0.82, "accepted": true, "commit_sha": "abc1234"}

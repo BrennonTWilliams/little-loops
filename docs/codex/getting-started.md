@@ -32,7 +32,7 @@ Run the initializer from inside your project directory:
 
 This writes `.codex/hooks.json` into your project with the `{{LL_PLUGIN_ROOT}}` variable substituted to the absolute path of the installed little-loops plugin. It also writes `.ll/ll-config.json` if one does not already exist.
 
-**Auto-detection**: `--hosts codex` is set automatically when the `codex` binary is on `PATH` or a `.codex/` directory already exists in the project. You can also preview what would be written without touching any files:
+**Auto-detection**: `--hosts codex` is set automatically when the `codex` binary is on `PATH` or a `.codex/` directory already exists in the project. The shorthand `--codex` is accepted as an alias for `--hosts codex`. You can also preview what would be written without touching any files:
 
 ```bash
 /ll:init --hosts codex --dry-run

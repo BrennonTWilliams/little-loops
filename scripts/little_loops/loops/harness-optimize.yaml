@@ -5,7 +5,7 @@ description: |
   Each iteration proposes an edit to a declared target file set, runs a benchmark
   via lib/benchmark.yaml, accepts the change if score rises (or meets target),
   and reverts otherwise. Commits accepted mutations to the current branch.
-  Trajectory persists to .loops/runs/harness-optimize-<timestamp>/states/<state>/trajectory.jsonl.
+  Trajectory persists to .ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl.
 initial: init_run
 max_iterations: 30
 timeout: 7200
@@ -25,7 +25,7 @@ states:
   init_run:
     action_type: shell
     action: |
-      TRAJ="${context.run_dir}/states/whole-file/trajectory.jsonl"
+      TRAJ=".ll/runs/harness-optimize-$(date +%s)/states/whole-file/trajectory.jsonl"
       mkdir -p "$(dirname "$TRAJ")"
       echo "$TRAJ"
     capture: traj_path
