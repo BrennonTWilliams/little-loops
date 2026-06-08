@@ -457,3 +457,29 @@ def _guard_real_history_db() -> Generator[None, None, None]:
         yield
     finally:
         mp.undo()
+
+
+# =============================================================================
+# cmd_run env-var isolation (BUG-2011 follow-up)
+# =============================================================================
+
+# Env vars that cmd_run() writes directly via os.environ (not monkeypatch).
+# Without this fixture a test that calls cmd_run() with --handoff-threshold,
+# --context-limit, or --worktree will leak the written value into subsequent
+# tests.  The setenv("") + delenv() pattern registers a teardown for the var
+# even when it was absent before the test, so cmd_run's direct write is
+# always undone at test cleanup.
+_CMD_RUN_ENV_VARS = (
+    "LL_HANDOFF_THRESHOLD",
+    "LL_CONTEXT_LIMIT",
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR",
+)
+
+
+@pytest.fixture(autouse=True)
+def _restore_cmd_run_env_vars(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """Restore env vars that cmd_run writes directly to os.environ."""
+    for var in _CMD_RUN_ENV_VARS:
+        monkeypatch.setenv(var, "")
+        monkeypatch.delenv(var)
+    yield
