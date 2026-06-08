@@ -23,13 +23,51 @@ def _plugin_root() -> Path:
     return Path(__file__).parent.parent.parent.parent
 
 
+def _detect_hosts(project_root: Path) -> list[str]:
+    """Return list of detected host harnesses based on installed binaries and project dirs."""
+    detected: list[str] = []
+    if shutil.which("claude"):
+        detected.append("claude-code")
+    if shutil.which("codex") or (project_root / ".codex").exists():
+        detected.append("codex")
+    if shutil.which("pi"):
+        detected.append("pi")
+    return detected or ["claude-code"]
+
+
+def _dispatch_host_adapters(
+    hosts: list[str],
+    project_root: Path,
+    plugin_root: Path,
+    force: bool = False,
+    dry_run: bool = False,
+) -> None:
+    """Install adapters for each selected host; print per-host post-install notes."""
+    from little_loops.init.writers import install_codex_adapter
+
+    for host in hosts:
+        if host == "codex":
+            installed = install_codex_adapter(
+                project_root, plugin_root, force=force, dry_run=dry_run
+            )
+            if installed and not dry_run:
+                print("[Codex] Hook adapter installed to .codex/hooks.json")
+                print(
+                    "[Codex] Note: Codex will show a hook-trust dialog on next session start. "
+                    "Hooks are silently skipped (HookRunStatus::Untrusted) until trusted."
+                )
+        elif host == "pi":
+            print("[Pi] Adapter not yet available — tracked in EPIC-1622.")
+        # claude-code: no adapter file needed; plugin hooks fire when globally enabled
+
+
 def _run_yes(
     project_root: Path,
     templates_dir: Path,
     plugin_root: Path,
     force: bool,
     dry_run: bool,
-    codex: bool,
+    hosts: list[str],
 ) -> int:
     """Execute the non-interactive --yes init flow."""
     from little_loops.init.core import build_config
@@ -37,7 +75,6 @@ def _run_yes(
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
         deploy_goals,
-        install_codex_adapter,
         make_issue_dirs,
         make_learning_tests_dir,
         merge_settings,
@@ -65,7 +102,7 @@ def _run_yes(
     config = build_config(template, {"project_name": project_root.name})
 
     if dry_run:
-        _print_dry_run(config, project_root, ll_dir, codex=codex)
+        _print_dry_run(config, project_root, ll_dir, hosts=hosts)
         return 0
 
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
@@ -83,14 +120,7 @@ def _run_yes(
     update_gitignore(project_root)
     merge_settings(project_root)
 
-    if codex:
-        installed = install_codex_adapter(project_root, plugin_root, force=force)
-        if installed:
-            print("[Codex] Hook adapter installed to .codex/hooks.json")
-            print(
-                "[Codex] Note: Codex will show a hook-trust dialog on next session start. "
-                "Hooks are silently skipped (HookRunStatus::Untrusted) until trusted."
-            )
+    _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 
     print("\nValidating dependencies...")
     warnings = validate_deps(config, _plugin_version(), project_root)
@@ -109,7 +139,7 @@ def _print_dry_run(
     config: dict[str, Any],
     project_root: Path,
     ll_dir: Path,
-    codex: bool,
+    hosts: list[str],
 ) -> None:
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
     issues_base = project_root / issues_base_rel
@@ -125,8 +155,10 @@ def _print_dry_run(
         print(f"  [mkdir]  {issues_base / sd}")
     print("  [update] .gitignore (add state file exclusions)")
     print("  [update] .claude/settings.local.json (add ll- CLI tool permissions)")
-    if codex:
+    if "codex" in hosts:
         print("  [write]  .codex/hooks.json (Codex CLI hook adapter)")
+    if "pi" in hosts:
+        print("  [Pi]     Adapter not yet available — tracked in EPIC-1622.")
     print("\n=== END DRY RUN (no changes made) ===")
 
 
@@ -150,6 +182,7 @@ def _run_plan(project_root: Path, templates_dir: Path) -> int:
         "host_options": {
             "has_claude_code": bool(shutil.which("claude")),
             "has_codex": bool(shutil.which("codex")),
+            "has_pi": bool(shutil.which("pi")),
             "suggested_settings_file": ".claude/settings.local.json",
         },
         "warnings": [
@@ -267,9 +300,19 @@ Exit codes:
             ),
         )
         parser.add_argument(
+            "--hosts",
+            nargs="+",
+            metavar="HOST",
+            default=None,
+            help=(
+                "Host harnesses to install adapters for "
+                "(claude-code, codex, pi). Defaults to auto-detected hosts."
+            ),
+        )
+        parser.add_argument(
             "--codex",
             action="store_true",
-            help="Install the Codex CLI hook adapter (.codex/hooks.json)",
+            help=argparse.SUPPRESS,  # deprecated alias for --hosts codex
         )
         parser.add_argument(
             "--root",
@@ -305,10 +348,17 @@ Exit codes:
         plug_root = _plugin_root()
         templates_dir = plug_root / "templates"
 
-        # Auto-detect codex if not explicitly requested
-        if not args.codex:
-            if shutil.which("codex") or (project_root / ".codex").exists():
-                args.codex = True
+        # Resolve hosts: --hosts takes precedence; --codex is a deprecated alias.
+        # When neither is given, auto-detect from installed binaries / project dirs.
+        if args.hosts:
+            # Expand any comma-separated values (e.g. --hosts claude-code,codex)
+            hosts: list[str] = []
+            for h in args.hosts:
+                hosts.extend(h.split(","))
+        elif args.codex:
+            hosts = ["codex"]
+        else:
+            hosts = _detect_hosts(project_root)
 
         if args.command == "apply":
             return _run_apply(
@@ -328,7 +378,7 @@ Exit codes:
                 plugin_root=plug_root,
                 force=args.force,
                 dry_run=args.dry_run,
-                codex=args.codex,
+                hosts=hosts,
             )
 
         from little_loops.init.tui import run_tui
@@ -338,5 +388,5 @@ Exit codes:
             templates_dir=templates_dir,
             plugin_root=plug_root,
             force=args.force,
-            codex=args.codex,
+            hosts=hosts,
         )

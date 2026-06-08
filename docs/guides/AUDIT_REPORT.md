@@ -247,7 +247,7 @@ Auto-fixes applied for stale inventory counts and resolved finding cleanup. 3 re
 | `pip install little-loops` | Matches `pyproject.toml` ✓ |
 | Previous P3 ENH (3 undocumented loops) | **Resolved** ✓ |
 | Previous P4 ENH (7 TODO stubs) | **4 filled, 3 remain** |
-| Current inventory | **33 native skills, 63 total (30 Codex bridge), 28 commands, 70 loops (+5 oracles, +7 lib = 82 YAML)** |
+| Current inventory | **33 native skills, 63 total (30 Codex bridge), 28 commands, 70 loops (+5 oracles, +7 lib = 82 YAML)** (see 2026-06-08 entry for current) |
 
 ### Open Findings (resolved same session)
 
@@ -259,3 +259,48 @@ Auto-fixes applied for stale inventory counts and resolved finding cleanup. 3 re
 ### Current State (2026-06-04)
 
 All cross-reference links valid. Inventory counts updated. Zero open findings. All TODO stubs resolved. All user-facing loops documented.
+
+---
+
+## Audit: 2026-06-08
+
+**Auditor:** Claude Code (`/ll:audit-docs docs/guides`)
+**Scope:** All files in `docs/guides/`
+
+### Auto-fix Applied
+
+| Fix | File | Change |
+|-----|------|--------|
+| Loop count | `AUDIT_REPORT.md:250` | `70 loops (+5 oracles, +7 lib = 82 YAML)` → `76 loops (+5 oracles, +8 lib = 89 YAML)` |
+
+6 new main loops since 2026-06-04: `vega-viz`, `canvas-sketch-generator`, `rn-build`, `svg-textgrad`, plus 2 others. 1 new lib fragment: `lib/score-plan-quality.yaml`. All new loops and the new fragment are already documented in LOOPS_GUIDE.md.
+
+### Verification Summary
+
+| Check | Result |
+|-------|--------|
+| File path references (all guides) | All targets exist ✓ |
+| `ARCHITECTURE.md#context-monitor-and-session-continuation` | Valid (now at line 1100) ✓ |
+| `ARCHITECTURE.md#learning-test-registry` | Valid (line 1231) ✓ |
+| Harness YAMLs (`harness-single-shot`, `harness-multi-item`, `harness-plan-research-implement-report`) | All exist ✓ |
+| `oracles/oracle-capture-issue.yaml` | Exists ✓ |
+| `skills/create-loop/{reference,loop-types,templates}.md` | All exist ✓ |
+| `skills/explore-api/SKILL.md` | Exists ✓ |
+| `commands/handoff.md`, `commands/resume.md` | Both exist ✓ |
+| `docs/claude-code/automate-workflows-with-hooks.md` | Exists ✓ |
+| `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` | Exists ✓ |
+| `pip install little-loops` | Matches `pyproject.toml` ✓ |
+| History DB schema version: 12 | Matches `session_store.py:89` ✓ |
+| `ll-workflows analyze --input` default | Matches `_DEFAULT_INPUT_PATH` in `workflow_sequence/__init__.py:50` ✓ |
+| APO loop count — "Eight built-in APO loops" (`LOOPS_GUIDE.md:2817`) | Matches 8 files in loops dir ✓ |
+| Commands: 28 | Confirmed ✓ |
+| Native skills: 33 | Confirmed ✓ |
+| Total skills (incl. Codex bridge `ll-*`): 63 | Confirmed ✓ |
+| New loops (vega-viz, canvas-sketch-generator, rn-build, svg-textgrad) | All documented in LOOPS_GUIDE.md ✓ |
+| `lib/score-plan-quality.yaml` | Documented in LOOPS_GUIDE.md at line 3949 ✓ |
+| `generalized-fsm-loop.md` | Exists ✓ |
+| Current inventory | **33 native skills, 63 total (30 Codex bridge), 28 commands, 76 loops (+5 oracles, +8 lib = 89 YAML)** |
+
+### Current State (2026-06-08)
+
+All guides pass accuracy, completeness, consistency, and link checks after the single auto-fix above. No open findings.

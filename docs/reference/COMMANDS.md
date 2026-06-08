@@ -263,8 +263,6 @@ Evaluate active issues for utility vs complexity trade-offs and recommend which 
 
 **Decisions log:** When decisions log is enabled, appends a `decision` entry to `.ll/decisions.yaml`. Silently skipped if `.ll/decisions.yaml` is absent.
 
-**Decisions log:** When decisions log is enabled, appends a `decision` entry to `.ll/decisions.yaml`. Silently skipped if `.ll/decisions.yaml` is absent.
-
 **Trigger keywords:** "tradeoff review", "review issues", "prune backlog", "sense check issues"
 
 ### `/ll:audit-issue-conflicts`

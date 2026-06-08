@@ -7,8 +7,21 @@ priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1978
-relates_to: [EPIC-1978, EPIC-1463, EPIC-1622, FEAT-1475]
-labels: [init, cli, host-compat]
+relates_to:
+- EPIC-1978
+- EPIC-1463
+- EPIC-1622
+- FEAT-1475
+labels:
+- init
+- cli
+- host-compat
+confidence_score: 86
+outcome_confidence: 78
+score_complexity: 16
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # FEAT-1981: ll-init host multi-select and adapter install dispatch
@@ -93,6 +106,19 @@ install exactly those adapters.
 ## Labels
 
 `init`, `cli`, `host-compat`
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-08_
+
+**Readiness Score**: 86/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 78/100 → MODERATE
+
+### Concerns
+- `cli.py` is missing from "Files to Modify" but is the primary implementation site: it holds the `--hosts` argparse flag, the existing `codex: bool` parameter to replace/alias, and the `if codex: install_codex_adapter()` dispatch block (lines 86–93) that this feature generalizes into a host dispatch table.
+
+## Session Log
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df2f8f5e-bc85-4400-9a3a-fc89cc3407c8.jsonl`
 
 ## Status
 

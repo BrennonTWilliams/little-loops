@@ -275,7 +275,7 @@ Issue management settings:
 | `deferred_dir` | `deferred` | **Deprecated** — use `IssueInfo.status` instead; kept for backward compatibility |
 | `priorities` | `[P0-P5]` | Valid priority prefixes |
 | `templates_dir` | `null` | Directory for issue templates |
-| `capture_template` | `"full"` | Default template style for captured issues (`"full"` or `"minimal"`) |
+| `capture_template` | `"full"` | Default template style for captured issues (`"full"`, `"minimal"`, or `"legacy"`) |
 | `duplicate_detection.exact_threshold` | `0.8` | Jaccard similarity threshold for exact duplicates (0.0-1.0) |
 | `duplicate_detection.similar_threshold` | `0.5` | Jaccard similarity threshold for similar issues (0.0-1.0) |
 | `next_issue.strategy` | `"confidence_first"` | Selection order for `ll-issues next-issue` / `next-issues`. Named preset: `confidence_first` or `priority_first`. See [`issues.next_issue`](#issuesnext_issue). |

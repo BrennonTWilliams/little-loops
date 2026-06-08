@@ -1461,8 +1461,6 @@ Export topic-filtered excerpts from completed issue history.
 | `--type` | | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--scoring` | | Relevance method: `intersection` (default), `bm25`, `hybrid` |
 
-**Examples:**
-```bash
 #### `ll-history sessions <ISSUE_ID>`
 
 List sessions that co-occurred with the given issue's active period. Queries the `issue_sessions` VIEW (v5 schema, ENH-1711) which joins `issue_events` to `message_events` via overlapping timestamps. Issues processed after ENH-1839 populate `captured_at` immediately on live events; a prior `ll-session backfill` pass (or ENH-1830 auto-backfill) is only needed for older issues.
