@@ -167,6 +167,14 @@ def cmd_run(
     if "input_hash" not in fsm.context and isinstance(fsm.context.get("input"), str):
         fsm.context["input_hash"] = hashlib.sha256(fsm.context["input"].encode()).hexdigest()[:12]
 
+    # Inject loop metadata into context so templates can reference
+    # ${context.max_iterations} in state actions and evaluator prompts.
+    # --context max_iterations=VALUE (already applied above) takes precedence.
+    # Must run after the --max-iterations CLI override (line 118-119) so the
+    # context value reflects any CLI-supplied override.
+    if "max_iterations" not in fsm.context:
+        fsm.context["max_iterations"] = fsm.max_iterations
+
     # Apply YAML loop config env-var overrides (CLI flags below overwrite these)
     if fsm.config is not None and isinstance(fsm.config.handoff_threshold, int):
         os.environ["LL_HANDOFF_THRESHOLD"] = str(fsm.config.handoff_threshold)
