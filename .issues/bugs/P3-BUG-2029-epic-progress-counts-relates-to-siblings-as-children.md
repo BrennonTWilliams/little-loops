@@ -3,11 +3,21 @@ id: BUG-2029
 title: epic-progress counts relates_to siblings as children
 type: BUG
 priority: P3
-status: open
-captured_at: "2026-06-08T23:16:56Z"
-discovered_date: "2026-06-08"
+status: done
+captured_at: '2026-06-08T23:16:56Z'
+discovered_date: '2026-06-08'
 discovered_by: capture-issue
-labels: [epic-progress, issue-management, relates_to]
+labels:
+- epic-progress
+- issue-management
+- relates_to
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
+completed_at: '2026-06-08T23:46:59Z'
 ---
 
 # BUG-2029: epic-progress counts relates_to siblings as children
@@ -77,5 +87,21 @@ If forward-declared children are still desired, introduce a separate `children:`
 - No regression: EPICs that rely solely on `parent:` back-links continue to work correctly.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-08T23:46:41 - `b520ef9a-f5d3-489f-a64b-e07764e6dcfa.jsonl`
+- `/ll:confidence-check` - 2026-06-08T23:50:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c89d811-8c8b-4e9f-84f9-6ed0d3138f20.jsonl`
 - `/ll:format-issue` - 2026-06-08T23:29:42 - `ebb63dbd-49fa-42fb-81b2-2bb56096c150.jsonl`
 - `/ll:capture-issue` - 2026-06-08T23:16:56Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8518210d-a8fb-472f-a76d-946f02b2ae27.jsonl`
+
+
+---
+
+## Resolution
+
+- **Status**: Closed - Already Fixed
+- **Closed**: 2026-06-08
+- **Reason**: already_fixed
+- **Closure**: Automated (ready-issue validation)
+
+### Closure Notes
+Issue was automatically closed during validation.
+The issue was determined to be invalid, already resolved, or not actionable.
