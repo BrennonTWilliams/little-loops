@@ -30,6 +30,43 @@ These flags appear across multiple tools:
 
 ---
 
+## Project Setup
+
+### ll-init
+
+Initialize little-loops for a project. Detects the project root, selects host adapters, generates a default `.ll/ll-config.json`, and optionally installs hook adapters for supported host CLIs (`claude-code`, `codex`, `pi`).
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--yes` | `-y` | Accept all defaults; run non-interactively |
+| `--force` | `-f` | Overwrite existing `.ll/ll-config.json` |
+| `--dry-run` | `-n` | Preview actions without writing files |
+| `--plan` | | Emit a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything |
+| `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `pi`). Defaults to auto-detected hosts. |
+| `--root ROOT` | `-C` | Project root directory (default: current directory) |
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `apply --config PLAN` | Apply writes from a `--plan` JSON output. `--config` accepts a file path or raw JSON string. Accepts `--force` to overwrite existing configuration. |
+
+**Exit codes:** `0` = success, `1` = error (config exists, template missing, etc.), `2` = usage error
+
+**Examples:**
+```bash
+ll-init --yes                      # Non-interactive full init with defaults
+ll-init --yes --dry-run            # Preview without writing files
+ll-init --yes --force              # Overwrite existing configuration
+ll-init --plan                     # Emit JSON plan without writing
+ll-init --hosts claude-code codex  # Install adapters for specific hosts
+ll-init apply --config plan.json   # Apply writes from a --plan output
+```
+
+---
+
 ## Skill Invocation
 
 ### ll-action
