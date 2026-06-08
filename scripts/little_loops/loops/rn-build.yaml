@@ -20,7 +20,7 @@ description: |
   - Front-half (ports from greenfield-builder): init → tech_research → design_artifacts
     → commit_design → scope_project → refine_seed → eval_harness
   - Execution: cluster_execute (goal-cluster → rn-implement/value_ranked)
-  - Quality gate: eval_gate → check_eval_retry_budget → capture_eval_failures → re-cluster
+  - Quality gate: check_harness_name → eval_gate → check_eval_retry_budget → capture_eval_failures → re-cluster
   - Terminal: synthesize_result → done
 initial: init
 max_iterations: 30
@@ -29,7 +29,6 @@ on_handoff: spawn
 
 context:
   spec: ""              # required: path(s) to spec file(s), comma-separated
-  max_issues: "30"      # max issues per decomposition pass
   max_eval_retries: "2" # max eval_gate retry cycles before accepting partial result
   harness_name: ""      # auto-populated: name of created harness loop
   epic_id: ""           # auto-populated: EPIC ID from scope_project
@@ -271,9 +270,29 @@ states:
       schedule_mode: "value_ranked"
       max_batch_size: "5"
     capture: cluster_result
+    on_yes: check_harness_name
+    on_no: check_harness_name
+    on_error: check_harness_name
+
+  # ─── Phase 8.5: Guard — skip eval_gate if harness name was never captured ──────
+  # eval_harness on_error bypasses read_harness_name, leaving harness_name empty.
+  # An empty loop name passed to eval_gate crashes the FSM executor with no useful
+  # error message. This guard routes directly to synthesize_result in that case.
+
+  check_harness_name:
+    action_type: shell
+    action: |
+      NAME="${captured.harness_name.output:-}"
+      if [ -z "$NAME" ]; then
+        echo "no_harness"
+        exit 1
+      fi
+      echo "$NAME"
+    evaluate:
+      type: exit_code
     on_yes: eval_gate
-    on_no: eval_gate
-    on_error: eval_gate
+    on_no: synthesize_result
+    on_error: synthesize_result
 
   # ─── Phase 9: Run eval harness; re-enter cluster_execute on failure (bounded) ─
 

@@ -27,6 +27,11 @@ relates_to:
 - FEAT-1992
 - FEAT-1993
 - FEAT-1994
+- ENH-2012
+- BUG-2013
+- ENH-2014
+- ENH-2015
+- ENH-2016
 ---
 
 # EPIC-1811: Built-in Orchestration Loops
@@ -87,6 +92,11 @@ When this epic is done, users can:
   - **FEAT-1992** — rn-build — Core Loop YAML, Loaders, and Integration
   - **FEAT-1993** — Deprecate `greenfield-builder` in favor of `rn-build`
   - **FEAT-1994** — rn-build — `create-loop` Wizard, Docs, and Guide
+- **ENH-2012** — rn-build — Spec file format guide and sample spec
+- **BUG-2013** — rn-build — `eval_gate` crashes with empty harness name when `eval_harness` errors
+- **ENH-2014** — rn-build — E2E smoke test and sample spec for integration validation
+- **ENH-2015** — rn-build — Add to "Cluster vs. Composer vs. Router" decision table
+- **ENH-2016** — rn-build — Resume-from-epic path for continuing a partial build
 
 ## Verification Notes
 

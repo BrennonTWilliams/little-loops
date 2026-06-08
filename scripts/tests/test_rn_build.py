@@ -30,6 +30,7 @@ REQUIRED_STATES = {
     "eval_harness",
     "read_harness_name",
     "cluster_execute",
+    "check_harness_name",
     "eval_gate",
     "check_eval_retry_budget",
     "capture_eval_failures",
@@ -179,6 +180,54 @@ class TestRnBuildClusterExecute:
         with_block = state.get("with", {})
         assert str(with_block.get("propagate_context", "")) == "true", (
             "cluster_execute must enable propagate_context for cross-batch hint propagation"
+        )
+
+
+class TestCheckHarnessNameGuard:
+    """Tests for the check_harness_name guard state (BUG-2013)."""
+
+    def test_check_harness_name_exists(self, loop_data: dict) -> None:
+        assert "check_harness_name" in loop_data["states"], (
+            "check_harness_name guard state must exist (BUG-2013)"
+        )
+
+    def test_check_harness_name_is_shell_action(self, loop_data: dict) -> None:
+        state = loop_data["states"]["check_harness_name"]
+        assert state.get("action_type") == "shell"
+
+    def test_check_harness_name_uses_exit_code_evaluator(self, loop_data: dict) -> None:
+        state = loop_data["states"]["check_harness_name"]
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "exit_code", (
+            "check_harness_name must use exit_code evaluator (non-LLM, MR-1 compatible)"
+        )
+
+    def test_check_harness_name_routes_to_eval_gate_when_set(self, loop_data: dict) -> None:
+        state = loop_data["states"]["check_harness_name"]
+        assert state.get("on_yes") == "eval_gate", (
+            "check_harness_name on_yes must route to eval_gate when harness name is present"
+        )
+
+    def test_check_harness_name_routes_to_synthesize_when_empty(self, loop_data: dict) -> None:
+        state = loop_data["states"]["check_harness_name"]
+        assert state.get("on_no") == "synthesize_result", (
+            "check_harness_name on_no must route to synthesize_result when harness name is empty"
+        )
+        assert state.get("on_error") == "synthesize_result", (
+            "check_harness_name on_error must route to synthesize_result on shell error"
+        )
+
+    def test_cluster_execute_routes_to_check_harness_name(self, loop_data: dict) -> None:
+        state = loop_data["states"]["cluster_execute"]
+        for route_key in ("on_yes", "on_no", "on_error"):
+            assert state.get(route_key) == "check_harness_name", (
+                f"cluster_execute.{route_key} must route to check_harness_name, not eval_gate directly"
+            )
+
+    def test_check_harness_name_checks_harness_name_output(self, loop_data: dict) -> None:
+        action = loop_data["states"]["check_harness_name"].get("action", "")
+        assert "harness_name" in action, (
+            "check_harness_name action must reference captured.harness_name.output"
         )
 
 
