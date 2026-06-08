@@ -46,15 +46,15 @@ def temp_repo_with_config() -> Generator[Path, None, None]:
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_path = Path(tmpdir)
         ll_dir = repo_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text("{}")
         claude_dir = repo_path / ".claude"
-        claude_dir.mkdir()
+        claude_dir.mkdir(exist_ok=True)
         (claude_dir / "settings.local.json").write_text('{"model": "claude-sonnet-4"}')
 
         # Create worktree base
         worktree_base = repo_path / ".worktrees"
-        worktree_base.mkdir()
+        worktree_base.mkdir(exist_ok=True)
 
         yield repo_path
 
@@ -678,7 +678,7 @@ class TestWorkerPoolWorktreeManagement:
     ) -> None:
         """_setup_worktree() removes existing worktree before creating."""
         worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-001"
-        worktree_path.mkdir(parents=True)
+        worktree_path.mkdir(parents=True, exist_ok=True)
         branch_name = "parallel/bug-001"
 
         cleanup_called = []
@@ -726,7 +726,7 @@ class TestWorkerPoolWorktreeManagement:
     ) -> None:
         """_cleanup_worktree() calls git worktree remove."""
         worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-001"
-        worktree_path.mkdir(parents=True)
+        worktree_path.mkdir(parents=True, exist_ok=True)
 
         captured_commands: list[list[str]] = []
 
@@ -754,7 +754,7 @@ class TestWorkerPoolWorktreeManagement:
     ) -> None:
         """_cleanup_worktree() deletes parallel/* branches."""
         worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-001"
-        worktree_path.mkdir(parents=True)
+        worktree_path.mkdir(parents=True, exist_ok=True)
 
         captured_commands: list[list[str]] = []
 
@@ -796,10 +796,10 @@ class TestWorkerPoolWorktreeManagement:
     ) -> None:
         """cleanup_all_worktrees() removes all worker-* and timestamp-prefixed directories."""
         worktree_base = temp_repo_with_config / ".worktrees"
-        (worktree_base / "worker-bug-001").mkdir()
-        (worktree_base / "worker-bug-002").mkdir()
-        (worktree_base / "20260101-000000-my-loop").mkdir()
-        (worktree_base / "other-dir").mkdir()  # Should not be removed
+        (worktree_base / "worker-bug-001").mkdir(exist_ok=True)
+        (worktree_base / "worker-bug-002").mkdir(exist_ok=True)
+        (worktree_base / "20260101-000000-my-loop").mkdir(exist_ok=True)
+        (worktree_base / "other-dir").mkdir(exist_ok=True)  # Should not be removed
 
         cleanup_calls: list[Path] = []
 
@@ -829,7 +829,7 @@ class TestWorkerPoolWorktreeManagement:
 
         # Create a directory entry in the repo (simulating node_modules)
         dir_entry = temp_repo_with_config / "node_modules"
-        dir_entry.mkdir()
+        dir_entry.mkdir(exist_ok=True)
         (dir_entry / "package.json").write_text("{}")
 
         # Create a file entry that should still be copied
@@ -876,7 +876,7 @@ class TestActiveWorktreeProtection:
     ) -> None:
         """_cleanup_worktree() should skip worktrees in _active_worktrees set."""
         worktree_path = temp_repo_with_config / ".worktrees" / "worker-test-001"
-        worktree_path.mkdir(parents=True)
+        worktree_path.mkdir(parents=True, exist_ok=True)
 
         # Register as active
         with worker_pool._process_lock:
@@ -900,7 +900,7 @@ class TestActiveWorktreeProtection:
     ) -> None:
         """_cleanup_worktree() should log warning when skipping active worktree."""
         worktree_path = temp_repo_with_config / ".worktrees" / "worker-test-002"
-        worktree_path.mkdir(parents=True)
+        worktree_path.mkdir(parents=True, exist_ok=True)
 
         with worker_pool._process_lock:
             worker_pool._active_worktrees.add(worktree_path)
@@ -927,8 +927,8 @@ class TestActiveWorktreeProtection:
 
         active_path = worktree_base / "worker-active-001"
         inactive_path = worktree_base / "worker-inactive-002"
-        active_path.mkdir()
-        inactive_path.mkdir()
+        active_path.mkdir(exist_ok=True)
+        inactive_path.mkdir(exist_ok=True)
 
         # Mark one as active
         with worker_pool._process_lock:
@@ -1264,11 +1264,11 @@ class TestWorkerPoolHelpers:
         """_detect_main_repo_leaks() detects files in configured src_dir and test_dir."""
         # Set up a repo with non-default src_dir/test_dir not in the hardcoded fallback list
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text(
             json.dumps({"project": {"src_dir": "scripts/", "test_dir": "custom_tests"}})
         )
-        (tmp_path / ".worktrees").mkdir()
+        (tmp_path / ".worktrees").mkdir(exist_ok=True)
 
         br_config = BRConfig(tmp_path)
         pool = WorkerPool(
@@ -2406,7 +2406,7 @@ class TestRunWithContinuation:
     ) -> None:
         """Option J + run_dir: writes guillotine-prompt.md and invokes /ll:resume."""
         run_dir = tmp_path / "runs" / "my-loop-20260101"
-        run_dir.mkdir(parents=True)
+        run_dir.mkdir(parents=True, exist_ok=True)
 
         overflow_result = subprocess.CompletedProcess(
             args=["claude", "-p", "test"],

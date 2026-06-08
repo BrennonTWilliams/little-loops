@@ -46,7 +46,7 @@ def _make_sprint_project(tmp_path: Path) -> Path:
     import json
 
     ll_dir = tmp_path / ".ll"
-    ll_dir.mkdir()
+    ll_dir.mkdir(exist_ok=True)
     config = {
         "project": {"name": "test"},
         "issues": {
@@ -62,9 +62,9 @@ def _make_sprint_project(tmp_path: Path) -> Path:
 
     issues_dir = tmp_path / ".issues"
     for category in ["bugs", "features", "epics"]:
-        (issues_dir / category).mkdir(parents=True)
+        (issues_dir / category).mkdir(parents=True, exist_ok=True)
 
-    (tmp_path / ".sprints").mkdir()
+    (tmp_path / ".sprints").mkdir(exist_ok=True)
     return tmp_path
 
 

@@ -680,10 +680,10 @@ class TestGatherAllIssueIds:
 
     def test_scans_all_categories(self, tmp_path: Path) -> None:
         """Test that IDs are gathered from bugs, features, enhancements, and epics type dirs."""
-        (tmp_path / "bugs").mkdir()
-        (tmp_path / "features").mkdir()
-        (tmp_path / "enhancements").mkdir()
-        (tmp_path / "epics").mkdir()
+        (tmp_path / "bugs").mkdir(exist_ok=True)
+        (tmp_path / "features").mkdir(exist_ok=True)
+        (tmp_path / "enhancements").mkdir(exist_ok=True)
+        (tmp_path / "epics").mkdir(exist_ok=True)
 
         (tmp_path / "bugs" / "P1-BUG-001-test.md").write_text("# BUG-001")
         (tmp_path / "bugs" / "P1-BUG-002-done.md").write_text("---\nstatus: done\n---\n\n# BUG-002")
@@ -701,7 +701,7 @@ class TestGatherAllIssueIds:
 
     def test_missing_subdirectories(self, tmp_path: Path) -> None:
         """Test gracefully handles missing category directories."""
-        (tmp_path / "bugs").mkdir()
+        (tmp_path / "bugs").mkdir(exist_ok=True)
         (tmp_path / "bugs" / "P1-BUG-001-test.md").write_text("# BUG-001")
         # features, enhancements, completed don't exist
         ids = gather_all_issue_ids(tmp_path)
@@ -715,13 +715,13 @@ class TestGatherAllIssueIds:
 
         issues_dir = tmp_path / ".issues"
         # Use a custom "tasks" dir with a standard ENH prefix issue
-        (issues_dir / "tasks").mkdir(parents=True)
+        (issues_dir / "tasks").mkdir(parents=True, exist_ok=True)
         (issues_dir / "tasks" / "P3-ENH-042-my-task.md").write_text("# ENH-042")
-        (issues_dir / "archive").mkdir()
+        (issues_dir / "archive").mkdir(exist_ok=True)
         # Note: "bugs" directory intentionally absent – the config only lists "tasks"
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
             "issues": {
@@ -745,14 +745,14 @@ class TestGatherAllIssueIds:
         from little_loops.config import BRConfig
 
         issues_dir = tmp_path / ".issues"
-        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
         (issues_dir / "bugs" / "P1-BUG-001-open.md").write_text("# BUG-001")
         (issues_dir / "bugs" / "P1-BUG-002-done.md").write_text(
             "---\nstatus: done\n---\n\n# BUG-002"
         )
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
             "issues": {
@@ -1407,14 +1407,14 @@ class TestMainCLI:
     def test_analyze_no_issues(self, tmp_path: Path) -> None:
         """Test analyze with empty issues directory."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "features").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        issues_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "features").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         # Create minimal config
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]):
@@ -1424,13 +1424,13 @@ class TestMainCLI:
     def test_validate_no_issues(self, tmp_path: Path) -> None:
         """Test validate with empty issues directory."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "features").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        issues_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "features").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate"]):
@@ -1440,18 +1440,18 @@ class TestMainCLI:
     def test_analyze_with_issues(self, tmp_path: Path, capsys: object) -> None:
         """Test analyze with actual issues produces output."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         bugs_dir = issues_dir / "bugs"
-        bugs_dir.mkdir()
-        (issues_dir / "features").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        bugs_dir.mkdir(exist_ok=True)
+        (issues_dir / "features").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
             "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py`\n"
         )
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]):
@@ -1461,12 +1461,12 @@ class TestMainCLI:
     def _setup_sprint_project(self, tmp_path: Path) -> Path:
         """Set up a test project with issues and a sprint YAML."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         bugs_dir = issues_dir / "bugs"
-        bugs_dir.mkdir()
+        bugs_dir.mkdir(exist_ok=True)
         enh_dir = issues_dir / "enhancements"
-        enh_dir.mkdir()
-        (issues_dir / "features").mkdir()
+        enh_dir.mkdir(exist_ok=True)
+        (issues_dir / "features").mkdir(exist_ok=True)
 
         # BUG-001 and ENH-010 share 2 files → AND condition met → appears in analysis
         (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
@@ -1480,13 +1480,13 @@ class TestMainCLI:
         )
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text(
             '{"issues": {"base_dir": ".issues"}, "sprints": {"sprints_dir": ".sprints"}}'
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "my-sprint.yaml").write_text(
             "name: my-sprint\ndescription: Test sprint\nissues:\n  - BUG-001\n  - ENH-010\n"
         )
@@ -1570,18 +1570,18 @@ class TestMainCLI:
     ) -> None:
         """ll-deps validate text output includes broken depends_on refs."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         feat_dir = issues_dir / "features"
-        feat_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        feat_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         (feat_dir / "P1-FEAT-001-test.md").write_text(
             "---\ndepends_on:\n- BUG-999\n---\n# FEAT-001: Test\n"
         )
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate"]):
@@ -1592,16 +1592,16 @@ class TestMainCLI:
     def test_validate_json_output_includes_new_fields(self, tmp_path: Path, capsys: object) -> None:
         """ll-deps analyze --format json includes broken_depends_on_refs and broken_relates_to_refs."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         feat_dir = issues_dir / "features"
-        feat_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        feat_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         (feat_dir / "P1-FEAT-001-test.md").write_text("# FEAT-001: Test\n")
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(
@@ -1615,16 +1615,16 @@ class TestMainCLI:
     def test_validate_json_flag(self, tmp_path: Path, capsys: object) -> None:
         """ll-deps validate --json outputs valid JSON with expected keys."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         feat_dir = issues_dir / "features"
-        feat_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        feat_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         (feat_dir / "P1-FEAT-001-test.md").write_text("# FEAT-001: Test\n")
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]):
@@ -1640,16 +1640,16 @@ class TestMainCLI:
     def test_validate_json_short_flag(self, tmp_path: Path, capsys: object) -> None:
         """ll-deps validate -j works equivalently to --json."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         feat_dir = issues_dir / "features"
-        feat_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        feat_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         (feat_dir / "P1-FEAT-001-test.md").write_text("# FEAT-001: Test\n")
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "-j"]):
@@ -1661,18 +1661,18 @@ class TestMainCLI:
     def test_validate_json_with_broken_refs(self, tmp_path: Path, capsys: object) -> None:
         """ll-deps validate --json reports broken refs in JSON output."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         feat_dir = issues_dir / "features"
-        feat_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        feat_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         (feat_dir / "P1-FEAT-001-test.md").write_text(
             "# FEAT-001: Test\n\n## Blocked By\n\n- FEAT-999\n"
         )
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]):
@@ -1687,16 +1687,16 @@ class TestMainCLI:
     ) -> None:
         """ll-deps analyze --format json still works alongside validate --json."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         feat_dir = issues_dir / "features"
-        feat_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        feat_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         (feat_dir / "P1-FEAT-001-test.md").write_text("# FEAT-001: Test\n")
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(
@@ -1929,11 +1929,11 @@ class TestMainCLIFix:
     def _setup_fix_project(self, tmp_path: Path) -> Path:
         """Set up a test project with issues that have fixable problems."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         features_dir = issues_dir / "features"
-        features_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        features_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         # FEAT-001: blocker (missing backlink to FEAT-002)
         (features_dir / "P1-FEAT-001-blocker.md").write_text(
@@ -1948,7 +1948,7 @@ class TestMainCLIFix:
         )
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         return issues_dir
@@ -1993,18 +1993,18 @@ class TestMainCLIFix:
     def test_fix_no_issues(self, tmp_path: Path, capsys: object) -> None:
         """Test fix with nothing to fix."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         features_dir = issues_dir / "features"
-        features_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        features_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         (features_dir / "P1-FEAT-001-ok.md").write_text(
             "# FEAT-001: OK\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
         )
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "fix"]):
@@ -2025,11 +2025,11 @@ class TestMainCLIApply:
     def _setup_apply_project(self, tmp_path: Path) -> tuple[Path, dict[str, Path]]:
         """Set up a minimal test project for apply testing."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         features_dir = issues_dir / "features"
-        features_dir.mkdir()
-        (issues_dir / "bugs").mkdir()
-        (issues_dir / "enhancements").mkdir()
+        features_dir.mkdir(exist_ok=True)
+        (issues_dir / "bugs").mkdir(exist_ok=True)
+        (issues_dir / "enhancements").mkdir(exist_ok=True)
 
         feat001 = features_dir / "P1-FEAT-001-blocker.md"
         feat001.write_text("# FEAT-001: Blocker\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n")
@@ -2039,7 +2039,7 @@ class TestMainCLIApply:
         )
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         return issues_dir, {"FEAT-001": feat001, "FEAT-002": feat002}
@@ -2047,12 +2047,12 @@ class TestMainCLIApply:
     def _setup_apply_sprint_project(self, tmp_path: Path) -> Path:
         """Set up a test project with sprint for apply sprint-scoping tests."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         bugs_dir = issues_dir / "bugs"
-        bugs_dir.mkdir()
+        bugs_dir.mkdir(exist_ok=True)
         enh_dir = issues_dir / "enhancements"
-        enh_dir.mkdir()
-        (issues_dir / "features").mkdir()
+        enh_dir.mkdir(exist_ok=True)
+        (issues_dir / "features").mkdir(exist_ok=True)
 
         (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
             "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py`\n"
@@ -2065,13 +2065,13 @@ class TestMainCLIApply:
         )
 
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-config.json").write_text(
             '{"issues": {"base_dir": ".issues"}, "sprints": {"sprints_dir": ".sprints"}}'
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "my-sprint.yaml").write_text(
             "name: my-sprint\ndescription: Test sprint\nissues:\n  - BUG-001\n  - ENH-010\n"
         )

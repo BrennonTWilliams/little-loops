@@ -388,7 +388,7 @@ class TestIssueParser:
 
         # Create issue file
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-123-test-issue.md"
         issue_file.write_text("# BUG-123: Test Issue\n\nDescription here.")
 
@@ -409,7 +409,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "BUG-456-no-priority.md"
         issue_file.write_text("# BUG-456: No Priority\n\nContent.")
 
@@ -429,7 +429,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P0-BUG-001-critical.md"
         issue_file.write_text("# BUG-001: Critical Database Crash\n\n## Summary\nDB crashes.")
 
@@ -447,7 +447,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P0-BUG-001-test.md"
         issue_file.write_text("# Simple Title\n\nContent without ID in header.")
 
@@ -465,7 +465,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P0-BUG-001-no-header.md"
         issue_file.write_text("No markdown header in this file.\n\nJust content.")
 
@@ -483,7 +483,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         features_dir = temp_project_dir / ".issues" / "features"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P2-FEAT-001-dark-mode.md"
         issue_file.write_text("# FEAT-001: Add Dark Mode\n\nImplement dark theme.")
 
@@ -519,7 +519,7 @@ class TestIssueParser:
 
         # Create bugs directory with existing issues
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         (bugs_dir / "P0-BUG-001-first.md").write_text("# BUG-001: First\n")
         (bugs_dir / "P1-BUG-005-fifth.md").write_text("# BUG-005: Fifth\n")
 
@@ -541,7 +541,7 @@ class TestIssueParser:
 
         # Create bugs directory with one existing issue
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         (bugs_dir / "P0-BUG-010-existing.md").write_text("# BUG-010: Existing\n")
 
         # Create a file without any numbers at all (not even priority)
@@ -565,7 +565,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P2-9096-eval-specfile-gold-animation-bounce.md"
         issue_file.write_text("# Eval failure\n\nDetails.")
 
@@ -585,7 +585,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         features_dir = temp_project_dir / ".issues" / "features"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P3-4242-add-thing.md"
         issue_file.write_text("# Add thing\n")
 
@@ -627,7 +627,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-frontmatter.md"))
 
@@ -647,7 +647,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text(
             "---\ncaptured_at: 2026-04-18T10:30:00Z\ndiscovered_by: capture-issue\n---\n\n# BUG-001: Test\n"
@@ -670,7 +670,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-no-frontmatter.md"))
 
@@ -691,7 +691,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-null-discovered-by.md"))
 
@@ -712,7 +712,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-only-discovered-by.md"))
 
@@ -733,7 +733,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-product-impact.md"))
 
@@ -758,7 +758,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-002-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-no-product-impact.md"))
 
@@ -779,7 +779,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-003-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-null-product-fields.md"))
 
@@ -801,7 +801,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-999-unreadable.md"
         issue_file.write_text("# BUG-999: Unreadable\n")
         os.chmod(issue_file, 0o000)
@@ -827,7 +827,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text("---\nepic: EPIC-042\n---\n\n# BUG-001: Test\n")
 
@@ -847,7 +847,7 @@ class TestIssueParser:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text("# BUG-001: Test\n")
 
@@ -870,7 +870,7 @@ class TestGetNextIssueNumber:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
 
         next_num = get_next_issue_number(config, "bugs")
         assert next_num == 1
@@ -884,7 +884,7 @@ class TestGetNextIssueNumber:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         (bugs_dir / "P0-BUG-001-first.md").write_text("# BUG-001")
         (bugs_dir / "P1-BUG-005-fifth.md").write_text("# BUG-005")
         (bugs_dir / "P2-BUG-003-third.md").write_text("# BUG-003")
@@ -902,8 +902,8 @@ class TestGetNextIssueNumber:
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         completed_dir = temp_project_dir / ".issues" / "completed"
-        bugs_dir.mkdir(parents=True)
-        completed_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        completed_dir.mkdir(parents=True, exist_ok=True)
 
         (bugs_dir / "P0-BUG-003-current.md").write_text("# BUG-003")
         (completed_dir / "P0-BUG-010-done.md").write_text("# BUG-010")
@@ -941,9 +941,9 @@ class TestGetNextIssueNumber:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         features_dir = temp_project_dir / ".issues" / "features"
         completed_dir = temp_project_dir / ".issues" / "completed"
-        bugs_dir.mkdir(parents=True)
-        features_dir.mkdir(parents=True)
-        completed_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
+        completed_dir.mkdir(parents=True, exist_ok=True)
 
         # Create issues of different types with various numbers
         (bugs_dir / "P0-BUG-003-bug.md").write_text("# BUG-003")
@@ -968,8 +968,8 @@ class TestGetNextIssueNumber:
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         completed_dir = temp_project_dir / ".issues" / "completed"
-        bugs_dir.mkdir(parents=True)
-        completed_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        completed_dir.mkdir(parents=True, exist_ok=True)
 
         # Active bug has number 3
         (bugs_dir / "P0-BUG-003-current.md").write_text("# BUG-003")
@@ -1340,7 +1340,7 @@ class TestDependencyParsing:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-blocked-by.md"))
 
@@ -1362,7 +1362,7 @@ class TestDependencyParsing:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-002-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-multiple-blockers.md"))
 
@@ -1384,7 +1384,7 @@ class TestDependencyParsing:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-003-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-no-dependencies.md"))
 
@@ -1406,7 +1406,7 @@ class TestDependencyParsing:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-004-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-none-blockers.md"))
 
@@ -1428,7 +1428,7 @@ class TestDependencyParsing:
         config = BRConfig(temp_project_dir)
 
         features_dir = temp_project_dir / ".issues" / "features"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P0-FEAT-001-test.md"
         issue_file.write_text(
             load_fixture(fixtures_dir, "issues", "feature-with-blocks-section.md")
@@ -1452,7 +1452,7 @@ class TestDependencyParsing:
         config = BRConfig(temp_project_dir)
 
         features_dir = temp_project_dir / ".issues" / "features"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P2-FEAT-005-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "feature-with-code-fence.md"))
 
@@ -1475,7 +1475,7 @@ class TestDependencyParsing:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-006-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-asterisk-bullets.md"))
 
@@ -1497,7 +1497,7 @@ class TestDependencyParsing:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-007-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-trailing-text.md"))
 
@@ -1519,7 +1519,7 @@ class TestDependencyParsing:
         config = BRConfig(temp_project_dir)
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P3-ENH-001-test.md"
         issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-bold-deps.md"))
 
@@ -1574,12 +1574,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P3-BUG-1276-test.md"
         issue_file.write_text(
             '---\nblocked_by: "ENH-419, ENH-422, ENH-423"\n---\n# BUG-1276: Test\n'
@@ -1598,12 +1598,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P3-BUG-1276-blocks-test.md"
         issue_file.write_text('---\nblocks: "FEAT-001, FEAT-002"\n---\n# BUG-1276: Test\n')
 
@@ -1620,12 +1620,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P3-BUG-1276-list-test.md"
         issue_file.write_text("---\nblocked_by:\n  - ENH-419\n  - ENH-422\n---\n# BUG-1276: Test\n")
 
@@ -1642,12 +1642,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P3-BUG-1276-ws-test.md"
         issue_file.write_text('---\nblocked_by: "  ENH-419 ,  ENH-422  "\n---\n# BUG-1276: Test\n')
 
@@ -1664,12 +1664,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P2-ENH-001-test.md"
         issue_file.write_text("---\nparent: EPIC-10\n---\n# ENH-001: Test\n")
 
@@ -1687,12 +1687,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P2-ENH-002-test.md"
         issue_file.write_text("---\nparent_issue: EPIC-20\n---\n# ENH-002: Test\n")
 
@@ -1712,12 +1712,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P2-ENH-003-test.md"
         issue_file.write_text("---\ndepends_on:\n  - ENH-100\n  - ENH-101\n---\n# ENH-003: Test\n")
 
@@ -1734,12 +1734,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P2-ENH-004-test.md"
         issue_file.write_text("---\nrelates_to:\n  - FEAT-50\n  - BUG-99\n---\n# ENH-004: Test\n")
 
@@ -1757,12 +1757,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P2-ENH-005-test.md"
         issue_file.write_text("---\nrelated:\n  - FEAT-30\n  - BUG-40\n---\n# ENH-005: Test\n")
 
@@ -1782,12 +1782,12 @@ class TestDependencyParsing:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P3-BUG-006-test.md"
         issue_file.write_text("---\nduplicate_of: BUG-001\n---\n# BUG-006: Test\n")
 
@@ -1939,7 +1939,7 @@ class TestIssueInfoTestable:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -1949,7 +1949,7 @@ class TestIssueInfoTestable:
             )
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-999-no-test.md"
         issue_file.write_text("---\ntestable: false\n---\n# BUG-999: No Test\n")
 
@@ -1966,7 +1966,7 @@ class TestIssueInfoTestable:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -1976,7 +1976,7 @@ class TestIssueInfoTestable:
             )
         )
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P1-BUG-998-normal.md"
         issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# BUG-998: Normal\n")
 
@@ -2070,7 +2070,7 @@ class TestIssueInfoDecisionNeeded:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2080,7 +2080,7 @@ class TestIssueInfoDecisionNeeded:
             )
         )
         features_dir = tmp_path / ".issues" / "features"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P3-FEAT-1239-decide-needed.md"
         issue_file.write_text("---\ndecision_needed: true\n---\n# FEAT-1239: Decide Needed\n")
 
@@ -2097,7 +2097,7 @@ class TestIssueInfoDecisionNeeded:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2107,7 +2107,7 @@ class TestIssueInfoDecisionNeeded:
             )
         )
         features_dir = tmp_path / ".issues" / "features"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P3-FEAT-1238-normal.md"
         issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# FEAT-1238: Normal\n")
 
@@ -2204,7 +2204,7 @@ class TestIssueInfoLearningTestsRequired:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2214,7 +2214,7 @@ class TestIssueInfoLearningTestsRequired:
             )
         )
         features_dir = tmp_path / ".issues" / "enhancements"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P4-ENH-1284-lt-gate.md"
         issue_file.write_text(
             "---\nlearning_tests_required:\n  - Anthropic SDK streaming\n---\n# ENH-1284: LT Gate\n"
@@ -2233,7 +2233,7 @@ class TestIssueInfoLearningTestsRequired:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2243,7 +2243,7 @@ class TestIssueInfoLearningTestsRequired:
             )
         )
         features_dir = tmp_path / ".issues" / "enhancements"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P4-ENH-1285-lt-gate.md"
         issue_file.write_text(
             "---\nlearning_tests_required: 'Anthropic SDK streaming, GitHub pagination'\n---\n# ENH-1285: LT Gate\n"
@@ -2262,7 +2262,7 @@ class TestIssueInfoLearningTestsRequired:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2272,7 +2272,7 @@ class TestIssueInfoLearningTestsRequired:
             )
         )
         features_dir = tmp_path / ".issues" / "enhancements"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P4-ENH-1286-normal.md"
         issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1286: Normal\n")
 
@@ -2366,7 +2366,7 @@ class TestIssueInfoMissingArtifacts:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2376,7 +2376,7 @@ class TestIssueInfoMissingArtifacts:
             )
         )
         features_dir = tmp_path / ".issues" / "enhancements"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P3-ENH-1291-missing-artifacts.md"
         issue_file.write_text("---\nmissing_artifacts: true\n---\n# ENH-1291: Missing Artifacts\n")
 
@@ -2393,7 +2393,7 @@ class TestIssueInfoMissingArtifacts:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2403,7 +2403,7 @@ class TestIssueInfoMissingArtifacts:
             )
         )
         features_dir = tmp_path / ".issues" / "enhancements"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P3-ENH-1292-normal.md"
         issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1292: Normal\n")
 
@@ -2497,7 +2497,7 @@ class TestIssueInfoImplementationOrderRisk:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2507,7 +2507,7 @@ class TestIssueInfoImplementationOrderRisk:
             )
         )
         features_dir = tmp_path / ".issues" / "enhancements"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P3-ENH-1492-order-risk.md"
         issue_file.write_text("---\nimplementation_order_risk: true\n---\n# ENH-1492: Order risk\n")
 
@@ -2524,7 +2524,7 @@ class TestIssueInfoImplementationOrderRisk:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2534,7 +2534,7 @@ class TestIssueInfoImplementationOrderRisk:
             )
         )
         features_dir = tmp_path / ".issues" / "enhancements"
-        features_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True, exist_ok=True)
         issue_file = features_dir / "P3-ENH-1493-normal.md"
         issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1493: Normal\n")
 
@@ -2640,7 +2640,7 @@ class TestIssueInfoSize:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2650,7 +2650,7 @@ class TestIssueInfoSize:
             )
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1091-size-test.md"
         issue_file.write_text("---\nsize: Very Large\n---\n# ENH-1091: Size Test\n")
 
@@ -2667,7 +2667,7 @@ class TestIssueInfoSize:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2677,7 +2677,7 @@ class TestIssueInfoSize:
             )
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1092-no-size.md"
         issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1092: No Size\n")
 
@@ -2799,7 +2799,7 @@ class TestIssueInfoScoreDimensions:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2809,7 +2809,7 @@ class TestIssueInfoScoreDimensions:
             )
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1099-dims-test.md"
         issue_file.write_text(
             "---\n"
@@ -2837,7 +2837,7 @@ class TestIssueInfoScoreDimensions:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(
                 {
@@ -2847,7 +2847,7 @@ class TestIssueInfoScoreDimensions:
             )
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1100-no-dims.md"
         issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1100: No Dimensions\n")
 
@@ -2946,12 +2946,12 @@ class TestIssueInfoStatus:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P2-ENH-1417-status-test.md"
         issue_file.write_text("---\nstatus: blocked\n---\n# ENH-1417: Status Test\n")
 
@@ -2968,12 +2968,12 @@ class TestIssueInfoStatus:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P2-ENH-1417-no-status.md"
         issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1417: No Status\n")
 
@@ -2990,12 +2990,12 @@ class TestIssueInfoStatus:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1392-test.md"
         issue_file.write_text(
             "---\nlabels:\n  - fsm\n  - cli\n  - quick-win\n---\n# ENH-1392: Test\n"
@@ -3014,12 +3014,12 @@ class TestIssueInfoStatus:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1392-no-labels.md"
         issue_file.write_text("---\ndiscovered_by: scan\n---\n# ENH-1392: No Labels\n")
 
@@ -3036,12 +3036,12 @@ class TestIssueInfoStatus:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1392-empty-labels.md"
         issue_file.write_text("---\nlabels: []\n---\n# ENH-1392: Empty Labels\n")
 
@@ -3062,12 +3062,12 @@ class TestIssueInfoMilestone:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1393-test.md"
         issue_file.write_text("---\nmilestone: sprint-2026-q2\n---\n# ENH-1393: Test\n")
 
@@ -3084,12 +3084,12 @@ class TestIssueInfoMilestone:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1393-no-milestone.md"
         issue_file.write_text("---\ndiscovered_by: scan\n---\n# ENH-1393: No Milestone\n")
 
@@ -3106,12 +3106,12 @@ class TestIssueInfoMilestone:
         from little_loops.config import BRConfig
 
         config_path = tmp_path / ".ll" / "ll-config.json"
-        config_path.parent.mkdir(parents=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
         )
         enhancements_dir = tmp_path / ".issues" / "enhancements"
-        enhancements_dir.mkdir(parents=True)
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
         issue_file = enhancements_dir / "P3-ENH-1393-null-milestone.md"
         issue_file.write_text("---\nmilestone: null\n---\n# ENH-1393: Null Milestone\n")
 

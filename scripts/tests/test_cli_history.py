@@ -49,7 +49,7 @@ class TestHistoryRootSubcommand:
     def test_root_no_db_returns_1(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """root returns 1 when no DB or no root node found."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         with patch.object(sys, "argv", ["ll-history", "root"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
                 result = main_history()
@@ -60,7 +60,7 @@ class TestHistoryRootSubcommand:
     def test_root_missing_db_still_returns_1(self, tmp_path: Path) -> None:
         """root returns 1 when .ll/history.db does not exist."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         with patch.object(sys, "argv", ["ll-history", "root"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
                 result = main_history()
@@ -69,7 +69,7 @@ class TestHistoryRootSubcommand:
     def test_root_json_flag_accepted_returns_1_without_db(self, tmp_path: Path) -> None:
         """--json flag is accepted and returns 1 gracefully when no DB."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         with patch.object(sys, "argv", ["ll-history", "root", "--json"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
                 result = main_history()
@@ -78,7 +78,7 @@ class TestHistoryRootSubcommand:
     def test_root_expand_flag_accepted(self, tmp_path: Path) -> None:
         """--expand flag is accepted without crashing."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         with patch.object(sys, "argv", ["ll-history", "root", "--expand"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
                 result = main_history()
@@ -87,7 +87,7 @@ class TestHistoryRootSubcommand:
     def test_root_limit_flag_accepted(self, tmp_path: Path) -> None:
         """--limit flag is accepted without crashing."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         with patch.object(sys, "argv", ["ll-history", "root", "--limit", "5"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
                 result = main_history()
@@ -106,9 +106,9 @@ class TestHistoryAnalyzeYaml:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
 
         # Imports inside main_history are function-local → mock at source module
         with patch.object(
@@ -131,9 +131,9 @@ class TestHistoryAnalyzeYaml:
 
     def test_analyze_yaml_exit_code_zero(self, tmp_path: Path) -> None:
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
 
         with patch.object(
             sys, "argv", ["ll-history", "analyze", "--format", "yaml", "-d", str(issues_dir)]
@@ -161,7 +161,7 @@ class TestHistorySessionsJson:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         with patch.object(sys, "argv", ["ll-history", "sessions", "ENH-999", "--json"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
                 # sessions_for_issue is from little_loops.history_reader
@@ -177,7 +177,7 @@ class TestHistorySessionsJson:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         with patch.object(sys, "argv", ["ll-history", "sessions", "ENH-999"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
                 with patch("little_loops.history_reader.sessions_for_issue", return_value=[]):
@@ -199,9 +199,9 @@ class TestHistoryExportStdout:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
 
         with patch.object(
             sys,
@@ -221,9 +221,9 @@ class TestHistoryExportStdout:
 
     def test_export_empty_issues_exits_zero(self, tmp_path: Path) -> None:
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
 
         with patch.object(
             sys, "argv", ["ll-history", "export", "some-topic", "-d", str(issues_dir)]

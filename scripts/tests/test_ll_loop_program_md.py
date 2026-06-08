@@ -171,7 +171,7 @@ class TestCmdRunProgramMdInjection:
 
     def _make_loop(self, tmp_path: Path) -> Path:
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(exist_ok=True)
         (loops_dir / "test-loop.yaml").write_text(
             "name: test-loop\ninitial: done\n"
             'context:\n  targets: ""\n  directive: ""\n  design_tokens_context: ""\n'
@@ -338,7 +338,7 @@ class TestCmdRunProgramMdInjection:
 
         # Create a loop that declares input: null so the runner injects positional input
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(exist_ok=True)
         (loops_dir / "test-loop.yaml").write_text(
             "name: test-loop\ninitial: done\n"
             'context:\n  input: null\n  targets: ""\n  directive: ""\n  design_tokens_context: ""\n'
@@ -401,7 +401,7 @@ class TestCmdRunProgramMdInjection:
         from little_loops.logger import Logger
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(exist_ok=True)
         (loops_dir / "test-loop.yaml").write_text(
             "name: test-loop\ninitial: done\n"
             'context:\n  input: null\n  targets: ""\n  directive: ""\n  design_tokens_context: ""\n'
@@ -464,7 +464,7 @@ class TestCmdRunProgramMdInjection:
 
         monkeypatch.chdir(tmp_path)
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "program.md").write_text("## Directive\nDefault path goal.\n")
 
         result = _parse_program_md(tmp_path / ".ll" / "program.md")

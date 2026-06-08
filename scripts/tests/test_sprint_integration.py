@@ -17,14 +17,14 @@ def sprint_project(tmp_path: Path) -> BRConfig:
     """Create a test project with issues and config."""
     # Create directory structure
     issues_dir = tmp_path / ".issues"
-    issues_dir.mkdir()
+    issues_dir.mkdir(exist_ok=True)
 
     for category in ["bugs", "features", "enhancements", "epics", "completed"]:
-        (issues_dir / category).mkdir()
+        (issues_dir / category).mkdir(exist_ok=True)
 
     # Create config
     config_dir = tmp_path / ".ll"
-    config_dir.mkdir()
+    config_dir.mkdir(exist_ok=True)
 
     config_file = config_dir / "ll-config.json"
     config_data = {
@@ -164,13 +164,13 @@ class TestMultiWaveExecution:
         - FEAT-002: blocked by BUG-002 and FEAT-001 (Wave 3)
         """
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
 
         for category in ["bugs", "features", "enhancements", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_data = {
             "project": {
@@ -217,7 +217,7 @@ class TestMultiWaveExecution:
 
         # Create sprint file
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "multi-wave.yaml").write_text(
             """name: multi-wave
 description: Test multi-wave execution
@@ -561,13 +561,13 @@ class TestErrorRecovery:
     def _setup_error_recovery_project(tmp_path: Path) -> tuple[Path, "BRConfig", "SprintManager"]:
         """Set up project for error recovery testing."""
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
 
         for category in ["bugs", "features", "enhancements", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_data = {
             "project": {
@@ -601,7 +601,7 @@ class TestErrorRecovery:
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "recovery-test.yaml").write_text(
             """name: recovery-test
 issues:
@@ -803,12 +803,12 @@ issues:
 
         # Create a project with dependencies to create multiple waves
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_data = {
             "project": {"name": "test"},
@@ -834,7 +834,7 @@ issues:
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "resume-test.yaml").write_text(
             """name: resume-test
 issues:
@@ -1162,12 +1162,12 @@ class TestDependencyHandling:
         from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "features", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_data = {
             "project": {"name": "test"},
@@ -1194,7 +1194,7 @@ class TestDependencyHandling:
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "cyclic.yaml").write_text(
             """name: cyclic
 issues:
@@ -1224,12 +1224,12 @@ issues:
         from little_loops.dependency_graph import DependencyGraph
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_data = {
             "project": {"name": "test"},
@@ -1270,12 +1270,12 @@ issues:
         from little_loops.dependency_graph import DependencyGraph
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_data = {
             "project": {"name": "test"},
@@ -1324,12 +1324,12 @@ class TestEdgeCases:
         from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_data = {
             "project": {"name": "test"},
@@ -1349,7 +1349,7 @@ class TestEdgeCases:
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "single.yaml").write_text(
             """name: single
 issues:
@@ -1425,12 +1425,12 @@ issues:
         from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_data = {
             "project": {"name": "test"},
@@ -1450,7 +1450,7 @@ issues:
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "skip-all.yaml").write_text(
             """name: skip-all
 issues:
@@ -1484,12 +1484,12 @@ issues:
         from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_data = {
             "project": {"name": "test"},
@@ -1509,7 +1509,7 @@ issues:
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "dry-run.yaml").write_text(
             """name: dry-run
 issues:
@@ -1562,12 +1562,12 @@ issues:
         from little_loops.cli import sprint as cli
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         with open(config_dir / "ll-config.json", "w") as f:
             json.dump({"project": {"name": "test"}}, f)
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
 
         config = BRConfig(tmp_path)
         manager = SprintManager(sprints_dir=sprints_dir, config=config)
@@ -1598,12 +1598,12 @@ issues:
 
         # Create project with 2 waves via dependency
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_data = {
             "project": {"name": "test"},
             "issues": {
@@ -1627,7 +1627,7 @@ issues:
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "fail-resume.yaml").write_text(
             """name: fail-resume
 issues:
@@ -1718,12 +1718,12 @@ issues:
         from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_data = {
             "project": {"name": "test"},
             "issues": {
@@ -1747,7 +1747,7 @@ issues:
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "stale.yaml").write_text(
             """name: stale
 issues:
@@ -1802,12 +1802,12 @@ issues:
         from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_data = {
             "project": {"name": "test"},
             "issues": {
@@ -1830,7 +1830,7 @@ issues:
         )
 
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "all-done.yaml").write_text(
             """name: all-done
 issues:

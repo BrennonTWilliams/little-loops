@@ -61,13 +61,13 @@ def _make_loop_project(tmp_path: Path) -> Path:
     import json
 
     ll_dir = tmp_path / ".ll"
-    ll_dir.mkdir()
+    ll_dir.mkdir(exist_ok=True)
     config = {
         "project": {"name": "test"},
         "loops": {"loops_dir": ".loops"},
     }
     (ll_dir / "ll-config.json").write_text(json.dumps(config))
-    (tmp_path / ".loops").mkdir()
+    (tmp_path / ".loops").mkdir(exist_ok=True)
     return tmp_path
 
 

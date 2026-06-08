@@ -89,7 +89,7 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             with (
                 patch("sys.argv", ["ll-logs", "discover"]),
@@ -104,7 +104,7 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -137,7 +137,7 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             self._make_project_dir(
                 claude_projects,
@@ -168,12 +168,12 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             # An encoded dir name that decodes to a path that won't exist
             encoded = "-does-not-exist-path"
             proj_dir = claude_projects / encoded
-            proj_dir.mkdir(parents=True)
+            proj_dir.mkdir(parents=True, exist_ok=True)
             jsonl_file = proj_dir / "session.jsonl"
             with open(jsonl_file, "w") as f:
                 f.write(
@@ -207,7 +207,7 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -242,7 +242,7 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             ll_record = {
                 "type": "queue-operation",
@@ -279,7 +279,7 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             with (
                 patch("sys.argv", ["ll-logs", "discover"]),
@@ -303,13 +303,13 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = home / "agentproject"
-            project_path.mkdir()
+            project_path.mkdir(exist_ok=True)
             encoded = str(project_path).replace("/", "-")
             proj_dir = claude_projects / encoded
-            proj_dir.mkdir()
+            proj_dir.mkdir(exist_ok=True)
 
             # Write ll activity only in an agent- file (should be ignored)
             agent_file = proj_dir / "agent-session.jsonl"
@@ -343,13 +343,13 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = home / "jsonproject"
-            project_path.mkdir()
+            project_path.mkdir(exist_ok=True)
             encoded = str(project_path).replace("/", "-")
             proj_dir = claude_projects / encoded
-            proj_dir.mkdir()
+            proj_dir.mkdir(exist_ok=True)
 
             jsonl_file = proj_dir / "session.jsonl"
             with open(jsonl_file, "w") as f:
@@ -384,13 +384,13 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = home / "shortflagproject"
-            project_path.mkdir()
+            project_path.mkdir(exist_ok=True)
             encoded = str(project_path).replace("/", "-")
             proj_dir = claude_projects / encoded
-            proj_dir.mkdir()
+            proj_dir.mkdir(exist_ok=True)
 
             jsonl_file = proj_dir / "session.jsonl"
             with open(jsonl_file, "w") as f:
@@ -423,7 +423,7 @@ class TestDiscover:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             with (
                 patch("sys.argv", ["ll-logs", "discover", "--json"]),
@@ -452,7 +452,7 @@ class TestTail:
         """tail returns 1 and prints error when no active session file exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
-            loops_dir.mkdir()
+            loops_dir.mkdir(exist_ok=True)
 
             args = argparse.Namespace(loop="nonexistent")
             result = _cmd_tail(args, loops_dir)
@@ -469,7 +469,7 @@ class TestTail:
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
             running_dir = loops_dir / ".running"
-            running_dir.mkdir(parents=True)
+            running_dir.mkdir(parents=True, exist_ok=True)
             (running_dir / "myloop.events.jsonl").write_text("")
 
             args = argparse.Namespace(loop="myloop")
@@ -486,7 +486,7 @@ class TestTail:
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
             running_dir = loops_dir / ".running"
-            running_dir.mkdir(parents=True)
+            running_dir.mkdir(parents=True, exist_ok=True)
             (running_dir / "myloop.events.jsonl").write_text("")
 
             args = argparse.Namespace(loop="myloop")
@@ -500,7 +500,7 @@ class TestTail:
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
             running_dir = loops_dir / ".running"
-            running_dir.mkdir(parents=True)
+            running_dir.mkdir(parents=True, exist_ok=True)
             (running_dir / "myloop.events.jsonl").write_text("")
 
             args = argparse.Namespace(loop="myloop")
@@ -677,9 +677,9 @@ class TestSequences:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             # Two sessions, each with a chain of ll-* invocations
             session_a = "sess-a"
@@ -714,9 +714,9 @@ class TestSequences:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -751,9 +751,9 @@ class TestSequences:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -790,9 +790,9 @@ class TestSequences:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             records = []
             # Session a: chain A→B (3 times)
@@ -827,9 +827,9 @@ class TestSequences:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -873,9 +873,9 @@ class TestSequences:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -915,9 +915,9 @@ class TestSequences:
         """sequences --project with no matching claude folder returns 1."""
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
-            home.mkdir(parents=True)
+            home.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
             nonexistent = Path(tmpdir) / "nosuchproject"
 
             with (
@@ -933,9 +933,9 @@ class TestSequences:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             # Records with no ll-* Bash invocations
             project_path = self._make_project_dir(
@@ -959,9 +959,9 @@ class TestSequences:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -990,9 +990,9 @@ class TestSequences:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             # Each session needs ≥2 events for n-grams with default min-len=2
             self._make_project_dir(
@@ -1095,9 +1095,9 @@ class TestExtract:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             session_id = "abc-123"
             project_path = self._make_project_dir(
@@ -1128,9 +1128,9 @@ class TestExtract:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             session_a = "sess-aaa"
             session_b = "sess-bbb"
@@ -1157,9 +1157,9 @@ class TestExtract:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             session_id = "sess-filter"
             project_path = self._make_project_dir(
@@ -1193,9 +1193,9 @@ class TestExtract:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             session_id = "sess-nomatch"
             self._make_project_dir(
@@ -1222,9 +1222,9 @@ class TestExtract:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             session_id = "abc-index"
             project_path = self._make_project_dir(
@@ -1253,9 +1253,9 @@ class TestExtract:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             session_a = "sess-1"
             session_b = "sess-2"
@@ -1285,9 +1285,9 @@ class TestExtract:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             with (
                 patch("sys.argv", ["ll-logs", "extract", "--all"]),
@@ -1306,9 +1306,9 @@ class TestExtract:
         """extract --project with no matching claude folder returns 1."""
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
-            home.mkdir(parents=True)
+            home.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
             nonexistent = Path(tmpdir) / "nosuchproject"
 
             with (
@@ -1324,16 +1324,16 @@ class TestExtract:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True)
+            output_cwd.mkdir(parents=True, exist_ok=True)
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             session_id = "agent-session"
             project_path = home / "agentproject"
-            project_path.mkdir(parents=True)
+            project_path.mkdir(parents=True, exist_ok=True)
             encoded = str(project_path.resolve()).replace("/", "-")
             proj_dir = claude_projects / encoded
-            proj_dir.mkdir(parents=True)
+            proj_dir.mkdir(parents=True, exist_ok=True)
 
             # Put ll activity only in an agent- file (should be ignored)
             agent_file = proj_dir / "agent-session.jsonl"
@@ -1436,7 +1436,7 @@ class TestStats:
     def test_stats_counts_invocations(self, tmp_path: Path, capsys) -> None:
         """stats correctly counts invocations per skill in tabular output."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
             db_path,
             [
@@ -1457,7 +1457,7 @@ class TestStats:
     def test_stats_json_output(self, tmp_path: Path) -> None:
         """stats --json emits a JSON array with invocation counts."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
             db_path,
             [
@@ -1487,7 +1487,7 @@ class TestStats:
     def test_stats_json_keys(self, tmp_path: Path) -> None:
         """JSON output includes invocations, corrections, correction_rate, errors, error_rate."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
             db_path,
             [
@@ -1521,7 +1521,7 @@ class TestStats:
     def test_stats_correction_attribution(self, tmp_path: Path) -> None:
         """Corrections within 30s of a skill event are attributed to that skill."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
             db_path,
             [
@@ -1548,7 +1548,7 @@ class TestStats:
     def test_stats_correction_outside_window_not_attributed(self, tmp_path: Path) -> None:
         """Corrections more than 30s after a skill event are not attributed."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
             db_path,
             [
@@ -1575,7 +1575,7 @@ class TestStats:
     def test_stats_sort_by_corrections(self, tmp_path: Path) -> None:
         """--sort corrections puts higher-correction skills first."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
             db_path,
             [
@@ -1606,7 +1606,7 @@ class TestStats:
     def test_stats_empty_db_returns_0(self, tmp_path: Path) -> None:
         """stats returns 0 when DB exists but has no skill events."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         ensure_db(db_path)
 
         captured: list[str] = []
@@ -1629,7 +1629,7 @@ class TestStats:
     def test_aggregate_skill_stats_empty_db_returns_empty(self, tmp_path: Path) -> None:
         """_aggregate_skill_stats returns {} for a DB with no skill_events rows."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         ensure_db(db_path)
         result = _aggregate_skill_stats(db_path)
         assert result == {}
@@ -1637,7 +1637,7 @@ class TestStats:
     def test_aggregate_skill_stats_counts(self, tmp_path: Path) -> None:
         """_aggregate_skill_stats returns correct invocation counts."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
             db_path,
             [
@@ -1654,7 +1654,7 @@ class TestStats:
     def test_aggregate_skill_stats_window_days(self, tmp_path: Path) -> None:
         """window_days filters out older records."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
             db_path,
             [
@@ -1718,7 +1718,7 @@ class TestDeadSkills:
     def test_dead_skills_never_invoked_appears(self, tmp_path: Path) -> None:
         """A catalog skill with zero invocations appears with tier='never'."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         skills_dir = tmp_path / "skills"
         self._make_skill(skills_dir, "my-skill")
         # No skill_events seeded → zero invocations
@@ -1745,7 +1745,7 @@ class TestDeadSkills:
     def test_dead_skills_used_skill_not_shown(self, tmp_path: Path) -> None:
         """A skill with invocations above threshold does not appear in output."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         skills_dir = tmp_path / "skills"
         self._make_skill(skills_dir, "used-skill")
         _populate_skill_events(
@@ -1776,7 +1776,7 @@ class TestDeadSkills:
     def test_dead_skills_rarely_invoked(self, tmp_path: Path) -> None:
         """A skill with invocations <= threshold appears with tier='rarely'."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         skills_dir = tmp_path / "skills"
         self._make_skill(skills_dir, "rare-skill")
         _populate_skill_events(
@@ -1807,7 +1807,7 @@ class TestDeadSkills:
     def test_dead_skills_json_output_shape(self, tmp_path: Path) -> None:
         """JSON output items have exactly skill, invocations, tier keys."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         skills_dir = tmp_path / "skills"
         self._make_skill(skills_dir, "shape-skill")
         ensure_db(db_path)
@@ -1829,7 +1829,7 @@ class TestDeadSkills:
     def test_dead_skills_bridge_skill_excluded(self, tmp_path: Path) -> None:
         """Bridge skills (containing BRIDGE_MARKER) are excluded from the catalog."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         skills_dir = tmp_path / "skills"
         self._make_skill(skills_dir, "real-skill")
         self._make_skill(skills_dir, "bridge-skill", bridge=True)
@@ -1854,7 +1854,7 @@ class TestDeadSkills:
     def test_dead_skills_no_catalog_returns_0(self, tmp_path: Path) -> None:
         """Returns 0 gracefully when no catalog skills exist."""
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         ensure_db(db_path)
 
         with patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path)]):
@@ -1981,7 +1981,7 @@ class TestScanFailures:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -2014,7 +2014,7 @@ class TestScanFailures:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             tb = "Traceback (most recent call last):\n  File 'foo.py', line 5\nValueError: oops"
             project_path = self._make_project_dir(
@@ -2048,7 +2048,7 @@ class TestScanFailures:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             error = "ll-history: error: something went wrong"
             project_path = self._make_project_dir(
@@ -2091,7 +2091,7 @@ class TestScanFailures:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -2120,7 +2120,7 @@ class TestScanFailures:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -2149,7 +2149,7 @@ class TestScanFailures:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -2193,7 +2193,7 @@ class TestScanFailures:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True)
+            claude_projects.mkdir(parents=True, exist_ok=True)
 
             project_path = self._make_project_dir(
                 claude_projects,
@@ -2266,7 +2266,7 @@ class TestDiff:
         from little_loops.session_store import ensure_db
 
         db_path = tmp_path / ".ll" / "history.db"
-        db_path.parent.mkdir(parents=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         ensure_db(db_path)
         jsonl_path = tmp_path / "mysession.jsonl"
         jsonl_path.write_text("")
@@ -2704,7 +2704,7 @@ class TestEvalExportRoundTrip:
 
         home = tmp_path / "home"
         claude_projects = home / ".claude" / "projects"
-        claude_projects.mkdir(parents=True)
+        claude_projects.mkdir(parents=True, exist_ok=True)
         records = [
             {
                 "type": "user",
@@ -2772,7 +2772,7 @@ class TestEvalExportRoundTrip:
 
         home = tmp_path / "home"
         claude_projects = home / ".claude" / "projects"
-        claude_projects.mkdir(parents=True)
+        claude_projects.mkdir(parents=True, exist_ok=True)
         records = [
             {
                 "type": "user",

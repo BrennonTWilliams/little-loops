@@ -14,9 +14,9 @@ def _setup_project(tmp_path: Path) -> Path:
     """Create minimal project structure and return issues_dir."""
     issues_dir = tmp_path / ".issues"
     for subdir in ("bugs", "features", "enhancements", "epics"):
-        (issues_dir / subdir).mkdir(parents=True)
+        (issues_dir / subdir).mkdir(parents=True, exist_ok=True)
     ll_dir = tmp_path / ".ll"
-    ll_dir.mkdir()
+    ll_dir.mkdir(exist_ok=True)
     (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
     return issues_dir
 

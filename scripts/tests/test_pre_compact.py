@@ -78,7 +78,7 @@ class TestContextStateMerge:
     ) -> None:
         monkeypatch.chdir(tmp_path)
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         ctx = {"estimated_tokens": 42, "threshold_crossed_at": None}
         (ll_dir / "ll-context-state.json").write_text(json.dumps(ctx))
 
@@ -114,7 +114,7 @@ class TestRecentPlanFiles:
     def test_collects_recent_plans(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         plans = tmp_path / "thoughts" / "shared" / "plans"
-        plans.mkdir(parents=True)
+        plans.mkdir(parents=True, exist_ok=True)
         for i in range(3):
             (plans / f"plan-{i}.md").write_text(f"# plan {i}")
 
@@ -128,7 +128,7 @@ class TestRecentPlanFiles:
     def test_caps_at_five_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         plans = tmp_path / "thoughts" / "shared" / "plans"
-        plans.mkdir(parents=True)
+        plans.mkdir(parents=True, exist_ok=True)
         for i in range(8):
             (plans / f"plan-{i:02d}.md").write_text("x")
 
@@ -144,7 +144,7 @@ class TestRecentPlanFiles:
 
         monkeypatch.chdir(tmp_path)
         plans = tmp_path / "thoughts" / "shared" / "plans"
-        plans.mkdir(parents=True)
+        plans.mkdir(parents=True, exist_ok=True)
         fresh = plans / "fresh.md"
         fresh.write_text("x")
         stale = plans / "stale.md"
@@ -178,7 +178,7 @@ class TestContinuePromptKeyPresence:
     ) -> None:
         monkeypatch.chdir(tmp_path)
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         (ll_dir / "ll-continue-prompt.md").write_text("# resume me")
 
         pre_compact.handle(_event())

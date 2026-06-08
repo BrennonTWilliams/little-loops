@@ -356,7 +356,7 @@ class TestGitHubSyncManager:
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
@@ -378,9 +378,9 @@ class TestGitHubSyncManager:
 
         # Create issue directories
         issues_dir = tmp_path / ".issues"
-        (issues_dir / "bugs").mkdir(parents=True)
-        (issues_dir / "features").mkdir(parents=True)
-        (issues_dir / "enhancements").mkdir(parents=True)
+        (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "features").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
 
         return BRConfig(tmp_path)
 
@@ -893,7 +893,7 @@ class TestDryRun:
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
@@ -915,9 +915,9 @@ class TestDryRun:
 
         # Create issue directories
         issues_dir = tmp_path / ".issues"
-        (issues_dir / "bugs").mkdir(parents=True)
-        (issues_dir / "features").mkdir(parents=True)
-        (issues_dir / "enhancements").mkdir(parents=True)
+        (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "features").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
 
         return BRConfig(tmp_path)
 
@@ -1114,7 +1114,7 @@ class TestDiffIssue:
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
@@ -1132,9 +1132,9 @@ class TestDiffIssue:
             )
         )
         issues_dir = tmp_path / ".issues"
-        (issues_dir / "bugs").mkdir(parents=True)
-        (issues_dir / "features").mkdir(parents=True)
-        (issues_dir / "enhancements").mkdir(parents=True)
+        (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "features").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
         return BRConfig(tmp_path)
 
     @pytest.fixture
@@ -1328,7 +1328,7 @@ class TestCloseIssue:
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
@@ -1350,9 +1350,9 @@ class TestCloseIssue:
             )
         )
         issues_dir = tmp_path / ".issues"
-        (issues_dir / "bugs").mkdir(parents=True)
-        (issues_dir / "features").mkdir(parents=True)
-        (issues_dir / "enhancements").mkdir(parents=True)
+        (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "features").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
         return BRConfig(tmp_path)
 
     @pytest.fixture
@@ -1490,7 +1490,7 @@ class TestReopenIssue:
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
@@ -1512,10 +1512,10 @@ class TestReopenIssue:
             )
         )
         issues_dir = tmp_path / ".issues"
-        (issues_dir / "bugs").mkdir(parents=True)
-        (issues_dir / "features").mkdir(parents=True)
-        (issues_dir / "enhancements").mkdir(parents=True)
-        (issues_dir / "epics").mkdir(parents=True)
+        (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "features").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "epics").mkdir(parents=True, exist_ok=True)
         return BRConfig(tmp_path)
 
     @pytest.fixture
@@ -1744,7 +1744,7 @@ class TestGetLocalIssues:
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
@@ -1761,9 +1761,9 @@ class TestGetLocalIssues:
             )
         )
         issues_dir = tmp_path / ".issues"
-        (issues_dir / "bugs").mkdir(parents=True)
-        (issues_dir / "features").mkdir(parents=True)
-        (issues_dir / "enhancements").mkdir(parents=True)
+        (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "features").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
         return BRConfig(tmp_path)
 
     @pytest.fixture
@@ -1794,7 +1794,7 @@ class TestGetLocalIssues:
     ) -> None:
         """_get_local_issues excludes status: done issues when sync_completed=False."""
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
@@ -1812,7 +1812,7 @@ class TestGetLocalIssues:
         )
         config = BRConfig(tmp_path)
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         (bugs_dir / "P1-BUG-001-open.md").write_text(
             "---\nstatus: open\ngithub_issue: 1\n---\n\n# BUG-001: Open Bug\n"
         )

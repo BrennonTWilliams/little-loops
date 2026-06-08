@@ -48,7 +48,7 @@ def temp_repo(tmp_path: Path) -> Path:
 def temp_repo_with_prompt(temp_repo: Path) -> Path:
     """Repository with continuation prompt file."""
     prompt_path = temp_repo / ".ll" / "ll-continue-prompt.md"
-    prompt_path.parent.mkdir(parents=True)
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("Continue from previous session.\n\nContext: Testing")
     return temp_repo
 
@@ -179,7 +179,7 @@ class TestReadContinuationPrompt:
     def test_handles_empty_file(self, temp_repo: Path) -> None:
         """Returns empty string for empty file."""
         prompt_path = temp_repo / ".ll" / "ll-continue-prompt.md"
-        prompt_path.parent.mkdir(parents=True)
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text("")
 
         result = read_continuation_prompt(temp_repo)
@@ -188,7 +188,7 @@ class TestReadContinuationPrompt:
     def test_handles_unicode_content(self, temp_repo: Path) -> None:
         """Reads UTF-8 content correctly."""
         prompt_path = temp_repo / ".ll" / "ll-continue-prompt.md"
-        prompt_path.parent.mkdir(parents=True)
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text("Unicode content: \u2714 \u2717 \U0001f600")
 
         result = read_continuation_prompt(temp_repo)
@@ -306,7 +306,7 @@ class TestRunClaudeCommand:
     def test_sets_git_dir_env_for_worktree(self, tmp_path: Path) -> None:
         """Sets GIT_DIR and GIT_WORK_TREE when working_dir/.git is a worktree file."""
         actual_gitdir = tmp_path / "real_gitdir"
-        actual_gitdir.mkdir()
+        actual_gitdir.mkdir(exist_ok=True)
         git_file = tmp_path / ".git"
         git_file.write_text(f"gitdir: {actual_gitdir}\n")
 
@@ -336,7 +336,7 @@ class TestRunClaudeCommand:
     def test_no_git_dir_env_for_normal_repo(self, tmp_path: Path) -> None:
         """Does not set GIT_DIR when working_dir/.git is a directory (normal repo)."""
         git_dir = tmp_path / ".git"
-        git_dir.mkdir()
+        git_dir.mkdir(exist_ok=True)
 
         mock_process = Mock()
         mock_process.stdout = io.StringIO("")

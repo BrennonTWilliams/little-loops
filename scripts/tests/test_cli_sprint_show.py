@@ -372,7 +372,7 @@ class TestCmdSprintShow:
         # Create issues
         issues_dir = tmp_path / ".issues"
         for category in ["bugs", "features", "enhancements"]:
-            (issues_dir / category).mkdir(parents=True)
+            (issues_dir / category).mkdir(parents=True, exist_ok=True)
 
         (issues_dir / "bugs" / "P1-BUG-001-test-bug.md").write_text(
             "---\nstatus: open\n---\n# BUG-001: Test Bug\n\n## Summary\nFix this bug."
@@ -380,7 +380,7 @@ class TestCmdSprintShow:
 
         # Create config
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_data = {
             "project": {"name": "test"},
             "issues": {
@@ -404,7 +404,7 @@ class TestCmdSprintShow:
 
         # Create sprint
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         Sprint(
             name="test-sprint",
             description="A test sprint",
@@ -459,7 +459,7 @@ class TestCmdSprintShow:
     def test_show_not_found_returns_1(self, tmp_path: Path) -> None:
         """Non-existent sprint returns exit code 1."""
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         manager = SprintManager(sprints_dir=sprints_dir)
 
         args = argparse.Namespace(

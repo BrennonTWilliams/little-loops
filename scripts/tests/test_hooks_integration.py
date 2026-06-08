@@ -1256,14 +1256,14 @@ class TestIssueCompletionLog:
         # Issue file lives in its category dir (frontmatter status flips in place
         # under the new model — no move to completed/).
         bugs_dir = tmp_path / ".issues" / "bugs"
-        bugs_dir.mkdir(parents=True)
+        bugs_dir.mkdir(parents=True, exist_ok=True)
         issue_file = bugs_dir / "P3-BUG-870-test.md"
         issue_file.write_text(
             "---\nstatus: done\ndiscovered_date: 2026-01-01\n---\n# Test\n\n## Session Log\n"
         )
 
         transcript_dir = tmp_path / "transcripts"
-        transcript_dir.mkdir()
+        transcript_dir.mkdir(exist_ok=True)
         transcript_file = transcript_dir / transcript_name
         transcript_file.write_text("")
 
@@ -1312,7 +1312,7 @@ class TestDuplicateIssueId:
 
             # Create .issues directory
             issues_dir = tmp_path / ".issues" / "bugs"
-            issues_dir.mkdir(parents=True)
+            issues_dir.mkdir(parents=True, exist_ok=True)
 
             # Create one existing issue
             existing = issues_dir / "P2-BUG-001-existing.md"
@@ -1372,7 +1372,7 @@ class TestDuplicateIssueId:
 
             # Create custom issues directory
             issues_dir = tmp_path / custom_base / "bugs"
-            issues_dir.mkdir(parents=True)
+            issues_dir.mkdir(parents=True, exist_ok=True)
 
             # Create an existing issue in the custom directory
             (issues_dir / "P2-BUG-010-existing.md").write_text("# Existing issue")
@@ -1407,7 +1407,7 @@ class TestDuplicateIssueId:
 
             # Create .issues directory with various filenames
             issues_dir = tmp_path / ".issues" / "bugs"
-            issues_dir.mkdir(parents=True)
+            issues_dir.mkdir(parents=True, exist_ok=True)
 
             # Create issues with spaces and special chars in names
             (issues_dir / "P2-BUG-001-has spaces.md").write_text("test")
@@ -1443,9 +1443,9 @@ class TestDuplicateIssueId:
 
             # Create .issues directory with bugs and features subdirs
             bugs_dir = tmp_path / ".issues" / "bugs"
-            bugs_dir.mkdir(parents=True)
+            bugs_dir.mkdir(parents=True, exist_ok=True)
             features_dir = tmp_path / ".issues" / "features"
-            features_dir.mkdir(parents=True)
+            features_dir.mkdir(parents=True, exist_ok=True)
 
             # Create existing BUG-007
             (bugs_dir / "P2-BUG-007-existing.md").write_text("# Existing bug")
@@ -1510,7 +1510,7 @@ class TestDuplicateIssueIdPost:
             os.chdir(tmp_path)
 
             issues_dir = tmp_path / ".issues" / "bugs"
-            issues_dir.mkdir(parents=True)
+            issues_dir.mkdir(parents=True, exist_ok=True)
 
             new_file = issues_dir / "P2-BUG-042-first-issue.md"
             new_file.write_text("# First issue")
@@ -1539,7 +1539,7 @@ class TestDuplicateIssueIdPost:
             os.chdir(tmp_path)
 
             bugs_dir = tmp_path / ".issues" / "bugs"
-            bugs_dir.mkdir(parents=True)
+            bugs_dir.mkdir(parents=True, exist_ok=True)
 
             # Pre-existing issue
             existing = bugs_dir / "P2-BUG-007-original.md"
@@ -1573,9 +1573,9 @@ class TestDuplicateIssueIdPost:
             os.chdir(tmp_path)
 
             bugs_dir = tmp_path / ".issues" / "bugs"
-            bugs_dir.mkdir(parents=True)
+            bugs_dir.mkdir(parents=True, exist_ok=True)
             features_dir = tmp_path / ".issues" / "features"
-            features_dir.mkdir(parents=True)
+            features_dir.mkdir(parents=True, exist_ok=True)
 
             # Pre-existing BUG-007
             existing = bugs_dir / "P2-BUG-007-original.md"
@@ -1691,7 +1691,7 @@ class TestSessionStartValidation:
         try:
             os.chdir(tmp_path)
             config_dir = tmp_path / ".ll"
-            config_dir.mkdir()
+            config_dir.mkdir(exist_ok=True)
             (config_dir / "ll-config.json").write_text(json.dumps({"sync": {"enabled": True}}))
 
             result = subprocess.run(
@@ -1714,7 +1714,7 @@ class TestSessionStartValidation:
         try:
             os.chdir(tmp_path)
             config_dir = tmp_path / ".ll"
-            config_dir.mkdir()
+            config_dir.mkdir(exist_ok=True)
             (config_dir / "ll-config.json").write_text(json.dumps({"documents": {"enabled": True}}))
 
             result = subprocess.run(
@@ -1739,7 +1739,7 @@ class TestSessionStartValidation:
         try:
             os.chdir(tmp_path)
             config_dir = tmp_path / ".ll"
-            config_dir.mkdir()
+            config_dir.mkdir(exist_ok=True)
 
             (config_dir / "ll-config.json").write_text(
                 json.dumps(
@@ -1781,7 +1781,7 @@ class TestSessionStartValidation:
         try:
             os.chdir(tmp_path)
             config_dir = tmp_path / ".ll"
-            config_dir.mkdir()
+            config_dir.mkdir(exist_ok=True)
             (config_dir / "ll-config.json").write_text(
                 json.dumps(
                     {
@@ -1813,7 +1813,7 @@ class TestSessionStartValidation:
         try:
             os.chdir(tmp_path)
             config_dir = tmp_path / ".ll"
-            config_dir.mkdir()
+            config_dir.mkdir(exist_ok=True)
             (config_dir / "ll-config.json").write_text(
                 json.dumps({"design_tokens": {"enabled": True}})
             )
@@ -2482,7 +2482,7 @@ class TestIssueAutoCommitHook:
 
         self._init_git_repo(tmp_path)
         issues_dir = tmp_path / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
+        issues_dir.mkdir(parents=True, exist_ok=True)
         issue_file = issues_dir / "P3-ENH-1844-test.md"
         issue_file.write_text("---\nstatus: open\n---\n")
 
@@ -2511,7 +2511,7 @@ class TestIssueAutoCommitHook:
 
         self._init_git_repo(tmp_path)
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(json.dumps({"issues": {"auto_commit": True}}))
 
@@ -2527,7 +2527,7 @@ class TestIssueAutoCommitHook:
         )
 
         issues_dir = tmp_path / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
+        issues_dir.mkdir(parents=True, exist_ok=True)
         issue_file = issues_dir / "P3-ENH-1844-test.md"
         issue_file.write_text("---\nstatus: open\n---\n")
 
@@ -2561,7 +2561,7 @@ class TestIssueAutoCommitHook:
 
         self._init_git_repo(tmp_path)
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps({"issues": {"auto_commit": True, "auto_commit_prefix": "fix(issues)"}})
@@ -2577,7 +2577,7 @@ class TestIssueAutoCommitHook:
         )
 
         issues_dir = tmp_path / ".issues" / "bugs"
-        issues_dir.mkdir(parents=True)
+        issues_dir.mkdir(parents=True, exist_ok=True)
         issue_file = issues_dir / "P2-BUG-999-my-bug.md"
         issue_file.write_text("---\nstatus: open\n---\n")
 
@@ -2613,7 +2613,7 @@ class TestIssueAutoCommitHook:
 
         self._init_git_repo(tmp_path)
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(json.dumps({"issues": {"auto_commit": True}}))
         subprocess.run(
@@ -2627,7 +2627,7 @@ class TestIssueAutoCommitHook:
         )
 
         issues_dir = tmp_path / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
+        issues_dir.mkdir(parents=True, exist_ok=True)
         issue_file = issues_dir / "P3-ENH-1844-test.md"
         issue_file.write_text("---\nstatus: open\n---\n")
 
@@ -2667,12 +2667,12 @@ class TestIssueAutoCommitHook:
 
         self._init_git_repo(tmp_path)
         ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
+        ll_dir.mkdir(exist_ok=True)
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(json.dumps({"issues": {"auto_commit": True}}))
 
         issues_dir = tmp_path / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
+        issues_dir.mkdir(parents=True, exist_ok=True)
         issue_file = issues_dir / "P3-ENH-1844-test.md"
         issue_file.write_text("---\nstatus: open\n---\n")
 

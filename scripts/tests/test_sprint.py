@@ -288,10 +288,10 @@ class TestSprintManager:
         # Set up project structure with config
         issues_dir = tmp_path / ".issues"
         for category in ["bugs", "features", "enhancements", "completed"]:
-            (issues_dir / category).mkdir(parents=True)
+            (issues_dir / category).mkdir(parents=True, exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_file = config_dir / "ll-config.json"
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
@@ -337,10 +337,10 @@ class TestSprintManager:
         """validate_issues finds issues in custom category directories."""
         issues_dir = tmp_path / ".issues"
         for category in ["bugs", "tasks", "completed"]:
-            (issues_dir / category).mkdir(parents=True)
+            (issues_dir / category).mkdir(parents=True, exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
             "issues": {
@@ -367,10 +367,10 @@ class TestSprintManager:
         """load_issue_infos finds and parses issues in custom category directories."""
         issues_dir = tmp_path / ".issues"
         for category in ["bugs", "tasks", "completed"]:
-            (issues_dir / category).mkdir(parents=True)
+            (issues_dir / category).mkdir(parents=True, exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
             "issues": {
@@ -661,14 +661,14 @@ class TestSprintErrorHandling:
 
         # Create directory structure
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
 
         for category in ["bugs", "features", "enhancements", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         # Create config
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_file = config_dir / "ll-config.json"
         config_data = {
@@ -699,7 +699,7 @@ class TestSprintErrorHandling:
 
         # Create sprint file
         sprints_dir = tmp_path / "sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         sprint_file = sprints_dir / "test.yaml"
         sprint_file.write_text(
             """name: test-sprint
@@ -841,13 +841,13 @@ class TestSprintDependencyAnalysis:
 
         # Create directory structure
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "features", "enhancements", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         # Create config
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_file = config_dir / "ll-config.json"
         config_data = {
             "project": {
@@ -895,7 +895,7 @@ class TestSprintDependencyAnalysis:
 
         # Create sprint
         sprints_dir = tmp_path / "sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         sprint_file = sprints_dir / "overlap-test.yaml"
         sprint_file.write_text("name: overlap-test\nissues:\n  - BUG-001\n  - FEAT-001\n")
 
@@ -1360,13 +1360,13 @@ class TestSprintDependencyAnalysis:
 
         # Create directory structure
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "features", "enhancements", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         # Create config with custom dependency_mapping thresholds
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_file = config_dir / "ll-config.json"
         config_data = {
             "project": {
@@ -1415,7 +1415,7 @@ class TestSprintDependencyAnalysis:
         )
 
         sprints_dir = tmp_path / "sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         (sprints_dir / "threshold-test.yaml").write_text(
             "name: threshold-test\nissues:\n  - BUG-001\n  - FEAT-001\n"
         )
@@ -1454,13 +1454,13 @@ class TestSprintEdit:
         from little_loops.sprint import SprintManager
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
 
         for category in ["bugs", "features", "enhancements", "epics", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
 
         config_file = config_dir / "ll-config.json"
         config_data = {
@@ -1502,7 +1502,7 @@ class TestSprintEdit:
 
         # Create sprint with BUG-001 and FEAT-010
         sprints_dir = tmp_path / "sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         sprint_data = {
             "name": "test-sprint",
             "description": "Test sprint",
@@ -1895,12 +1895,12 @@ class TestSprintAnalyze:
         from little_loops.sprint import SprintManager
 
         issues_dir = tmp_path / ".issues"
-        issues_dir.mkdir()
+        issues_dir.mkdir(exist_ok=True)
         for category in ["bugs", "features", "enhancements", "completed"]:
-            (issues_dir / category).mkdir()
+            (issues_dir / category).mkdir(exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_file = config_dir / "ll-config.json"
         config_data = {
             "project": {
@@ -1960,7 +1960,7 @@ class TestSprintAnalyze:
             )
 
         sprints_dir = tmp_path / "sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         sprint_file = sprints_dir / "test-sprint.yaml"
         sprint_file.write_text("name: test-sprint\nissues:\n  - BUG-001\n  - FEAT-010\n")
 
@@ -2068,7 +2068,7 @@ class TestSprintOnlyFlag:
     def _setup_multi_issue_sprint(self, tmp_path: Path) -> tuple[Any, Any]:
         """Create a project with two issues and a sprint containing both."""
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_file = config_dir / "ll-config.json"
         config_data = {
             "project": {
@@ -2086,8 +2086,8 @@ class TestSprintOnlyFlag:
             json.dump(config_data, f)
 
         issues_dir = tmp_path / ".issues"
-        (issues_dir / "bugs").mkdir(parents=True)
-        (issues_dir / "features").mkdir(parents=True)
+        (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "features").mkdir(parents=True, exist_ok=True)
         (issues_dir / "bugs" / "P1-BUG-001-first-bug.md").write_text(
             "# BUG-001: First Bug\n\n## Summary\nFix this."
         )
@@ -2096,7 +2096,7 @@ class TestSprintOnlyFlag:
         )
 
         sprints_dir = tmp_path / "sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         sprint_file = sprints_dir / "multi.yaml"
         sprint_file.write_text("name: multi\nissues:\n  - BUG-001\n  - FEAT-002\n")
 
@@ -2232,7 +2232,7 @@ class TestSprintWaveCleanStart:
     def _setup_multi_issue_sprint(self, tmp_path: Path) -> tuple[Any, Any]:
         """Create a project with two issues and a sprint containing both."""
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_file = config_dir / "ll-config.json"
         config_data = {
             "project": {
@@ -2250,8 +2250,8 @@ class TestSprintWaveCleanStart:
             json.dump(config_data, f)
 
         issues_dir = tmp_path / ".issues"
-        (issues_dir / "bugs").mkdir(parents=True)
-        (issues_dir / "features").mkdir(parents=True)
+        (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "features").mkdir(parents=True, exist_ok=True)
         (issues_dir / "bugs" / "P1-BUG-001-first-bug.md").write_text(
             "# BUG-001: First Bug\n\n## Summary\nFix this."
         )
@@ -2260,7 +2260,7 @@ class TestSprintWaveCleanStart:
         )
 
         sprints_dir = tmp_path / "sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
         sprint_file = sprints_dir / "multi.yaml"
         sprint_file.write_text("name: multi\nissues:\n  - BUG-001\n  - FEAT-002\n")
 
@@ -2330,10 +2330,10 @@ class TestSprintManagerLoadOrResolve:
         """Project with epics category and sample issues."""
         issues_dir = tmp_path / ".issues"
         for category in ["bugs", "features", "enhancements", "epics", "completed"]:
-            (issues_dir / category).mkdir(parents=True)
+            (issues_dir / category).mkdir(parents=True, exist_ok=True)
 
         config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
+        config_dir.mkdir(exist_ok=True)
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
             "issues": {
@@ -2533,7 +2533,7 @@ class TestSprintListJsonShortForm:
 
         monkeypatch.chdir(tmp_path)
         sprints_dir = tmp_path / ".sprints"
-        sprints_dir.mkdir()
+        sprints_dir.mkdir(exist_ok=True)
 
         with (
             patch.object(sys, "argv", ["ll-sprint", "list", "-j"]),

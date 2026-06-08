@@ -23,7 +23,7 @@ _SAMPLE_CONFIG = {
 def _make_project(tmp_path: Path) -> Path:
     """Set up a minimal project with config and issue directories."""
     ll_dir = tmp_path / ".ll"
-    ll_dir.mkdir()
+    ll_dir.mkdir(exist_ok=True)
     (ll_dir / "ll-config.json").write_text(json.dumps(_SAMPLE_CONFIG))
 
     issues = tmp_path / ".issues"
