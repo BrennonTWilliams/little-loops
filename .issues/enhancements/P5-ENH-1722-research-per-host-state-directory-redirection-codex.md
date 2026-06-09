@@ -74,6 +74,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): This issue scopes its research to Codex as the reference case, but the state-scoping decision applies equally to all future host runners. FEAT-1714 (Pi) and FEAT-1850 (omp) are both P5 and have no state-dir scoping of their own. If the research concludes "scope per host," Pi and omp will each need follow-on child issues. Add a note to the **Decision** section (Acceptance Criterion 2) explicitly stating whether the decision applies to Pi/omp as well, so the Pi/omp implementers have guidance without having to re-research the rationale.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:35 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`

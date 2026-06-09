@@ -97,11 +97,12 @@ for skill_dir in Path("skills").glob("ll-*/SKILL.md"):
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-06-03_
+_Updated by `/ll:verify-issues` on 2026-06-09_
 
-**Verdict: NEEDS_UPDATE** — Integration Map lists 28 named skills but there are 30 ll-* bridge skill directories. Two skills are missing from the explicit list — run `ls skills/ | grep ^ll-` to enumerate all 30 before implementing.
+**Verdict: VALID** — Integration Map now correctly lists all 30 ll-* bridge skill directories (confirmed via `ls skills/ | grep ^ll-`). The prior 2026-06-03 note that flagged "28 named skills" is stale — `ll-capture-issue` and `ll-go-no-go` were added to the Integration Map in a subsequent edit. Issue is accurate and ready to implement.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`

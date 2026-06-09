@@ -99,6 +99,7 @@ verification, testing, adversarial, harness, eval
 open
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 - Captured - 2026-06-09 - from squid-plugin evaluation; adversarial-QA framing
   applied to feature verification, kept distinct from eval `execute`.

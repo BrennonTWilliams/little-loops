@@ -9,6 +9,8 @@ discovered_date: 2026-06-03
 discovered_by: scope-epic
 parent: EPIC-1867
 relates_to: []
+blocks:
+- FEAT-2000
 ---
 
 # FEAT-1901: Stabilize shared orchestration core and expose as ll-issues subcommands
@@ -124,6 +126,7 @@ ll-issues classify-failure --rc <int> [--create-issue]
 - `/ll:verify-issues` - 2026-06-05 - Partially implemented: `next-issue` and `next-issues` subcommands exist in `cli/issues/`. `verify-work` and `classify-failure` subcommands not yet implemented. Body references `commands/issues.py` which doesn't exist — actual dispatcher is `cli/issues/__init__.py`. Update the Implementation Plan to reflect partial completion and correct the file path.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:33 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

@@ -272,6 +272,7 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - Grep verification is manual — the completeness check ("MR-1…MR-5 now appear only in LOOPS-GUIDELINES.md") is a manual grep, not a CI gate; run it explicitly post-implementation
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:confidence-check` - 2026-06-08T23:55:00Z - `d5e3ed6c-5fc1-4d3d-b2dd-2db860f934e4.jsonl`
 - `/ll:wire-issue` - 2026-06-09T04:44:22 - `8bbb2121-bb5c-418c-9148-2f2f52c8d346.jsonl`

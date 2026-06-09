@@ -405,6 +405,7 @@ The existing `_summary_state_executed` flag at `executor.py:212` and the `TestMa
 **YAML alias conflict**: `from_dict()` cannot alias `on_max_iterations` YAML key → `on_max_steps` Python field because the new `on_max_iterations` Python field is the iteration-cap summary state. The 2 existing loops (`general-task.yaml:9`, `canvas-sketch-generator.yaml:32`) must be explicitly updated to `on_max_steps:` as part of this implementation — there is no non-breaking alias path.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:wire-issue` - 2026-06-08T01:30:54 - `bd674972-d40a-41d7-8755-4b2991056e84.jsonl`
 - `/ll:refine-issue` - 2026-06-08T01:21:46 - `bd674972-d40a-41d7-8755-4b2991056e84.jsonl`
 - `/ll:decide-issue` - 2026-06-08T00:32:10 - `f4c7bf77-d0d5-4c99-aeeb-85249c64bdfe.jsonl`
