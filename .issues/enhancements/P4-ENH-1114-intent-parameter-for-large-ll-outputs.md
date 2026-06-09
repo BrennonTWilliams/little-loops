@@ -203,6 +203,7 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - FEAT-1112 is `done` — the `ll-session` CLI and SQLiteTransport have landed. Both Step 1 and Step 2 are now unblocked.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:18:08 - `4aca9a88-34ed-4bf8-bf0d-7490f0e759bf.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:59 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`

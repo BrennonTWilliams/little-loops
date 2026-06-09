@@ -104,7 +104,11 @@ When this epic is done:
 
 ## Verification Notes
 
-Acceptance gates from the plan:
+_Added by `/ll:verify-issues` on 2026-06-09_
+
+**Verdict: NEEDS_UPDATE** — FEAT-1902 (shared orchestration core) is completed but not acknowledged in the epic body. All other child issues (FEAT-1899, FEAT-1901, ENH-1903, FEAT-2000, FEAT-2001, FEAT-2002) are still open. Update the Summary/Children section to mark FEAT-1902 as done.
+
+### Acceptance gates from the plan:
 - `ll-loop validate ll-auto` passes (MR-1, MR-3).
 - `ll-loop run ll-auto --baseline` shows the harness ≥ unguided baseline on a fixed set.
 - A/B parity: same backlog through old `ll-auto` vs the loop → identical
@@ -130,6 +134,8 @@ Acceptance gates from the plan:
 | `docs/ARCHITECTURE.md` | Target for orchestration architecture updates |
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T14:24:45 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
+- `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:capture-issue` - 2026-06-02T02:18:04Z - `1758d419-8959-4946-ab38-e7f9cbf959a8.jsonl`

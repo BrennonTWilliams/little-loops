@@ -3,7 +3,7 @@ id: FEAT-1910
 title: Trigger-validation suite for skill descriptions (should-fire / should-not-fire)
 type: FEAT
 priority: P4
-status: in_progress
+status: done
 captured_at: '2026-06-03T20:59:38Z'
 discovered_date: 2026-06-03
 discovered_by: capture-issue
@@ -153,14 +153,12 @@ CI-enforceable check that fits little-loops' non-LLM-evaluator philosophy.
 
 ## Verification Notes
 
-**Verdict**: VALID — 2026-06-05T21:00:23
+**Verdict: RESOLVED** — 2026-06-09. `ll-verify-triggers` CLI is fully implemented at `scripts/little_loops/cli/verify_triggers.py` and exported in `__init__.py`. The feature described in this issue has been delivered. Closing.
 
-- Issue describes a planned feature/enhancement that has not yet been implemented
-- Referenced files and directories verified to exist (where applicable)
-- No claims about current code behavior are contradicted by the codebase
-- Dependency references are valid (no broken refs, missing backlinks, or cycles)
+_Previously (2026-06-05): Verdict was VALID — feature not yet implemented._
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:format-issue` - 2026-06-03T21:04:12 - `b62e3f92-2664-4793-81e7-cf8464c74fe6.jsonl`
 - `/ll:capture-issue` - 2026-06-03T20:59:38Z - `b4fa1e68-4a59-49bd-949a-5a5b7533509f.jsonl`

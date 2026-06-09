@@ -219,6 +219,7 @@ FEAT-992).
 **Verdict: NEEDS_UPDATE** — The 3 items previously listed as 'unfiled' (PostCompact, permission_request, conformance suite) are now captured as FEAT-1719, FEAT-1720, and FEAT-1721 respectively (filed 2026-05-26). Update the children list to reflect this — the epic body may already include them but the verification note should confirm.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:37 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:08 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`

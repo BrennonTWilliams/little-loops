@@ -138,6 +138,10 @@ ENH-1911 (Quantified evolution triggers from history) is `relates_to` this EPIC,
 
 ## Verification Notes
 
+_Updated by `/ll:verify-issues` on 2026-06-09_
+
+**Verdict: DEP_ISSUES** — 4 broken child references: ENH-1834, ENH-1835, ENH-1927, BUG-1928 are listed as children but no issue files exist for any of them. Remove or create these entries before implementing child issues to avoid orphaned references.
+
 _Added by `/ll:verify-issues` on 2026-06-04 (updated from 2026-05-31)_
 
 **Verdict: NEEDS_UPDATE** — The Summary still says "the initial 3-skill consumer wiring (ENH-1847: refine-issue, ready-issue, confidence-check) is done." This understates current coverage: ll-history-context is now wired into 7 skills (confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, create-sprint), and ENH-1946 (bookkeeping fix for ENH-1839 in children list) is now `done`. Core remaining work: ENH-1909 (configurable planning_skills injection) remains open; ENH-1945 (host-aware session log discovery) is a new child.
@@ -145,6 +149,8 @@ _Added by `/ll:verify-issues` on 2026-06-04 (updated from 2026-05-31)_
 - `/ll:verify-issues` - 2026-06-05 - Epic is 94% complete (30/32 children done). Summary section still says "3 skills wired" — should say "7 skills wired" (confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, create-sprint). Only FEAT-1736 and ENH-1906 remain open. Epic is close to closure-ready; update Summary and consider promoting remaining children or closing the epic.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T14:24:45 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
+- `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:33 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 

@@ -118,7 +118,12 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - **Wiring tests will regress on doc updates**: `scripts/tests/test_wiring_reference_docs.py` (lines 101–102) asserts `/ll:init` appears in `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` and `docs/reference/CONFIGURATION.md`. When those references are updated to `ll-init`, the test fixture list must be updated in the same commit or the test suite will fail.
 - **No direct unit tests for skill file content**: The stub in `skills/init/SKILL.md` has no automated tests — correctness relies entirely on the acceptance criteria (manual verification that flags pass through, redirect is non-confusing).
 
+## Verification Notes
+
+**Verdict: NEEDS_UPDATE** — 2026-06-09. `skills/init/SKILL.md` (502 lines) and `skills/init/interactive.md` (966 lines) both still exist in full form. The parity gate (CLI `ll-init` reaching feature parity with the skill wizard) needs explicit verification before deletion can start. Confidence check scored readiness 92/100 but outcome confidence only 68/100 — the redirect behavior decision (auto-invoke vs. message only) is still unresolved. Resolve that decision first.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:confidence-check` - 2026-06-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f4b8008-562a-49e0-b070-2b75fe480d05.jsonl`
 
 ## Status

@@ -219,6 +219,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - `/ll:verify-issues` - 2026-06-05 - Partial progress: `config-schema.json` already has `"pi"` in the host enum (Step 1 of config candidate done). Remaining work: `config/core.py` needs `PI_CONFIG_DIR` constant, `elif host == "pi"` branch in `_config_candidates()`, and updated docstring. No tests written. Stale line numbers in body: CODEX_CONFIG_DIR is at line 40 (not 36). Update line references before starting.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
