@@ -12,6 +12,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.119.0] - 2026-06-08
+
+### Added
+
+- **`ll-init` headless Python core** — New initialization command with a headless Python API for programmatic project setup. (FEAT-1979)
+- **`ll-init` interactive terminal TUI** — New questionary + rich terminal UI for guided project initialization. (FEAT-1980)
+- **`ll-init` host multi-select and adapter install dispatch** — `ll-init` can now configure multiple host adapters in a single run; replaces the `--codex` flag with a `--hosts` list for multi-host dispatch. (FEAT-1981)
+- **`rlhf-animated-svg` built-in loop** — New FSM loop shipped as a built-in example for animated SVG generation with RLHF-style evaluation. (4cb6afb)
+- **`apply-research` built-in FSM loop** — New loop for applying structured research artifacts to a codebase. (49f9cf8)
+- **`--parent` filter for `ll-issues list`** — New `--parent` flag lets you filter issues by parent EPIC. (8abac80)
+- **`scope-epic --auto` flag** — Non-interactive automation callers can now invoke `scope-epic` without HITL prompts. (004ea94)
+- **`ll-loop` failure reason surfacing** — Loop completion summaries now display the failure reason when output is hidden. (4d2e65a)
+- **`rn-build` `refine_seed` migration** — `refine_seed` moved from `issue-refinement` to `recursive-refine` for cleaner sub-loop separation. (2e7ce86)
+
+### Changed
+
+- **`ll-init` CLI reference** — Added `ll-init` documentation section to `docs/CLI.md`. (ENH-2019)
+- **`rn-*` shared YAML fragments** — Extracted duplicated states (`plan_rubric_score`, `rate_limit_diagnostic`, and rn-* common states) into `common.yaml` fragments for maintainability. (e4df058, c6d657d)
+- **`session_digest` enabled in project config** — Session digest is now enabled by default in the project configuration. (1c16c4d)
+- **`analyze-history` evolution trigger detection** — Evolution trigger patterns are now surfaced in history analysis output. (7355afd)
+- **CLI.md introduction accuracy** — Corrected CLI.md intro to accurately describe tool naming conventions. (ENH-2020)
+- **`harness-optimize` trajectory paths** — Corrected trajectory artifact paths to use `.ll/runs/` prefix format. (ENH-2021)
+
+### Fixed
+
+- **`rn-build` scratch state isolation** — Moved `issue-refinement` scratch state from `.loops/tmp` to `run_dir` to prevent cross-run state corruption. (MR-3, a25c0ee)
+- **`next-action` threshold resolution** — Threshold resolution is now config-first with 85/70 fallbacks instead of hardcoded values. (697eb2c)
+- **`issue-refinement` broken-down issue gating** — Issues flagged as broken-down are now gated to the skip-list via `check_broke_down`, preventing re-processing. (de64d84)
+- **`rn-remediate` implement counter** — Guarded against `api_error_retry` double-counting the implement counter. (9d1dff0)
+- **`rn-build` multi-step harness fallback** — Added fallback discovery on resume for multi-step harnesses. (0799a0f)
+- **`rn-build` `run_dir` preservation** — `run_dir` is now preserved across `with:` sub-loops; hard failures no longer masked. (002c901)
+- **`rn-build` scope routing** — Hardened `scope_project` routing and added timeout guard for `tech_research`. (6c40bb1)
+- **`rn-build` bash array expansion** — Escaped bash array expansion to prevent FSM interpolation collision. (5df42d0)
+- **`goal-cluster` dispatch** — Fixed `--json` flag usage and corrected goal key passing to dispatch sub-loop. (8823199)
+- **`harness-optimize` run_dir migration** — Migrated trajectory paths to runner-injected `run_dir`. (MR-3, 3ce98c1)
+- **BUG-2022: HOST_COMPATIBILITY.md footnote count** — Corrected footnote reference from 'seven call sites' to match the actual six-row table; added `ll-sprint` to orchestration CLI table.
+
 ## [1.118.0] - 2026-06-07
 
 ### Added
@@ -607,6 +644,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
 [Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...HEAD
+[1.119.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.118.0...v1.119.0
 [1.118.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.117.0...v1.118.0
 [1.117.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.116.0...v1.117.0
 [1.116.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.115.0...v1.116.0
