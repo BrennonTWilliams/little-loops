@@ -3,21 +3,22 @@ id: ENH-2028
 title: "session_digest.enabled defaults off \u2014 ambient history context never fires"
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-08T22:17:25Z'
+completed_at: '2026-06-09T03:40:50Z'
 discovered_date: 2026-06-08
 discovered_by: capture-issue
 parent: EPIC-1707
 relates_to:
 - ENH-1907
 - EPIC-1707
-confidence_score: 84
-outcome_confidence: 74
-score_complexity: 20
-score_test_coverage: 19
-score_ambiguity: 14
-score_change_surface: 21
-decision_needed: true
+confidence_score: 97
+outcome_confidence: 94
+score_complexity: 25
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 25
+decision_needed: false
 ---
 
 # ENH-2028: session_digest.enabled defaults off — ambient history context never fires
@@ -60,9 +61,11 @@ Option 1 is the right long-term default; option 2 is a quick fix for this projec
 2. Update `SessionDigestConfig.from_dict` to default `enabled` to `True`.
 3. Update `config-schema.json` and `docs/reference/API.md` to reflect the new default.
 4. Add a migration note to `CHANGELOG.md` (behavior change — previously silent, now injects a capped digest).
-5. Add/update tests in `scripts/tests/test_session_start.py` to assert the digest fires when no config is present.
+5. Add/update tests in `scripts/tests/test_hook_session_start.py` to assert the digest fires when no config is present.
 
 ### Option 2: Enable in project config (quick fix)
+
+> **Selected:** Option 2: Enable in project config (quick fix) — zero-code JSON edit that exactly matches the existing project-config pattern for opt-in features (analytics, documents); resolves the dogfooding gap immediately with zero risk.
 
 Add to `.ll/ll-config.json`:
 ```json
@@ -78,6 +81,27 @@ Add to `.ll/ll-config.json`:
 ### Option 3: Wire into init/configure
 
 Update `skills/init/SKILL.md` Phase 3 and `skills/configure/SKILL.md` to include a `session_digest` prompt block.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-08.
+
+**Selected**: Option 2: Enable in project config (quick fix)
+
+**Reasoning**: Option 2 exactly matches the established pattern of explicit `enabled: true` entries in `.ll/ll-config.json` (analytics, documents) and is a single JSON edit with zero code changes. Option 1's stated "one-line fix" is actually a two-point change — the `feature_enabled()` gate in `session_start.py:170` is decoupled from the dataclass default and always returns `False` on missing keys regardless of `SessionDigestConfig.enabled`, requiring both a gate expression change and six test assertion updates plus three doc file updates, with a global behavior change across all installs. Option 2 resolves the dogfooding concern immediately; Option 1 remains the recommended follow-up to flip the global default for all installs.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option 1: Change default to True | 2/3 | 2/3 | 3/3 | 1/3 | 8/12 |
+| Option 2: Enable in project config | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option 3: Wire into init/configure | 3/3 | 2/3 | 2/3 | 3/3 | 10/12 |
+
+**Key evidence**:
+- **Option 1**: `feature_enabled()` at `session_start.py:170` returns `False` on missing keys, independent of the dataclass default — fixing requires changing the gate expression in addition to the default flip, plus 6 test + 3 doc updates; global behavior change across all installs requires a CHANGELOG "breaking change" entry.
+- **Option 2**: `BRConfig._parse_config()` already wires `HistoryConfig.from_dict(raw.get("history", {}))`, `test_config.py:2921–2937` confirms the exact proposed JSON shape round-trips correctly; single file edit with zero new infrastructure.
+- **Option 3**: `/ll:configure history` session_digest question already exists in `skills/configure/areas.md:1311–1319`; init side requires a new mandatory round with TOTAL counter update; only addresses new installs, leaves existing installs (including this project) unchanged.
 
 ## Integration Map
 
@@ -97,8 +121,8 @@ Update `skills/init/SKILL.md` Phase 3 and `skills/configure/SKILL.md` to include
 - TBD — `grep -r "SessionDigestConfig\|session_digest" scripts/little_loops/config/` for other feature-flag defaults to keep consistent
 
 ### Tests
-- `scripts/tests/test_session_start.py` — assert digest fires with default config (option 1)
-- `scripts/tests/test_config_features.py` — verify `SessionDigestConfig()` default matches intended behavior
+- `scripts/tests/test_hook_session_start.py` — assert digest fires with default config (option 1)
+- `scripts/tests/test_config.py` — verify `SessionDigestConfig()` default matches intended behavior (see `TestSessionDigestConfig` at line 2751)
 
 ### Documentation
 - `docs/reference/API.md` — update `SessionDigestConfig` default annotation
@@ -114,8 +138,8 @@ Update `skills/init/SKILL.md` Phase 3 and `skills/configure/SKILL.md` to include
 
 ## Tests
 
-- `scripts/tests/test_session_start.py` — assert digest fires with default config (option 1), or assert it fires when config sets `enabled: true` (option 2).
-- `scripts/tests/test_config_features.py` — verify `SessionDigestConfig()` default matches intended behavior.
+- `scripts/tests/test_hook_session_start.py` — assert digest fires with default config (option 1), or assert it fires when config sets `enabled: true` (option 2).
+- `scripts/tests/test_config.py` — verify `SessionDigestConfig()` default matches intended behavior (see `TestSessionDigestConfig` at line 2751).
 
 ## Impact
 
@@ -140,6 +164,9 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - **Two TBD items in Integration Map** (lines 85 and 88) — full list of `session_digest` references and feature-flag defaults to keep consistent have not been verified. Quick greps resolve these (7 references found; only `session_start.py` is a behavioral consumer), but should be confirmed before finalizing scope.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-09T03:38:45 - `33e138d0-5485-42c2-9595-8e25775277c8.jsonl`
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `68ab9b9e-3315-4b3b-a69b-b6b9bb829594.jsonl`
+- `/ll:decide-issue` - 2026-06-09T03:32:05 - `107ba7d9-b0c1-4f2b-b598-a1879221c3ea.jsonl`
 - `/ll:confidence-check` - 2026-06-08T00:00:00Z - `ad2e03f6-8c83-42d6-b37c-d90baffcb383.jsonl`
 - `/ll:format-issue` - 2026-06-09T01:44:50 - `69b33e41-c63d-4418-8c47-2b1a6287ce4b.jsonl`
 - `/ll:capture-issue` - 2026-06-08T22:17:25Z - `a20cfa81-f228-4cd0-9501-12f64feb6d30.jsonl`

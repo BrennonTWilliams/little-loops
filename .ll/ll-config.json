@@ -69,5 +69,12 @@
         "files": [".claude/CLAUDE.md", "CONTRIBUTING.md"]
       }
     }
+  },
+  "history": {
+    "session_digest": {
+      "enabled": true,
+      "days": 7,
+      "char_cap": 1200
+    }
   }
 }
