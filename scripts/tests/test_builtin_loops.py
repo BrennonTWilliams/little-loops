@@ -153,6 +153,7 @@ class TestBuiltinLoopFiles:
             "rlhf-animated-svg",
             "rlhf-svg-evaluate",
             "rlhf-svg-refine",
+            "rlhf-svg-generate",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -6397,6 +6398,76 @@ class TestRlhfSvgRefineSubLoop:
     def test_done_is_terminal(self, data: dict) -> None:
         done = data.get("states", {}).get("done", {})
         assert done.get("terminal") is True, "'done' state must be terminal: true"
+
+
+class TestRlhfSvgGenerateSubLoop:
+    """rlhf-svg-generate sub-loop structural correctness (ENH-2051)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rlhf-svg-generate.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_states_present(self, data: dict) -> None:
+        states = set(data.get("states", {}).keys())
+        for state in ("plan_animation", "render_animation", "verify_render", "done", "plan_failed"):
+            assert state in states, f"rlhf-svg-generate must have a '{state}' state"
+
+    def test_context_declares_input(self, data: dict) -> None:
+        assert "input" in data.get("context", {}), (
+            "rlhf-svg-generate must declare 'input' in context"
+        )
+
+    def test_context_declares_run_dir(self, data: dict) -> None:
+        assert "run_dir" in data.get("context", {}), (
+            "rlhf-svg-generate must declare 'run_dir' in context"
+        )
+
+    def test_context_declares_quality_target(self, data: dict) -> None:
+        assert "quality_target" in data.get("context", {}), (
+            "rlhf-svg-generate must declare 'quality_target' in context"
+        )
+
+    def test_context_declares_global_iteration(self, data: dict) -> None:
+        assert "global_iteration" in data.get("context", {}), (
+            "rlhf-svg-generate must declare 'global_iteration' in context"
+        )
+
+    def test_context_declares_design_tokens_context(self, data: dict) -> None:
+        assert "design_tokens_context" in data.get("context", {}), (
+            "rlhf-svg-generate must declare 'design_tokens_context' in context"
+        )
+
+    def test_context_declares_explore_cutoff(self, data: dict) -> None:
+        assert "explore_cutoff" in data.get("context", {}), (
+            "rlhf-svg-generate must declare 'explore_cutoff' in context"
+        )
+
+    def test_context_declares_exploit_cutoff(self, data: dict) -> None:
+        assert "exploit_cutoff" in data.get("context", {}), (
+            "rlhf-svg-generate must declare 'exploit_cutoff' in context"
+        )
+
+    def test_phase_detection_uses_context_global_iteration(self, data: dict) -> None:
+        state = data.get("states", {}).get("plan_animation", {})
+        action = state.get("action", "") or ""
+        assert "${state.iteration}" not in action, (
+            "State 'plan_animation' must reference ${context.global_iteration}, "
+            "not ${state.iteration}"
+        )
+        assert "${context.global_iteration}" in action, (
+            "State 'plan_animation' must reference ${context.global_iteration} for phase detection"
+        )
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        done = data.get("states", {}).get("done", {})
+        assert done.get("terminal") is True, "'done' state must be terminal: true"
+
+    def test_plan_failed_is_terminal(self, data: dict) -> None:
+        plan_failed = data.get("states", {}).get("plan_failed", {})
+        assert plan_failed.get("terminal") is True, "'plan_failed' state must be terminal: true"
 
 
 class TestRlhfAnimatedSvgParentOrchestration:

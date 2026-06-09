@@ -3,15 +3,22 @@ id: ENH-2051
 title: Create rlhf-svg-generate sub-loop
 type: ENH
 priority: P3
-status: open
+status: done
 parent: ENH-2044
 captured_at: '2026-06-09T00:00:00Z'
+completed_at: 2026-06-09 18:20:25+00:00
 discovered_date: 2026-06-09
 discovered_by: issue-size-review
 labels:
 - loops
 - fsm
 - refactoring
+confidence_score: 96
+outcome_confidence: 84
+score_complexity: 19
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 25
 ---
 
 # ENH-2051: Create rlhf-svg-generate sub-loop
@@ -19,6 +26,14 @@ labels:
 ## Summary
 
 Extract the generation phase of `rlhf-animated-svg.yaml` into a standalone child FSM `rlhf-svg-generate.yaml` with states `plan_animation → render_animation → verify_render`. Register it in tests and the loops README.
+
+## Current Behavior
+
+The generation phase (`plan_animation`, `render_animation`, `verify_render`) is embedded inline in `rlhf-animated-svg.yaml`. No standalone `rlhf-svg-generate` sub-loop exists, so the generation phase cannot be tested or invoked independently of the full orchestration loop.
+
+## Expected Behavior
+
+A standalone `rlhf-svg-generate.yaml` sub-loop exists with states `plan_animation → render_animation → verify_render`, passes `ll-loop validate`, runs independently via `ll-loop run rlhf-svg-generate`, and is covered by `TestRlhfSvgGenerateSubLoop` in `test_builtin_loops.py`.
 
 ## Parent Issue
 
@@ -57,7 +72,7 @@ Extract states from `rlhf-animated-svg.yaml` using the existing logic. All `${st
   - Assert `context` block declares `input`, `run_dir`, `quality_target`, `global_iteration`, `design_tokens_context`, `explore_cutoff`, `exploit_cutoff`
   - Assert phase-detection prompts reference `${context.global_iteration}` not `${state.iteration}`
 
-Model after `TestRnPlanDelegatesResearchToOracle` (line 6185).
+Model after `TestRnPlanDelegatesResearchToOracle` (line 6147).
 
 ### 3. Update `scripts/little_loops/loops/README.md`
 
@@ -89,11 +104,11 @@ Terminal states:
 
 ## Acceptance Criteria
 
-- [ ] `rlhf-svg-generate.yaml` passes `ll-loop validate`
-- [ ] Sub-loop runs standalone: `ll-loop run rlhf-svg-generate --context input="test" run_dir=/tmp/test`
-- [ ] `TestRlhfSvgGenerateSubLoop` passes
-- [ ] `test_expected_loops_exist` passes with `"rlhf-svg-generate"` in expected set
-- [ ] README.md row added
+- [x] `rlhf-svg-generate.yaml` passes `ll-loop validate`
+- [x] Sub-loop runs standalone: `ll-loop run rlhf-svg-generate --context input="test" run_dir=/tmp/test`
+- [x] `TestRlhfSvgGenerateSubLoop` passes
+- [x] `test_expected_loops_exist` passes with `"rlhf-svg-generate"` in expected set
+- [x] README.md row added
 
 ## Integration Map
 
@@ -108,7 +123,7 @@ Terminal states:
 ### Similar Patterns
 - `scripts/little_loops/loops/rlhf-svg-evaluate.yaml` — sibling sub-loop for evaluation phase
 - `scripts/little_loops/loops/rlhf-svg-refine.yaml` — sibling sub-loop for refinement phase
-- `scripts/tests/test_builtin_loops.py:TestRnPlanDelegatesResearchToOracle` (line 6185) — test class to model after
+- `scripts/tests/test_builtin_loops.py:TestRnPlanDelegatesResearchToOracle` (line 6147) — test class to model after
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — `TestRlhfSvgGenerateSubLoop`
@@ -125,6 +140,12 @@ Terminal states:
 - **Effort**: Medium — extract and author ~500-line sub-loop YAML
 - **Risk**: Low — new file, no existing callers
 
+## Status
+
+**Open** | Created: 2026-06-09 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-09T18:13:15 - `dfe72044-44ec-4859-b5b5-d3659c64add5.jsonl`
 - `/ll:format-issue` - 2026-06-09T18:01:15 - `2d482232-6523-4263-ba00-0d17c049d9ee.jsonl`
 - `/ll:issue-size-review` - 2026-06-09T00:00:00Z - `852d825e-ec36-4b78-a79e-3e0c5457f603.jsonl`
+- `/ll:confidence-check` - 2026-06-09T00:00:00Z - `83eb0379-081b-4b33-8ad2-9b0c1c2ddba4.jsonl`
