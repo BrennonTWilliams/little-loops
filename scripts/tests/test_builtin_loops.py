@@ -6397,3 +6397,155 @@ class TestRlhfSvgRefineSubLoop:
     def test_done_is_terminal(self, data: dict) -> None:
         done = data.get("states", {}).get("done", {})
         assert done.get("terminal") is True, "'done' state must be terminal: true"
+
+
+class TestRlhfAnimatedSvgParentOrchestration:
+    """rlhf-animated-svg parent must delegate evaluate/refine to sub-loops (ENH-2056)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rlhf-animated-svg.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    # --- extracted evaluate states absent ---
+
+    def test_no_inline_smoke_test(self, data: dict) -> None:
+        assert "smoke_test" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline smoke_test (delegated to rlhf-svg-evaluate)"
+        )
+
+    def test_no_inline_score(self, data: dict) -> None:
+        assert "score" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline score (delegated to rlhf-svg-evaluate)"
+        )
+
+    def test_no_inline_track_correlation(self, data: dict) -> None:
+        assert "track_correlation" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline track_correlation (delegated to rlhf-svg-evaluate)"
+        )
+
+    # --- extracted refine states absent ---
+
+    def test_no_inline_rank_components(self, data: dict) -> None:
+        assert "rank_components" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline rank_components (delegated to rlhf-svg-refine)"
+        )
+
+    def test_no_inline_review_critique(self, data: dict) -> None:
+        assert "review_critique" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline review_critique (delegated to rlhf-svg-refine)"
+        )
+
+    def test_no_inline_apply_refinements(self, data: dict) -> None:
+        assert "apply_refinements" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline apply_refinements (delegated to rlhf-svg-refine)"
+        )
+
+    def test_no_inline_self_diagnose(self, data: dict) -> None:
+        assert "self_diagnose" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline self_diagnose (delegated to rlhf-svg-refine)"
+        )
+
+    def test_no_inline_write_summary(self, data: dict) -> None:
+        assert "write_summary" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline write_summary (delegated to rlhf-svg-refine)"
+        )
+
+    # --- evaluate delegation state ---
+
+    def test_run_evaluate_state_exists(self, data: dict) -> None:
+        assert "run_evaluate" in data.get("states", {}), (
+            "rlhf-animated-svg must have a run_evaluate delegation state"
+        )
+
+    def test_run_evaluate_delegates_to_rlhf_svg_evaluate(self, data: dict) -> None:
+        state = data.get("states", {}).get("run_evaluate", {})
+        assert state.get("loop") == "rlhf-svg-evaluate", (
+            f"run_evaluate.loop must be 'rlhf-svg-evaluate', got {state.get('loop')!r}"
+        )
+
+    def test_run_evaluate_with_run_dir(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_evaluate", {}).get("with", {})
+        assert "run_dir" in with_, "run_evaluate.with must include run_dir"
+
+    def test_run_evaluate_with_quality_target(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_evaluate", {}).get("with", {})
+        assert "quality_target" in with_, "run_evaluate.with must include quality_target"
+
+    def test_run_evaluate_with_smoke_bypass_threshold(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_evaluate", {}).get("with", {})
+        assert "smoke_bypass_threshold" in with_, "run_evaluate.with must include smoke_bypass_threshold"
+
+    def test_run_evaluate_with_exploit_cutoff(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_evaluate", {}).get("with", {})
+        assert "exploit_cutoff" in with_, "run_evaluate.with must include exploit_cutoff"
+
+    # --- refine delegation state ---
+
+    def test_run_refine_state_exists(self, data: dict) -> None:
+        assert "run_refine" in data.get("states", {}), (
+            "rlhf-animated-svg must have a run_refine delegation state"
+        )
+
+    def test_run_refine_delegates_to_rlhf_svg_refine(self, data: dict) -> None:
+        state = data.get("states", {}).get("run_refine", {})
+        assert state.get("loop") == "rlhf-svg-refine", (
+            f"run_refine.loop must be 'rlhf-svg-refine', got {state.get('loop')!r}"
+        )
+
+    def test_run_refine_with_run_dir(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
+        assert "run_dir" in with_, "run_refine.with must include run_dir"
+
+    def test_run_refine_with_animation_plan(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
+        assert "animation_plan" in with_, "run_refine.with must include animation_plan"
+
+    def test_run_refine_with_fix_plan(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
+        assert "fix_plan" in with_, "run_refine.with must include fix_plan"
+
+    def test_run_refine_with_component_ranking(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
+        assert "component_ranking" in with_, "run_refine.with must include component_ranking"
+
+    def test_run_refine_with_global_iteration(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
+        assert "global_iteration" in with_, "run_refine.with must include global_iteration"
+
+    def test_run_refine_with_explore_cutoff(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
+        assert "explore_cutoff" in with_, "run_refine.with must include explore_cutoff"
+
+    def test_run_refine_with_exploit_cutoff(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
+        assert "exploit_cutoff" in with_, "run_refine.with must include exploit_cutoff"
+
+    def test_run_refine_with_quality_target(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
+        assert "quality_target" in with_, "run_refine.with must include quality_target"
+
+    def test_run_refine_with_design_tokens_context(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
+        assert "design_tokens_context" in with_, "run_refine.with must include design_tokens_context"
+
+    # --- retained states present ---
+
+    def test_retained_states_present(self, data: dict) -> None:
+        states = set(data.get("states", {}).keys())
+        for state in ("init", "validate_input", "check_oscillation", "check_score_streak",
+                      "write_final_summary", "done", "failed"):
+            assert state in states, f"rlhf-animated-svg must retain '{state}' state"
+
+    # --- line count ---
+
+    def test_parent_body_within_line_limit(self) -> None:
+        # Intermediate target: ≤800 lines while generate states remain inline (ENH-2051 pending).
+        # Final target after ENH-2051 extracts generate states to rlhf-svg-generate: ≤450 lines.
+        line_count = len(self.LOOP_FILE.read_text().splitlines())
+        assert line_count <= 800, (
+            f"Parent loop is {line_count} lines (intermediate target: ≤800 until ENH-2051; "
+            f"final target: ≤450)"
+        )
