@@ -48,8 +48,10 @@ if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 ### 1. Find Issues to Verify
 
 ```bash
-# List all open issues (by frontmatter status)
-ll-issues list --format path | sort
+# List only active issues (open, in_progress, blocked) — skips deferred, done, cancelled
+ll-issues list --json --status all | \
+  python3 -c "import json,sys; [print(i['path']) for i in json.load(sys.stdin) if i.get('status') in {'open','in_progress','blocked'}]" | \
+  sort -u
 ```
 
 ### 2. For Each Issue
@@ -230,7 +232,7 @@ $ARGUMENTS
 
 - **issue_id** (optional): Specific issue ID to verify
   - If provided, verifies only that specific issue
-  - If omitted, verifies all open issues
+  - If omitted, verifies all active issues (open, in_progress, blocked); deferred, done, and cancelled issues are skipped
 
 - **flags** (optional): Command behavior flags
   - `--auto` - Non-interactive mode: apply all non-destructive changes (verification notes, line number updates) without prompting. Skips setting resolved issue status (requires explicit approval).
@@ -241,7 +243,7 @@ $ARGUMENTS
 ## Examples
 
 ```bash
-# Verify all open issues
+# Verify all active issues (open, in_progress, blocked) — deferred, done, cancelled are skipped
 /ll:verify-issues
 
 # Verify a specific issue
