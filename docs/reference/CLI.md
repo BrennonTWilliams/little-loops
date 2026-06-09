@@ -536,6 +536,18 @@ The raw per-iteration data lives at `.loops/runs/<run-id>/usage.jsonl` (not arch
 
 > **Note:** `agent:` and `tools:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent and tool scoping options.
 
+##### Failure Reason Display
+
+When a loop exits a non-success terminal state, `ll-loop run` prints the failing state's output as a **Failure reason** block immediately before the completion line. This surfaces failure context that would otherwise be invisible: the alt-screen wipes on teardown, and non-verbose runs never echo per-state stdout inline.
+
+```
+Failure reason:
+│ harness exit code 1: assertion failed on line 42
+│ expected "done", got "failed"
+```
+
+The block is shown when the run was in alt-screen mode or in non-verbose (`--quiet`) mode. It is suppressed in `--verbose` mode, where the live renderer already echoed the output. Output is capped at 40 lines to bound scrollback.
+
 ##### Queue entries (`.loops/.queue/`)
 
 When `ll-loop run --queue` encounters a scope conflict with a running loop, it creates `<loops_dir>/.queue/<uuid>.json` before entering the wait and removes it on lock acquisition, timeout, error, or process exit (via `atexit`). The file lets external observers (e.g. a dashboard) enumerate loops that are waiting on a scope lock without scanning process state.
@@ -859,6 +871,7 @@ List issues with optional filters.
 | `--milestone` | Filter by milestone name from `milestone:` frontmatter (exact match) |
 | `--group-by` | Group output by `type` (default, existing four-bucket view) or `epic` (group child issues under their parent ID, with an "Unparented" bucket for issues without a `parent:` field; each EPIC bucket header includes a `(N/M done · K blocked)` progress badge) |
 | `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all`. Note: synonyms in on-disk frontmatter are normalized on read, but `--status` arguments must use canonical values (argparse validates choices before normalization runs). |
+| `--parent EPIC-NNN` | Filter to issues whose `parent:` frontmatter matches the given EPIC or issue ID (e.g. `--parent EPIC-101`). Accepts short form (`101`), type-prefixed (`EPIC-101`), or full prefix (`P2-EPIC-101`). |
 | `--flat` | Output flat list for scripting |
 | `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, `labels`, `milestone`, and `parent` (the parent EPIC or issue ID when set) |
 | `--sort` / `-s` | Sort by field: `priority` (default), `id`, `type`, `title`, `created`, `completed`, `confidence`, `outcome`, `refinement` |
@@ -974,6 +987,8 @@ Output format: `<ACTION> <issue-id>` (one line), or `ALL_DONE`.
 | `--ready-threshold N` | `85` | Minimum readiness score to consider issue ready |
 | `--outcome-threshold N` | `70` | Minimum outcome confidence score to consider issue ready |
 | `--skip ISSUE_ID[,...]` | — | Comma-separated issue IDs to exclude (e.g. `ENH-929,BUG-001`); absent `--skip` preserves existing behavior |
+
+> **Config-driven defaults**: `next-action` reads `commands.confidence_gate.readiness_threshold` from `.ll/ll-config.json` before falling back to the CLI default of `85`. Set `commands.confidence_gate.readiness_threshold: 90` in your project config to raise the bar globally without passing `--ready-threshold` on every call. The `--ready-threshold` flag still overrides the config value when provided explicitly.
 
 #### `ll-issues next-issue` / `ll-issues nx`
 

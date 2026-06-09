@@ -421,6 +421,7 @@ Decompose a high-level theme or goal into an EPIC issue file and 3–8 pre-wired
 - `theme` (required): Natural-language theme or goal description to decompose
 - `--from-doc <path>` (optional): Read the theme from a markdown file instead of the argument string
 - `--priority <P0-P5>` (optional): Override the default EPIC priority (default: P2)
+- `--auto` (optional): Non-interactive mode — skips the interactive review table and writes EPIC + child stubs directly. Designed for FSM loop callers (e.g., `rn-build` `scope_project` state) where no human is present to confirm the decomposition.
 
 **Trigger keywords:** "decompose theme", "scope epic", "create epic from", "break down initiative", "epic decomposition", "theme to epic", "create child issues"
 

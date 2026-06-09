@@ -1457,10 +1457,11 @@ run_eval → score_results → analyze_failures
 | `pixi-generative-art` | Generator-evaluator harness for PixiJS generative art sketches — GPU-accelerated idioms (filters, blend modes, container hierarchies); rewards Pixi-distinctive patterns over p5.js conventions |
 | `vega-viz` | Generator-evaluator harness for Vega / Vega-Lite data visualizations — compile-gates broken specs via deterministic exit-code before LLM scoring, supports optional real data (CSV/JSON path), defaults to Vega-Lite and escalates to full Vega only for custom/interactive composition; Playwright captures three interaction states (settled, hover/tooltip, brush/selection) as multimodal PNG input for the judge (ENH-2010) |
 | `canvas-sketch-generator` | Generator-evaluator harness for canvas-sketch (Matt DesLauriers) still-image generative art — objective non-blank render gate (parsed pixel statistics) hard-gates blank sketches before the LLM judge runs; per-iteration snapshots with deterministic best-iteration selection; `on_max_iterations: finalize` ensures `best.html` is always published even when the pass threshold is never crossed |
+| `rlhf-animated-svg` | RLHF-style generate-score-refine loop for animated SVG artifacts — generates a zero-dependency self-contained HTML file with inline SVG animated via anime.js v3.2.2 (CDN, works under `file://`), validates via headless browser smoke test, scores via image analysis on an animation-specific rubric (correctness, aesthetics, smoothness, completeness), and refines until the quality target is met. Includes `explore → exploit → converge` phase gating, replan-on-streak-failure escalation, and per-iteration artifact versioning. Accessibility: `role="img"`, `aria-labelledby`, `prefers-reduced-motion` detection. |
 | `loop-specialist-eval` | Behavioral eval harness for the `loop-specialist` agent — drives the agent against a seeded `broken-verify-loop.yaml` fixture (ambiguous-output failure mode) and verifies that the diagnosis artifact is written and the failure mode is correctly classified |
 | `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --input concept="how a transformer attends"` |
 
-For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, and `canvas-sketch-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
+For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, `canvas-sketch-generator`, and `rlhf-animated-svg`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
 > **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_iterations` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available. After ENH-1869, these states (`evaluate`, `score`) live inside `oracles/generator-evaluator`; the rule applies to the oracle's internal state machine, not the calling thin-wrapper loops.
 
@@ -2173,6 +2174,73 @@ on_max_iterations: finalize → done  (best.html always published)
 - `on_max_iterations: finalize` ensures `best.html` is always published, even when the pass threshold is never crossed. A run that exhausts its budget without ever scoring above threshold still produces the best artifact it found.
 - `finalize` reads `scores.tsv` (one `iteration<tab>min_score` row per `snapshot` call) and copies the highest-scoring iteration's `index.html` and `screenshot.png` to `best.html` and `best.png` at the run-dir root. Ties go to the latest iteration.
 - `on_handoff: spawn`, `max_iterations: 40`, `timeout: 7200`.
+
+### `rlhf-animated-svg` — RLHF Animated SVG Generator (ENH-2039)
+
+**Technique**: RLHF-style generate-score-refine harness for animated SVG artifacts. A **planner** decomposes the natural-language description into a motion choreography brief (elements, timing, easing, palette); a **generator** renders a zero-dependency self-contained HTML file with inline SVG and an `anime.js v3.2.2` CDN `<script>` tag (UMD, `file://`-safe with static-SVG `onerror` fallback); a headless browser **smoke gate** verifies the animation runs without JS errors; and an **image-analysis scorer** evaluates the rendered output on four criteria. Refines until the score target is met. Three phases gate the optimization strategy: explore (iterations 0–5, unconstrained), exploit (6–15, brief-anchored), converge (16+, micro-adjustments only).
+
+**File**: `scripts/little_loops/loops/rlhf-animated-svg.yaml`
+
+**When to use**: When you want an animated SVG/HTML artifact and need motion-quality evaluation, not just static composition. The headless smoke gate (checks for JS errors, verifies `window.__animationReady === true`) and animation-specific rubric are the key differentiators from `svg-image-generator`: a static SVG and a broken animation can look identical in a single screenshot; the smoke gate separates them before the LLM scorer runs.
+
+**Invocation**:
+```bash
+# Default prompt (a bouncing ball with trail)
+ll-loop run rlhf-animated-svg
+
+# Custom animation description
+ll-loop run rlhf-animated-svg \
+  --context input="A particle burst that explodes from center on load, with each particle following a parabolic arc and fading out"
+
+# Raise quality bar
+ll-loop run rlhf-animated-svg \
+  --context quality_target=9 \
+  --context input="A breathing circle that slowly expands and contracts with a soft glow"
+```
+
+**Context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `input` | "A bouncing red ball with a fading trail…" | Natural-language animation description |
+| `quality_target` | `8` | Score threshold (0–10) to exit successfully |
+| `explore_cutoff` | `5` | Last iteration of explore phase (unconstrained generation) |
+| `exploit_cutoff` | `15` | Last iteration of exploit phase (16+ = converge) |
+| `max_replans` | `3` | Full replan cycles before forced termination |
+| `smoke_fail_streak_max` | `2` | Consecutive smoke failures before skipping to score |
+| `smoke_bypass_threshold` | `5` | Total smoke attempts after which smoke gate is bypassed |
+| `score_fail_streak_max` | `3` | Consecutive VISION_FAIL evaluations before triggering replan |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rlhf-animated-svg-{timestamp}/`) |
+
+**FSM flow:**
+```
+init → plan → generate → smoke_test
+                              ├─ pass → score → check_score
+                              │                     ├─ score ≥ quality_target → done
+                              │                     └─ score < quality_target → refine → generate
+                              ├─ fail (streak < max) → generate (self-repair)
+                              └─ fail (bypass threshold reached) → score
+```
+
+**Scoring rubric** (all four evaluated; min score gates exit):
+
+| Criterion | What it checks |
+|-----------|----------------|
+| `correctness` | Does the animation match the description? Elements, colors, motion type |
+| `aesthetics` | Visual quality — palette harmony, smooth arcs, pleasing proportions |
+| `smoothness` | Frame-rate consistency, easing quality, no jank or stuck states |
+| `completeness` | All described elements present; no obvious missing features |
+
+**Output artifacts** (in `run_dir`):
+- `index.html` — Current iteration artifact (self-contained, `file://`-safe)
+- `best.html` — Highest-scoring iteration (written by `finalize` on `done` or `max_iterations`)
+- `optimization_summary.md` — Running log of replan rationale and gradient history
+
+**Notes:**
+- anime.js v3.2.2 is loaded from CDN (`unpkg.com`). An `onerror` fallback renders the target element as a static SVG if the CDN is unavailable. All animation JS is inline.
+- Accessibility: `role="img"`, `aria-labelledby` pointing to a `<title>` element, and `prefers-reduced-motion` detection that disables animation when the OS preference is set.
+- `artifact_versioning: true` — each iteration's output is preserved; the runner will not overwrite previous iterations' artifacts.
+- `on_handoff: spawn`, `max_iterations: 30`, `timeout: 7200`.
 
 ### `cli-anything-bootstrap` — Agent-Native CLI Bootstrapper
 
