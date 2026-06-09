@@ -123,3 +123,6 @@ _Archive/
 
 # Debug output logs
 ll-auto-debug.txt
+
+*.mp4
+*.gif
