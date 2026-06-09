@@ -2,12 +2,19 @@
 id: BUG-2030
 type: BUG
 priority: P3
-status: open
-captured_at: "2026-06-08T00:00:00Z"
+status: done
+captured_at: '2026-06-08T00:00:00Z'
+completed_at: '2026-06-09T01:03:34Z'
 discovered_date: 2026-06-08
 discovered_by: audit-loop-run
 relates_to:
-  - ENH-1293
+- ENH-1293
+confidence_score: 89
+outcome_confidence: 75
+score_complexity: 23
+score_test_coverage: 10
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # BUG-2030: rn-implement `implement` state double-counts `implemented_count` on api_error_retry
@@ -73,15 +80,15 @@ fi
 
 ## Acceptance Criteria
 
-- [ ] `implemented_count` is not inflated when the `implement` state is retried due to `api_error_retry`
-- [ ] An issue that was already `done` before the retry does not get double-counted
-- [ ] A fresh implementation (issue newly closed) is still counted exactly once
-- [ ] No regression to the sub-loop outcome token (`emit_implemented` still fires correctly)
+- [x] `implemented_count` is not inflated when the `implement` state is retried due to `api_error_retry`
+- [x] An issue that was already `done` before the retry does not get double-counted
+- [x] A fresh implementation (issue newly closed) is still counted exactly once
+- [x] No regression to the sub-loop outcome token (`emit_implemented` still fires correctly)
 
 ## Integration Map
 
 ### Files to Modify
-- `loops/rn-implement.yaml` — `implement` state shell action (counter increment logic)
+- `scripts/little_loops/loops/rn-remediate.yaml` — `implement` state shell action (counter increment logic)
 
 ### Dependent Files (Callers/Importers)
 - N/A — counter logic is self-contained within the YAML shell action
@@ -114,5 +121,14 @@ fi
 **Open** | Created: 2026-06-08 | Priority: P3
 
 
+## Resolution
+
+Added idempotency guard to the `implement` state counter increment in `rn-remediate.yaml`. Uses a `counted.txt` file in `run_dir` to track which issue IDs have already been counted in the current run. On `api_error_retry` re-entry, the ID is found in `counted.txt` and the increment is skipped.
+
+**Change**: `scripts/little_loops/loops/rn-remediate.yaml` — `implement` state shell action, lines 254-261.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-09T01:01:28 - `7a21239f-d687-45b5-806b-a7e465c237e0.jsonl`
 - `/ll:format-issue` - 2026-06-09T00:50:18 - `bea10966-71b7-4204-8a23-f81e25338cef.jsonl`
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `eec350cd-8fcb-4138-9ae5-62a639e912c8.jsonl`
+- `/ll:manage-issue` - 2026-06-09T01:03:34Z - fixed
