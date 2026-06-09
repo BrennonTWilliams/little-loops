@@ -424,14 +424,13 @@ def _render_pinned_pane(
 
     # Build the fallback ladder based on facets source and topology.
     # Explicit topology (source="topology"): render exactly once, no degradation.
-    # Preset/default with layered topology: skip neighborhood — layered→neighborhood
-    # looks like a broken diagram and confuses users. Go straight to single-line.
+    # Preset/default with layered topology: full → neighborhood → single.
     # Explicit neighborhood topology: neighborhood→single.
     topo_detail = TOPOLOGY_TO_DETAIL[facets.topology]
     if facets.source == "topology":
         variants = [_build(topo_detail)]
     elif topo_detail == "full":
-        variants = [_build("full"), _build("single")]
+        variants = [_build("full"), _build("neighborhood"), _build("single")]
     elif topo_detail == "neighborhood":
         variants = [_build("neighborhood"), _build("single")]
     else:  # inline / single
