@@ -1150,8 +1150,12 @@ class TestRefineToReadyIssueSubLoop:
         script = script.replace("${captured.issue_id.output}", "ENH-0001")
         script = f"export PATH={bin_dir}:$PATH\n" + script
 
-        result = subprocess.run(["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True)
-        assert result.returncode == 0, f"restore_best action failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, (
+            f"restore_best action failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         assert "RESTORED_BEST" in result.stdout, (
             f"Expected 'RESTORED_BEST' in stdout when a better snapshot exists: {result.stdout!r}"
         )
@@ -1190,7 +1194,9 @@ class TestRefineToReadyIssueSubLoop:
         script = script.replace("${captured.issue_id.output}", "ENH-0001")
         script = f"export PATH={bin_dir}:$PATH\n" + script
 
-        result = subprocess.run(["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
         assert result.returncode == 0, f"restore_best action failed: {result.stderr}"
         assert "RESTORE_BEST: current file is already best" in result.stdout, (
             f"Expected no-op message when current is best: {result.stdout!r}"
@@ -3257,10 +3263,10 @@ class TestSvgImageGeneratorLoop:
         )
 
     def test_run_gen_eval_routes_to_done_on_yes(self, data: dict) -> None:
-        """run_gen_eval must route to done when sub-loop succeeds (ALL_PASS)."""
+        """run_gen_eval must route to vision_gate when sub-loop succeeds (ALL_PASS)."""
         state = data["states"].get("run_gen_eval", {})
-        assert state.get("on_yes") == "done", (
-            f"run_gen_eval.on_yes should be 'done', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "vision_gate", (
+            f"run_gen_eval.on_yes should be 'vision_gate', got {state.get('on_yes')!r}"
         )
 
     def test_run_gen_eval_routes_to_diagnose_on_failure(self, data: dict) -> None:
@@ -4613,9 +4619,7 @@ class TestHitlMdLoop:
         spec = generate_spec.lower()
         assert "confidence" in spec, "generate spec must describe the confidence cue"
         assert "dotted" in spec, "generate spec must describe the dotted-underline confidence cue"
-        assert "low confidence" in spec, (
-            "generate spec must describe the 'low confidence' badge"
-        )
+        assert "low confidence" in spec, "generate spec must describe the 'low confidence' badge"
 
     def test_generate_action_drops_sensemaking_layer(self, generate_spec: str) -> None:
         """generate spec must NOT instruct the LLM to build the removed ENH-1770 features
@@ -6328,7 +6332,14 @@ class TestRlhfSvgRefineSubLoop:
 
     def test_required_states_present(self, data: dict) -> None:
         states = set(data.get("states", {}).keys())
-        for state in ("rank_components", "review_critique", "apply_refinements", "self_diagnose", "write_summary", "done"):
+        for state in (
+            "rank_components",
+            "review_critique",
+            "apply_refinements",
+            "self_diagnose",
+            "write_summary",
+            "done",
+        ):
             assert state in states, f"rlhf-svg-refine must have a '{state}' state"
 
     def test_context_declares_run_dir(self, data: dict) -> None:
@@ -6391,9 +6402,7 @@ class TestRlhfSvgRefineSubLoop:
 
     def test_review_critique_captures_fix_plan(self, data: dict) -> None:
         state = data.get("states", {}).get("review_critique", {})
-        assert state.get("capture") == "fix_plan", (
-            "review_critique must capture 'fix_plan'"
-        )
+        assert state.get("capture") == "fix_plan", "review_critique must capture 'fix_plan'"
 
     def test_done_is_terminal(self, data: dict) -> None:
         done = data.get("states", {}).get("done", {})
@@ -6547,7 +6556,9 @@ class TestRlhfAnimatedSvgParentOrchestration:
 
     def test_run_evaluate_with_smoke_bypass_threshold(self, data: dict) -> None:
         with_ = data.get("states", {}).get("run_evaluate", {}).get("with", {})
-        assert "smoke_bypass_threshold" in with_, "run_evaluate.with must include smoke_bypass_threshold"
+        assert "smoke_bypass_threshold" in with_, (
+            "run_evaluate.with must include smoke_bypass_threshold"
+        )
 
     def test_run_evaluate_with_exploit_cutoff(self, data: dict) -> None:
         with_ = data.get("states", {}).get("run_evaluate", {}).get("with", {})
@@ -6600,14 +6611,23 @@ class TestRlhfAnimatedSvgParentOrchestration:
 
     def test_run_refine_with_design_tokens_context(self, data: dict) -> None:
         with_ = data.get("states", {}).get("run_refine", {}).get("with", {})
-        assert "design_tokens_context" in with_, "run_refine.with must include design_tokens_context"
+        assert "design_tokens_context" in with_, (
+            "run_refine.with must include design_tokens_context"
+        )
 
     # --- retained states present ---
 
     def test_retained_states_present(self, data: dict) -> None:
         states = set(data.get("states", {}).keys())
-        for state in ("init", "validate_input", "check_oscillation", "check_score_streak",
-                      "write_final_summary", "done", "failed"):
+        for state in (
+            "init",
+            "validate_input",
+            "check_oscillation",
+            "check_score_streak",
+            "write_final_summary",
+            "done",
+            "failed",
+        ):
             assert state in states, f"rlhf-animated-svg must retain '{state}' state"
 
     # --- line count ---

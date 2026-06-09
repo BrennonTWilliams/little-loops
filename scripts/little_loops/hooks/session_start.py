@@ -174,6 +174,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
             _sd = _hist.session_digest
             if _sd.enabled:
                 from little_loops.history_reader import project_digest, render_project_context
+
                 # Convert empty sections list to None so the default config renders
                 # all providers; a non-empty list restricts/orders the output.
                 _sections = _sd.sections if _sd.sections else None

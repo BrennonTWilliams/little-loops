@@ -493,8 +493,6 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 ================================================================================
 ```
 
----
-
 ## Additional Resources
 
 - For reference tables, output templates, and example `/ll:init` invocations covering all flag combinations, see [templates.md](templates.md)

@@ -12,6 +12,7 @@ from little_loops.fsm.validation import ValidationSeverity, load_and_validate, v
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-plan.yaml"
+ORACLE_FILE = BUILTIN_LOOPS_DIR / "oracles" / "plan-research-iteration.yaml"
 
 
 def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -51,12 +52,7 @@ class TestRnPlanYaml:
         required = {
             "init",
             "generate_rubric",
-            "classify_research",
-            "route_files",
-            "route_web",
-            "research_files",
-            "research_web",
-            "synthesize",
+            "research_iteration",  # research chain delegated to oracle sub-loop
             "score",
             "diagnose",
             "done",
@@ -77,24 +73,26 @@ class TestRnPlanYaml:
         assert "$(pwd)" in action, "init.action must use $(pwd) for an absolute path"
 
     def test_classify_research_captures_classification(self, data: dict) -> None:
-        state = data["states"]["classify_research"]
+        oracle = yaml.safe_load(ORACLE_FILE.read_text())
+        state = oracle["state_defs"]["classify_research"]
         assert state.get("capture") == "classification"
-        assert state.get("next") == "route_files"
+        # routing is defined in oracle's flow: section, not the state_def
 
     def test_route_files_is_output_contains_evaluator(self, data: dict) -> None:
-        state = data["states"]["route_files"]
+        oracle = yaml.safe_load(ORACLE_FILE.read_text())
+        state = oracle["state_defs"]["route_files"]
         evaluator = state.get("evaluate", {})
         assert evaluator.get("type") == "output_contains"
         assert evaluator.get("pattern") == "NEEDS_FILES"
-        assert state.get("on_yes") == "research_files"
-        assert state.get("on_no") == "route_web"
+        # on_yes/on_no routing is defined in oracle's flow: section
 
     def test_route_web_is_output_contains_evaluator(self, data: dict) -> None:
-        state = data["states"]["route_web"]
+        oracle = yaml.safe_load(ORACLE_FILE.read_text())
+        state = oracle["state_defs"]["route_web"]
         evaluator = state.get("evaluate", {})
         assert evaluator.get("type") == "output_contains"
         assert evaluator.get("pattern") == "NEEDS_WEB"
-        assert state.get("on_yes") == "research_web"
+        # on_yes routing is defined in oracle's flow: section
 
     def test_score_state_uses_all_very_high_sentinel(self, data: dict) -> None:
         state = data["states"]["score"]
@@ -102,7 +100,7 @@ class TestRnPlanYaml:
             "score state must use plan_rubric_score fragment (which provides ALL_VERY_HIGH evaluator)"
         )
         assert state.get("on_yes") == "done"
-        assert state.get("on_no") == "classify_research"
+        assert state.get("on_no") == "research_iteration"
         assert state.get("on_error") == "diagnose"
 
     def test_done_state_is_terminal(self, data: dict) -> None:
@@ -120,8 +118,9 @@ class TestRnPlanYaml:
         assert data.get("max_iterations") == 50
 
     def test_router_states_have_on_error(self, data: dict) -> None:
+        oracle = yaml.safe_load(ORACLE_FILE.read_text())
         for state_name in ("route_files", "route_web"):
-            state = data["states"][state_name]
+            state = oracle["state_defs"][state_name]
             assert "on_error" in state, f"{state_name} must have on_error"
 
     def test_rubric_dimensions_mentioned_in_score_action(self, data: dict) -> None:

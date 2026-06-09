@@ -215,9 +215,7 @@ def run_tui(
 
     claude_md_opt_in = False
     if _claude_md_section_present:
-        console.print(
-            "[dim]CLAUDE.md already contains a ## little-loops section — skipping.[/dim]"
-        )
+        console.print("[dim]CLAUDE.md already contains a ## little-loops section — skipping.[/dim]")
     else:
         _claude_md_choice: str | None = questionary.select(
             "Append ll- CLI commands to CLAUDE.md?",

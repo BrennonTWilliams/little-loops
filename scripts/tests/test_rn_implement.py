@@ -122,11 +122,11 @@ class TestDequeueAndDepthTracking:
         assert fp.get("capture") == "input"
 
     def test_fifo_pop_routes_to_check_blocked_by(self) -> None:
-        """fifo_pop routes to the blocked_by gate on success (ENH-2008), report on empty queue."""
+        """fifo_pop.on_no (issue dequeued) routes to check_blocked_by; on_yes (QUEUE_EMPTY) to report."""
         data = _load_loop()
         fp = data["states"]["fifo_pop"]
-        assert fp["on_yes"] == "check_blocked_by"
-        assert fp["on_no"] == "report"
+        assert fp["on_yes"] == "report"  # output_contains(QUEUE_EMPTY): yes = queue empty
+        assert fp["on_no"] == "check_blocked_by"  # no = issue dequeued → blocked_by gate
 
     def test_fifo_pop_references_depth_map(self) -> None:
         """fifo_pop references depth_map.txt and current_depth.txt."""
@@ -832,16 +832,16 @@ class TestSelectNext:
         assert sn.get("capture") == "input"
 
     def test_select_next_routes_to_check_blocked_by(self) -> None:
-        """select_next routes to the blocked_by gate on success (ENH-2008)."""
+        """select_next.on_no (issue dequeued) routes to check_blocked_by gate (ENH-2008)."""
         data = _load_loop()
         sn = data["states"]["select_next"]
-        assert sn["on_yes"] == "check_blocked_by"
+        assert sn["on_no"] == "check_blocked_by"  # no = issue dequeued → blocked_by gate
 
     def test_select_next_routes_empty_ready_set_to_report(self) -> None:
-        """select_next routes to report when ready set is empty (no ready items)."""
+        """select_next.on_yes (QUEUE_EMPTY) routes to report when ready set is empty."""
         data = _load_loop()
         sn = data["states"]["select_next"]
-        assert sn["on_no"] == "report"
+        assert sn["on_yes"] == "report"  # output_contains(QUEUE_EMPTY): yes = queue empty
         assert sn["on_error"] == "report"
 
     def test_select_next_reads_blocked_txt(self) -> None:
@@ -927,6 +927,6 @@ class TestSelectNext:
         # Both must increment dequeue_count.txt
         assert "dequeue_count.txt" in fp["action"]
         assert "dequeue_count.txt" in sn["action"]
-        # Both must route to the blocked_by gate on success (ENH-2008)
-        assert fp["on_yes"] == "check_blocked_by"
-        assert sn["on_yes"] == "check_blocked_by"
+        # Both must route to check_blocked_by when an issue is dequeued (on_no for output_contains)
+        assert fp["on_no"] == "check_blocked_by"
+        assert sn["on_no"] == "check_blocked_by"

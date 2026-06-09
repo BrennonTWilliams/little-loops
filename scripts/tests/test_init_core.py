@@ -1068,8 +1068,8 @@ class TestMainInit:
 
     def test_yes_deploys_design_tokens_when_enabled(self, tmp_project: Path) -> None:
         """_run_yes copies design-token profiles when config has design_tokens.enabled."""
-        from little_loops.init.cli import main_init
         from little_loops.init import core as init_core
+        from little_loops.init.cli import main_init
 
         real_build = init_core.build_config
 
@@ -1086,12 +1086,10 @@ class TestMainInit:
         assert code == 0
         assert (tmp_project / ".ll" / "design-tokens" / "profiles").is_dir()
 
-    def test_yes_adds_explore_api_permission_when_learning_tests(
-        self, tmp_project: Path
-    ) -> None:
+    def test_yes_adds_explore_api_permission_when_learning_tests(self, tmp_project: Path) -> None:
         """_run_yes injects Skill(ll:explore-api) into settings when learning_tests enabled."""
-        from little_loops.init.cli import main_init
         from little_loops.init import core as init_core
+        from little_loops.init.cli import main_init
 
         real_build = init_core.build_config
 
@@ -1106,9 +1104,7 @@ class TestMainInit:
         ):
             code = main_init(["--yes", "--root", str(tmp_project)])
         assert code == 0
-        settings = json.loads(
-            (tmp_project / ".claude" / "settings.local.json").read_text()
-        )
+        settings = json.loads((tmp_project / ".claude" / "settings.local.json").read_text())
         assert "Skill(ll:explore-api)" in settings["permissions"]["allow"]
 
 

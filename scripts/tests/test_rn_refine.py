@@ -144,31 +144,37 @@ class TestSynthesizeState:
     def _load_yaml() -> dict:
         import yaml
 
-        loop_path = Path(__file__).parent.parent / "little_loops" / "loops" / "rn-refine.yaml"
-        return yaml.safe_load(loop_path.read_text())
+        oracle_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "oracles"
+            / "plan-research-iteration.yaml"
+        )
+        return yaml.safe_load(oracle_path.read_text())
 
     def test_synthesize_action_references_plan_rubric(self) -> None:
         """synthesize action must reference plan-rubric.md for the task: field update."""
         data = self._load_yaml()
-        action = data["states"]["synthesize"]["action"]
+        action = data["state_defs"]["synthesize"]["action"]
         assert "plan-rubric.md" in action
 
     def test_synthesize_action_references_task_field(self) -> None:
         """synthesize action must instruct updating the task: field."""
         data = self._load_yaml()
-        action = data["states"]["synthesize"]["action"]
+        action = data["state_defs"]["synthesize"]["action"]
         assert "task:" in action
 
     def test_synthesize_action_preserves_dimensions(self) -> None:
         """synthesize action must explicitly preserve ## Dimensions scores."""
         data = self._load_yaml()
-        action = data["states"]["synthesize"]["action"]
+        action = data["state_defs"]["synthesize"]["action"]
         assert "## Dimensions" in action or "Dimensions" in action
 
     def test_synthesize_action_preserves_aggregate(self) -> None:
         """synthesize action must explicitly preserve the ## Aggregate section."""
         data = self._load_yaml()
-        action = data["states"]["synthesize"]["action"]
+        action = data["state_defs"]["synthesize"]["action"]
         assert "## Aggregate" in action or "Aggregate" in action
 
 
@@ -192,9 +198,9 @@ class TestRoutingStructure:
         assert fsm.states["verify_score"].on_yes == "report"
 
     def test_verify_score_routes_to_classify_research_on_no(self) -> None:
-        """verify_score.on_no returns to classify_research when rubric file has ITERATE."""
+        """verify_score.on_no returns to research_iteration (oracle sub-loop) when rubric has ITERATE."""
         fsm = self._load_rn_refine()
-        assert fsm.states["verify_score"].on_no == "classify_research"
+        assert fsm.states["verify_score"].on_no == "research_iteration"
 
     def test_report_state_exists(self) -> None:
         """report state must be present in the loop."""

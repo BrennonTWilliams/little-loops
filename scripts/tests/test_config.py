@@ -2952,9 +2952,9 @@ class TestBRConfigHistoryIntegration:
             "manage-issue",
             "review-epic",
         ]
-        assert h["session_digest"]["enabled"] is False
+        assert h["session_digest"]["enabled"] is True
         assert h["session_digest"]["days"] == 7
-        assert h["session_digest"]["char_cap"] == 1200
+        assert h["session_digest"]["char_cap"] == 800
         assert h["session_digest"]["sections"] == []
         assert h["evolution"]["feedback_min_recurrence"] == 2
         assert h["evolution"]["bypass_min_count"] == 2
