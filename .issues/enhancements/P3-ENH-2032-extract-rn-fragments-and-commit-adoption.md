@@ -9,10 +9,11 @@ relates_to:
 - ENH-1775
 - ENH-1776
 captured_at: '2026-06-08T00:00:00Z'
+completed_at: '2026-06-09T02:52:02Z'
 discovered_date: 2026-06-08
 discovered_by: loop-audit
 decision_needed: false
-status: open
+status: done
 confidence_score: 100
 outcome_confidence: 80
 score_complexity: 20
