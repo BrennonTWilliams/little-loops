@@ -4585,118 +4585,78 @@ class TestHitlMdLoop:
         assert "critique.md" in action, "done.action must reference critique.md"
         assert "screenshot.png" in action, "done.action must reference screenshot.png"
 
-    # ENH-1770: sensemaking enhancements — staged highlighting, density control,
-    # multi-channel saliency, schema-switching, minimap, calibrated friction
+    # Simplified 2026-06: the ENH-1770 sensemaking layer (staged highlighting, density
+    # slider, multi-channel saliency, schema-switching, minimap, full trust-calibration
+    # friction) was removed. Only a lightweight always-on confidence cue is retained.
 
-    def test_segment_action_emits_channels(self, data: dict) -> None:
-        """segment state must instruct the LLM to emit a `channels` object per segment
-        (multi-channel saliency: importance, anomaly, claim_type, confidence)."""
+    def test_segment_action_emits_confidence(self, data: dict) -> None:
+        """segment state must instruct the LLM to emit a per-segment confidence score —
+        the single trust-calibration signal the renderer surfaces."""
         action = data["states"].get("segment", {}).get("action", "")
-        assert "channels" in action, (
-            "segment.action must reference the 'channels' field for multi-channel saliency"
+        assert "confidence" in action, (
+            "segment.action must reference the 'confidence' field for the confidence cue"
         )
-        for channel in ("importance", "anomaly", "claim_type", "confidence"):
-            assert channel in action, f"segment.action must describe the '{channel}' channel"
 
-    def test_segment_action_emits_length_normalized(self, data: dict) -> None:
-        """segment state must instruct the LLM to emit a length_normalized flag
-        for segments exceeding the document median length (Steyvers et al. 2024)."""
+    def test_segment_action_drops_sensemaking_channels(self, data: dict) -> None:
+        """segment state must NOT instruct the LLM to emit the removed multi-channel
+        dimensions (anomaly, claim_type) or the length_normalized flag."""
         action = data["states"].get("segment", {}).get("action", "")
-        assert "length_normalized" in action, (
-            "segment.action must reference length_normalized flag for trust calibration"
+        for removed in ("anomaly", "claim_type", "length_normalized"):
+            assert removed not in action, (
+                f"segment.action must not reference removed sensemaking field '{removed}'"
+            )
+
+    def test_generate_action_has_confidence_cue(self, generate_spec: str) -> None:
+        """generate spec must instruct the LLM to render the lightweight confidence cue:
+        a dotted underline + a 'low confidence' badge on segments with confidence < 0.5."""
+        spec = generate_spec.lower()
+        assert "confidence" in spec, "generate spec must describe the confidence cue"
+        assert "dotted" in spec, "generate spec must describe the dotted-underline confidence cue"
+        assert "low confidence" in spec, (
+            "generate spec must describe the 'low confidence' badge"
         )
 
-    def test_generate_action_has_staged_highlighting(self, generate_spec: str) -> None:
-        """generate spec must instruct LLM to use IntersectionObserver-based staged
-        highlight reveal (HCEye dynamic-appearance finding)."""
-        assert "IntersectionObserver" in generate_spec, (
-            "generate spec must reference IntersectionObserver for staged highlighting"
-        )
-        assert "staged" in generate_spec.lower() or "wave" in generate_spec.lower(), (
-            "generate spec must describe staged/waved highlight reveal"
-        )
-
-    def test_generate_action_has_density_slider(self, generate_spec: str) -> None:
-        """generate spec must instruct LLM to render an adaptive density slider
-        (input type='range') filtering highlights by saliency threshold."""
-        assert 'type="range"' in generate_spec or "type='range'" in generate_spec, (
-            "generate spec must reference a range input for the density slider"
-        )
-        assert "density" in generate_spec.lower(), "generate spec must describe the density control"
-
-    def test_generate_action_has_multi_channel_saliency(self, generate_spec: str) -> None:
-        """generate spec must instruct LLM to render multi-channel saliency
-        (anomaly, claim_type, confidence channels) with toggle controls."""
-        for attr in (
-            "data-channel-importance",
+    def test_generate_action_drops_sensemaking_layer(self, generate_spec: str) -> None:
+        """generate spec must NOT instruct the LLM to build the removed ENH-1770 features
+        (staged highlighting, density slider, multi-channel, schema-switching, minimap,
+        click-to-reveal friction)."""
+        spec = generate_spec.lower()
+        for removed in (
+            "intersectionobserver",
+            "density",
+            "schema-switch",
+            "minimap",
+            "localstorage",
+            "click-to-reveal",
             "data-channel-anomaly",
-            "data-channel-confidence",
-            "data-claim-type",
         ):
-            assert attr in generate_spec, f"generate spec must reference the {attr} attribute"
+            assert removed not in spec, (
+                f"generate spec must not reference removed sensemaking feature '{removed}'"
+            )
 
-    def test_generate_action_has_schema_switching(self, generate_spec: str) -> None:
-        """generate spec must instruct LLM to render a schema-switching toolbar
-        (re-group by heading, saliency, claim type, anomaly)."""
-        assert "schema" in generate_spec.lower() and "switch" in generate_spec.lower(), (
-            "generate spec must describe schema-switching toggles"
-        )
-
-    def test_generate_action_has_minimap(self, generate_spec: str) -> None:
-        """generate spec must instruct LLM to render a canvas-based minimap
-        with localStorage-backed visit heatmap (Reddy Keyhole Effect)."""
-        assert "minimap" in generate_spec.lower(), (
-            "generate spec must reference the minimap feature"
-        )
-        assert "canvas" in generate_spec.lower(), (
-            "generate spec must reference canvas for minimap rendering"
-        )
-        assert "localStorage" in generate_spec, (
-            "generate spec must reference localStorage for visit heatmap"
-        )
-
-    def test_generate_action_has_calibrated_friction(self, generate_spec: str) -> None:
-        """generate spec must instruct LLM to render calibrated friction —
-        confidence badges before content, click-to-reveal for low-confidence
-        high-saliency claims, length-normalized credibility marker (Kim et al. 2026,
-        Steyvers et al. 2024)."""
-        assert (
-            "trust calibration" in generate_spec.lower()
-            or "calibrated friction" in generate_spec.lower()
-        ), "generate spec must describe the trust calibration / calibrated friction toggle"
-        assert (
-            "click-to-reveal" in generate_spec.lower() or "click to reveal" in generate_spec.lower()
-        ), "generate spec must describe the click-to-reveal gate"
-        assert (
-            "length_normalized" in generate_spec or "length-normalized" in generate_spec.lower()
-        ), "generate spec must reference length-normalized confidence display"
-
-    def test_generate_action_references_design_tokens(self, generate_spec: str) -> None:
-        """generate spec must instruct LLM to source colors/spacing/motion from
-        design token CSS custom properties rather than hardcoded values."""
-        assert "design_tokens_context" in generate_spec, (
-            "generate spec must reference ${context.design_tokens_context}"
-        )
-        assert "var(--" in generate_spec, (
-            "generate spec must instruct use of CSS custom properties for token consistency"
-        )
-
-    def test_rubric_binding_has_new_criteria(self, data: dict) -> None:
-        """rubric binding must include the 7 new ENH-1770 criteria with thresholds."""
+    def test_rubric_binding_has_confidence_cue_criterion(self, data: dict) -> None:
+        """rubric binding must include the confidence_cue criterion."""
         state = data["states"].get("run_gen_eval", {})
-        with_ = state.get("with", {})
-        rubric = with_.get("rubric", "")
-        new_criteria = (
+        rubric = state.get("with", {}).get("rubric", "")
+        assert "confidence_cue" in rubric, (
+            "rubric binding must include the 'confidence_cue' criterion"
+        )
+
+    def test_rubric_binding_drops_sensemaking_criteria(self, data: dict) -> None:
+        """rubric binding must NOT include the removed ENH-1770 criteria."""
+        state = data["states"].get("run_gen_eval", {})
+        rubric = state.get("with", {}).get("rubric", "")
+        for removed in (
             "staged_highlighting",
             "density_control",
             "multi_channel_saliency",
             "schema_switching",
             "minimap_state_rail",
-            "trust_calibration",
             "design_token_consistency",
-        )
-        for criterion in new_criteria:
-            assert criterion in rubric, f"rubric binding must include the '{criterion}' criterion"
+        ):
+            assert removed not in rubric, (
+                f"rubric binding must not include removed criterion '{removed}'"
+            )
 
     def test_rubric_binding_preserves_original_criteria(self, data: dict) -> None:
         """rubric binding must retain all 6 original criteria."""

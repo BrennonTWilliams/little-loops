@@ -9,12 +9,22 @@ description: |
   self-contained interactive HTML page that renders the document with its natural reading flow
   (headings, paragraphs, lists, code blocks rendered normally) and overlays saliency as inline
   color highlighting plus on-demand popover affordances (delete / insert-before / insert-after /
-  inline-edit / flag-for-AI). Includes a "Copy AI prompt" sticky control for flagged segments
-  and a "Copy updated markdown" control for reconstructing the revised document. Iteratively
-  screenshots and scores the artifact until it passes a 13-criterion rubric. On success, the
-  final HTML is copied to ./hitl-md-review.html in the loop's invocation directory so it's
-  discoverable without digging into .loops/tmp/. Thin wrapper over oracles/generator-evaluator
-  (ENH-1869).
+  inline-edit / flag-for-AI). Low-confidence segments get a lightweight always-on confidence cue
+  (dotted underline + a small "low confidence" badge) — the one trust-calibration signal that
+  matters for fluent-but-wrong AI prose. Includes a "Copy AI prompt" sticky control for flagged
+  segments and a "Copy updated markdown" control for reconstructing the revised document.
+  Iteratively screenshots and scores the artifact until it passes a 7-criterion rubric. On
+  success, the final HTML is copied to ./hitl-md-review.html in the loop's invocation directory
+  so it's discoverable without digging into .loops/tmp/. Thin wrapper over
+  oracles/generator-evaluator (ENH-1869).
+
+  Scope note (simplified 2026-06): the original ENH-1770 "sensemaking layer" (staged
+  IntersectionObserver reveals, density slider, 4-channel saliency toggles, schema-switching
+  view modes, canvas minimap + visit heatmap, and full trust-calibration friction) was removed.
+  Stacking ~10 toolbar controls onto a read-and-edit surface added extraneous cognitive load
+  (contradicting the very sensemaking research it cited) and made the 13-gate generator-evaluator
+  rubric near-impossible to converge within max_iterations. Only the lightweight confidence cue
+  was retained.
 
   GP-TSM integration: implemented as LLM-in-prompt segmentation — the segment state instructs
   the model to apply grammar-preserving boundary detection (sentence/clause level) and assign
@@ -94,25 +104,12 @@ states:
       - original_text: the raw text of this segment as it appears in the document
       - markdown_source: the markdown source (may equal original_text for prose; for
         headings includes the # prefix, for bullets includes the - or * marker, etc.)
-      - channels: an object with four orthogonal saliency dimensions, each independently
-        scored, so the review surface can support representational shifts (Klein's
-        Data/Frame Theory) and trust calibration (Steyvers et al. 2024):
-        - importance: float 0.0–1.0, mirrors saliency_score (default: equal to saliency_score)
-        - anomaly: float 0.0–1.0, how much this segment contradicts earlier content or
-          stated expectations (default: 0.0 if no contradiction is evident)
-        - claim_type: one of "factual", "assumption", "reasoning", "action_item",
-          "definition", "rhetorical" — classifies the rhetorical role of the segment
-        - confidence: float 0.0–1.0, how certain the segment's claim is — calibrate
-          *down* for hedged language ("might", "could", "likely"), unverified specifics,
-          or speculative reasoning; calibrate *up* for definitional/structural content
-      - length_normalized: boolean — true when the segment's character length exceeds
-        the document median segment length. The renderer uses this to display a subtle
-        length-normalized credibility marker, disrupting the fluency-as-credibility bias
-        documented in Steyvers et al. 2024 (longer explanations earn unwarranted trust).
-
-      Compute the document median segment length first (sort segment character lengths,
-      pick the middle value), then set length_normalized=true on every segment whose
-      length exceeds that median.
+      - confidence: float 0.0–1.0, how certain the segment's claim is — calibrate
+        *down* for hedged language ("might", "could", "likely"), unverified specifics,
+        or speculative reasoning; calibrate *up* for definitional/structural content.
+        This is the single trust-calibration signal the renderer surfaces: segments with
+        confidence < 0.5 get a lightweight "low confidence" cue, which matters for
+        fluent-but-wrong AI prose.
 
       Step 3 — Write the ordered segment list to ${captured.run_dir.output}/segments.json
       using this exact JSON structure:
@@ -127,19 +124,12 @@ states:
             "color": "#1a56db",
             "original_text": "# Introduction",
             "markdown_source": "# Introduction",
-            "channels": {
-              "importance": 0.9,
-              "anomaly": 0.0,
-              "claim_type": "definition",
-              "confidence": 1.0
-            },
-            "length_normalized": false
+            "confidence": 1.0
           },
           ...
         ],
         "total_segments": N,
-        "document_source": "file path used, or 'raw text'",
-        "median_segment_length": M
+        "document_source": "file path used, or 'raw text'"
       }
       ```
 
@@ -217,62 +207,17 @@ states:
           "Copy updated markdown" reconstruction produce well-formed markdown? Does segments.json
           include all markdown_source fields needed for lossless reconstruction? Are IDs stable
           and sequential?]
-        staged_highlighting: N/10 — [explanation: are highlights revealed in waves rather than
-          painted all at once on load? Look for IntersectionObserver usage on .seg elements,
-          a tier-1 immediate reveal of the top 3–5 importance segments, and a CSS transition
-          on background-color/opacity for the deferred tier. The transition must reference a
-          motion design token (var(--motion-duration-...) or a documented :root fallback) — NOT
-          a hardcoded duration. Mark FAIL_STAGED if all highlights appear on load with no
-          observer-driven reveal, or if the duration is a raw literal.]
-        density_control: N/10 — [explanation: is there a visible <input type="range"> density
-          slider in the toolbar that filters highlighted segments by saliency threshold? It
-          must default to a sparse position (Top 10–25%) so the first impression is uncluttered.
-          CRITICAL CHECK: inspect the JS density-filter function. If it uses display:none,
-          visibility:hidden, or any other mechanism that removes .seg elements from the document
-          flow for segments below the threshold, score maximum 4/10 regardless of visual
-          appearance — this is a document-correctness violation that breaks the reading
-          experience. The slider must only suppress highlight tints (background-color), never
-          hide content.
-          Slider styles (track, thumb, focus ring, labels) must source from semantic tokens —
-          any raw hex/px in the slider region is a deduction.]
-        multi_channel_saliency: N/10 — [explanation: does each .seg carry
-          data-channel-importance, data-channel-anomaly, data-channel-confidence, and
-          data-claim-type attributes? Are there four channel toggle controls in the toolbar
-          (importance, anomaly, claim_type, confidence) that swap the active tint palette?
-          Channel colors must come from CSS custom properties (var(--color-channel-...)),
-          not hardcoded fills.]
-        schema_switching: N/10 — [explanation: does the toolbar expose schema-switching view
-          toggles (By document order / By saliency tier / By claim type / By anomaly score)
-          that re-group .seg elements via DOM manipulation? Returning to "By document order"
-          must restore the original DOM order so the markdown reconstruction stays lossless.
-          Active/inactive toggle states must use action-primary and text-secondary tokens.]
-        minimap_state_rail: N/10 — [explanation: is there a fixed-position <canvas>-based
-          minimap on the right edge of the page showing the document as proportional colored
-          blocks with a viewport-position indicator? Does it use localStorage for visit-heatmap
-          persistence? Does it support click-to-navigate to a segment? Canvas fills must be
-          read from CSS custom properties at draw-time (getComputedStyle/getPropertyValue) so
-          theme switches take effect on redraw — embedded hex literals in fillStyle are a
-          deduction.]
-        trust_calibration: N/10 — [explanation: are confidence badges rendered *before* segment
-          body text (DOM order: badge first, content second) so the calibration signal is read
-          before fluency biases judgment? Does a "Trust calibration" toolbar toggle gate the
-          click-to-reveal behavior on high-saliency low-confidence segments
-          (data-saliency >= 0.7 AND data-channel-confidence < 0.5)? Do segments with
-          data-length-normalized="true" display a subtle length-normalized credibility marker
-          (e.g., a ruler icon)? Badge colors must map to status tokens (success / warning /
-          danger), not hardcoded greens / yellows / reds. Also verify that the trust-calibration
-          apply function (applyTrustCal or equivalent) is called inside the DOMContentLoaded
-          init handler — if absent from init, the feature is non-functional on first load,
-          deduct 3.]
-        design_token_consistency: N/10 — [explanation: scan the rendered <style> block and
-          inline style attributes for raw hex colors (e.g., #[0-9a-f]{3,8}), raw px/rem values
-          outside :root declarations, and inline style="color:..." literals. Confirm each new
-          ENH-1770 feature (staged highlighting, density slider, multi-channel rendering,
-          schema-switching toolbar, minimap, calibrated friction) sources colors, spacing,
-          typography, motion, and radii from var(--...) custom properties. Small concessions
-          allowed (1px borders, transparent fallbacks, single :root token fallbacks) but no
-          net-new hardcoded colors. Threshold 8 is intentionally strict because this criterion
-          guards against the LLM regressing to literal values under prompt drift.]
+        confidence_cue: N/10 — [explanation: do segments with data-confidence < 0.5 carry a
+          lightweight, always-on confidence cue — a dotted underline in a muted warning color
+          (text-decoration: underline dotted, or border-bottom dotted for block elements) AND a
+          small "⚠ low confidence" badge rendered *before* the segment text in DOM order (so the
+          calibration signal is read before fluency biases judgment)? Segments with
+          data-confidence >= 0.5 must carry NEITHER marker — absence is the signal of model
+          confidence. The cue must be subtle (small badge, ~0.75em, muted amber) and must NOT
+          break reading flow, alter selection/popover/flagging behavior, or affect markdown
+          reconstruction. There must be NO toolbar toggle, NO click-to-reveal gate, and NO view
+          modes — if any of those reappear, deduct heavily (this loop deliberately dropped the
+          ENH-1770 sensemaking layer).]
 
         ## Issues to Address
         [Specific, actionable critique for the generator. List each problem concisely so the
@@ -287,20 +232,14 @@ states:
         - keyboard_reachability: 7
         - inline_constraint: 8
         - markdown_reconstruction: 7
-        - staged_highlighting: 7
-        - density_control: 8
-        - multi_channel_saliency: 7
-        - schema_switching: 7
-        - minimap_state_rail: 7
-        - trust_calibration: 8
-        - design_token_consistency: 8
+        - confidence_cue: 7
 
-        Per-criterion annotations in your output (e.g., "staged_highlighting: 7/10 — needs work")
+        Per-criterion annotations in your output (e.g., "confidence_cue: 7/10 — needs work")
         must use lowercase descriptive text — do NOT emit a bare "PASS" or "FAIL" token, as the
         compound gate token below is matched by output_contains and a bare token collision would
         trigger a false pass.
 
-        If ALL thirteen criterion scores meet their individual thresholds, output exactly: ALL_PASS
+        If ALL seven criterion scores meet their individual thresholds, output exactly: ALL_PASS
         Otherwise output: ITERATE
       pass_threshold: 7
     on_yes: finalize

@@ -139,147 +139,23 @@ highlights and overlays only.
 
 ---
 
-**Sensemaking layer (ENH-1770):** the six features below operationalize
-Pirolli & Card's foraging-loop, Klein's Data/Frame Theory, Russell et al.'s
-Cost Structure of Sensemaking, the HCEye dynamic-appearance finding, the
-Keyhole Effect, and the LLM Fallacy / fluency-as-credibility research
-(Steyvers et al. 2024, Kim et al. 2026). Each feature is an independently
-toggleable module within the same single-file HTML. All visible styles must
-source colors, spacing, motion, typography, and radii from the design token
-CSS custom properties exposed via `${context.design_tokens_context}`
-(e.g., `var(--color-action-primary)`, `var(--space-3)`,
-`var(--motion-duration-medium)`, `var(--radius-sm)`). If a needed semantic
-token is missing from the active profile, declare a single fallback CSS
-custom property at `:root` (e.g., `--hitl-stage-duration: 240ms`) and
-reference it via `var()` — never embed raw hex / px / rem literals inside
-feature CSS.
+**Confidence cue (lightweight trust calibration):**
 
-**Feature 1 — Staged dynamic highlighting (HCEye / Das et al. 2024):**
-- Do NOT paint every `.seg` background on load. Reveal highlights in waves.
-- Tier 1 (immediate): the top 3–5 segments by `data-channel-importance`
-  receive their saliency tint on `DOMContentLoaded`.
-- Tier 2+ (deferred): every other highlighted segment starts with its
-  background-color transparent and fades in when it intersects the viewport.
-- Implement with `IntersectionObserver` on `.seg` elements. When a tier-2+
-  segment intersects, add a `seg--revealed` class and the CSS transition
-  animates `background-color` from transparent to the resolved tint.
-- Transition uses `var(--motion-duration-medium, --hitl-stage-duration)` and
-  `var(--motion-easing-standard, --hitl-stage-easing)` — never a hardcoded
-  `200ms ease`.
+AI-generated prose is fluent even when it is wrong, so the one calibration signal worth
+surfacing is *confidence* — and only where it changes the reader's behavior. This is a
+single, always-on cue with no toolbar, no toggle, no click-gate, and no view modes.
 
-**Feature 2 — Adaptive highlight-density slider (Yang et al. 2025):**
-- Render a fixed toolbar at the top of the page (alongside or below the
-  existing "Copy AI prompt" control) containing an `<input type="range">`
-  labelled "Density".
-- Range maps to a saliency threshold (e.g., 0.0 → "All", 0.5 → "Top 25%",
-  0.8 → "Top 10%"). Default the slider to a sparse position (Top 10–25%).
-- On `input`, recompute which `.seg` elements receive the highlight tint:
-  those with `data-channel-importance >= threshold` get the tint class;
-  others have their tint suppressed (text remains fully readable).
-- **IMPORTANT — never hide segments:** The density filter MUST NOT use `display:none`,
-  `visibility:hidden`, or any other mechanism that removes segments from the document
-  flow. Every segment remains visible in the document at all times. Only the
-  `background-color` tint is toggled — remove or add a CSS class that sets
-  `background-color: transparent`. An implementation that hides any `.seg` element
-  from view is a correctness bug, not a style issue.
-- Slider track, thumb, focus ring, toolbar surface, label typography, and
-  spacing all use semantic tokens — `var(--color-surface-primary)`,
-  `var(--color-border-subtle)`, `var(--color-action-primary)`,
-  `var(--space-2)`, `var(--space-3)`, `var(--font-size-sm)`,
-  `var(--font-family-ui)`. No raw colors, no raw px.
-
-**Feature 3 — Multi-channel saliency (Klein Data/Frame Theory):**
-- Each `.seg` element must carry `data-channel-importance`,
-  `data-channel-anomaly`, `data-channel-confidence`, and `data-claim-type`
-  attributes populated from the `channels` object in segments.json.
-- The toolbar exposes four channel toggle controls (importance, anomaly,
-  claim_type, confidence). The active channel determines which color
-  mapping is applied to all `.seg` backgrounds.
-- Each channel maps to a distinct semantic color custom property —
-  `var(--color-channel-importance)`, `var(--color-channel-anomaly)`,
-  `var(--color-channel-confidence)`, plus a claim-type palette
-  (e.g., factual → `var(--color-claim-factual)`, assumption →
-  `var(--color-claim-assumption)`, etc.). If the token profile lacks these,
-  derive them at `:root` from neutral and action tokens; do NOT embed hex
-  literals inline.
-- Toggling a channel re-applies the tint via a CSS class swap — pure
-  DOM manipulation, no segment re-rendering.
-
-**Feature 4 — Schema-switching toolbar (Russell et al. 1993):**
-- The toolbar exposes "View" toggle buttons that re-group the displayed
-  content by different schemas: "By document order" (default), "By saliency
-  tier", "By claim type", "By anomaly score".
-- Schema-switching re-orders `.seg` elements in the DOM (move them between
-  wrapper sections) — it does NOT re-fetch or re-generate. Group dividers
-  between sections use `var(--color-border-subtle)` and `var(--space-4)`
-  separation; group headings use `var(--font-size-sm)` /
-  `var(--color-text-secondary)`.
-- Active toggle: `var(--color-action-primary)` against
-  `var(--color-surface-raised)`. Inactive: `var(--color-text-secondary)`.
-- Returning to "By document order" must restore the original DOM order
-  bit-for-bit so the "Copy updated markdown" reconstruction stays lossless.
-
-**Feature 5 — Minimap + spatial State Rail (Reddy, Keyhole Effect 2025):**
-- Render a fixed-position `<canvas>` on the right edge of the page (width
-  from spacing scale, e.g., `var(--space-6)`) showing the full document as
-  proportional colored blocks — one block per segment, height proportional
-  to its character count.
-- Block fill colors mirror the active channel's palette (read at draw-time
-  via `getComputedStyle(document.documentElement).getPropertyValue(...)`
-  so theme switches take effect on next redraw without reload).
-- A viewport-position indicator overlays the minimap, updated on `scroll`
-  via `IntersectionObserver` or `requestAnimationFrame`. Indicator color is
-  `var(--color-action-primary)` at reduced alpha (via `color-mix()` or a
-  pre-resolved `--color-viewport-overlay` token).
-- Visit-heatmap: track which segments have entered the viewport in
-  `localStorage` (key `hitl-md:visits:${documentHash}`). Re-draw the
-  minimap with a neutral-scale intensity ramp (`var(--color-neutral-100)` →
-  `var(--color-neutral-400)`) reflecting visit counts.
-- Click on the minimap navigates the main viewport (smooth `scrollIntoView`
-  of the corresponding `.seg`).
-
-**Feature 6 — Calibrated friction for trust calibration (Kim et al. 2026,
-Steyvers et al. 2024):**
-- Confidence badges are rendered as small DOM nodes positioned *before*
-  each segment's content (DOM order: badge first, then segment text). The
-  badge displays the confidence tier and maps to semantic status tokens:
-  high (≥0.75) → `var(--color-status-success)`,
-  mid (0.4–0.75) → `var(--color-status-warning)`,
-  low (<0.4) → `var(--color-status-danger)`.
-- Click-to-reveal gate: segments where `data-saliency >= 0.7` AND
-  `data-channel-confidence < 0.5` start with their body text hidden
-  behind a "Review this claim" button styled with
-  `var(--color-action-primary)` (hover: `var(--color-action-primary-hover)`).
-  The confidence badge remains visible alongside the gate button. Clicking
-  the button reveals the body.
-- Length-normalized credibility marker: when `data-length-normalized="true"`,
-  render a subtle ruler icon next to the confidence badge using
-  `var(--color-text-muted)`. The icon signals "this segment is longer than
-  median — adjust your fluency-driven credibility expectation downward".
-- A "Trust calibration" toggle in the toolbar gates the friction-heavy
-  interventions: the toggle defaults to *passive* mode (badge-before-content
-  and length markers only — no click-to-reveal gate). Switching to *active*
-  mode enables the click-to-reveal gate for high-saliency low-confidence
-  segments.
-- Badge padding, gated-segment outline, and the ruler icon all use
-  `var(--space-1)` / `var(--space-2)`, `var(--radius-sm)`,
-  `var(--border-width-strong)`. This is the highest-stakes wiring —
-  friction interventions that look ad-hoc undermine the calibration signal.
-- **Init sequence (required):** The JavaScript `init()` function called on
-  `DOMContentLoaded` MUST invoke these functions in order: `render()`, `setupStaged()`,
-  `applyDensityFilter()`, `applyTrustCal()`, `updateSelectionUI()`, `updateFlagUI()`.
-  Omitting `applyTrustCal()` means trust calibration is never applied on page load.
-
-**Cross-feature requirements:**
-- All six features live in the same single self-contained HTML; each is a
-  separate JS/CSS module. A bug in the minimap must not break highlighting,
-  a broken density slider must not affect schema-switching.
-- The original behavior (static single-channel highlighting on
-  document_readability / inline_highlighting) remains intact — the new
-  features layer on top via toolbar toggles. The default initial render
-  must still satisfy the original 6 rubric criteria.
-- All toolbar controls are keyboard-focusable with visible focus rings
-  derived from `var(--color-focus-ring)` (fallback: outline using
-  `var(--color-action-primary)` at higher contrast).
-
-All interactive behavior must work under file:// with no server.
+- Each `.seg` carries a `data-confidence` attribute (0.0–1.0) populated from segments.json.
+- For segments where `data-confidence < 0.5`, apply two subtle markers:
+  - A dotted underline in a muted warning color
+    (`text-decoration: underline dotted; text-decoration-color: #d97706`). For block-level
+    segments, use a `border-bottom: 1px dotted #d97706` instead so the cue reads the same.
+  - A small inline badge rendered **before** the segment's text in DOM order (so the
+    calibration signal is read before fluency biases judgment), e.g.
+    `<span class="conf-badge" aria-label="low confidence">⚠ low confidence</span>`.
+    Style it small and unobtrusive: muted amber text, `font-size: 0.75em`, a touch of
+    right margin. It must not break the document's reading flow.
+- Segments with `data-confidence >= 0.5` get no badge and no underline — absence of the
+  cue is itself the signal that the model was confident.
+- This is purely presentational. It must not alter selection, the popover, flagging, or
+  markdown reconstruction in any way, and it must work under file:// with no server.
