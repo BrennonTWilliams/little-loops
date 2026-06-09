@@ -14,6 +14,7 @@ relates_to:
 blocked_by:
 - FEAT-1901
 - FEAT-1902
+- FEAT-2001
 labels:
 - feature
 - orchestration
@@ -278,6 +279,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - Integration Map has an incorrect path: `scripts/little_loops/parallel_orchestrator.py` should be `scripts/little_loops/parallel/orchestrator.py` (flagged in Verification Notes but not yet corrected — fix before implementation).
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:03 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:confidence-check` - 2026-06-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92309da-4e12-4435-9943-a5af8ba8057d.jsonl`
 - `/ll:refine-issue` - 2026-06-07T18:48:53 - `f6435e9b-344b-4a99-b530-899f95d858ea.jsonl`

@@ -204,7 +204,16 @@ open
 - Proposed file `scripts/little_loops/fsm/adapters/push_adapter.py` does not exist (expected).
 
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): FEAT-1794's codebase research explicitly states that the `PushNotification` tool does not currently exist in the codebase and defers it to v2 scope. This issue should be treated as **blocked until a concrete push notification transport (PushNotification tool, webhook, or equivalent) is available**. Add `blocked_by` tracking for the transport prerequisite before starting implementation; otherwise the `send_alert()` step has no callable API.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The `API/Interface` section above shows `PushNotificationAdapter.send_alert(prompt, context)` but the `CommunicationAdapter` protocol in FEAT-1930 defines `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> str` (returning an `alert_id`). Align this issue's `send_alert()` signature with FEAT-1930's protocol **before** implementing — the mismatch will produce a non-conforming `CommunicationAdapter` implementation. Also add the `alert_id` return type to match the `await_response(alert_id, timeout)` correlation contract.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:01 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:18:11 - `cb5e8fb4-eab5-4e81-938d-fe8a00b0ba87.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 

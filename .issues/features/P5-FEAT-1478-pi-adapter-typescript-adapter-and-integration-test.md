@@ -139,7 +139,14 @@ Template reference: `test_opencode_adapter.py:TestOpenCodeAdapterIntegration.tes
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The `test_pi_adapter.py` test suite in this issue verifies **TypeScript-layer** behavior: that the `index.ts` adapter correctly sets `LL_HOOK_HOST=pi` in the environment before spawning Python. FEAT-1480 separately tests **Python-side routing**: that the Python intent dispatcher reads `LL_HOOK_HOST=pi` and routes to the correct handler. Assertion ownership: this issue owns "subprocess env contains `LL_HOOK_HOST=pi`"; FEAT-1480 owns "Python routing fires the correct intent given `LL_HOOK_HOST=pi` already set." Do not duplicate Python routing assertions in `test_pi_adapter.py`.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:54 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`

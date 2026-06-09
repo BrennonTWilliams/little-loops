@@ -3,7 +3,7 @@ id: FEAT-1720
 title: Wire `permission_request` intent for Codex adapter
 type: FEAT
 priority: P5
-status: open
+status: done
 captured_at: "2026-05-26T02:23:05Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
@@ -78,6 +78,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:01 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:20 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
@@ -92,3 +93,12 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1719 both modify the same three shared files: `scripts/little_loops/hooks/__init__.py` (`_dispatch_table()` and `_USAGE`), `hooks/adapters/codex/hooks.json`, and `scripts/tests/test_codex_adapter.py`. This issue's PR **must be rebased on FEAT-1719's merged commit** before opening, so the `_dispatch_table()` and `hooks.json` edits from each issue are reviewed in sequence and do not produce conflicting hunks. Alternatively, batch both handler registrations into a single PR.
+
+---
+
+## Resolution
+
+- **Status**: Closed - Superseded
+- **Completed**: 2026-06-09
+- **Reason**: Superseded by FEAT-1719 via conflict resolution audit (`/ll:audit-issue-conflicts`)
+- **Proposed change**: Both `post_compact` and `permission_request` handlers batched into a single PR under FEAT-1719, eliminating the rebase coordination burden on `scripts/little_loops/hooks/__init__.py`, `hooks/adapters/codex/hooks.json`, and `scripts/tests/test_codex_adapter.py`. See FEAT-1719 Scope Addition for the full implementation spec.

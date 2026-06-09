@@ -328,7 +328,14 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - `loops/ll-auto.yaml` does not exist — it is a prerequisite from FEAT-2000, not a co-deliverable of this issue; the A/B parity harness cannot be exercised until FEAT-2000 is merged
 - **Call-site count corrected** (codebase research, `/ll:refine-issue`): `test_issue_manager.py` has exactly **6** direct `AutoManager.run()` call sites (L2604, L2638, L2669, L2701, L2734, L2820). The prior "53+ matches" figure was a raw grep count of all `.run()` calls on any object in the file. All 6 are already enumerated in Implementation Step 11.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): Wiring-test anchor updates in `test_wiring_guides_and_meta.py`, `test_wiring_reference_docs.py`, and `test_wiring_skills_and_commands.py` are exclusively owned by **FEAT-2002**. Implementation step 21 in this issue (updating the `AutoManager.__init__()` anchor in ARCHITECTURE.md and its wiring-test assertion) and the corresponding `test_wiring_*.py` parametrized entries belong to FEAT-2002's documentation pass. Do not include those wiring-test anchor changes in this issue's PR — leave them for FEAT-2002.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:confidence-check` - 2026-06-07T00:00:00Z - `d64bcdbc-33e8-450c-b9ac-7d573dea9bb5.jsonl`
 - `/ll:refine-issue` - 2026-06-07T18:08:42 - `e6ecb319-ccca-422a-9cca-3bc28f898fc2.jsonl`
 - `/ll:wire-issue` - 2026-06-07T18:02:14 - `55c1ea13-0eec-4642-bbd8-5c4c57ca5308.jsonl`

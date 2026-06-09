@@ -271,6 +271,7 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - Grep verification is manual — the completeness check ("MR-1…MR-5 now appear only in LOOPS-GUIDELINES.md") is a manual grep, not a CI gate; run it explicitly post-implementation
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:confidence-check` - 2026-06-08T23:55:00Z - `d5e3ed6c-5fc1-4d3d-b2dd-2db860f934e4.jsonl`
 - `/ll:wire-issue` - 2026-06-09T04:44:22 - `8bbb2121-bb5c-418c-9148-2f2f52c8d346.jsonl`
 - `/ll:confidence-check` - 2026-06-08T23:00:00Z - `53cf785d-6feb-4b2a-9d9f-8d44f50883a4.jsonl`
@@ -287,6 +288,12 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - `/ll:capture-issue` - 2026-06-08T18:12:50Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/33b0ec92-c443-4316-85ac-84716a417c24.jsonl`
 
 ---
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): This issue's compaction pass on `.claude/CLAUDE.md` § Loop Authoring (lines 94–162) must be **coordinated with ENH-1903**. ENH-1903 adds a note to the same CLAUDE.md CLI Tools section documenting `ll-parallel` as the canonical parallel substrate. If ENH-2023 lands before ENH-1903, the compaction pass must explicitly preserve or incorporate the `ll-parallel` note — otherwise the ENH-1903 addition will be silently dropped in the diff. Recommended sequence: ENH-1903 lands first (or its CLAUDE.md addition is included in ENH-2023's diff); ENH-2023 lands second.
 
 ## Status
 

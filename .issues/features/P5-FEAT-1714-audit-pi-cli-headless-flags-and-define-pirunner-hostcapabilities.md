@@ -8,7 +8,7 @@ captured_at: "2026-05-26T02:06:59Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1713
-relates_to: [FEAT-1480, FEAT-992]
+relates_to: [FEAT-1480, FEAT-992, ENH-1722]
 labels: [feat, captured, pi-adapter, host-compat, research]
 ---
 
@@ -167,6 +167,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
@@ -181,3 +182,5 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): Both this issue and FEAT-1715 update `docs/reference/HOST_COMPATIBILITY.md`'s Pi column. To avoid merge conflicts, ownership is divided by row type: FEAT-1714 owns the CLI-flag capability rows (streaming, permission bypass, agent select, tool allowlist, max turns, session resume, system prompt, MCP config, JSON-mode). FEAT-1715 owns the hook-event parity rows (PreToolUse, PostToolUse, UserPromptSubmit, Stop, SessionEnd, post_compact). Coordinate `HOST_COMPATIBILITY.md` PRs to ensure these row sets don't overlap.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): ENH-1722 researches whether state directories (`.issues/`, `.loops/`, `.ll/`) should be scoped per-host, with Codex as the reference case. Its decision may affect Pi (and omp via FEAT-1850). `relates_to: ENH-1722` has been added to this issue's frontmatter. Check ENH-1722's Decision section before finalizing any Pi-specific state-path recommendations in this audit's research note.

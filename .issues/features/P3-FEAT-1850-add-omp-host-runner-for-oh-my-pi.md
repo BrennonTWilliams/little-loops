@@ -9,7 +9,7 @@ captured_at: "2026-06-01T15:06:49Z"
 discovered_date: 2026-06-01
 discovered_by: capture-issue
 labels: [feat, captured, host-compat, pi-adapter, omp]
-relates_to: [EPIC-1713, FEAT-1480]
+relates_to: [EPIC-1713, FEAT-1480, FEAT-1714, FEAT-1715]
 ---
 
 # FEAT-1850: Add OmpRunner host runner for oh-my-pi (`omp` CLI)
@@ -176,6 +176,7 @@ class OmpRunner:
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T21:54:23 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
@@ -183,6 +184,14 @@ class OmpRunner:
 - `/ll:format-issue` - 2026-06-01T15:09:51 - `135049e3-c3b6-4e47-a1b7-f422e4bce835.jsonl`
 
 - `/ll:capture-issue` - 2026-06-01T15:06:49Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): Implementation Step 1 (headless flag audit for `omp`) overlaps with FEAT-1714, which performs the equivalent audit for the `pi` binary. Reuse FEAT-1714's research note template (`thoughts/research/pi-headless-cli.md`) and capability-table format verbatim — write `thoughts/research/omp-headless-flags.md` following the same structure. Add `relates_to: FEAT-1714` is now in frontmatter; check FEAT-1714's output first to identify flag conventions that may carry over from `pi` → `omp`.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): Step 7 spawns a hook-event child issue using FEAT-1715's canonical audit framework (`parent: FEAT-1715`). Confirm the child issue's `parent: FEAT-1715` frontmatter is set at creation time so the omp parity audit tree is navigable from FEAT-1715. `relates_to: FEAT-1715` has been added to this issue's frontmatter to make the dependency traceable now.
 
 ## Status
 

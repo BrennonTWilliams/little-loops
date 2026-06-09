@@ -12,6 +12,8 @@ labels:
 - onboarding
 - init
 - loops
+blocked_by:
+- ENH-1982
 relates_to:
 - FEAT-270
 - FEAT-1654
@@ -138,6 +140,7 @@ TBD - requires investigation. Sketch of an approach:
 **Verdict: NEEDS_UPDATE** — 2026-06-09. Issue is a recent capture with many TBD placeholders throughout (no "starter loops" metadata defined, no config-schema.json `onboarding` toggle exists, no test scaffolding). Needs a research pass to define: (1) which loops qualify as safe starters, (2) the config key name, (3) what "dry-run" means for each loop type, before implementation can begin.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:capture-issue` - 2026-06-09T04:40:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a7dc4eb-c8a8-4b46-a273-e4f41f226adc.jsonl`
 

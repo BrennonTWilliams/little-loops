@@ -78,6 +78,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:01 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:20 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
@@ -92,3 +93,14 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1720 both modify the same three shared files: `scripts/little_loops/hooks/__init__.py` (`_dispatch_table()` and `_USAGE`), `hooks/adapters/codex/hooks.json`, and `scripts/tests/test_codex_adapter.py`. FEAT-1720 `depends_on: [FEAT-1719]` — this issue's PR **must be merged first**. FEAT-1720's PR must be rebased on this merged commit before opening. Alternatively, batch both handler registrations into a single PR to eliminate the coordination burden entirely.
+
+---
+
+## Scope Addition
+
+**Source**: Merged from FEAT-1720 during `/ll:audit-issue-conflicts` conflict resolution (2026-06-09).
+
+Both issues register Codex adapter hooks in the same three shared files. To eliminate rebase coordination overhead, this issue's PR now covers both handlers in one pass:
+
+- **PostCompact** (original scope): `post_compact.py` no-op handler, `post-compact-after.sh`, `hooks.json` `PostCompact` entry (timeout: 30s), test coverage, HOST_COMPATIBILITY flip.
+- **PermissionRequest** (absorbed from FEAT-1720): `permission_request.py` no-op handler returning `LLHookResult(exit_code=0)`, `permission-request.sh`, `hooks.json` `PermissionRequest` entry (timeout: 5s, `statusMessage: "Checking permission..."`), test coverage, HOST_COMPATIBILITY flip. Exit code semantics: exit 0 = pass-through (model decides); exit 2 = block. Verify `permission_request` payload shape from Codex CLI docs before implementing — confirm field names (tool name, arguments) match expected schema.

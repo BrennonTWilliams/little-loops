@@ -74,7 +74,14 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 ### Concerns
 - FEAT-1899 (`ll-sprint` FSM wave driver and shim) is still open; the issue explicitly states implementation should occur after both FEAT-1902 and FEAT-1899 are merged. The Layer 2 content of the architecture diagram cannot be accurately documented until FEAT-1899 delivers the wave driver.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The CLAUDE.md CLI Tools section note added by this issue and the CLAUDE.md Loop Authoring compaction by ENH-2023 target overlapping sections of `.claude/CLAUDE.md`. If ENH-2023 lands before this issue, ENH-2023's compaction pass must explicitly include the `ll-parallel` canonical substrate note, or the note will be lost in the collapse. Coordinate: either sequence this issue's CLAUDE.md commit before ENH-2023, or confirm ENH-2023's diff includes the `ll-parallel` addition in its revised § Loop Authoring table.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:confidence-check` - 2026-06-07T00:00:00Z - `2b586685-5335-49af-953f-8e65bba5e334.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T19:47:23 - `d0974b20-4737-4771-8c63-e70d193dc3d5.jsonl`
