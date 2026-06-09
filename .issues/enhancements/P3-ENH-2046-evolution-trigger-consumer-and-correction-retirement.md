@@ -17,6 +17,10 @@ labels: [history, evolution, improve-claude-md, decisions, harness, self-improve
 ## Summary
 
 Close the last mile of EPIC-2027's `detect → quantify → propose` pipeline.
+
+## Motivation
+
+ENH-1911's Evolution Triggers output is useful for inspection but dead-ends at copy-paste — corrections keep resurfacing as candidates even after they've been acted on, diluting the real open signal with already-addressed topics. Every `analyze-history` run requires manual deduplication against rules the user already wrote. The consumer + retirement piece makes the pipeline actually actionable: ranked candidates become persisted rules under human review, addressed clusters stop reappearing, and the recurrence-gated signal stays clean for future runs. Without it, the self-improvement loop is observational only.
 ENH-1911 (done) already detects recurring corrections and skill bypasses and
 surfaces them as ranked, count-backed candidates in the `## Evolution Triggers`
 section of `analyze-history` output. What is still missing is the **consumer**
@@ -83,6 +87,56 @@ consume-and-persist mode. EPIC-2027 also lists an optional periodic FSM loop tha
 runs the full pipeline and files candidate-rule issues when thresholds cross —
 out of scope here, tracked separately.
 
+## Proposed Solution
+
+**Option A (preferred): Extend `improve-claude-md` with a consume-and-persist mode**
+
+Add a `--consume-triggers` flag that reads `analyze-history` Evolution Triggers output, deduplicates against `decisions.yaml` + `CLAUDE.md`, prompts per candidate for approval, calls `ll-issues decisions add` on acceptance, and writes an `addressed_at` retirement record keyed by cluster topic fingerprint into `history.db`.
+
+**Option B: New `/ll:self-improve` skill entry point**
+
+A thin wrapper that calls `analyze-history` then enters the consume-and-persist flow. Separates concerns from `improve-claude-md`'s CLAUDE.md-edit lane.
+
+**Retirement schema**: New `correction_retirements` table in `history.db` — columns: `topic_fingerprint TEXT`, `rule_id TEXT`, `addressed_at TEXT`, `session_id TEXT`. `detect_recurring_feedback()` filters rows whose `topic_fingerprint` has an entry, or annotates them as `"already ruled: <rule_id>"`.
+
+**Dedup**: Before proposing each candidate, cross-check its topic text against `ll-issues decisions list` output and a `grep` of `CLAUDE.md`; suppress if already covered, annotate if partially overlapping.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/issue_history/evolution.py` — add retirement filter to `detect_recurring_feedback()` and `detect_skill_bypass()`
+- `scripts/little_loops/issue_history/formatting.py` — annotate already-ruled candidates in Evolution Triggers output
+- `scripts/little_loops/session_store.py` — add `correction_retirements` table schema
+- `skills/improve-claude-md/SKILL.md` or new `skills/self-improve/SKILL.md` — consumer entry point
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/hooks/` — session_start reads `history.db`; retirement table is additive, no hook changes expected
+- `.ll/decisions.yaml` — sink for persisted rules (written via `ll-issues decisions add`)
+- `.ll/ll.local.md` — rules synced here via `ll-issues decisions sync`
+
+### Similar Patterns
+- `skills/improve-claude-md/SKILL.md` — existing human-approval-required pattern to extend or parallel
+- `ll-issues decisions add` — existing rule persistence CLI to reuse
+
+### Tests
+- `scripts/tests/test_builtin_loops.py` — check for related evolution/history coverage
+- New test file or additions: consume→propose→approve→persist happy path, dedup suppression of already-ruled topic, retirement excluding addressed cluster from next detection run
+
+### Documentation
+- `docs/reference/API.md` — update `evolution.py` section if `detect_recurring_feedback()` signature changes
+
+### Configuration
+- N/A — no new config keys required (retirement table is internal to `history.db`)
+
+## Implementation Steps
+
+1. Add `correction_retirements` table to `session_store.py` schema and migration
+2. Update `detect_recurring_feedback()` in `evolution.py` to filter/annotate retired cluster fingerprints
+3. Add dedup check against `decisions.yaml` and `CLAUDE.md` before candidate proposal
+4. Build consumer path (Option A or B above) with per-candidate approval loop → `ll-issues decisions add` → retirement write
+5. Add tests covering happy path, dedup suppression, and retirement exclusion from next detection run
+6. Update `docs/reference/API.md` if public API signatures change
+
 ## Acceptance Criteria
 
 - [ ] A documented path consumes ENH-1911's ranked Evolution Triggers candidates
@@ -101,13 +155,20 @@ out of scope here, tracked separately.
       of an already-ruled topic, and retirement excluding an addressed cluster
       from the next detection run.
 
-## Out of Scope
+## Scope Boundaries
 
 - The optional periodic FSM loop that auto-files candidate-rule issues
   (EPIC-2027 "Potential Future Children" #3) — separate issue.
 - A composite "harness drift score" metric (EPIC-2027) — separate issue.
 - Changing the detection thresholds or correction-capture patterns (owned by
   ENH-1911 / ENH-1887 / ENH-1915).
+
+## Impact
+
+- **Priority**: P3 — Closes last-mile of EPIC-2027 pipeline; high value but non-blocking since existing pipeline is already useful for inspection
+- **Effort**: Medium — Additive: new DB table + migration, filter logic in `evolution.py`, consumer skill/command, and test suite
+- **Risk**: Low — Purely additive; no changes to existing capture, analyze, or hook paths
+- **Breaking Change**: No
 
 ## Labels
 
@@ -118,6 +179,7 @@ history, evolution, improve-claude-md, decisions, harness, self-improve
 open
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-09T18:45:01 - `04f82d31-35d7-47a9-8197-770bb00e881a.jsonl`
 
 - Captured - 2026-06-09 - from squid-plugin evaluation; promotes two EPIC-2027
   "Potential Future Children" into concrete scope and adds correction retirement.
