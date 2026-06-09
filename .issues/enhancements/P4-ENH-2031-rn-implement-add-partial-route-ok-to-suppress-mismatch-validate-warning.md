@@ -2,8 +2,8 @@
 id: ENH-2031
 type: ENH
 priority: P4
-status: open
-captured_at: "2026-06-08T00:00:00Z"
+status: done
+captured_at: '2026-06-08T00:00:00Z'
 discovered_date: 2026-06-08
 discovered_by: audit-loop-run
 ---
