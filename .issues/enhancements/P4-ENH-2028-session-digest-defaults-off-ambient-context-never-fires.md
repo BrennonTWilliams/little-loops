@@ -1,14 +1,23 @@
 ---
 id: ENH-2028
-title: session_digest.enabled defaults off — ambient history context never fires
+title: "session_digest.enabled defaults off \u2014 ambient history context never fires"
 type: ENH
 priority: P4
 status: open
-captured_at: "2026-06-08T22:17:25Z"
+captured_at: '2026-06-08T22:17:25Z'
 discovered_date: 2026-06-08
 discovered_by: capture-issue
 parent: EPIC-1707
-relates_to: [ENH-1907, EPIC-1707]
+relates_to:
+- ENH-1907
+- EPIC-1707
+confidence_score: 84
+outcome_confidence: 74
+score_complexity: 20
+score_test_coverage: 19
+score_ambiguity: 14
+score_change_surface: 21
+decision_needed: true
 ---
 
 # ENH-2028: session_digest.enabled defaults off — ambient history context never fires
@@ -119,7 +128,19 @@ Update `skills/init/SKILL.md` Phase 3 and `skills/configure/SKILL.md` to include
 
 `history`, `session-digest`, `config-defaults`, `dx`, `discoverability`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-08_
+
+**Readiness Score**: 84/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE
+
+### Outcome Risk Factors
+- **Unresolved decision between Option 1, 2, and 3** — "Option 1 is the right long-term default" is stated but not formally decided. This is an open decision that must be resolved before implementation starts; implementing the wrong option produces a qualitatively different outcome.
+- **Two TBD items in Integration Map** (lines 85 and 88) — full list of `session_digest` references and feature-flag defaults to keep consistent have not been verified. Quick greps resolve these (7 references found; only `session_start.py` is a behavioral consumer), but should be confirmed before finalizing scope.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `ad2e03f6-8c83-42d6-b37c-d90baffcb383.jsonl`
 - `/ll:format-issue` - 2026-06-09T01:44:50 - `69b33e41-c63d-4418-8c47-2b1a6287ce4b.jsonl`
 - `/ll:capture-issue` - 2026-06-08T22:17:25Z - `a20cfa81-f228-4cd0-9501-12f64feb6d30.jsonl`
 

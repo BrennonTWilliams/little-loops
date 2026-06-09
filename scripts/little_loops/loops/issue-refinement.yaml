@@ -11,11 +11,9 @@ import:
   - lib/prompt-fragments.yaml
 states:
   init:
-    action: mkdir -p .loops/tmp && rm -f .loops/tmp/issue-refinement-commit-count && rm -f .loops/tmp/issue-refinement-skip-list
-    action_type: shell
     next: evaluate
   evaluate:
-    action: ll-issues next-action --skip "$(cat .loops/tmp/issue-refinement-skip-list 2>/dev/null)"
+    action: ll-issues next-action --skip "$(cat ${context.run_dir}/skip-list 2>/dev/null)"
     fragment: shell_exit
     capture: "classify"
     on_yes: done
@@ -45,7 +43,7 @@ states:
   handle_failure:
     action: |
       ID="${captured.input.output}"
-      FILE=".loops/tmp/issue-refinement-skip-list"
+      FILE="${context.run_dir}/skip-list"
       CURRENT=$(cat "$FILE" 2>/dev/null || echo "")
       if [ -z "$CURRENT" ]; then printf '%s' "$ID" > "$FILE"
       else printf ',%s' "$ID" >> "$FILE"; fi
@@ -53,8 +51,7 @@ states:
     next: check_commit
   check_commit:
     action: |
-      mkdir -p .loops/tmp
-      FILE=".loops/tmp/issue-refinement-commit-count"
+      FILE="${context.run_dir}/commit-count"
       N=$(cat "$FILE" 2>/dev/null || echo 0)
       N=$((N + 1))
       printf '%s' "$N" > "$FILE"

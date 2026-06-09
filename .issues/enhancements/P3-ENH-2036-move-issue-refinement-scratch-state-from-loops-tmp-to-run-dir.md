@@ -2,13 +2,20 @@
 id: ENH-2036
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-08T00:00:00Z'
+completed_at: '2026-06-09T03:28:49Z'
 discovered_date: 2026-06-08
 discovered_by: audit-loop-run
 relates_to:
-  - BUG-817
-  - BUG-2034
+- BUG-817
+- BUG-2034
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # ENH-2036: Move issue-refinement skip-list and commit-count from .loops/tmp to run_dir (MR-3)
@@ -17,7 +24,7 @@ relates_to:
 
 `issue-refinement` writes its skip-list and commit-count to **bare**
 `.loops/tmp/issue-refinement-{skip-list,commit-count}`
-(`issue-refinement.yaml:13,17,38-40,45-49`) instead of the runner-injected
+(`issue-refinement.yaml:13,17,45-51,54-61`) instead of the runner-injected
 `${context.run_dir}/`. This violates the meta-loop per-run isolation rule (MR-3)
 documented in `.claude/CLAUDE.md` — `ll-loop validate issue-refinement` emits 5
 MR-3 WARNINGs for these paths. It is already logged in the "Medium" remediation
@@ -43,9 +50,9 @@ Running `issue-refinement` under `ll-parallel`, in a worktree, or via a retry th
 - `init` (`:13`): `rm -f .loops/tmp/issue-refinement-commit-count
   .loops/tmp/issue-refinement-skip-list`
 - `evaluate` (`:17`): reads `.loops/tmp/issue-refinement-skip-list`
-- `handle_failure` (`:38-40`): appends the failing ID to
+- `handle_failure` (`:45-51`): appends the failing ID to
   `.loops/tmp/issue-refinement-skip-list`
-- `check_commit` (`:45-49`): increments
+- `check_commit` (`:54-61`): increments
   `.loops/tmp/issue-refinement-commit-count`
 
 All four are unscoped, so every concurrent instance shares one set of files.
@@ -93,14 +100,14 @@ Replace all four bare `.loops/tmp/issue-refinement-*` path references in `issue-
 
 ## Files
 
-- `scripts/little_loops/loops/issue-refinement.yaml:13,17,38-40,45-49`
+- `scripts/little_loops/loops/issue-refinement.yaml:13,17,45-51,54-61`
 - `thoughts/audits/loop-artifact-isolation-audit.md:112` — tracked remediation
   (reference)
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/issue-refinement.yaml` — 4 path changes at states `init`, `evaluate`, `handle_failure`, `check_commit`
+- `scripts/little_loops/loops/issue-refinement.yaml` — 4 path changes at states `init` (:13), `evaluate` (:17), `handle_failure` (:45-51), `check_commit` (:54-61)
 
 ### Dependent Files (Callers/Importers)
 - `rn-build` invokes `issue-refinement` via `context_passthrough: true` — benefits automatically; no changes needed
@@ -143,4 +150,6 @@ Replace all four bare `.loops/tmp/issue-refinement-*` path references in `issue-
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-09T03:25:18 - `8625c164-18d7-47bc-9b80-218363426e41.jsonl`
 - `/ll:format-issue` - 2026-06-09T02:41:43 - `2e851901-2808-4980-9585-6d4994df06a4.jsonl`
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `8625c164-18d7-47bc-9b80-218363426e41.jsonl`
