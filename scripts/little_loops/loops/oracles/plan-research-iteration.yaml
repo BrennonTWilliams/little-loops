@@ -1,0 +1,178 @@
+name: plan-research-iteration
+description: |
+  Reusable research-and-synthesize chain shared by rn-plan and rn-refine.
+  Runs one iteration: classify what research is needed → route to file or web
+  research → synthesize findings into an improved plan. The overwrite_source
+  parameter gates rn-refine's in-place source-file overwrite (Steps 7/8 in
+  synthesize); rn-plan omits it (defaults to "false"). Called via loop: + with:.
+
+initial: classify_research
+timeout: 3600
+max_iterations: 20
+
+parameters:
+  run_dir:
+    type: string
+    required: true
+    description: "Absolute path to the run directory containing plan.md, plan-rubric.md, research.md"
+  overwrite_source:
+    type: string
+    required: false
+    default: "false"
+    description: >
+      If "true", overwrite the original source file with the refined plan and
+      update the rubric task: field (rn-refine mode). Leave unset for rn-plan.
+
+context:
+  run_dir: ""
+  overwrite_source: "false"
+
+flow:
+  - classify_research
+  - "route_files?research_files:route_web"
+  - "route_web?research_web:research_files"
+  - research_files
+  - research_web
+  - synthesize
+  - done
+
+state_defs:
+  classify_research:
+    # Research classification — examines the task and current plan to decide what
+    # type of research is most needed this iteration. Emits a single routing token.
+    action_type: prompt
+    action: |
+      Read the current plan at ${context.run_dir}/plan.md and the rubric at
+      ${context.run_dir}/plan-rubric.md.
+
+      Determine what type of research would most improve the plan on this iteration:
+
+      - NEEDS_FILES: the plan references a codebase, local files, project structure, APIs,
+        or any artifact that can be inspected with Read/Grep/Glob/Bash tools.
+      - NEEDS_WEB: the plan involves external APIs, third-party libraries, current best
+        practices, documentation, or any information that requires WebSearch/WebFetch.
+
+      Pick the single most valuable research type for the lowest-scoring dimension.
+
+      End your response with EXACTLY one of these tokens on its own line:
+      NEEDS_FILES
+      NEEDS_WEB
+    capture: classification
+
+  route_files:
+    # Router: dispatch to file research when classification captured NEEDS_FILES.
+    evaluate:
+      type: output_contains
+      source: "${captured.classification.output}"
+      pattern: "NEEDS_FILES"
+    on_error: synthesize
+
+  route_web:
+    # Router: dispatch to web research when classification captured NEEDS_WEB.
+    # Falls back to research_files if neither token matched (unexpected output).
+    evaluate:
+      type: output_contains
+      source: "${captured.classification.output}"
+      pattern: "NEEDS_WEB"
+    on_error: synthesize
+
+  research_files:
+    # File research — uses Read, Grep, and Glob tools to inspect the local codebase
+    # and gather concrete facts that improve plan accuracy and specificity.
+    action_type: prompt
+    action: |
+      Read the current plan at ${context.run_dir}/plan.md.
+      The plan references local files, code, or project structure that should be verified.
+
+      Use the Read, Grep, Glob, and Bash tools to:
+      1. Locate and read the files most relevant to the lowest-scoring plan dimensions
+      2. Verify that file paths, function names, module names, and APIs cited in the plan exist
+      3. Discover related code that the plan should account for but does not currently mention
+      4. Note specific line numbers, signatures, or patterns that should be referenced in the plan
+
+      Write a research summary to ${context.run_dir}/research.md using this format:
+
+      ```
+      # File Research Findings
+
+      ## Verified References
+      [facts confirmed in code — include file:line pointers]
+
+      ## Gaps Found
+      [things the plan claims that do not match reality, or missing context]
+
+      ## New Discoveries
+      [relevant code/structure not yet in the plan that should be included]
+      ```
+    next: synthesize
+
+  research_web:
+    # Web research — uses WebSearch and WebFetch tools to gather external information
+    # such as API documentation, library capabilities, and current best practices.
+    action_type: prompt
+    action: |
+      Read the current plan at ${context.run_dir}/plan.md.
+      The plan involves external technologies, APIs, or practices that require research.
+
+      Use the WebSearch and WebFetch tools to:
+      1. Look up documentation for the libraries, APIs, or services referenced in the plan
+      2. Find current best practices for the lowest-scoring plan dimensions
+      3. Identify known pitfalls, version constraints, or breaking changes relevant to the task
+      4. Gather concrete examples, configuration snippets, or reference architectures
+
+      Write a research summary to ${context.run_dir}/research.md using this format:
+
+      ```
+      # Web Research Findings
+
+      ## Key Documentation
+      [relevant docs found, with source URLs]
+
+      ## Best Practices
+      [current recommendations that should be reflected in the plan]
+
+      ## Pitfalls & Constraints
+      [known issues, version requirements, or anti-patterns to avoid]
+      ```
+
+  synthesize:
+    # Synthesis — merges research findings into an improved plan. Updates plan.md
+    # in-place. Steps 7/8 are gated on overwrite_source for rn-refine callers.
+    action_type: prompt
+    action: |
+      Read all three files:
+      - ${context.run_dir}/plan.md — current plan to improve
+      - ${context.run_dir}/plan-rubric.md — scoring rubric with dimension criteria
+      - ${context.run_dir}/research.md — research findings from this iteration
+
+      Rewrite ${context.run_dir}/plan.md to produce a substantially improved plan:
+
+      1. Address every gap and correction identified in research.md
+      2. Promote bullet-point items to numbered, actionable steps where rubric dimension
+         scores are LOW or MEDIUM (focus on depth and granularity first)
+      3. Replace vague directives ("handle X", "ensure Y", "configure Z") with specific,
+         concrete instructions
+      4. Add missing concerns surfaced by research (breadth)
+      5. Verify step ordering is logical and dependencies are explicit (logic_strategy)
+      6. Remove duplicate or contradictory content (consistency)
+
+      Overwrite ${context.run_dir}/plan.md with the improved version.
+      Preserve the task title and goal statement; replace everything else as needed.
+
+      Step 7: The overwrite_source parameter is currently: "${context.overwrite_source}"
+      If overwrite_source is "true":
+        Read ${context.run_dir}/.source-path to get the absolute path of the original file
+        the user passed in. Overwrite that file with the same improved plan content so the
+        user's file is updated in-place — they should not need to copy anything from .loops/
+        to see the result.
+      If overwrite_source is not "true": skip Step 7.
+
+      Step 8: The overwrite_source parameter is currently: "${context.overwrite_source}"
+      If overwrite_source is "true":
+        After overwriting both plan files, update the task: field in
+        ${context.run_dir}/plan-rubric.md to reflect the corrected goal statement from
+        the rewritten plan. Derive the new task value from the title, objective, or first
+        goal statement in the just-written plan.md.
+        Update only the task: line (format: task: "<double-quoted goal>"); preserve
+        all ## Dimensions scores and the ## Aggregate section exactly as they are.
+      If overwrite_source is not "true": skip Step 8.

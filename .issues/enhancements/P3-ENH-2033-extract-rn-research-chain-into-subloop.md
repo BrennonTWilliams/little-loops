@@ -5,14 +5,21 @@ type: ENH
 priority: P3
 parent: ENH-1777
 relates_to:
-  - ENH-2032
-  - ENH-1775
-  - ENH-1776
+- ENH-2032
+- ENH-1775
+- ENH-1776
 captured_at: '2026-06-08T00:00:00Z'
+completed_at: '2026-06-09T05:14:40Z'
 discovered_date: 2026-06-08
 discovered_by: loop-audit
 decision_needed: false
-status: open
+status: done
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 19
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2033: Extract the rn-plan/rn-refine research chain into a flow-authored sub-loop
@@ -64,7 +71,7 @@ in-place, then update the `task:` field in `plan-rubric.md`, and routes to
 `score`.
 
 `flow:` already exists for exactly this shape (LOOPS_GUIDE.md §"Linear Flow
-Shorthand", lines 4207–4277): a linear chain with ternary branches and
+Shorthand", line 4278): a linear chain with ternary branches and
 `state_defs:` bodies that can themselves pull `fragment:`. The chain is therefore
 a natural `flow:`-authored sub-loop.
 
@@ -175,8 +182,8 @@ Decided by `/ll:decide-issue` on 2026-06-08.
 ### Reference Patterns
 - `oracles/enumerate-and-prove.yaml` + its caller `adopt-third-party-api.yaml`
   (`loop:` + `with:` invocation model).
-- LOOPS_GUIDE.md §"Linear Flow Shorthand via `flow:`" (lines 4207–4277) and
-  §"Composable Sub-Loops" (lines 3703–3800).
+- LOOPS_GUIDE.md §"Linear Flow Shorthand via `flow:`" (line 4278) and
+  §"Composable Sub-Loops" (line 3771).
 - `scripts/little_loops/fsm/executor.py:_execute_sub_loop()` (sub-loop semantics);
   `fsm/fragments.py:resolve_flow()` (flow expansion).
 
@@ -185,6 +192,21 @@ Decided by `/ll:decide-issue` on 2026-06-08.
   both parents still validate and reach `score`/`snapshot`.
 - `docs/guides/LOOPS_GUIDE.md` — note the shared research oracle if the guide
   enumerates oracles.
+
+## Impact
+
+- **Priority**: P3 - Reduces maintenance liability; duplicated research chain creates divergence risk when prompt content changes
+- **Effort**: Medium - Six states to extract; `flow:` authoring + `overwrite_source` gate; validate both parents
+- **Risk**: Low - New child is independently validatable; parents delegate rather than change behavior; parity smoke-runs required
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `loops`, `refactoring`, `code-quality`
+
+## Status
+
+**Open** | Created: 2026-06-08 | Priority: P3
 
 ## Acceptance Criteria
 
@@ -199,6 +221,13 @@ Decided by `/ll:decide-issue` on 2026-06-08.
 - [ ] Reuse vehicle (Option A vs B) decided and recorded before implementation.
 
 
+## Resolution
+
+Extracted the six-state `classify_research → route_files → route_web → research_files → research_web → synthesize` chain into `oracles/plan-research-iteration.yaml` using `flow:` shorthand with a `parameters:` block. Both `rn-plan` and `rn-refine` now delegate via a single `research_iteration` sub-loop state using `loop: oracles/plan-research-iteration` + `with:`. The `overwrite_source` parameter gates rn-refine's Steps 7/8 (in-place source overwrite + rubric task update). All three loops pass `ll-loop validate`; 743 tests pass with no regressions.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-09T05:14:40Z - `manage-issue ENH-2033`
+- `/ll:ready-issue` - 2026-06-09T04:57:55 - `e581e244-6f69-4fb8-82fb-4d40e1435b20.jsonl`
 - `/ll:decide-issue` - 2026-06-09T01:37:41 - `5822886d-9616-489f-b479-e23fbca1e095.jsonl`
 - `/ll:format-issue` - 2026-06-09T01:28:10 - `b8cd5b00-183b-4a0c-a5fc-6f9113d43c0a.jsonl`
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `440e84d9-3cac-4313-a3fd-441cde7681cc.jsonl`

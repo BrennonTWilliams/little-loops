@@ -5972,3 +5972,218 @@ class TestApplyResearchLoop:
             assert "${context.run_dir}" in action or "run_dir" in action, (
                 f"state '{name}' does not reference run_dir"
             )
+
+
+class TestPlanResearchIterationOracle:
+    """Structural tests for the plan-research-iteration oracle sub-loop (ENH-2033)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles/plan-research-iteration.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "plan-research-iteration"
+        assert data.get("initial") == "classify_research"
+
+    def test_uses_flow_shorthand(self, data: dict) -> None:
+        """Oracle must be authored with flow: shorthand per ENH-2033 acceptance criteria."""
+        assert "flow" in data, "plan-research-iteration must use flow: shorthand"
+
+    def test_has_parameters_block(self, data: dict) -> None:
+        params = data.get("parameters", {})
+        assert "run_dir" in params, "parameters must declare run_dir"
+        assert params["run_dir"].get("required") is True, "run_dir must be required"
+        assert "overwrite_source" in params, "parameters must declare overwrite_source"
+        assert params["overwrite_source"].get("required") is not True, (
+            "overwrite_source must be optional"
+        )
+
+    def test_flow_contains_all_six_research_states(self, data: dict) -> None:
+        flow = data.get("flow", [])
+        flow_names = {(e.split("?", 1)[0] if "?" in e else e) for e in flow}
+        for expected in (
+            "classify_research",
+            "route_files",
+            "route_web",
+            "research_files",
+            "research_web",
+            "synthesize",
+        ):
+            assert expected in flow_names, f"flow must include '{expected}'"
+
+    def test_last_flow_entry_is_done(self, data: dict) -> None:
+        """Last flow entry must be 'done' so sub-loop routes parent to on_success."""
+        flow = data.get("flow", [])
+        last = flow[-1] if flow else ""
+        state_name = last.split("?", 1)[0] if "?" in last else last
+        assert state_name == "done", (
+            f"last flow entry must be 'done' for sub-loop success routing, got '{state_name}'"
+        )
+
+    def test_route_files_has_needs_files_evaluate(self, data: dict) -> None:
+        state_defs = data.get("state_defs", {})
+        evaluate = state_defs.get("route_files", {}).get("evaluate", {})
+        assert evaluate.get("pattern") == "NEEDS_FILES", (
+            "route_files evaluate.pattern must be 'NEEDS_FILES'"
+        )
+
+    def test_route_web_has_needs_web_evaluate(self, data: dict) -> None:
+        state_defs = data.get("state_defs", {})
+        evaluate = state_defs.get("route_web", {}).get("evaluate", {})
+        assert evaluate.get("pattern") == "NEEDS_WEB", (
+            "route_web evaluate.pattern must be 'NEEDS_WEB'"
+        )
+
+    def test_classify_research_captures_classification(self, data: dict) -> None:
+        state_defs = data.get("state_defs", {})
+        assert state_defs.get("classify_research", {}).get("capture") == "classification", (
+            "classify_research must capture as 'classification'"
+        )
+
+    def test_synthesize_references_overwrite_source(self, data: dict) -> None:
+        state_defs = data.get("state_defs", {})
+        action = state_defs.get("synthesize", {}).get("action", "")
+        assert "overwrite_source" in action, (
+            "synthesize action must reference overwrite_source for rn-refine Step 7/8 gate"
+        )
+
+    def test_research_files_overrides_next_to_synthesize(self, data: dict) -> None:
+        """research_files must override flow-generated next: research_web → synthesize."""
+        state_defs = data.get("state_defs", {})
+        assert state_defs.get("research_files", {}).get("next") == "synthesize", (
+            "research_files state_defs must set next: synthesize to override "
+            "flow-generated next: research_web"
+        )
+
+    def test_states_use_context_run_dir(self, data: dict) -> None:
+        """All prompt state bodies must reference ${context.run_dir}, not ${captured.*}."""
+        state_defs = data.get("state_defs", {})
+        for name in ("classify_research", "research_files", "research_web", "synthesize"):
+            action = state_defs.get(name, {}).get("action", "")
+            assert "${context.run_dir}" in action, (
+                f"state_defs.{name}.action must reference ${{context.run_dir}}"
+            )
+
+
+class TestRnPlanDelegatesResearchToOracle:
+    """rn-plan must delegate the research chain to plan-research-iteration (ENH-2033)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-plan.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_no_inline_classify_research(self, data: dict) -> None:
+        assert "classify_research" not in data.get("states", {}), (
+            "rn-plan must not have inline classify_research (extracted to oracle)"
+        )
+
+    def test_no_inline_route_files(self, data: dict) -> None:
+        assert "route_files" not in data.get("states", {}), (
+            "rn-plan must not have inline route_files (extracted to oracle)"
+        )
+
+    def test_no_inline_research_files(self, data: dict) -> None:
+        assert "research_files" not in data.get("states", {}), (
+            "rn-plan must not have inline research_files (extracted to oracle)"
+        )
+
+    def test_no_inline_synthesize(self, data: dict) -> None:
+        assert "synthesize" not in data.get("states", {}), (
+            "rn-plan must not have inline synthesize (extracted to oracle)"
+        )
+
+    def test_research_iteration_state_exists(self, data: dict) -> None:
+        assert "research_iteration" in data.get("states", {}), (
+            "rn-plan must have a research_iteration state"
+        )
+
+    def test_research_iteration_delegates_to_oracle(self, data: dict) -> None:
+        state = data.get("states", {}).get("research_iteration", {})
+        assert state.get("loop") == "oracles/plan-research-iteration", (
+            f"research_iteration.loop must be 'oracles/plan-research-iteration', "
+            f"got {state.get('loop')!r}"
+        )
+
+    def test_research_iteration_passes_run_dir(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("research_iteration", {}).get("with", {})
+        assert "run_dir" in with_, "research_iteration.with must include run_dir"
+
+    def test_research_iteration_no_overwrite_source_true(self, data: dict) -> None:
+        """rn-plan must NOT enable overwrite_source (no in-place file overwrite)."""
+        with_ = data.get("states", {}).get("research_iteration", {}).get("with", {})
+        assert with_.get("overwrite_source", "false") != "true", (
+            "rn-plan research_iteration.with.overwrite_source must not be 'true'"
+        )
+
+    def test_score_on_no_is_research_iteration(self, data: dict) -> None:
+        score = data.get("states", {}).get("score", {})
+        assert score.get("on_no") == "research_iteration", (
+            f"score.on_no must be 'research_iteration', got {score.get('on_no')!r}"
+        )
+
+
+class TestRnRefineDelegatesResearchToOracle:
+    """rn-refine must delegate the research chain to plan-research-iteration (ENH-2033)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-refine.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_no_inline_classify_research(self, data: dict) -> None:
+        assert "classify_research" not in data.get("states", {}), (
+            "rn-refine must not have inline classify_research (extracted to oracle)"
+        )
+
+    def test_no_inline_synthesize(self, data: dict) -> None:
+        assert "synthesize" not in data.get("states", {}), (
+            "rn-refine must not have inline synthesize (extracted to oracle)"
+        )
+
+    def test_research_iteration_state_exists(self, data: dict) -> None:
+        assert "research_iteration" in data.get("states", {}), (
+            "rn-refine must have a research_iteration state"
+        )
+
+    def test_research_iteration_delegates_to_oracle(self, data: dict) -> None:
+        state = data.get("states", {}).get("research_iteration", {})
+        assert state.get("loop") == "oracles/plan-research-iteration", (
+            f"research_iteration.loop must be 'oracles/plan-research-iteration', "
+            f"got {state.get('loop')!r}"
+        )
+
+    def test_research_iteration_passes_overwrite_source_true(self, data: dict) -> None:
+        """rn-refine must pass overwrite_source: 'true' for in-place overwrite."""
+        with_ = data.get("states", {}).get("research_iteration", {}).get("with", {})
+        assert with_.get("overwrite_source") == "true", (
+            f"rn-refine research_iteration.with.overwrite_source must be 'true', "
+            f"got {with_.get('overwrite_source')!r}"
+        )
+
+    def test_research_iteration_on_success_is_snapshot(self, data: dict) -> None:
+        """rn-refine research_iteration must route to snapshot for per-iter versioning."""
+        state = data.get("states", {}).get("research_iteration", {})
+        on_success = state.get("on_success") or state.get("on_yes")
+        assert on_success == "snapshot", (
+            f"research_iteration on_success must be 'snapshot', got {on_success!r}"
+        )
+
+    def test_score_on_no_is_research_iteration(self, data: dict) -> None:
+        score = data.get("states", {}).get("score", {})
+        assert score.get("on_no") == "research_iteration", (
+            f"score.on_no must be 'research_iteration', got {score.get('on_no')!r}"
+        )
+
+    def test_verify_score_on_no_is_research_iteration(self, data: dict) -> None:
+        verify_score = data.get("states", {}).get("verify_score", {})
+        assert verify_score.get("on_no") == "research_iteration", (
+            f"verify_score.on_no must be 'research_iteration', got {verify_score.get('on_no')!r}"
+        )

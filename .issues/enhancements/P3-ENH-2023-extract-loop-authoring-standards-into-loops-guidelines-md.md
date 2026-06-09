@@ -20,6 +20,7 @@ score_complexity: 18
 score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 18
+size: Very Large
 ---
 
 # ENH-2023: Extract loop-authoring standards into docs/guides/LOOPS-GUIDELINES.md
@@ -74,6 +75,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/little_loops/loops/README.md` — change the "loop authoring guidance" pointer at line 173 (currently `docs/ARCHITECTURE.md`) to include a reference to `docs/guides/LOOPS-GUIDELINES.md`
 - Update `skills/create-loop/loop-types.md` — add `(see [Loop Authoring Guidelines](../../docs/guides/LOOPS-GUIDELINES.md) § Meta-Loop Design Rules)` after each of the two inline MR-1 compliance assertions (lines ~1488 and ~1505)
 - Add wiring assertions to `scripts/tests/test_wiring_guides_and_meta.py` and `scripts/tests/test_wiring_skills_and_commands.py` — new `DOC_FILES_MUST_EXIST` and `DOC_STRINGS_PRESENT` entries confirming `docs/guides/LOOPS-GUIDELINES.md` was created and all pointer replacements landed in the primary source files
+- Update `docs/guides/LOOPS_GUIDE.md` ~line 3449–3451 — change the `## Harness Loops` blockquote `normative design rules … live in [CLAUDE.md § Loop Authoring]` to point to `[LOOPS-GUIDELINES.md § Meta-Loop Design Rules]` [wiring pass 3]
+- Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` ToC (lines 26–27) — remove the two `#the-design-rules-mr-1mr-5` and `#the-optimizer-error-taxonomy` entries; both sections become 2-line stub pointers with no navigable heading [wiring pass 3]
+- Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` `## See Also` (line 243) — change the `.claude/CLAUDE.md § Loop Authoring` description from "the normative MR-1…MR-5 rules" to "compact summary table (normative rules live in LOOPS-GUIDELINES.md)"; add a LOOPS-GUIDELINES.md entry [wiring pass 3]
+- Add `DOC_STRINGS_ABSENT` assertions to `scripts/tests/test_wiring_guides_and_meta.py` and `test_wiring_skills_and_commands.py` — the only automated gate verifying that definitional content was removed from source files (not just added to LOOPS-GUIDELINES.md) [wiring pass 3]
 
 ## Integration Map
 
@@ -87,10 +92,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `.claude/CLAUDE.md` | 94–162 | Collapse ~70-line prose to ~20-line summary table + `[docs/guides/LOOPS-GUIDELINES.md](../docs/guides/LOOPS-GUIDELINES.md)` pointer |
 | `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 84–109 | Replace `## The Design Rules (MR-1…MR-5)` with 2-line pointer to LOOPS-GUIDELINES; keep `## The Canonical Shape` (136–187) |
 | `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 113–132 | Replace `## The Optimizer Error Taxonomy` with 2-line pointer |
+| `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 26–27 | Remove ToC entries for `#the-design-rules-mr-1mr-5` and `#the-optimizer-error-taxonomy` — both sections become stub pointers with no subsections to navigate to [wiring pass 3] |
+| `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 243 | Update `## See Also` — change description of `.claude/CLAUDE.md § Loop Authoring` from "the normative MR-1…MR-5 rules" to reflect that CLAUDE.md now holds only the compact summary table; add LOOPS-GUIDELINES.md as normative rules destination [wiring pass 3] |
 | `docs/generalized-fsm-loop.md` | 1668–1717 | Replace the two `### Authoring Conventions` subsections with stub pointers; preserve the `## Authoring Conventions` heading so existing anchors don't 404 |
 | `docs/guides/LOOPS_GUIDE.md` | 1448 | Replace the Playwright failure-routing blockquote with a one-line reference to LOOPS-GUIDELINES |
 | `docs/guides/LOOPS_GUIDE.md` | 3361–3366 | Update the meta-loop pointer to include LOOPS-GUIDELINES as the normative rules home |
 | `docs/guides/LOOPS_GUIDE.md` | 4272–4280 | Add `- [Loop Authoring Guidelines](LOOPS-GUIDELINES.md) — ...` to `## Further Reading` |
+| `docs/guides/LOOPS_GUIDE.md` | ~3449–3451 | Update `## Harness Loops` blockquote — replace `[CLAUDE.md § Loop Authoring](../../.claude/CLAUDE.md)` pointer with `[LOOPS-GUIDELINES.md § Meta-Loop Design Rules]` [wiring pass 3] |
 | `agents/loop-specialist.md` | 53–65 | Replace the definitional 7-mode table with operational pointer ("classify against modes in LOOPS-GUIDELINES § Loop failure-mode taxonomy; use exact mode names"); keep checklist at 87–93 |
 | `docs/index.md` | 35 | Add `- [Loop Authoring Guidelines](guides/LOOPS-GUIDELINES.md) - Normative MR-1…MR-5 rules, FSM authoring conventions, failure-mode taxonomy, and validation guide` near the Loops Guide entry (line 35) |
 | `mkdocs.yml` | 71–75 | Add `- Loop Authoring Guidelines: guides/LOOPS-GUIDELINES.md` to the Guides nav section (after Loops Guide at line 71) |
@@ -183,6 +191,39 @@ _Added by `/ll:refine-issue` (fourth pass) — code accuracy note:_
 
 **`action_stall` missing from CLAUDE.md prose list**: `validation.py:NON_LLM_EVALUATOR_TYPES` (line 81) includes `action_stall` as a valid MR-1-satisfying evaluator type, as does the MR-1 error message (`validation.py:1069`): `"exit_code, output_numeric, convergence, diff_stall, action_stall, mcp_result"`. The current CLAUDE.md § Loop Authoring prose list and `HARNESS_OPTIMIZATION_GUIDE.md` both omit it. When authoring the MR-1 row in LOOPS-GUIDELINES.md, source the non-LLM evaluator type list from `NON_LLM_EVALUATOR_TYPES` in `validation.py:81` for accuracy. Code-accurate list: `exit_code`, `output_numeric`, `convergence`, `diff_stall`, `action_stall`, `mcp_result`.
 
+### Codebase Research Findings
+
+_Added by `/ll:wire-issue` (third pass) — additional test assertions:_
+
+**`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_PRESENT`** (7 additional entries verifying wiring touchpoints landed):
+```python
+("README.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+("CONTRIBUTING.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+("docs/guides/AUTOMATIC_HARNESSING_GUIDE.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+("scripts/little_loops/loops/README.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+("docs/guides/LOOPS-GUIDELINES.md", "ambiguous-output", "ENH-2023"),
+("docs/guides/LOOPS-GUIDELINES.md", "Redundant Duplication", "ENH-2023"),
+("docs/guides/LOOPS-GUIDELINES.md", "Failure Terminals Must Include a Diagnostic Action", "ENH-2023"),
+```
+
+**`test_wiring_skills_and_commands.py` — append to `DOC_STRINGS_PRESENT`** (1 additional entry):
+```python
+("skills/create-loop/loop-types.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+```
+
+**`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_ABSENT`** (4 new entries — only automated gate confirming source content was removed, not just added to LOOPS-GUIDELINES.md):
+```python
+("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "| **MR-1** | Every `check_semantic`", "ENH-2023"),
+("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "| **Redundant Duplication** |", "ENH-2023"),
+("docs/generalized-fsm-loop.md", "do NOT put `action_type: prompt` directly on the `terminal: true` state", "ENH-2023"),
+("docs/generalized-fsm-loop.md", "Never Route Evaluate Failures Back to Generate", "ENH-2023"),
+```
+
+**`test_wiring_skills_and_commands.py` — append to `DOC_STRINGS_ABSENT`** (1 new entry):
+```python
+("agents/loop-specialist.md", "| **ambiguous-output** | The loop's exit predicate", "ENH-2023"),
+```
+
 ### Documentation
 - `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` — the empirical study behind the MR rules; LOOPS-GUIDELINES.md should link to it in the See Also section (as HARNESS_OPTIMIZATION_GUIDE.md line 244 already does)
 
@@ -230,6 +271,8 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 - Grep verification is manual — the completeness check ("MR-1…MR-5 now appear only in LOOPS-GUIDELINES.md") is a manual grep, not a CI gate; run it explicitly post-implementation
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-08T23:55:00Z - `d5e3ed6c-5fc1-4d3d-b2dd-2db860f934e4.jsonl`
+- `/ll:wire-issue` - 2026-06-09T04:44:22 - `8bbb2121-bb5c-418c-9148-2f2f52c8d346.jsonl`
 - `/ll:confidence-check` - 2026-06-08T23:00:00Z - `53cf785d-6feb-4b2a-9d9f-8d44f50883a4.jsonl`
 - `/ll:confidence-check` - 2026-06-08T21:00:00Z - `8b26e8eb-6fcd-4951-9ead-09b00eede5aa.jsonl`
 - `/ll:refine-issue` - 2026-06-08T20:47:03 - `0c6be1b2-0553-4e28-bb1f-1f06c6ddae23.jsonl`
