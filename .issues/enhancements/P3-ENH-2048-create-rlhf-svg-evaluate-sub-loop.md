@@ -3,9 +3,10 @@ id: ENH-2048
 title: Create rlhf-svg-evaluate sub-loop
 type: ENH
 priority: P3
-status: open
+status: done
 parent: ENH-2044
 captured_at: '2026-06-09T00:00:00Z'
+completed_at: '2026-06-09T16:36:44Z'
 discovered_date: 2026-06-09
 discovered_by: issue-size-review
 labels:
@@ -95,7 +96,17 @@ Add one row for `rlhf-svg-evaluate` to the Animation/Generative Art table follow
 - **Effort**: Medium — extract and author ~400-line sub-loop YAML
 - **Risk**: Low — new file, no existing callers
 
+## Resolution
+
+Extracted `smoke_test → score → track_correlation` from `rlhf-animated-svg.yaml` into the standalone `rlhf-svg-evaluate.yaml` sub-loop. Key changes:
+- All `${captured.run_dir.output}` references replaced with `${context.run_dir}`
+- `${captured.fix_plan?}` removed (not captured in this sub-loop; correlation categories will be empty on standalone use)
+- Added `smoke_fail_exit` normalisation state: smoke failures emit `VISION_FAIL` for uniform parent routing
+- Both `done` paths (pass and fail) go through `done` terminal; sentinel is in the preceding state's output
+- Passes `ll-loop validate` (no MR-1/MR-3/MR-4 errors)
+
 ## Session Log
 - `/ll:ready-issue` - 2026-06-09T16:20:58 - `f7300707-ab77-4eac-b544-b72e50514ab2.jsonl`
 - `/ll:issue-size-review` - 2026-06-09T00:00:00Z - `852d825e-ec36-4b78-a79e-3e0c5457f603.jsonl`
 - `/ll:confidence-check` - 2026-06-09T00:00:00Z - `86a8c572-a875-468b-92b9-e78558327f0a.jsonl`
+- `/ll:manage-issue` - 2026-06-09T16:36:44Z - `6349ae72-561a-4584-8463-07014ec518fb`

@@ -1,0 +1,686 @@
+name: "rlhf-svg-evaluate"
+category: lib
+description: |
+  Standalone evaluation sub-loop for rlhf-animated-svg (ENH-2048).
+  Handles the evaluation pipeline: smoke_test → score → track_correlation.
+  Accepts run_dir, quality_target, smoke_bypass_threshold, and exploit_cutoff
+  as context parameters. Returns VISION_PASS or VISION_FAIL sentinel in the
+  final state output for parent routing.
+
+  Invoked by the parent loop via:
+    loop: rlhf-svg-evaluate
+    with:
+      run_dir: ${captured.run_dir.output}
+      quality_target: ${context.quality_target}
+      smoke_bypass_threshold: ${context.smoke_bypass_threshold}
+      exploit_cutoff: ${context.exploit_cutoff}
+initial: smoke_test
+context:
+  run_dir: ""                  # required: absolute path to directory containing output.html
+  quality_target: 8            # pass-through from parent context
+  smoke_bypass_threshold: 5    # pass-through from parent context
+  exploit_cutoff: 15           # pass-through from parent context
+states:
+  smoke_test:
+    # FUNCTIONAL VERIFICATION: validates the HTML artifact renders without
+    # JavaScript errors, anime.js initializes, and the page produces non-blank
+    # content. Also captures FOUR screenshots at staggered timestamps
+    # (1000ms, 3000ms, 5000ms, 7000ms) for multi-frame vision API scoring
+    # of temporal animation quality.
+    #
+    # GRACEFUL DEGRADATION: passes through if Playwright is not installed.
+    # Individual frame capture failures are non-fatal — the loop continues
+    # with whatever frames were successfully captured.
+    action_type: shell
+    action: |
+      ABS_DIR="${context.run_dir}"
+      # --- Archive Artifact (per-iteration snapshot) ---
+      # Uses file-based counter (.smoke_archive_count) with $${{...}} escaping.
+      # Bash variables like $${SNAP} MUST use $${{...}} escape syntax to prevent
+      # the template engine from intercepting them as template namespaces.
+      SNAPSHOT_DIR="$ABS_DIR/snapshots"
+      mkdir -p "$SNAPSHOT_DIR"
+      SNAP_FILE="$ABS_DIR/.smoke_archive_count"
+      SNAP=$(cat "$SNAP_FILE" 2>/dev/null || echo 0)
+      SNAP=$((SNAP + 1))
+      echo "$SNAP" > "$SNAP_FILE"
+      if [ -f "$ABS_DIR/output.html" ]; then
+        cp "$ABS_DIR/output.html" "$SNAPSHOT_DIR/output_iter_$${SNAP}.html"
+        echo "ARCHIVED: snapshots/output_iter_$${SNAP}.html"
+      fi
+      if [ -f "$ABS_DIR/output.png" ]; then
+        cp "$ABS_DIR/output.png" "$SNAPSHOT_DIR/output_iter_$${SNAP}.png"
+        echo "ARCHIVED: snapshots/output_iter_$${SNAP}.png"
+      fi
+      # NEW: Archive multi-frame captures
+      for FRAME in output_frame_1000ms.png output_frame_5000ms.png output_frame_7000ms.png; do
+        if [ -f "$ABS_DIR/$FRAME" ]; then
+          SHORTSUFFIX=$(echo "$FRAME" | sed 's/\.png$//' | sed 's/^output_frame_//')
+          cp "$ABS_DIR/$FRAME" "$SNAPSHOT_DIR/output_iter_$${SNAP}_$${SHORTSUFFIX}.png"
+          echo "ARCHIVED: snapshots/output_iter_$${SNAP}_$${SHORTSUFFIX}.png"
+        fi
+      done
+      # --- Bypass Logic (ENH-008) ---
+      # Check 1: SKIP_SMOKE environment variable — bypass immediately
+      if [ "$${SKIP_SMOKE:-}" = "true" ]; then
+        echo "SMOKE_PASS: bypassed (SKIP_SMOKE=true)"; exit 0
+      fi
+      # Check 2: Counter-based threshold bypass after N smoke invocations
+      SMOKE_COUNT_FILE="$ABS_DIR/.smoke_count"
+      SMOKE_ATTEMPTS=0
+      [ -f "$SMOKE_COUNT_FILE" ] && SMOKE_ATTEMPTS=$(cat "$SMOKE_COUNT_FILE" 2>/dev/null || echo 0)
+      SMOKE_ATTEMPTS=$((SMOKE_ATTEMPTS + 1))
+      echo "$SMOKE_ATTEMPTS" > "$SMOKE_COUNT_FILE"
+      SMOKE_THRESHOLD=${context.smoke_bypass_threshold}
+      if [ "$SMOKE_ATTEMPTS" -ge "$SMOKE_THRESHOLD" ]; then
+        echo "SMOKE_PASS: bypassed (smoke attempts $SMOKE_ATTEMPTS >= threshold $SMOKE_THRESHOLD)"; exit 0
+      fi
+      # --- End Bypass Logic ---
+      if [ ! -f "$ABS_DIR/output.html" ]; then
+        echo "SMOKE_FAIL: no output.html to validate"; exit 1
+      fi
+      export ABS_DIR
+      NODE_PATH="$(npm root -g 2>/dev/null || echo '')" node -e "
+      let playwright;
+      try { playwright = require('playwright'); } catch(e) {
+        try { playwright = require('@playwright/test'); } catch(e2) {
+          console.log('SMOKE_PASS: skipped (Playwright not installed)');
+          process.exit(0);
+        }
+      }
+      const { chromium } = playwright;
+      (async () => {
+        const browser = await chromium.launch({ headless: true });
+        const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        const errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
+        try {
+          await page.goto('file://' + process.env.ABS_DIR + '/output.html', {
+            waitUntil: 'networkidle', timeout: 15000
+          });
+          await page.waitForTimeout(1000);
+
+          // Perform validation at t=1000ms (fail fast — don't wait 3000ms for blank render)
+          const bodyText = await page.evaluate(() => document.body.innerText.trim().length);
+          const svgCount = await page.evaluate(() => document.querySelectorAll('svg').length);
+          if (bodyText < 10 && svgCount === 0) {
+            errors.push('BLANK_RENDER: no visible text content and no SVG elements found');
+          }
+          const animeReady = await page.evaluate(() =>
+            typeof window.anime !== 'undefined' && typeof window.anime.timeline === 'function'
+          );
+          if (!animeReady) {
+            console.log('NOTE: anime.js v3 API not detected (typeof anime.timeline !== function); CDN may be unavailable — static fallback in use');
+          }
+
+          // FRAME 0: t=1000ms — early animation state
+          try {
+            await page.screenshot({
+              path: process.env.ABS_DIR + '/output_frame_1000ms.png', fullPage: false
+            });
+            console.log('Screenshot saved to output_frame_1000ms.png');
+          } catch (e) {
+            console.log('WARN: frame capture failed at t=1000ms: ' + e.message);
+          }
+
+          // FRAME 1: t=3000ms — backward compat output.png (storyboard frame)
+          await page.waitForTimeout(2000);  // 1000 + 2000 = 3000
+          try {
+            await page.screenshot({
+              path: process.env.ABS_DIR + '/output.png', fullPage: false
+            });
+            console.log('Screenshot saved to output.png');
+          } catch (e) {
+            console.log('WARN: frame capture failed at t=3000ms: ' + e.message);
+          }
+
+          // FRAME 2: t=5000ms — mid-animation state
+          await page.waitForTimeout(2000);  // 3000 + 2000 = 5000
+          try {
+            await page.screenshot({
+              path: process.env.ABS_DIR + '/output_frame_5000ms.png', fullPage: false
+            });
+            console.log('Screenshot saved to output_frame_5000ms.png');
+          } catch (e) {
+            console.log('WARN: frame capture failed at t=5000ms: ' + e.message);
+          }
+
+          // FRAME 3: t=7000ms — late animation / loop-restart state
+          await page.waitForTimeout(2000);  // 5000 + 2000 = 7000
+          try {
+            await page.screenshot({
+              path: process.env.ABS_DIR + '/output_frame_7000ms.png', fullPage: false
+            });
+            console.log('Screenshot saved to output_frame_7000ms.png');
+          } catch (e) {
+            console.log('WARN: frame capture failed at t=7000ms: ' + e.message);
+          }
+          await browser.close();
+          if (errors.length > 0) {
+            console.log('SMOKE_FAIL: ' + errors.join('; '));
+            process.exit(1);
+          }
+          console.log('SMOKE_PASS');
+        } catch (navErr) {
+          await browser.close();
+          if (navErr.message && navErr.message.includes('ERR_FILE_NOT_FOUND')) {
+            console.log('SMOKE_FAIL: output.html not found at expected path');
+          } else {
+            console.log('SMOKE_FAIL: ' + navErr.message);
+          }
+          process.exit(1);
+        }
+      })().catch(e => {
+        console.log('SMOKE_FAIL: ' + e.message);
+        process.exit(1);
+      });
+      " 2>&1
+    timeout: 300
+    evaluate:
+      type: output_contains
+      pattern: "SMOKE_PASS"
+    on_yes: score
+    on_no: smoke_fail_exit
+    on_error: smoke_fail_exit
+
+  smoke_fail_exit:
+    # Normalises smoke test failure to VISION_FAIL sentinel so the parent
+    # can route uniformly on the sub-loop output.
+    action_type: shell
+    action: |
+      echo "VISION_FAIL: smoke test failed — artifact did not pass browser validation"
+    next: done
+
+  score:
+    # External vision API scores multi-frame screenshot captures from the smoke
+    # test against an animation-specific rubric (Correctness, Aesthetics,
+    # Smoothness, Completeness). Decouples visual scoring from the host LLM's
+    # self-grade — an independent vision model provides objective critique.
+    #
+    # MULTI-FRAME: 4 screenshots are captured at 1000ms, 3000ms, 5000ms, and
+    # 7000ms. The vision model receives all available frames with timestamp
+    # labels and evaluates temporal animation quality by comparing across frames.
+    # If only a single frame is available (degraded mode), the rubric
+    # compensates by warning the model it cannot directly observe motion.
+    #
+    # RUBRIC: 4 dimensions, each scored 1-10, threshold ${context.quality_target}
+    #   - correctness: SVG validity, renderability, prompt alignment
+    #   - aesthetics: visual quality, color harmony, stylistic consistency
+    #   - smoothness: animation fluidity evaluated across frames (temporal comparison)
+    #   - completeness: all requested elements and animation phases present
+    #
+    # REGRESSION GUARD: maintains .best_score file across iterations and snapshots
+    # .best_output.html whenever a new best score is recorded. On regression, the
+    # best artifact is mechanically restored (independent of LLM prompt compliance).
+    # If the current minimum score drops >= 2.0 below the best seen,
+    # outputs SCORE_REGRESSION as a signal for review_critique.
+    #
+    # GRACEFUL DEGRADATION: no-op pass if VISION_* vars are unset. Falls back
+    # to single-frame rubric if only one frame captured. API/parse errors
+    # also pass (never block shipping on an optional visual gate).
+    action_type: shell
+    action: |
+      ABS_DIR="${context.run_dir}"
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
+        echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0
+      fi
+      # Check for any frame (not just output.png). Multi-frame capture may
+      # have succeeded on some timestamps even if output.png is missing.
+      FRAMES_FOUND=0
+      for F in output_frame_1000ms.png output.png output_frame_5000ms.png output_frame_7000ms.png; do
+        [ -f "$ABS_DIR/$F" ] && FRAMES_FOUND=$((FRAMES_FOUND + 1))
+      done
+      if [ "$FRAMES_FOUND" -eq 0 ]; then
+        echo "VISION_FAIL: no frame captures available to evaluate"; exit 0
+      fi
+      # File-based iteration counter — ${state.iteration} is not available in shell actions.
+      VISION_COUNT_FILE="$ABS_DIR/.vision_count"
+      ITER=$(cat "$VISION_COUNT_FILE" 2>/dev/null || echo 0)
+      ITER=$((ITER + 1))
+      echo "$ITER" > "$VISION_COUNT_FILE"
+      export ABS_DIR ITER
+      python3 <<'PY'
+      import os, re, sys, json, base64, urllib.request
+      abs_dir = os.environ["ABS_DIR"]
+      best_file = os.path.join(abs_dir, ".best_score")
+      scores_file = os.path.join(abs_dir, ".vision_scores.json")
+      threshold = ${context.quality_target}
+      iteration = int(os.environ["ITER"])
+      exploit_cutoff = ${context.exploit_cutoff}
+
+      # --- Multi-frame frame definitions ---
+      # Ordered list of (filename, display_label, timestamp_description)
+      FRAME_DEFS = [
+          ("output_frame_1000ms.png", "Frame 1/4", "t=1000ms (early animation)"),
+          ("output.png",               "Frame 2/4", "t=3000ms (storyboard frame)"),
+          ("output_frame_5000ms.png",  "Frame 3/4", "t=5000ms (mid-animation)"),
+          ("output_frame_7000ms.png",  "Frame 4/4", "t=7000ms (late animation)"),
+      ]
+
+      # --- Read and encode available frames ---
+      captured_frames = []
+      missing_frames = []
+      for fname, label, ts_label in FRAME_DEFS:
+          fpath = os.path.join(abs_dir, fname)
+          if os.path.exists(fpath):
+              try:
+                  with open(fpath, "rb") as f:
+                      b64 = base64.b64encode(f.read()).decode()
+                  captured_frames.append((fname, label, ts_label, b64))
+              except Exception as e:
+                  missing_frames.append((fname, str(e)))
+          else:
+              missing_frames.append((fname, "file not found"))
+
+      if not captured_frames:
+          print("VISION_FAIL: no frame captures available to evaluate"); sys.exit(0)
+
+      # --- Log frame availability ---
+      frame_names = [c[0] for c in captured_frames]
+      print("FRAMES_CAPTURED: %d/%d (%s)" % (len(captured_frames), len(FRAME_DEFS), ", ".join(frame_names)))
+      if missing_frames:
+          print("FRAMES_MISSING: %s" % ", ".join(m[0] for m in missing_frames))
+
+      base = os.environ["VISION_BASE_URL"].rstrip("/")
+      endpoint = base if base.endswith("completions") else base + "/chat/completions"
+
+      # --- Determine rubric mode based on frame availability ---
+      if len(captured_frames) >= 2:
+          # MULTI-FRAME RUBRIC: the model can compare frames for temporal evaluation
+          rubric = (
+              "You are a strict, impartial animation critic. You are given a TEMPORAL "
+              "SEQUENCE of screenshots from an animated SVG, captured at staggered timestamps "
+              "during a looping animation. Each frame is labeled with its capture time. "
+              "Study ALL frames together as a time-sequence and score 1-10 on each dimension. "
+              "DO NOT treat these as independent images — you are evaluating an animation "
+              "from its keyframe sequence.\n\n"
+              "- correctness: Is the SVG syntactically valid and rendering without "
+              "visible errors across all frames? Do elements appear correctly positioned? "
+              "Does each frame show appropriate state for its timestamp?\n"
+              "- aesthetics: Is the visual design clean, balanced, and visually "
+              "pleasing across the sequence? Are colors harmonious and consistent?\n"
+              "- smoothness: THIS IS A TEMPORAL EVALUATION. Compare element positions, "
+              "scales, opacities, and rotations ACROSS frames. Do elements transition "
+              "smoothly between capture timestamps? Is the rate of change consistent "
+              "(indicating proper easing) or erratic/jerky (indicating linear or "
+              "abrupt motion)? Look for: (a) directional consistency in moving elements, "
+              "(b) gradual rather than sudden opacity changes, (c) coordinated "
+              "multi-element relationships that suggest properly sequenced timelines, "
+              "(d) evidence of easing curves in the spacing of position changes between "
+              "frames. IMPORTANT: score the QUALITY of observed motion, not whether "
+              "motion exists. Static elements are not penalized if they should be static "
+              "at those timestamps.\n"
+              "- completeness: Are all elements, subjects, and scene components from "
+              "the description visibly present across the sequence? Does each animation "
+              "phase visibly progress? Are there any missing phases or visible artifacts "
+              "that appear and disappear inconsistently?\n\n"
+              "Threshold: every criterion must be >= %d.\n" % threshold
+              + 'Reply with ONE JSON object only, no prose: {"scores": '
+              '{"correctness": N, "aesthetics": N, "smoothness": N, '
+              '"completeness": N}, "issues": ["specific actionable fix", ...]}'
+          )
+      else:
+          # SINGLE-FRAME FALLBACK RUBRIC: only one frame available — degrade gracefully
+          rubric = (
+              "You are a strict, impartial animation critic. Only a SINGLE screenshot "
+              "of a generated animated SVG is available (multi-frame capture was not "
+              "possible for this iteration). Study the attached screenshot and score "
+              "it 1-10 on each dimension. NOTE: you are viewing a single frame from an "
+              "animated SVG — score what you can observe, but be aware that smoothness "
+              "cannot be directly evaluated from a static frame.\n\n"
+              "- correctness: Is the SVG syntactically valid and rendering without "
+              "visible errors? Do elements appear correctly positioned within the "
+              "frame? Does the visible state align with the described scene?\n"
+              "- aesthetics: Is the visual design clean, balanced, and visually "
+              "pleasing? Are colors harmonious? Is the composition well-proportioned?\n"
+              "- smoothness: Based on the visible frame state (element positions, "
+              "in-between states, opacity levels), can you infer that the animations "
+              "are fluid and well-timed? Look for evidence of proper easing in "
+              "partially-animated elements, natural-looking transform states, and "
+              "coherent multi-element relationships that suggest coordinated motion.\n"
+              "Score conservatively on smoothness — you cannot directly observe "
+              "temporal quality from a single frame.\n"
+              "- completeness: Are all elements, subjects, and scene components "
+              "from the description visibly present? Does the frame show evidence "
+              "of a complete animation sequence?\n\n"
+              "Threshold: every criterion must be >= %d.\n" % threshold
+              + 'Reply with ONE JSON object only, no prose: {"scores": '
+              '{"correctness": N, "aesthetics": N, "smoothness": N, '
+              '"completeness": N}, "issues": ["specific actionable fix", ...]}'
+          )
+
+      # --- Build content array with interleaved text labels and images ---
+      content_blocks = [{"type": "text", "text": rubric}]
+      for fname, label, ts_label, b64 in captured_frames:
+          content_blocks.append({
+              "type": "text",
+              "text": "%s — captured at %s:" % (label, ts_label)
+          })
+          content_blocks.append({
+              "type": "image_url",
+              "image_url": {"url": "data:image/png;base64," + b64}
+          })
+
+      payload = {
+          "model": os.environ["VISION_MODEL"],
+          "temperature": 0.2,
+          "max_tokens": 1500,
+          "messages": [{"role": "user", "content": content_blocks}],
+      }
+      req = urllib.request.Request(
+          endpoint, data=json.dumps(payload).encode(),
+          headers={"Authorization": "Bearer " + os.environ["VISION_API_KEY"],
+                   "Content-Type": "application/json"})
+      try:
+          with urllib.request.urlopen(req, timeout=120) as r:
+              content = json.load(r)["choices"][0]["message"]["content"]
+      except Exception as e:
+          print("VISION_PASS: vision API error (%s), not blocking" % e); sys.exit(0)
+      m = re.search(r"\{.*\}", content, re.S)
+      try:
+          data = json.loads(m.group(0)) if m else {}
+          scores = data.get("scores", {}) or {}
+          issues = data.get("issues", []) or []
+      except Exception:
+          print("VISION_PASS: unparseable vision verdict, not blocking"); sys.exit(0)
+
+      valid_scores = {k: v for k, v in scores.items()
+                      if isinstance(v, (int, float))}
+      if not valid_scores:
+          print("VISION_PASS: no numeric scores in verdict"); sys.exit(0)
+      current_min = min(valid_scores.values())
+
+      try:
+          best_min = float(open(best_file).read().strip())
+      except Exception:
+          best_min = 0.0
+
+      # BUG-018: Percentage-based regression tolerance scaled to best_min.
+      # At best_min=4 → tolerance=1.0 (catches 25% regression)
+      # At best_min=8 → tolerance=2.0 (same as original)
+      # Converge phase (iteration > exploit_cutoff): stricter 15% scaling
+      if iteration > exploit_cutoff:
+          REGRESSION_TOLERANCE = max(0.5, best_min * 0.15)
+      else:
+          REGRESSION_TOLERANCE = max(1.0, best_min * 0.25)
+
+      if current_min > best_min:
+          open(best_file, "w").write(str(current_min))
+          best_min = current_min
+          import shutil
+          shutil.copy(os.path.join(abs_dir, "output.html"),
+                      os.path.join(abs_dir, ".best_output.html"))
+
+      open(scores_file, "w").write(json.dumps({
+          "scores": scores,
+          "current_min": current_min,
+          "best_min": best_min,
+          "issues": issues,
+          "threshold": threshold,
+          "frames_captured": len(captured_frames),
+          "frames_total": len(FRAME_DEFS)
+      }))
+
+      regression_detected = (best_min - current_min) >= REGRESSION_TOLERANCE
+
+      failing = {k: v for k, v in scores.items()
+                 if isinstance(v, (int, float)) and v < threshold}
+
+      print("VISION scores: " + json.dumps(scores))
+      print("Current min: %.1f | Best min: %.1f" % (current_min, best_min))
+
+      if regression_detected:
+          print("SCORE_REGRESSION: current min %.1f dropped >= %.1f below best min %.1f"
+                % (current_min, REGRESSION_TOLERANCE, best_min))
+          print("Consider reverting to the approach that achieved best_min=%.1f" % best_min)
+          if regression_detected and os.path.exists(os.path.join(abs_dir, ".best_output.html")):
+              shutil.copy(os.path.join(abs_dir, ".best_output.html"),
+                          os.path.join(abs_dir, "output.html"))
+              print("REVERTED_TO_BEST: restored .best_output.html (best_min=%.1f)" % best_min)
+
+      if not failing:
+          print("VISION_PASS"); sys.exit(0)
+
+      print("VISION_FAIL: %d criteria below threshold %d" % (len(failing), threshold))
+      for k, v in failing.items():
+          print("- %s scored %s/10 (below threshold %d)" % (k, v, threshold))
+      for i in issues:
+          print("- %s" % i)
+      PY
+    timeout: 300
+    evaluate:
+      type: output_contains
+      pattern: "VISION_PASS"
+    on_yes: track_correlation
+    on_no: track_correlation
+    on_error: done
+
+  track_correlation:
+    # FIX/SCORE CORRELATION TRACKING (ENH-013):
+    # After each scoring pass, extracts fix categories from the fix plan,
+    # computes per-category score deltas, and writes correlation entries
+    # to JSONL. Computes running per-strategy effectiveness metrics.
+    #
+    # Routes based on score result: VISION_PASS → done,
+    # VISION_FAIL → done (the sentinel is in the output for parent routing).
+    #
+    # GRACEFUL DEGRADATION: on_error → done (non-blocking)
+    action_type: shell
+    action: |
+      ABS_DIR="${context.run_dir}"
+
+      CORRELATION_FILE="$ABS_DIR/fix_correlation.jsonl"
+      EFFECTIVENESS_FILE="$ABS_DIR/fix_strategy_effectiveness.json"
+      SCORES_FILE="$ABS_DIR/.vision_scores.json"
+      DIAGNOSIS_FILE="$ABS_DIR/self_diagnosis.jsonl"
+
+      # Determine current iteration from correlation file
+      ITERATION=1
+      if [ -f "$CORRELATION_FILE" ]; then
+        ITERATION=$(wc -l < "$CORRELATION_FILE" 2>/dev/null | tr -d ' ')
+        ITERATION=$((ITERATION + 1))
+      fi
+
+      # Extract current scores from .vision_scores.json
+      SCORE_JSON="{}"
+      if [ -f "$SCORES_FILE" ]; then
+        SCORE_JSON=$(cat "$SCORES_FILE" 2>/dev/null || echo "{}")
+      fi
+
+      # Determine if score passed (VISION_PASS in previous output)
+      PREV_OUTPUT="${prev.output}"
+      SCORE_PASSED="false"
+      if echo "$PREV_OUTPUT" | grep -q "VISION_PASS"; then
+        SCORE_PASSED="true"
+      fi
+
+      # Fix categories — empty in this standalone sub-loop (no fix plan captured here).
+      # The parent's fix plan is tracked separately via its own track_correlation pass.
+      CATEGORIES=""
+
+      # Keyword-based category extraction
+      for cat in easing path-coordinates z-order css-conflict viewbox transform-origin color-palette element-missing tag-nesting accessibility; do
+        case "$cat" in
+          easing)
+            KEYWORDS="easing|easeOut|easeIn|spring|cubic-bezier|duration|delay|stagger|timeline"
+            ;;
+          path-coordinates)
+            KEYWORDS="path|coordinates|viewBox|d attribute|polygon|polyline|points"
+            ;;
+          z-order)
+            KEYWORDS="z-order|z-index|stacking|layer|ordering|<g>|grouping"
+            ;;
+          css-conflict)
+            KEYWORDS="css|@keyframes|SMIL|animate>|transform|transition|conflict"
+            ;;
+          viewbox)
+            KEYWORDS="viewBox|viewport|dimensions|aspect.ratio|scaling"
+            ;;
+          transform-origin)
+            KEYWORDS="transform-origin|pivot|rotation.center|scale.center"
+            ;;
+          color-palette)
+            KEYWORDS="color|fill|stroke|palette|token|hex|rgb|hsl"
+            ;;
+          element-missing)
+            KEYWORDS="missing|absent|not.present|add.element|new.element"
+            ;;
+          tag-nesting)
+            KEYWORDS="nesting|unclosed|unescaped|XML|HTML.structure|tag"
+            ;;
+          accessibility)
+            KEYWORDS="aria|role=|prefers-reduced|accessibility|a11y|title>|desc>"
+            ;;
+        esac
+        if echo "$FIX_PLAN" | grep -qiE "$KEYWORDS"; then
+          if [ -n "$CATEGORIES" ]; then
+            CATEGORIES="$CATEGORIES, "
+          fi
+          CATEGORIES="$CATEGORIES\"$cat\""
+        fi
+      done
+
+      # Export variables for Python
+      export ABS_DIR ITERATION SCORE_PASSED CATEGORIES SCORE_JSON DIAGNOSIS_FILE CORRELATION_FILE EFFECTIVENESS_FILE
+
+      # Write correlation entry and compute effectiveness
+      python3 <<'PY'
+      import os, json
+
+      abs_dir = os.environ["ABS_DIR"]
+      iteration = int(os.environ.get("ITERATION", "1"))
+      score_passed = os.environ.get("SCORE_PASSED", "false") == "true"
+      categories_raw = os.environ.get("CATEGORIES", "")
+      diagnosis_file = os.environ.get("DIAGNOSIS_FILE", "")
+      correlation_file = os.environ.get("CORRELATION_FILE", "")
+      effectiveness_file = os.environ.get("EFFECTIVENESS_FILE", "")
+
+      # Parse fix categories
+      fix_categories = []
+      if categories_raw:
+          fix_categories = [c.strip().strip('"') for c in categories_raw.split(",") if c.strip()]
+
+      # Parse current scores
+      try:
+          score_json = json.loads(os.environ.get("SCORE_JSON", "{}"))
+      except Exception:
+          score_json = {}
+      scores = score_json.get("scores", {}) or {}
+
+      # Compute score deltas from previous iteration
+      prev_scores = {"smoothness": 0, "aesthetics": 0, "correctness": 0, "completeness": 0}
+      if os.path.exists(correlation_file):
+          try:
+              with open(correlation_file) as f:
+                  lines = [line for line in f if line.strip()]
+              if lines:
+                  prev = json.loads(lines[-1])
+                  prev_scores = prev.get("score_delta") or prev_scores
+          except Exception:
+              pass
+
+      score_delta = {}
+      for dim in ["smoothness", "aesthetics", "correctness", "completeness"]:
+          current = float(scores.get(dim, 0) or 0)
+          previous = float((prev_scores or {}).get(dim, 0) or 0)
+          score_delta[dim] = round(current - previous, 2)
+
+      # Extract self-diagnosis flags if available
+      self_diag_flags = []
+      if os.path.exists(diagnosis_file):
+          try:
+              with open(diagnosis_file) as f:
+                  lines = [line for line in f if line.strip()]
+              if lines:
+                  last_diag = json.loads(lines[-1])
+                  self_diag_flags = (last_diag.get("non_critical", []) or []) + (last_diag.get("critical", []) or [])
+          except Exception:
+              pass
+
+      # Write correlation entry
+      entry = {
+          "iteration": iteration,
+          "fix_categories": fix_categories,
+          "score_delta": score_delta,
+          "self_diagnosis_flags": self_diag_flags,
+          "score_passed": score_passed
+      }
+
+      # Ensure run directory exists
+      os.makedirs(abs_dir, exist_ok=True)
+
+      with open(correlation_file, "a") as f:
+          f.write(json.dumps(entry) + "\n")
+
+      # Compute running effectiveness statistics
+      categories_stats = {}
+      if os.path.exists(correlation_file):
+          with open(correlation_file) as f:
+              for line in f:
+                  if not line.strip():
+                      continue
+                  try:
+                      rec = json.loads(line)
+                  except Exception:
+                      continue
+                  for cat in rec.get("fix_categories", []):
+                      if cat not in categories_stats:
+                          categories_stats[cat] = {
+                              "attempts": 0, "improvements": 0, "regressions": 0,
+                              "total_delta": {"smoothness": 0, "aesthetics": 0,
+                                              "correctness": 0, "completeness": 0}
+                          }
+                      stats = categories_stats[cat]
+                      stats["attempts"] += 1
+                      delta = rec.get("score_delta", {})
+                      any_improved = False
+                      any_worsened = False
+                      for dim in ["smoothness", "aesthetics", "correctness", "completeness"]:
+                          d = delta.get(dim, 0) or 0
+                          stats["total_delta"][dim] += d
+                          if d > 0:
+                              any_improved = True
+                          elif d < 0:
+                              any_worsened = True
+                      if any_improved:
+                          stats["improvements"] += 1
+                      if any_worsened:
+                          stats["regressions"] += 1
+
+      # Compute per-category means and rates
+      effectiveness = {}
+      for cat, stats in categories_stats.items():
+          n = stats["attempts"]
+          if n > 0:
+              effectiveness[cat] = {
+                  "attempts": n,
+                  "mean_delta": {dim: round(stats["total_delta"][dim] / n, 2)
+                                 for dim in stats["total_delta"]},
+                  "hit_rate": round(stats["improvements"] / n, 2),
+                  "regression_rate": round(stats["regressions"] / n, 2)
+              }
+
+      with open(effectiveness_file, "w") as f:
+          json.dump(effectiveness, f, indent=2)
+      PY
+
+      # Output routing sentinel based on score result
+      if [ "$SCORE_PASSED" = "true" ]; then
+        echo "VISION_PASS"
+      else
+        echo "VISION_FAIL"
+      fi
+
+      echo "CORRELATION_LOGGED: iteration $ITERATION"
+    timeout: 30
+    evaluate:
+      type: output_contains
+      pattern: "VISION_PASS"
+    on_yes: done
+    on_no: done
+    on_error: done
+
+  done:
+    terminal: true

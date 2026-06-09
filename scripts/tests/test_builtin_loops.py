@@ -151,6 +151,7 @@ class TestBuiltinLoopFiles:
             "canvas-sketch-generator",
             "apply-research",
             "rlhf-animated-svg",
+            "rlhf-svg-evaluate",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -6301,3 +6302,53 @@ class TestRnRefineDelegatesResearchToOracle:
         assert verify_score.get("on_no") == "research_iteration", (
             f"verify_score.on_no must be 'research_iteration', got {verify_score.get('on_no')!r}"
         )
+
+
+class TestRlhfSvgEvaluateSubLoop:
+    """rlhf-svg-evaluate sub-loop structural correctness (ENH-2048)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rlhf-svg-evaluate.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_states_present(self, data: dict) -> None:
+        states = set(data.get("states", {}).keys())
+        for state in ("smoke_test", "score", "track_correlation", "done"):
+            assert state in states, f"rlhf-svg-evaluate must have a '{state}' state"
+
+    def test_context_declares_run_dir(self, data: dict) -> None:
+        assert "run_dir" in data.get("context", {}), (
+            "rlhf-svg-evaluate must declare 'run_dir' in context"
+        )
+
+    def test_context_declares_quality_target(self, data: dict) -> None:
+        assert "quality_target" in data.get("context", {}), (
+            "rlhf-svg-evaluate must declare 'quality_target' in context"
+        )
+
+    def test_context_declares_smoke_bypass_threshold(self, data: dict) -> None:
+        assert "smoke_bypass_threshold" in data.get("context", {}), (
+            "rlhf-svg-evaluate must declare 'smoke_bypass_threshold' in context"
+        )
+
+    def test_context_declares_exploit_cutoff(self, data: dict) -> None:
+        assert "exploit_cutoff" in data.get("context", {}), (
+            "rlhf-svg-evaluate must declare 'exploit_cutoff' in context"
+        )
+
+    def test_shell_states_use_context_run_dir_not_captured(self, data: dict) -> None:
+        states = data.get("states", {})
+        for name, state in states.items():
+            action = state.get("action", "") or ""
+            if state.get("action_type") == "shell" and action:
+                assert "${captured.run_dir.output}" not in action, (
+                    f"State '{name}' must use ${{context.run_dir}}, "
+                    f"not ${{captured.run_dir.output}}"
+                )
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        done = data.get("states", {}).get("done", {})
+        assert done.get("terminal") is True, "'done' state must be terminal: true"
