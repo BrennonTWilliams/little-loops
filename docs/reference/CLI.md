@@ -55,6 +55,16 @@ Initialize little-loops for a project. Detects the project root, selects host ad
 
 **Exit codes:** `0` = success, `1` = error (config exists, template missing, etc.), `2` = usage error
 
+**Interactive TUI screens** (omitted when `--yes` is passed):
+
+| Screen | Prompt | Notes |
+|--------|--------|-------|
+| 1 / 5  | Project type template | Auto-detected from repo contents |
+| 2 / 5  | Project name, src dir, test/lint/format commands | Pre-filled from detection |
+| 3 / 5  | Host adapters to install | Defaults to detected hosts |
+| 4 / 5  | Settings target (project vs. user) | Controls where hook permissions are written |
+| 5 / 5  | CLAUDE.md update | Offers to create `.claude/CLAUDE.md` (or append to an existing one) with ll CLI command stubs; skipped if a `## little-loops` section is already present (ENH-2043) |
+
 **Examples:**
 ```bash
 ll-init --yes                      # Non-interactive full init with defaults
