@@ -840,11 +840,12 @@ class TestRefineToReadyIssueSubLoop:
             f"check_readiness.on_error should be 'check_scores_from_file', got {state.get('on_error')!r}"
         )
 
-    def test_check_outcome_on_yes_routes_to_done(self, data: dict) -> None:
-        """check_outcome.on_yes must route to done (both scores pass)."""
+    def test_check_outcome_on_yes_routes_to_restore_best(self, data: dict) -> None:
+        """check_outcome.on_yes must route to restore_best (not done directly) so best-scoring snapshot is retained (ENH-2037)."""
         state = data["states"].get("check_outcome", {})
-        assert state.get("on_yes") == "done", (
-            f"check_outcome.on_yes should be 'done', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "restore_best", (
+            f"check_outcome.on_yes should be 'restore_best' for best-snapshot retention, "
+            f"got {state.get('on_yes')!r}"
         )
 
     def test_check_outcome_on_no_routes_to_check_decision_needed(self, data: dict) -> None:
@@ -1080,6 +1081,119 @@ class TestRefineToReadyIssueSubLoop:
         assert ctx.get("outcome_threshold") == 70, (
             f"context.outcome_threshold should be 70 (matches next-action fallback), "
             f"got {ctx.get('outcome_threshold')!r}"
+        )
+
+    # ENH-2037: restore_best — best-snapshot retention guard
+
+    def test_restore_best_state_exists(self, data: dict) -> None:
+        """restore_best state must exist to retain best-scoring snapshot across --full-rewrite passes (ENH-2037)."""
+        assert "restore_best" in data["states"], (
+            "State 'restore_best' not found in refine-to-ready-issue.yaml — "
+            "required to prevent a late --full-rewrite regression from persisting over a better iteration"
+        )
+
+    def test_restore_best_is_shell(self, data: dict) -> None:
+        """restore_best state must be a shell action (ENH-2037)."""
+        state = data["states"].get("restore_best", {})
+        assert state.get("action_type") == "shell", (
+            f"restore_best.action_type should be 'shell', got {state.get('action_type')!r}"
+        )
+
+    def test_restore_best_routes_to_done(self, data: dict) -> None:
+        """restore_best.next must route to done (ENH-2037)."""
+        state = data["states"].get("restore_best", {})
+        assert state.get("next") == "done", (
+            f"restore_best.next should be 'done', got {state.get('next')!r}"
+        )
+
+    def test_restore_best_shell_action_restores_higher_scoring_snapshot(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """restore_best shell action must copy the highest-scoring iter-N snapshot back over the
+        current issue file when a later --full-rewrite pass regressed scores (ENH-2037 AC3).
+
+        Scenario: iter-1 scored confidence=82/outcome=71; iter-2 (current) scored 75/65.
+        Expected: issue file is replaced with iter-1 content.
+        """
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        issue_file = tmp_path / "P3-ENH-0001-test.md"
+        issue_file.write_text(
+            "---\nid: ENH-0001\nconfidence_score: 75\noutcome_confidence: 65\n---\nRegressed content\n"
+        )
+
+        iter1_dir = run_dir / "iter-1"
+        iter1_dir.mkdir()
+        (iter1_dir / "ENH-0001.md").write_text(
+            "---\nid: ENH-0001\nconfidence_score: 82\noutcome_confidence: 71\n---\nBest content from iter-1\n"
+        )
+
+        iter2_dir = run_dir / "iter-2"
+        iter2_dir.mkdir()
+        (iter2_dir / "ENH-0001.md").write_text(
+            "---\nid: ENH-0001\nconfidence_score: 75\noutcome_confidence: 65\n---\nRegressed content\n"
+        )
+
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        mock_ll_issues = bin_dir / "ll-issues"
+        mock_ll_issues.write_text(f"#!/bin/bash\necho '{issue_file}'\n")
+        mock_ll_issues.chmod(0o755)
+
+        state = data["states"].get("restore_best", {})
+        action = state.get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${captured.issue_id.output}", "ENH-0001")
+        script = f"export PATH={bin_dir}:$PATH\n" + script
+
+        result = subprocess.run(["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True)
+        assert result.returncode == 0, f"restore_best action failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        assert "RESTORED_BEST" in result.stdout, (
+            f"Expected 'RESTORED_BEST' in stdout when a better snapshot exists: {result.stdout!r}"
+        )
+        restored = issue_file.read_text()
+        assert "Best content from iter-1" in restored, (
+            f"Expected iter-1 content to be restored (higher confidence_score=82 > 75), got:\n{restored}"
+        )
+
+    def test_restore_best_no_op_when_current_is_already_best(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """restore_best must leave the issue file unchanged when no snapshot scores higher (ENH-2037)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        issue_file = tmp_path / "P3-ENH-0001-test.md"
+        issue_file.write_text(
+            "---\nid: ENH-0001\nconfidence_score: 90\noutcome_confidence: 80\n---\nBest current content\n"
+        )
+
+        iter1_dir = run_dir / "iter-1"
+        iter1_dir.mkdir()
+        (iter1_dir / "ENH-0001.md").write_text(
+            "---\nid: ENH-0001\nconfidence_score: 75\noutcome_confidence: 65\n---\nOlder lower-scoring content\n"
+        )
+
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        mock_ll_issues = bin_dir / "ll-issues"
+        mock_ll_issues.write_text(f"#!/bin/bash\necho '{issue_file}'\n")
+        mock_ll_issues.chmod(0o755)
+
+        state = data["states"].get("restore_best", {})
+        action = state.get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${captured.issue_id.output}", "ENH-0001")
+        script = f"export PATH={bin_dir}:$PATH\n" + script
+
+        result = subprocess.run(["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True)
+        assert result.returncode == 0, f"restore_best action failed: {result.stderr}"
+        assert "RESTORE_BEST: current file is already best" in result.stdout, (
+            f"Expected no-op message when current is best: {result.stdout!r}"
+        )
+        assert "Best current content" in issue_file.read_text(), (
+            "Issue file must not be overwritten when current version is already best-scoring"
         )
 
 

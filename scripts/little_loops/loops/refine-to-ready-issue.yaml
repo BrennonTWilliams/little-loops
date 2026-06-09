@@ -2,13 +2,14 @@ name: "refine-to-ready-issue"
 description: "Drives a single issue from backlog to ready-state: refines it, wires integration points, runs confidence checks, and routes to issue-size-review if confidence thresholds cannot be met."
 category: issue-management
 # Routing summary:
-#   confidence_check → verify_scores_persisted → (on_yes) check_readiness → (on_yes) check_outcome → (on_yes) done
+#   confidence_check → verify_scores_persisted → (on_yes) check_readiness → (on_yes) check_outcome → (on_yes) restore_best → done
 #                                              → (on_no)  retry_confidence_check → verify_scores_persisted_final
 #                                                           → (on_yes) check_readiness | (on_no) failed
 #                      check_readiness         → (on_no)  check_refine_limit → refine_issue
 #                      check_outcome           → (on_no)  check_decision_needed → (on_yes) done
 #                                                                               → (on_no)  breakdown_issue
 #   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
+#   restore_best (ENH-2037) → done — restores best-scoring iter-N snapshot before termination
 initial: resolve_issue
 max_iterations: 20
 on_handoff: spawn
@@ -274,7 +275,7 @@ states:
     action_type: shell
     evaluate:
       type: exit_code
-    on_yes: done
+    on_yes: restore_best
     on_no: check_decision_needed
     on_error: diagnose
 
@@ -363,6 +364,48 @@ states:
     action_type: shell
     next: done
     on_error: done
+
+  restore_best:
+    # ENH-2037: Best-snapshot retention guard. Compares the current issue file's
+    # composite score (confidence_score * 1000 + outcome_confidence) against all
+    # iter-N/ snapshots written by snapshot_issue, then restores the highest-scoring
+    # version before declaring done. Prevents a late --full-rewrite regression from
+    # persisting over a better prior iteration.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      ISSUE_ID="${captured.issue_id.output}"
+      ISSUE_FILE=$(ll-issues path "$ISSUE_ID" 2>/dev/null || echo "")
+      if [ -z "$ISSUE_FILE" ] || [ ! -f "$ISSUE_FILE" ]; then
+        echo "RESTORE_BEST: issue file not found, skipping"
+        exit 0
+      fi
+      BEST_CS=$(grep -E '^confidence_score:' "$ISSUE_FILE" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+      BEST_OC=$(grep -E '^outcome_confidence:' "$ISSUE_FILE" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+      [ -z "$BEST_CS" ] && BEST_CS=0
+      [ -z "$BEST_OC" ] && BEST_OC=0
+      BEST_SCORE=$((BEST_CS * 1000 + BEST_OC))
+      BEST_FILE="$ISSUE_FILE"
+      for SNAP in "$RUN_DIR"/iter-*/"$ISSUE_ID".md; do
+        [ -f "$SNAP" ] || continue
+        SNAP_CS=$(grep -E '^confidence_score:' "$SNAP" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+        SNAP_OC=$(grep -E '^outcome_confidence:' "$SNAP" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+        [ -z "$SNAP_CS" ] && SNAP_CS=0
+        [ -z "$SNAP_OC" ] && SNAP_OC=0
+        SNAP_SCORE=$((SNAP_CS * 1000 + SNAP_OC))
+        if [ "$SNAP_SCORE" -gt "$BEST_SCORE" ]; then
+          BEST_SCORE=$SNAP_SCORE
+          BEST_FILE="$SNAP"
+        fi
+      done
+      if [ "$BEST_FILE" != "$ISSUE_FILE" ]; then
+        BEST_ITER=$(basename "$(dirname "$BEST_FILE")")
+        cp "$BEST_FILE" "$ISSUE_FILE"
+        echo "RESTORED_BEST: $BEST_ITER (composite=$BEST_SCORE) -> $ISSUE_FILE"
+      else
+        echo "RESTORE_BEST: current file is already best-scoring (composite=$BEST_SCORE)"
+      fi
+    next: done
 
   done:
     terminal: true
