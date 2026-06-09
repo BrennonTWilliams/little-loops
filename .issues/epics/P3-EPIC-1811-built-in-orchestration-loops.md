@@ -32,6 +32,7 @@ relates_to:
 - ENH-2014
 - ENH-2015
 - ENH-2016
+- ENH-2023
 ---
 
 # EPIC-1811: Built-in Orchestration Loops
@@ -97,6 +98,7 @@ When this epic is done, users can:
 - **ENH-2014** — rn-build — E2E smoke test and sample spec for integration validation
 - **ENH-2015** — rn-build — Add to "Cluster vs. Composer vs. Router" decision table
 - **ENH-2016** — rn-build — Resume-from-epic path for continuing a partial build
+- **ENH-2023** — Extract loop-authoring standards into docs/guides/LOOPS-GUIDELINES.md
 
 ## Verification Notes
 

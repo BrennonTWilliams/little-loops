@@ -6,7 +6,7 @@ status: open
 priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue
-relates_to: [EPIC-1463, EPIC-1622, FEAT-1475]
+relates_to: [EPIC-1463, EPIC-1622, FEAT-1475, FEAT-2041]
 labels: [epic, init, cli, host-compat, dx]
 ---
 
@@ -99,6 +99,7 @@ Prior art to lean on: `ll-doctor` (host capability detection) and
   EPIC-1463 Codex install path and EPIC-1622 Pi `/ll:init --pi` / FEAT-1475).
 - **ENH-1982** — Deprecate `/ll:init` skill to a redirect stub; delete
   `interactive.md` prose flow once parity is verified.
+- **FEAT-2041** — Guided first-loop onboarding after ll init
 
 ## Scope
 

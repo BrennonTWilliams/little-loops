@@ -21,6 +21,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 18
 size: Very Large
+parent: EPIC-1811
 ---
 
 # ENH-2023: Extract loop-authoring standards into docs/guides/LOOPS-GUIDELINES.md
