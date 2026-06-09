@@ -45,7 +45,25 @@ ideally both sourced from `commands.confidence_gate` in `ll-config.json` — so
 "`next-action` says this issue still needs work" and "`refine-to-ready-issue`
 considers this issue done" are consistent.
 
-## Proposed Fix
+## Steps to Reproduce
+
+1. Configure a project with default `ll-config.json` (no `commands.confidence_gate` overrides).
+2. Start the `issue-refinement` loop against a backlog containing an issue whose readiness score is in the 85–89 range.
+3. Observe: `ll-issues next-action` selects the issue (meets the hardcoded 85 selector threshold).
+4. Observe: `refine-to-ready-issue` sub-loop requires readiness ≥ 90 to exit, iterating without converging.
+5. To trigger the config-override path: set `commands.confidence_gate.readiness_threshold: 90` in `ll-config.json`; `refine-to-ready-issue` picks up 90, but `next-action` still uses default 85 — selector and sub-loop now disagree even when config is explicitly set.
+
+## Root Cause
+
+- **File**: `scripts/little_loops/loops/issue-refinement.yaml`
+- **Anchor**: `evaluate` state shell action (`ll-issues next-action`)
+- **Cause**: `next-action` is called without `--ready-threshold` / `--outcome-threshold` flags, so it falls back to hardcoded argparse defaults in `get_next_action_data()` (`ready_threshold=85`, `outcome_threshold=70`). The sub-loop `refine-to-ready-issue` independently reads thresholds from `commands.confidence_gate` in `ll-config.json` via `check_readiness` and `check_outcome` states (defaults `readiness_threshold=90`, `outcome_threshold=75`). There is no shared resolution path — two sources, two different defaults.
+
+## Motivation
+
+Borderline issues (readiness 85–89) land in the disagreement band: `next-action` considers them needing work (below its 90-equivalent) yet will re-select them after the sub-loop exits (they still score ≥85). This produces churn identical to BUG-2034 — the selector and sub-loop never agree the issue is done, wasting loop iterations. Making `commands.confidence_gate` the single source of truth for both halves eliminates the churn band and makes loop termination coherent.
+
+## Proposed Solution
 
 Pass explicit thresholds to `next-action` in `issue-refinement.yaml`, resolved
 from `commands.confidence_gate` (matching the sub-loop), e.g.:
@@ -63,6 +81,35 @@ evaluate:
 see its `check_readiness`/`check_outcome` Python blocks.) Verify the `next-action`
 CLI exposes `--ready-threshold` / `--outcome-threshold` (it does:
 `cli/issues/__init__.py:478-481`).
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/issue-refinement.yaml` — `evaluate` state: add `--ready-threshold` / `--outcome-threshold` flags to the `ll-issues next-action` call
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/issues/next_action.py` — `get_next_action_data()`: reference only; CLI defaults remain unchanged (other callers depend on them)
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `check_readiness` / `check_outcome` states: reference only; canonical threshold source to match
+
+### Similar Patterns
+- N/A — no other loop calls `ll-issues next-action` with threshold flags
+
+### Tests
+- `scripts/tests/test_builtin_loops.py` — add test asserting `evaluate` state passes explicit threshold flags to `next-action`
+
+### Documentation
+- N/A
+
+### Configuration
+- `.ll/ll-config.json` — `commands.confidence_gate.readiness_threshold` / `commands.confidence_gate.outcome_threshold` (single source of truth after fix)
+
+## Implementation Steps
+
+1. In `issue-refinement.yaml`, update the `evaluate` state's `action:` to read `commands.confidence_gate.{readiness,outcome}_threshold` from `ll-config.json` using the same Python snippet pattern as `check_readiness`/`check_outcome` in `refine-to-ready-issue.yaml`.
+2. Pass the resolved values as `--ready-threshold` and `--outcome-threshold` to `ll-issues next-action`.
+3. Confirm the config-read path matches exactly how `refine-to-ready-issue` resolves these values.
+4. Run `ll-loop validate issue-refinement` to confirm no new FSM violations are introduced.
+5. Add a unit test in `test_builtin_loops.py` asserting the `evaluate` state passes explicit threshold flags.
 
 ## Acceptance Criteria
 
@@ -102,3 +149,7 @@ CLI exposes `--ready-threshold` / `--outcome-threshold` (it does:
 ## Status
 
 **Open** | Created: 2026-06-08 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-09T02:41:48 - `2e851901-2808-4980-9585-6d4994df06a4.jsonl`

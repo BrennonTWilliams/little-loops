@@ -19,19 +19,28 @@ When `refine-to-ready-issue` cannot lift an issue above its readiness/outcome
 thresholds, it routes through `breakdown_issue` → `write_broke_down` → the
 **`done`** terminal. The FSM runner maps a child terminal literally named `done`
 to the parent's `on_yes` (`fsm/executor.py:608-610`), so the parent
-`issue-refinement` treats the broken-down issue as a **success**
-(`run_refine_to_ready.on_yes: check_commit`) and never adds it to the skip-list.
-Because the issue's scores are still below threshold, `ll-issues next-action`
-re-emits `NEEDS_REFINE <id>` on the very next cycle and the loop re-selects the
-same issue. This repeats — each pass running an expensive `--full-rewrite` — until
-the per-issue `refine_cap` (5) is exhausted.
+`issue-refinement` treats the broken-down issue as a **success** and never
+skip-lists it. Because scores remain below threshold, `ll-issues next-action`
+re-emits `NEEDS_REFINE <id>` on the next cycle — repeating an expensive
+`--full-rewrite` until `refine_cap` (5) is exhausted. The `refine-broke-down`
+signal file already exists for this purpose but `issue-refinement` never reads it.
 
-Observed in run `.loops/runs/rn-build-20260608T181251/`: FEAT-032 was processed in
-iter-9, iter-10, and iter-11 (killed mid-third-pass), with `outcome_confidence`
-*regressing* 71→68 across passes. See `audit-rn-build-feat032-2026-06-08.md`.
+## Steps to Reproduce
 
-The `refine-broke-down` signal file already exists for exactly this purpose
-(`refine-to-ready-issue.yaml:29,361-365`) but `issue-refinement` never reads it.
+1. Run `issue-refinement` on a project where at least one issue will be broken
+   down by `refine-to-ready-issue` (scope too large / outcome unreachable).
+2. Observe `refine-to-ready-issue` reach the `done` terminal and write `1` to
+   `${context.run_dir}/refine-broke-down`.
+3. Observe `issue-refinement` route the parent `on_yes` path (terminal == `done`)
+   to `check_commit` — the issue is never skip-listed.
+4. Observe `ll-issues next-action` re-emit `NEEDS_REFINE <id>` for the same issue
+   (scores remain below threshold after breakdown).
+5. Watch `issue-refinement.evaluate` re-select the issue and repeat the expensive
+   `--full-rewrite` pass. Repeats until `refine_cap` (5) is exhausted.
+
+Confirmed in `.loops/runs/rn-build-20260608T181251/`: FEAT-032 was re-processed
+in iter-9, iter-10, and iter-11 (killed mid-third pass), with `outcome_confidence`
+regressing 71→68 across passes.
 
 ## Current Behavior
 
@@ -70,7 +79,7 @@ ready" and "broke down" indistinguishable to `issue-refinement` via the verdict
 alone. The `refine-broke-down` artifact is the intended disambiguator but is
 unread by this caller.
 
-## Proposed Fix
+## Proposed Solution
 
 Insert a gate between `run_refine_to_ready.on_yes` and `check_commit`:
 
@@ -98,6 +107,18 @@ check_broke_down:
 (`refine-to-ready-issue.yaml:29`), so it reflects only the issue just processed —
 a keyed read is safe in the sequential `issue-refinement` loop.
 
+## Implementation Steps
+
+1. In `issue-refinement.yaml`: change `run_refine_to_ready.on_yes` from
+   `check_commit` to `check_broke_down`.
+2. Add the `check_broke_down` gate state (shell exit-code evaluator) as specified
+   in Proposed Solution above.
+3. Write regression test: mock a sub-loop that writes `refine-broke-down=1` and
+   assert the parent routes to `handle_failure` (skip-list) rather than
+   `check_commit`.
+4. Smoke-test the success path: mock a sub-loop that does NOT write
+   `refine-broke-down` (or writes `0`) and confirm routing reaches `check_commit`.
+
 ## Acceptance Criteria
 
 - [ ] A broken-down issue is added to the `issue-refinement` skip-list and is not
@@ -115,12 +136,26 @@ a keyed read is safe in the sequential `issue-refinement` loop.
 - Does not alter `next-action` selection logic (see BUG-2035 for the threshold
   half of the churn).
 
-## Files
+## Integration Map
 
-- `scripts/little_loops/loops/issue-refinement.yaml` — add `check_broke_down`
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml:29,361-365` — existing
-  `refine-broke-down` signal (read-only reference)
-- `scripts/tests/` — new regression test
+### Files to Modify
+- `scripts/little_loops/loops/issue-refinement.yaml` — add `check_broke_down` gate state; update `run_refine_to_ready.on_yes`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` (lines 29, 361-365) — existing `refine-broke-down` signal; read-only reference, no changes required
+- Other callers of `refine-to-ready-issue` (`autodev`, `greenfield-builder`, `eval-driven-development`) — unchanged; breakdown → `done` terminal is intentionally preserved for them
+
+### Similar Patterns
+- N/A — `check_broke_down` is a new cross-loop artifact gate; no similar patterns currently exist
+
+### Tests
+- `scripts/tests/` — new regression test simulating a sub-loop writing `refine-broke-down=1` and asserting the parent skip-lists the issue
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
 
 ## Impact
 
@@ -144,3 +179,7 @@ If ENH-2038 (migrate rn-build `refine_seed` to `recursive-refine`) lands, this
 churn is avoided for rn-build specifically — but `issue-refinement` is also used
 by `eval-driven-development` and `greenfield-builder`, so this fix remains
 independently warranted.
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-09T02:41:14 - `914690e7-fd2f-4d75-9bfa-5bb071777625.jsonl`

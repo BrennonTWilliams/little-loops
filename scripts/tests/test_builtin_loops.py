@@ -221,8 +221,9 @@ class TestBuiltinLoopFiles:
             diagnose = states.get("diagnose") or states.get("diagnose_failure")
             if diagnose is None:
                 continue  # Loop not yet updated with diagnose state (pending BUG-1606)
-            assert diagnose.get("action"), (
-                f"{loop_file.name}: 'diagnose' state exists but has no diagnostic action"
+            # Accept either an inline action: or a fragment: reference (which carries the action)
+            assert diagnose.get("action") or diagnose.get("fragment"), (
+                f"{loop_file.name}: 'diagnose' state exists but has no diagnostic action or fragment"
             )
             assert not diagnose.get("terminal", False), (
                 f"{loop_file.name}: 'diagnose' state must not be terminal"

@@ -30,6 +30,14 @@ main checkout) read and append to the **same** skip-list and commit-count files,
 corrupting each other's state — the same class of defect as BUG-817
 (cross-project `/tmp` path conflicts) and BUG-1960.
 
+## Motivation
+
+Running `issue-refinement` under `ll-parallel`, in a worktree, or via a retry that re-enters the loop results in two instances writing to the same skip-list and commit-count files. Because the runner injects a unique `run_dir` per execution, moving these artifacts there costs nothing and closes the concurrency hazard permanently.
+
+- **Correctness**: Two concurrent `rn-build` → `issue-refinement` chains silently corrupt each other's skip-lists — a failing issue in run A can appear in run B's skip-list and be silently bypassed.
+- **MR-3 compliance**: `ll-loop validate issue-refinement` currently emits 5 MR-3 WARNINGs; this fix reduces them to zero.
+- **Low risk, high leverage**: Four path-substitution edits and one cleanup removal, with no behavior change on single-serial runs.
+
 ## Current Behavior
 
 - `init` (`:13`): `rm -f .loops/tmp/issue-refinement-commit-count
@@ -50,6 +58,19 @@ runner creates per run and which `context_passthrough` shares correctly between
 parent and child. `ll-loop validate issue-refinement` emits no MR-3 WARNINGs (or
 the loop declares `shared_state_ok: true` with justification if sharing is ever
 intentional — it is not here).
+
+## Proposed Solution
+
+Replace all four bare `.loops/tmp/issue-refinement-*` path references in `issue-refinement.yaml` with `${context.run_dir}/` equivalents:
+
+| State | Old path | New path |
+|---|---|---|
+| `init` | `rm -f .loops/tmp/issue-refinement-commit-count .loops/tmp/issue-refinement-skip-list` | remove line (runner pre-creates `run_dir`) |
+| `evaluate` | `.loops/tmp/issue-refinement-skip-list` | `${context.run_dir}/skip-list` |
+| `handle_failure` | `.loops/tmp/issue-refinement-skip-list` | `${context.run_dir}/skip-list` |
+| `check_commit` | `.loops/tmp/issue-refinement-commit-count` | `${context.run_dir}/commit-count` |
+
+`context_passthrough: true` in `rn-build` already propagates `run_dir` to child invocations, so any parent-child skip-list sharing that previously relied on a shared `.loops/tmp/` path continues to work correctly via `run_dir`.
 
 ## Acceptance Criteria
 
@@ -76,6 +97,33 @@ intentional — it is not here).
 - `thoughts/audits/loop-artifact-isolation-audit.md:112` — tracked remediation
   (reference)
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/issue-refinement.yaml` — 4 path changes at states `init`, `evaluate`, `handle_failure`, `check_commit`
+
+### Dependent Files (Callers/Importers)
+- `rn-build` invokes `issue-refinement` via `context_passthrough: true` — benefits automatically; no changes needed
+
+### Similar Patterns
+- `refine-to-ready-issue` and `recursive-refine` have similar bare `.loops/tmp/` writes (same isolation-audit Medium bucket) — Scope Boundaries allows folding into same PR
+
+### Tests
+- N/A — validate with `ll-loop validate issue-refinement` (zero MR-3 WARNINGs is the acceptance gate)
+
+### Documentation
+- `thoughts/audits/loop-artifact-isolation-audit.md:112` — update tracking entry to resolved after fix
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. Edit `issue-refinement.yaml`: substitute `${context.run_dir}/skip-list` for `.loops/tmp/issue-refinement-skip-list` and `${context.run_dir}/commit-count` for `.loops/tmp/issue-refinement-commit-count` in all four locations
+2. Remove the `rm -f .loops/tmp/issue-refinement-{commit-count,skip-list}` cleanup from the `init` state
+3. Run `ll-loop validate issue-refinement` and confirm zero MR-3 WARNINGs
+4. Run a single-instance smoke-test (`ll-loop run issue-refinement`) to verify skip-on-failure and commit-every-5 behavior is preserved
+
 ## Impact
 
 - **Priority**: P3 — latent concurrency/corruption hazard; no impact on a single
@@ -92,3 +140,7 @@ intentional — it is not here).
 ## Status
 
 **Open** | Created: 2026-06-08 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-09T02:41:43 - `2e851901-2808-4980-9585-6d4994df06a4.jsonl`

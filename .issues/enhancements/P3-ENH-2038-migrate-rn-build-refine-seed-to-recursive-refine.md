@@ -33,6 +33,21 @@ Migrating `refine_seed` to `recursive-refine` gives rn-build decomposition
 handling for free, aligns it with every other orchestration loop, and structurally
 avoids the FEAT-032 churn captured in BUG-2034.
 
+## Current Behavior
+
+`rn-build.yaml`'s `refine_seed` phase (lines 417–421) delegates to `issue-refinement`, which auto-discovers work via `ll-issues next-action` across all active issues. When a selected issue triggers size-review decomposition, `issue-refinement` returns to `next-action` and re-selects the parent issue rather than processing the decomposed children — causing re-selection churn (BUG-2034).
+
+## Expected Behavior
+
+`rn-build.refine_seed` invokes `recursive-refine` scoped to the EPIC's child issues. When an issue decomposes, `recursive-refine` processes children depth-first using its skip-category queue (`skipped-decomposed`, `skipped-deadend`, `skipped-budget`), eliminating re-selection churn on the parent.
+
+## Motivation
+
+This enhancement would:
+- **Eliminate BUG-2034 churn structurally**: `recursive-refine` handles decomposition natively; no patch needed to the refiner itself.
+- **Align rn-build with every other orchestration loop**: `autodev`, `sprint-refine-and-implement`, `sprint-build-and-validate`, and `auto-refine-and-implement` all use `recursive-refine`.
+- **Avoid carrying `greenfield-builder`'s weaker refiner into its replacement**: `greenfield-builder` (the source of the current verbatim `refine_seed` pattern) is itself slated for deprecation via FEAT-1993.
+
 ## Why this is a decision, not a drop-in
 
 `rn-build`'s current wiring is **intentional**: the locked design in FEAT-1990
@@ -84,14 +99,37 @@ the same hardening would need applying to whichever refiner rn-build calls).
 - The BUG-2034 fix to `issue-refinement` remains warranted regardless (other
   callers: `eval-driven-development`, `greenfield-builder`).
 
-## Files
+## Integration Map
 
-- `scripts/little_loops/loops/rn-build.yaml:417-421` — `refine_seed`
-- `scripts/little_loops/loops/recursive-refine.yaml` — target sub-loop +
-  input contract
-- `.issues/features/P3-FEAT-1990-...md` — locked design (reference)
-- `.issues/features/P3-FEAT-1993-deprecate-greenfield-builder.md` — deprecation
-- `.issues/features/P3-FEAT-1994-rn-build-orchestration-decision-guide.md` — doc
+### Files to Modify
+- `scripts/little_loops/loops/rn-build.yaml` — `refine_seed` state (lines 417–421)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/recursive-refine.yaml` — target sub-loop; review `parse_input` for input contract and EPIC-scoping
+
+### Similar Patterns
+- `scripts/little_loops/loops/autodev.yaml` — reference `recursive-refine` wiring
+- `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — reference `recursive-refine` wiring
+
+### Tests
+- TBD — run `ll-loop validate rn-build` after change
+
+### Documentation
+- `.issues/features/P3-FEAT-1990-...md` — locked design (reference only)
+- `.issues/features/P3-FEAT-1993-deprecate-greenfield-builder.md` — deprecation context
+- `.issues/features/P3-FEAT-1994-rn-build-orchestration-decision-guide.md` — update with refiner choice
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. Record design decision: proceed with `recursive-refine` or retain `issue-refinement` (reference FEAT-1990 locked design and FEAT-1993 deprecation rationale)
+2. Confirm `recursive-refine`'s input contract — review `recursive-refine.yaml` `parse_input` for single-ID and comma-separated-ID formats and EPIC-scoping behavior
+3. Add EPIC-children enumeration step in `rn-build.yaml` after `scope_project`/`write_epic_id` (`ll-issues list --epic <EPIC-NNN>` → comma-joined IDs)
+4. Swap `refine_seed` from `issue-refinement` to `recursive-refine` with EPIC-scoped input binding
+5. Run `ll-loop validate rn-build`; verify fire-and-proceed semantics preserved
+6. Update FEAT-1994 doc with refiner choice
 
 ## Impact
 
@@ -115,3 +153,7 @@ EPIC-1811 — Built-in orchestration loops
 ## Status
 
 **Open** | Created: 2026-06-08 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-09T02:43:03 - `914690e7-fd2f-4d75-9bfa-5bb071777625.jsonl`
