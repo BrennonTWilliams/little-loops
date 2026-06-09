@@ -360,6 +360,41 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                 lines.append(f"     Suggestion: {pattern.suggested_automation}")
                 lines.append(f"     Complexity: {pattern.automation_complexity}")
 
+    # Evolution trigger analysis
+    if analysis.recurring_feedback_analysis or analysis.skill_bypass_analysis:
+        lines.append("")
+        lines.append("Evolution Triggers")
+        lines.append("-" * 18)
+
+        if analysis.recurring_feedback_analysis:
+            rfa = analysis.recurring_feedback_analysis
+            if rfa.feedbacks:
+                lines.append("")
+                lines.append(f"  Recurring Corrections (threshold: {rfa.threshold_used}x):")
+                for i, fb in enumerate(rfa.feedbacks[:5], 1):
+                    sessions_str = ", ".join(fb.example_sessions[:3])
+                    if len(fb.example_sessions) > 3:
+                        sessions_str += ", ..."
+                    lines.append(f"  {i}. {fb.topic} ({fb.occurrence_count}x)")
+                    if sessions_str:
+                        lines.append(f"     Sessions: {sessions_str}")
+                    if fb.candidate_rule:
+                        lines.append(f"     Candidate rule: {fb.candidate_rule[:80]}...")
+
+        if analysis.skill_bypass_analysis:
+            sba = analysis.skill_bypass_analysis
+            if sba.bypasses:
+                lines.append("")
+                lines.append(f"  Skill Bypasses (threshold: {sba.threshold_used}x):")
+                for i, bypass in enumerate(sba.bypasses[:5], 1):
+                    sessions_str = ", ".join(bypass.example_sessions[:3])
+                    if len(bypass.example_sessions) > 3:
+                        sessions_str += ", ..."
+                    lines.append(f"  {i}. {bypass.skill_name} ({bypass.bypass_count}x)")
+                    if sessions_str:
+                        lines.append(f"     Sessions: {sessions_str}")
+                    lines.append(f"     Suggestion: {bypass.suggested_improvement}")
+
     # Configuration gaps analysis
     if analysis.config_gaps_analysis:
         cga = analysis.config_gaps_analysis
@@ -880,6 +915,70 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
                 lines.append("")
                 for suggestion in mpa.automation_suggestions[:5]:
                     lines.append(f"- {suggestion}")
+
+    # Evolution Triggers
+    if analysis.recurring_feedback_analysis or analysis.skill_bypass_analysis:
+        lines.append("")
+        lines.append("## Evolution Triggers")
+
+        if analysis.recurring_feedback_analysis:
+            rfa = analysis.recurring_feedback_analysis
+            if rfa.feedbacks:
+                lines.append("")
+                lines.append("### Recurring Corrections")
+                lines.append("")
+                lines.append(
+                    f"**Threshold**: {rfa.threshold_used}x | "
+                    f"**Total recurring corrections**: {rfa.total_recurring_corrections}"
+                )
+                lines.append("")
+                lines.append("| Topic | Count | Example Sessions | Candidate Rule |")
+                lines.append("|-------|-------|-----------------|----------------|")
+                for fb in rfa.feedbacks[:10]:
+                    sessions_str = ", ".join(fb.example_sessions[:2])
+                    if len(fb.example_sessions) > 2:
+                        sessions_str += "..."
+                    rule_excerpt = fb.candidate_rule[:60] + "..." if fb.candidate_rule else "—"
+                    lines.append(
+                        f"| {fb.topic[:60]} | {fb.occurrence_count} | "
+                        f"{sessions_str} | {rule_excerpt} |"
+                    )
+                if rfa.rule_candidates:
+                    lines.append("")
+                    lines.append("### Rule Candidates")
+                    lines.append("")
+                    lines.append("Proposed permanent rules based on recurrence:")
+                    lines.append("")
+                    for candidate in rfa.rule_candidates[:5]:
+                        lines.append(f"- {candidate[:120]}")
+
+        if analysis.skill_bypass_analysis:
+            sba = analysis.skill_bypass_analysis
+            if sba.bypasses:
+                lines.append("")
+                lines.append("### Skill Bypasses")
+                lines.append("")
+                lines.append(
+                    f"**Threshold**: {sba.threshold_used}x | "
+                    f"**Total bypassed invocations**: {sba.total_bypassed_invocations}"
+                )
+                lines.append("")
+                lines.append("| Skill | Bypass Count | Example Sessions | Suggested Improvement |")
+                lines.append("|-------|-------------|-----------------|----------------------|")
+                for bypass in sba.bypasses[:10]:
+                    sessions_str = ", ".join(bypass.example_sessions[:2])
+                    if len(bypass.example_sessions) > 2:
+                        sessions_str += "..."
+                    lines.append(
+                        f"| {bypass.skill_name} | {bypass.bypass_count} | "
+                        f"{sessions_str} | {bypass.suggested_improvement[:80]} |"
+                    )
+                if sba.improvement_suggestions:
+                    lines.append("")
+                    lines.append("### Improvement Suggestions")
+                    lines.append("")
+                    for suggestion in sba.improvement_suggestions[:5]:
+                        lines.append(f"- {suggestion}")
 
     # Configuration Gaps Analysis
     if analysis.config_gaps_analysis:

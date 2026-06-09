@@ -232,3 +232,33 @@ class TestHistoryExportStdout:
                 with patch("little_loops.issue_history.scan_completed_issues", return_value=[]):
                     result = main_history()
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# analyze subcommand — db_path propagation
+# ---------------------------------------------------------------------------
+
+
+class TestHistoryAnalyzeDbPath:
+    """Test that analyze branch resolves and passes db_path to calculate_analysis."""
+
+    def test_analyze_passes_db_path(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """analyze branch should pass a resolved db_path to calculate_analysis."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir(exist_ok=True)
+
+        with patch.object(sys, "argv", ["ll-history", "analyze", "-d", str(issues_dir)]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                with patch("little_loops.issue_history.scan_completed_issues", return_value=[]):
+                    with patch(
+                        "little_loops.issue_history.calculate_analysis",
+                        return_value=_make_empty_analysis(),
+                    ) as mock_calc:
+                        main_history()
+
+        mock_calc.assert_called_once()
+        call_kwargs = mock_calc.call_args.kwargs
+        assert "db_path" in call_kwargs
+        assert call_kwargs["db_path"] is not None

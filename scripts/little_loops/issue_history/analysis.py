@@ -17,6 +17,7 @@ from little_loops.issue_history.debt import (
     analyze_complexity_proxy,
     detect_cross_cutting_smells,
 )
+from little_loops.issue_history.evolution import detect_recurring_feedback, detect_skill_bypass
 from little_loops.issue_history.hotspots import analyze_hotspots
 from little_loops.issue_history.models import (
     CompletedIssue,
@@ -37,6 +38,7 @@ from little_loops.issue_history.summary import (
     _group_by_period,
     calculate_summary,
 )
+from little_loops.session_store import DEFAULT_DB_PATH
 
 
 def _load_issue_contents(issues: list[CompletedIssue]) -> dict[Path, str]:
@@ -66,6 +68,7 @@ def calculate_analysis(
     period_type: Literal["weekly", "monthly", "quarterly"] = "monthly",
     compare_days: int | None = None,
     project_root: Path | None = None,
+    db_path: Path | None = None,
 ) -> HistoryAnalysis:
     """Calculate comprehensive history analysis.
 
@@ -133,6 +136,18 @@ def calculate_analysis(
     # Manual pattern analysis
     manual_pattern_analysis = detect_manual_patterns(completed_issues, contents=issue_contents)
 
+    # Evolution trigger analysis (ENH-1911)
+    from little_loops.config.features import EvolutionConfig
+
+    _resolved_db = db_path if db_path is not None else Path(DEFAULT_DB_PATH)
+    _evolution_config = EvolutionConfig()
+    recurring_feedback_analysis = detect_recurring_feedback(
+        _resolved_db, _evolution_config, project_root=project_root
+    )
+    skill_bypass_analysis = detect_skill_bypass(
+        _resolved_db, _evolution_config, project_root=project_root
+    )
+
     # Agent effectiveness analysis
     agent_effectiveness_analysis = analyze_agent_effectiveness(
         completed_issues, contents=issue_contents
@@ -176,6 +191,8 @@ def calculate_analysis(
         complexity_proxy_analysis=complexity_proxy_analysis,
         config_gaps_analysis=config_gaps_analysis,
         cross_cutting_analysis=cross_cutting_analysis,
+        recurring_feedback_analysis=recurring_feedback_analysis,
+        skill_bypass_analysis=skill_bypass_analysis,
         debt_metrics=debt_metrics,
     )
 

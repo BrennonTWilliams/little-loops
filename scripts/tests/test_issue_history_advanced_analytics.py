@@ -2764,3 +2764,93 @@ Files: `a/f1.py`, `b/f2.py`, `c/f3.py`, `d/f4.py`
         if len(result.smells) >= 2:
             for i in range(len(result.smells) - 1):
                 assert result.smells[i].scatter_score >= result.smells[i + 1].scatter_score
+
+
+class TestRecurringFeedbackModels:
+    """Tests for RecurringFeedback and RecurringFeedbackAnalysis models."""
+
+    def test_recurring_feedback_to_dict_empty(self) -> None:
+        """RecurringFeedback with defaults serializes correctly."""
+        from little_loops.issue_history.models import RecurringFeedback
+        fb = RecurringFeedback(topic="don't do X")
+        result = fb.to_dict()
+        assert result["topic"] == "don't do X"
+        assert result["occurrence_count"] == 0
+        assert result["example_sessions"] == []
+        assert result["example_content"] == []
+        assert result["candidate_rule"] == ""
+
+    def test_recurring_feedback_to_dict_limits_lists(self) -> None:
+        """to_dict() caps example_sessions at 5 and example_content at 3."""
+        from little_loops.issue_history.models import RecurringFeedback
+        fb = RecurringFeedback(
+            topic="stop doing Y",
+            occurrence_count=10,
+            example_sessions=[f"s-{i}" for i in range(10)],
+            example_content=[f"content-{i}" for i in range(6)],
+        )
+        result = fb.to_dict()
+        assert len(result["example_sessions"]) == 5
+        assert len(result["example_content"]) == 3
+
+    def test_recurring_feedback_analysis_to_dict_empty(self) -> None:
+        """RecurringFeedbackAnalysis with defaults serializes correctly."""
+        from little_loops.issue_history.models import RecurringFeedbackAnalysis
+        analysis = RecurringFeedbackAnalysis()
+        result = analysis.to_dict()
+        assert result["feedbacks"] == []
+        assert result["total_recurring_corrections"] == 0
+        assert result["threshold_used"] == 2
+        assert result["rule_candidates"] == []
+
+    def test_recurring_feedback_analysis_to_dict_limits_candidates(self) -> None:
+        """to_dict() caps rule_candidates at 10."""
+        from little_loops.issue_history.models import RecurringFeedbackAnalysis
+        analysis = RecurringFeedbackAnalysis(
+            rule_candidates=[f"rule-{i}" for i in range(15)]
+        )
+        result = analysis.to_dict()
+        assert len(result["rule_candidates"]) == 10
+
+    def test_skill_bypass_to_dict_empty(self) -> None:
+        """SkillBypass with defaults serializes correctly."""
+        from little_loops.issue_history.models import SkillBypass
+        bypass = SkillBypass(skill_name="commit")
+        result = bypass.to_dict()
+        assert result["skill_name"] == "commit"
+        assert result["bypass_count"] == 0
+        assert result["example_sessions"] == []
+        assert result["evidence"] == []
+        assert result["suggested_improvement"] == ""
+
+    def test_skill_bypass_to_dict_limits_lists(self) -> None:
+        """to_dict() caps example_sessions at 5 and evidence at 3."""
+        from little_loops.issue_history.models import SkillBypass
+        bypass = SkillBypass(
+            skill_name="commit",
+            bypass_count=10,
+            example_sessions=[f"s-{i}" for i in range(10)],
+            evidence=[f"evidence-{i}" for i in range(6)],
+        )
+        result = bypass.to_dict()
+        assert len(result["example_sessions"]) == 5
+        assert len(result["evidence"]) == 3
+
+    def test_skill_bypass_analysis_to_dict_empty(self) -> None:
+        """SkillBypassAnalysis with defaults serializes correctly."""
+        from little_loops.issue_history.models import SkillBypassAnalysis
+        analysis = SkillBypassAnalysis()
+        result = analysis.to_dict()
+        assert result["bypasses"] == []
+        assert result["total_bypassed_invocations"] == 0
+        assert result["threshold_used"] == 2
+        assert result["improvement_suggestions"] == []
+
+    def test_skill_bypass_analysis_to_dict_limits_suggestions(self) -> None:
+        """to_dict() caps improvement_suggestions at 10."""
+        from little_loops.issue_history.models import SkillBypassAnalysis
+        analysis = SkillBypassAnalysis(
+            improvement_suggestions=[f"suggestion-{i}" for i in range(15)]
+        )
+        result = analysis.to_dict()
+        assert len(result["improvement_suggestions"]) == 10

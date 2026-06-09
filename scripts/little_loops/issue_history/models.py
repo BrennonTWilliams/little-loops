@@ -415,6 +415,86 @@ class ManualPatternAnalysis:
 
 
 @dataclass
+class RecurringFeedback:
+    """A user correction that has recurred across multiple sessions."""
+
+    topic: str  # content excerpt or cluster key
+    occurrence_count: int = 0
+    example_sessions: list[str] = field(default_factory=list)  # capped at 5
+    example_content: list[str] = field(default_factory=list)  # capped at 3
+    candidate_rule: str = ""  # proposed CLAUDE.md rule text
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "topic": self.topic,
+            "occurrence_count": self.occurrence_count,
+            "example_sessions": self.example_sessions[:5],
+            "example_content": self.example_content[:3],
+            "candidate_rule": self.candidate_rule,
+        }
+
+
+@dataclass
+class RecurringFeedbackAnalysis:
+    """Analysis of recurring user corrections that could become permanent rules."""
+
+    feedbacks: list[RecurringFeedback] = field(default_factory=list)
+    total_recurring_corrections: int = 0
+    threshold_used: int = 2
+    rule_candidates: list[str] = field(default_factory=list)  # capped at 10
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "feedbacks": [f.to_dict() for f in self.feedbacks],
+            "total_recurring_corrections": self.total_recurring_corrections,
+            "threshold_used": self.threshold_used,
+            "rule_candidates": self.rule_candidates[:10],
+        }
+
+
+@dataclass
+class SkillBypass:
+    """A skill that the user repeatedly performed manually instead of invoking."""
+
+    skill_name: str  # skill that was bypassed
+    bypass_count: int = 0
+    example_sessions: list[str] = field(default_factory=list)  # capped at 5
+    evidence: list[str] = field(default_factory=list)  # user message snippets, capped at 3
+    suggested_improvement: str = ""  # sharper trigger or lighter skill suggestion
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "skill_name": self.skill_name,
+            "bypass_count": self.bypass_count,
+            "example_sessions": self.example_sessions[:5],
+            "evidence": self.evidence[:3],
+            "suggested_improvement": self.suggested_improvement,
+        }
+
+
+@dataclass
+class SkillBypassAnalysis:
+    """Analysis of skills users bypassed by doing the work manually."""
+
+    bypasses: list[SkillBypass] = field(default_factory=list)
+    total_bypassed_invocations: int = 0
+    threshold_used: int = 2
+    improvement_suggestions: list[str] = field(default_factory=list)  # capped at 10
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "bypasses": [b.to_dict() for b in self.bypasses],
+            "total_bypassed_invocations": self.total_bypassed_invocations,
+            "threshold_used": self.threshold_used,
+            "improvement_suggestions": self.improvement_suggestions[:10],
+        }
+
+
+@dataclass
 class ConfigGap:
     """A gap in configuration that could address recurring manual work."""
 
@@ -671,6 +751,10 @@ class HistoryAnalysis:
     # Cross-cutting concern analysis
     cross_cutting_analysis: CrossCuttingAnalysis | None = None
 
+    # Evolution trigger analysis (ENH-1911)
+    recurring_feedback_analysis: RecurringFeedbackAnalysis | None = None
+    skill_bypass_analysis: SkillBypassAnalysis | None = None
+
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
 
@@ -725,6 +809,14 @@ class HistoryAnalysis:
             ),
             "cross_cutting_analysis": (
                 self.cross_cutting_analysis.to_dict() if self.cross_cutting_analysis else None
+            ),
+            "recurring_feedback_analysis": (
+                self.recurring_feedback_analysis.to_dict()
+                if self.recurring_feedback_analysis
+                else None
+            ),
+            "skill_bypass_analysis": (
+                self.skill_bypass_analysis.to_dict() if self.skill_bypass_analysis else None
             ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,

@@ -22,6 +22,16 @@ A block about testing patterns should not activate when Claude is writing a SQL 
 
 ---
 
+## Input: Evolution Triggers (from analyze-history)
+
+If `analyze-history` output is available (or can be generated), extract:
+1. **Rule candidates** from `## Evolution Triggers > ### Recurring Corrections > Rule Candidates` — these are high-recurrence corrections suitable for CLAUDE.md rules
+2. **Improvement suggestions** from `## Evolution Triggers > ### Skill Bypasses > Improvement Suggestions` — these indicate skills with trigger/UX issues
+
+Weight these candidates by recurrence count. A correction seen 5+ times warrants a permanent rule; a skill bypassed 3+ times warrants a trigger review.
+
+---
+
 ## Step 1 — Project Identity (Leave Bare)
 
 **What belongs here**: Project name, one-sentence description, primary purpose.

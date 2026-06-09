@@ -3,19 +3,20 @@ id: ENH-1911
 title: Quantified evolution triggers from history (recurring feedback + skill bypass)
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-03T20:59:38Z'
+completed_at: '2026-06-09T00:28:49Z'
 discovered_date: 2026-06-03
 discovered_by: capture-issue
 depends_on:
 - ENH-1906
 parent: EPIC-2027
-confidence_score: 96
-outcome_confidence: 76
-score_complexity: 16
-score_test_coverage: 20
-score_ambiguity: 20
-score_change_surface: 20
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-1911: Quantified evolution triggers from history (recurring feedback + skill bypass)
@@ -77,7 +78,7 @@ recurring manual work but not recurring *feedback* or *bypass*.
    `recurrence_exempt_tables: [user_corrections, message_events]` override in the retention
    config before pruning is enabled.
 
-1. **Define models** in `scripts/little_loops/issue_history/models.py` (after `ManualPatternAnalysis` at line 414). Add four dataclasses following the `ManualPattern`/`ManualPatternAnalysis` field conventions (required positional first, then `occurrence_count: int = 0`, `list[str]` fields with `field(default_factory=list)`, string fields defaulting to `""`; `to_dict()` with slice caps):
+1. **Define models** in `scripts/little_loops/issue_history/models.py` (after `ManualPatternAnalysis` at line 391). Add four dataclasses following the `ManualPattern`/`ManualPatternAnalysis` field conventions (required positional first, then `occurrence_count: int = 0`, `list[str]` fields with `field(default_factory=list)`, string fields defaulting to `""`; `to_dict()` with slice caps):
    - `RecurringFeedback(topic, occurrence_count, example_sessions, example_content, candidate_rule)`
    - `RecurringFeedbackAnalysis(feedbacks, total_recurring_corrections, threshold_used, rule_candidates)`
    - `SkillBypass(skill_name, bypass_count, example_sessions, evidence, suggested_improvement)`
@@ -110,7 +111,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## API/Interface
 
 - `analyze-history` report gains an `## Evolution Triggers` section (rendered by `formatting.py:format_analysis_markdown()` after the Manual Pattern Analysis section).
-- Four new dataclasses in `scripts/little_loops/issue_history/models.py` (after `ManualPatternAnalysis` at line 414):
+- Four new dataclasses in `scripts/little_loops/issue_history/models.py` (after `ManualPatternAnalysis` at line 391):
 
 ```python
 @dataclass
@@ -177,7 +178,7 @@ class SkillBypassAnalysis:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_history/models.py` — add `RecurringFeedback`, `RecurringFeedbackAnalysis`, `SkillBypass`, `SkillBypassAnalysis` dataclasses after `ManualPatternAnalysis` (line 414); add two new `| None` fields to `HistoryAnalysis` after line 672
+- `scripts/little_loops/issue_history/models.py` — add `RecurringFeedback`, `RecurringFeedbackAnalysis`, `SkillBypass`, `SkillBypassAnalysis` dataclasses after `ManualPatternAnalysis` (line 391); add two new `| None` fields to `HistoryAnalysis` after line 672
 - `scripts/little_loops/issue_history/analysis.py` — wire new detectors in `calculate_analysis()` after the `detect_manual_patterns` call at line 134; pass `EvolutionConfig` thresholds
 - `scripts/little_loops/issue_history/formatting.py` — add `## Evolution Triggers` rendering in `format_analysis_markdown()` after line 883 and `format_analysis_text()` after line 362, following the `ManualPatternAnalysis` guard pattern (`if analysis.recurring_feedback_analysis:`)
 - `scripts/little_loops/issue_history/__init__.py` — add 4 new model names at both the import block (lines 103–104) and `__all__` (lines 150–151); add new detector functions
@@ -254,7 +255,31 @@ rigorous "propose, don't auto-grade" stance for the action side.
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+## Resolution
+
+**Completed**: 2026-06-09T00:28:49Z
+
+### Changes Made
+
+- **New**: `scripts/little_loops/issue_history/evolution.py` — `detect_recurring_feedback()` and `detect_skill_bypass()` detector functions; queries `user_corrections` (HAVING threshold) and `message_events`/`skill_events` respectively
+- **Modified**: `scripts/little_loops/issue_history/models.py` — 4 new dataclasses (`RecurringFeedback`, `RecurringFeedbackAnalysis`, `SkillBypass`, `SkillBypassAnalysis`); 2 new optional fields on `HistoryAnalysis`; updated `to_dict()`
+- **Modified**: `scripts/little_loops/issue_history/analysis.py` — `db_path` param added to `calculate_analysis()`; detectors wired in after `detect_manual_patterns`
+- **Modified**: `scripts/little_loops/issue_history/formatting.py` — `## Evolution Triggers` section in both `format_analysis_text()` and `format_analysis_markdown()`
+- **Modified**: `scripts/little_loops/issue_history/__init__.py` — exports 4 new models + 2 new detector functions
+- **Modified**: `scripts/little_loops/cli/history.py` — analyze branch now computes and passes `db_path` to `calculate_analysis()`
+- **New**: `scripts/tests/test_evolution_triggers.py` — 16 tests for both detectors
+- **Modified**: `scripts/tests/test_issue_history_advanced_analytics.py` — `TestRecurringFeedbackModels` (8 to_dict tests)
+- **Modified**: `scripts/tests/test_issue_history_formatting.py` — `TestFormatAnalysisEvolutionTriggers` (6 rendering tests)
+- **Modified**: `scripts/tests/test_cli_history.py` — `TestHistoryAnalyzeDbPath` (1 db_path pass-through test)
+- **Modified**: `skills/analyze-history/SKILL.md`, `skills/improve-claude-md/SKILL.md`, `skills/improve-claude-md/algorithm.md` — Evolution Triggers documentation
+
+### Test Results
+10,967 passed, 0 failed (full suite)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-09T00:28:49Z - `6bf7df7e-536f-4f48-955c-a913a8e9db1c.jsonl`
+- `/ll:ready-issue` - 2026-06-08T23:56:02 - `1520ba81-91be-4451-819b-6559090539e9.jsonl`
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `ea56c0b1-effd-4835-ba99-baf5e5634136.jsonl`
 - `/ll:confidence-check` - 2026-06-08T00:00:00Z - `7b77c952-e0f3-4d17-9910-f90fb3b15400.jsonl`
 - `/ll:wire-issue` - 2026-06-08T23:59:00 - `7fa034e8-b10d-497f-82ed-c69aea9b71df.jsonl`
 - `/ll:refine-issue` - 2026-06-08T23:24:10 - `7fa034e8-b10d-497f-82ed-c69aea9b71df.jsonl`

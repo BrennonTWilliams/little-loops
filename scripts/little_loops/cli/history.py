@@ -257,6 +257,7 @@ Examples:
             # New analyze logic (FEAT-110)
             from datetime import date as date_type
 
+            db_path = resolve_history_db(project_root / DEFAULT_DB_PATH)
             issues = scan_completed_issues(issues_dir)
 
             since_date = date_type.fromisoformat(args.since) if args.since else None
@@ -276,6 +277,7 @@ Examples:
                 period_type=args.period,
                 compare_days=args.compare,
                 project_root=project_root,
+                db_path=db_path,
             )
 
             if args.format == "json":

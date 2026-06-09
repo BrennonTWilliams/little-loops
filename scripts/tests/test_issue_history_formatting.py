@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from little_loops.issue_history.formatting import (
     format_analysis_json,
+    format_analysis_markdown,
     format_analysis_text,
     format_analysis_yaml,
     format_summary_text,
@@ -594,3 +595,104 @@ class TestFormatAnalysisTextComparison:
 
         output = format_analysis_text(analysis)
         assert "Comparison (30d)" in output
+
+
+class TestFormatAnalysisEvolutionTriggers:
+    """Tests for Evolution Triggers section in format_analysis_text and format_analysis_markdown."""
+
+    def test_evolution_triggers_absent_when_none(self) -> None:
+        """No Evolution Triggers section when both analyses are None."""
+        analysis = _make_base_analysis()
+        output = format_analysis_text(analysis)
+        assert "Evolution Triggers" not in output
+
+    def test_evolution_triggers_absent_in_markdown_when_none(self) -> None:
+        """No Evolution Triggers section in markdown when both analyses are None."""
+        analysis = _make_base_analysis()
+        output = format_analysis_markdown(analysis)
+        assert "Evolution Triggers" not in output
+
+    def test_recurring_corrections_in_text_output(self) -> None:
+        """Recurring corrections section appears in text output when present."""
+        from little_loops.issue_history.models import RecurringFeedback, RecurringFeedbackAnalysis
+        analysis = _make_base_analysis(
+            recurring_feedback_analysis=RecurringFeedbackAnalysis(
+                feedbacks=[
+                    RecurringFeedback(
+                        topic="don't add emojis",
+                        occurrence_count=3,
+                        example_sessions=["s-1", "s-2"],
+                    )
+                ],
+                total_recurring_corrections=3,
+                threshold_used=2,
+            )
+        )
+        output = format_analysis_text(analysis)
+        assert "Evolution Triggers" in output
+        assert "don't add emojis" in output
+        assert "3" in output
+
+    def test_recurring_corrections_in_markdown_output(self) -> None:
+        """Recurring corrections table appears in markdown output."""
+        from little_loops.issue_history.models import RecurringFeedback, RecurringFeedbackAnalysis
+        analysis = _make_base_analysis(
+            recurring_feedback_analysis=RecurringFeedbackAnalysis(
+                feedbacks=[
+                    RecurringFeedback(
+                        topic="stop co-authoring",
+                        occurrence_count=4,
+                        example_sessions=["s-1"],
+                    )
+                ],
+                total_recurring_corrections=4,
+                threshold_used=2,
+            )
+        )
+        output = format_analysis_markdown(analysis)
+        assert "## Evolution Triggers" in output
+        assert "### Recurring Corrections" in output
+        assert "stop co-authoring" in output
+
+    def test_skill_bypass_in_text_output(self) -> None:
+        """Skill bypass section appears in text output when present."""
+        from little_loops.issue_history.models import SkillBypass, SkillBypassAnalysis
+        analysis = _make_base_analysis(
+            skill_bypass_analysis=SkillBypassAnalysis(
+                bypasses=[
+                    SkillBypass(
+                        skill_name="commit",
+                        bypass_count=5,
+                        example_sessions=["s-1", "s-2"],
+                        suggested_improvement="Sharpen trigger for 'commit'",
+                    )
+                ],
+                total_bypassed_invocations=5,
+                threshold_used=2,
+            )
+        )
+        output = format_analysis_text(analysis)
+        assert "Evolution Triggers" in output
+        assert "commit" in output
+        assert "5" in output
+
+    def test_skill_bypass_in_markdown_output(self) -> None:
+        """Skill bypass table appears in markdown output."""
+        from little_loops.issue_history.models import SkillBypass, SkillBypassAnalysis
+        analysis = _make_base_analysis(
+            skill_bypass_analysis=SkillBypassAnalysis(
+                bypasses=[
+                    SkillBypass(
+                        skill_name="scan-codebase",
+                        bypass_count=3,
+                        suggested_improvement="Sharpen trigger for 'scan-codebase'",
+                    )
+                ],
+                total_bypassed_invocations=3,
+                threshold_used=2,
+            )
+        )
+        output = format_analysis_markdown(analysis)
+        assert "## Evolution Triggers" in output
+        assert "### Skill Bypasses" in output
+        assert "scan-codebase" in output

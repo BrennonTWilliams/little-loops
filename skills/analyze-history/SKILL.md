@@ -134,3 +134,25 @@ The full analysis includes:
 4. **Subsystem Health** - Per-directory issue tracking
 5. **Technical Debt** - Backlog size, growth, aging
 6. **Comparative Analysis** - Period-over-period comparison (if requested)
+
+## Evolution Triggers
+
+When `.ll/history.db` is available, `analyze-history` includes an **Evolution Triggers** section with two subsections:
+
+### Recurring Corrections
+User corrections that have recurred ≥ `analysis.evolution.feedback_min_recurrence` times (default: 2) across sessions. Each entry includes:
+- **Topic**: content excerpt or cluster key
+- **Count**: number of times this correction recurred
+- **Example Sessions**: up to 5 session IDs where the correction appeared
+- **Candidate Rule**: proposed CLAUDE.md rule text (seeded from matching `memory/feedback_*` files)
+
+**Rule Candidates** — the recurring corrections most likely to become permanent CLAUDE.md rules — are listed separately for easy copy-paste into CLAUDE.md.
+
+### Skill Bypasses
+Skills where the user performed the work manually instead of invoking the skill, detected by matching user message content against skill keyword sets. Requires ≥ 2 keyword tokens to match (conservative to reduce false positives). Each entry includes:
+- **Skill**: the bypassed skill name
+- **Bypass Count**: number of sessions with bypass signal
+- **Example Sessions**: up to 5 session IDs
+- **Suggested Improvement**: recommendation to sharpen trigger keywords or lighten the skill
+
+**Configuration**: `analysis.evolution.feedback_min_recurrence` and `analysis.evolution.bypass_min_count` in `.ll/ll-config.json` control the thresholds.

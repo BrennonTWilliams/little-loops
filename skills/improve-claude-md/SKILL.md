@@ -176,6 +176,15 @@ fi
 Use the **Edit tool** to write the restructured content back to `$FILE_ARG`.
 Do not use Bash redirection — use the Edit tool so the change is visible in the review diff.
 
+## Evolution Trigger Inputs (ENH-1911)
+
+When `analyze-history` output is available, use the **Evolution Triggers** section as additional input:
+
+- **Rule Candidates** (`RecurringFeedbackAnalysis.rule_candidates`): corrections that recurred ≥N times — high-confidence candidates for permanent CLAUDE.md rules. Propose adding these rules verbatim or lightly edited.
+- **Improvement Suggestions** (`SkillBypassAnalysis.improvement_suggestions`): skills users repeatedly bypassed — signal that trigger keywords need sharpening or the skill needs simplification. Propose skill description tweaks.
+
+These are count-backed proposals: the recurrence count justifies the change. Always surface the count in the proposed CLAUDE.md rule or skill edit as evidence.
+
 ### Step 6: Final Report
 
 ```
