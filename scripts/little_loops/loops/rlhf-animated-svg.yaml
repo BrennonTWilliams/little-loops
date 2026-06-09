@@ -1,0 +1,2000 @@
+name: "rlhf-animated-svg"
+category: harness
+description: |
+  RLHF-style generate-score-refine loop for animated SVG artifacts.
+  Generates a single-file HTML artifact with inline SVG markup animated
+  via anime.js from a natural language description. Plans motion
+  choreography and visual design, renders to self-contained HTML,
+  validates via headless browser smoke test, scores the rendered output
+  via image analysis on an animation-specific rubric (correctness,
+  aesthetics, smoothness, completeness), and refines until the score
+  threshold is met.
+
+  Produces a zero-dependency .html file (~8-16 KB gzipped) with inline
+  SVG, anime.js v3.2.2 loaded via CDN <script> tag (UMD, works under
+  file:// without CORS) with onerror fallback to static SVG, and animation JS in a <script> tag. Includes
+  accessibility support: role="img", aria-labelledby, and
+  prefers-reduced-motion detection.
+initial: init
+max_iterations: 30
+timeout: 7200
+artifact_versioning: true
+on_handoff: spawn
+context:
+  quality_target: 8
+  input: "A bouncing red ball with a fading trail across a warm neutral canvas, with smooth parabolic arcs and a subtle shadow that scales with proximity to the ground"
+  design_tokens_context: "" # runner-injected; resolved semantic token values or empty
+  smoke_fail_streak_max: 2
+  smoke_bypass_threshold: 5   # ENH-008: after N total smoke attempts, bypass to score
+  optimization_summary_path: ""  # ENH-011: resolved as ${context.run_dir}/optimization_summary.md at runtime
+  explore_cutoff: 5       # ENH-012: last iteration of explore phase
+  exploit_cutoff: 15      # ENH-012: last iteration of exploit phase (16+ = converge)
+  max_replans: 3           # ENH-019: max full replan cycles before forced termination
+  score_fail_streak_max: 3       # ENH-033: consecutive VISION_FAILs before triggering REPLAN
+  replan_escalation_threshold: 2  # ENH-033: REPLAN cycles before forcing concept reset
+states:
+  init:
+    # ENH-033: Init phase — resolves and captures the runner-injected run_dir
+    # as an absolute path so all downstream shell states can reference
+    # ${captured.run_dir.output} directly without repeating the case/esac
+    # normalization pattern. Adapted from p5js-sketch-generator init state.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: validate_input
+
+  validate_input:
+    # ENH-035: Pre-flight input validation.
+    # Blocks the loop from fabricating animation subjects when context.input is empty.
+    # Routes to plan_animation when input is valid, or input_missing (terminal) when empty.
+    action_type: shell
+    action: |
+      if [ -z "${context.input}" ]; then
+        echo "EMPTY_INPUT_ERROR: context.input is empty — cannot plan animation without a description"
+        exit 1
+      fi
+      echo "INPUT_VALID: proceeding with plan_animation"
+      exit 0
+    timeout: 10
+    evaluate:
+      type: output_contains
+      pattern: "INPUT_VALID"
+    on_yes: plan_animation
+    on_no: input_missing
+    on_error: input_missing
+
+  input_missing:
+    terminal: true
+    description: "Input validation failed — context.input is empty; set a non-empty animation description"
+
+  plan_animation:
+    action: |
+      PLAN ONLY — do NOT write files, produce HTML, or create SVG markup.
+      The render_animation state handles all implementation.
+      Do NOT read files, describe your process, or emit exploratory preamble.
+      Output ONLY the concrete animation plan as text and stop.
+
+      ## INPUT VALIDATION (ENH-035)
+
+      Before planning, check whether a non-empty animation description is provided
+      below. If the description after "Design an animated SVG from this description:"
+      is empty, missing, or contains only whitespace, you MUST output exactly:
+      EMPTY_INPUT_ERROR
+      on its own line and stop immediately. Do NOT fabricate a subject, invent a
+      description, or produce any plan content. An empty input means the loop is
+      misconfigured and planning cannot proceed.
+
+      ## PRIOR LEARNINGS (ENH-011)
+
+      Read ${context.run_dir}/optimization_summary.md if it exists. Extract every
+      lesson marked **[ACTIVE]** with its tag (e.g., `[EASING]`, `[Z-ORDER]`,
+      `[PROMPT]`, `[TIMING]`, `[VALIDATION]`). These are carry-forward lessons
+      from prior iterations that describe patterns known to cause failures.
+
+      For each active carry-forward lesson, explicitly address it in your plan:
+      - If the lesson warns against a specific pattern (e.g., "avoid easeOutElastic
+        on elements smaller than 50px viewBox units"), do NOT use that pattern
+      - If the lesson recommends a specific approach, adopt it unless it conflicts
+        with the input description
+      - If the lesson is tagged `[VALIDATED]`, it has been proven effective —
+        prefer it over alternatives
+      - If the lesson is tagged `[INEFFECTIVE]`, the pattern did not improve scores —
+        do not reuse it
+
+      If no summary file exists or no active lessons are found, proceed silently.
+
+      ---
+
+      ## OPTIMIZATION PHASE (ENH-012)
+
+      This is iteration ${state.iteration} of 30 max. Adapt your planning
+      strategy to the current optimization phase:
+
+      EXPLORE PHASE (iterations 1–${context.explore_cutoff}):
+      - This is early exploration. Prefer novel, diverse animation approaches
+        over incremental fixes. Try different easing strategies, composition
+        styles, and motion patterns. It's acceptable — even desirable — to
+        propose a completely different animation design than prior iterations.
+      - Quality target is lenient (${context.quality_target} − 2 = 6) —
+        exploration is prioritized over immediate score optimization.
+      - Generate a bold, distinctive plan. Avoid premature convergence to a
+        local optimum.
+
+      EXPLOIT PHASE (iterations ${context.explore_cutoff}+1–${context.exploit_cutoff}):
+      - This is mid-stage targeted optimization. Focus the plan on the SINGLE
+        rubric dimension with the most room for improvement. Be surgical —
+        identify the specific SVG elements, animation parameters, or structural
+        patterns that are binding constraints.
+      - Component-level ranking signal is strongest in this phase — use it
+        to guide which harness component (prompt, tool, memory, workflow)
+        should receive the most attention.
+      - Quality target is standard (${context.quality_target}).
+
+      CONVERGE PHASE (iterations ${context.exploit_cutoff}+1–30):
+      - This is late-stage conservative refinement. Make only minimal,
+        high-confidence changes. Do NOT introduce new animation sequences,
+        restructure the composition, or change the core animation strategy.
+      - Prefer reverting to the best-scored version if uncertain.
+      - Regression risk is highest in this phase — favor stability over
+        novelty. Small, safe parameter adjustments only (timing tweaks,
+        easing fine-tuning, color harmonization).
+      - Quality target is standard (${context.quality_target}) but regression
+        sensitivity is doubled.
+
+      ---
+
+      Design an animated SVG from this description:
+      ${context.input}
+
+      ${context.design_tokens_context}
+
+      Plan the animation across these dimensions:
+
+      1. SCENE & COMPOSITION
+         - Identify the visual subject(s), setting, and overall composition
+         - Determine the SVG viewBox dimensions and aspect ratio
+         - Plan the layer/Z-order stack: background → midground → foreground → overlays
+         - If design tokens are provided, map them to the color palette:
+             color.surface.primary → background fills
+             color.text.primary → label/text colors
+             color.border.strong → stroke/outline colors
+             color.action.primary → emphasis/highlight elements
+           Do not invent new color values outside the token palette.
+
+      2. SHAPE INVENTORY
+         List every SVG element needed with:
+         - Element type (<rect>, <circle>, <ellipse>, <line>, <polyline>, <polygon>,
+           <path>, <text>, <g> group)
+         - Approximate position and dimensions (relative to viewBox)
+         - Fill and stroke colors (from token palette if provided)
+         - CSS class or ID for animation targeting
+         - Z-order position in the rendering stack
+         - Transform origin for rotation/scale animations
+
+      3. ANIMATION CHOREOGRAPHY
+         Design the motion timeline. For each animation sequence:
+         - Target element(s) — which shapes are animated
+         - Property animated — opacity, translateX/Y, rotate, scale, morph (path d),
+           stroke-dashoffset (line drawing), color/fill transition
+         - Easing function — anime.js built-in easings (easeOutExpo, easeInOutQuad,
+           easeOutElastic, etc.) or spring physics (spring(mass, stiffness, damping,
+           velocity))
+         - Duration and delay — absolute values in milliseconds
+         - Stagger configuration — for multi-element sequences (per-target delay,
+           direction: normal/reverse, easing per step)
+         - Timeline structure — group animations into an anime.js timeline with
+           offsets; plan entrance sequence, main loop, and exit/transition
+         - Loop behavior — whether the animation loops, repeats N times, or plays once
+         - CRITICAL: plan ONLY anime.js animations — never mix CSS @keyframes or SMIL
+           <animate> tags with anime.js on the same properties; this causes
+           unpredictable conflicts
+
+      4. MULTI-FRAME CAPTURE AWARENESS
+         Four screenshots are captured at staggered timestamps (1000ms, 3000ms,
+         5000ms, 7000ms) after page load for vision model scoring. The vision
+         model sees ALL frames together and can evaluate temporal quality directly.
+
+         This means:
+         - Entrance animations can take their natural time — you no longer need
+           to force all elements visible by t=3000ms. Elements can fade in at
+           1000ms, 2500ms, 4000ms, etc. based on what makes the best animation.
+         - Each phase of animation should show distinct, recognizable state so
+           the frame sequence tells a clear story of motion
+         - At least one element should be actively animating (changing position,
+           scale, opacity, or rotation) at each capture timestamp to demonstrate
+           continuous motion
+         - Avoid "dead zones" where nothing is moving at any of the four capture
+           points — stagger animation phases so motion is always visible in at
+           least 2 of the 4 frames
+         - The t=3000ms capture point remains the primary "storyboard" frame where
+           the maximum number of elements should be visible — but they no longer
+           all need to have completed their entrance animations by that point
+
+      5. EASING & PHYSICS STRATEGY
+         - Assign specific easing functions to each animation based on the desired feel:
+           * Entrances: easeOutExpo or easeOutBack for snappy reveals
+           * Continuous motion: easeInOutSine or spring() for organic feel
+           * Emphasis/highlights: easeOutElastic for playful bounce
+           * Line drawing: easeInOutQuad for smooth reveals
+         - For spring physics, specify mass, stiffness, damping, and velocity values
+         - Avoid linear easing except for mechanical/technical motions where appropriate
+
+      6. ACCESSIBILITY & GRACEFUL DEGRADATION
+         - Plan aria-labelledby/title/desc elements for the SVG root
+         - Plan prefers-reduced-motion: reduce media query that disables all animations
+           or replaces them with static final-state rendering
+         - Plan keyboard-navigable controls if interactive (play/pause buttons)
+
+      7. SINGLE-FILE HTML STRUCTURE
+         - anime.js loading strategy: anime.js v3.2.2 loaded via CDN <script> tag
+           (UMD, works under file:// without CORS) with onerror fallback to static SVG
+         - SVG as raw inline markup in the HTML body
+         - Animation JS in a single <script> tag at end of body
+         - No external file dependencies beyond the single anime.js CDN <script> tag
+         - Include a <meta> viewport for responsive scaling
+
+      Output a concrete, numbered plan covering all seven dimensions above.
+      Be specific about coordinates, timing values, easing parameters, and
+      color hex values. The render_animation state will implement this plan
+      exactly — do not leave any design decisions unspecified.
+    action_type: prompt
+    timeout: 300
+    max_retries: 3
+    retryable_exit_codes: [124]
+    on_retry_exhausted: plan_failed
+    capture: animation_plan
+    next: render_animation
+    on_error: plan_animation
+
+  render_animation:
+    action: |
+      IMPLEMENT ONLY — use the plan below exactly. Do NOT re-plan, re-analyze
+      the description, or change the animation design. Write the single-file
+      HTML artifact and stop.
+
+      Using the animation plan below, create the animated SVG artifact:
+
+      ${captured.animation_plan}
+
+      ${context.design_tokens_context}
+
+      Write a single self-contained HTML file to ${context.run_dir}/output.html.
+      The file must be complete, valid, and render correctly in modern browsers
+      when opened from file:// or any HTTP server.
+
+      STRUCTURE REQUIREMENTS:
+      ```
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>[descriptive title matching the scene]</title>
+        <style>
+          *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+          body {
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; background: [from token palette or neutral];
+            font-family: system-ui, -apple-system, sans-serif;
+          }
+          .animation-container {
+            width: 100%; max-width: 800px; height: auto;
+          }
+          .animation-container svg {
+            width: 100%; height: auto; display: block;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .animation-container * {
+              animation-duration: 0.01ms !important;
+              animation-iteration-count: 1 !important;
+              transition-duration: 0.01ms !important;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="animation-container">
+          <svg viewBox="[from plan]" xmlns="http://www.w3.org/2000/svg"
+               role="img" aria-labelledby="svg-title svg-desc">
+            <title id="svg-title">[descriptive title]</title>
+            <desc id="svg-desc">[brief description of the animated scene]</desc>
+            <!-- ALL SVG elements from the plan's shape inventory here,
+                 in the Z-order specified by the plan -->
+          </svg>
+        </div>
+
+        <!-- anime.js v3.2.2 UMD — works in file:// and all browsers, no import maps -->
+        <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"
+                onerror="document.querySelector('.animation-container svg').classList.add('static-fallback');
+                         console.warn('anime.js CDN unavailable — showing static SVG');"></script>
+        <script>
+          // anime.js v3 exposes window.anime globally
+          // API: const tl = anime.timeline({...}); tl.add({...});
+          if (typeof anime === 'undefined') {
+            console.warn('anime.js CDN unavailable — showing static SVG');
+            document.querySelector('.animation-container svg').classList.add('static-fallback');
+          } else {
+            initAnimations();
+          }
+
+          function initAnimations() {
+            // ALL animation code from the plan's choreography here
+            // Use anime.js v3 timeline for sequenced animations:
+            //   const tl = anime.timeline({ easing: 'easeOutExpo', duration: 750 });
+            //   tl.add({ targets: '.shape-1', translateY: [50, 0], opacity: [0, 1] })
+            //     .add({ targets: '.shape-2', ... }, '-=400');
+            //
+            // For spring physics:
+            //   anime({ targets: '.bounce', translateY: [0, -20],
+            //           easing: 'spring(1, 80, 10, 0)' });
+            //
+            // For line drawing:
+            //   anime({ targets: '.line-path',
+            //           strokeDashoffset: [anime.setDashoffset, 0],
+            //           easing: 'easeInOutQuad', duration: 2000 });
+            //
+            // For path morphing:
+            //   anime({ targets: '.morph-path',
+            //           d: [{ value: 'M...' }, { value: 'M...' }],
+            //           easing: 'easeInOutQuad', duration: 3000 });
+          }
+        </script>
+      </body>
+      </html>
+      ```
+
+      IMPLEMENTATION RULES — follow these strictly to avoid common failure modes:
+      1. SVG elements MUST target CSS classes or IDs (via anime.js targets), not inline
+         style attributes that conflict with animation transforms
+      2. NEVER mix CSS @keyframes or SMIL <animate>/<animateTransform> with anime.js
+         on the same SVG elements — anime.js owns all animated properties
+      3. All path data coordinates MUST fall inside the declared viewBox
+      4. Use transform-origin CSS property on elements that rotate or scale, set to
+         the element's center or the specific pivot point from the plan
+      5. Set initial animated properties via anime.js parameters (e.g.,
+         opacity: [0, 1]) rather than inline style attributes — this ensures
+         animation starts from the correct state even on slow connections
+      6. Escape all special XML characters in text content (&lt; &gt; &amp; &quot;)
+      7. Verify tag nesting: every SVG element is properly closed; <g> groups are
+         correctly nested; no dangling or self-closing tags where children exist
+      8. For multi-subpath morphing, ensure source and target paths have identical
+         segment counts and command types — anime.js cannot morph between
+         incompatible path structures
+      9. Do not regenerate or approximate path data from the plan — use the exact
+         coordinates specified; tokenization drift (digit-by-digit regeneration)
+         causes cumulative geometric distortion
+      10. Add a small delay (100-300ms) before starting animations to ensure the
+          DOM is fully parsed and the anime.js module has loaded
+    action_type: prompt
+    timeout: 900
+    max_retries: 3
+    retryable_exit_codes: [124]
+    on_retry_exhausted: write_final_summary
+    capture: candidate
+    next: verify_render
+    on_error: render_animation
+
+  verify_render:
+    # ENH-033: Artifact verification gate between render_animation and smoke_test.
+    # Confirms output.html exists before the expensive browser-based smoke test.
+    # If the LLM hallucinates the file write (known issue with non-Claude models),
+    # the loop retries the render instead of failing inscrutably in Playwright.
+    # Pattern ported from p5js-sketch-generator verify_brief/verify_index gates.
+    action_type: shell
+    action: |
+      if [ -f "${captured.run_dir.output}/output.html" ]; then
+        echo "RENDER_EXISTS"
+      else
+        echo "RENDER_MISSING" >&2
+        exit 1
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "RENDER_EXISTS"
+    on_yes: smoke_test
+    on_no: render_animation
+    on_error: render_animation
+
+  smoke_test:
+    # FUNCTIONAL VERIFICATION: validates the HTML artifact renders without
+    # JavaScript errors, anime.js initializes, and the page produces non-blank
+    # content. Also captures FOUR screenshots at staggered timestamps
+    # (1000ms, 3000ms, 5000ms, 7000ms) for multi-frame vision API scoring
+    # of temporal animation quality.
+    #
+    # GRACEFUL DEGRADATION: passes through if Playwright is not installed.
+    # Individual frame capture failures are non-fatal — the loop continues
+    # with whatever frames were successfully captured.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      # --- Archive Artifact (per-iteration snapshot) ---
+      # Uses file-based counter (.smoke_archive_count) with $${{...}} escaping.
+      # Bash variables like $${SNAP} MUST use $${{...}} escape syntax to prevent
+      # the template engine from intercepting them as template namespaces.
+      SNAPSHOT_DIR="$ABS_DIR/snapshots"
+      mkdir -p "$SNAPSHOT_DIR"
+      SNAP_FILE="$ABS_DIR/.smoke_archive_count"
+      SNAP=$(cat "$SNAP_FILE" 2>/dev/null || echo 0)
+      SNAP=$((SNAP + 1))
+      echo "$SNAP" > "$SNAP_FILE"
+      if [ -f "$ABS_DIR/output.html" ]; then
+        cp "$ABS_DIR/output.html" "$SNAPSHOT_DIR/output_iter_$${SNAP}.html"
+        echo "ARCHIVED: snapshots/output_iter_$${SNAP}.html"
+      fi
+      if [ -f "$ABS_DIR/output.png" ]; then
+        cp "$ABS_DIR/output.png" "$SNAPSHOT_DIR/output_iter_$${SNAP}.png"
+        echo "ARCHIVED: snapshots/output_iter_$${SNAP}.png"
+      fi
+      # NEW: Archive multi-frame captures
+      for FRAME in output_frame_1000ms.png output_frame_5000ms.png output_frame_7000ms.png; do
+        if [ -f "$ABS_DIR/$FRAME" ]; then
+          SHORTSUFFIX=$(echo "$FRAME" | sed 's/\.png$//' | sed 's/^output_frame_//')
+          cp "$ABS_DIR/$FRAME" "$SNAPSHOT_DIR/output_iter_$${SNAP}_$${SHORTSUFFIX}.png"
+          echo "ARCHIVED: snapshots/output_iter_$${SNAP}_$${SHORTSUFFIX}.png"
+        fi
+      done
+      # --- End Archive ---
+      # --- Bypass Logic (ENH-008) ---
+      # Check 1: SKIP_SMOKE environment variable — bypass immediately
+      if [ "$${SKIP_SMOKE:-}" = "true" ]; then
+        echo "SMOKE_PASS: bypassed (SKIP_SMOKE=true)"; exit 0
+      fi
+      # Check 2: Counter-based threshold bypass after N smoke invocations
+      SMOKE_COUNT_FILE="$ABS_DIR/.smoke_count"
+      SMOKE_ATTEMPTS=0
+      [ -f "$SMOKE_COUNT_FILE" ] && SMOKE_ATTEMPTS=$(cat "$SMOKE_COUNT_FILE" 2>/dev/null || echo 0)
+      SMOKE_ATTEMPTS=$((SMOKE_ATTEMPTS + 1))
+      echo "$SMOKE_ATTEMPTS" > "$SMOKE_COUNT_FILE"
+      SMOKE_THRESHOLD=${context.smoke_bypass_threshold}
+      if [ "$SMOKE_ATTEMPTS" -ge "$SMOKE_THRESHOLD" ]; then
+        echo "SMOKE_PASS: bypassed (smoke attempts $SMOKE_ATTEMPTS >= threshold $SMOKE_THRESHOLD)"; exit 0
+      fi
+      # --- End Bypass Logic ---
+      if [ ! -f "$ABS_DIR/output.html" ]; then
+        echo "SMOKE_FAIL: no output.html to validate"; exit 1
+      fi
+      export ABS_DIR
+      NODE_PATH="$(npm root -g 2>/dev/null || echo '')" node -e "
+      let playwright;
+      try { playwright = require('playwright'); } catch(e) {
+        try { playwright = require('@playwright/test'); } catch(e2) {
+          console.log('SMOKE_PASS: skipped (Playwright not installed)');
+          process.exit(0);
+        }
+      }
+      const { chromium } = playwright;
+      (async () => {
+        const browser = await chromium.launch({ headless: true });
+        const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        const errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
+        try {
+          await page.goto('file://' + process.env.ABS_DIR + '/output.html', {
+            waitUntil: 'networkidle', timeout: 15000
+          });
+          await page.waitForTimeout(1000);
+
+          // Perform validation at t=1000ms (fail fast — don't wait 3000ms for blank render)
+          const bodyText = await page.evaluate(() => document.body.innerText.trim().length);
+          const svgCount = await page.evaluate(() => document.querySelectorAll('svg').length);
+          if (bodyText < 10 && svgCount === 0) {
+            errors.push('BLANK_RENDER: no visible text content and no SVG elements found');
+          }
+          const animeReady = await page.evaluate(() =>
+            typeof window.anime !== 'undefined' && typeof window.anime.timeline === 'function'
+          );
+          if (!animeReady) {
+            console.log('NOTE: anime.js v3 API not detected (typeof anime.timeline !== function); CDN may be unavailable — static fallback in use');
+          }
+
+          // FRAME 0: t=1000ms — early animation state
+          try {
+            await page.screenshot({
+              path: process.env.ABS_DIR + '/output_frame_1000ms.png', fullPage: false
+            });
+            console.log('Screenshot saved to output_frame_1000ms.png');
+          } catch (e) {
+            console.log('WARN: frame capture failed at t=1000ms: ' + e.message);
+          }
+
+          // FRAME 1: t=3000ms — backward compat output.png (storyboard frame)
+          await page.waitForTimeout(2000);  // 1000 + 2000 = 3000
+          try {
+            await page.screenshot({
+              path: process.env.ABS_DIR + '/output.png', fullPage: false
+            });
+            console.log('Screenshot saved to output.png');
+          } catch (e) {
+            console.log('WARN: frame capture failed at t=3000ms: ' + e.message);
+          }
+
+          // FRAME 2: t=5000ms — mid-animation state
+          await page.waitForTimeout(2000);  // 3000 + 2000 = 5000
+          try {
+            await page.screenshot({
+              path: process.env.ABS_DIR + '/output_frame_5000ms.png', fullPage: false
+            });
+            console.log('Screenshot saved to output_frame_5000ms.png');
+          } catch (e) {
+            console.log('WARN: frame capture failed at t=5000ms: ' + e.message);
+          }
+
+          // FRAME 3: t=7000ms — late animation / loop-restart state
+          await page.waitForTimeout(2000);  // 5000 + 2000 = 7000
+          try {
+            await page.screenshot({
+              path: process.env.ABS_DIR + '/output_frame_7000ms.png', fullPage: false
+            });
+            console.log('Screenshot saved to output_frame_7000ms.png');
+          } catch (e) {
+            console.log('WARN: frame capture failed at t=7000ms: ' + e.message);
+          }
+          await browser.close();
+          if (errors.length > 0) {
+            console.log('SMOKE_FAIL: ' + errors.join('; '));
+            process.exit(1);
+          }
+          console.log('SMOKE_PASS');
+        } catch (navErr) {
+          await browser.close();
+          if (navErr.message && navErr.message.includes('ERR_FILE_NOT_FOUND')) {
+            console.log('SMOKE_FAIL: output.html not found at expected path');
+          } else {
+            console.log('SMOKE_FAIL: ' + navErr.message);
+          }
+          process.exit(1);
+        }
+      })().catch(e => {
+        console.log('SMOKE_FAIL: ' + e.message);
+        process.exit(1);
+      });
+      " 2>&1
+    timeout: 300
+    evaluate:
+      type: output_contains
+      pattern: "SMOKE_PASS"
+    on_yes: score
+    on_no: rank_components
+    on_error: check_oscillation
+
+  check_oscillation:
+    # OSCILLATION GUARD: counts consecutive smoke test failures.
+    # If streak >= smoke_fail_streak_max, forces a full replan via
+    # plan_animation. Otherwise falls through to the normal review/
+    # refine fix cycle. Prevents burning the iteration budget on
+    # incremental fixes that never address a structural root cause.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      STREAK_FILE="$ABS_DIR/.smoke_fail_streak"
+      STREAK=$(cat "$STREAK_FILE" 2>/dev/null || echo 0)
+      STREAK=$((STREAK + 1))
+      echo "$STREAK" > "$STREAK_FILE"
+      if [ "$STREAK" -ge "${context.smoke_fail_streak_max}" ]; then
+        echo "OSCILLATION_DETECTED: $${STREAK} consecutive smoke failures"
+        rm -f "$STREAK_FILE"
+      else
+        echo "STREAK_NORMAL: $STREAK/${context.smoke_fail_streak_max}"
+      fi
+      exit 0
+    timeout: 30
+    evaluate:
+      type: output_contains
+      pattern: "OSCILLATION_DETECTED"
+    on_yes: plan_animation
+    on_no: rank_components
+    on_error: rank_components
+
+  rank_components:
+    # COMPONENT-LEVEL PRIORITY RANKING GATE (ENH-010):
+    # Ranks the four harness components (prompt, tool, memory, workflow)
+    # by expected improvement impact on the next iteration's score.
+    # Based on Ong et al. (arXiv:2605.22505) Finding 4: ρ = 0.602
+    # correlation between ranking ability and optimization success.
+    #
+    # Passes the ranking as captured context to review_critique, which
+    # focuses its fix plan on the highest-ranked component(s).
+    #
+    # GRACEFUL DEGRADATION: all routing paths lead to review_critique.
+    # If ranking fails, the loop continues with unranked fix planning.
+    action_type: prompt
+    action: |
+      RANK ONLY — output a component-level priority ranking and stop.
+      Do NOT produce a fix plan, modify files, or suggest specific code
+      changes. The review_critique state handles all fix planning.
+
+      You are a harness optimizer performing priority ranking as defined
+      in Ong et al. "Towards Direct Evaluation of Harness Optimizers via
+      Priority Ranking" (arXiv:2605.22505). Your task is to rank the four
+      harness components by their expected impact on improving the next
+      iteration's score.
+
+      CONTEXT — the previous state's output (failure evidence):
+
+      ${prev.output}
+
+      OPTIMIZATION TRAJECTORY — what the loop has done so far:
+
+      Original animation plan:
+      ${captured.animation_plan}
+
+      Most recent fix plan (may be empty on first iteration):
+      ${captured.fix_plan?}
+
+      HARNESS COMPONENT MAPPING — map the loop's architecture to the
+      paper's four-component framework:
+
+      1. PROMPT — the LLM action prompts in plan_animation, render_animation,
+         review_critique, and apply_refinements. Issues here include:
+         - Underspecified instructions (e.g., missing coordinate precision)
+         - Missing guardrails (e.g., not forbidding CSS/anime.js conflicts)
+         - Weak evaluation criteria (e.g., not checking for regressions)
+         - Ambiguous or conflicting constraints
+
+      2. TOOL — the shell-based validation and scoring tools:
+         - smoke_test (Playwright headless browser validation with multi-frame
+           screenshot capture at 1000ms, 3000ms, 5000ms, 7000ms)
+         - score (external vision API scoring on 4-dimension rubric with
+           temporal frame comparison)
+         - check_oscillation (consecutive failure streak counter)
+         Issues here include:
+         - Overly strict validation (rejecting valid artifacts)
+         - Overly lenient validation (passing broken artifacts)
+         - Misweighted rubric dimensions (e.g., aesthetics over correctness)
+         - Tool unavailability (Playwright not installed, vision API down)
+         - Missing frames in multi-frame capture (insufficient data for
+           temporal smoothness evaluation)
+
+      3. MEMORY — the persistent state files across iterations:
+         - .best_score (regression guard threshold)
+         - .smoke_fail_streak (oscillation detection counter)
+         - .smoke_count (bypass threshold counter)
+         - .vision_scores.json (per-dimension score history)
+         - captured.animation_plan (the original plan from iteration 1)
+         - captured.fix_plan (the most recent fix plan)
+         Issues here include:
+         - Stale or incorrect threshold values (quality_target, smoke_fail_streak_max)
+         - Missing cross-iteration context (no fix history, no score trends)
+         - Memory file corruption or missing files
+         - Regression guard too strict or too lenient
+
+      4. WORKFLOW — the FSM state graph topology and routing:
+         - plan → render → smoke → [score | check_oscillation → review → apply → smoke]
+         - Terminal states: done, plan_failed, failed
+         - Circuit breakers: max_iterations (30), max_edge_revisits
+         Issues here include:
+         - Wrong routing on failure (e.g., should replan but goes to refine)
+         - Missing states (e.g., no pre-render validation)
+         - Inefficient iteration (e.g., always replanning when targeted fix would suffice)
+         - Terminal state reached prematurely (phantom convergence)
+
+      RANKING INSTRUCTIONS:
+      1. Analyze the failure evidence in the CONTEXT above. Identify which
+         harness component is MOST likely the binding constraint — the one
+         whose improvement would have the largest positive impact on the
+         next iteration's score.
+      2. Rank all four components in descending order of expected improvement
+         impact using the ≻ symbol: e.g., prompt ≻ workflow ≻ tool ≻ memory
+      3. For EACH component, provide:
+         - A specific piece of evidence from the current iteration that
+           supports its rank position
+         - Whether the component is likely UNDER-constrained (too loose,
+           allowing errors) or OVER-constrained (too strict, blocking progress)
+      4. If two or more components appear equally implicated, explicitly
+         state which ones are tied and why. If all four are tied, output
+         RANKING_DEGENERATE: insufficient evidence to rank components
+      5. Check for bias: if the same component has been ranked #1 in
+         multiple consecutive iterations without score improvement, note
+         BIAS_WARNING: <component> may be over-ranked — scores have not
+         improved despite repeated focus on this component
+      6. End your response with the sentinel line RANKING_VALID on its
+         own line so the evaluator can detect a complete ranking output.
+
+      Output format:
+      RANKING: <#1> ≻ <#2> ≻ <#3> ≻ <#4>
+
+      #1 <component>: <under-constrained or over-constrained>
+      Evidence: <specific evidence from current iteration>
+      Rationale: <why improving this component has highest expected impact>
+
+      #2 <component>: <under-constrained or over-constrained>
+      Evidence: ...
+      Rationale: ...
+
+      #3 <component>: ...
+      #4 <component>: ...
+
+      [BIAS_WARNING if applicable]
+      RANKING_VALID
+    timeout: 300
+    capture: component_ranking
+    evaluate:
+      type: output_contains
+      pattern: "RANKING_VALID"
+    on_yes: review_critique
+    on_no: review_critique
+    on_error: review_critique
+
+  score:
+    # External vision API scores multi-frame screenshot captures from the smoke
+    # test against an animation-specific rubric (Correctness, Aesthetics,
+    # Smoothness, Completeness). Decouples visual scoring from the host LLM's
+    # self-grade — an independent vision model provides objective critique.
+    #
+    # MULTI-FRAME: 4 screenshots are captured at 1000ms, 3000ms, 5000ms, and
+    # 7000ms. The vision model receives all available frames with timestamp
+    # labels and evaluates temporal animation quality by comparing across frames.
+    # If only a single frame is available (degraded mode), the rubric
+    # compensates by warning the model it cannot directly observe motion.
+    #
+    # RUBRIC: 4 dimensions, each scored 1-10, threshold ${context.quality_target}
+    #   - correctness: SVG validity, renderability, prompt alignment
+    #   - aesthetics: visual quality, color harmony, stylistic consistency
+    #   - smoothness: animation fluidity evaluated across frames (temporal comparison)
+    #   - completeness: all requested elements and animation phases present
+    #
+    # REGRESSION GUARD: maintains .best_score file across iterations and snapshots
+    # .best_output.html whenever a new best score is recorded. On regression, the
+    # best artifact is mechanically restored (independent of LLM prompt compliance).
+    # If the current minimum score drops >= 2.0 below the best seen,
+    # outputs SCORE_REGRESSION as a signal for review_critique.
+    #
+    # GRACEFUL DEGRADATION: no-op pass if VISION_* vars are unset. Falls back
+    # to single-frame rubric if only one frame captured. API/parse errors
+    # also pass (never block shipping on an optional visual gate).
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
+        echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0
+      fi
+      # Check for any frame (not just output.png). Multi-frame capture may
+      # have succeeded on some timestamps even if output.png is missing.
+      FRAMES_FOUND=0
+      for F in output_frame_1000ms.png output.png output_frame_5000ms.png output_frame_7000ms.png; do
+        [ -f "$ABS_DIR/$F" ] && FRAMES_FOUND=$((FRAMES_FOUND + 1))
+      done
+      if [ "$FRAMES_FOUND" -eq 0 ]; then
+        echo "VISION_FAIL: no frame captures available to evaluate"; exit 0
+      fi
+      # File-based iteration counter — ${state.iteration} is not available in shell actions.
+      VISION_COUNT_FILE="$ABS_DIR/.vision_count"
+      ITER=$(cat "$VISION_COUNT_FILE" 2>/dev/null || echo 0)
+      ITER=$((ITER + 1))
+      echo "$ITER" > "$VISION_COUNT_FILE"
+      export ABS_DIR ITER
+      python3 <<'PY'
+      import os, re, sys, json, base64, urllib.request
+      abs_dir = os.environ["ABS_DIR"]
+      best_file = os.path.join(abs_dir, ".best_score")
+      scores_file = os.path.join(abs_dir, ".vision_scores.json")
+      threshold = ${context.quality_target}
+      iteration = int(os.environ["ITER"])
+      exploit_cutoff = ${context.exploit_cutoff}
+
+      # --- Multi-frame frame definitions ---
+      # Ordered list of (filename, display_label, timestamp_description)
+      FRAME_DEFS = [
+          ("output_frame_1000ms.png", "Frame 1/4", "t=1000ms (early animation)"),
+          ("output.png",               "Frame 2/4", "t=3000ms (storyboard frame)"),
+          ("output_frame_5000ms.png",  "Frame 3/4", "t=5000ms (mid-animation)"),
+          ("output_frame_7000ms.png",  "Frame 4/4", "t=7000ms (late animation)"),
+      ]
+
+      # --- Read and encode available frames ---
+      captured_frames = []
+      missing_frames = []
+      for fname, label, ts_label in FRAME_DEFS:
+          fpath = os.path.join(abs_dir, fname)
+          if os.path.exists(fpath):
+              try:
+                  with open(fpath, "rb") as f:
+                      b64 = base64.b64encode(f.read()).decode()
+                  captured_frames.append((fname, label, ts_label, b64))
+              except Exception as e:
+                  missing_frames.append((fname, str(e)))
+          else:
+              missing_frames.append((fname, "file not found"))
+
+      if not captured_frames:
+          print("VISION_FAIL: no frame captures available to evaluate"); sys.exit(0)
+
+      # --- Log frame availability ---
+      frame_names = [c[0] for c in captured_frames]
+      print("FRAMES_CAPTURED: %d/%d (%s)" % (len(captured_frames), len(FRAME_DEFS), ", ".join(frame_names)))
+      if missing_frames:
+          print("FRAMES_MISSING: %s" % ", ".join(m[0] for m in missing_frames))
+
+      base = os.environ["VISION_BASE_URL"].rstrip("/")
+      endpoint = base if base.endswith("completions") else base + "/chat/completions"
+
+      # --- Determine rubric mode based on frame availability ---
+      if len(captured_frames) >= 2:
+          # MULTI-FRAME RUBRIC: the model can compare frames for temporal evaluation
+          rubric = (
+              "You are a strict, impartial animation critic. You are given a TEMPORAL "
+              "SEQUENCE of screenshots from an animated SVG, captured at staggered timestamps "
+              "during a looping animation. Each frame is labeled with its capture time. "
+              "Study ALL frames together as a time-sequence and score 1-10 on each dimension. "
+              "DO NOT treat these as independent images — you are evaluating an animation "
+              "from its keyframe sequence.\n\n"
+              "- correctness: Is the SVG syntactically valid and rendering without "
+              "visible errors across all frames? Do elements appear correctly positioned? "
+              "Does each frame show appropriate state for its timestamp?\n"
+              "- aesthetics: Is the visual design clean, balanced, and visually "
+              "pleasing across the sequence? Are colors harmonious and consistent?\n"
+              "- smoothness: THIS IS A TEMPORAL EVALUATION. Compare element positions, "
+              "scales, opacities, and rotations ACROSS frames. Do elements transition "
+              "smoothly between capture timestamps? Is the rate of change consistent "
+              "(indicating proper easing) or erratic/jerky (indicating linear or "
+              "abrupt motion)? Look for: (a) directional consistency in moving elements, "
+              "(b) gradual rather than sudden opacity changes, (c) coordinated "
+              "multi-element relationships that suggest properly sequenced timelines, "
+              "(d) evidence of easing curves in the spacing of position changes between "
+              "frames. IMPORTANT: score the QUALITY of observed motion, not whether "
+              "motion exists. Static elements are not penalized if they should be static "
+              "at those timestamps.\n"
+              "- completeness: Are all elements, subjects, and scene components from "
+              "the description visibly present across the sequence? Does each animation "
+              "phase visibly progress? Are there any missing phases or visible artifacts "
+              "that appear and disappear inconsistently?\n\n"
+              "Threshold: every criterion must be >= %d.\n" % threshold
+              + 'Reply with ONE JSON object only, no prose: {"scores": '
+              '{"correctness": N, "aesthetics": N, "smoothness": N, '
+              '"completeness": N}, "issues": ["specific actionable fix", ...]}'
+          )
+      else:
+          # SINGLE-FRAME FALLBACK RUBRIC: only one frame available — degrade gracefully
+          rubric = (
+              "You are a strict, impartial animation critic. Only a SINGLE screenshot "
+              "of a generated animated SVG is available (multi-frame capture was not "
+              "possible for this iteration). Study the attached screenshot and score "
+              "it 1-10 on each dimension. NOTE: you are viewing a single frame from an "
+              "animated SVG — score what you can observe, but be aware that smoothness "
+              "cannot be directly evaluated from a static frame.\n\n"
+              "- correctness: Is the SVG syntactically valid and rendering without "
+              "visible errors? Do elements appear correctly positioned within the "
+              "frame? Does the visible state align with the described scene?\n"
+              "- aesthetics: Is the visual design clean, balanced, and visually "
+              "pleasing? Are colors harmonious? Is the composition well-proportioned?\n"
+              "- smoothness: Based on the visible frame state (element positions, "
+              "in-between states, opacity levels), can you infer that the animations "
+              "are fluid and well-timed? Look for evidence of proper easing in "
+              "partially-animated elements, natural-looking transform states, and "
+              "coherent multi-element relationships that suggest coordinated motion.\n"
+              "Score conservatively on smoothness — you cannot directly observe "
+              "temporal quality from a single frame.\n"
+              "- completeness: Are all elements, subjects, and scene components "
+              "from the description visibly present? Does the frame show evidence "
+              "of a complete animation sequence?\n\n"
+              "Threshold: every criterion must be >= %d.\n" % threshold
+              + 'Reply with ONE JSON object only, no prose: {"scores": '
+              '{"correctness": N, "aesthetics": N, "smoothness": N, '
+              '"completeness": N}, "issues": ["specific actionable fix", ...]}'
+          )
+
+      # --- Build content array with interleaved text labels and images ---
+      content_blocks = [{"type": "text", "text": rubric}]
+      for fname, label, ts_label, b64 in captured_frames:
+          content_blocks.append({
+              "type": "text",
+              "text": "%s — captured at %s:" % (label, ts_label)
+          })
+          content_blocks.append({
+              "type": "image_url",
+              "image_url": {"url": "data:image/png;base64," + b64}
+          })
+
+      payload = {
+          "model": os.environ["VISION_MODEL"],
+          "temperature": 0.2,
+          "max_tokens": 1500,
+          "messages": [{"role": "user", "content": content_blocks}],
+      }
+      req = urllib.request.Request(
+          endpoint, data=json.dumps(payload).encode(),
+          headers={"Authorization": "Bearer " + os.environ["VISION_API_KEY"],
+                   "Content-Type": "application/json"})
+      try:
+          with urllib.request.urlopen(req, timeout=120) as r:
+              content = json.load(r)["choices"][0]["message"]["content"]
+      except Exception as e:
+          print("VISION_PASS: vision API error (%s), not blocking" % e); sys.exit(0)
+      m = re.search(r"\{.*\}", content, re.S)
+      try:
+          data = json.loads(m.group(0)) if m else {}
+          scores = data.get("scores", {}) or {}
+          issues = data.get("issues", []) or []
+      except Exception:
+          print("VISION_PASS: unparseable vision verdict, not blocking"); sys.exit(0)
+
+      valid_scores = {k: v for k, v in scores.items()
+                      if isinstance(v, (int, float))}
+      if not valid_scores:
+          print("VISION_PASS: no numeric scores in verdict"); sys.exit(0)
+      current_min = min(valid_scores.values())
+
+      try:
+          best_min = float(open(best_file).read().strip())
+      except Exception:
+          best_min = 0.0
+
+      # BUG-018: Percentage-based regression tolerance scaled to best_min.
+      # At best_min=4 → tolerance=1.0 (catches 25% regression)
+      # At best_min=8 → tolerance=2.0 (same as original)
+      # Converge phase (iteration > exploit_cutoff): stricter 15% scaling
+      if iteration > exploit_cutoff:
+          REGRESSION_TOLERANCE = max(0.5, best_min * 0.15)
+      else:
+          REGRESSION_TOLERANCE = max(1.0, best_min * 0.25)
+
+      if current_min > best_min:
+          open(best_file, "w").write(str(current_min))
+          best_min = current_min
+          import shutil
+          shutil.copy(os.path.join(abs_dir, "output.html"),
+                      os.path.join(abs_dir, ".best_output.html"))
+
+      open(scores_file, "w").write(json.dumps({
+          "scores": scores,
+          "current_min": current_min,
+          "best_min": best_min,
+          "issues": issues,
+          "threshold": threshold,
+          "frames_captured": len(captured_frames),
+          "frames_total": len(FRAME_DEFS)
+      }))
+
+      regression_detected = (best_min - current_min) >= REGRESSION_TOLERANCE
+
+      failing = {k: v for k, v in scores.items()
+                 if isinstance(v, (int, float)) and v < threshold}
+
+      print("VISION scores: " + json.dumps(scores))
+      print("Current min: %.1f | Best min: %.1f" % (current_min, best_min))
+
+      if regression_detected:
+          print("SCORE_REGRESSION: current min %.1f dropped >= %.1f below best min %.1f"
+                % (current_min, REGRESSION_TOLERANCE, best_min))
+          print("Consider reverting to the approach that achieved best_min=%.1f" % best_min)
+          if regression_detected and os.path.exists(os.path.join(abs_dir, ".best_output.html")):
+              shutil.copy(os.path.join(abs_dir, ".best_output.html"),
+                          os.path.join(abs_dir, "output.html"))
+              print("REVERTED_TO_BEST: restored .best_output.html (best_min=%.1f)" % best_min)
+
+      if not failing:
+          print("VISION_PASS"); sys.exit(0)
+
+      print("VISION_FAIL: %d criteria below threshold %d" % (len(failing), threshold))
+      for k, v in failing.items():
+          print("- %s scored %s/10 (below threshold %d)" % (k, v, threshold))
+      for i in issues:
+          print("- %s" % i)
+      PY
+    timeout: 300
+    evaluate:
+      type: output_contains
+      pattern: "VISION_PASS"
+    on_yes: track_correlation
+    on_no: track_correlation
+    on_error: rank_components
+
+  track_correlation:
+    # FIX/SCORE CORRELATION TRACKING (ENH-013):
+    # After each scoring pass, extracts fix categories from the fix plan,
+    # computes per-category score deltas, and writes correlation entries
+    # to JSONL. Computes running per-strategy effectiveness metrics.
+    #
+    # Routes based on score result: VISION_PASS → done chain,
+    # VISION_FAIL → review chain.
+    #
+    # GRACEFUL DEGRADATION: on_error → review_critique (non-blocking)
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+
+      CORRELATION_FILE="$ABS_DIR/fix_correlation.jsonl"
+      EFFECTIVENESS_FILE="$ABS_DIR/fix_strategy_effectiveness.json"
+      SCORES_FILE="$ABS_DIR/.vision_scores.json"
+      DIAGNOSIS_FILE="$ABS_DIR/self_diagnosis.jsonl"
+
+      # Determine current iteration from correlation file
+      ITERATION=1
+      if [ -f "$CORRELATION_FILE" ]; then
+        ITERATION=$(wc -l < "$CORRELATION_FILE" 2>/dev/null | tr -d ' ')
+        ITERATION=$((ITERATION + 1))
+      fi
+
+      # Extract current scores from .vision_scores.json
+      SCORE_JSON="{}"
+      if [ -f "$SCORES_FILE" ]; then
+        SCORE_JSON=$(cat "$SCORES_FILE" 2>/dev/null || echo "{}")
+      fi
+
+      # Determine if score passed (VISION_PASS in previous output)
+      PREV_OUTPUT="${prev.output}"
+      SCORE_PASSED="false"
+      if echo "$PREV_OUTPUT" | grep -q "VISION_PASS"; then
+        SCORE_PASSED="true"
+      fi
+
+      # Extract fix categories from the fix plan using keyword matching
+      FIX_PLAN="${captured.fix_plan?}"
+      CATEGORIES=""
+
+      # Keyword-based category extraction
+      for cat in easing path-coordinates z-order css-conflict viewbox transform-origin color-palette element-missing tag-nesting accessibility; do
+        case "$cat" in
+          easing)
+            KEYWORDS="easing|easeOut|easeIn|spring|cubic-bezier|duration|delay|stagger|timeline"
+            ;;
+          path-coordinates)
+            KEYWORDS="path|coordinates|viewBox|d attribute|polygon|polyline|points"
+            ;;
+          z-order)
+            KEYWORDS="z-order|z-index|stacking|layer|ordering|<g>|grouping"
+            ;;
+          css-conflict)
+            KEYWORDS="css|@keyframes|SMIL|animate>|transform|transition|conflict"
+            ;;
+          viewbox)
+            KEYWORDS="viewBox|viewport|dimensions|aspect.ratio|scaling"
+            ;;
+          transform-origin)
+            KEYWORDS="transform-origin|pivot|rotation.center|scale.center"
+            ;;
+          color-palette)
+            KEYWORDS="color|fill|stroke|palette|token|hex|rgb|hsl"
+            ;;
+          element-missing)
+            KEYWORDS="missing|absent|not.present|add.element|new.element"
+            ;;
+          tag-nesting)
+            KEYWORDS="nesting|unclosed|unescaped|XML|HTML.structure|tag"
+            ;;
+          accessibility)
+            KEYWORDS="aria|role=|prefers-reduced|accessibility|a11y|title>|desc>"
+            ;;
+        esac
+        if echo "$FIX_PLAN" | grep -qiE "$KEYWORDS"; then
+          if [ -n "$CATEGORIES" ]; then
+            CATEGORIES="$CATEGORIES, "
+          fi
+          CATEGORIES="$CATEGORIES\"$cat\""
+        fi
+      done
+
+      # Export variables for Python
+      export ABS_DIR ITERATION SCORE_PASSED CATEGORIES SCORE_JSON DIAGNOSIS_FILE CORRELATION_FILE EFFECTIVENESS_FILE
+
+      # Write correlation entry and compute effectiveness
+      python3 <<'PY'
+      import os, json
+
+      abs_dir = os.environ["ABS_DIR"]
+      iteration = int(os.environ.get("ITERATION", "1"))
+      score_passed = os.environ.get("SCORE_PASSED", "false") == "true"
+      categories_raw = os.environ.get("CATEGORIES", "")
+      diagnosis_file = os.environ.get("DIAGNOSIS_FILE", "")
+      correlation_file = os.environ.get("CORRELATION_FILE", "")
+      effectiveness_file = os.environ.get("EFFECTIVENESS_FILE", "")
+
+      # Parse fix categories
+      fix_categories = []
+      if categories_raw:
+          fix_categories = [c.strip().strip('"') for c in categories_raw.split(",") if c.strip()]
+
+      # Parse current scores
+      try:
+          score_json = json.loads(os.environ.get("SCORE_JSON", "{}"))
+      except Exception:
+          score_json = {}
+      scores = score_json.get("scores", {}) or {}
+
+      # Compute score deltas from previous iteration
+      prev_scores = {"smoothness": 0, "aesthetics": 0, "correctness": 0, "completeness": 0}
+      if os.path.exists(correlation_file):
+          try:
+              with open(correlation_file) as f:
+                  lines = [line for line in f if line.strip()]
+              if lines:
+                  prev = json.loads(lines[-1])
+                  prev_scores = prev.get("score_delta") or prev_scores
+          except Exception:
+              pass
+
+      score_delta = {}
+      for dim in ["smoothness", "aesthetics", "correctness", "completeness"]:
+          current = float(scores.get(dim, 0) or 0)
+          previous = float((prev_scores or {}).get(dim, 0) or 0)
+          score_delta[dim] = round(current - previous, 2)
+
+      # Extract self-diagnosis flags if available
+      self_diag_flags = []
+      if os.path.exists(diagnosis_file):
+          try:
+              with open(diagnosis_file) as f:
+                  lines = [line for line in f if line.strip()]
+              if lines:
+                  last_diag = json.loads(lines[-1])
+                  self_diag_flags = (last_diag.get("non_critical", []) or []) + (last_diag.get("critical", []) or [])
+          except Exception:
+              pass
+
+      # Write correlation entry
+      entry = {
+          "iteration": iteration,
+          "fix_categories": fix_categories,
+          "score_delta": score_delta,
+          "self_diagnosis_flags": self_diag_flags,
+          "score_passed": score_passed
+      }
+
+      # Ensure run directory exists
+      os.makedirs(abs_dir, exist_ok=True)
+
+      with open(correlation_file, "a") as f:
+          f.write(json.dumps(entry) + "\n")
+
+      # Also append self_diagnosis to JSONL if captured
+      # (the self_diagnose prompt output is logged here as a pass-through)
+
+      # Compute running effectiveness statistics
+      categories_stats = {}
+      if os.path.exists(correlation_file):
+          with open(correlation_file) as f:
+              for line in f:
+                  if not line.strip():
+                      continue
+                  try:
+                      rec = json.loads(line)
+                  except Exception:
+                      continue
+                  for cat in rec.get("fix_categories", []):
+                      if cat not in categories_stats:
+                          categories_stats[cat] = {
+                              "attempts": 0, "improvements": 0, "regressions": 0,
+                              "total_delta": {"smoothness": 0, "aesthetics": 0,
+                                              "correctness": 0, "completeness": 0}
+                          }
+                      stats = categories_stats[cat]
+                      stats["attempts"] += 1
+                      delta = rec.get("score_delta", {})
+                      any_improved = False
+                      any_worsened = False
+                      for dim in ["smoothness", "aesthetics", "correctness", "completeness"]:
+                          d = delta.get(dim, 0) or 0
+                          stats["total_delta"][dim] += d
+                          if d > 0:
+                              any_improved = True
+                          elif d < 0:
+                              any_worsened = True
+                      if any_improved:
+                          stats["improvements"] += 1
+                      if any_worsened:
+                          stats["regressions"] += 1
+
+      # Compute per-category means and rates
+      effectiveness = {}
+      for cat, stats in categories_stats.items():
+          n = stats["attempts"]
+          if n > 0:
+              effectiveness[cat] = {
+                  "attempts": n,
+                  "mean_delta": {dim: round(stats["total_delta"][dim] / n, 2)
+                                 for dim in stats["total_delta"]},
+                  "hit_rate": round(stats["improvements"] / n, 2),
+                  "regression_rate": round(stats["regressions"] / n, 2)
+              }
+
+      with open(effectiveness_file, "w") as f:
+          json.dump(effectiveness, f, indent=2)
+      PY
+
+      # Output routing sentinel based on score result
+      if [ "$SCORE_PASSED" = "true" ]; then
+        echo "VISION_PASS"
+      else
+        echo "VISION_FAIL"
+      fi
+
+      echo "CORRELATION_LOGGED: iteration $ITERATION"
+    timeout: 30
+    evaluate:
+      type: output_contains
+      pattern: "VISION_PASS"
+    on_yes: write_final_summary
+    on_no: check_score_streak
+    on_error: check_score_streak
+
+  check_score_streak:
+    # ENH-033: Score-failure oscillation detection with two-level escalation.
+    # Level 1 (score_replan_count < replan_escalation_threshold): REPLAN -> plan_animation
+    #   (parametric changes within the same animation concept).
+    # Level 2 (score_replan_count >= replan_escalation_threshold): CONCEPT_RESET -> concept_reset
+    #   (forced pivot to a fundamentally different animation mechanism).
+    # Counts consecutive VISION_FAIL outcomes via .score_fail_streak file.
+    # Uses .score_replan_count (NOT .replan_count) to avoid interference with
+    # check_replan_budget which uses .replan_count for the critique-requested REPLAN path.
+    # Pattern ported from p5js-sketch-generator check_score_streak + _streak_route.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      STREAK_FILE="$ABS_DIR/.score_fail_streak"
+      REPLAN_COUNT_FILE="$ABS_DIR/.score_replan_count"
+      STREAK=$(cat "$STREAK_FILE" 2>/dev/null || echo 0)
+      STREAK=$((STREAK + 1))
+      echo "$STREAK" > "$STREAK_FILE"
+      if [ "$STREAK" -ge "${context.score_fail_streak_max}" ]; then
+        REPLAN_COUNT=$(cat "$REPLAN_COUNT_FILE" 2>/dev/null || echo 0)
+        REPLAN_COUNT=$((REPLAN_COUNT + 1))
+        echo "$REPLAN_COUNT" > "$REPLAN_COUNT_FILE"
+        if [ "$REPLAN_COUNT" -ge "${context.replan_escalation_threshold}" ]; then
+          echo "CONCEPT_RESET: $REPLAN_COUNT REPLANs exhausted (threshold: ${context.replan_escalation_threshold})"
+          echo "0" > "$STREAK_FILE"
+        else
+          echo "REPLAN: $STREAK consecutive score failures (REPLAN #$REPLAN_COUNT)"
+          echo "0" > "$STREAK_FILE"
+        fi
+      else
+        echo "STREAK_NORMAL: $STREAK/${context.score_fail_streak_max}"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "CONCEPT_RESET"
+    on_yes: concept_reset
+    on_no: _score_streak_route
+
+  _score_streak_route:
+    # ENH-033: Routing state for check_score_streak non-CONCEPT_RESET paths.
+    # Separates REPLAN (parametric changes to same concept) from STREAK_NORMAL
+    # (continue iterating with component ranking). This intermediate state exists
+    # because the FSM engine does not support nested evaluate dicts in on_no.
+    # Pattern ported from p5js-sketch-generator _streak_route.
+    evaluate:
+      type: output_contains
+      pattern: "REPLAN"
+    on_yes: plan_animation
+    on_no: rank_components
+
+  concept_reset:
+    # ENH-033: Concept-level reset triggered after replan_escalation_threshold
+    # REPLAN cycles without any criterion reaching quality_target. Forces a
+    # fundamentally different animation mechanism — explicitly excluding the
+    # current concept's approach. Routes to render_animation for implementation.
+    # Pattern ported from p5js-sketch-generator concept_reset.
+    action_type: prompt
+    action: |
+      ## CONCEPT RESET — Escalation Level 2
+
+      This reset was triggered after ${context.replan_escalation_threshold} REPLAN
+      cycles failed to produce ANY criterion scoring >= ${context.quality_target}.
+
+      Read ${captured.run_dir.output}/output.html and the most recent vision
+      scores in ${captured.run_dir.output}/.vision_scores.json.
+
+      Identify the CURRENT animation mechanism from the existing artifact. This
+      mechanism has proven structurally incapable of reaching threshold across
+      multiple REPLAN cycles and is EXPLICITLY FORBIDDEN in this new plan.
+
+      ## TASK
+      Design an animated SVG from this description:
+      ${context.input}
+
+      The plan must use a COMPLETELY DIFFERENT animation mechanism than the
+      current one. Examples of alternative mechanisms (choose one the current
+      artifact does NOT use):
+      - Path morphing / shape-shifting (anime.js d attribute interpolation)
+      - Physics-based particle systems (gravity, springs, collisions)
+      - Line-drawing reveals (stroke-dashoffset animation)
+      - Keyframe-sequenced scene changes (opacity crossfades between states)
+      - Spring-physics emphasis chains (staggered spring() easing)
+      - Fractal / recursive decomposition (nested timelines)
+      - Color-field / gradient animation (stop-color transitions)
+      - Typographic motion (per-character text animation)
+
+      Plan across all seven standard dimensions (scene & composition, shape
+      inventory, animation choreography, multi-frame capture awareness, easing
+      & physics strategy, accessibility & graceful degradation, single-file
+      HTML structure).
+
+      Be specific and opinionated. This is a forced conceptual pivot — the
+      previous mechanism is off the table.
+    next: render_animation
+
+  review_critique:
+    action: |
+      REVIEW ONLY — output a fix plan and stop. Do NOT modify the output.html
+      file or any other files. The apply_refinements state handles all
+      implementation.
+
+      The animated SVG artifact at ${context.run_dir}/output.html was critiqued
+      by an external vision model. Review the specific weaknesses identified
+      below:
+
+      ${prev.output}
+
+      COMPONENT-LEVEL PRIORITY RANKING — a harness optimizer ranked the four
+      harness components by expected improvement impact on the next iteration's
+      score. Use this to focus your fix plan on the highest-ranked component(s):
+
+      ${captured.component_ranking?}
+
+      OPTIMIZER SELF-DIAGNOSIS (ENH-013) — after the last fix was applied,
+      the optimizer audited its own behavior against the 8-category error
+      taxonomy from Ong et al. (arXiv:2605.22505). If a diagnosis was
+      produced, review it to understand what meta-errors the optimizer may
+      have made:
+
+      ${captured.self_diagnosis?}
+
+      If the diagnosis indicates MULTI_FLAG (3+ non-critical error types),
+      the optimizer may be systematically misapplying fixes. Consider whether
+      the fix plan approach needs structural adjustment rather than tuning
+      individual fixes.
+
+      HISTORICAL FIX EFFECTIVENESS (ENH-013) — if fix/score correlation
+      data has been accumulated, read
+      ${context.run_dir}/fix_strategy_effectiveness.json for evidence-based
+      guidance on which fix strategies have been effective:
+      - Strategies with high hit_rate (>0.6): prefer these approaches
+      - Strategies with high regression_rate (>0.4): avoid these approaches
+      - Strategies with zero attempts: consider if they might address the
+        current failure pattern
+
+      ${context.design_tokens_context}
+
+      ## PRIOR LEARNINGS CHECK (ENH-011)
+
+      Read ${context.run_dir}/optimization_summary.md if it exists. Extract every
+      lesson marked **[ACTIVE]** with a carry-forward flag from the last 3-5
+      iterations. Compare the current iteration's failure evidence (in the
+      critique above) against these lessons:
+
+      1. REPEATED PATTERN DETECTION: If the current iteration's primary failure
+         pattern matches a carry-forward lesson from ≤3 iterations ago, the
+         optimizer is repeating a known mistake. Output "REPLAN_NEEDED" as the
+         first line of your response, then describe:
+         - Which prior lesson(s) warned about this exact failure pattern
+         - Why the fix plan from that prior iteration did not prevent recurrence
+         - What structural change to the plan or prompt is needed to break the cycle
+         Skip all other pre-checks and proceed directly to the REPLAN_NEEDED output.
+
+      2. LESSON-AWARE CRITIQUE: If no repeated pattern is detected, incorporate
+         relevant carry-forward lessons into your fix plan:
+         - Reference specific lesson tags (e.g., "per [EASING] lesson from
+           iteration 3, replace easeOutElastic with easeOutExpo")
+         - If a `[VALIDATED]` lesson applies, prescribe it with high confidence
+         - If an `[INEFFECTIVE]` lesson is relevant, note that the approach was
+           tried and did not work — do not recommend it again
+
+      If no summary file exists or no active lessons are found, proceed silently
+      to the pre-checks below.
+
+      ---
+
+      ## OPTIMIZATION PHASE (ENH-012)
+
+      This is iteration ${state.iteration} of 30 max. Adapt your review
+      strategy to the current phase:
+
+      EXPLORE (iter 1–${context.explore_cutoff}): Broader, more experimental
+      fix suggestions are acceptable. Suggest alternative animation approaches
+      if the current one is fundamentally limited. Don't over-constrain to
+      incremental fixes.
+
+      EXPLOIT (iter ${context.explore_cutoff}+1–${context.exploit_cutoff}):
+      Focus the fix plan on the SINGLE lowest-scoring rubric dimension.
+      Be surgical and specific. Component ranking signal is strongest here —
+      trust it. Target the binding constraint, not all issues.
+
+      CONVERGE (iter ${context.exploit_cutoff}+1–30): Conservative fixes only.
+      Do NOT suggest new animation sequences, restructured compositions, or
+      changed animation strategies. Small parameter adjustments only (timing,
+      easing, color). If uncertain whether a change is safe, omit it.
+
+      ---
+
+      IMPORTANT PRE-CHECKS — handle these before producing the fix plan:
+
+      1. COMPONENT RANKING CHECK: If a component ranking is provided above,
+         validate it before using it:
+         - Does the highest-ranked component match the failure evidence?
+         - If the ranking is flagged RANKING_DEGENERATE (insufficient evidence),
+           ignore it and analyze the failure evidence directly
+         - If the ranking has a BIAS_WARNING (same component ranked #1
+           repeatedly without score improvement), consider whether a different
+           component is the real bottleneck
+         - If the ranking looks correct, focus your fix plan primarily on
+           the #1 ranked component, secondarily on #2
+         - Map the ranked components to concrete fixes:
+           * PROMPT #1 → fix the action prompts (add guardrails, clarify
+             constraints, improve specificity) in your fix plan
+           * TOOL #1 → recommend threshold adjustments, rubric reweighting,
+             or validation logic changes (note: you cannot modify shell
+             scripts; describe the needed changes for the loop author)
+           * MEMORY #1 → recommend changes to .best_score threshold,
+             smoke_fail_streak_max, or other memory parameters
+           * WORKFLOW #1 → recommend routing changes (e.g., when to replan
+             vs refine) or suggest new states; if the fix requires a full
+             replan, output REPLAN_NEEDED
+
+      2. MISSING ARTIFACT CHECK: If the critique indicates that no HTML artifact
+         was produced (e.g. SMOKE_FAIL or VISION_FAIL due to missing output.html
+         or output.png), output "REPLAN_NEEDED" as the first line of your
+         response, then describe what went wrong and what a corrected plan must
+         cover.
+
+      3. SCORE REGRESSION CHECK: If the critique contains "SCORE_REGRESSION"
+         (the current iteration's minimum score dropped below the adaptive
+         regression tolerance threshold), the harness has ALREADY mechanically
+         restored the best-scored artifact (.best_output.html to output.html).
+         The artifact on disk IS the best version. Output "REPLAN_NEEDED" as
+         the first line of your response, then describe:
+         - What the best-scoring version did correctly (the restored artifact)
+         - What the regressed version changed that caused regression
+         - A plan that addresses the regression without reintroducing the
+           changes that caused it — since the best artifact has been restored,
+           focus on what to do DIFFERENTLY from the regressed approach
+
+      If neither replan-triggering pre-check fires (MISSING ARTIFACT or SCORE
+      REGRESSION), proceed with the normal fix plan below.
+
+      NORMAL FIX PLAN — analyze the critique and produce a targeted fix plan:
+      1. Identify the lowest-scoring dimensions, their root causes, and the
+         specific SVG elements, animation parameters, timing values, or
+         structural changes needed to fix each issue
+      2. For each failing issue in the critique, map it to one of these
+         animation-specific failure categories and prescribe the fix:
+         - Path/coordinate errors: adjust <path> d attributes, viewBox containment
+         - Z-order/rendering errors: reorder SVG elements, fix <g> grouping
+         - CSS vs animation conflicts: remove any CSS transform/transition rules
+           that overlap with anime.js targets
+         - Easing/timing problems: adjust easing functions, durations, delays,
+           stagger parameters, or timeline offsets
+         - Structural/XML errors: fix tag nesting, unescaped characters,
+           namespace declarations
+         - Completeness gaps: add missing shapes, animation sequences, or states
+           specified in the original plan
+      3. Plan style adjustments: if design tokens are provided, identify where
+         contrast, harmony, or visual hierarchy can be improved by adjusting
+         fill/stroke colors to better use the semantic token palette
+      4. Prioritize fixes by impact:
+         - HIGH: fixes that make the difference between passing and failing a
+           dimension (score within 1-2 points of threshold)
+         - MEDIUM: fixes that improve a clearly deficient dimension (score 2+
+           points below threshold)
+         - LOW: cosmetic improvements to already-passing dimensions
+         Apply high and medium fixes; skip low-priority changes that risk
+         introducing new regressions
+      5. Output a numbered fix list with specific, actionable changes
+         referencing CSS class names, SVG element IDs, and exact anime.js
+         parameter adjustments
+    action_type: prompt
+    timeout: 600
+    max_retries: 3
+    retryable_exit_codes: [124]
+    on_retry_exhausted: failed
+    capture: fix_plan
+    evaluate:
+      type: output_contains
+      pattern: "REPLAN_NEEDED"
+    on_yes: check_replan_budget
+    on_no: apply_refinements
+    on_error: review_critique
+
+  check_replan_budget:
+    # ENH-019: Replan cycle resource guard.
+    # Gates the REPLAN_NEEDED path to prevent unbounded replan cycles.
+    # Tracks replan count via .replan_count file in the run directory.
+    # Routes to plan_animation (replan allowed) or write_final_summary (budget exhausted).
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      MAX_REPLANS=${context.max_replans}
+      COUNTER_FILE="$ABS_DIR/.replan_count"
+
+      # Read current replan count (default 0)
+      if [ -f "$COUNTER_FILE" ]; then
+        COUNT=$(cat "$COUNTER_FILE")
+      else
+        COUNT=0
+      fi
+
+      # Increment for THIS replan
+      NEW_COUNT=$((COUNT + 1))
+      echo "$NEW_COUNT" > "$COUNTER_FILE"
+
+      echo "REPLAN_BUDGET: replan $NEW_COUNT of $MAX_REPLANS allowed"
+
+      if [ "$NEW_COUNT" -gt "$MAX_REPLANS" ]; then
+        echo "REPLAN_EXHAUSTED: $NEW_COUNT replans exceeds budget of $MAX_REPLANS"
+        echo "Routing to write_final_summary for graceful termination"
+      else
+        echo "REPLAN_ALLOWED: proceeding to plan_animation"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "REPLAN_EXHAUSTED"
+    on_yes: write_final_summary
+    on_no: plan_animation
+
+  apply_refinements:
+    action: |
+      IMPLEMENT ONLY — apply every fix from the plan below. Do NOT re-analyze
+      the animation, propose new fixes, or second-guess the plan. Modify
+      the output.html file and stop.
+
+      ## PRIOR LEARNINGS CONSTRAINTS (ENH-011)
+
+      Read ${context.run_dir}/optimization_summary.md if it exists. Extract every
+      lesson marked **[ACTIVE]** with its tag. These are constraints on your
+      implementation — patterns known to cause failures in prior iterations:
+
+      - Do NOT reintroduce any pattern that a carry-forward lesson explicitly
+        warns against (e.g., if a lesson says "avoid easeOutElastic on small
+        elements," do not add or preserve easeOutElastic on elements smaller
+        than 50px viewBox units)
+      - If a `[VALIDATED]` lesson prescribes a specific approach, prefer that
+        approach when applying fixes
+      - If a lesson is tagged `[INEFFECTIVE]`, the approach was tried and did
+        not improve scores — do not reuse patterns from that lesson
+      - If the fix plan instructs you to apply a change that conflicts with an
+        active carry-forward lesson, note the conflict explicitly and follow
+        the lesson (it represents real empirical evidence from this run)
+
+      If no summary file exists or no active lessons are found, proceed silently.
+
+      ---
+
+      ## OPTIMIZATION PHASE (ENH-012)
+
+      This is iteration ${state.iteration} of 30 max. Adapt your implementation
+      to the current phase:
+
+      EXPLORE (iter 1–${context.explore_cutoff}): Implement the fix plan fully,
+      even if it proposes bold changes. Exploration-phase fixes may restructure
+      animations significantly — apply them faithfully. Don't conservatively
+      water down explore-phase changes.
+
+      EXPLOIT (iter ${context.explore_cutoff}+1–${context.exploit_cutoff}):
+      Apply fixes with surgical precision. Make ONLY the changes specified in
+      the fix plan. Do not expand scope or add improvements beyond the plan.
+      The fix plan targets the binding constraint — don't dilute it.
+
+      CONVERGE (iter ${context.exploit_cutoff}+1–30): Apply only HIGH
+      confidence fixes from the plan. Skip any MEDIUM or LOW priority changes
+      that could introduce regressions. If a fix requires restructuring or
+      new animation sequences, skip it — note "SKIPPED: regression risk in
+      converge phase" and move on. Prefer the minimal change that addresses
+      the issue.
+
+      ---
+
+      Apply the fix plan below to the animated SVG artifact at
+      ${context.run_dir}/output.html:
+
+      ${captured.fix_plan?}
+
+      ${context.design_tokens_context}
+
+      Steps:
+      1. Read ${context.run_dir}/output.html to understand the current state
+      2. Apply every fix from the plan to the file in place:
+         - Fix SVG element attributes (d paths, positions, dimensions, fills,
+           strokes) using token palette colors where appropriate
+         - Fix animation parameters (targets, properties, easings, durations,
+           delays, stagger configs, timeline offsets)
+         - Fix structural issues (element ordering/Z-index, <g> grouping, tag
+           nesting, unescaped special characters, missing namespace attrs)
+         - Remove any CSS @keyframes or SMIL <animate> tags that conflict with
+           anime.js animation targets — anime.js must own all animated properties
+         - Add missing elements or animation sequences from the plan
+         - Adjust transform-origin CSS properties on rotated/scaled elements
+           to prevent pivot-point drift
+      3. Verify the fix — re-read the file and confirm:
+         - All HTML tags are properly nested and closed
+         - All anime.js target selectors match actual CSS class/ID values in
+           the SVG markup
+         - Path data coordinates are within the declared viewBox
+         - Critical animation failure modes are avoided (no CSS/anime.js
+           property conflicts, no mixed animation approaches on same elements)
+      4. If design tokens are provided, verify that every color used in the
+         SVG and animation code comes from the token palette — replace any
+         newly-invented or hardcoded color values
+      5. Do not introduce new design decisions, new animation sequences, or
+         new visual elements beyond what the fix plan specifies; focused,
+         minimal edits are preferred over broad rewrites
+    action_type: prompt
+    timeout: 900
+    max_retries: 3
+    retryable_exit_codes: [124]
+    on_retry_exhausted: write_final_summary
+    capture: candidate
+    next: self_diagnose
+    on_error: apply_refinements
+
+  self_diagnose:
+    # OPTIMIZER SELF-DIAGNOSIS (ENH-013):
+    # After applying refinements, classifies the optimizer's own behavior
+    # against the 8-category error taxonomy from Ong et al.
+    # (arXiv:2605.22505, Table 5). Routes based on severity:
+    # - Critical (Hallucination/Safety Violation) → replan immediately
+    # - Non-critical → proceed with diagnosis captured for review_critique
+    #
+    # GRACEFUL DEGRADATION: on_error → smoke_test (non-blocking)
+    action_type: prompt
+    action: |
+      DIAGNOSE ONLY — classify the optimizer's own behavior and stop.
+      Do NOT modify files, propose fixes, or re-analyze the artifact.
+
+      You are auditing the optimizer that just applied a fix plan to an
+      animated SVG artifact. Your task is to classify the optimizer's
+      behavior against each of the 8 harness optimization error types
+      identified in Ong et al. "Towards Direct Evaluation of Harness
+      Optimizers via Priority Ranking" (arXiv:2605.22505, Table 5).
+
+      CONTEXT — what the optimizer was asked to do:
+
+      Fix plan that was applied:
+      ${captured.fix_plan?}
+
+      Previous state output (critique/scores that motivated this fix):
+      ${prev.output}
+
+      ## ERROR TYPE CLASSIFICATION
+
+      For each of the 8 error types below, determine whether the optimizer
+      exhibited this behavior. Answer YES or NO with specific evidence
+      from the fix plan or its implementation.
+
+      1. REDUNDANT DUPLICATION — Did the fix add something that already
+         exists in the artifact? (e.g., adding a CSS rule that was already
+         present, duplicating an existing animation sequence)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      2. HARDCODING — Did the fix embed specific values without
+         generalization? (e.g., hardcoding exact pixel coordinates from
+         a single critique rather than parameterizing, fixing a specific
+         color value rather than using token palette)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      3. TASK-SPECIFIC ADDITION — Is the fix only valid for this specific
+         animation description and unlikely to generalize? (e.g., adding
+         a one-off workaround that only makes sense for this particular
+         scene description)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      4. HALLUCINATION — Did the optimizer reference elements, classes,
+         properties, or tools that don't exist in the artifact?
+         (e.g., targeting CSS class ".non-existent", referencing anime.js
+         API methods that don't exist, claiming to fix a file that was
+         never created)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      5. OVERENGINEERING — Did the fix add unnecessary complexity?
+         (e.g., adding multi-step animation sequences for a simple fix,
+         introducing complex spring physics where a simple ease would
+         suffice, restructuring the SVG layout when a single attribute
+         change would fix the issue)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      6. DIRECT PERFORMANCE-DEGRADING UPDATE — Could this fix actively
+         worsen the artifact? (e.g., adding overlapping animations that
+         may cause jank, introducing synchronous operations that block
+         rendering, setting animation durations so long they overlap
+         problematically)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      7. OVERGENERALIZED HEURISTIC — Did the fix apply a one-size-fits-all
+         rule inappropriately? (e.g., changing ALL easing functions to a
+         single type regardless of context, uniformly adjusting durations
+         without considering per-element needs, applying the same
+         transform-origin to all elements)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      8. SAFETY VIOLATION — Did the fix remove or degrade safety guards?
+         (e.g., removing prefers-reduced-motion media query, deleting
+         aria-labelledby or role attributes, removing the anime.js CDN
+         onerror fallback, stripping alt/title/desc accessibility elements)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      ## SEVERITY DETERMINATION
+
+      Based on the classifications above, determine the severity:
+
+      CRITICAL: If Hallucination (#4) or Safety Violation (#8) is YES.
+      → Output "CRITICAL_ERROR" on its own line.
+      → The loop will re-plan from scratch — these errors indicate the
+        fix itself is untrustworthy.
+
+      MULTI_FLAG: If 3 or more non-critical types (#1, #2, #3, #5, #6, #7)
+      are YES.
+      → Output "MULTI_FLAG" on its own line.
+      → The diagnosis will be surfaced to the next review cycle for
+        evidence-based re-critique.
+
+      NORMAL: If 0-2 non-critical types are YES and no critical types.
+      → Output "DIAGNOSIS_NORMAL" on its own line.
+      → The diagnosis is logged for correlation tracking.
+
+      ## SUMMARY
+
+      Output a one-line JSON summary:
+      ```json
+      {"critical": [list of critical error types detected],
+       "non_critical": [list of non-critical error types detected],
+       "total_flags": N,
+       "confidence": 0.0-1.0}
+      ```
+
+      End with the severity sentinel line (CRITICAL_ERROR, MULTI_FLAG,
+      or DIAGNOSIS_NORMAL) on its own line.
+
+      After outputting your diagnosis, write the JSON summary as a single
+      line to ${context.run_dir}/self_diagnosis.jsonl (append mode).
+      This enables the track_correlation state to read diagnosis flags
+      for fix/score correlation analysis. Use the exact format:
+      ```json
+      {"iteration": N, "critical": [...], "non_critical": [...], "total_flags": N, "confidence": 0.0-1.0}
+      ```
+      Determine the iteration number by counting existing lines in
+      ${context.run_dir}/self_diagnosis.jsonl (1-indexed; if file doesn't
+      exist, this is iteration 1).
+    timeout: 300
+    capture: self_diagnosis
+    evaluate:
+      type: output_contains
+      pattern: "CRITICAL_ERROR"
+    on_yes: plan_animation
+    on_no: write_summary
+    on_error: smoke_test
+
+  write_summary:
+    # CUMULATIVE OPTIMIZATION SUMMARY (ENH-011):
+    # Appends a structured S_i entry to optimization_summary.md after each
+    # non-terminal iteration. The summary records what was attempted, observed,
+    # and learned, building a cumulative optimization trajectory H_t.
+    #
+    # Carry-forward lessons persist across iterations and are injected into
+    # plan_animation, review_critique, and apply_refinements prompts.
+    # After iteration 20, carry-forward lessons are deduplicated and pruned
+    # to prevent summary noise (per the paper's Finding 6: correlation peaks
+    # at mid-stage and declines later).
+    #
+    # This is a pass-through state — always proceeds to smoke_test for the
+    # next iteration.
+    action_type: prompt
+    action: |
+      APPEND ONLY — read the existing summary, analyze this iteration, and
+      append a new entry. Do NOT modify files other than the summary file.
+      Output a one-line confirmation and stop.
+
+      Read ${context.run_dir}/optimization_summary.md if it exists.
+      Count how many "## Iteration" headings exist to determine the current
+      iteration number N.
+
+      If the file does not exist, this is iteration 1. Create it with a
+      header: "# Optimization Summary — rlhf-animated-svg\n"
+
+      Analyze this iteration's context and append a structured entry:
+
+      ITERATION CONTEXT:
+      - Animation plan (original design): ${captured.animation_plan}
+      - Component ranking (harness component priorities): ${captured.component_ranking?}
+      - Fix plan applied this iteration: ${captured.fix_plan?}
+      - Previous state output (critique/scores): ${prev.output}
+
+      APPEND the following entry to the summary file (use the exact format):
+
+      ## Iteration N — $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+      ### What Was Attempted
+      - Components modified: [which harness components were changed — prompt, tool, memory, workflow]
+      - Approach: [brief description of the fix strategy applied]
+
+      ### What Was Observed
+      - Smoke test result: [infer from context — PASS, FAIL, or BYPASS]
+      - Vision scores: [extract from context if available, or "scoring skipped this iteration"]
+      - Key failures: [specific dimensions below threshold, or "none — all dimensions passed"]
+
+      ### Root Cause Hypothesis
+      [Why did the approach succeed or fail? Connect to specific harness component behavior.]
+
+      ### Lesson Learned
+      [One actionable sentence: what should future iterations do differently?]
+
+      **Carry Forward**: [true/false]
+      - If true: this lesson should persist in all future planning prompts.
+        Mark as `[ACTIVE]` and include a brief tag like `[EASING]`, `[Z-ORDER]`,
+        `[PROMPT]`, `[TIMING]`, or `[VALIDATION]`.
+      - If false: this is an iteration-specific observation, not a general pattern.
+
+      PRUNING RULES (apply after appending, only if N >= 20):
+      1. Scan all carry-forward lessons across all iterations
+      2. If two or more lessons convey the same guidance, keep only the most recent
+      3. For each kept lesson, check whether subsequent scores improved after it
+         was adopted — annotate as `[VALIDATED]` if scores improved, `[UNPROVEN]`
+         if insufficient evidence, or `[INEFFECTIVE]` if scores did not improve
+      4. Remove lessons marked `[INEFFECTIVE]` from the carry-forward set
+      5. Add a `### Pruned at iteration N` section noting what was removed and why
+
+      After appending, output exactly:
+      SUMMARY_APPENDED: iteration N recorded
+    timeout: 300
+    capture: iteration_summary
+    next: smoke_test
+
+  write_final_summary:
+    # TERMINAL CUMULATIVE SUMMARY (ENH-011 / BUG-016):
+    # Appends a final entry to optimization_summary.md. Handles both
+    # convergence (quality target met) and graceful-termination paths
+    # (retry exhaustion, signal-triggered shutdown).
+    #
+    # Convergence path: review_critique → write_final_summary → done
+    # Graceful-termination: render_animation/apply_refinements retry exhaustion → write_final_summary → done
+    #
+    # This is a pass-through to the done terminal state.
+    action_type: prompt
+    action: |
+      APPEND ONLY — read the existing summary, analyze the final iteration,
+      and append a closing entry. Do NOT modify files other than the summary
+      file. Output a one-line confirmation and stop.
+
+      Read ${context.run_dir}/optimization_summary.md. Count "## Iteration"
+      headings to determine the current iteration number N.
+
+      If the file does not exist, create it with a header:
+      "# Optimization Summary — rlhf-animated-svg\n"
+
+      ### DETECT TERMINATION REASON
+      First, determine WHY the loop terminated by examining the context:
+
+      **CONVERGENCE**: The previous state output contains vision scores at or
+      above the quality target (${context.quality_target}). The loop succeeded.
+
+      **RETRY EXHAUSTION**: The previous state output contains error messages,
+      exit codes, or empty output with no vision scores. A critical state
+      (render_animation or apply_refinements) exhausted its retry budget.
+
+      **SIGNAL TERMINATION**: The output is truncated, empty, or contains
+      "[SIGNAL]" markers — the loop was terminated externally.
+
+      ### APPEND ENTRY (choose ONE path based on detection above)
+
+      #### IF CONVERGENCE:
+
+      ## Iteration N (FINAL) — $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+      ### What Was Attempted
+      - Components modified: [which harness components were changed]
+      - Approach: [brief description of the fix strategy]
+
+      ### What Was Observed
+      - **CONVERGENCE**: Quality target (${context.quality_target}) met or exceeded
+      - Vision scores: [extract passing scores from context]
+      - Best score achieved: [extract from .best_score or vision output]
+
+      ### Root Cause Hypothesis
+      [Why did the final approach succeed? What was the binding constraint that,
+      once resolved, enabled convergence?]
+
+      ### Lesson Learned
+      [What pattern or approach proved effective and should be reused in future
+      optimization runs?]
+
+      **Carry Forward**: true — [rationale for preserving this lesson]
+
+      #### IF RETRY EXHAUSTION:
+
+      ## Iteration N (FINAL — RETRY EXHAUSTED) — $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+      ### Termination Reason
+      - State that exhausted retries: [identify from context — render_animation, apply_refinements, or other]
+      - Last error: [extract from prev.output or captured context]
+
+      ### State at Termination
+      - Iterations completed: N
+      - Best score achieved (if any): [extract from .best_score or context]
+      - Artifacts preserved: [list available captured data — animation_plan, fix_plan, component_ranking, etc.]
+
+      ### Active Carry-Forward Lessons
+      [List all [ACTIVE] lessons from the optimization summary that should
+      persist to future runs]
+
+      ### Recommended Next Steps
+      [What should a future run do differently to avoid this failure mode?
+      Check for structural issues (e.g., unfixable scoring ceiling) that
+      retries cannot resolve.]
+
+      **Carry Forward**: [list specific [ACTIVE] lessons that remain valid]
+
+      #### IF SIGNAL TERMINATION:
+
+      ## Iteration N (FINAL — EXTERNAL TERMINATION) — $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+      ### Termination Reason
+      External signal terminated the loop at iteration N in state [current state].
+
+      ### State at Termination
+      - Best score achieved (if any): [extract from context]
+      - Artifacts preserved in state.json: [list available captured data]
+
+      ### Active Carry-Forward Lessons
+      [List all [ACTIVE] lessons that should persist]
+
+      **Carry Forward**: [list specific [ACTIVE] lessons that remain valid]
+
+      ### FINAL PRUNING (all paths)
+      Scan all carry-forward lessons and apply the same pruning rules as
+      write_summary. The final summary should be clean and actionable
+      for future loop runs.
+
+      ### FIX STRATEGY REPORT (ENH-013) — convergence path only
+      If this is a CONVERGENCE termination, also read
+      ${context.run_dir}/fix_strategy_effectiveness.json if it exists.
+      If the file exists and contains data, append a "## Fix Strategy Report"
+      section to the summary file with:
+
+      1. Top 3 most effective fix strategies (highest hit_rate, min 1 attempt)
+      2. Bottom 3 least effective fix strategies (lowest hit_rate or highest
+         regression_rate, min 1 attempt)
+      3. Strategies with zero attempts (categories never targeted by any fix)
+      4. Overall recommendation: which strategies to favor and which to avoid
+         in future optimization runs
+
+      Format each strategy as:
+      - `category-name`: mean delta +X.X across N attempts (hit rate: Y%, regression rate: Z%)
+        * Best dimension: [which score dimension improved most]
+        * Worst dimension: [which score dimension regressed or improved least]
+
+      If the file does not exist or is empty, skip this section silently.
+
+      After appending, output exactly ONE of:
+      - SUMMARY_APPENDED: final iteration N recorded — quality target met
+      - SUMMARY_APPENDED: final iteration N recorded — retry exhaustion (state: <name>)
+      - SUMMARY_APPENDED: final iteration N recorded — external termination
+    timeout: 300
+    capture: iteration_summary
+    next: restore_best
+
+  restore_best:
+    # ENH-022: Final-guard artifact preservation.
+    # write_final_summary is action_type: prompt (LLM text only) and cannot copy
+    # files. This shell state runs after write_final_summary and before done to
+    # mechanically ensure the best-scored artifact is left on disk at termination.
+    # If no .best_output.html exists (scoring never ran), this is a no-op.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      if [ -f "$ABS_DIR/.best_output.html" ]; then
+        cp "$ABS_DIR/.best_output.html" "$ABS_DIR/output.html"
+        echo "RESTORED_BEST_AT_TERMINATION: .best_output.html -> output.html"
+      else
+        echo "NO_BEST_CHECKPOINT: .best_output.html not found, keeping current output.html"
+      fi
+    next: done
+
+  done:
+    terminal: true
+
+  plan_failed:
+    terminal: true
+    description: "Planning failed after retry exhaustion; prior iteration artifacts preserved"
+
+  failed:
+    terminal: true
