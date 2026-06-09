@@ -24,6 +24,13 @@ Extract the generation phase of `rlhf-animated-svg.yaml` into a standalone child
 
 Decomposed from ENH-2044: Decompose rlhf-animated-svg loop into sub-loops
 
+## Motivation
+
+This enhancement would:
+- Complete the decomposition of `rlhf-animated-svg.yaml` into reusable sub-loops (parent: ENH-2044), enabling each phase to be tested and invoked independently
+- Allow the generation phase to be reused by other orchestration loops without pulling in evaluation/refinement logic
+- Isolate generation failures from evaluation/refinement failures, reducing debugging surface area
+
 ## Implementation Steps
 
 ### 1. Create `scripts/little_loops/loops/rlhf-svg-generate.yaml`
@@ -56,6 +63,25 @@ Model after `TestRnPlanDelegatesResearchToOracle` (line 6185).
 
 Add one row for `rlhf-svg-generate` to the Animation/Generative Art table following the `rn-remediate`/`rn-decompose` row format.
 
+## API/Interface
+
+Loop context parameters (public contract for callers):
+
+```yaml
+context:
+  input: str                   # animation description (required)
+  run_dir: str                 # output directory for output.html (required)
+  global_iteration: int        # parent's state.iteration for phase-detection prompts (required)
+  design_tokens_context: str   # design token context string (optional, default "")
+  quality_target: int          # target quality score (optional, default 8)
+  explore_cutoff: int          # iteration threshold for explore phase
+  exploit_cutoff: int          # iteration threshold for exploit phase
+```
+
+Terminal states:
+- `done` — `output.html` written to `run_dir`
+- `plan_failed` — generation could not be planned
+
 ## Scope Boundaries
 
 - **In scope**: Creating the new YAML file and its associated tests + README entry
@@ -69,6 +95,30 @@ Add one row for `rlhf-svg-generate` to the Animation/Generative Art table follow
 - [ ] `test_expected_loops_exist` passes with `"rlhf-svg-generate"` in expected set
 - [ ] README.md row added
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/rlhf-svg-generate.yaml` (new — create)
+- `scripts/tests/test_builtin_loops.py` (add `TestRlhfSvgGenerateSubLoop`, update `test_expected_loops_exist`)
+- `scripts/little_loops/loops/README.md` (add row to Animation/Generative Art table)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/rlhf-animated-svg.yaml` — will delegate generation phase to this sub-loop (ENH-2050)
+
+### Similar Patterns
+- `scripts/little_loops/loops/rlhf-svg-evaluate.yaml` — sibling sub-loop for evaluation phase
+- `scripts/little_loops/loops/rlhf-svg-refine.yaml` — sibling sub-loop for refinement phase
+- `scripts/tests/test_builtin_loops.py:TestRnPlanDelegatesResearchToOracle` (line 6185) — test class to model after
+
+### Tests
+- `scripts/tests/test_builtin_loops.py` — `TestRlhfSvgGenerateSubLoop`
+
+### Documentation
+- `scripts/little_loops/loops/README.md` — Animation/Generative Art table
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P3
@@ -76,4 +126,5 @@ Add one row for `rlhf-svg-generate` to the Animation/Generative Art table follow
 - **Risk**: Low — new file, no existing callers
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-09T18:01:15 - `2d482232-6523-4263-ba00-0d17c049d9ee.jsonl`
 - `/ll:issue-size-review` - 2026-06-09T00:00:00Z - `852d825e-ec36-4b78-a79e-3e0c5457f603.jsonl`
