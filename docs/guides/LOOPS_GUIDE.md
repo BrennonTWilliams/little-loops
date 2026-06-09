@@ -1457,7 +1457,9 @@ run_eval → score_results → analyze_failures
 | `pixi-generative-art` | Generator-evaluator harness for PixiJS generative art sketches — GPU-accelerated idioms (filters, blend modes, container hierarchies); rewards Pixi-distinctive patterns over p5.js conventions |
 | `vega-viz` | Generator-evaluator harness for Vega / Vega-Lite data visualizations — compile-gates broken specs via deterministic exit-code before LLM scoring, supports optional real data (CSV/JSON path), defaults to Vega-Lite and escalates to full Vega only for custom/interactive composition; Playwright captures three interaction states (settled, hover/tooltip, brush/selection) as multimodal PNG input for the judge (ENH-2010) |
 | `canvas-sketch-generator` | Generator-evaluator harness for canvas-sketch (Matt DesLauriers) still-image generative art — objective non-blank render gate (parsed pixel statistics) hard-gates blank sketches before the LLM judge runs; per-iteration snapshots with deterministic best-iteration selection; `on_max_iterations: finalize` ensures `best.html` is always published even when the pass threshold is never crossed |
-| `rlhf-animated-svg` | RLHF-style generate-score-refine loop for animated SVG artifacts — generates a zero-dependency self-contained HTML file with inline SVG animated via anime.js v3.2.2 (CDN, works under `file://`), validates via headless browser smoke test, scores via image analysis on an animation-specific rubric (correctness, aesthetics, smoothness, completeness), and refines until the quality target is met. Includes `explore → exploit → converge` phase gating, replan-on-streak-failure escalation, and per-iteration artifact versioning. Accessibility: `role="img"`, `aria-labelledby`, `prefers-reduced-motion` detection. |
+| `rlhf-animated-svg` | RLHF-style generate-score-refine orchestrator for animated SVG artifacts — generates a zero-dependency self-contained HTML file with inline SVG animated via anime.js v3.2.2 (CDN, works under `file://`). Evaluation and refinement phases are delegated to the `rlhf-svg-evaluate` and `rlhf-svg-refine` sub-loops. Includes `explore → exploit → converge` phase gating, replan-on-streak-failure escalation, concept-reset escalation, and per-iteration artifact versioning. Accessibility: `role="img"`, `aria-labelledby`, `prefers-reduced-motion` detection. |
+| `rlhf-svg-evaluate` | Sub-loop: smoke-test a rendered SVG artifact via Playwright and score it with an external vision API on a 4-dimension animation rubric (correctness, aesthetics, smoothness, completeness); captures 4 multi-frame screenshots at t=1s/3s/5s/7s for temporal evaluation; emits `VISION_PASS` or `VISION_FAIL` sentinel for parent routing |
+| `rlhf-svg-refine` | Sub-loop: rank harness components by improvement impact (Ong et al. arXiv:2605.22505), critique the scored artifact and produce a fix plan, apply targeted refinements, run optimizer self-diagnosis against the 8-error taxonomy, and append a carry-forward lesson entry to `optimization_summary.md`; emits `REPLAN_NEEDED` when a structural replan is required |
 | `loop-specialist-eval` | Behavioral eval harness for the `loop-specialist` agent — drives the agent against a seeded `broken-verify-loop.yaml` fixture (ambiguous-output failure mode) and verifies that the diagnosis artifact is written and the failure mode is correctly classified |
 | `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --input concept="how a transformer attends"` |
 
@@ -2214,14 +2216,27 @@ ll-loop run rlhf-animated-svg \
 | `score_fail_streak_max` | `3` | Consecutive VISION_FAIL evaluations before triggering replan |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rlhf-animated-svg-{timestamp}/`) |
 
-**FSM flow:**
+**FSM flow** (orchestration-only; evaluation and refinement are delegated to sub-loops):
 ```
-init → plan → generate → smoke_test
-                              ├─ pass → score → check_score
-                              │                     ├─ score ≥ quality_target → done
-                              │                     └─ score < quality_target → refine → generate
-                              ├─ fail (streak < max) → generate (self-repair)
-                              └─ fail (bypass threshold reached) → score
+init → validate_input → plan_animation → render_animation → verify_render
+         └─ (empty input) → input_missing [terminal]
+
+verify_render
+  ├─ RENDER_EXISTS → run_evaluate [rlhf-svg-evaluate sub-loop]
+  └─ RENDER_MISSING → render_animation (retry)
+
+run_evaluate
+  ├─ VISION_PASS  → write_final_summary → restore_best → done [terminal]
+  └─ VISION_FAIL  → check_oscillation
+       ├─ OSCILLATION_DETECTED (smoke streak ≥ max) → plan_animation (replan)
+       └─ normal → check_score_streak
+            ├─ CONCEPT_RESET (replan cycles exhausted) → concept_reset → render_animation
+            ├─ REPLAN (score-fail streak ≥ max) → plan_animation
+            └─ normal → run_refine [rlhf-svg-refine sub-loop]
+                 ├─ on_success → run_evaluate
+                 └─ REPLAN_NEEDED → check_replan_budget
+                      ├─ budget exhausted → write_final_summary
+                      └─ budget available → plan_animation
 ```
 
 **Scoring rubric** (all four evaluated; min score gates exit):
@@ -2243,6 +2258,162 @@ init → plan → generate → smoke_test
 - Accessibility: `role="img"`, `aria-labelledby` pointing to a `<title>` element, and `prefers-reduced-motion` detection that disables animation when the OS preference is set.
 - `artifact_versioning: true` — each iteration's output is preserved; the runner will not overwrite previous iterations' artifacts.
 - `on_handoff: spawn`, `max_iterations: 30`, `timeout: 7200`.
+
+### `rlhf-svg-evaluate` — RLHF Animated SVG Evaluation Sub-Loop
+
+**Technique**: Sub-loop that handles the evaluation pipeline for `rlhf-animated-svg`: archives the current artifact, optionally bypasses the smoke gate after a configurable number of attempts, captures four screenshots at t=1000ms/3000ms/5000ms/7000ms via Playwright, and scores the multi-frame sequence via an external vision API against a 4-dimension animation rubric. Maintains a `.best_score` regression guard and restores `.best_output.html` when the current score drops below the adaptive tolerance threshold. Emits a `VISION_PASS` or `VISION_FAIL` sentinel in the final state output for parent routing.
+
+**When to use**: Standalone when you want to evaluate an existing animated SVG artifact from a prior `rlhf-animated-svg` run without running the full generate-refine cycle. Also invoked automatically by `rlhf-animated-svg` via `loop: rlhf-svg-evaluate` after each `verify_render` pass.
+
+**Usage:**
+
+```bash
+# Standalone evaluation of an existing run artifact
+ll-loop run rlhf-svg-evaluate \
+  --context run_dir="$(pwd)/.loops/runs/rlhf-animated-svg-20260601T120000"
+
+# With a stricter quality target
+ll-loop run rlhf-svg-evaluate \
+  --context run_dir="$(pwd)/.loops/runs/rlhf-animated-svg-20260601T120000" \
+  --context quality_target=9
+```
+
+**Parameters** (populated by parent via `with:`):
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `run_dir` | yes | — | Absolute path to the run directory containing `output.html` |
+| `quality_target` | no | `8` | Score threshold (0–10); all four dimensions must meet or exceed this |
+| `smoke_bypass_threshold` | no | `5` | Total smoke invocations before the smoke gate is auto-bypassed |
+| `exploit_cutoff` | no | `15` | Exploit-phase boundary; controls regression-tolerance scaling (`> exploit_cutoff` → stricter 15%) |
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `run_dir` | `""` | Required: absolute path to the run directory |
+| `quality_target` | `8` | Pass threshold for all four rubric dimensions |
+| `smoke_bypass_threshold` | `5` | Total smoke attempts before automatic bypass |
+| `exploit_cutoff` | `15` | Exploit/converge boundary for regression-tolerance scaling |
+
+**Output artifacts** (within `${context.run_dir}`):
+
+| File | Description |
+|------|-------------|
+| `snapshots/output_iter_N.html` | Per-iteration snapshot of `output.html` |
+| `output_frame_1000ms.png` | Screenshot at t=1000ms (early animation state) |
+| `output.png` | Screenshot at t=3000ms (storyboard frame; backward-compat alias) |
+| `output_frame_5000ms.png` | Screenshot at t=5000ms (mid-animation state) |
+| `output_frame_7000ms.png` | Screenshot at t=7000ms (late animation / loop-restart state) |
+| `.vision_scores.json` | Latest per-dimension scores, issues list, and regression state |
+| `.best_score` | Best minimum score seen across all iterations |
+| `.best_output.html` | Copy of `output.html` from the highest-scoring iteration |
+| `fix_correlation.jsonl` | Per-iteration fix-category / score-delta correlation entries |
+| `fix_strategy_effectiveness.json` | Running per-strategy effectiveness statistics (hit rate, regression rate) |
+
+**FSM flow:**
+
+```
+smoke_test → score → track_correlation → done
+    └─ (JS error / blank render) → smoke_fail_exit (emits VISION_FAIL) → done
+```
+
+**Notes:**
+- The `score` state requires `VISION_BASE_URL`, `VISION_MODEL`, and `VISION_API_KEY` environment variables (or a `.env` file in the project root). If any are unset, scoring passes gracefully with `VISION_PASS: skipped`.
+- Multi-frame capture (four screenshots) is performed during `smoke_test`. If Playwright is not installed, the smoke gate is skipped with `SMOKE_PASS: skipped (Playwright not installed)` and no frames are captured; the `score` state then falls back to single-frame rubric mode if exactly one frame is available, or passes gracefully if none are present.
+- Regression guard: if the current minimum score drops by `≥ max(1.0, best_min * 0.25)` (explore/exploit phase) or `≥ max(0.5, best_min * 0.15)` (converge phase), `SCORE_REGRESSION` is emitted and `.best_output.html` is mechanically restored to `output.html`.
+- `category: lib` — this loop is a composable sub-loop fragment, not a standalone harness.
+
+### `rlhf-svg-refine` — RLHF Animated SVG Refinement Sub-Loop
+
+**Technique**: Sub-loop that handles the refinement pipeline for `rlhf-animated-svg`: ranks harness components (prompt, tool, memory, workflow) by expected improvement impact using the priority-ranking framework from Ong et al. (arXiv:2605.22505), produces a phase-aware fix plan via `review_critique`, applies the plan to `output.html` via `apply_refinements`, audits the optimizer's own behavior against an 8-error taxonomy via `self_diagnose`, and appends a structured carry-forward lesson entry to `optimization_summary.md` via `write_summary`. Emits `REPLAN_NEEDED` on `review_critique.on_yes` when a structural replan is required (repeated failure pattern, missing artifact, or score regression detected).
+
+**When to use**: Standalone when you want to apply a targeted fix cycle to an existing animated SVG artifact without running the full orchestration loop. Also invoked automatically by `rlhf-animated-svg` via `loop: rlhf-svg-refine` after a `VISION_FAIL` from `rlhf-svg-evaluate`.
+
+**Usage:**
+
+```bash
+# Standalone refinement of an existing run artifact
+ll-loop run rlhf-svg-refine \
+  --context run_dir="$(pwd)/.loops/runs/rlhf-animated-svg-20260601T120000" \
+  --context animation_plan="A bouncing red ball with a fading trail"
+
+# With explicit phase boundary overrides
+ll-loop run rlhf-svg-refine \
+  --context run_dir="$(pwd)/.loops/runs/rlhf-animated-svg-20260601T120000" \
+  --context animation_plan="..." \
+  --context global_iteration=8 \
+  --context explore_cutoff=5 \
+  --context exploit_cutoff=15
+```
+
+**Parameters** (populated by parent via `with:`):
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `run_dir` | yes | — | Absolute path to the run directory containing `output.html` and vision scores |
+| `animation_plan` | yes | — | Original animation plan from parent's `captured.animation_plan` |
+| `fix_plan` | no | `""` | Most recent fix plan from prior refinement cycle (for repeated-pattern detection) |
+| `component_ranking` | no | `""` | Prior component ranking output (for focus bias detection) |
+| `global_iteration` | yes | — | Parent's `state.iteration` value for phase detection |
+| `explore_cutoff` | no | `10` | Last iteration of the explore phase |
+| `exploit_cutoff` | no | `20` | Last iteration of the exploit phase (16+ = converge) |
+| `quality_target` | no | `8` | Score threshold; used to categorize fix priority (HIGH/MEDIUM/LOW) |
+| `design_tokens_context` | no | `""` | Resolved design token values for color palette guidance |
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `run_dir` | `""` | Required: absolute path to the run directory |
+| `animation_plan` | `""` | Required: original plan from the parent orchestrator |
+| `fix_plan` | `""` | Optional: prior fix plan for repeated-pattern detection |
+| `component_ranking` | `""` | Optional: prior ranking for focus-bias detection |
+| `global_iteration` | `1` | Required: parent's iteration counter for phase detection |
+| `explore_cutoff` | `10` | Explore-phase boundary (iterations 1–N = unconstrained) |
+| `exploit_cutoff` | `20` | Exploit/converge boundary (16+ = conservative micro-adjustments only) |
+| `quality_target` | `8` | Pass threshold; fixes within 1–2 pts = HIGH, 2+ pts below = MEDIUM |
+| `design_tokens_context` | `""` | Token palette for color constraint enforcement |
+
+**Output artifacts** (within `${context.run_dir}`):
+
+| File | Description |
+|------|-------------|
+| `output.html` | Refined artifact (in-place update by `apply_refinements`) |
+| `optimization_summary.md` | Running log of carry-forward lessons across refinement cycles |
+| `self_diagnosis.jsonl` | Per-iteration optimizer behavior classification (8-error taxonomy, JSONL) |
+
+**FSM flow:**
+
+```
+rank_components → review_critique
+                     ├─ REPLAN_NEEDED → done (signals parent to replan)
+                     └─ normal → apply_refinements → self_diagnose
+                                                          ├─ CRITICAL_ERROR → done
+                                                          └─ normal → write_summary → done
+```
+
+**Dimensional diagnosis routing** (inside `review_critique`):
+
+| Signal | Trigger | Effect |
+|--------|---------|--------|
+| `REPLAN_NEEDED` (repeated pattern) | Current failure matches a carry-forward lesson from ≤3 iterations ago | Parent routes to `plan_animation` for a fresh plan |
+| `REPLAN_NEEDED` (missing artifact) | No `output.html` produced | Parent routes to `plan_animation` |
+| `REPLAN_NEEDED` (score regression) | `SCORE_REGRESSION` in prior output | Parent routes to `plan_animation`; best artifact already restored by `rlhf-svg-evaluate` |
+| normal | No replan trigger | `apply_refinements` applies the fix plan in-place |
+
+**Self-diagnosis severity levels** (inside `self_diagnose`):
+
+| Severity | Condition | Effect |
+|----------|-----------|--------|
+| `CRITICAL_ERROR` | Hallucination (#4) or Safety Violation (#8) detected | Sub-loop terminates with `REPLAN_NEEDED`-equivalent signal |
+| `MULTI_FLAG` | 3+ non-critical error types detected | Diagnosis surfaced to next `review_critique` for evidence-based re-critique |
+| `DIAGNOSIS_NORMAL` | 0–2 non-critical types, no critical | Logged to `self_diagnosis.jsonl`; loop continues normally |
+
+**Notes:**
+- Phase detection uses `${context.global_iteration}` (the parent orchestrator's iteration counter), **not** `${state.iteration}`. This ensures explore/exploit/converge phase boundaries remain consistent across sub-loop invocations regardless of how many states the sub-loop itself steps through.
+- Component ranking uses the four-component framework from Ong et al. (arXiv:2605.22505, Finding 4): prompt ≻ tool ≻ memory ≻ workflow. If the `rank_components` state detects `BIAS_WARNING` (same component ranked #1 across multiple iterations without score improvement), the `review_critique` state de-prioritizes that component.
+- `category: lib` — this loop is a composable sub-loop fragment, not a standalone harness.
 
 ### `cli-anything-bootstrap` — Agent-Native CLI Bootstrapper
 
