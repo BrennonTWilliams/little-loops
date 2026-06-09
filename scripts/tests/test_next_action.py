@@ -399,3 +399,181 @@ class TestIssuesCLINextActionSkip:
         assert "BUG-001" not in out
         assert "BUG-002" not in out
         assert "NEEDS_FORMAT BUG-003" in out
+
+
+class TestNextActionConfigFirstThresholds:
+    """Tests that next-action reads commands.confidence_gate from ll-config.json."""
+
+    def test_reads_readiness_threshold_from_config(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """next-action uses readiness_threshold from config, not argparse default."""
+        config = dict(sample_config)
+        config["commands"] = {"confidence_gate": {"readiness_threshold": 95}}
+        _write_config(temp_project_dir, config)
+        bugs_dir = _setup_dirs(temp_project_dir)
+
+        # confidence_score=90 passes the argparse default (85) but fails the config value (95)
+        _make_issue(
+            bugs_dir,
+            "P3-BUG-001-test.md",
+            "BUG-001: Test issue",
+            confidence_score=90,
+            outcome_confidence=80,
+            session_commands=["/ll:format-issue", "/ll:verify-issues"],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-action", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 1, "Should NEEDS_REFINE because config threshold (95) > score (90)"
+        assert "NEEDS_REFINE BUG-001" in out
+
+    def test_reads_outcome_threshold_from_config(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """next-action uses outcome_threshold from config, not argparse default."""
+        config = dict(sample_config)
+        config["commands"] = {"confidence_gate": {"outcome_threshold": 80}}
+        _write_config(temp_project_dir, config)
+        bugs_dir = _setup_dirs(temp_project_dir)
+
+        # outcome_confidence=75 passes the argparse default (70) but fails the config value (80)
+        _make_issue(
+            bugs_dir,
+            "P3-BUG-001-test.md",
+            "BUG-001: Test issue",
+            confidence_score=90,
+            outcome_confidence=75,
+            session_commands=["/ll:format-issue", "/ll:verify-issues"],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-action", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 1, "Should NEEDS_REFINE because config outcome threshold (80) > score (75)"
+        assert "NEEDS_REFINE BUG-001" in out
+
+    def test_fallback_to_85_70_when_config_key_absent(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """next-action falls back to 85/70 when confidence_gate keys are absent."""
+        config = dict(sample_config)
+        config["commands"] = {"confidence_gate": {}}  # no readiness_threshold or outcome_threshold
+        _write_config(temp_project_dir, config)
+        bugs_dir = _setup_dirs(temp_project_dir)
+
+        # scores of 85/70 exactly meet the 85/70 fallbacks → ALL_DONE
+        _make_issue(
+            bugs_dir,
+            "P3-BUG-001-test.md",
+            "BUG-001: Test issue",
+            confidence_score=85,
+            outcome_confidence=70,
+            session_commands=["/ll:format-issue", "/ll:verify-issues"],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-action", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0, "Should ALL_DONE: scores meet 85/70 fallback thresholds"
+        assert "ALL_DONE" in out
+
+    def test_fallback_to_85_70_when_config_file_missing(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """next-action falls back to 85/70 when ll-config.json is absent."""
+        # Do NOT write a config file — simulate missing config
+        bugs_dir = _setup_dirs(temp_project_dir)
+
+        # scores of 84/69 fail the 85/70 fallbacks → NEEDS_REFINE
+        _make_issue(
+            bugs_dir,
+            "P3-BUG-001-test.md",
+            "BUG-001: Test issue",
+            confidence_score=84,
+            outcome_confidence=69,
+            session_commands=["/ll:format-issue", "/ll:verify-issues"],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-action", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 1, "Should NEEDS_REFINE: scores just below 85/70 fallback thresholds"
+        assert "NEEDS_REFINE BUG-001" in out
+
+    def test_cli_args_used_as_fallback_layer(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """CLI --ready-threshold/--outcome-threshold act as fallback when config key absent."""
+        config = dict(sample_config)
+        config["commands"] = {"confidence_gate": {}}  # no thresholds in config
+        _write_config(temp_project_dir, config)
+        bugs_dir = _setup_dirs(temp_project_dir)
+
+        # scores of 60 pass when CLI args lower fallback to 50/50
+        _make_issue(
+            bugs_dir,
+            "P3-BUG-001-test.md",
+            "BUG-001: Test issue",
+            confidence_score=60,
+            outcome_confidence=60,
+            session_commands=["/ll:format-issue", "/ll:verify-issues"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-action",
+                "--ready-threshold",
+                "50",
+                "--outcome-threshold",
+                "50",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0, "Should ALL_DONE: scores pass CLI-arg fallback thresholds (50/50)"
+        assert "ALL_DONE" in out

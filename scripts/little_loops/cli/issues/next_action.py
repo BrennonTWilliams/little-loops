@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -30,8 +31,17 @@ def cmd_next_action(config: BRConfig, args: argparse.Namespace) -> int:
     issues.sort(key=lambda i: (i.priority_int, -int(i.issue_id.split("-")[1])))
 
     refine_cap: int = getattr(args, "refine_cap", 5)
-    ready_threshold: int = getattr(args, "ready_threshold", 85)
-    outcome_threshold: int = getattr(args, "outcome_threshold", 70)
+    default_ready: int = getattr(args, "ready_threshold", 85)
+    default_outcome: int = getattr(args, "outcome_threshold", 70)
+
+    config_path = config.project_root / ".ll" / "ll-config.json"
+    try:
+        cg = json.loads(config_path.read_text()).get("commands", {}).get("confidence_gate", {})
+        ready_threshold: int = cg.get("readiness_threshold", default_ready)
+        outcome_threshold: int = cg.get("outcome_threshold", default_outcome)
+    except Exception:
+        ready_threshold = default_ready
+        outcome_threshold = default_outcome
 
     for issue in issues:
         if not is_formatted(issue.path):

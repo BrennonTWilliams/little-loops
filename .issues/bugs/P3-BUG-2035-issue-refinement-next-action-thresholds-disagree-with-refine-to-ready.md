@@ -2,12 +2,19 @@
 id: BUG-2035
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-08T00:00:00Z'
+completed_at: '2026-06-09T03:19:16Z'
 discovered_date: 2026-06-08
 discovered_by: audit-loop-run
 relates_to:
-  - BUG-2034
+- BUG-2034
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # BUG-2035: issue-refinement and refine-to-ready-issue use disagreeing readiness thresholds
@@ -234,7 +241,19 @@ After this, with the live config (readiness 85, no outcome) both halves resolve 
 **Open** | Created: 2026-06-08 | Priority: P3
 
 
+## Resolution
+
+Fixed by making both halves of the refinement loop resolve thresholds config-first with matching 85/70 fallbacks:
+
+1. `next_action.py`: now reads `commands.confidence_gate.{readiness,outcome}_threshold` from `.ll/ll-config.json`, falling back to the argparse defaults (85/70). Mirrors the `check_readiness.py` pattern.
+2. `refine-to-ready-issue.yaml`: changed context fallbacks from 90/75 → 85/70 so the absent-config fallback matches the selector.
+
+Added 5 unit tests to `test_next_action.py` covering config-first resolution and 1 test to `test_builtin_loops.py` asserting the 85/70 fallback values.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-09T03:15:28 - `6fa2838e-7699-4bd1-855f-30ba1c2dc86b.jsonl`
 - `/ll:format-issue` - 2026-06-09T02:41:48 - `2e851901-2808-4980-9585-6d4994df06a4.jsonl`
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `cfc9a6de-279e-402b-86a6-7c52d385dbbc.jsonl`
+- `/ll:manage-issue` - 2026-06-09T03:19:16Z - current session
 </content>
 </invoke>

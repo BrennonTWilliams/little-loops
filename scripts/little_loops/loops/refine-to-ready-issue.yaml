@@ -14,8 +14,8 @@ max_iterations: 20
 on_handoff: spawn
 artifact_versioning: true
 context:
-  readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
-  outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
+  readiness_threshold: 85   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
+  outcome_threshold: 70     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
   max_refine_count: 5       # canonical: commands.max_refine_count in ll-config.json
 import:
   - lib/common.yaml
