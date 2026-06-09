@@ -152,6 +152,7 @@ class TestBuiltinLoopFiles:
             "apply-research",
             "rlhf-animated-svg",
             "rlhf-svg-evaluate",
+            "rlhf-svg-refine",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -6348,6 +6349,90 @@ class TestRlhfSvgEvaluateSubLoop:
                     f"State '{name}' must use ${{context.run_dir}}, "
                     f"not ${{captured.run_dir.output}}"
                 )
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        done = data.get("states", {}).get("done", {})
+        assert done.get("terminal") is True, "'done' state must be terminal: true"
+
+
+class TestRlhfSvgRefineSubLoop:
+    """rlhf-svg-refine sub-loop structural correctness (ENH-2049)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rlhf-svg-refine.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_states_present(self, data: dict) -> None:
+        states = set(data.get("states", {}).keys())
+        for state in ("rank_components", "review_critique", "apply_refinements", "self_diagnose", "write_summary", "done"):
+            assert state in states, f"rlhf-svg-refine must have a '{state}' state"
+
+    def test_context_declares_run_dir(self, data: dict) -> None:
+        assert "run_dir" in data.get("context", {}), (
+            "rlhf-svg-refine must declare 'run_dir' in context"
+        )
+
+    def test_context_declares_animation_plan(self, data: dict) -> None:
+        assert "animation_plan" in data.get("context", {}), (
+            "rlhf-svg-refine must declare 'animation_plan' in context"
+        )
+
+    def test_context_declares_fix_plan(self, data: dict) -> None:
+        assert "fix_plan" in data.get("context", {}), (
+            "rlhf-svg-refine must declare 'fix_plan' in context"
+        )
+
+    def test_context_declares_component_ranking(self, data: dict) -> None:
+        assert "component_ranking" in data.get("context", {}), (
+            "rlhf-svg-refine must declare 'component_ranking' in context"
+        )
+
+    def test_context_declares_global_iteration(self, data: dict) -> None:
+        assert "global_iteration" in data.get("context", {}), (
+            "rlhf-svg-refine must declare 'global_iteration' in context"
+        )
+
+    def test_context_declares_explore_cutoff(self, data: dict) -> None:
+        assert "explore_cutoff" in data.get("context", {}), (
+            "rlhf-svg-refine must declare 'explore_cutoff' in context"
+        )
+
+    def test_context_declares_exploit_cutoff(self, data: dict) -> None:
+        assert "exploit_cutoff" in data.get("context", {}), (
+            "rlhf-svg-refine must declare 'exploit_cutoff' in context"
+        )
+
+    def test_context_declares_quality_target(self, data: dict) -> None:
+        assert "quality_target" in data.get("context", {}), (
+            "rlhf-svg-refine must declare 'quality_target' in context"
+        )
+
+    def test_context_declares_design_tokens_context(self, data: dict) -> None:
+        assert "design_tokens_context" in data.get("context", {}), (
+            "rlhf-svg-refine must declare 'design_tokens_context' in context"
+        )
+
+    def test_phase_detection_uses_context_global_iteration(self, data: dict) -> None:
+        states = data.get("states", {})
+        for name in ("review_critique", "apply_refinements"):
+            state = states.get(name, {})
+            action = state.get("action", "") or ""
+            assert "${state.iteration}" not in action, (
+                f"State '{name}' must reference ${{context.global_iteration}}, "
+                f"not ${{state.iteration}}"
+            )
+            assert "${context.global_iteration}" in action, (
+                f"State '{name}' must reference ${{context.global_iteration}} for phase detection"
+            )
+
+    def test_review_critique_captures_fix_plan(self, data: dict) -> None:
+        state = data.get("states", {}).get("review_critique", {})
+        assert state.get("capture") == "fix_plan", (
+            "review_critique must capture 'fix_plan'"
+        )
 
     def test_done_is_terminal(self, data: dict) -> None:
         done = data.get("states", {}).get("done", {})

@@ -1,0 +1,665 @@
+name: "rlhf-svg-refine"
+category: lib
+description: |
+  Standalone refinement sub-loop for rlhf-animated-svg (ENH-2049).
+  Handles the refinement pipeline: rank_components → review_critique →
+  apply_refinements → self_diagnose → write_summary.
+  Accepts run_dir, animation_plan, fix_plan, component_ranking,
+  global_iteration, explore_cutoff, exploit_cutoff, quality_target, and
+  design_tokens_context as context parameters. Returns REPLAN_NEEDED in
+  review_critique output or normal completion.
+
+  Phase detection references ${context.global_iteration} (the parent
+  orchestrator's iteration counter) — NOT ${state.iteration} — so phase
+  boundaries remain consistent across sub-loop invocations.
+
+  Invoked by the parent loop via:
+    loop: rlhf-svg-refine
+    with:
+      run_dir: ${captured.run_dir.output}
+      animation_plan: ${captured.animation_plan}
+      fix_plan: ${captured.fix_plan?}
+      component_ranking: ${captured.component_ranking?}
+      global_iteration: ${state.iteration}
+      explore_cutoff: ${context.explore_cutoff}
+      exploit_cutoff: ${context.exploit_cutoff}
+      quality_target: ${context.quality_target}
+      design_tokens_context: ${context.design_tokens_context}
+initial: rank_components
+context:
+  run_dir: ""                    # required: absolute path to directory containing output.html
+  animation_plan: ""             # required: from parent's captured.animation_plan
+  fix_plan: ""                   # optional: from parent's captured.fix_plan
+  component_ranking: ""          # optional: from parent's captured.component_ranking
+  global_iteration: 1            # required: parent's state.iteration value for phase detection
+  explore_cutoff: 10             # pass-through from parent context
+  exploit_cutoff: 20             # pass-through from parent context
+  quality_target: 8              # pass-through from parent context
+  design_tokens_context: ""      # pass-through from parent context
+states:
+  rank_components:
+    # COMPONENT-LEVEL PRIORITY RANKING GATE (ENH-010):
+    # Ranks the four harness components (prompt, tool, memory, workflow)
+    # by expected improvement impact on the next iteration's score.
+    # Based on Ong et al. (arXiv:2605.22505) Finding 4: ρ = 0.602
+    # correlation between ranking ability and optimization success.
+    #
+    # Passes the ranking as captured context to review_critique, which
+    # focuses its fix plan on the highest-ranked component(s).
+    #
+    # GRACEFUL DEGRADATION: all routing paths lead to review_critique.
+    # If ranking fails, the loop continues with unranked fix planning.
+    action_type: prompt
+    action: |
+      RANK ONLY — output a component-level priority ranking and stop.
+      Do NOT produce a fix plan, modify files, or suggest specific code
+      changes. The review_critique state handles all fix planning.
+
+      You are a harness optimizer performing priority ranking as defined
+      in Ong et al. "Towards Direct Evaluation of Harness Optimizers via
+      Priority Ranking" (arXiv:2605.22505). Your task is to rank the four
+      harness components by their expected impact on improving the next
+      iteration's score.
+
+      CONTEXT — the previous state's output (failure evidence):
+
+      ${prev.output}
+
+      OPTIMIZATION TRAJECTORY — what the loop has done so far:
+
+      Original animation plan:
+      ${context.animation_plan}
+
+      Most recent fix plan (may be empty on first iteration):
+      ${context.fix_plan}
+
+      HARNESS COMPONENT MAPPING — map the loop's architecture to the
+      paper's four-component framework:
+
+      1. PROMPT — the LLM action prompts in plan_animation, render_animation,
+         review_critique, and apply_refinements. Issues here include:
+         - Underspecified instructions (e.g., missing coordinate precision)
+         - Missing guardrails (e.g., not forbidding CSS/anime.js conflicts)
+         - Weak evaluation criteria (e.g., not checking for regressions)
+         - Ambiguous or conflicting constraints
+
+      2. TOOL — the shell-based validation and scoring tools:
+         - smoke_test (Playwright headless browser validation with multi-frame
+           screenshot capture at 1000ms, 3000ms, 5000ms, 7000ms)
+         - score (external vision API scoring on 4-dimension rubric with
+           temporal frame comparison)
+         - check_oscillation (consecutive failure streak counter)
+         Issues here include:
+         - Overly strict validation (rejecting valid artifacts)
+         - Overly lenient validation (passing broken artifacts)
+         - Misweighted rubric dimensions (e.g., aesthetics over correctness)
+         - Tool unavailability (Playwright not installed, vision API down)
+         - Missing frames in multi-frame capture (insufficient data for
+           temporal smoothness evaluation)
+
+      3. MEMORY — the persistent state files across iterations:
+         - .best_score (regression guard threshold)
+         - .smoke_fail_streak (oscillation detection counter)
+         - .smoke_count (bypass threshold counter)
+         - .vision_scores.json (per-dimension score history)
+         - context.animation_plan (the original plan from iteration 1)
+         - context.fix_plan (the most recent fix plan)
+         Issues here include:
+         - Stale or incorrect threshold values (quality_target, smoke_fail_streak_max)
+         - Missing cross-iteration context (no fix history, no score trends)
+         - Memory file corruption or missing files
+         - Regression guard too strict or too lenient
+
+      4. WORKFLOW — the FSM state graph topology and routing:
+         - plan → render → smoke → [score | check_oscillation → review → apply → smoke]
+         - Terminal states: done, plan_failed, failed
+         - Circuit breakers: max_iterations (30), max_edge_revisits
+         Issues here include:
+         - Wrong routing on failure (e.g., should replan but goes to refine)
+         - Missing states (e.g., no pre-render validation)
+         - Inefficient iteration (e.g., always replanning when targeted fix would suffice)
+         - Terminal state reached prematurely (phantom convergence)
+
+      RANKING INSTRUCTIONS:
+      1. Analyze the failure evidence in the CONTEXT above. Identify which
+         harness component is MOST likely the binding constraint — the one
+         whose improvement would have the largest positive impact on the
+         next iteration's score.
+      2. Rank all four components in descending order of expected improvement
+         impact using the ≻ symbol: e.g., prompt ≻ workflow ≻ tool ≻ memory
+      3. For EACH component, provide:
+         - A specific piece of evidence from the current iteration that
+           supports its rank position
+         - Whether the component is likely UNDER-constrained (too loose,
+           allowing errors) or OVER-constrained (too strict, blocking progress)
+      4. If two or more components appear equally implicated, explicitly
+         state which ones are tied and why. If all four are tied, output
+         RANKING_DEGENERATE: insufficient evidence to rank components
+      5. Check for bias: if the same component has been ranked #1 in
+         multiple consecutive iterations without score improvement, note
+         BIAS_WARNING: <component> may be over-ranked — scores have not
+         improved despite repeated focus on this component
+      6. End your response with the sentinel line RANKING_VALID on its
+         own line so the evaluator can detect a complete ranking output.
+
+      Output format:
+      RANKING: <#1> ≻ <#2> ≻ <#3> ≻ <#4>
+
+      #1 <component>: <under-constrained or over-constrained>
+      Evidence: <specific evidence from current iteration>
+      Rationale: <why improving this component has highest expected impact>
+
+      #2 <component>: <under-constrained or over-constrained>
+      Evidence: ...
+      Rationale: ...
+
+      #3 <component>: ...
+      #4 <component>: ...
+
+      [BIAS_WARNING if applicable]
+      RANKING_VALID
+    timeout: 300
+    capture: component_ranking
+    evaluate:
+      type: output_contains
+      pattern: "RANKING_VALID"
+    on_yes: review_critique
+    on_no: review_critique
+    on_error: review_critique
+
+  review_critique:
+    action: |
+      REVIEW ONLY — output a fix plan and stop. Do NOT modify the output.html
+      file or any other files. The apply_refinements state handles all
+      implementation.
+
+      The animated SVG artifact at ${context.run_dir}/output.html was critiqued
+      by an external vision model. Review the specific weaknesses identified
+      below:
+
+      ${prev.output}
+
+      COMPONENT-LEVEL PRIORITY RANKING — a harness optimizer ranked the four
+      harness components by expected improvement impact on the next iteration's
+      score. Use this to focus your fix plan on the highest-ranked component(s):
+
+      ${captured.component_ranking?}
+
+      OPTIMIZER SELF-DIAGNOSIS (ENH-013) — after the last fix was applied,
+      the optimizer audited its own behavior against the 8-category error
+      taxonomy from Ong et al. (arXiv:2605.22505). If a diagnosis was
+      produced, review it to understand what meta-errors the optimizer may
+      have made:
+
+      ${context.fix_plan}
+
+      If the diagnosis indicates MULTI_FLAG (3+ non-critical error types),
+      the optimizer may be systematically misapplying fixes. Consider whether
+      the fix plan approach needs structural adjustment rather than tuning
+      individual fixes.
+
+      HISTORICAL FIX EFFECTIVENESS (ENH-013) — if fix/score correlation
+      data has been accumulated, read
+      ${context.run_dir}/fix_strategy_effectiveness.json for evidence-based
+      guidance on which fix strategies have been effective:
+      - Strategies with high hit_rate (>0.6): prefer these approaches
+      - Strategies with high regression_rate (>0.4): avoid these approaches
+      - Strategies with zero attempts: consider if they might address the
+        current failure pattern
+
+      ${context.design_tokens_context}
+
+      ## PRIOR LEARNINGS CHECK (ENH-011)
+
+      Read ${context.run_dir}/optimization_summary.md if it exists. Extract every
+      lesson marked **[ACTIVE]** with a carry-forward flag from the last 3-5
+      iterations. Compare the current iteration's failure evidence (in the
+      critique above) against these lessons:
+
+      1. REPEATED PATTERN DETECTION: If the current iteration's primary failure
+         pattern matches a carry-forward lesson from ≤3 iterations ago, the
+         optimizer is repeating a known mistake. Output "REPLAN_NEEDED" as the
+         first line of your response, then describe:
+         - Which prior lesson(s) warned about this exact failure pattern
+         - Why the fix plan from that prior iteration did not prevent recurrence
+         - What structural change to the plan or prompt is needed to break the cycle
+         Skip all other pre-checks and proceed directly to the REPLAN_NEEDED output.
+
+      2. LESSON-AWARE CRITIQUE: If no repeated pattern is detected, incorporate
+         relevant carry-forward lessons into your fix plan:
+         - Reference specific lesson tags (e.g., "per [EASING] lesson from
+           iteration 3, replace easeOutElastic with easeOutExpo")
+         - If a `[VALIDATED]` lesson applies, prescribe it with high confidence
+         - If an `[INEFFECTIVE]` lesson is relevant, note that the approach was
+           tried and did not work — do not recommend it again
+
+      If no summary file exists or no active lessons are found, proceed silently
+      to the pre-checks below.
+
+      ---
+
+      ## OPTIMIZATION PHASE (ENH-012)
+
+      This is iteration ${context.global_iteration} of 30 max. Adapt your review
+      strategy to the current phase:
+
+      EXPLORE (iter 1–${context.explore_cutoff}): Broader, more experimental
+      fix suggestions are acceptable. Suggest alternative animation approaches
+      if the current one is fundamentally limited. Don't over-constrain to
+      incremental fixes.
+
+      EXPLOIT (iter ${context.explore_cutoff}+1–${context.exploit_cutoff}):
+      Focus the fix plan on the SINGLE lowest-scoring rubric dimension.
+      Be surgical and specific. Component ranking signal is strongest here —
+      trust it. Target the binding constraint, not all issues.
+
+      CONVERGE (iter ${context.exploit_cutoff}+1–30): Conservative fixes only.
+      Do NOT suggest new animation sequences, restructured compositions, or
+      changed animation strategies. Small parameter adjustments only (timing,
+      easing, color). If uncertain whether a change is safe, omit it.
+
+      ---
+
+      IMPORTANT PRE-CHECKS — handle these before producing the fix plan:
+
+      1. COMPONENT RANKING CHECK: If a component ranking is provided above,
+         validate it before using it:
+         - Does the highest-ranked component match the failure evidence?
+         - If the ranking is flagged RANKING_DEGENERATE (insufficient evidence),
+           ignore it and analyze the failure evidence directly
+         - If the ranking has a BIAS_WARNING (same component ranked #1
+           repeatedly without score improvement), consider whether a different
+           component is the real bottleneck
+         - If the ranking looks correct, focus your fix plan primarily on
+           the #1 ranked component, secondarily on #2
+         - Map the ranked components to concrete fixes:
+           * PROMPT #1 → fix the action prompts (add guardrails, clarify
+             constraints, improve specificity) in your fix plan
+           * TOOL #1 → recommend threshold adjustments, rubric reweighting,
+             or validation logic changes (note: you cannot modify shell
+             scripts; describe the needed changes for the loop author)
+           * MEMORY #1 → recommend changes to .best_score threshold,
+             smoke_fail_streak_max, or other memory parameters
+           * WORKFLOW #1 → recommend routing changes (e.g., when to replan
+             vs refine) or suggest new states; if the fix requires a full
+             replan, output REPLAN_NEEDED
+
+      2. MISSING ARTIFACT CHECK: If the critique indicates that no HTML artifact
+         was produced (e.g. SMOKE_FAIL or VISION_FAIL due to missing output.html
+         or output.png), output "REPLAN_NEEDED" as the first line of your
+         response, then describe what went wrong and what a corrected plan must
+         cover.
+
+      3. SCORE REGRESSION CHECK: If the critique contains "SCORE_REGRESSION"
+         (the current iteration's minimum score dropped below the adaptive
+         regression tolerance threshold), the harness has ALREADY mechanically
+         restored the best-scored artifact (.best_output.html to output.html).
+         The artifact on disk IS the best version. Output "REPLAN_NEEDED" as
+         the first line of your response, then describe:
+         - What the best-scoring version did correctly (the restored artifact)
+         - What the regressed version changed that caused regression
+         - A plan that addresses the regression without reintroducing the
+           changes that caused it — since the best artifact has been restored,
+           focus on what to do DIFFERENTLY from the regressed approach
+
+      If neither replan-triggering pre-check fires (MISSING ARTIFACT or SCORE
+      REGRESSION), proceed with the normal fix plan below.
+
+      NORMAL FIX PLAN — analyze the critique and produce a targeted fix plan:
+      1. Identify the lowest-scoring dimensions, their root causes, and the
+         specific SVG elements, animation parameters, timing values, or
+         structural changes needed to fix each issue
+      2. For each failing issue in the critique, map it to one of these
+         animation-specific failure categories and prescribe the fix:
+         - Path/coordinate errors: adjust <path> d attributes, viewBox containment
+         - Z-order/rendering errors: reorder SVG elements, fix <g> grouping
+         - CSS vs animation conflicts: remove any CSS transform/transition rules
+           that overlap with anime.js targets
+         - Easing/timing problems: adjust easing functions, durations, delays,
+           stagger parameters, or timeline offsets
+         - Structural/XML errors: fix tag nesting, unescaped characters,
+           namespace declarations
+         - Completeness gaps: add missing shapes, animation sequences, or states
+           specified in the original plan
+      3. Plan style adjustments: if design tokens are provided, identify where
+         contrast, harmony, or visual hierarchy can be improved by adjusting
+         fill/stroke colors to better use the semantic token palette
+      4. Prioritize fixes by impact:
+         - HIGH: fixes that make the difference between passing and failing a
+           dimension (score within 1-2 points of threshold)
+         - MEDIUM: fixes that improve a clearly deficient dimension (score 2+
+           points below threshold)
+         - LOW: cosmetic improvements to already-passing dimensions
+         Apply high and medium fixes; skip low-priority changes that risk
+         introducing new regressions
+      5. Output a numbered fix list with specific, actionable changes
+         referencing CSS class names, SVG element IDs, and exact anime.js
+         parameter adjustments
+    action_type: prompt
+    timeout: 600
+    max_retries: 3
+    retryable_exit_codes: [124]
+    on_retry_exhausted: done
+    capture: fix_plan
+    evaluate:
+      type: output_contains
+      pattern: "REPLAN_NEEDED"
+    on_yes: done
+    on_no: apply_refinements
+    on_error: review_critique
+
+  apply_refinements:
+    action: |
+      IMPLEMENT ONLY — apply every fix from the plan below. Do NOT re-analyze
+      the animation, propose new fixes, or second-guess the plan. Modify
+      the output.html file and stop.
+
+      ## PRIOR LEARNINGS CONSTRAINTS (ENH-011)
+
+      Read ${context.run_dir}/optimization_summary.md if it exists. Extract every
+      lesson marked **[ACTIVE]** with its tag. These are constraints on your
+      implementation — patterns known to cause failures in prior iterations:
+
+      - Do NOT reintroduce any pattern that a carry-forward lesson explicitly
+        warns against (e.g., if a lesson says "avoid easeOutElastic on small
+        elements," do not add or preserve easeOutElastic on elements smaller
+        than 50px viewBox units)
+      - If a `[VALIDATED]` lesson prescribes a specific approach, prefer that
+        approach when applying fixes
+      - If a lesson is tagged `[INEFFECTIVE]`, the approach was tried and did
+        not improve scores — do not reuse patterns from that lesson
+      - If the fix plan instructs you to apply a change that conflicts with an
+        active carry-forward lesson, note the conflict explicitly and follow
+        the lesson (it represents real empirical evidence from this run)
+
+      If no summary file exists or no active lessons are found, proceed silently.
+
+      ---
+
+      ## OPTIMIZATION PHASE (ENH-012)
+
+      This is iteration ${context.global_iteration} of 30 max. Adapt your implementation
+      to the current phase:
+
+      EXPLORE (iter 1–${context.explore_cutoff}): Implement the fix plan fully,
+      even if it proposes bold changes. Exploration-phase fixes may restructure
+      animations significantly — apply them faithfully. Don't conservatively
+      water down explore-phase changes.
+
+      EXPLOIT (iter ${context.explore_cutoff}+1–${context.exploit_cutoff}):
+      Apply fixes with surgical precision. Make ONLY the changes specified in
+      the fix plan. Do not expand scope or add improvements beyond the plan.
+      The fix plan targets the binding constraint — don't dilute it.
+
+      CONVERGE (iter ${context.exploit_cutoff}+1–30): Apply only HIGH
+      confidence fixes from the plan. Skip any MEDIUM or LOW priority changes
+      that could introduce regressions. If a fix requires restructuring or
+      new animation sequences, skip it — note "SKIPPED: regression risk in
+      converge phase" and move on. Prefer the minimal change that addresses
+      the issue.
+
+      ---
+
+      Apply the fix plan below to the animated SVG artifact at
+      ${context.run_dir}/output.html:
+
+      ${captured.fix_plan?}
+
+      ${context.design_tokens_context}
+
+      Steps:
+      1. Read ${context.run_dir}/output.html to understand the current state
+      2. Apply every fix from the plan to the file in place:
+         - Fix SVG element attributes (d paths, positions, dimensions, fills,
+           strokes) using token palette colors where appropriate
+         - Fix animation parameters (targets, properties, easings, durations,
+           delays, stagger configs, timeline offsets)
+         - Fix structural issues (element ordering/Z-index, <g> grouping, tag
+           nesting, unescaped special characters, missing namespace attrs)
+         - Remove any CSS @keyframes or SMIL <animate> tags that conflict with
+           anime.js animation targets — anime.js must own all animated properties
+         - Add missing elements or animation sequences from the plan
+         - Adjust transform-origin CSS properties on rotated/scaled elements
+           to prevent pivot-point drift
+      3. Verify the fix — re-read the file and confirm:
+         - All HTML tags are properly nested and closed
+         - All anime.js target selectors match actual CSS class/ID values in
+           the SVG markup
+         - Path data coordinates are within the declared viewBox
+         - Critical animation failure modes are avoided (no CSS/anime.js
+           property conflicts, no mixed animation approaches on same elements)
+      4. If design tokens are provided, verify that every color used in the
+         SVG and animation code comes from the token palette — replace any
+         newly-invented or hardcoded color values
+      5. Do not introduce new design decisions, new animation sequences, or
+         new visual elements beyond what the fix plan specifies; focused,
+         minimal edits are preferred over broad rewrites
+    action_type: prompt
+    timeout: 900
+    max_retries: 3
+    retryable_exit_codes: [124]
+    on_retry_exhausted: done
+    capture: candidate
+    next: self_diagnose
+    on_error: apply_refinements
+
+  self_diagnose:
+    # OPTIMIZER SELF-DIAGNOSIS (ENH-013):
+    # After applying refinements, classifies the optimizer's own behavior
+    # against the 8-category error taxonomy from Ong et al.
+    # (arXiv:2605.22505, Table 5). Routes based on severity:
+    # - Critical (Hallucination/Safety Violation) → done (REPLAN_NEEDED signal)
+    # - Non-critical → write_summary
+    #
+    # GRACEFUL DEGRADATION: on_error → write_summary (non-blocking)
+    action_type: prompt
+    action: |
+      DIAGNOSE ONLY — classify the optimizer's own behavior and stop.
+      Do NOT modify files, propose fixes, or re-analyze the artifact.
+
+      You are auditing the optimizer that just applied a fix plan to an
+      animated SVG artifact. Your task is to classify the optimizer's
+      behavior against each of the 8 harness optimization error types
+      identified in Ong et al. "Towards Direct Evaluation of Harness
+      Optimizers via Priority Ranking" (arXiv:2605.22505, Table 5).
+
+      CONTEXT — what the optimizer was asked to do:
+
+      Fix plan that was applied:
+      ${captured.fix_plan?}
+
+      Previous state output (critique/scores that motivated this fix):
+      ${prev.output}
+
+      ## ERROR TYPE CLASSIFICATION
+
+      For each of the 8 error types below, determine whether the optimizer
+      exhibited this behavior. Answer YES or NO with specific evidence
+      from the fix plan or its implementation.
+
+      1. REDUNDANT DUPLICATION — Did the fix add something that already
+         exists in the artifact? (e.g., adding a CSS rule that was already
+         present, duplicating an existing animation sequence)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      2. HARDCODING — Did the fix embed specific values without
+         generalization? (e.g., hardcoding exact pixel coordinates from
+         a single critique rather than parameterizing, fixing a specific
+         color value rather than using token palette)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      3. TASK-SPECIFIC ADDITION — Is the fix only valid for this specific
+         animation description and unlikely to generalize? (e.g., adding
+         a one-off workaround that only makes sense for this particular
+         scene description)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      4. HALLUCINATION — Did the optimizer reference elements, classes,
+         properties, or tools that don't exist in the artifact?
+         (e.g., targeting CSS class ".non-existent", referencing anime.js
+         API methods that don't exist, claiming to fix a file that was
+         never created)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      5. OVERENGINEERING — Did the fix add unnecessary complexity?
+         (e.g., adding multi-step animation sequences for a simple fix,
+         introducing complex spring physics where a simple ease would
+         suffice, restructuring the SVG layout when a single attribute
+         change would fix the issue)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      6. DIRECT PERFORMANCE-DEGRADING UPDATE — Could this fix actively
+         worsen the artifact? (e.g., adding overlapping animations that
+         may cause jank, introducing synchronous operations that block
+         rendering, setting animation durations so long they overlap
+         problematically)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      7. OVERGENERALIZED HEURISTIC — Did the fix apply a one-size-fits-all
+         rule inappropriately? (e.g., changing ALL easing functions to a
+         single type regardless of context, uniformly adjusting durations
+         without considering per-element needs, applying the same
+         transform-origin to all elements)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      8. SAFETY VIOLATION — Did the fix remove or degrade safety guards?
+         (e.g., removing prefers-reduced-motion media query, deleting
+         aria-labelledby or role attributes, removing the anime.js CDN
+         onerror fallback, stripping alt/title/desc accessibility elements)
+         Classification: [YES/NO]
+         Evidence: [specific reference if YES]
+
+      ## SEVERITY DETERMINATION
+
+      Based on the classifications above, determine the severity:
+
+      CRITICAL: If Hallucination (#4) or Safety Violation (#8) is YES.
+      → Output "CRITICAL_ERROR" on its own line.
+      → The loop will signal the parent to re-plan from scratch — these
+        errors indicate the fix itself is untrustworthy.
+
+      MULTI_FLAG: If 3 or more non-critical types (#1, #2, #3, #5, #6, #7)
+      are YES.
+      → Output "MULTI_FLAG" on its own line.
+      → The diagnosis will be surfaced to the next review cycle for
+        evidence-based re-critique.
+
+      NORMAL: If 0-2 non-critical types are YES and no critical types.
+      → Output "DIAGNOSIS_NORMAL" on its own line.
+      → The diagnosis is logged for correlation tracking.
+
+      ## SUMMARY
+
+      Output a one-line JSON summary:
+      ```json
+      {"critical": [list of critical error types detected],
+       "non_critical": [list of non-critical error types detected],
+       "total_flags": N,
+       "confidence": 0.0-1.0}
+      ```
+
+      End with the severity sentinel line (CRITICAL_ERROR, MULTI_FLAG,
+      or DIAGNOSIS_NORMAL) on its own line.
+
+      After outputting your diagnosis, write the JSON summary as a single
+      line to ${context.run_dir}/self_diagnosis.jsonl (append mode).
+      This enables the track_correlation state to read diagnosis flags
+      for fix/score correlation analysis. Use the exact format:
+      ```json
+      {"iteration": N, "critical": [...], "non_critical": [...], "total_flags": N, "confidence": 0.0-1.0}
+      ```
+      Determine the iteration number by counting existing lines in
+      ${context.run_dir}/self_diagnosis.jsonl (1-indexed; if file doesn't
+      exist, this is iteration 1).
+    timeout: 300
+    capture: self_diagnosis
+    evaluate:
+      type: output_contains
+      pattern: "CRITICAL_ERROR"
+    on_yes: done
+    on_no: write_summary
+    on_error: write_summary
+
+  write_summary:
+    # CUMULATIVE OPTIMIZATION SUMMARY (ENH-011):
+    # Appends a structured S_i entry to optimization_summary.md after each
+    # refinement cycle. The summary records what was attempted, observed,
+    # and learned, building a cumulative optimization trajectory H_t.
+    #
+    # Carry-forward lessons persist across iterations and are injected into
+    # review_critique and apply_refinements prompts.
+    # After iteration 20, carry-forward lessons are deduplicated and pruned
+    # to prevent summary noise (per the paper's Finding 6: correlation peaks
+    # at mid-stage and declines later).
+    #
+    # This is a pass-through state — always proceeds to done.
+    action_type: prompt
+    action: |
+      APPEND ONLY — read the existing summary, analyze this iteration, and
+      append a new entry. Do NOT modify files other than the summary file.
+      Output a one-line confirmation and stop.
+
+      Read ${context.run_dir}/optimization_summary.md if it exists.
+      Count how many "## Iteration" headings exist to determine the current
+      iteration number N.
+
+      If the file does not exist, this is iteration 1. Create it with a
+      header: "# Optimization Summary — rlhf-svg-refine\n"
+
+      Analyze this iteration's context and append a structured entry:
+
+      ITERATION CONTEXT:
+      - Animation plan (original design): ${context.animation_plan}
+      - Component ranking (harness component priorities): ${captured.component_ranking?}
+      - Fix plan applied this iteration: ${captured.fix_plan?}
+      - Previous state output (critique/scores): ${prev.output}
+
+      APPEND the following entry to the summary file (use the exact format):
+
+      ## Iteration N — $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+      ### What Was Attempted
+      - Components modified: [which harness components were changed — prompt, tool, memory, workflow]
+      - Approach: [brief description of the fix strategy applied]
+
+      ### What Was Observed
+      - Smoke test result: [infer from context — PASS, FAIL, or BYPASS]
+      - Vision scores: [extract from context if available, or "scoring skipped this iteration"]
+      - Key failures: [specific dimensions below threshold, or "none — all dimensions passed"]
+
+      ### Root Cause Hypothesis
+      [Why did the approach succeed or fail? Connect to specific harness component behavior.]
+
+      ### Lesson Learned
+      [One actionable sentence: what should future iterations do differently?]
+
+      **Carry Forward**: [true/false]
+      - If true: this lesson should persist in all future planning prompts.
+        Mark as `[ACTIVE]` and include a brief tag like `[EASING]`, `[Z-ORDER]`,
+        `[PROMPT]`, `[TIMING]`, or `[VALIDATION]`.
+      - If false: this is an iteration-specific observation, not a general pattern.
+
+      PRUNING RULES (apply after appending, only if N >= 20):
+      1. Scan all carry-forward lessons across all iterations
+      2. If two or more lessons convey the same guidance, keep only the most recent
+      3. For each kept lesson, check whether subsequent scores improved after it
+         was adopted — annotate as `[VALIDATED]` if scores improved, `[UNPROVEN]`
+         if insufficient evidence, or `[INEFFECTIVE]` if scores did not improve
+      4. Remove lessons marked `[INEFFECTIVE]` from the carry-forward set
+      5. Add a `### Pruned at iteration N` section noting what was removed and why
+
+      After appending, output exactly:
+      SUMMARY_APPENDED: iteration N recorded
+    timeout: 300
+    capture: iteration_summary
+    next: done
+
+  done:
+    terminal: true
