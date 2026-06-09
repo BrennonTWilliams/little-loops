@@ -7,11 +7,14 @@ priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1978
+blocked_by:
+- BUG-2042
 relates_to:
 - EPIC-1978
 - FEAT-1979
 - FEAT-1980
 - FEAT-1981
+- ENH-2043
 labels:
 - init
 - cleanup
@@ -22,7 +25,7 @@ score_complexity: 17
 score_test_coverage: 15
 score_ambiguity: 16
 score_change_surface: 20
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-1982: Deprecate /ll:init skill to a redirect stub
@@ -50,12 +53,12 @@ in-session as `/ll:init`:
 
 1. Detects whether stdin is interactive. It generally is not (the skill runs
    inside the host), so:
-2. Either runs `ll-init --yes` non-interactively (sensible defaults from
-   detection) **or** prints: "Guided setup moved to the `ll-init` CLI — run
-   `ll-init` in your terminal for the interactive wizard, or re-run `/ll:init`
-   to accept detected defaults." Decide between auto-run-`--yes` vs.
-   print-and-stop during implementation; auto-run is friendlier if the produced
-   config is safe to write unprompted.
+2. **Decision resolved**: the stub will auto-run `ll-init --yes` (non-interactive
+   defaults). Rationale: the config it produces is safe to write unprompted
+   (same output as `--yes` always was), and auto-run is friendlier than forcing
+   the user to switch terminals. The stub should print a one-line banner before
+   running: "Guided init moved to CLI — running `ll-init --yes` with detected
+   defaults…" so the handoff is visible.
 3. Passes through recognized flags (`--force`, `--dry-run`, `--codex`/`--hosts`)
    to `ll-init` so existing muscle-memory invocations keep working.
 
@@ -79,9 +82,13 @@ Cleanup:
 
 ## Dependencies
 
-- **Blocked by** FEAT-1979 (core) and FEAT-1980 (TUI) reaching parity — do not
-  delete the prose flow until `ll-init` covers every choice it collected.
-- FEAT-1981 should land first if the stub passes through `--hosts`.
+- **Blocked by** BUG-2042 — three parity gaps in `ll-init` (`deploy_design_tokens`
+  not called, `history.session_digest` missing from generated config,
+  `Skill(ll:explore-api)` permission not wired for learning-tests). Fix BUG-2042
+  before deleting the prose wizard.
+- FEAT-1979, FEAT-1980, FEAT-1981 are all `done` — dependency unblocked.
+- ENH-2043 (TUI CLAUDE.md screen) is P3 and can follow in a separate PR;
+  it does not block this stub.
 
 ## Integration Map
 
@@ -120,7 +127,13 @@ _Added by `/ll:confidence-check` on 2026-06-08_
 
 ## Verification Notes
 
-**Verdict: NEEDS_UPDATE** — 2026-06-09. `skills/init/SKILL.md` (502 lines) and `skills/init/interactive.md` (966 lines) both still exist in full form. The parity gate (CLI `ll-init` reaching feature parity with the skill wizard) needs explicit verification before deletion can start. Confidence check scored readiness 92/100 but outcome confidence only 68/100 — the redirect behavior decision (auto-invoke vs. message only) is still unresolved. Resolve that decision first.
+**Verdict: BLOCKED** — 2026-06-09. FEAT-1979/1980/1981 are all `done`; `ll-init`
+is functional. Three parity gaps remain (BUG-2042): `deploy_design_tokens` not
+called, `history.session_digest` absent from generated config, and
+`Skill(ll:explore-api)` permission not wired for learning-tests. The redirect
+behavior decision (auto-invoke vs. message only) is now resolved: auto-run
+`ll-init --yes` with a one-line handoff banner. Ready to implement once BUG-2042
+is fixed.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`

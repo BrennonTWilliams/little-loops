@@ -87,19 +87,17 @@ Prior art to lean on: `ll-doctor` (host capability detection) and
 
 ## Children
 
-- **FEAT-1979** — Extract init logic into a headless `ll-init` Python core
-  (detection, config generation, dependency validation, settings/gitignore/
-  CLAUDE.md merges, `--plan`/`apply`/`--yes` non-interactive entry points;
-  full unit coverage).
-- **FEAT-1980** — `ll-init` interactive terminal TUI (questionary/rich
-  multi-select for features; progress; confirmation summary) over the
-  FEAT-1979 core.
-- **FEAT-1981** — Host multi-select wiring: Claude Code / Codex / Pi selection
-  in `ll-init`, dispatching to the correct adapter install (relates to
-  EPIC-1463 Codex install path and EPIC-1622 Pi `/ll:init --pi` / FEAT-1475).
+- **FEAT-1979** ✓ done — Extract init logic into a headless `ll-init` Python core.
+- **FEAT-1980** ✓ done — `ll-init` interactive terminal TUI.
+- **FEAT-1981** ✓ done — Host multi-select wiring (Claude Code / Codex / Pi).
+- **BUG-2042** — Three parity gaps in the Python core: `deploy_design_tokens`
+  not called, `history.session_digest` absent from generated config,
+  `Skill(ll:explore-api)` permission not wired for learning-tests. Blocks ENH-1982.
 - **ENH-1982** — Deprecate `/ll:init` skill to a redirect stub; delete
-  `interactive.md` prose flow once parity is verified.
-- **FEAT-2041** — Guided first-loop onboarding after ll init
+  `interactive.md` prose flow. Blocked by BUG-2042.
+- **ENH-2043** — Add CLAUDE.md update step to the TUI (Round 12 parity). P3;
+  doesn't block ENH-1982.
+- **FEAT-2041** — Guided first-loop onboarding after ll init. Blocked by ENH-1982.
 
 ## Scope
 
