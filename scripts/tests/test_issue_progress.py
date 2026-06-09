@@ -164,10 +164,18 @@ class TestComputeEpicProgress:
     def test_oldest_open_prefers_captured_at(self, tmp_path: Path) -> None:
         epic = _make_issue(tmp_path, "EPIC-008")
         newer = _make_issue(
-            tmp_path, "BUG-040", status="open", parent="EPIC-008", captured_at="2026-05-01T00:00:00Z"
+            tmp_path,
+            "BUG-040",
+            status="open",
+            parent="EPIC-008",
+            captured_at="2026-05-01T00:00:00Z",
         )
         older = _make_issue(
-            tmp_path, "BUG-041", status="open", parent="EPIC-008", captured_at="2026-01-01T00:00:00Z"
+            tmp_path,
+            "BUG-041",
+            status="open",
+            parent="EPIC-008",
+            captured_at="2026-01-01T00:00:00Z",
         )
 
         result = compute_epic_progress("EPIC-008", [epic, newer, older])
@@ -178,7 +186,11 @@ class TestComputeEpicProgress:
     def test_oldest_open_age_days_is_non_negative(self, tmp_path: Path) -> None:
         epic = _make_issue(tmp_path, "EPIC-009")
         child = _make_issue(
-            tmp_path, "BUG-050", status="open", parent="EPIC-009", captured_at="2020-01-01T00:00:00Z"
+            tmp_path,
+            "BUG-050",
+            status="open",
+            parent="EPIC-009",
+            captured_at="2020-01-01T00:00:00Z",
         )
 
         result = compute_epic_progress("EPIC-009", [epic, child])

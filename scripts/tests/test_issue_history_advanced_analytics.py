@@ -2772,6 +2772,7 @@ class TestRecurringFeedbackModels:
     def test_recurring_feedback_to_dict_empty(self) -> None:
         """RecurringFeedback with defaults serializes correctly."""
         from little_loops.issue_history.models import RecurringFeedback
+
         fb = RecurringFeedback(topic="don't do X")
         result = fb.to_dict()
         assert result["topic"] == "don't do X"
@@ -2783,6 +2784,7 @@ class TestRecurringFeedbackModels:
     def test_recurring_feedback_to_dict_limits_lists(self) -> None:
         """to_dict() caps example_sessions at 5 and example_content at 3."""
         from little_loops.issue_history.models import RecurringFeedback
+
         fb = RecurringFeedback(
             topic="stop doing Y",
             occurrence_count=10,
@@ -2796,6 +2798,7 @@ class TestRecurringFeedbackModels:
     def test_recurring_feedback_analysis_to_dict_empty(self) -> None:
         """RecurringFeedbackAnalysis with defaults serializes correctly."""
         from little_loops.issue_history.models import RecurringFeedbackAnalysis
+
         analysis = RecurringFeedbackAnalysis()
         result = analysis.to_dict()
         assert result["feedbacks"] == []
@@ -2806,15 +2809,15 @@ class TestRecurringFeedbackModels:
     def test_recurring_feedback_analysis_to_dict_limits_candidates(self) -> None:
         """to_dict() caps rule_candidates at 10."""
         from little_loops.issue_history.models import RecurringFeedbackAnalysis
-        analysis = RecurringFeedbackAnalysis(
-            rule_candidates=[f"rule-{i}" for i in range(15)]
-        )
+
+        analysis = RecurringFeedbackAnalysis(rule_candidates=[f"rule-{i}" for i in range(15)])
         result = analysis.to_dict()
         assert len(result["rule_candidates"]) == 10
 
     def test_skill_bypass_to_dict_empty(self) -> None:
         """SkillBypass with defaults serializes correctly."""
         from little_loops.issue_history.models import SkillBypass
+
         bypass = SkillBypass(skill_name="commit")
         result = bypass.to_dict()
         assert result["skill_name"] == "commit"
@@ -2826,6 +2829,7 @@ class TestRecurringFeedbackModels:
     def test_skill_bypass_to_dict_limits_lists(self) -> None:
         """to_dict() caps example_sessions at 5 and evidence at 3."""
         from little_loops.issue_history.models import SkillBypass
+
         bypass = SkillBypass(
             skill_name="commit",
             bypass_count=10,
@@ -2839,6 +2843,7 @@ class TestRecurringFeedbackModels:
     def test_skill_bypass_analysis_to_dict_empty(self) -> None:
         """SkillBypassAnalysis with defaults serializes correctly."""
         from little_loops.issue_history.models import SkillBypassAnalysis
+
         analysis = SkillBypassAnalysis()
         result = analysis.to_dict()
         assert result["bypasses"] == []
@@ -2849,6 +2854,7 @@ class TestRecurringFeedbackModels:
     def test_skill_bypass_analysis_to_dict_limits_suggestions(self) -> None:
         """to_dict() caps improvement_suggestions at 10."""
         from little_loops.issue_history.models import SkillBypassAnalysis
+
         analysis = SkillBypassAnalysis(
             improvement_suggestions=[f"suggestion-{i}" for i in range(15)]
         )

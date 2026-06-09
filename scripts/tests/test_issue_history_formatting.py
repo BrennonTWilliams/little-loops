@@ -615,6 +615,7 @@ class TestFormatAnalysisEvolutionTriggers:
     def test_recurring_corrections_in_text_output(self) -> None:
         """Recurring corrections section appears in text output when present."""
         from little_loops.issue_history.models import RecurringFeedback, RecurringFeedbackAnalysis
+
         analysis = _make_base_analysis(
             recurring_feedback_analysis=RecurringFeedbackAnalysis(
                 feedbacks=[
@@ -636,6 +637,7 @@ class TestFormatAnalysisEvolutionTriggers:
     def test_recurring_corrections_in_markdown_output(self) -> None:
         """Recurring corrections table appears in markdown output."""
         from little_loops.issue_history.models import RecurringFeedback, RecurringFeedbackAnalysis
+
         analysis = _make_base_analysis(
             recurring_feedback_analysis=RecurringFeedbackAnalysis(
                 feedbacks=[
@@ -657,6 +659,7 @@ class TestFormatAnalysisEvolutionTriggers:
     def test_skill_bypass_in_text_output(self) -> None:
         """Skill bypass section appears in text output when present."""
         from little_loops.issue_history.models import SkillBypass, SkillBypassAnalysis
+
         analysis = _make_base_analysis(
             skill_bypass_analysis=SkillBypassAnalysis(
                 bypasses=[
@@ -679,6 +682,7 @@ class TestFormatAnalysisEvolutionTriggers:
     def test_skill_bypass_in_markdown_output(self) -> None:
         """Skill bypass table appears in markdown output."""
         from little_loops.issue_history.models import SkillBypass, SkillBypassAnalysis
+
         analysis = _make_base_analysis(
             skill_bypass_analysis=SkillBypassAnalysis(
                 bypasses=[

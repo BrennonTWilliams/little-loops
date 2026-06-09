@@ -255,9 +255,7 @@ class TestDetectProjectType:
         assert match.filename == "python-generic.json"
         assert match.name == "Python (Generic)"
 
-    def test_detects_typescript_via_tsconfig(
-        self, tmp_project: Path, fake_templates: Path
-    ) -> None:
+    def test_detects_typescript_via_tsconfig(self, tmp_project: Path, fake_templates: Path) -> None:
         (tmp_project / "tsconfig.json").touch()
         match = detect_project_type(tmp_project, fake_templates)
         assert match.filename == "typescript.json"
@@ -274,9 +272,7 @@ class TestDetectProjectType:
         match = detect_project_type(tmp_project, fake_templates)
         assert match.filename == "javascript.json"
 
-    def test_fallback_to_generic_on_no_match(
-        self, tmp_project: Path, fake_templates: Path
-    ) -> None:
+    def test_fallback_to_generic_on_no_match(self, tmp_project: Path, fake_templates: Path) -> None:
         match = detect_project_type(tmp_project, fake_templates)
         assert match.filename == "generic.json"
         assert match.name == "Generic"
@@ -333,8 +329,7 @@ def test_real_template_detection(
         (tmp_project / fname).touch()
     match = detect_project_type(tmp_project, templates_dir)
     assert match.filename == expected_filename, (
-        f"Expected {expected_filename!r}, got {match.filename!r} "
-        f"(indicators: {indicator_files})"
+        f"Expected {expected_filename!r}, got {match.filename!r} (indicators: {indicator_files})"
     )
 
 
@@ -525,9 +520,7 @@ class TestMergeSettings:
     def test_preserves_unrelated_existing_entries(self, tmp_project: Path) -> None:
         target = tmp_project / ".claude" / "settings.local.json"
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps({"permissions": {"allow": ["Bash(git:*)", "Read(*)"]}})
-        )
+        target.write_text(json.dumps({"permissions": {"allow": ["Bash(git:*)", "Read(*)"]}}))
         merge_settings(tmp_project)
         data = json.loads(target.read_text())
         allow = data["permissions"]["allow"]
@@ -539,7 +532,11 @@ class TestMergeSettings:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
             json.dumps(
-                {"permissions": {"allow": ["Bash(ll-old-tool:*)", "Write(.ll/ll-continue-prompt.md)"]}}
+                {
+                    "permissions": {
+                        "allow": ["Bash(ll-old-tool:*)", "Write(.ll/ll-continue-prompt.md)"]
+                    }
+                }
             )
         )
         merge_settings(tmp_project)
@@ -647,7 +644,9 @@ class TestDeployGoals:
         created = deploy_goals(ll_dir, fake_tdir)
         assert created is False
 
-    def test_dry_run(self, tmp_path: Path, templates_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_dry_run(
+        self, tmp_path: Path, templates_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         created = deploy_goals(ll_dir, templates_dir, dry_run=True)
@@ -676,7 +675,9 @@ class TestDeployDesignTokens:
         created = deploy_design_tokens(ll_dir, templates_dir)
         assert created is False
 
-    def test_dry_run(self, tmp_path: Path, templates_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_dry_run(
+        self, tmp_path: Path, templates_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         created = deploy_design_tokens(ll_dir, templates_dir, dry_run=True)
@@ -695,9 +696,7 @@ class TestInstallCodexAdapter:
         plugin_root = tmp_path / "plugin"
         adapter_dir = plugin_root / "hooks" / "adapters" / "codex"
         adapter_dir.mkdir(parents=True)
-        (adapter_dir / "hooks.json").write_text(
-            '{"root": "{{LL_PLUGIN_ROOT}}", "hooks": []}'
-        )
+        (adapter_dir / "hooks.json").write_text('{"root": "{{LL_PLUGIN_ROOT}}", "hooks": []}')
         return plugin_root
 
     def test_installs_adapter(self, tmp_path: Path) -> None:
@@ -906,9 +905,7 @@ class TestMainInit:
             code = main_init(["--yes", "--root", str(tmp_project)])
         assert code == 1
 
-    def test_plan_emits_json(
-        self, tmp_project: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_plan_emits_json(self, tmp_project: Path, capsys: pytest.CaptureFixture) -> None:
         from little_loops.init.cli import main_init
 
         with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
@@ -943,9 +940,7 @@ class TestMainInit:
         apply_dest = tmp_path / "apply_dest"
         apply_dest.mkdir()
         with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
-            code = main_init(
-                ["--root", str(apply_dest), "apply", "--config", str(plan_file)]
-            )
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
         assert code == 0
         assert (apply_dest / ".ll" / "ll-config.json").exists()
 
@@ -959,7 +954,9 @@ class TestDetectHosts:
     def test_codex_binary_detected(self, tmp_path: Path) -> None:
         from little_loops.init.cli import _detect_hosts
 
-        with patch("little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "codex" else None):
+        with patch(
+            "little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "codex" else None
+        ):
             hosts = _detect_hosts(tmp_path)
         assert "codex" in hosts
 
@@ -974,14 +971,18 @@ class TestDetectHosts:
     def test_claude_binary_detected(self, tmp_path: Path) -> None:
         from little_loops.init.cli import _detect_hosts
 
-        with patch("little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "claude" else None):
+        with patch(
+            "little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "claude" else None
+        ):
             hosts = _detect_hosts(tmp_path)
         assert "claude-code" in hosts
 
     def test_pi_binary_detected(self, tmp_path: Path) -> None:
         from little_loops.init.cli import _detect_hosts
 
-        with patch("little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "pi" else None):
+        with patch(
+            "little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "pi" else None
+        ):
             hosts = _detect_hosts(tmp_path)
         assert "pi" in hosts
 
@@ -995,7 +996,10 @@ class TestDetectHosts:
     def test_multiple_hosts_detected(self, tmp_path: Path) -> None:
         from little_loops.init.cli import _detect_hosts
 
-        with patch("little_loops.init.cli.shutil.which", side_effect=lambda b: b if b in ("claude", "codex") else None):
+        with patch(
+            "little_loops.init.cli.shutil.which",
+            side_effect=lambda b: b if b in ("claude", "codex") else None,
+        ):
             hosts = _detect_hosts(tmp_path)
         assert "claude-code" in hosts
         assert "codex" in hosts
@@ -1038,9 +1042,7 @@ class TestHostDispatch:
         from little_loops.init.cli import main_init
 
         with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
-            code = main_init(
-                ["--yes", "--hosts", "claude-code,codex", "--root", str(tmp_project)]
-            )
+            code = main_init(["--yes", "--hosts", "claude-code,codex", "--root", str(tmp_project)])
         assert code == 0
         assert (tmp_project / ".codex" / "hooks.json").exists()
 
@@ -1058,9 +1060,7 @@ class TestHostDispatch:
         from little_loops.init.cli import main_init
 
         with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
-            code = main_init(
-                ["--yes", "--dry-run", "--hosts", "codex", "--root", str(tmp_project)]
-            )
+            code = main_init(["--yes", "--dry-run", "--hosts", "codex", "--root", str(tmp_project)])
         assert code == 0
         assert ".codex/hooks.json" in capsys.readouterr().out
 
@@ -1070,9 +1070,7 @@ class TestHostDispatch:
         from little_loops.init.cli import main_init
 
         with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
-            code = main_init(
-                ["--yes", "--dry-run", "--hosts", "pi", "--root", str(tmp_project)]
-            )
+            code = main_init(["--yes", "--dry-run", "--hosts", "pi", "--root", str(tmp_project)])
         assert code == 0
         assert "not yet available" in capsys.readouterr().out
 

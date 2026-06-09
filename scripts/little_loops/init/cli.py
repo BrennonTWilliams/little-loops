@@ -185,9 +185,7 @@ def _run_plan(project_root: Path, templates_dir: Path) -> int:
             "has_pi": bool(shutil.which("pi")),
             "suggested_settings_file": ".claude/settings.local.json",
         },
-        "warnings": [
-            {"message": w.message, "install_hint": w.install_hint} for w in warnings
-        ],
+        "warnings": [{"message": w.message, "install_hint": w.install_hint} for w in warnings],
     }
     print(json.dumps(plan, indent=2))
     return 0

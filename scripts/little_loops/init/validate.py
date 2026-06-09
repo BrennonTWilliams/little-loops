@@ -76,9 +76,7 @@ def _check_little_loops_version(plugin_version: str, project_root: Path) -> DepW
             else "pip install little-loops"
         )
         return DepWarning(
-            message=(
-                "'little-loops' pip package not installed — ll-* CLI tools unavailable."
-            ),
+            message=("'little-loops' pip package not installed — ll-* CLI tools unavailable."),
             install_hint=hint,
         )
 
@@ -125,8 +123,7 @@ def _check_tool_commands(config: dict[str, Any]) -> list[DepWarning]:
             warnings.append(
                 DepWarning(
                     message=(
-                        f"'{base_cmd}' not found in PATH — install it before "
-                        f"running {skill_hint}"
+                        f"'{base_cmd}' not found in PATH — install it before running {skill_hint}"
                     ),
                 )
             )

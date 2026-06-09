@@ -91,8 +91,7 @@ def run_tui(
     project_data = template.data.get("project", {})
 
     console.print(
-        f"\n[bold blue]little-loops setup[/bold blue]"
-        f" — detected [cyan]{template.name}[/cyan]\n"
+        f"\n[bold blue]little-loops setup[/bold blue] — detected [cyan]{template.name}[/cyan]\n"
     )
 
     default_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
@@ -110,15 +109,11 @@ def run_tui(
     if src_dir is None:
         return 130
 
-    test_cmd = questionary.text(
-        "Test command:", default=project_data.get("test_cmd") or ""
-    ).ask()
+    test_cmd = questionary.text("Test command:", default=project_data.get("test_cmd") or "").ask()
     if test_cmd is None:
         return 130
 
-    lint_cmd = questionary.text(
-        "Lint command:", default=project_data.get("lint_cmd") or ""
-    ).ask()
+    lint_cmd = questionary.text("Lint command:", default=project_data.get("lint_cmd") or "").ask()
     if lint_cmd is None:
         return 130
 
@@ -218,9 +213,7 @@ def run_tui(
     _render_summary(console, config, project_root, selected_set, selected_hosts, settings_target)
     console.print()
 
-    confirmed: bool | None = questionary.confirm(
-        "Apply this configuration?", default=True
-    ).ask()
+    confirmed: bool | None = questionary.confirm("Apply this configuration?", default=True).ask()
     if confirmed is None:
         return 130
     if not confirmed:
@@ -326,16 +319,10 @@ def _render_summary(
     host_labels = [_HOST_LABELS.get(h, h) for h in selected_hosts]
     table.add_row("Hosts", ", ".join(host_labels) if host_labels else "none")
 
-    sf = (
-        ".claude/settings.local.json"
-        if settings_target == "local"
-        else ".claude/settings.json"
-    )
+    sf = ".claude/settings.local.json" if settings_target == "local" else ".claude/settings.json"
     table.add_row("Settings", sf)
 
-    console.print(
-        Panel(table, title="[bold]Configuration Summary[/bold]", border_style="blue")
-    )
+    console.print(Panel(table, title="[bold]Configuration Summary[/bold]", border_style="blue"))
 
 
 def _apply_config(
@@ -377,9 +364,7 @@ def _apply_config(
     update_gitignore(project_root)
 
     settings_file = (
-        ".claude/settings.local.json"
-        if settings_target == "local"
-        else ".claude/settings.json"
+        ".claude/settings.local.json" if settings_target == "local" else ".claude/settings.json"
     )
     merge_settings(project_root, settings_file=settings_file)
 
@@ -391,7 +376,5 @@ def _apply_config(
         if w.install_hint:
             console.print(f"  Install/fix: {w.install_hint}")
 
-    console.print(
-        f"\n[bold green]✓ little-loops initialized in {project_root}[/bold green]"
-    )
+    console.print(f"\n[bold green]✓ little-loops initialized in {project_root}[/bold green]")
     console.print(f"  Config: [cyan]{config_path}[/cyan]")

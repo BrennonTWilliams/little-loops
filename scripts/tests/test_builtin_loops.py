@@ -150,6 +150,7 @@ class TestBuiltinLoopFiles:
             "vega-viz",
             "canvas-sketch-generator",
             "apply-research",
+            "rlhf-animated-svg",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -722,11 +723,15 @@ class TestIssueRefinementSubLoop:
             f"run_refine_to_ready.context_passthrough should be true, got {state.get('context_passthrough')!r}"
         )
 
-    def test_run_refine_to_ready_routes_to_check_commit(self, data: dict) -> None:
-        """run_refine_to_ready on_yes must route to check_commit."""
+    def test_run_refine_to_ready_routes_to_check_broke_down(self, data: dict) -> None:
+        """run_refine_to_ready on_yes routes to check_broke_down (which then routes to check_commit)."""
         state = data["states"].get("run_refine_to_ready", {})
-        assert state.get("on_yes") == "check_commit", (
-            f"run_refine_to_ready.on_yes should be 'check_commit', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_broke_down", (
+            f"run_refine_to_ready.on_yes should be 'check_broke_down', got {state.get('on_yes')!r}"
+        )
+        check_broke_down = data["states"].get("check_broke_down", {})
+        assert check_broke_down.get("on_no") == "check_commit", (
+            f"check_broke_down.on_no should be 'check_commit', got {check_broke_down.get('on_no')!r}"
         )
 
     def test_run_refine_to_ready_on_no_routes_to_handle_failure(self, data: dict) -> None:
@@ -750,19 +755,19 @@ class TestIssueRefinementSubLoop:
         )
 
     def test_evaluate_action_includes_skip_list(self, data: dict) -> None:
-        """evaluate action must pass skip list to ll-issues next-action."""
+        """evaluate action must pass run_dir-scoped skip list to ll-issues next-action."""
         evaluate = data["states"].get("evaluate", {})
         action = evaluate.get("action", "")
-        assert "issue-refinement-skip-list" in action, (
-            f"evaluate.action should reference issue-refinement-skip-list, got: {action!r}"
+        assert "${context.run_dir}/skip-list" in action, (
+            f"evaluate.action should reference ${{context.run_dir}}/skip-list, got: {action!r}"
         )
 
-    def test_init_action_clears_skip_list(self, data: dict) -> None:
-        """init action must clear the skip list at the start of each run."""
-        init = data["states"].get("init", {})
-        action = init.get("action", "")
-        assert "issue-refinement-skip-list" in action, (
-            f"init.action should clear issue-refinement-skip-list, got: {action!r}"
+    def test_skip_list_is_run_dir_scoped(self, data: dict) -> None:
+        """Skip list must live under run_dir so it is fresh each run (MR-3 compliance)."""
+        evaluate = data["states"].get("evaluate", {})
+        action = evaluate.get("action", "")
+        assert "${context.run_dir}" in action, (
+            "evaluate.action must use run_dir-scoped skip list path for MR-3 compliance"
         )
 
     @pytest.mark.parametrize("state_name", REMOVED_STATES)
@@ -5954,8 +5959,13 @@ class TestApplyResearchLoop:
     def test_run_dir_used_throughout(self, data: dict) -> None:
         """All shell states reference run_dir for artifact isolation."""
         shell_states = [
-            "init", "load_context", "read_file", "validate_scores",
-            "filter_items", "verify_captures", "next_file",
+            "init",
+            "load_context",
+            "read_file",
+            "validate_scores",
+            "filter_items",
+            "verify_captures",
+            "next_file",
         ]
         for name in shell_states:
             action = data["states"][name].get("action", "")

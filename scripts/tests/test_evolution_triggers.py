@@ -1,11 +1,10 @@
 """Unit tests for evolution trigger detectors (ENH-1911)."""
+
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
-import pytest
 
 from little_loops.config.features import EvolutionConfig
 from little_loops.issue_history.evolution import detect_recurring_feedback, detect_skill_bypass
@@ -13,7 +12,7 @@ from little_loops.issue_history.models import RecurringFeedbackAnalysis, SkillBy
 
 
 def _now_ts() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _make_test_db(tmp_path: Path) -> Path:

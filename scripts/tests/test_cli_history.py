@@ -242,7 +242,9 @@ class TestHistoryExportStdout:
 class TestHistoryAnalyzeDbPath:
     """Test that analyze branch resolves and passes db_path to calculate_analysis."""
 
-    def test_analyze_passes_db_path(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_analyze_passes_db_path(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """analyze branch should pass a resolved db_path to calculate_analysis."""
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir(exist_ok=True)

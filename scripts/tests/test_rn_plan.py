@@ -98,9 +98,9 @@ class TestRnPlanYaml:
 
     def test_score_state_uses_all_very_high_sentinel(self, data: dict) -> None:
         state = data["states"]["score"]
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "ALL_VERY_HIGH"
+        assert state.get("fragment") == "plan_rubric_score", (
+            "score state must use plan_rubric_score fragment (which provides ALL_VERY_HIGH evaluator)"
+        )
         assert state.get("on_yes") == "done"
         assert state.get("on_no") == "classify_research"
         assert state.get("on_error") == "diagnose"
@@ -125,17 +125,11 @@ class TestRnPlanYaml:
             assert "on_error" in state, f"{state_name} must have on_error"
 
     def test_rubric_dimensions_mentioned_in_score_action(self, data: dict) -> None:
-        action = data["states"]["score"].get("action", "")
-        dimensions = [
-            "breadth",
-            "depth",
-            "complexity",
-            "clarity",
-            "consistency",
-            "logic_strategy",
-        ]
-        missing = [d for d in dimensions if d not in action]
-        assert not missing, f"Score action missing rubric dimensions: {missing}"
+        """Rubric dimensions are defined in the plan_rubric_score fragment used by score state."""
+        state = data["states"]["score"]
+        assert state.get("fragment") == "plan_rubric_score", (
+            "score state must use plan_rubric_score fragment (which defines all rubric dimensions)"
+        )
 
 
 class TestRnPlanShellStates:
@@ -221,9 +215,9 @@ class TestRnPlanExecution:
         """score state routing: ALL_VERY_HIGH → done, ITERATE → classify_research."""
         from little_loops.fsm.evaluators import evaluate_output_contains
 
-        data = yaml.safe_load(LOOP_FILE.read_text())
-        score_state = data["states"]["score"]
-        pattern = score_state["evaluate"]["pattern"]
+        common = yaml.safe_load((BUILTIN_LOOPS_DIR / "lib" / "common.yaml").read_text())
+        fragment = common["fragments"]["plan_rubric_score"]
+        pattern = fragment["evaluate"]["pattern"]
 
         assert evaluate_output_contains("ALL_VERY_HIGH\n", pattern).verdict == "yes"
         assert evaluate_output_contains("ITERATE\n", pattern).verdict == "no"

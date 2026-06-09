@@ -140,9 +140,7 @@ class TestHappyPath:
         assert (tmp_path / ".claude" / "settings.local.json").exists()
 
     @patch("little_loops.init.tui.questionary")
-    def test_shared_settings_writes_settings_json(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_shared_settings_writes_settings_json(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
             _wire_q(mock_q, settings="shared")
@@ -183,9 +181,7 @@ class TestConditionalParallel:
         assert rc == 0
 
     @patch("little_loops.init.tui.questionary")
-    def test_non_default_workers_written_to_config(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_non_default_workers_written_to_config(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
             _wire_q(mock_q, features=["parallel"], workers="6")
@@ -214,9 +210,7 @@ class TestConditionalParallel:
 
 class TestCtrlC:
     @patch("little_loops.init.tui.questionary")
-    def test_ctrl_c_on_first_prompt_returns_130(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_ctrl_c_on_first_prompt_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
             mock_q.text.return_value.ask.return_value = None  # Ctrl-C on name
@@ -225,9 +219,7 @@ class TestCtrlC:
         assert rc == 130
 
     @patch("little_loops.init.tui.questionary")
-    def test_ctrl_c_on_features_returns_130(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_ctrl_c_on_features_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
             # Basics answer normally, features returns None (Ctrl-C on first checkbox)
@@ -245,9 +237,7 @@ class TestCtrlC:
         assert rc == 130
 
     @patch("little_loops.init.tui.questionary")
-    def test_ctrl_c_on_confirm_returns_130(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_ctrl_c_on_confirm_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
             _wire_q(mock_q, confirmed=None)
@@ -290,9 +280,7 @@ class TestExistingConfig:
         mock_q.text.assert_not_called()
 
     @patch("little_loops.init.tui.questionary")
-    def test_existing_config_with_force_overwrites(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_existing_config_with_force_overwrites(self, mock_q: MagicMock, tmp_path: Path) -> None:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         (ll_dir / "ll-config.json").write_text("{}")
@@ -364,9 +352,7 @@ class TestBuildFinalConfig:
         )
         assert config["design_tokens"]["enabled"] is True
 
-    def test_non_default_workers_writes_parallel_config(
-        self, generic_template: object
-    ) -> None:
+    def test_non_default_workers_writes_parallel_config(self, generic_template: object) -> None:
         config = _build_final_config(
             template=generic_template,
             name="proj",
@@ -444,7 +430,7 @@ class TestHostSelection:
             ]
             mock_q.checkbox.side_effect = [
                 _mock_ask(["analytics"]),  # features
-                _mock_ask(None),           # hosts — Ctrl-C
+                _mock_ask(None),  # hosts — Ctrl-C
             ]
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 

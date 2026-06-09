@@ -3,6 +3,7 @@
 Queries history.db to surface recurring user corrections and skill bypasses
 as quantified signals for harness self-improvement.
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,6 +44,8 @@ def _open_db(db_path: Path) -> sqlite3.Connection | None:
     except sqlite3.Error:
         logger.warning("evolution: could not open %s read-only", db_path, exc_info=True)
         return None
+
+
 _MIN_BYPASS_KEYWORDS = 2  # Require >= 2 keyword tokens to reduce false positives
 
 
@@ -58,7 +61,7 @@ def _load_memory_feedback(project_root: Path) -> dict[str, str]:
             # Strip frontmatter
             if content.startswith("---"):
                 end = content.find("---", 3)
-                body = content[end + 3:].strip() if end != -1 else content.strip()
+                body = content[end + 3 :].strip() if end != -1 else content.strip()
             else:
                 body = content.strip()
             result[f.stem] = body[:500]
@@ -67,9 +70,7 @@ def _load_memory_feedback(project_root: Path) -> dict[str, str]:
     return result
 
 
-def _get_session_ids_for_content(
-    conn: sqlite3.Connection, content: str, cutoff: str
-) -> list[str]:
+def _get_session_ids_for_content(conn: sqlite3.Connection, content: str, cutoff: str) -> list[str]:
     """Return distinct session IDs containing a correction matching content."""
     try:
         rows = conn.execute(
@@ -221,8 +222,7 @@ def detect_skill_bypass(
 
         # Per-skill bypass accumulators
         bypass_data: dict[str, dict[str, Any]] = {
-            name: {"count": 0, "sessions": [], "evidence": []}
-            for name in skill_keywords
+            name: {"count": 0, "sessions": [], "evidence": []} for name in skill_keywords
         }
         # Dedupe: only count each (skill, session) pair once
         seen_pairs: dict[str, set[str]] = {name: set() for name in skill_keywords}
@@ -273,8 +273,7 @@ def detect_skill_bypass(
 
         bypasses.sort(key=lambda b: -b.bypass_count)
         suggestions = [
-            f"Sharpen trigger for '{b.skill_name}' (bypassed {b.bypass_count}x)"
-            for b in bypasses
+            f"Sharpen trigger for '{b.skill_name}' (bypassed {b.bypass_count}x)" for b in bypasses
         ][:10]
 
         return SkillBypassAnalysis(

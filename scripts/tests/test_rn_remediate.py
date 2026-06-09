@@ -780,6 +780,9 @@ class TestFSMHealth:
                 continue
             if "next" in state:
                 continue
+            if "fragment" in state:
+                # Fragment provides routing (next/on_yes/etc.) — not a dead-end
+                continue
             has_route = any(
                 k in state for k in ("on_yes", "on_no", "on_success", "on_failure", "on_error")
             )
@@ -872,8 +875,12 @@ class TestOutcomeTokenChannel:
     def test_rate_limit_diagnostic_writes_token_and_fails(self) -> None:
         data = _load_loop()
         rld = data["states"]["rate_limit_diagnostic"]
-        assert "RATE_LIMITED" in rld["action"]
-        assert rld["next"] == "failed", "rate-limit must NOT terminate in done (GAP A)"
+        assert rld.get("fragment") == "subloop_rate_limit_diagnostic", (
+            "rate_limit_diagnostic must use the subloop_rate_limit_diagnostic fragment"
+        )
+        assert rld.get("with", {}).get("operation") == "remediation", (
+            "rate_limit_diagnostic must pass operation=remediation to the fragment"
+        )
 
     def test_check_readiness_passes_thresholds(self) -> None:
         data = _load_loop()
