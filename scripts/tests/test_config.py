@@ -2753,9 +2753,9 @@ class TestSessionDigestConfig:
 
     def test_defaults(self) -> None:
         cfg = SessionDigestConfig.from_dict({})
-        assert cfg.enabled is False
+        assert cfg.enabled is True
         assert cfg.days == 7
-        assert cfg.char_cap == 1200
+        assert cfg.char_cap == 800
         assert cfg.sections == []
 
     def test_per_key_override(self) -> None:
@@ -2769,7 +2769,7 @@ class TestSessionDigestConfig:
 
     def test_unknown_key_ignored(self) -> None:
         cfg = SessionDigestConfig.from_dict({"unknown_key": "value"})
-        assert cfg.enabled is False
+        assert cfg.enabled is True
 
 
 class TestEvolutionConfig:
@@ -2844,7 +2844,7 @@ class TestHistoryConfig:
 
     def test_nested_sub_object_defaults(self) -> None:
         cfg = HistoryConfig.from_dict({"session_digest": {}})
-        assert cfg.session_digest.enabled is False
+        assert cfg.session_digest.enabled is True
         assert cfg.session_digest.days == 7
 
     def test_nested_sub_object_override(self) -> None:
@@ -2913,7 +2913,7 @@ class TestBRConfigHistoryIntegration:
         config = BRConfig(temp_project_dir)
         assert config.history.velocity_window == 10
         assert config.history.max_age_days is None
-        assert config.history.session_digest.enabled is False
+        assert config.history.session_digest.enabled is True
         assert config.history.evolution.feedback_min_recurrence == 2
         assert config.history.go_no_go.correction_penalty == -0.2
         assert config.history.capture_issue.dup_overlap_threshold == 0.7

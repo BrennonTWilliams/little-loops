@@ -20,9 +20,9 @@ import pytest
 DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # (doc_path, expected_string, issue_id)
     ("skills/init/interactive.md", "Learning Tests", "FEAT-1743"),
-    ("skills/init/interactive.md", "TOTAL = 10", "FEAT-1743"),
+    ("skills/init/interactive.md", "TOTAL = 11", "ENH-2040"),
     ("skills/init/SKILL.md", "learning_tests", "FEAT-1743"),
-    ("skills/init/SKILL.md", "9–10 rounds", "FEAT-1743"),
+    ("skills/init/SKILL.md", "10–11 rounds", "ENH-2040"),
     ("skills/configure/SKILL.md", "learning-tests", "FEAT-1743"),
     ("skills/configure/areas.md", "## Area: learning_tests", "FEAT-1743"),
     ("skills/configure/areas.md", "learning_tests.enabled", "FEAT-1743"),
@@ -167,6 +167,10 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("skills/init/SKILL.md", "Bash(ll-logs:*)", "ll-logs"),
     ("skills/init/SKILL.md", "ll-logs", "ll-logs"),
     ("skills/configure/areas.md", "ll-logs", "ll-logs"),
+    ("skills/init/interactive.md", "Round 9.5", "ENH-2040"),
+    ("skills/init/interactive.md", "Session Digest", "ENH-2040"),
+    ("skills/init/interactive.md", "SESSION_DIGEST_ENABLED", "ENH-2040"),
+    ("skills/init/SKILL.md", "session_digest", "ENH-2040"),
 ]
 
 

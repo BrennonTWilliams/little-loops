@@ -448,6 +448,20 @@ class TestSessionStartProjectDigest:
             block = stdout[start:end]
             assert len(block) <= 300
 
+    def test_no_history_block_defaults_digest_on(self, in_tmp: Path) -> None:
+        """Digest fires when config has no history block — default enabled=True (ENH-2040)."""
+        from little_loops.session_store import record_correction
+
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        # Config exists but has no history: block — default SessionDigestConfig.enabled=True
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({"project": {"name": "test"}}))
+        db = in_tmp / ".ll" / "history.db"
+        record_correction(db, "sess-1", "no Co-Authored-By trailers", "user")
+
+        result = handle(_event())
+        assert result.exit_code == 0
+        assert "<project_context>" in (result.stdout or "")
+
     def test_digest_failure_does_not_block_startup(
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

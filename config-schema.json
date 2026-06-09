@@ -1524,8 +1524,8 @@
           "properties": {
             "enabled": {
               "type": "boolean",
-              "default": false,
-              "description": "Enable session digest injection into skill prompts."
+              "default": true,
+              "description": "Enable session digest injection into skill prompts. Defaults to true (opt-out via history.session_digest.enabled: false)."
             },
             "days": {
               "type": "integer",
@@ -1534,7 +1534,7 @@
             },
             "char_cap": {
               "type": "integer",
-              "default": 1200,
+              "default": 800,
               "description": "Maximum characters for the digest block."
             },
             "sections": {

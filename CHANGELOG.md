@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.120.0] - 2026-06-09
+
+### Changed
+
+- **Session digest enabled by default** — `SessionDigestConfig.enabled` now defaults to `True` with `char_cap: 800` (conservative). Sessions on fresh installs will now inject a capped ambient digest block at session start. Opt-out: set `history.session_digest.enabled: false` in `.ll/ll-config.json`. (ENH-2040)
+
+### Added
+
+- **Session digest prompt in `/ll:init`** — The interactive init wizard now asks about the ambient session digest in Round 9.5, following the FEAT-1743 learning-tests pattern. Default answer is Yes. (ENH-2040)
+
 ## [1.119.0] - 2026-06-08
 
 ### Added

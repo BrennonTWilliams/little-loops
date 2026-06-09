@@ -39,7 +39,6 @@ from typing import Any
 import yaml
 
 from little_loops.config.core import deep_merge, resolve_config_path
-from little_loops.config.features import feature_enabled
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 logger = logging.getLogger(__name__)
@@ -166,13 +165,15 @@ def handle(event: LLHookEvent) -> LLHookResult:
         # ENH-1907: Inject project-context digest (best-effort, opt-in).
         # Runs after the backfill thread launches so the digest reflects only
         # already-persisted rows from prior sessions, not this session's backfill.
+        # ENH-2040: Gate reads the dataclass attribute so the default (True) is
+        # respected when no history block is present in the merged config dict.
         with contextlib.suppress(Exception):
-            if feature_enabled(merged_config, "history.session_digest.enabled"):
-                from little_loops.config.features import HistoryConfig
-                from little_loops.history_reader import project_digest, render_project_context
+            from little_loops.config.features import HistoryConfig
 
-                _hist = HistoryConfig.from_dict(merged_config.get("history", {}))
-                _sd = _hist.session_digest
+            _hist = HistoryConfig.from_dict(merged_config.get("history", {}))
+            _sd = _hist.session_digest
+            if _sd.enabled:
+                from little_loops.history_reader import project_digest, render_project_context
                 # Convert empty sections list to None so the default config renders
                 # all providers; a non-empty list restricts/orders the output.
                 _sections = _sd.sections if _sd.sections else None

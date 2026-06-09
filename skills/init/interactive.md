@@ -10,12 +10,13 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 10    # Working total (mandatory rounds: 1, 2, 3a, 4, 6, 7, 8, 9, 13, 14)
+TOTAL = 11    # Working total (mandatory rounds: 1, 2, 3a, 4, 6, 7, 8, 9, 9.5, 13, 14)
               # Round 3b is silent (automation always enabled, no user prompt)
               # Round 4 is mandatory (product analysis opt-in)
               # Round 5a is conditional (only if parallel processing selected)
               # Round 8 is mandatory (learning tests opt-in)
               # Round 9 is mandatory (analytics opt-in)
+              # Round 9.5 is mandatory (session digest opt-in/opt-out)
               # Round 10 is silent (advanced settings always skipped)
               # Hooks are always active via the plugin system — no installation round needed
 ```
@@ -620,7 +621,47 @@ Options:
 - Track: `ANALYTICS_ENABLED=false`
 
 **MANDATORY NEXT STEP - DO NOT SKIP:**
-After completing Round 9, you MUST immediately proceed to **Round 10 (Extended Config Gate)** below.
+After completing Round 9, you MUST immediately proceed to **Round 9.5 (Session Digest)** below.
+
+---
+
+## Round 9.5: Session Digest — MANDATORY, ALWAYS RUNS
+
+**CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked about the ambient session digest. If you skipped here without asking, GO BACK and ask it now.
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Session Digest
+
+Ask the user a single question using AskUserQuestion:
+
+```
+Question: "Enable ambient session digest? (Injects a capped history block at session start so skills see recent corrections and file edits automatically.)"
+
+Options:
+  - label: "Yes — enable (800-char cap, 7-day window) (Recommended)"
+    description: "Sessions automatically include a project-context summary from recent history (opt-out via history.session_digest.enabled: false)"
+  - label: "No — disable (you can enable later with /ll:configure)"
+    description: "Explicit opt-out — records history.session_digest.enabled: false in config"
+```
+
+**If "Yes" selected (or no answer — default):**
+- Include the following block in the generated config:
+  ```json
+  "history": {
+    "session_digest": {
+      "enabled": true,
+      "days": 7,
+      "char_cap": 800
+    }
+  }
+  ```
+- Track: `SESSION_DIGEST_ENABLED=true`
+
+**If "No" selected:**
+- Include `"history": { "session_digest": { "enabled": false } }` in the generated config (explicit opt-out always written)
+- Track: `SESSION_DIGEST_ENABLED=false`
+
+**MANDATORY NEXT STEP - DO NOT SKIP:**
+After completing Round 9.5, you MUST immediately proceed to **Round 10 (Extended Config Gate)** below.
 
 ---
 

@@ -658,18 +658,18 @@ class EventsConfig:
 class SessionDigestConfig:
     """Session digest injection configuration (ENH-1907)."""
 
-    enabled: bool = False
+    enabled: bool = True
     days: int = 7
-    char_cap: int = 1200
+    char_cap: int = 800
     sections: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SessionDigestConfig:
         """Create SessionDigestConfig from dictionary."""
         return cls(
-            enabled=data.get("enabled", False),
+            enabled=data.get("enabled", True),
             days=data.get("days", 7),
-            char_cap=data.get("char_cap", 1200),
+            char_cap=data.get("char_cap", 800),
             sections=data.get("sections", []),
         )
 

@@ -1,10 +1,12 @@
 ---
 id: ENH-2040
-title: "session_digest discoverability — flip global default on and wire into init/configure"
+title: "session_digest discoverability \u2014 flip global default on and wire into\
+  \ init/configure"
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-09T03:43:41Z'
+completed_at: '2026-06-09T13:37:42Z'
 discovered_date: 2026-06-09
 discovered_by: capture-issue
 parent: EPIC-1707
@@ -12,6 +14,12 @@ relates_to:
 - ENH-2028
 - EPIC-1707
 decision_needed: false
+confidence_score: 94
+outcome_confidence: 81
+score_complexity: 19
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2040: session_digest discoverability — flip global default on and wire into init/configure
@@ -138,8 +146,24 @@ On **No**: writes `"history": { "session_digest": { "enabled": false } }` so the
 
 `history`, `session-digest`, `config-defaults`, `dx`, `discoverability`, `init-wizard`
 
+## Resolution
+
+### Changes Made
+- `scripts/little_loops/config/features.py` — `SessionDigestConfig.enabled` default flipped `False` → `True`; `char_cap` default updated `1200` → `800`; `from_dict` fallbacks updated to match
+- `scripts/little_loops/hooks/session_start.py` — Gate replaced from `feature_enabled()` dict-walk to direct `SessionDigestConfig.enabled` attribute read so the dataclass default is respected when no `history:` block is present; unused `feature_enabled` import removed
+- `config-schema.json` — `history.session_digest.enabled` default updated `false` → `true`; `char_cap` default updated `1200` → `800`; description notes opt-out behavior
+- `skills/init/interactive.md` — Added Round 9.5 (Session Digest) between Round 9 and Round 10; `TOTAL` updated `10` → `11`
+- `skills/init/SKILL.md` — Step 8 item 3 updated to include `history`/`session_digest` section; wizard description updated `9–10` → `10–11` rounds
+- `scripts/tests/test_config.py` — Updated 3 test assertions for the new `enabled=True`, `char_cap=800` defaults
+- `scripts/tests/test_hook_session_start.py` — Added `test_no_history_block_defaults_digest_on`
+- `scripts/tests/test_wiring_init_and_configure.py` — Updated TOTAL/rounds anchors; added ENH-2040 wiring entries
+- `CHANGELOG.md` — Added behavior-change entry for v1.120.0
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-09T13:37:42Z - `fcb1b09c-f851-43f1-855e-3e9b29ba291d.jsonl`
+- `/ll:ready-issue` - 2026-06-09T13:14:10 - `0b5a59fa-7cd3-45b2-b534-8436abcb7b56.jsonl`
 - `/ll:capture-issue` - 2026-06-09T03:43:41Z - `43c168ba-0429-4c11-a637-5180d3e5a1ea.jsonl`
+- `/ll:confidence-check` - 2026-06-09T00:00:00Z - `1924d461-8caf-443b-8d45-a63f048e04fa.jsonl`
 
 ---
 
