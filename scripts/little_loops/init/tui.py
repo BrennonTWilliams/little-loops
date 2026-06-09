@@ -97,7 +97,7 @@ def run_tui(
     default_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
 
     # --- Screen 1: Project basics ---
-    console.rule("[bold]1 / 4  Project Basics[/bold]")
+    console.rule("[bold]1 / 5  Project Basics[/bold]")
 
     name = questionary.text("Project name:", default=project_root.name).ask()
     if name is None:
@@ -133,7 +133,7 @@ def run_tui(
 
     # --- Screen 2: Features ---
     console.print()
-    console.rule("[bold]2 / 4  Features[/bold]")
+    console.rule("[bold]2 / 5  Features[/bold]")
 
     selected_features: list[str] | None = questionary.checkbox(
         "Enable features:",
@@ -163,7 +163,7 @@ def run_tui(
 
     # --- Screen 3: Hosts ---
     console.print()
-    console.rule("[bold]3 / 4  Hosts[/bold]")
+    console.rule("[bold]3 / 5  Hosts[/bold]")
 
     selected_hosts: list[str] | None = questionary.checkbox(
         "Which host harnesses should ll-init wire adapters for?",
@@ -177,7 +177,7 @@ def run_tui(
 
     # --- Screen 4: Settings target ---
     console.print()
-    console.rule("[bold]4 / 4  Settings[/bold]")
+    console.rule("[bold]4 / 5  Settings[/bold]")
 
     settings_target: str | None = questionary.select(
         "Where should ll tool permissions be written?",
@@ -195,6 +195,42 @@ def run_tui(
     if settings_target is None:
         return 130
 
+    # --- Screen 5: CLAUDE.md ---
+    console.print()
+    console.rule("[bold]5 / 5  CLAUDE.md[/bold]")
+
+    _dot_claude_md = project_root / ".claude" / "CLAUDE.md"
+    _root_claude_md = project_root / "CLAUDE.md"
+    _claude_md_section_present = False
+    _yes_label = "Yes, create .claude/CLAUDE.md"
+
+    for _candidate in (_dot_claude_md, _root_claude_md):
+        if _candidate.exists():
+            if "## little-loops" in _candidate.read_text(encoding="utf-8"):
+                _claude_md_section_present = True
+            else:
+                _rel = str(_candidate.relative_to(project_root))
+                _yes_label = f"Yes, append to {_rel}"
+            break
+
+    claude_md_opt_in = False
+    if _claude_md_section_present:
+        console.print(
+            "[dim]CLAUDE.md already contains a ## little-loops section — skipping.[/dim]"
+        )
+    else:
+        _claude_md_choice: str | None = questionary.select(
+            "Append ll- CLI commands to CLAUDE.md?",
+            choices=[
+                questionary.Choice(_yes_label, value="yes"),
+                questionary.Choice("Skip", value="skip"),
+            ],
+            default="yes",
+        ).ask()
+        if _claude_md_choice is None:
+            return 130
+        claude_md_opt_in = _claude_md_choice == "yes"
+
     # --- Build config ---
     config = _build_final_config(
         template=template,
@@ -210,7 +246,16 @@ def run_tui(
 
     # --- Summary ---
     console.print()
-    _render_summary(console, config, project_root, selected_set, selected_hosts, settings_target)
+    _render_summary(
+        console,
+        config,
+        project_root,
+        selected_set,
+        selected_hosts,
+        settings_target,
+        claude_md_opt_in=claude_md_opt_in,
+        claude_md_section_present=_claude_md_section_present,
+    )
     console.print()
 
     confirmed: bool | None = questionary.confirm("Apply this configuration?", default=True).ask()
@@ -232,6 +277,7 @@ def run_tui(
         settings_target=settings_target,
         force=force,
         console=console,
+        claude_md_opt_in=claude_md_opt_in,
     )
     return 0
 
@@ -291,6 +337,8 @@ def _render_summary(
     selected_set: set[str],
     selected_hosts: list[str],
     settings_target: str,
+    claude_md_opt_in: bool = False,
+    claude_md_section_present: bool = False,
 ) -> None:
     """Render a rich bordered summary panel of the proposed configuration."""
     proj = config.get("project", {})
@@ -322,6 +370,13 @@ def _render_summary(
     sf = ".claude/settings.local.json" if settings_target == "local" else ".claude/settings.json"
     table.add_row("Settings", sf)
 
+    if claude_md_section_present:
+        table.add_row("CLAUDE.md", "Already present — skipped")
+    elif claude_md_opt_in:
+        table.add_row("CLAUDE.md", "Append ll- CLI commands")
+    else:
+        table.add_row("CLAUDE.md", "Skip")
+
     console.print(Panel(table, title="[bold]Configuration Summary[/bold]", border_style="blue"))
 
 
@@ -336,6 +391,7 @@ def _apply_config(
     settings_target: str,
     force: bool,
     console: Console,
+    claude_md_opt_in: bool = False,
 ) -> None:
     """Write all ll-init artifacts to disk."""
     from little_loops import __version__
@@ -348,6 +404,7 @@ def _apply_config(
         make_learning_tests_dir,
         merge_settings,
         update_gitignore,
+        write_claude_md,
         write_config,
     )
 
@@ -374,6 +431,9 @@ def _apply_config(
     if config.get("learning_tests", {}).get("enabled"):
         extra_permissions = ["Skill(ll:explore-api)"]
     merge_settings(project_root, settings_file=settings_file, extra_permissions=extra_permissions)
+
+    if claude_md_opt_in:
+        write_claude_md(project_root)
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 

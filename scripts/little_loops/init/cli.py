@@ -80,6 +80,7 @@ def _run_yes(
         make_learning_tests_dir,
         merge_settings,
         update_gitignore,
+        write_claude_md,
         write_config,
     )
 
@@ -128,6 +129,8 @@ def _run_yes(
         extra_permissions = ["Skill(ll:explore-api)"]
     merge_settings(project_root, extra_permissions=extra_permissions)
 
+    write_claude_md(project_root)
+
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 
     print("\nValidating dependencies...")
@@ -163,6 +166,9 @@ def _print_dry_run(
         print(f"  [mkdir]  {issues_base / sd}")
     print("  [update] .gitignore (add state file exclusions)")
     print("  [update] .claude/settings.local.json (add ll- CLI tool permissions)")
+    from little_loops.init.writers import write_claude_md
+
+    write_claude_md(project_root, dry_run=True)
     if "codex" in hosts:
         print("  [write]  .codex/hooks.json (Codex CLI hook adapter)")
     if "pi" in hosts:

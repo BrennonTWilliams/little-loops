@@ -56,6 +56,45 @@ _ISSUE_SUBDIRS: tuple[str, ...] = (
     "deferred",
 )
 
+# Sentinel string used to detect whether the ll section already exists in CLAUDE.md
+_CLAUDE_MD_SECTION_MARKER = "## little-loops"
+
+# Canonical CLI Commands block appended/created by write_claude_md (Step 11 of the skill)
+_CLAUDE_MD_COMMANDS_BLOCK = """\
+
+## little-loops CLI Commands
+
+- `ll-action` - Invoke ll skills as one-shot commands with JSON-structured output
+- `ll-harness` - One-shot runner evaluation (skill, cmd, mcp, prompt) with exit-code and semantic criteria
+- `ll-auto` - Process all backlog issues sequentially in priority order
+- `ll-parallel` - Process issues concurrently using isolated git worktrees
+- `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
+- `ll-loop` - Execute FSM-based automation loops
+- `ll-workflows` - Identify multi-step workflow patterns from user message history
+- `ll-messages` - Extract user messages from Claude Code logs
+- `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
+- `ll-history-context` - Render a `## Historical Context` block for an issue from `.ll/history.db`
+- `ll-deps` - Cross-issue dependency analysis and validation
+- `ll-sync` - Sync local issues with GitHub Issues
+- `ll-verify-docs` - Verify documented counts match actual file counts
+- `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines
+- `ll-check-links` - Check markdown documentation for broken links
+- `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint, epic-progress, decisions)
+- `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
+- `ll-create-extension` - Scaffold a new little-loops extension project
+- `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
+- `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
+- `ll-logs` - Discover, extract, and analyze (sequences, scan-failures) ll-relevant log entries from Claude project logs
+- `ll-doctor` - Check host CLI capability support for little-loops features
+- `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings)
+- `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands for Codex discovery
+- `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` for Codex agent-select support
+
+Install: `pip install -e "./scripts[dev]"`
+"""
+
+_CLAUDE_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _CLAUDE_MD_COMMANDS_BLOCK
+
 
 def write_config(config: dict[str, Any], ll_dir: Path, dry_run: bool = False) -> None:
     """Write ll-config.json into *ll_dir*.
@@ -253,6 +292,51 @@ def deploy_design_tokens(
         print(f"[write] {dest_profiles}/ (design-token profiles)")
         return True
     shutil.copytree(src_profiles, dest_profiles)
+    return True
+
+
+def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
+    """Append the canonical ## little-loops CLI Commands block to CLAUDE.md.
+
+    Detection order: .claude/CLAUDE.md, then CLAUDE.md. If neither exists,
+    creates .claude/CLAUDE.md. Idempotent: returns False without writing if
+    the section is already present.
+
+    Args:
+        project_root: Project root directory.
+        dry_run: If True, print planned action; do not write files.
+
+    Returns:
+        True if the file was created or modified; False if no changes needed.
+    """
+    dot_claude = project_root / ".claude" / "CLAUDE.md"
+    root_claude = project_root / "CLAUDE.md"
+
+    if dot_claude.exists():
+        target = dot_claude
+    elif root_claude.exists():
+        target = root_claude
+    else:
+        target = dot_claude
+
+    rel = str(target.relative_to(project_root))
+
+    if target.exists():
+        existing = target.read_text(encoding="utf-8")
+        if _CLAUDE_MD_SECTION_MARKER in existing:
+            return False
+        if dry_run:
+            print(f"[update] {rel} (append ## little-loops CLI Commands)")
+            return True
+        new_content = existing.rstrip("\n") + "\n" + _CLAUDE_MD_COMMANDS_BLOCK
+        atomic_write(target, new_content)
+    else:
+        if dry_run:
+            print(f"[write] {rel} (ll- CLI command documentation)")
+            return True
+        target.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(target, _CLAUDE_MD_NEW_FILE_CONTENT)
+
     return True
 
 

@@ -30,6 +30,7 @@ from little_loops.init.writers import (
     make_learning_tests_dir,
     merge_settings,
     update_gitignore,
+    write_claude_md,
     write_config,
 )
 
@@ -768,6 +769,104 @@ class TestInstallCodexAdapter:
         plugin_root.mkdir()
         installed = install_codex_adapter(project_root, plugin_root)
         assert installed is False
+
+
+# ===========================================================================
+# TestWriteClaudeMd
+# ===========================================================================
+
+
+class TestWriteClaudeMd:
+    def test_creates_dot_claude_md_when_absent(self, tmp_path: Path) -> None:
+        result = write_claude_md(tmp_path)
+        dest = tmp_path / ".claude" / "CLAUDE.md"
+        assert result is True
+        assert dest.exists()
+        content = dest.read_text(encoding="utf-8")
+        assert "## little-loops CLI Commands" in content
+        assert "# Project Configuration" in content
+
+    def test_appends_to_existing_dot_claude_md(self, tmp_path: Path) -> None:
+        dest = tmp_path / ".claude" / "CLAUDE.md"
+        dest.parent.mkdir(parents=True)
+        dest.write_text("# My Project\n\nSome existing content.\n", encoding="utf-8")
+        result = write_claude_md(tmp_path)
+        assert result is True
+        content = dest.read_text(encoding="utf-8")
+        assert "# My Project" in content
+        assert "## little-loops CLI Commands" in content
+        # Original content preserved
+        assert "Some existing content." in content
+
+    def test_appends_to_root_claude_md_when_no_dot_claude(self, tmp_path: Path) -> None:
+        root_md = tmp_path / "CLAUDE.md"
+        root_md.write_text("# Root Config\n", encoding="utf-8")
+        result = write_claude_md(tmp_path)
+        assert result is True
+        content = root_md.read_text(encoding="utf-8")
+        assert "# Root Config" in content
+        assert "## little-loops CLI Commands" in content
+
+    def test_prefers_dot_claude_md_over_root_claude_md(self, tmp_path: Path) -> None:
+        dot_claude = tmp_path / ".claude" / "CLAUDE.md"
+        dot_claude.parent.mkdir(parents=True)
+        dot_claude.write_text("# Dot Claude\n", encoding="utf-8")
+        root_md = tmp_path / "CLAUDE.md"
+        root_md.write_text("# Root\n", encoding="utf-8")
+        write_claude_md(tmp_path)
+        assert "## little-loops CLI Commands" in dot_claude.read_text(encoding="utf-8")
+        assert "## little-loops CLI Commands" not in root_md.read_text(encoding="utf-8")
+
+    def test_noop_when_section_present_in_dot_claude_md(self, tmp_path: Path) -> None:
+        dest = tmp_path / ".claude" / "CLAUDE.md"
+        dest.parent.mkdir(parents=True)
+        dest.write_text("# Config\n\n## little-loops CLI Commands\n\nAlready here.\n")
+        original_mtime = dest.stat().st_mtime
+        result = write_claude_md(tmp_path)
+        assert result is False
+        assert dest.stat().st_mtime == original_mtime
+
+    def test_noop_when_section_present_in_root_claude_md(self, tmp_path: Path) -> None:
+        root_md = tmp_path / "CLAUDE.md"
+        root_md.write_text("# Config\n\n## little-loops section here.\n", encoding="utf-8")
+        result = write_claude_md(tmp_path)
+        assert result is False
+
+    def test_dry_run_create(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        result = write_claude_md(tmp_path, dry_run=True)
+        assert result is True
+        assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
+        out = capsys.readouterr().out
+        assert "[write]" in out
+        assert "CLAUDE.md" in out
+
+    def test_dry_run_append(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        dest = tmp_path / ".claude" / "CLAUDE.md"
+        dest.parent.mkdir(parents=True)
+        dest.write_text("# Existing\n", encoding="utf-8")
+        original = dest.read_text(encoding="utf-8")
+        result = write_claude_md(tmp_path, dry_run=True)
+        assert result is True
+        assert dest.read_text(encoding="utf-8") == original  # unchanged
+        out = capsys.readouterr().out
+        assert "[update]" in out
+        assert "CLAUDE.md" in out
+
+    def test_dry_run_noop_when_section_present(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        dest = tmp_path / ".claude" / "CLAUDE.md"
+        dest.parent.mkdir(parents=True)
+        dest.write_text("# Config\n\n## little-loops CLI Commands\n")
+        result = write_claude_md(tmp_path, dry_run=True)
+        assert result is False
+        assert capsys.readouterr().out == ""
+
+    def test_canonical_block_contains_key_tools(self, tmp_path: Path) -> None:
+        write_claude_md(tmp_path)
+        content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        for tool in ("ll-auto", "ll-loop", "ll-issues", "ll-logs"):
+            assert f"`{tool}`" in content
 
 
 # ===========================================================================
