@@ -134,11 +134,14 @@ states:
 
   fifo_pop:
     # Original FIFO pop — unchanged behavior for schedule_mode: fifo (the default).
+    # Uses output_contains instead of exit_code so an empty queue exits 0 (QUEUE_EMPTY
+    # token) and doesn't produce false-positive exit_code!=0 signals in telemetry.
     fragment: queue_pop
     action: |
       QUEUE="${captured.run_dir.output}/queue.txt"
       if [ ! -f "$QUEUE" ] || [ ! -s "$QUEUE" ]; then
-        exit 1
+        echo "QUEUE_EMPTY"
+        exit 0
       fi
       CURRENT=$(head -1 "$QUEUE")
       tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
@@ -157,10 +160,13 @@ states:
       echo $((COUNT + 1)) > "${captured.run_dir.output}/dequeue_count.txt"
 
       echo "$CURRENT"
+    evaluate:
+      type: output_contains
+      pattern: "QUEUE_EMPTY"
     capture: input
     # ENH-2008: gate on blocked_by frontmatter before scoring (was check_depth)
-    on_yes: check_blocked_by
-    on_no: report
+    on_yes: report
+    on_no: check_blocked_by
     on_error: report
 
   select_next:
@@ -168,11 +174,14 @@ states:
     # Computes ready set (blocked_by deps all done, not in blocked.txt), ranks by composite
     # score (priority weight + impact/effort ratio), depth-first tie-break. Post-conditions
     # are identical to fifo_pop so downstream states are unchanged.
+    # Uses output_contains (same as fifo_pop) so an empty queue exits 0 with QUEUE_EMPTY
+    # rather than exit 1, avoiding false-positive telemetry signals.
     fragment: queue_pop
     action: |
       QUEUE="${captured.run_dir.output}/queue.txt"
       if [ ! -f "$QUEUE" ] || [ ! -s "$QUEUE" ]; then
-        exit 1
+        echo "QUEUE_EMPTY"
+        exit 0
       fi
 
       # Python selects the highest-value ready issue from the queue.
@@ -303,7 +312,8 @@ states:
       )
 
       if [ -z "$CHOSEN" ]; then
-        exit 1
+        echo "QUEUE_EMPTY"
+        exit 0
       fi
 
       # Remove chosen issue from queue (not necessarily the head)
@@ -323,13 +333,16 @@ states:
       echo $((COUNT + 1)) > "${captured.run_dir.output}/dequeue_count.txt"
 
       echo "$CHOSEN"
+    evaluate:
+      type: output_contains
+      pattern: "QUEUE_EMPTY"
     capture: input
     # ENH-2008: gate on blocked_by frontmatter before scoring (was check_depth).
     # select_next already filters unmet-dep issues from the ready set, so the gate
     # is a no-op here in practice — routed through it anyway for defense-in-depth
     # and parity with the FIFO path.
-    on_yes: check_blocked_by
-    on_no: report
+    on_yes: report
+    on_no: check_blocked_by
     on_error: report
 
   check_blocked_by:

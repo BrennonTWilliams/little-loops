@@ -397,7 +397,7 @@ states:
       # Convergence rules (first match wins)
       if [ "$POST_CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$POST_OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
         echo "CONVERGED_PASS"
-      elif [ "$TOTAL_DELTA" -le 2 ]; then
+      elif [ "$TOTAL_DELTA" -le 0 ]; then
         # Distinguish: stalled because unresolvable decision vs genuinely too large
         POST_DECISION=$(jq -r '.decision_needed // "false"' "$POST" 2>/dev/null)
         if [ "$POST_DECISION" = "true" ]; then
