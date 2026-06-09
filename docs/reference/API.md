@@ -6394,6 +6394,68 @@ Render a `<project_context>` block from *digest*, capped at *char_cap* chars. Re
 
 ---
 
+## little_loops.session_store
+
+Unified SQLite session store for `.ll/history.db`. Current schema version: **13**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`.
+
+```python
+from little_loops.session_store import (
+    SCHEMA_VERSION,        # 13
+    ensure_db,             # create/migrate the DB
+    connect,               # open a write-capable connection
+    record_correction,     # write a user_corrections row
+    record_skill_event,    # write a skill_events row
+    record_retirement,     # mark a correction cluster as addressed (ENH-2046)
+    list_retirements,      # return all correction_retirements rows (ENH-2046)
+    prune,                 # prune old event rows and VACUUM
+)
+```
+
+### record_retirement
+
+```python
+def record_retirement(
+    db: Path | str = DEFAULT_DB_PATH,
+    topic_fingerprint: str = "",
+    rule_id: str = "",
+    session_id: str = "",
+) -> None
+```
+
+Mark a recurring-correction cluster as addressed. Uses `INSERT OR REPLACE` so calling it a second time for the same fingerprint updates the record. `rule_id` should be the `decisions.yaml` entry ID (e.g. `BEHAVIOR-001`) or `"claude-md"` when the rule was written directly into CLAUDE.md.
+
+**Parameters:**
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+- `topic_fingerprint` — 16-char hex fingerprint from `_fingerprint(content)` in `evolution.py`
+- `rule_id` — the persisted rule ID (for audit trail); optional
+- `session_id` — the session that accepted the rule; optional
+
+### list_retirements
+
+```python
+def list_retirements(
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Return all `correction_retirements` rows as `dict` objects, ordered by `addressed_at DESC`. Returns `[]` when the DB does not exist.
+
+**Dict keys:** `topic_fingerprint`, `rule_id`, `addressed_at`, `session_id`.
+
+### correction_retirements table (v13, ENH-2046)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `INTEGER PRIMARY KEY AUTOINCREMENT` | |
+| `topic_fingerprint` | `TEXT NOT NULL` | `sha256(content[:512])[:16]`; unique index |
+| `rule_id` | `TEXT` | `decisions.yaml` entry ID or `"claude-md"` |
+| `addressed_at` | `TEXT NOT NULL` | UTC ISO 8601 timestamp |
+| `session_id` | `TEXT` | session that accepted the rule |
+
+`detect_recurring_feedback()` in `evolution.py` queries this table read-only via the existing `_open_db()` path; clusters whose fingerprint appears here are excluded from `RecurringFeedbackAnalysis.feedbacks` and counted in `retired_count`.
+
+---
+
 ## little_loops.hooks
 
 Host-agnostic hook intent dispatcher. Adapters under `hooks/adapters/<host>/` translate each host's native hook payload into an `LLHookEvent`, pipe it to `python -m little_loops.hooks <intent>`, and translate the returned `LLHookResult` back to the host's response contract.

@@ -71,6 +71,8 @@ __all__ = [
     "record_skill_event",
     "cli_event_context",
     "resolve_history_db",
+    "record_retirement",
+    "list_retirements",
 ]
 
 logger = logging.getLogger(__name__)
@@ -86,7 +88,7 @@ def resolve_history_db(path: Path | str | None = None) -> Path:
     return Path(path) if path is not None else DEFAULT_DB_PATH
 
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill", "cli"})
 _KIND_TABLE = {
@@ -384,6 +386,19 @@ _MIGRATIONS: list[str] = [
     CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_nodes_cross_dedup
         ON summary_nodes(level, ts_start, ts_end)
         WHERE kind='condensed' AND session_id IS NULL;
+    """,
+    # v13 (ENH-2046): correction_retirements — records addressed correction clusters so
+    # detect_recurring_feedback() excludes already-ruled topics from future runs.
+    """
+    CREATE TABLE IF NOT EXISTS correction_retirements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        topic_fingerprint TEXT NOT NULL,
+        rule_id TEXT,
+        addressed_at TEXT NOT NULL,
+        session_id TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_retirements_fingerprint
+        ON correction_retirements(topic_fingerprint);
     """,
 ]
 
@@ -1987,3 +2002,59 @@ def prune(
             logger.warning("prune: VACUUM failed: %s", exc)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Correction retirement (ENH-2046)
+# ---------------------------------------------------------------------------
+
+
+def record_retirement(
+    db: Path | str = DEFAULT_DB_PATH,
+    topic_fingerprint: str = "",
+    rule_id: str = "",
+    session_id: str = "",
+) -> None:
+    """Mark a recurring-correction cluster as addressed.
+
+    Uses INSERT OR REPLACE so a second call for the same fingerprint updates
+    the record rather than duplicating it.  ``rule_id`` should be the
+    ``decisions.yaml`` entry ID (e.g. ``BEHAVIOR-001``) or ``"claude-md"``
+    when the rule was written directly into CLAUDE.md.
+    """
+    if not topic_fingerprint:
+        return
+    conn = connect(db)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO correction_retirements"
+            "(topic_fingerprint, rule_id, addressed_at, session_id) VALUES (?, ?, ?, ?)",
+            (topic_fingerprint, rule_id or None, _now(), session_id or None),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_retirements(
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Return all correction retirement records, newest first.
+
+    Returns an empty list when the DB does not exist or the
+    ``correction_retirements`` table has not yet been created.
+    """
+    db_path = Path(db)
+    if not db_path.exists():
+        return []
+    conn = connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT topic_fingerprint, rule_id, addressed_at, session_id"
+            " FROM correction_retirements ORDER BY addressed_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()

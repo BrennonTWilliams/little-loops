@@ -1,15 +1,34 @@
 ---
 id: ENH-2046
-title: Evolution-trigger consumer + correction retirement (close the detect→propose→persist loop)
+title: "Evolution-trigger consumer + correction retirement (close the detect\u2192\
+  propose\u2192persist loop)"
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-06-09T00:00:00Z"
-discovered_date: "2026-06-09"
+status: done
+captured_at: '2026-06-09T00:00:00Z'
+completed_at: '2026-06-09T19:31:12Z'
+discovered_date: '2026-06-09'
 discovered_by: capture-issue
 parent: EPIC-2027
-relates_to: [ENH-1911, FEAT-949, FEAT-948, ENH-1831]
-labels: [history, evolution, improve-claude-md, decisions, harness, self-improve]
+relates_to:
+- ENH-1911
+- FEAT-949
+- FEAT-948
+- ENH-1831
+labels:
+- history
+- evolution
+- improve-claude-md
+- decisions
+- harness
+- self-improve
+confidence_score: 92
+outcome_confidence: 76
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 18
+decision_needed: false
 ---
 
 # ENH-2046: Evolution-trigger consumer + correction retirement
@@ -91,6 +110,8 @@ out of scope here, tracked separately.
 
 **Option A (preferred): Extend `improve-claude-md` with a consume-and-persist mode**
 
+> **Selected:** Option A — `improve-claude-md` already documents an ENH-1911 Evolution Trigger intake section and the `--dry-run` flag pattern is a direct template for `--consume-triggers`; formalizes existing design intent without creating a hand-authored thin-wrapper skill with no precedent.
+
 Add a `--consume-triggers` flag that reads `analyze-history` Evolution Triggers output, deduplicates against `decisions.yaml` + `CLAUDE.md`, prompts per candidate for approval, calls `ll-issues decisions add` on acceptance, and writes an `addressed_at` retirement record keyed by cluster topic fingerprint into `history.db`.
 
 **Option B: New `/ll:self-improve` skill entry point**
@@ -100,6 +121,25 @@ A thin wrapper that calls `analyze-history` then enters the consume-and-persist 
 **Retirement schema**: New `correction_retirements` table in `history.db` — columns: `topic_fingerprint TEXT`, `rule_id TEXT`, `addressed_at TEXT`, `session_id TEXT`. `detect_recurring_feedback()` filters rows whose `topic_fingerprint` has an entry, or annotates them as `"already ruled: <rule_id>"`.
 
 **Dedup**: Before proposing each candidate, cross-check its topic text against `ll-issues decisions list` output and a `grep` of `CLAUDE.md`; suppress if already covered, annotate if partially overlapping.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-09.
+
+**Selected**: Option A — Extend `improve-claude-md` with a consume-and-persist mode
+
+**Reasoning**: Option A wins because `improve-claude-md` already documents an "Evolution Trigger Inputs (ENH-1911)" intake section (lines 179–186) that anticipates exactly this consume path — extending with `--consume-triggers` formalizes existing design intent rather than creating a new skill. Option B would require a hand-authored thin-wrapper skill with no precedent in the codebase (all 30 `ll-*` thin-wrapper stubs are auto-generated Codex bridge artifacts), and would introduce dual-ownership ambiguity with `improve-claude-md`'s own documented ENH-1911 intake.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A — Extend `improve-claude-md` | 2/3 | 2/3 | 2/3 | 2/3 | 8/12 |
+| Option B — New `/ll:self-improve` skill | 1/3 | 1/3 | 2/3 | 2/3 | 6/12 |
+
+**Key evidence**:
+- Option A: `skills/improve-claude-md/SKILL.md` lines 179–186 document the ENH-1911 intake point; `--dry-run` flag-parsing is a direct template; `ll-issues decisions add` is established across 5+ call sites
+- Option B: All 30 thin-wrapper `ll-*` skills are auto-generated Codex stubs, not functional orchestrators; no hand-authored precedent for chaining sibling skills; creates dual-ownership ambiguity with `improve-claude-md`'s existing ENH-1911 section
 
 ## Integration Map
 
@@ -178,7 +218,35 @@ history, evolution, improve-claude-md, decisions, harness, self-improve
 
 open
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-09_
+
+**Readiness Score**: 88/100 → PROCEED
+**Outcome Confidence**: 70/100 → MODERATE
+
+### Outcome Risk Factors
+- **Option A or B** is noted as a preference but not formally resolved — "Placement is a design choice for refinement" leaves the consumer's file location open. Resolve before starting: decide whether `improve-claude-md` gets `--consume-triggers` (Option A) or a new `skills/self-improve/` directory is created (Option B).
+- Moderate integration breadth (4 files across 3 subsystems) with a new DB migration (v13) — ensure migration is additive-only and version bump is consistent with the `v12 = ENH-1953` chain in `session_store.py`.
+
+## Resolution
+
+Implemented Option A (extend `improve-claude-md` with `--consume-triggers`). Changes:
+
+1. **`session_store.py`** (v13 migration): Added `correction_retirements` table + unique index on `topic_fingerprint`. Added `record_retirement()` and `list_retirements()` public API. Updated `SCHEMA_VERSION` to 13.
+2. **`models.py`**: Added `topic_fingerprint: str = ""` to `RecurringFeedback`; added `retired_count: int = 0` to `RecurringFeedbackAnalysis`.
+3. **`evolution.py`**: Added `_fingerprint()` (sha256[:16]); `detect_recurring_feedback()` now loads retirement records read-only and excludes retired clusters from feedbacks.
+4. **`formatting.py`**: Shows "(N cluster(s) excluded — already retired)" in both text and markdown Evolution Triggers output when `retired_count > 0`.
+5. **`skills/improve-claude-md/SKILL.md`**: Added `--consume-triggers` flag with full CT-0 through CT-4 pipeline (get candidates → dedup → per-candidate approval → persist + retire → report).
+6. **Tests**: New `test_correction_retirement.py` (7 tests) + `TestRetirementFilter` class in `test_evolution_triggers.py` (4 tests) + `TestSchemaV13` in `test_session_store.py` (3 tests). All 14 new tests pass; no regressions.
+7. **`docs/reference/API.md`**: Added `little_loops.session_store` section documenting `record_retirement`, `list_retirements`, and the new table schema.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-09T19:31:12Z - `manage-issue`
+- `/ll:ready-issue` - 2026-06-09T19:06:37 - `8aca788a-9ad4-4e75-9627-965a245e9941.jsonl`
+- `/ll:decide-issue` - 2026-06-09T19:01:31 - `83da4906-b091-4fe3-9c50-4affc7023b72.jsonl`
+- `/ll:confidence-check` - 2026-06-09T00:00:00Z - `04f82d31-35d7-47a9-8197-770bb00e881a.jsonl`
+- `/ll:confidence-check` - 2026-06-09T20:00:00Z - `93086ece-d0ce-481b-be8b-66aa82f38523.jsonl`
 - `/ll:format-issue` - 2026-06-09T18:45:01 - `04f82d31-35d7-47a9-8197-770bb00e881a.jsonl`
 
 - Captured - 2026-06-09 - from squid-plugin evaluation; promotes two EPIC-2027

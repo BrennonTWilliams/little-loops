@@ -6,6 +6,7 @@ as quantified signals for harness self-improvement.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import sqlite3
@@ -47,6 +48,11 @@ def _open_db(db_path: Path) -> sqlite3.Connection | None:
 
 
 _MIN_BYPASS_KEYWORDS = 2  # Require >= 2 keyword tokens to reduce false positives
+
+
+def _fingerprint(content: str) -> str:
+    """Return a stable 16-char hex fingerprint for a correction content string."""
+    return hashlib.sha256(content[:512].encode()).hexdigest()[:16]
 
 
 def _load_memory_feedback(project_root: Path) -> dict[str, str]:
@@ -119,10 +125,29 @@ def detect_recurring_feedback(
 
         memory_feedback = _load_memory_feedback(project_root) if project_root else {}
 
+        # Load retirement fingerprints — fall back gracefully for old DBs missing the table.
+        try:
+            retired_rows = conn.execute(
+                "SELECT topic_fingerprint, rule_id FROM correction_retirements"
+            ).fetchall()
+            retirements: dict[str, str] = {
+                r["topic_fingerprint"]: (r["rule_id"] or "") for r in retired_rows
+            }
+        except sqlite3.OperationalError:
+            retirements = {}
+
         feedbacks: list[RecurringFeedback] = []
+        retired_count = 0
         for row in rows:
             content = row["content"] or ""
             count = row["seen_count"]
+            fingerprint = _fingerprint(content)
+
+            # Exclude clusters that have been addressed and retired.
+            if fingerprint in retirements:
+                retired_count += 1
+                continue
+
             session_ids = _get_session_ids_for_content(conn, content, cutoff)
 
             # Match memory feedback files by shared keywords as candidate_rule seed
@@ -142,6 +167,7 @@ def detect_recurring_feedback(
                     example_sessions=session_ids[:5],
                     example_content=[content[:200]],
                     candidate_rule=candidate_rule,
+                    topic_fingerprint=fingerprint,
                 )
             )
 
@@ -151,6 +177,7 @@ def detect_recurring_feedback(
             total_recurring_corrections=sum(f.occurrence_count for f in feedbacks),
             threshold_used=threshold,
             rule_candidates=rule_candidates,
+            retired_count=retired_count,
         )
     finally:
         conn.close()

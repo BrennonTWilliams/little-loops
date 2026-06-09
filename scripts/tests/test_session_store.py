@@ -1183,7 +1183,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 12
+        assert SCHEMA_VERSION == 13
 
 
 class TestBackfillIncremental:
@@ -1593,8 +1593,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 12
-        assert int(row[0]) == 12
+        assert SCHEMA_VERSION == 13
+        assert int(row[0]) == 13
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1708,8 +1708,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 12
-        assert int(row[0]) == 12
+        assert SCHEMA_VERSION == 13
+        assert int(row[0]) == 13
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1760,8 +1760,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 12
-        assert int(row[0]) == 12
+        assert SCHEMA_VERSION == 13
+        assert int(row[0]) == 13
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1839,7 +1839,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 12
+        assert int(version[0]) == 13
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -1856,8 +1856,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 12
-        assert int(row[0]) == 12
+        assert SCHEMA_VERSION == 13
+        assert int(row[0]) == 13
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2731,3 +2731,44 @@ class TestPrune:
         result = prune(db)
         assert result["project_age_days"] > 0
         assert result["db_size_mb"] > 0
+
+
+class TestSchemaV13:
+    """Verify that the v13 migration creates correction_retirements table (ENH-2046)."""
+
+    def test_schema_version_is_thirteen(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert SCHEMA_VERSION == 13
+        assert int(row[0]) == 13
+
+    def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            result = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+                " AND name='correction_retirements'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert result is not None, "correction_retirements table must exist after ensure_db()"
+
+    def test_retirement_fingerprint_index_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            result = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+                " AND name='idx_retirements_fingerprint'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert result is not None, "idx_retirements_fingerprint index must exist after ensure_db()"

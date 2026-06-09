@@ -423,6 +423,7 @@ class RecurringFeedback:
     example_sessions: list[str] = field(default_factory=list)  # capped at 5
     example_content: list[str] = field(default_factory=list)  # capped at 3
     candidate_rule: str = ""  # proposed CLAUDE.md rule text
+    topic_fingerprint: str = ""  # sha256[:16] of raw correction content (ENH-2046)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -432,6 +433,7 @@ class RecurringFeedback:
             "example_sessions": self.example_sessions[:5],
             "example_content": self.example_content[:3],
             "candidate_rule": self.candidate_rule,
+            "topic_fingerprint": self.topic_fingerprint,
         }
 
 
@@ -443,6 +445,7 @@ class RecurringFeedbackAnalysis:
     total_recurring_corrections: int = 0
     threshold_used: int = 2
     rule_candidates: list[str] = field(default_factory=list)  # capped at 10
+    retired_count: int = 0  # clusters excluded because they have retirement records (ENH-2046)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -451,6 +454,7 @@ class RecurringFeedbackAnalysis:
             "total_recurring_corrections": self.total_recurring_corrections,
             "threshold_used": self.threshold_used,
             "rule_candidates": self.rule_candidates[:10],
+            "retired_count": self.retired_count,
         }
 
 

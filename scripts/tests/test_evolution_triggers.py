@@ -175,6 +175,103 @@ class TestDetectRecurringFeedback:
         assert 3 in counts
 
 
+class TestRetirementFilter:
+    """Tests for correction retirement integration in detect_recurring_feedback() (ENH-2046)."""
+
+    def test_topic_fingerprint_populated(self, tmp_path: Path) -> None:
+        """Each RecurringFeedback has a non-empty topic_fingerprint."""
+        db = _make_test_db(tmp_path)
+        conn = sqlite3.connect(str(db))
+        ts = _now_ts()
+        for i in range(2):
+            conn.execute(
+                "INSERT INTO user_corrections(ts, session_id, content) VALUES (?, ?, ?)",
+                (ts, f"s-{i}", "don't add co-authored-by"),
+            )
+        conn.commit()
+        conn.close()
+
+        config = EvolutionConfig(feedback_min_recurrence=2)
+        result = detect_recurring_feedback(db, config)
+        assert len(result.feedbacks) == 1
+        assert result.feedbacks[0].topic_fingerprint != ""
+
+    def test_retired_correction_excluded(self, tmp_path: Path) -> None:
+        """A correction whose fingerprint has a retirement record is excluded from feedbacks."""
+        db = _make_test_db(tmp_path)
+        conn = sqlite3.connect(str(db))
+        ts = _now_ts()
+        content = "never add emojis to code"
+        for i in range(3):
+            conn.execute(
+                "INSERT INTO user_corrections(ts, session_id, content) VALUES (?, ?, ?)",
+                (ts, f"s-{i}", content),
+            )
+        conn.commit()
+        conn.close()
+
+        # Compute fingerprint and record retirement
+        from little_loops.issue_history.evolution import _fingerprint
+        from little_loops.session_store import record_retirement
+
+        fp = _fingerprint(content)
+        record_retirement(db, fp, rule_id="BEHAVIOR-001")
+
+        config = EvolutionConfig(feedback_min_recurrence=2)
+        result = detect_recurring_feedback(db, config)
+        # Retired cluster must not appear in feedbacks
+        assert all(fb.topic_fingerprint != fp for fb in result.feedbacks)
+
+    def test_retired_count_populated(self, tmp_path: Path) -> None:
+        """RecurringFeedbackAnalysis.retired_count reflects excluded clusters."""
+        db = _make_test_db(tmp_path)
+        conn = sqlite3.connect(str(db))
+        ts = _now_ts()
+        content_a = "stop using var names like x"
+        content_b = "don't skip tests"
+        for i in range(2):
+            conn.execute(
+                "INSERT INTO user_corrections(ts, session_id, content) VALUES (?, ?, ?)",
+                (ts, f"sa-{i}", content_a),
+            )
+        for i in range(2):
+            conn.execute(
+                "INSERT INTO user_corrections(ts, session_id, content) VALUES (?, ?, ?)",
+                (ts, f"sb-{i}", content_b),
+            )
+        conn.commit()
+        conn.close()
+
+        from little_loops.issue_history.evolution import _fingerprint
+        from little_loops.session_store import record_retirement
+
+        # Retire content_a
+        record_retirement(db, _fingerprint(content_a), rule_id="BEHAVIOR-002")
+
+        config = EvolutionConfig(feedback_min_recurrence=2)
+        result = detect_recurring_feedback(db, config)
+        assert result.retired_count == 1
+        assert len(result.feedbacks) == 1  # only content_b remains
+
+    def test_non_retired_correction_unaffected(self, tmp_path: Path) -> None:
+        """Corrections without a retirement record still surface normally."""
+        db = _make_test_db(tmp_path)
+        conn = sqlite3.connect(str(db))
+        ts = _now_ts()
+        for i in range(2):
+            conn.execute(
+                "INSERT INTO user_corrections(ts, session_id, content) VALUES (?, ?, ?)",
+                (ts, f"s-{i}", "always use --dry-run first"),
+            )
+        conn.commit()
+        conn.close()
+
+        config = EvolutionConfig(feedback_min_recurrence=2)
+        result = detect_recurring_feedback(db, config)
+        assert len(result.feedbacks) == 1
+        assert result.retired_count == 0
+
+
 class TestDetectSkillBypass:
     """Tests for detect_skill_bypass()."""
 

@@ -380,6 +380,10 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                         lines.append(f"     Sessions: {sessions_str}")
                     if fb.candidate_rule:
                         lines.append(f"     Candidate rule: {fb.candidate_rule[:80]}...")
+            if rfa.retired_count:
+                lines.append(
+                    f"  ({rfa.retired_count} cluster(s) excluded — already retired)"
+                )
 
         if analysis.skill_bypass_analysis:
             sba = analysis.skill_bypass_analysis
@@ -942,6 +946,11 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
                     lines.append(
                         f"| {fb.topic[:60]} | {fb.occurrence_count} | "
                         f"{sessions_str} | {rule_excerpt} |"
+                    )
+                if rfa.retired_count:
+                    lines.append("")
+                    lines.append(
+                        f"> {rfa.retired_count} cluster(s) excluded — already retired."
                     )
                 if rfa.rule_candidates:
                     lines.append("")
