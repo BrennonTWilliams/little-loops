@@ -26,6 +26,7 @@ REQUIRED_STATES = {
     "commit_design",
     "scope_project",
     "write_epic_id",
+    "enumerate_epic_children",
     "refine_seed",
     "eval_harness",
     "read_harness_name",

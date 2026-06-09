@@ -404,21 +404,37 @@ states:
     capture: epic_id
     evaluate:
       type: exit_code
-    on_yes: refine_seed
+    on_yes: enumerate_epic_children
     on_no: failed
     on_error: failed
 
   # ─── Phase 6: Refine seed issues to readiness ─────────────────────────────────
 
+  enumerate_epic_children:
+    action: |
+      ISSUES=$(ll-issues list --parent "${captured.epic_id.output}" --json | python3 -c "
+      import json, sys
+      ids = json.load(sys.stdin)
+      print(','.join(i['id'] for i in ids))
+      ")
+      if [ -z "$ISSUES" ]; then exit 1; fi
+      echo "$ISSUES"
+    action_type: shell
+    capture: input
+    on_yes: refine_seed
+    on_no: eval_harness
+    on_error: eval_harness
+
   # Intentional fire-and-proceed: refinement quality is non-fatal to the pipeline.
-  # Even if issue-refinement reports `no`, the seed issues still exist and the
+  # Even if recursive-refine reports failure, the seed issues still exist and the
   # downstream eval harness + goal-cluster execution can proceed against them.
   # We advance to eval_harness regardless rather than dead-ending the build.
   refine_seed:
-    loop: issue-refinement
+    loop: recursive-refine
     context_passthrough: true
-    on_yes: eval_harness
-    on_no: eval_harness
+    on_success: eval_harness
+    on_failure: eval_harness
+    on_error: eval_harness
 
   # ─── Phase 7: Install and customize an as-a-user eval harness ────────────────
 
