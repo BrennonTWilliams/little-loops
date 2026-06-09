@@ -162,6 +162,7 @@ Out of scope:
   rules? Possibly a hybrid.
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-09T18:20:06 - `f0b9ba1f-183d-434e-8ac8-158f3081ee9d.jsonl`
 - `/ll:capture-issue` - 2026-06-09T18:14:42Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99d80192-68ec-4cb3-941a-f77e8c20623b.jsonl`
 
 ---
