@@ -122,9 +122,117 @@ states:
         If ALL four individual scores are >= 6, output exactly: ALL_PASS
         Otherwise output: ITERATE
       pass_threshold: 6
-    on_yes: done
+    on_yes: vision_gate
     on_no: diagnose
     on_error: diagnose
+
+  vision_gate:
+    # HARNESS: Optional external-vision evaluator (VISION_* env wiring).
+    # Decouples aesthetic scoring from the host LLM's self-grade — the same
+    # anti-self-certification motive as in html-website-generator, applied to SVG.
+    # An independent vision model scores the screenshot against the svg rubric criteria;
+    # failing criteria are appended to critique.md so the next generator-evaluator pass
+    # addresses them directly. A per-run round cap (.vision_rounds) bounds ping-pong.
+    #
+    # GRACEFUL DEGRADATION: no-op pass when VISION_* vars are absent. API/parse errors
+    # also pass — never block a functionally-sound artifact on an optional gate.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      case "$$RUN_DIR" in
+        /*) ABS_DIR="$$RUN_DIR" ;;
+        *) ABS_DIR="$$(pwd)/$$RUN_DIR" ;;
+      esac
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
+        echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0
+      fi
+      if [ ! -f "$$ABS_DIR/screenshot.png" ]; then
+        echo "VISION_PASS: skipped (no screenshot.png)"; exit 0
+      fi
+      export ABS_DIR
+      python3 <<'PY'
+      import os, re, sys, json, base64, urllib.request
+      abs_dir = os.environ["ABS_DIR"]
+      shot = os.path.join(abs_dir, "screenshot.png")
+      rc_file = os.path.join(abs_dir, ".vision_rounds")
+      crit = os.path.join(abs_dir, "critique.md")
+      ROUND_CAP = 3
+      try:
+          rc = int(open(rc_file).read().strip())
+      except Exception:
+          rc = 0
+      if rc >= ROUND_CAP:
+          print("VISION_PASS: round cap (%d) reached, accepting" % ROUND_CAP); sys.exit(0)
+      try:
+          with open(shot, "rb") as f:
+              b64 = base64.b64encode(f.read()).decode()
+      except Exception as e:
+          print("VISION_PASS: screenshot unreadable (%s)" % e); sys.exit(0)
+      base = os.environ["VISION_BASE_URL"].rstrip("/")
+      endpoint = base if base.endswith("completions") else base + "/chat/completions"
+      rubric = (
+          "You are a strict, impartial design critic. Study the attached "
+          "screenshot of a generated SVG and score it 1-10 on each:\n"
+          "- visual_clarity: is the concept immediately readable with no ambiguity? "
+          "At icon scale, can you tell what it is in under 2 seconds?\n"
+          "- originality: evidence of custom creative decisions? "
+          "Penalize: default silhouettes, unmodified geometric primitives, AI-slop fill patterns.\n"
+          "- craft: clean paths, consistent stroke weights, proper proportions, "
+          "deliberate use of negative space, color harmony.\n"
+          "- scalability: does the level of detail hold up at icon scale? "
+          "Complex paths that collapse below 32px should be penalized.\n"
+          "Threshold: every criterion must be >= 6.\n"
+          'Reply with ONE JSON object only, no prose: {"scores": '
+          '{"visual_clarity": N, "originality": N, "craft": N, '
+          '"scalability": N}, "issues": ["specific actionable fix", ...]}'
+      )
+      payload = {
+          "model": os.environ["VISION_MODEL"],
+          "temperature": 0.2,
+          "max_tokens": 900,
+          "messages": [{"role": "user", "content": [
+              {"type": "text", "text": rubric},
+              {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}},
+          ]}],
+      }
+      req = urllib.request.Request(
+          endpoint, data=json.dumps(payload).encode(),
+          headers={"Authorization": "Bearer " + os.environ["VISION_API_KEY"],
+                   "Content-Type": "application/json"})
+      try:
+          with urllib.request.urlopen(req, timeout=120) as r:
+              content = json.load(r)["choices"][0]["message"]["content"]
+      except Exception as e:
+          print("VISION_PASS: vision API error (%s), not blocking" % e); sys.exit(0)
+      m = re.search(r"\{.*\}", content, re.S)
+      try:
+          data = json.loads(m.group(0)) if m else {}
+          scores = data.get("scores", {}) or {}
+          issues = data.get("issues", []) or []
+      except Exception:
+          print("VISION_PASS: unparseable vision verdict, not blocking"); sys.exit(0)
+      failing = {k: v for k, v in scores.items()
+                 if isinstance(v, (int, float)) and v < 6}
+      print("VISION scores: " + json.dumps(scores))
+      if not failing:
+          print("VISION_PASS"); sys.exit(0)
+      open(rc_file, "w").write(str(rc + 1))
+      lines = ["", "## Issues to Address (external vision critique, round %d)" % (rc + 1)]
+      for k, v in failing.items():
+          lines.append("- %s scored %s/10 (below threshold 6)" % (k, v))
+      for i in issues:
+          lines.append("- %s" % i)
+      with open(crit, "a") as f:
+          f.write("\n".join(lines) + "\n")
+      print("VISION_FAIL: %d criteria below threshold" % len(failing))
+      PY
+    evaluate:
+      type: output_contains
+      pattern: "VISION_PASS"
+    on_yes: done
+    on_no: run_gen_eval
+    on_error: done
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
