@@ -6,6 +6,12 @@ status: done
 captured_at: '2026-06-08T00:00:00Z'
 discovered_date: 2026-06-08
 discovered_by: audit-loop-run
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 25
+score_test_coverage: 15
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2031: Add `partial_route_ok: true` to rn-implement to suppress MR-4 validate warning
