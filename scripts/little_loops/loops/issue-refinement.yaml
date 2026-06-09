@@ -30,8 +30,18 @@ states:
   run_refine_to_ready:
     loop: refine-to-ready-issue
     context_passthrough: true
-    on_yes: check_commit
+    on_yes: check_broke_down
     on_no: handle_failure
+  check_broke_down:
+    action: |
+      BROKE="${context.run_dir}/refine-broke-down"
+      if [ -f "$BROKE" ] && grep -q '1' "$BROKE" 2>/dev/null; then exit 0; fi
+      exit 1
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: handle_failure
+    on_no: check_commit
   handle_failure:
     action: |
       ID="${captured.input.output}"

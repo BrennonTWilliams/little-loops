@@ -2,13 +2,20 @@
 id: BUG-2034
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-08T00:00:00Z'
+completed_at: '2026-06-09T03:07:51Z'
 discovered_date: 2026-06-08
 discovered_by: audit-loop-run
 relates_to:
-  - BUG-2035
-  - ENH-2038
+- BUG-2035
+- ENH-2038
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2034: issue-refinement re-selects broke-down issues, causing expensive refine churn
@@ -49,7 +56,7 @@ regressing 71→68 across passes.
    `${context.run_dir}/refine-broke-down`.
 2. Runner routes parent `on_yes` (terminal name == `done`) →
    `issue-refinement.run_refine_to_ready.on_yes: check_commit`
-   (`issue-refinement.yaml:29-33`). The issue is **not** skip-listed.
+   (`issue-refinement.yaml:30-34`). The issue is **not** skip-listed.
 3. `ll-issues next-action` still returns the issue because
    `outcome_confidence < outcome_threshold` (`next_action.py:48-51`).
 4. `issue-refinement.evaluate` re-selects it; goto 1. Bounded only by
@@ -182,4 +189,6 @@ independently warranted.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-09T03:04:36 - `287ba297-83ce-47d5-808b-df24b0802fee.jsonl`
 - `/ll:format-issue` - 2026-06-09T02:41:14 - `914690e7-fd2f-4d75-9bfa-5bb071777625.jsonl`
+- `/ll:confidence-check` - 2026-06-08T00:00:00Z - `287ba297-83ce-47d5-808b-df24b0802fee.jsonl`
