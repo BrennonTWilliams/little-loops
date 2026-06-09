@@ -416,6 +416,29 @@ class TestBuildConfig:
         assert config["issues"]["base_dir"] == ".issues"
         assert "bugs" in config["issues"]["categories"]
 
+    def test_history_session_digest_written(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)
+        assert "history" in config
+        assert config["history"]["session_digest"]["enabled"] is True
+
+    def test_history_session_digest_defaults(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)
+        sd = config["history"]["session_digest"]
+        assert sd["days"] == 7
+        assert sd["char_cap"] == 1200
+
+    def test_history_session_digest_disabled_via_choice(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"session_digest_enabled": False})
+        assert config["history"]["session_digest"]["enabled"] is False
+
 
 # ===========================================================================
 # TestWriteConfig
@@ -943,6 +966,51 @@ class TestMainInit:
             code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
         assert code == 0
         assert (apply_dest / ".ll" / "ll-config.json").exists()
+
+    def test_yes_deploys_design_tokens_when_enabled(self, tmp_project: Path) -> None:
+        """_run_yes copies design-token profiles when config has design_tokens.enabled."""
+        from little_loops.init.cli import main_init
+        from little_loops.init import core as init_core
+
+        real_build = init_core.build_config
+
+        def patched_build(template, choices=None):
+            cfg = real_build(template, choices)
+            cfg["design_tokens"] = {"enabled": True, "active": "warm-paper"}
+            return cfg
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch("little_loops.init.core.build_config", side_effect=patched_build),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        assert (tmp_project / ".ll" / "design-tokens" / "profiles").is_dir()
+
+    def test_yes_adds_explore_api_permission_when_learning_tests(
+        self, tmp_project: Path
+    ) -> None:
+        """_run_yes injects Skill(ll:explore-api) into settings when learning_tests enabled."""
+        from little_loops.init.cli import main_init
+        from little_loops.init import core as init_core
+
+        real_build = init_core.build_config
+
+        def patched_build(template, choices=None):
+            cfg = real_build(template, choices)
+            cfg["learning_tests"] = {"enabled": True}
+            return cfg
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch("little_loops.init.core.build_config", side_effect=patched_build),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        settings = json.loads(
+            (tmp_project / ".claude" / "settings.local.json").read_text()
+        )
+        assert "Skill(ll:explore-api)" in settings["permissions"]["allow"]
 
 
 # ===========================================================================

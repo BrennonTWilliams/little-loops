@@ -83,4 +83,14 @@ def build_config(
     if product_enabled:
         config["product"] = {"enabled": True}
 
+    # --- history.session_digest (always written) ---
+    session_digest_enabled = bool(choices.get("session_digest_enabled", True))
+    config["history"] = {
+        "session_digest": {
+            "enabled": session_digest_enabled,
+            "days": 7,
+            "char_cap": 1200,
+        }
+    }
+
     return config

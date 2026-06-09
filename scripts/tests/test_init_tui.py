@@ -149,6 +149,31 @@ class TestHappyPath:
         assert (tmp_path / ".claude" / "settings.json").exists()
         assert not (tmp_path / ".claude" / "settings.local.json").exists()
 
+    @patch("little_loops.init.tui.questionary")
+    def test_design_tokens_selected_deploys_profiles(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["design_tokens", "analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert (tmp_path / ".ll" / "design-tokens" / "profiles").is_dir()
+
+    @patch("little_loops.init.tui.questionary")
+    def test_learning_tests_adds_explore_api_permission(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        import json
+
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["learning_tests", "analytics"], settings="local")
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        settings = json.loads((tmp_path / ".claude" / "settings.local.json").read_text())
+        assert "Skill(ll:explore-api)" in settings["permissions"]["allow"]
+
 
 # ---------------------------------------------------------------------------
 # Conditional parallel workers question

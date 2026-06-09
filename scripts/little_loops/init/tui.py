@@ -342,6 +342,7 @@ def _apply_config(
     from little_loops.init.cli import _dispatch_host_adapters
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
+        deploy_design_tokens,
         deploy_goals,
         make_issue_dirs,
         make_learning_tests_dir,
@@ -358,6 +359,9 @@ def _apply_config(
     if config.get("product", {}).get("enabled"):
         deploy_goals(ll_dir, templates_dir)
 
+    if config.get("design_tokens", {}).get("enabled"):
+        deploy_design_tokens(ll_dir, templates_dir)
+
     if config.get("learning_tests", {}).get("enabled"):
         make_learning_tests_dir(ll_dir)
 
@@ -366,7 +370,10 @@ def _apply_config(
     settings_file = (
         ".claude/settings.local.json" if settings_target == "local" else ".claude/settings.json"
     )
-    merge_settings(project_root, settings_file=settings_file)
+    extra_permissions: list[str] | None = None
+    if config.get("learning_tests", {}).get("enabled"):
+        extra_permissions = ["Skill(ll:explore-api)"]
+    merge_settings(project_root, settings_file=settings_file, extra_permissions=extra_permissions)
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 

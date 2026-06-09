@@ -74,6 +74,7 @@ def _run_yes(
     from little_loops.init.detect import detect_project_type
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
+        deploy_design_tokens,
         deploy_goals,
         make_issue_dirs,
         make_learning_tests_dir,
@@ -114,11 +115,18 @@ def _run_yes(
     if config.get("product", {}).get("enabled"):
         deploy_goals(ll_dir, templates_dir)
 
+    if config.get("design_tokens", {}).get("enabled"):
+        deploy_design_tokens(ll_dir, templates_dir)
+
     if config.get("learning_tests", {}).get("enabled"):
         make_learning_tests_dir(ll_dir)
 
     update_gitignore(project_root)
-    merge_settings(project_root)
+
+    extra_permissions: list[str] | None = None
+    if config.get("learning_tests", {}).get("enabled"):
+        extra_permissions = ["Skill(ll:explore-api)"]
+    merge_settings(project_root, extra_permissions=extra_permissions)
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 
