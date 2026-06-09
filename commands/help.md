@@ -193,6 +193,12 @@ AUTOMATION & LOOPS
 /ll:loop-suggester [file]
     Suggest FSM loops from user message history
 
+/ll:simplify-loop [name] [flags]
+    Refactor a loop into fewer, reusable units without changing behavior:
+    collapse linear state chains into flow: shorthand and extract cohesive
+    regions into sub-loops
+    Flags: --dry-run, --auto, --flows-only, --subloops-only, --yes
+
 /ll:audit-loop-run <loop-name|run-id> [flags]
     Audit loop effectiveness: detect phantom success, verify artifact mutations,
     score against rubric, and propose improvements
@@ -315,7 +321,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Scanning & Analysis**: `find-dead-code`, `explore-api`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
-**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `audit-loop-run`, `verify-issue-loop`
+**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `simplify-loop`, `audit-loop-run`, `verify-issue-loop`
 **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`, `improve-claude-md`
 **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`, `publish` *(maintainers only — project-local)*
 
