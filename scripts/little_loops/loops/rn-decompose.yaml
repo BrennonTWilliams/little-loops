@@ -257,15 +257,11 @@ states:
   # =========================================================================
 
   rate_limit_diagnostic:
-    # Writes RATE_LIMITED and routes to a non-done terminal so the parent reads
-    # rate-limit exhaustion (ENH-1977 GAP A), not success. The parent owns the
-    # rate_limits.txt record to avoid double counting.
-    action_type: shell
-    action: |
-      ID="${context.issue_id}"
-      echo "RATE_LIMITED" > "${context.run_dir}/subloop_outcome_$${ID}.txt"
-      echo "[RATE_LIMIT] $${ID} rate-limited during decomposition"
-    next: failed
+    # Writes RATE_LIMITED to subloop_outcome and routes to failed (ENH-1977 GAP A).
+    # Parent's rate_limits.txt record is owned by the parent to avoid double counting.
+    fragment: subloop_rate_limit_diagnostic
+    with:
+      operation: decomposition
 
   # =========================================================================
   # Terminal States

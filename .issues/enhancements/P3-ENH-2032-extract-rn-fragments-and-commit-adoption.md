@@ -5,14 +5,20 @@ type: ENH
 priority: P3
 parent: ENH-1777
 relates_to:
-  - ENH-2033
-  - ENH-1775
-  - ENH-1776
+- ENH-2033
+- ENH-1775
+- ENH-1776
 captured_at: '2026-06-08T00:00:00Z'
 discovered_date: 2026-06-08
 discovered_by: loop-audit
 decision_needed: false
 status: open
+confidence_score: 100
+outcome_confidence: 80
+score_complexity: 20
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 15
 ---
 
 # ENH-2032: Extract duplicated rn-* states into common.yaml fragments + ll_commit adoption
@@ -193,4 +199,5 @@ instead of using the existing `fragment: ll_commit` (in
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-09T02:33:17 - `48fd4c40-d1dc-4aa8-8bd4-b98c0e5aaac7.jsonl`
 - `/ll:format-issue` - 2026-06-09T01:28:13 - `b8cd5b00-183b-4a0c-a5fc-6f9113d43c0a.jsonl`

@@ -1304,6 +1304,9 @@ import:
 | `queue_pop` | `action_type: shell` + `evaluate.type: exit_code` — exit 0 = item popped, exit 1 = queue empty | `action` (pop shell script), routing (`on_yes`, `on_no`); optionally `on_error`, `capture` |
 | `queue_track` | `action_type: shell` — unconditional append; no evaluator | `action` (echo append script), `next:` |
 | `diff_stall_gate` | `evaluate.type: diff_stall` + `evaluate.max_stall: 2` — yes on progress, no on N consecutive identical diffs | `action`, `action_type`, routing (`on_yes`, `on_no`); optionally `on_error` and `evaluate.scope` |
+| `plan_rubric_score` | `action_type: prompt` + 9-dimension plan scorer action + `evaluate.type: output_contains` with `pattern: "ALL_VERY_HIGH"`. Distinct from `score_plan_quality` (4-dimension batch scorer). No `parameters:` — callers supply routing only. | routing (`on_yes`, `on_no`, `on_error`) |
+| `loop_failure_diagnose` | `action_type: prompt` + failure-diagnosis action + fixed `next: failed`. Parameterized via `with: {loop_name: ..., extra_bullets: ...}`. | `with: {loop_name: <name>}`; optionally `with: {extra_bullets: <bullets>}` |
+| `subloop_rate_limit_diagnostic` | `action_type: shell` + RATE_LIMITED outcome-token write + log line + fixed `next: failed`. Uses `${context.issue_id}` and `${context.run_dir}`. | `with: {operation: <word>}`; optionally `with: {outcome_token: <token>}` |
 
 ### `lib/prompt-fragments.yaml` fragments
 

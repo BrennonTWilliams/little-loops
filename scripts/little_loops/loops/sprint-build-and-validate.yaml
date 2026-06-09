@@ -13,6 +13,7 @@ context:
   sprint_name: ""
 import:
   - lib/common.yaml
+  - lib/prompt-fragments.yaml
 states:
   route_input:
     action: |
@@ -100,11 +101,11 @@ states:
     next: commit
 
   commit:
-    action_type: prompt
-    timeout: 120
+    fragment: ll_commit
     action: |
       Run `/ll:commit --auto` to commit the sprint definition and any issue file updates.
       Use commit message: "chore(sprint): create and validate sprint ${captured.sprint_name.output}"
+    timeout: 120
     next: run_sprint
 
   run_sprint:

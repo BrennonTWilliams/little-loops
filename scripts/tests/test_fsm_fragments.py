@@ -1888,6 +1888,46 @@ fragments:
         assert "${param.counter_key}" in frag["action"]
         assert "${param.max_retries}" in frag["evaluate"]["target"]
 
+    def test_plan_rubric_score_has_parameters_none(self) -> None:
+        """plan_rubric_score in lib/common.yaml has no parameters (callers supply routing only)."""
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            data = yaml.safe_load(f)
+        frag = data["fragments"]["plan_rubric_score"]
+        assert "parameters" not in frag, "plan_rubric_score should not declare parameters"
+
+    def test_loop_failure_diagnose_has_parameters_in_real_lib(self) -> None:
+        """loop_failure_diagnose in lib/common.yaml declares loop_name and extra_bullets parameters."""
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            data = yaml.safe_load(f)
+        frag = data["fragments"]["loop_failure_diagnose"]
+        assert "parameters" in frag
+        assert "loop_name" in frag["parameters"]
+        assert frag["parameters"]["loop_name"]["required"] is True
+        assert "extra_bullets" in frag["parameters"]
+        assert frag["parameters"]["extra_bullets"]["default"] == ""
+        assert "${param.loop_name}" in frag["action"]
+
+    def test_subloop_rate_limit_diagnostic_has_parameters_in_real_lib(self) -> None:
+        """subloop_rate_limit_diagnostic declares operation and outcome_token parameters."""
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            data = yaml.safe_load(f)
+        frag = data["fragments"]["subloop_rate_limit_diagnostic"]
+        assert "parameters" in frag
+        assert "operation" in frag["parameters"]
+        assert frag["parameters"]["operation"]["required"] is True
+        assert "outcome_token" in frag["parameters"]
+        assert frag["parameters"]["outcome_token"]["default"] == "RATE_LIMITED"
+        assert "${param.operation}" in frag["action"]
+
     def test_two_fragment_states_independent_bindings(self, tmp_path: Path) -> None:
         """Two states using same fragment get independent fragment_bindings."""
         _lib_dir = self._write_lib(
@@ -1925,3 +1965,206 @@ fragments:
         result = resolve_fragments(raw, tmp_path)
         assert result["states"]["step1"]["fragment_bindings"] == {"counter_key": "first_counter"}
         assert result["states"]["step2"]["fragment_bindings"] == {"counter_key": "second_counter"}
+
+
+# ---------------------------------------------------------------------------
+# lib/common.yaml: verify plan_rubric_score fragment (ENH-2032 F3)
+# ---------------------------------------------------------------------------
+
+
+class TestPlanRubricScoreFragment:
+    """Tests that plan_rubric_score exists in the real lib/common.yaml."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_plan_rubric_score_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "plan_rubric_score" in data["fragments"]
+
+    def test_plan_rubric_score_has_prompt_action_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["plan_rubric_score"]["action_type"] == "prompt"
+
+    def test_plan_rubric_score_has_output_contains_evaluator(self) -> None:
+        data = self._load_common_yaml()
+        evaluate = data["fragments"]["plan_rubric_score"].get("evaluate", {})
+        assert evaluate.get("type") == "output_contains"
+        assert evaluate.get("pattern") == "ALL_VERY_HIGH"
+
+    def test_plan_rubric_score_has_description(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["plan_rubric_score"]
+        assert "description" in frag
+        assert frag["description"].strip()
+
+    def test_plan_rubric_score_resolves_in_loop(self) -> None:
+        """Full resolve_fragments integration against the real lib/common.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "score",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "score": {
+                    "fragment": "plan_rubric_score",
+                    "on_yes": "done",
+                    "on_no": "iterate",
+                    "on_error": "failed",
+                },
+                "done": {"terminal": True},
+                "iterate": {"terminal": True},
+                "failed": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["score"]
+        assert state["action_type"] == "prompt"
+        assert state["evaluate"]["type"] == "output_contains"
+        assert state["evaluate"]["pattern"] == "ALL_VERY_HIGH"
+        assert state["on_yes"] == "done"
+        assert state["on_no"] == "iterate"
+        assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
+# lib/common.yaml: verify loop_failure_diagnose fragment (ENH-2032 F4)
+# ---------------------------------------------------------------------------
+
+
+class TestLoopFailureDiagnoseFragment:
+    """Tests that loop_failure_diagnose exists in the real lib/common.yaml."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_loop_failure_diagnose_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "loop_failure_diagnose" in data["fragments"]
+
+    def test_loop_failure_diagnose_has_prompt_action_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["loop_failure_diagnose"]["action_type"] == "prompt"
+
+    def test_loop_failure_diagnose_has_next_failed(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["loop_failure_diagnose"]["next"] == "failed"
+
+    def test_loop_failure_diagnose_has_loop_name_parameter(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["loop_failure_diagnose"]
+        assert "parameters" in frag
+        assert "loop_name" in frag["parameters"]
+        assert frag["parameters"]["loop_name"]["required"] is True
+
+    def test_loop_failure_diagnose_has_extra_bullets_parameter(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["loop_failure_diagnose"]
+        assert "extra_bullets" in frag["parameters"]
+        assert frag["parameters"]["extra_bullets"]["default"] == ""
+
+    def test_loop_failure_diagnose_has_description(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["loop_failure_diagnose"]
+        assert "description" in frag
+        assert frag["description"].strip()
+
+    def test_loop_failure_diagnose_resolves_in_loop(self) -> None:
+        """Full resolve_fragments integration against the real lib/common.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "diagnose",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "diagnose": {
+                    "fragment": "loop_failure_diagnose",
+                    "with": {"loop_name": "rn-plan"},
+                },
+                "failed": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["diagnose"]
+        assert state["action_type"] == "prompt"
+        assert state["fragment_bindings"] == {"loop_name": "rn-plan"}
+        assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
+# lib/common.yaml: verify subloop_rate_limit_diagnostic fragment (ENH-2032 F5)
+# ---------------------------------------------------------------------------
+
+
+class TestSubloopRateLimitDiagnosticFragment:
+    """Tests that subloop_rate_limit_diagnostic exists in the real lib/common.yaml."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_subloop_rate_limit_diagnostic_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "subloop_rate_limit_diagnostic" in data["fragments"]
+
+    def test_subloop_rate_limit_diagnostic_has_shell_action_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["subloop_rate_limit_diagnostic"]["action_type"] == "shell"
+
+    def test_subloop_rate_limit_diagnostic_has_next_failed(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["subloop_rate_limit_diagnostic"]["next"] == "failed"
+
+    def test_subloop_rate_limit_diagnostic_has_operation_parameter(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["subloop_rate_limit_diagnostic"]
+        assert "parameters" in frag
+        assert "operation" in frag["parameters"]
+        assert frag["parameters"]["operation"]["required"] is True
+
+    def test_subloop_rate_limit_diagnostic_has_outcome_token_parameter(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["subloop_rate_limit_diagnostic"]
+        assert "outcome_token" in frag["parameters"]
+        assert frag["parameters"]["outcome_token"]["default"] == "RATE_LIMITED"
+
+    def test_subloop_rate_limit_diagnostic_has_description(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["subloop_rate_limit_diagnostic"]
+        assert "description" in frag
+        assert frag["description"].strip()
+
+    def test_subloop_rate_limit_diagnostic_resolves_in_loop(self) -> None:
+        """Full resolve_fragments integration against the real lib/common.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "rate_limit_diagnostic",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "rate_limit_diagnostic": {
+                    "fragment": "subloop_rate_limit_diagnostic",
+                    "with": {"operation": "remediation"},
+                },
+                "failed": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["rate_limit_diagnostic"]
+        assert state["action_type"] == "shell"
+        assert state["fragment_bindings"] == {"operation": "remediation"}
+        assert "fragment" not in state

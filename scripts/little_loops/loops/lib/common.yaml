@@ -186,3 +186,98 @@ fragments:
       mkdir -p "$RUN_DIR/iter-$COUNTER"
       cp "$RUN_DIR/${param.artifact_path}" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
       cp "$RUN_DIR/screenshot.png" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
+
+  plan_rubric_score:
+    description: |
+      9-dimension plan scorer for rn-* planning loops. Reads plan.md and plan-rubric.md,
+      evaluates the plan on breadth/depth/complexity/clarity/consistency/logic_strategy/
+      feasibility/testability/risk_mitigation using the LOW/MEDIUM/HIGH/VERY-HIGH scale,
+      rewrites plan-rubric.md, and emits the ALL_VERY_HIGH sentinel when all dimensions
+      converge. Distinct from score_plan_quality (4-dimension batch scorer in
+      lib/score-plan-quality.yaml).
+      State must supply: on_yes (convergence route), on_no (iterate route), on_error.
+    action_type: prompt
+    action: |
+      Read the current plan at ${captured.run_dir.output}/plan.md.
+      Read the rubric at ${captured.run_dir.output}/plan-rubric.md.
+
+      Evaluate the plan against each of the 9 dimensions using the LOW/MEDIUM/HIGH/VERY-HIGH scale:
+      - LOW (1): significant gaps; not yet actionable
+      - MEDIUM (2): covers basics but missing important details
+      - HIGH (3): solid; minor gaps or ambiguities remain
+      - VERY-HIGH (4): comprehensive, precise, actionable — no meaningful improvement possible
+
+      Scoring criteria:
+      - breadth: Are all relevant concerns, risks, and stakeholders covered?
+      - depth: Are sub-steps specific and granular enough to execute without guessing?
+      - complexity: Is the plan's scope calibrated to the task — not over- or under-engineered?
+      - clarity: Is every directive unambiguous and free of vague language?
+      - consistency: Are steps non-contradictory? No duplication or conflicting advice?
+      - logic_strategy: Is the ordering sound? Does the approach make sense for this task?
+      - feasibility: Are the steps achievable given realistic constraints (time, resources, skills, access)?
+      - testability: Does the plan define clear success criteria and verification steps for each phase?
+      - risk_mitigation: Are key risks identified with concrete contingencies or mitigation strategies?
+
+      Update ${captured.run_dir.output}/plan-rubric.md — rewrite the ## Dimensions section
+      with the new scores and update the ## Aggregate section:
+      - score = mean of all 9 dimension values (1-4 scale)
+      - verdict = ALL_VERY_HIGH if all 9 are VERY-HIGH, otherwise ITERATE
+
+      After updating the rubric file:
+      - If ALL 9 dimensions are VERY-HIGH, output exactly: ALL_VERY_HIGH
+      - Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "ALL_VERY_HIGH"
+
+  loop_failure_diagnose:
+    description: |
+      Terminal failure handler for rn-* planning loops. Prompts for root-cause diagnosis,
+      reads rubric and plan artifacts if available, and writes a one-paragraph diagnostic
+      summary for the operator. Fixed next: failed.
+      Caller must supply via with: bindings:
+        loop_name     — name of the loop for the opening sentence (e.g. rn-plan, rn-refine)
+      Optional:
+        extra_bullets — additional diagnostic bullet points, one per line (default: "")
+    parameters:
+      loop_name:
+        type: string
+        required: true
+      extra_bullets:
+        type: string
+        default: ""
+    action_type: prompt
+    action: |
+      The ${param.loop_name} loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - If ${captured.run_dir.output}/plan-rubric.md exists, read it and report the last rubric scores.
+      ${param.extra_bullets}
+      - Identify the most likely failure cause.
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust inputs.
+    next: failed
+
+  subloop_rate_limit_diagnostic:
+    description: |
+      Sub-loop terminal handler for rate-limit exhaustion (ENH-1977 GAP A). Writes an
+      outcome token to the shared run_dir so the parent loop reads exhaustion correctly
+      rather than treating it as success. Fixed next: failed.
+      Uses ${context.issue_id} and ${context.run_dir} from the loop context.
+      Caller must supply via with: bindings:
+        operation   — operation word for the log line (e.g. remediation, decomposition)
+      Optional:
+        outcome_token — token written to the outcome file (default: RATE_LIMITED)
+    parameters:
+      operation:
+        type: string
+        required: true
+      outcome_token:
+        type: string
+        default: RATE_LIMITED
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      echo "${param.outcome_token}" > "${context.run_dir}/subloop_outcome_$${ID}.txt"
+      echo "[RATE_LIMIT] $${ID} rate-limited during ${param.operation}"
+    next: failed

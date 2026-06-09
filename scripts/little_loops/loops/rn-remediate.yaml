@@ -518,16 +518,11 @@ states:
   # =========================================================================
 
   rate_limit_diagnostic:
-    # Writes the RATE_LIMITED token and routes to a NON-done terminal so the
-    # parent does not read rate-limit exhaustion as success (ENH-1977 GAP A).
-    # The parent's record in rate_limits.txt is owned by the parent's own
-    # rate_limit_diagnostic to avoid double counting.
-    action_type: shell
-    action: |
-      ID="${context.issue_id}"
-      echo "RATE_LIMITED" > "${context.run_dir}/subloop_outcome_$${ID}.txt"
-      echo "[RATE_LIMIT] $${ID} rate-limited during remediation"
-    next: failed
+    # Writes RATE_LIMITED to subloop_outcome and routes to failed (ENH-1977 GAP A).
+    # Parent's rate_limits.txt record is owned by the parent to avoid double counting.
+    fragment: subloop_rate_limit_diagnostic
+    with:
+      operation: remediation
 
   # =========================================================================
   # Terminal States

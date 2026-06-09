@@ -7,6 +7,8 @@ description: |
   cycle discovers no net-new issues (diminishing returns), then commits and
   stops.
 initial: count_baseline
+import:
+  - lib/prompt-fragments.yaml
 states:
   count_baseline:
     action: |
@@ -67,7 +69,7 @@ states:
     on_no: done
     on_error: done
   commit:
-    action_type: prompt
+    fragment: ll_commit
     action: |
       Run `/ll:commit` to commit all newly created and modified issue files.
       Use a commit message like: "chore(issues): discover and triage new issues"

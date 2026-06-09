@@ -8,6 +8,7 @@ description: |
 initial: init
 import:
   - lib/common.yaml
+  - lib/prompt-fragments.yaml
 states:
   init:
     action: mkdir -p .loops/tmp && rm -f .loops/tmp/issue-refinement-commit-count && rm -f .loops/tmp/issue-refinement-skip-list
@@ -56,7 +57,7 @@ states:
     on_no: evaluate
     on_error: evaluate
   commit:
-    action_type: prompt
+    fragment: ll_commit
     action: /ll:commit
     next: evaluate
   done:

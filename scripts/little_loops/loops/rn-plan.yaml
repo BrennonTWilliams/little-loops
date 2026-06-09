@@ -10,6 +10,8 @@ description: |
 initial: init
 max_iterations: 50
 timeout: 7200
+import:
+  - lib/common.yaml
 
 context:
   task: ""           # populated from positional CLI arg via input_key: task
@@ -225,42 +227,7 @@ states:
     next: score
 
   score:
-    # Scoring — evaluates the current plan against all 9 rubric dimensions, updates
-    # the rubric file with new scores, and signals convergence via ALL_VERY_HIGH sentinel.
-    # Convergence is embedded here — no separate check_convergence state needed.
-    action_type: prompt
-    action: |
-      Read the current plan at ${captured.run_dir.output}/plan.md.
-      Read the rubric at ${captured.run_dir.output}/plan-rubric.md.
-
-      Evaluate the plan against each of the 9 dimensions using the LOW/MEDIUM/HIGH/VERY-HIGH scale:
-      - LOW (1): significant gaps; not yet actionable
-      - MEDIUM (2): covers basics but missing important details
-      - HIGH (3): solid; minor gaps or ambiguities remain
-      - VERY-HIGH (4): comprehensive, precise, actionable — no meaningful improvement possible
-
-      Scoring criteria:
-      - breadth: Are all relevant concerns, risks, and stakeholders covered?
-      - depth: Are sub-steps specific and granular enough to execute without guessing?
-      - complexity: Is the plan's scope calibrated to the task — not over- or under-engineered?
-      - clarity: Is every directive unambiguous and free of vague language?
-      - consistency: Are steps non-contradictory? No duplication or conflicting advice?
-      - logic_strategy: Is the ordering sound? Does the approach make sense for this task?
-      - feasibility: Are the steps achievable given realistic constraints (time, resources, skills, access)?
-      - testability: Does the plan define clear success criteria and verification steps for each phase?
-      - risk_mitigation: Are key risks identified with concrete contingencies or mitigation strategies?
-
-      Update ${captured.run_dir.output}/plan-rubric.md — rewrite the ## Dimensions section
-      with the new scores and update the ## Aggregate section:
-      - score = mean of all 9 dimension values (1-4 scale)
-      - verdict = ALL_VERY_HIGH if all 9 are VERY-HIGH, otherwise ITERATE
-
-      After updating the rubric file:
-      - If ALL 9 dimensions are VERY-HIGH, output exactly: ALL_VERY_HIGH
-      - Otherwise output: ITERATE
-    evaluate:
-      type: output_contains
-      pattern: "ALL_VERY_HIGH"
+    fragment: plan_rubric_score
     on_yes: done
     on_no: classify_research
     on_error: diagnose
@@ -282,17 +249,12 @@ states:
     terminal: true
 
   diagnose:
-    action_type: prompt
-    action: |
-      The rn-plan loop has terminated with an unrecoverable failure.
-
-      Diagnose what happened:
-      - If ${captured.run_dir.output}/plan-rubric.md exists, read it and report the last rubric scores.
-      - If ${captured.run_dir.output}/plan.md exists, note how far the plan was developed.
-      - Identify the most likely failure cause (most commonly: LLM error in the score state).
-
-      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust inputs.
-    next: failed
+    fragment: loop_failure_diagnose
+    with:
+      loop_name: rn-plan
+      extra_bullets: |
+        - If ${captured.run_dir.output}/plan.md exists, note how far the plan was developed.
+        - Note: the most likely cause is an LLM error in the score state.
 
   failed:
     # Error terminal — reached when the score state encounters an unrecoverable error.
