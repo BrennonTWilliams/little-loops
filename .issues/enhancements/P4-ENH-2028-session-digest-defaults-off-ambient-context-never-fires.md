@@ -34,6 +34,15 @@ One of:
 
 Option 1 is the right long-term default; option 2 is a quick fix for this project.
 
+## Scope Boundaries
+
+- **In scope**: Changing `SessionDigestConfig.enabled` default to `True` (option 1), adding a `history.session_digest` block to `.ll/ll-config.json` (option 2), or wiring a session_digest prompt into `/ll:init`/`/ll:configure` (option 3).
+- **In scope**: Updating `config-schema.json`, `docs/reference/API.md`, `CHANGELOG.md`, and tests to reflect the chosen default.
+- **Out of scope**: Changing the content format or algorithm of the session digest itself (ENH-1907).
+- **Out of scope**: Adding new history data sources beyond what ENH-1907 already captures.
+- **Out of scope**: Modifying per-skill explicit `ll-history-context` call behavior.
+- **Out of scope**: Changing the cap algorithm or stale-filtering decay logic.
+
 ## Implementation Steps
 
 ### Option 1: Change default to True
@@ -61,6 +70,33 @@ Add to `.ll/ll-config.json`:
 
 Update `skills/init/SKILL.md` Phase 3 and `skills/configure/SKILL.md` to include a `session_digest` prompt block.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/config/features.py` — change `SessionDigestConfig.enabled` default (option 1)
+- `config-schema.json` — update default annotation for `history.session_digest.enabled`
+- `.ll/ll-config.json` — add `history.session_digest` block (option 2)
+- `skills/init/SKILL.md` — add session_digest prompt to Phase 3 (option 3)
+- `skills/configure/SKILL.md` — add session_digest prompt block (option 3)
+- `CHANGELOG.md` — behavior-change migration note (option 1)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/hooks/session_start.py` — reads `history.session_digest.enabled` via `feature_enabled()`; primary consumer of the config change
+- TBD — `grep -r "session_digest" scripts/little_loops/` to find other references
+
+### Similar Patterns
+- TBD — `grep -r "SessionDigestConfig\|session_digest" scripts/little_loops/config/` for other feature-flag defaults to keep consistent
+
+### Tests
+- `scripts/tests/test_session_start.py` — assert digest fires with default config (option 1)
+- `scripts/tests/test_config_features.py` — verify `SessionDigestConfig()` default matches intended behavior
+
+### Documentation
+- `docs/reference/API.md` — update `SessionDigestConfig` default annotation
+
+### Configuration
+- `config-schema.json` — `history.session_digest.enabled` default value change
+
 ## API / Interface Changes
 
 - `SessionDigestConfig.enabled` default value changes (if option 1).
@@ -72,7 +108,19 @@ Update `skills/init/SKILL.md` Phase 3 and `skills/configure/SKILL.md` to include
 - `scripts/tests/test_session_start.py` — assert digest fires with default config (option 1), or assert it fires when config sets `enabled: true` (option 2).
 - `scripts/tests/test_config_features.py` — verify `SessionDigestConfig()` default matches intended behavior.
 
+## Impact
+
+- **Priority**: P4 — Feature is fully implemented but invisible post-install; no user is blocked.
+- **Effort**: Small — Option 1 is a one-line default change plus doc/test updates. Option 2 is a config file edit only.
+- **Risk**: Low — Option 1 changes observable behavior (adds a capped context block at session start) but the conservative `char_cap` limits injection size; opt-out available via `history.session_digest.enabled: false`.
+- **Breaking Change**: Yes (option 1) — Sessions that previously injected nothing will now inject a capped digest block. Not an API break, but an observable behavior change requiring a CHANGELOG entry.
+
+## Labels
+
+`history`, `session-digest`, `config-defaults`, `dx`, `discoverability`
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-09T01:44:50 - `69b33e41-c63d-4418-8c47-2b1a6287ce4b.jsonl`
 - `/ll:capture-issue` - 2026-06-08T22:17:25Z - `a20cfa81-f228-4cd0-9501-12f64feb6d30.jsonl`
 
 ---
