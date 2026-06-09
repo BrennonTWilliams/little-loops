@@ -1,5 +1,5 @@
 ---
-id: BUG-1978
+id: BUG-2054
 title: context-monitor.sh misreports context usage on 1M-context models (200k denominator)
   and has no sanity clamp for transient transcript-baseline spikes
 type: BUG
@@ -22,7 +22,7 @@ score_ambiguity: 20
 score_change_surface: 20
 ---
 
-# BUG-1978: context-monitor misreports usage on 1M-context models + no clamp on baseline spikes
+# BUG-2054: context-monitor misreports usage on 1M-context models + no clamp on baseline spikes
 
 ## Summary
 

@@ -1,5 +1,5 @@
 ---
-id: ENH-1864
+id: ENH-2053
 type: ENH
 priority: P3
 status: done
@@ -18,7 +18,7 @@ score_ambiguity: 18
 score_change_surface: 25
 ---
 
-# ENH-1864: `ll-deps tree` — core implementation (subparser, resolver, renderer, tests)
+# ENH-2053: `ll-deps tree` — core implementation (subparser, resolver, renderer, tests)
 
 ## Summary
 

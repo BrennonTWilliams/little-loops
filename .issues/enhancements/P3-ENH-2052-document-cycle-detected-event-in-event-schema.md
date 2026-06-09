@@ -9,7 +9,7 @@ completed_at: 2026-05-31 05:15:36+00:00
 status: done
 ---
 
-# ENH-1821: Document `cycle_detected` event in EVENT-SCHEMA.md
+# ENH-2052: Document `cycle_detected` event in EVENT-SCHEMA.md
 
 ## Summary
 
