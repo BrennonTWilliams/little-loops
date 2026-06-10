@@ -18,6 +18,7 @@ score_change_surface: 23
 implementation_order_risk: true
 decision_needed: false
 size: Very Large
+completed_at: '2026-06-10T21:09:58Z'
 ---
 
 # FEAT-2078: Add distill-traces skill to extract reusable loop fragments from history
@@ -260,3 +261,13 @@ _Updated by `/ll:confidence-check` on 2026-06-10 (post-wire-issue × 2 + refine-
 - `/ll:format-issue` - 2026-06-10T20:23:27 - `df278e51-a357-404f-9175-5da670693326.jsonl`
 - `/ll:confidence-check` - 2026-06-10T00:00:00Z - `df278e51-a357-404f-9175-5da670693326.jsonl`
 - `/ll:confidence-check` - 2026-06-10T00:00:00Z - `500e04c1-b363-424d-a867-30ed795e4120.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-06-10
+- **Decomposed into**: FEAT-2088, FEAT-2089
+
+Work for FEAT-2078 is now carried by its child issues; this parent was closed by rn-decompose.
