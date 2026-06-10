@@ -3,8 +3,9 @@ id: ENH-2073
 title: FSM per-state model override for prompt and slash_command states
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-10T16:02:38Z'
+completed_at: '2026-06-10T22:23:34Z'
 discovered_date: '2026-06-10'
 discovered_by: capture-issue
 decision_needed: false
@@ -22,6 +23,14 @@ score_change_surface: 20
 
 Add a `model:` field to individual FSM state definitions that overrides the host CLI's default model for that state's execution. The override applies only to non-bash states (`action_type: prompt` or `slash_command`); bash/shell states are unaffected.
 
+## Current Behavior
+
+Loop authors can only set one model for the entire run (via the `--model` CLI flag or host default). There is no mechanism to specify a different model for individual states in a loop YAML. `StateConfig` has no `model` field; `build_streaming()` does not accept a `model` parameter; there is no data path from YAML → schema → executor → runner for per-state model selection.
+
+## Expected Behavior
+
+A loop YAML with `model: <id>` on a `prompt` or `slash_command` state causes the host CLI to receive `--model <id>` for that state's invocation only. States without `model:` continue using the global default (or `--model` flag value). Shell/mcp_tool/contract states with `model:` emit a validation WARNING and run normally (field is ignored). See Acceptance Criteria for the full specification.
+
 ## Motivation
 
 Loop authors today can only set one model for the entire run (via `--model` CLI flag or host default). Some loops contain states with very different cost/quality profiles:
@@ -31,6 +40,13 @@ Loop authors today can only set one model for the entire run (via `--model` CLI 
 - A **vision-based** scoring state already routes through `VISION_MODEL` env vars at the prompt level, but there's no first-class harness support for it.
 
 Allowing per-state model overrides makes this cost/quality tradeoff explicit and portable, without requiring callers to splice `--model` into prompt text or manage env vars manually.
+
+## Impact
+
+- **Priority**: P3 — Quality-of-life for loop authors; workarounds exist via env vars. Non-blocking.
+- **Effort**: Medium — 24+ files but changes are mechanical (adding `model: str | None = None` to signatures and threading the value through a well-understood 4-layer call chain).
+- **Risk**: Medium — Wide Protocol implementation surface; 4 test files flagged HIGH BREAK RISK. Mitigation: test suite raises `TypeError` on any missed Protocol update, so missed sites surface immediately on `pytest`.
+- **Breaking Change**: No — `model:` is optional; absent = existing behaviour.
 
 ## Success Metrics
 
@@ -253,7 +269,13 @@ _Added by `/ll:confidence-check` on 2026-06-10_
 - Wide Protocol implementation surface — 11 ActionRunner.run() implementations need `model: str | None = None` added; 4 marked HIGH BREAK RISK in wiring analysis (test_fsm_persistence.py:636, 1950, 2010, 2095). Mitigation: test suite raises TypeError on any missed update — run tests incrementally.
 - Large change breadth (24+ files) with entirely mechanical depth — follow the enumerated wiring list step-by-step.
 
+## Labels
+
+`fsm`, `per-state-model`, `runner`, `host-runner`, `executor`, `enhancement`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-10T21:52:51 - `c7a7052e-b34d-479c-b983-bc00f5102f92.jsonl`
+- `/ll:confidence-check` - 2026-06-10T21:00:00Z - `2dff92fc-4982-4c9b-ad66-86bd11d851ac.jsonl`
 - `/ll:confidence-check` - 2026-06-10T00:00:00Z - `df278e51-a357-404f-9175-5da670693326.jsonl`
 - `/ll:wire-issue` - 2026-06-10T20:18:44 - `95dbd925-6569-41e8-8abd-f93aa6ac3332.jsonl`
 - `/ll:refine-issue` - 2026-06-10T20:03:11 - `d314cafc-792e-4c55-a666-ffca9d220400.jsonl`
@@ -266,8 +288,15 @@ _Added by `/ll:confidence-check` on 2026-06-10_
 - `/ll:refine-issue` - 2026-06-10T18:16:21 - `88c91679-4f83-4187-96a0-385cb4afe8c1.jsonl`
 - `/ll:format-issue` - 2026-06-10T16:07:29 - `44235a11-96b5-42bf-a8ef-bffe384cdaf0.jsonl`
 - `/ll:capture-issue` - 2026-06-10T16:02:38Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dae493a0-2705-496d-9f16-5c7e9a05de45.jsonl`
+- `/ll:manage-issue` - 2026-06-10T22:23:34Z - implemented per-state model override: added `model:` to StateConfig, threaded through 4-layer call chain (executor → runners → subprocess_utils → host_runner), validation WARNING for non-prompt states, 14 new tests, 27 Protocol mock updates
+
+---
+## Resolution
+
+- **Status**: done
+- **Approach**: Added `model: str | None = None` to `StateConfig`, `ActionRunner` Protocol, `DefaultActionRunner.run()`, `SimulationActionRunner.run()`, `run_claude_command()`, and all 4 `build_streaming()` implementations. Executor passes `model=state.model if action_mode == "prompt" else None`. Validation emits WARNING for `model:` on shell/mcp_tool/contract states. JSON schema, LOOPS_GUIDE.md, CLI.md, and CHANGELOG.md updated.
 
 ---
 ## Status
 
-**Current**: open
+**Current**: done

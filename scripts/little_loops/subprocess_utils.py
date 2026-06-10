@@ -263,6 +263,7 @@ def run_claude_command(
     agent: str | None = None,
     tools: list[str] | None = None,
     resume_session: bool = False,
+    model: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -301,6 +302,7 @@ def run_claude_command(
         resume=resume_session,
         agent=agent,
         tools=tools,
+        model=model,
     )
     cmd_args = [invocation.binary, *invocation.args]
 

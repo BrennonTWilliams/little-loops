@@ -178,6 +178,7 @@ class HostRunner(Protocol):
         resume: bool = False,
         agent: str | None = None,
         tools: list[str] | None = None,
+        model: str | None = None,
     ) -> HostInvocation:
         """Build an invocation that streams structured output.
 
@@ -238,6 +239,7 @@ class ClaudeCodeRunner:
         resume: bool = False,
         agent: str | None = None,
         tools: list[str] | None = None,
+        model: str | None = None,
     ) -> HostInvocation:
         args: list[str] = [
             "--dangerously-skip-permissions",
@@ -252,6 +254,8 @@ class ClaudeCodeRunner:
             args += ["--agent", agent]
         if tools:
             args += ["--tools", ",".join(tools)]
+        if model:
+            args += ["--model", model]
 
         env: dict[str, str] = {"CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1"}
         if working_dir is not None:
@@ -463,7 +467,9 @@ class CodexRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         sandbox_mode: str | None = None,
+        model: str | None = None,
     ) -> HostInvocation:
+        del model  # codex does not support --model in streaming mode
         if agent is not None:
             prompt, injected = self._inject_agent_persona(agent, prompt, working_dir)
             if not injected:
@@ -636,6 +642,7 @@ class OpenCodeRunner:
         resume: bool = False,
         agent: str | None = None,
         tools: list[str] | None = None,
+        model: str | None = None,
     ) -> HostInvocation:
         raise HostNotConfigured(
             "OpenCode orchestration not yet wired — research OpenCode headless CLI. "
@@ -707,6 +714,7 @@ class PiRunner:
         resume: bool = False,
         agent: str | None = None,
         tools: list[str] | None = None,
+        model: str | None = None,
     ) -> HostInvocation:
         raise HostNotConfigured(
             "Pi orchestration not yet wired — see FEAT-992. "

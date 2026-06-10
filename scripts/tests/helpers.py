@@ -26,6 +26,7 @@ def make_test_state(
     capture: str | None = None,
     timeout: int | None = None,
     on_maintain: str | None = None,
+    model: str | None = None,
 ) -> StateConfig:
     """Create a StateConfig for testing.
 
@@ -44,6 +45,7 @@ def make_test_state(
         capture=capture,
         timeout=timeout,
         on_maintain=on_maintain,
+        model=model,
     )
 
 

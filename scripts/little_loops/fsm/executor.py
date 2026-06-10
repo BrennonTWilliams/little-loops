@@ -990,14 +990,20 @@ class FSMExecutor:
         if action_result is not None:
             _combined = (action_result.output or "") + "\n" + (action_result.stderr or "")
             _failure_type, _reason = classify_failure(_combined, action_result.exit_code)
-            if action_result.exit_code != 0 and _failure_type == FailureType.TRANSIENT and (
-                "rate limit" in _reason.lower() or "quota" in _reason.lower()
+            if (
+                action_result.exit_code != 0
+                and _failure_type == FailureType.TRANSIENT
+                and ("rate limit" in _reason.lower() or "quota" in _reason.lower())
             ):
                 _handled, _target = self._handle_rate_limit(state, route_ctx.state_name)
                 if _handled:
                     self._rate_limit_in_flight.add(route_ctx.state_name)
                     return _target
-            elif action_result.exit_code != 0 and _failure_type == FailureType.TRANSIENT and "api server error" in _reason.lower():
+            elif (
+                action_result.exit_code != 0
+                and _failure_type == FailureType.TRANSIENT
+                and "api server error" in _reason.lower()
+            ):
                 _handled, _target = self._handle_api_error(state, route_ctx.state_name)
                 if _handled:
                     return _target
@@ -1100,6 +1106,7 @@ class FSMExecutor:
                 agent=state.agent if action_mode == "prompt" else None,
                 tools=state.tools if action_mode == "prompt" else None,
                 on_usage=on_usage,
+                model=state.model if action_mode == "prompt" else None,
             )
 
         preview = result.output[-2000:].strip() if result.output else None

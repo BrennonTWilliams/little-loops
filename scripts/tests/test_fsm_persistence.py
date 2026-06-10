@@ -651,8 +651,9 @@ class MockActionRunner:
         tools: list[str] | None = None,
         on_usage: Any = None,
         on_usage_detailed: Any = None,
+        model: str | None = None,
     ) -> ActionResult:
-        del on_output_line, agent, tools, on_usage, on_usage_detailed
+        del on_output_line, agent, tools, on_usage, on_usage_detailed, model
         self.calls.append(action)
         if self._index < len(self.results):
             result = self.results[self._index]
@@ -1959,8 +1960,19 @@ class TestSignalHandlingPersistence:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage
+                del (
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                    model,
+                )
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -2019,8 +2031,19 @@ class TestSignalHandlingPersistence:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage
+                del (
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                    model,
+                )
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -2104,8 +2127,19 @@ class TestSignalHandlingPersistence:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage
+                del (
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                    model,
+                )
                 self.calls.append(action)
                 call_count[0] += 1
 

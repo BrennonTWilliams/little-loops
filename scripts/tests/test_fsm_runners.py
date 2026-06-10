@@ -319,3 +319,17 @@ class TestDefaultActionRunnerSlashPath:
             runner.run("/ll:skill", 60, True, tools=["Read", "Grep"])
 
         assert captured_kwargs.get("tools") == ["Read", "Grep"]
+
+    def test_model_kwarg_forwarded(self) -> None:
+        runner = DefaultActionRunner()
+        completed = self._make_completed_process()
+        captured_kwargs: dict = {}
+
+        def capture(**kwargs: object) -> subprocess.CompletedProcess[str]:
+            captured_kwargs.update(kwargs)
+            return completed
+
+        with patch("little_loops.fsm.runners.run_claude_command", side_effect=capture):
+            runner.run("/ll:skill", 60, True, model="claude-haiku-4-5-20251001")
+
+        assert captured_kwargs.get("model") == "claude-haiku-4-5-20251001"

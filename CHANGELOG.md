@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.121.0] - 2026-06-10
+
+### Added
+
+- **Per-state `model:` override for FSM loop states** — `StateConfig` now accepts an optional `model:` field. When set on a `prompt` or `slash_command` state, the specified model ID is passed as `--model <id>` to the host CLI for that state only; other states continue using the global default. A validation WARNING is emitted when `model:` is set on `shell`, `mcp_tool`, or `contract` states (where the host CLI is not invoked). Absent = existing behavior, fully backwards-compatible. (ENH-2073)
+
 ## [1.120.0] - 2026-06-09
 
 ### Added

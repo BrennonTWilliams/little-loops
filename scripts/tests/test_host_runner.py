@@ -154,6 +154,20 @@ class TestClaudeCodeRunner:
         assert "--tools" in invocation.args
         assert "Read,Edit" in invocation.args
 
+    def test_build_streaming_with_model(self) -> None:
+        """build_streaming emits --model <id> when model is set (ENH-2073)."""
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_streaming(prompt="hi", model="claude-haiku-4-5-20251001")
+        assert "--model" in invocation.args
+        idx = invocation.args.index("--model")
+        assert invocation.args[idx + 1] == "claude-haiku-4-5-20251001"
+
+    def test_build_streaming_without_model_omits_flag(self) -> None:
+        """build_streaming omits --model when model is None (default)."""
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_streaming(prompt="hi")
+        assert "--model" not in invocation.args
+
     def test_build_version_check(self) -> None:
         runner = ClaudeCodeRunner()
         invocation = runner.build_version_check()

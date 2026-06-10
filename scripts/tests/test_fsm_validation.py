@@ -1035,6 +1035,62 @@ class TestMetaLoopValidation:
         assert unknown_warnings == []
 
 
+class TestModelStateValidation:
+    """ENH-2073: model: override validation — WARNING for non-prompt states."""
+
+    def test_model_on_shell_state_emits_warning(self) -> None:
+        """model: on a shell state emits a validation WARNING."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="echo hi",
+                    action_type="shell",
+                    model="claude-haiku-4-5-20251001",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_state_action("work", fsm.states["work"])
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert any("model" in w.message and "ignored" in w.message for w in warnings)
+
+    def test_model_on_prompt_state_no_warning(self) -> None:
+        """model: on a prompt state does not emit a warning."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="/ll:test",
+                    action_type="prompt",
+                    model="claude-haiku-4-5-20251001",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_state_action("work", fsm.states["work"])
+        model_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "model" in e.message
+        ]
+        assert model_warnings == []
+
+    def test_model_on_mcp_tool_state_emits_warning(self) -> None:
+        """model: on an mcp_tool state emits a validation WARNING."""
+        state = StateConfig(
+            action="server/tool",
+            action_type="mcp_tool",
+            model="claude-opus-4-8",
+            next="done",
+        )
+        errors = _validate_state_action("check", state)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert any("model" in w.message and "ignored" in w.message for w in warnings)
+
+
 class TestArtifactIsolation:
     """MR-3: loops must isolate artifacts to ${context.run_dir}, not shared .loops/tmp/."""
 

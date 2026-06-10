@@ -505,6 +505,16 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
                 )
             )
 
+    # model: override is silently ignored for non-prompt states (host CLI is not invoked)
+    if state.model is not None and state.action_type not in ("prompt", "slash_command", None):
+        errors.append(
+            ValidationError(
+                message="model: override is ignored for shell/mcp_tool/contract states",
+                path=f"{path}.model",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
     # params field is only valid for mcp_tool states
     if state.params and state.action_type != "mcp_tool":
         errors.append(

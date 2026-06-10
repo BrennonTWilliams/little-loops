@@ -410,6 +410,10 @@
           },
           "description": "List of tool names to pass as --tools CSV to the Claude CLI subprocess. Only used for prompt-mode states. Ignored for shell-mode states."
         },
+        "model": {
+          "type": "string",
+          "description": "Model override to pass as --model to the Claude CLI subprocess for this state only. Only used for prompt-mode states (action_type: prompt or slash_command). Ignored for shell/mcp_tool/contract states — a validation WARNING is emitted if set on those types. Absent = inherits the global --model flag or host default."
+        },
         "type": {
           "type": "string",
           "description": "Optional state type marker. Set to 'learning' (FEAT-1283) to dispatch to the learning-state handler: queries the learning-tests registry for each target, invokes /ll:explore-api on miss/stale, routes to on_yes when all proven and on_blocked/on_no on refuted/retries-exhausted. Learning states are also exempt from throttle hard_max enforcement."

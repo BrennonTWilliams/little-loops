@@ -53,10 +53,20 @@ class MockActionRunner:
         tools: list[str] | None = None,
         on_usage: Any = None,
         on_usage_detailed: Any = None,
+        model: str | None = None,
     ) -> ActionResult:
         """Return configured result for action."""
         # Suppress unused variable warnings - these match the Protocol signature
-        del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
+        del (
+            timeout,
+            is_slash_command,
+            on_output_line,
+            agent,
+            tools,
+            on_usage,
+            on_usage_detailed,
+            model,
+        )
         self.calls.append(action)
 
         # Use indexed results in order (when results were set as a list)
@@ -2119,6 +2129,7 @@ class TestErrorHandling:
                 tools: list[str] | None = None,
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
                 del (
                     action,
@@ -2129,6 +2140,7 @@ class TestErrorHandling:
                     tools,
                     on_usage,
                     on_usage_detailed,
+                    model,
                 )
                 raise RuntimeError("Connection failed")
 
@@ -2639,6 +2651,7 @@ class TestSignalHandling:
                 tools: list[str] | None = None,
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -2648,6 +2661,7 @@ class TestSignalHandling:
                     tools,
                     on_usage,
                     on_usage_detailed,
+                    model,
                 )
                 self.calls.append(action)
                 call_count[0] += 1
@@ -2732,6 +2746,7 @@ class TestSignalHandling:
                 tools: list[str] | None = None,
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -2741,6 +2756,7 @@ class TestSignalHandling:
                     tools,
                     on_usage,
                     on_usage_detailed,
+                    model,
                 )
                 self.calls.append(action)
                 call_count[0] += 1
@@ -2917,6 +2933,7 @@ class TestActionExceptionRouting:
                 tools: list[str] | None = None,
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
                 del (
                     action,
@@ -2927,6 +2944,7 @@ class TestActionExceptionRouting:
                     tools,
                     on_usage,
                     on_usage_detailed,
+                    model,
                 )
                 raise exc
 
@@ -4266,7 +4284,9 @@ class TestDefaultTimeout:
             tools: list[str] | None = None,
             on_usage: Any = None,
             on_usage_detailed: Any = None,
+            model: str | None = None,
         ) -> ActionResult:
+            del model
             self.captured_timeouts.append(timeout)
             return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
 
@@ -5023,8 +5043,10 @@ class TestAgentToolsPassThrough:
                 tools: list[str] | None = None,
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
                 captured.append({"agent": agent, "tools": tools})
+                del model
                 return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
 
         fsm = FSMLoop(
@@ -5063,8 +5085,10 @@ class TestAgentToolsPassThrough:
                 tools: list[str] | None = None,
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
                 captured.append({"agent": agent, "tools": tools})
+                del model
                 return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
 
         fsm = FSMLoop(
@@ -5492,10 +5516,16 @@ class TestRateLimitRetries:
         )
         runner = MockActionRunner()
         runner.results = [
-            ("work.sh", self._rl_result()),   # rate-limit → in-place retry (must NOT consume max_retries)
-            ("work.sh", {"exit_code": 1}),     # failure 1 → on_no=execute
-            ("work.sh", {"exit_code": 1}),     # failure 2 → on_no=execute
-            ("work.sh", {"exit_code": 1}),     # failure 3 → on_no=execute; retry_count hits limit next iter
+            (
+                "work.sh",
+                self._rl_result(),
+            ),  # rate-limit → in-place retry (must NOT consume max_retries)
+            ("work.sh", {"exit_code": 1}),  # failure 1 → on_no=execute
+            ("work.sh", {"exit_code": 1}),  # failure 2 → on_no=execute
+            (
+                "work.sh",
+                {"exit_code": 1},
+            ),  # failure 3 → on_no=execute; retry_count hits limit next iter
         ]
         runner.use_indexed_order = True
 
@@ -7148,6 +7178,7 @@ class TestStallDetector:
                 tools: list[str] | None = None,
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -7157,6 +7188,7 @@ class TestStallDetector:
                     tools,
                     on_usage,
                     on_usage_detailed,
+                    model,
                 )
                 self.calls.append(action)
                 if "work" in action:
@@ -7263,6 +7295,7 @@ class TestStallDetector:
                 tools: list[str] | None = None,
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
+                model: str | None = None,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -7272,6 +7305,7 @@ class TestStallDetector:
                     tools,
                     on_usage,
                     on_usage_detailed,
+                    model,
                 )
                 self.calls.append(action)
                 # Simulate a loop that always appends to its own plan file (like

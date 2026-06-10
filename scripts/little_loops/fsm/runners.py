@@ -43,6 +43,7 @@ class ActionRunner(Protocol):
         tools: list[str] | None = None,
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
+        model: str | None = None,
     ) -> ActionResult:
         """Execute an action and return the result.
 
@@ -78,6 +79,7 @@ class DefaultActionRunner:
         tools: list[str] | None = None,
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
+        model: str | None = None,
     ) -> ActionResult:
         """Execute action and return result, streaming output line by line.
 
@@ -90,6 +92,7 @@ class DefaultActionRunner:
             tools: Optional list of tool names to pass as --tools CSV (prompt-mode only)
             on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
             on_usage_detailed: Optional callback invoked with a TokenUsage dataclass on completion
+            model: Optional model override to pass as --model to Claude CLI (prompt-mode only)
 
         Returns:
             ActionResult with execution details
@@ -129,6 +132,7 @@ class DefaultActionRunner:
                     tools=tools,
                     on_usage=on_usage,
                     on_usage_detailed=_collect_usage,
+                    model=model,
                 )
             except subprocess.TimeoutExpired:
                 return ActionResult(
@@ -221,6 +225,7 @@ class SimulationActionRunner:
         tools: list[str] | None = None,
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
+        model: str | None = None,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
 
@@ -233,11 +238,12 @@ class SimulationActionRunner:
             tools: Ignored in simulation
             on_usage: Ignored in simulation
             on_usage_detailed: Ignored in simulation
+            model: Ignored in simulation
 
         Returns:
             ActionResult with simulated exit code
         """
-        del timeout, on_output_line, agent, tools, on_usage  # unused in simulation
+        del timeout, on_output_line, agent, tools, on_usage, model  # unused in simulation
         self.calls.append(action)
         self.call_count += 1
 

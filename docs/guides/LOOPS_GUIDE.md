@@ -2841,6 +2841,7 @@ These optional fields apply to `action_type: prompt` states only. They are ignor
 |-------|------|-------------|
 | `agent:` | string | Passes `--agent <name>` to the Claude subprocess. Loads `.claude/agents/<name>.md`, picking up its system prompt and tool set. |
 | `tools:` | list of strings | Passes `--tools <csv>` to the Claude subprocess. Explicitly scopes available tools without needing a full agent file (e.g. `["Read", "Bash"]`). |
+| `model:` | string | Passes `--model <id>` to the Claude subprocess for this state only. Use for per-state cost/quality tradeoffs (e.g. `claude-haiku-4-5-20251001` for cheap routing states, `claude-opus-4-8` for expensive evaluation states). Absent = inherits the global `--model` flag or host default. Ignored (with a validation WARNING) for `shell`, `mcp_tool`, and `contract` states. |
 
 Example — run a state under a specialized agent, and another with restricted tools:
 

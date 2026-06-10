@@ -52,6 +52,7 @@ def make_state(
     next: str | None = None,
     evaluate: EvaluateConfig | None = None,
     route: RouteConfig | None = None,
+    model: str | None = None,
 ) -> StateConfig:
     """Helper to create test StateConfig objects."""
     return StateConfig(
@@ -62,6 +63,7 @@ def make_state(
         next=next,
         evaluate=evaluate,
         route=route,
+        model=model,
     )
 
 
@@ -2360,6 +2362,58 @@ class TestAgentToolsStateConfig:
         restored = StateConfig.from_dict(d)
         assert restored.agent == "my-agent"
         assert restored.tools == ["Bash", "Edit"]
+
+
+class TestModelStateConfig:
+    """Tests for model: FSM state field (ENH-2073)."""
+
+    def test_state_config_model_defaults_to_none(self) -> None:
+        """StateConfig.model defaults to None."""
+        state = StateConfig(action="echo hi", next="done")
+        assert state.model is None
+
+    def test_state_config_accepts_model(self) -> None:
+        """StateConfig accepts model field."""
+        state = StateConfig(
+            action="/ll:test", action_type="prompt", model="claude-haiku-4-5-20251001", next="done"
+        )
+        assert state.model == "claude-haiku-4-5-20251001"
+
+    def test_to_dict_includes_model_when_set(self) -> None:
+        """to_dict includes model when set."""
+        state = StateConfig(action="/ll:test", model="claude-haiku-4-5-20251001", next="done")
+        d = state.to_dict()
+        assert d["model"] == "claude-haiku-4-5-20251001"
+
+    def test_to_dict_excludes_model_when_none(self) -> None:
+        """to_dict omits model when not set."""
+        state = StateConfig(action="echo hi", next="done")
+        d = state.to_dict()
+        assert "model" not in d
+
+    def test_from_dict_with_model(self) -> None:
+        """from_dict deserializes model field."""
+        data = {"action": "/ll:test", "model": "claude-opus-4-8", "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.model == "claude-opus-4-8"
+
+    def test_from_dict_without_model_defaults_none(self) -> None:
+        """from_dict defaults model to None when absent."""
+        data = {"action": "echo hi", "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.model is None
+
+    def test_round_trip_model(self) -> None:
+        """StateConfig with model round-trips through to_dict/from_dict."""
+        original = StateConfig(
+            action="/ll:test",
+            action_type="prompt",
+            model="claude-haiku-4-5-20251001",
+            next="done",
+        )
+        d = original.to_dict()
+        restored = StateConfig.from_dict(d)
+        assert restored.model == "claude-haiku-4-5-20251001"
 
 
 class TestParameterSpec:

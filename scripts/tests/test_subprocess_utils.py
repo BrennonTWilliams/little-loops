@@ -1867,6 +1867,44 @@ class TestRunClaudeCommandAgentToolsFlags:
         idx = captured_args[0].index("--tools")
         assert captured_args[0][idx + 1] == "ToolSearch"
 
+    def test_model_flag_appended_to_cmd_args(self) -> None:
+        """--model <id> is appended to cmd_args when model is set."""
+        mock_process = self._make_mock_process()
+        captured_args: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("/ll:test", model="claude-haiku-4-5-20251001")
+
+        assert len(captured_args) == 1
+        assert "--model" in captured_args[0]
+        idx = captured_args[0].index("--model")
+        assert captured_args[0][idx + 1] == "claude-haiku-4-5-20251001"
+
+    def test_no_model_flag_when_none(self) -> None:
+        """No --model flag is added when model is None (default)."""
+        mock_process = self._make_mock_process()
+        captured_args: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("/ll:test")
+
+        assert len(captured_args) == 1
+        assert "--model" not in captured_args[0]
+
 
 class TestRunClaudeCommandResumeSession:
     """Tests for resume_session flag in run_claude_command() (BUG-1377 Option E)."""
@@ -2073,6 +2111,7 @@ class TestRunClaudeCommandHostRunner:
             resume=False,
             agent=None,
             tools=None,
+            model=None,
         )
         assert captured_args[0][0] == "myhost"
 

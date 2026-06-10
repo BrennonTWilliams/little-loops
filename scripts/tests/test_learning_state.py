@@ -53,8 +53,18 @@ class _MockRunner:
         tools: list[str] | None = None,
         on_usage: Any = None,
         on_usage_detailed: Any = None,
+        model: str | None = None,
     ) -> ActionResult:
-        del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
+        del (
+            timeout,
+            is_slash_command,
+            on_output_line,
+            agent,
+            tools,
+            on_usage,
+            on_usage_detailed,
+            model,
+        )
         self.calls.append(action)
         if self.write_records and self.base_dir is not None:
             target = action.removeprefix("/ll:explore-api ").strip()

@@ -444,6 +444,7 @@ class StateConfig:
     fragment_parameters: dict[str, ParameterSpec] = field(default_factory=dict)
     agent: str | None = None
     tools: list[str] | None = None
+    model: str | None = None
     extra_routes: dict[str, str] = field(default_factory=dict)
     type: str | None = None
     throttle: ThrottleConfig | None = None
@@ -514,6 +515,8 @@ class StateConfig:
             result["agent"] = self.agent
         if self.tools is not None:
             result["tools"] = self.tools
+        if self.model is not None:
+            result["model"] = self.model
         for verdict, target in self.extra_routes.items():
             result[f"on_{verdict}"] = target
         if self.type is not None:
@@ -595,6 +598,7 @@ class StateConfig:
             with_=data.get("with", {}),
             agent=data.get("agent"),
             tools=data.get("tools"),
+            model=data.get("model"),
             extra_routes=extra_routes,
             type=data.get("type"),
             throttle=throttle,
