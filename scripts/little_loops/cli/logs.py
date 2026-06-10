@@ -178,7 +178,7 @@ def discover_all_projects(logger: Logger, *, host: str | None = None) -> list[Pa
         )
 
         if not decoded_path.exists():
-            logger.warning(f"Decoded path does not exist: {decoded_path}")
+            logger.debug(f"Decoded path does not exist: {decoded_path}")
             continue
 
         if _has_ll_activity(project_dir):

@@ -9,17 +9,17 @@ captured_at: '2026-06-08T18:12:50Z'
 discovered_date: '2026-06-08'
 discovered_by: capture-issue
 testable: false
-decision_needed: false
+decision_needed: true
 labels:
 - docs
 - loops
 - guidelines
-confidence_score: 98
-outcome_confidence: 71
-score_complexity: 18
-score_test_coverage: 10
-score_ambiguity: 25
-score_change_surface: 18
+confidence_score: 93
+outcome_confidence: 68
+score_complexity: 17
+score_test_coverage: 12
+score_ambiguity: 20
+score_change_surface: 19
 size: Very Large
 parent: EPIC-1811
 ---
@@ -81,6 +81,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Clarification for `agents/loop-specialist.md`**: Replace ONLY the definitional table at lines 53–65 with a pointer; the `## Failure modes observed` checklist (lines 87–93) and the `## Operating Guidelines` mode-name prohibition (line 145) **must retain all mode names inline** — these are the machine-greppable artifact schema, not taxonomy duplication. The absence assertion `"| **ambiguous-output** | The loop's exit predicate"` targets the table row format only; `- [ ] ambiguous-output` checklist entries must NOT be removed [wiring pass 4]
 - Update `docs/guides/LOOPS_GUIDE.md` lines 2448–2452 — three standalone inline MR-1/MR-3/MR-4 prose-definition paragraphs in `### CLI-Anything Bootstrap`; replace each with a one-line pointer to `loops-guidelines.md § Meta-Loop Design Rules` [wiring pass 4]
 - Note for `skills/create-loop/loop-types.md` line 1505 — raw `validation.py:76–94` line-number reference is embedded alongside the MR-1 pointer being added; verify this still resolves or update to the stable function-name anchor (`_validate_meta_loop_evaluation`) [wiring pass 4]
+- **DO NOT MODIFY `skills/review-loop/reference.md`** — Lines 40–44 contain an MR-1…MR-5 validation-error reference table used by the review-loop skill itself. This is an operational reference (not a normative prose duplication) and is explicitly out of scope for ENH-2023. A new `DOC_STRINGS_PRESENT` assertion in `test_wiring_skills_and_commands.py` acts as an accidental-deletion guard. [wiring pass 5]
+- Update `docs/index.md` — add `standards/loops-guidelines.md` entry to the `## Developer Documentation` section (implied by wiring-pass-2 test assertion but not previously listed as an explicit edit target) [wiring pass 5]
+- **Resolve `docs_dir` boundary before creating `standards/loops-guidelines.md`**: `mkdocs.yml` sets `docs_dir: docs`; MkDocs cannot render `standards/loops-guidelines.md` because it is outside that boundary. Recommended resolution: create the file at `docs/standards/loops-guidelines.md` instead and update all pointer links accordingly (relative paths in cross-references must be adjusted). If `standards/` must stay at project root, add a symlink `docs/standards → ../../standards` or remove the `mkdocs.yml` nav entry and the corresponding `DOC_STRINGS_PRESENT` test assertion. [wiring pass 5]
+- Update `mkdocs.yml` `nav:` block — add a nav entry for `docs/standards/loops-guidelines.md` (e.g., `- Loop Authoring Guidelines: standards/loops-guidelines.md` under an `Architecture:` or new `Standards:` group). Without this entry, MkDocs builds the file but it does not appear in the site sidebar navigation. [wiring pass 6]
 
 ## Integration Map
 
@@ -110,6 +114,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `skills/create-loop/loop-types.md` | ~1488, ~1505 | Add `(see [loops-guidelines.md](../../standards/loops-guidelines.md) § Meta-Loop Design Rules)` pointer after each MR-1 compliance assertion in the meta-optimize template section |
 | `scripts/tests/test_wiring_guides_and_meta.py` | `DOC_FILES_MUST_EXIST`, `DOC_STRINGS_PRESENT` | Add existence assertion for `standards/loops-guidelines.md` and pointer-presence assertions in `README.md`, `CONTRIBUTING.md`, `.claude/CLAUDE.md` [wiring pass 2] |
 | `scripts/tests/test_wiring_skills_and_commands.py` | `DOC_STRINGS_PRESENT` | Add assertion that `agents/loop-specialist.md` contains `loops-guidelines.md` pointer after inline taxonomy is replaced [wiring pass 2] |
+| `docs/index.md` | `## Developer Documentation` section | Add `standards/loops-guidelines.md` entry to the documentation landing page [wiring pass 5] |
+| `mkdocs.yml` | `nav:` block | Add nav entry for `docs/standards/loops-guidelines.md` (e.g., under `Architecture:` or a new `Standards:` section) — without this entry the file builds but does not appear in the MkDocs sidebar [wiring pass 6] |
 
 ### Codebase Research Findings
 
@@ -244,6 +250,49 @@ _Added by `/ll:wire-issue` (fourth pass) — additional DOC_STRINGS_ABSENT entri
 (".codex/agents/loop-specialist.toml", "| **ambiguous-output** | The loop's exit predicate", "ENH-2023"),
 ```
 
+### Codebase Research Findings
+
+_Added by `/ll:wire-issue` (fifth pass) — new test assertions and docs_dir clarification:_
+
+**`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_ABSENT`** (3 new entries confirming the inline MR prose blocks were removed from `LOOPS_GUIDE.md` § CLI-Anything Bootstrap, lines 2448–2452):
+```python
+("docs/guides/LOOPS_GUIDE.md", "**Meta-loop discipline (MR-1)**:", "ENH-2023"),
+("docs/guides/LOOPS_GUIDE.md", "**Per-run artifact isolation (MR-3)**:", "ENH-2023"),
+("docs/guides/LOOPS_GUIDE.md", "**Partial-route dead-end guard (MR-4)**:", "ENH-2023"),
+```
+
+**`test_wiring_skills_and_commands.py` — append to `DOC_STRINGS_ABSENT`** (1 new entry confirming the stale line-number reference was removed from `loop-types.md` line 1505):
+```python
+("skills/create-loop/loop-types.md", "validation.py:76–94", "ENH-2023"),
+```
+
+**`test_wiring_skills_and_commands.py` — append to `DOC_STRINGS_PRESENT`** (1 new accidental-deletion guard — fires if `skills/review-loop/reference.md` MR table is accidentally cleared):
+```python
+("skills/review-loop/reference.md", "| MR-1 | Meta-loop (writes harness artifacts", "ENH-2023"),
+```
+
+**`docs_dir` boundary**: `mkdocs.yml` uses `docs_dir: docs`; `standards/loops-guidelines.md` is outside this directory and cannot be referenced in the `nav:` block as written. Recommended resolution: create the canonical file at `docs/standards/loops-guidelines.md` and adjust all relative pointer links (e.g., `.claude/CLAUDE.md` pointer becomes `../docs/standards/loops-guidelines.md`). If project-root `standards/` is preferred, either add a symlink or drop the `mkdocs.yml` nav entry and remove the corresponding `DOC_STRINGS_PRESENT` test. Verified by Agent 2 wiring pass 5.
+
+### Codebase Research Findings
+
+_Added by `/ll:wire-issue` (sixth pass) — mkdocs.yml nav gap and test routing corrections:_
+
+**`mkdocs.yml` nav entry missing** — The file is not in "Files to Modify" but requires a `nav:` addition for `docs/standards/loops-guidelines.md`. Without it, the canonical doc builds but is not navigable in the MkDocs sidebar.
+
+**`test_wiring_skills_and_commands.py` — append to `DOC_STRINGS_PRESENT`** (1 new entry — verifies mkdocs.yml nav entry was added; all existing `mkdocs.yml` assertions live in this file per established convention):
+```python
+("mkdocs.yml", "loops-guidelines", "ENH-2023"),
+```
+
+**Test routing clarification — `.claude/CLAUDE.md` assertion**: The issue spec (wiring pass 2) assigns the `.claude/CLAUDE.md` pointer assertion to `test_wiring_guides_and_meta.py`. However, all existing `.claude/CLAUDE.md` assertions in the test suite live in `test_wiring_cli_registry.py` (per established convention — that file owns `.claude/CLAUDE.md`, `commands/help.md`, and `docs/reference/CLI.md` assertions). Recommend moving `(".claude/CLAUDE.md", "loops-guidelines.md", "ENH-2023")` from `test_wiring_guides_and_meta.py` to `test_wiring_cli_registry.py`:
+
+**`test_wiring_cli_registry.py` — append to `DOC_STRINGS_PRESENT`** (replaces the same entry currently spec'd for `test_wiring_guides_and_meta.py`):
+```python
+(".claude/CLAUDE.md", "loops-guidelines.md", "ENH-2023"),
+```
+
+**Path consistency note**: All test assertions currently use `"standards/loops-guidelines.md"` (project root). If the docs_dir boundary is resolved by using `docs/standards/loops-guidelines.md` (recommended), update all test assertion paths accordingly — including the `DOC_FILES_MUST_EXIST` entry `("standards/loops-guidelines.md", "ENH-2023")` and the five `DOC_STRINGS_PRESENT` entries targeting the file's own content.
+
 ### Documentation
 - `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` — the empirical study behind the MR rules; loops-guidelines.md should link to it in the See Also section (as HARNESS_OPTIMIZATION_GUIDE.md line 244 already does)
 
@@ -280,18 +329,23 @@ _Wiring pass added by `/ll:wire-issue` (second pass):_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-09_
+_Added by `/ll:confidence-check` on 2026-06-09; updated 2026-06-10_
 
-**Readiness Score**: 98/100 → PROCEED
-**Outcome Confidence**: 71/100 → MODERATE
+**Readiness Score**: 93/100 → PROCEED *(−5 from 98; docs_dir path decision unresolved, ENH-1903 coordination pending)*
+**Outcome Confidence**: 68/100 → LOW *(−5 from 73; wiring passes 5–6 introduced path ambiguity in test assertions)*
 
 ### Outcome Risk Factors
-- Wide document sweep across 15 distinct files — though this is a Pattern B fanout with enumerated sites and an automated verification chain, manual execution is still required at each site; work through the Integration Map table systematically
-- No automated semantic validation — DOC_STRINGS_PRESENT/ABSENT entries confirm pointer placement and source removal, but cannot verify that the assembled loops-guidelines.md accurately reproduces source sections; manual read-through against all source passages is required after assembly
-- ENH-1903 coordination — CLAUDE.md § Loop Authoring compaction must incorporate or sequence after ENH-1903's `ll-parallel` note to prevent silent content loss; explicit coordination required before merging
+- File path decision must be resolved before starting — `docs/standards/loops-guidelines.md` vs project-root `standards/loops-guidelines.md` cascades through 7+ DOC_STRINGS_PRESENT/ABSENT assertion paths and all relative links in pointer updates; `mkdocs.yml` `docs_dir: docs` means project-root location cannot be rendered by MkDocs; resolve before starting to avoid rework
+- No automated semantic validation of assembled content — DOC_STRINGS_PRESENT/ABSENT entries confirm structural placement and source removal, but cannot validate that `loops-guidelines.md` faithfully reproduces source passages; manual read-through comparing each assembled section against its source is required after assembly
+- ENH-1903 coordination required — ENH-1903 (open) touches the same CLAUDE.md § Loop Authoring section; the compaction pass must sequence after ENH-1903 lands or explicitly incorporate its `ll-parallel` note before merging; see Scope Boundary section
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-10T00:00:00Z - `12a4304b-88ca-46d1-8a44-8ca899bcca11.jsonl`
+- `/ll:wire-issue` - 2026-06-10T04:34:06 - `a169cf57-e620-4e48-972e-dd9665d2a3ce.jsonl`
+- `/ll:confidence-check` - 2026-06-09T00:00:00Z - `753d6ec3-0599-4602-b86b-683f82320685.jsonl`
+- `/ll:confidence-check` - 2026-06-09T00:00:00Z - `62b84f66-68e2-4bb7-8596-0007f0868fbf.jsonl`
 - `/ll:confidence-check` - 2026-06-09T00:00:00Z - `37b87700-9806-4243-a3d1-73204120aa82.jsonl`
+- `/ll:wire-issue` - 2026-06-10T01:15:00 - `07dab59b-4558-495b-ac0c-665428a59e71.jsonl`
 - `/ll:wire-issue` - 2026-06-10T00:47:56 - `92c7b00f-dcbe-4b46-b3a2-9decda4c7786.jsonl`
 - `/ll:confidence-check` - 2026-06-09T00:00:00Z - `444a3d6e-13a2-4c42-b9b3-615482739169.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

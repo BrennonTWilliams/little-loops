@@ -11,6 +11,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import logging
+
 from little_loops.cli.logs import (
     _aggregate_skill_stats,
     _build_eval_fixture,
@@ -25,6 +27,7 @@ from little_loops.cli.logs import (
     _parse_args,
     _redact_input_context,
     _resolve_session_log,
+    discover_all_projects,
     main_logs,
 )
 from little_loops.session_store import ensure_db
@@ -163,8 +166,8 @@ class TestDiscover:
         captured = capsys.readouterr()
         assert captured.out.strip() == ""
 
-    def test_discover_warns_and_skips_nonexistent_decoded_path(self, capsys) -> None:
-        """discover emits warning for decoded paths that don't exist on disk."""
+    def test_discover_skips_nonexistent_decoded_path_silently(self, capsys) -> None:
+        """discover silently skips decoded paths that don't exist on disk (no WARNING)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             claude_projects = home / ".claude" / "projects"
@@ -201,6 +204,42 @@ class TestDiscover:
         decoded_path = "/does/not/exist/path"
         output_lines = [line.strip() for line in captured.out.strip().splitlines()]
         assert decoded_path not in output_lines
+
+    def test_stale_worktree_path_emits_no_warning(self, caplog) -> None:
+        """Stale worktree paths produce no WARNING log at the default level (ENH-2067)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            # Encoded name decodes to a path that doesn't exist on disk
+            encoded = "-nonexistent-stale-worktree-path"
+            proj_dir = claude_projects / encoded
+            proj_dir.mkdir(parents=True, exist_ok=True)
+            jsonl_file = proj_dir / "session.jsonl"
+            with open(jsonl_file, "w") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "type": "queue-operation",
+                            "operation": "enqueue",
+                            "content": "/ll:manage-issue bug fix",
+                            "timestamp": "2026-01-01T00:00:00Z",
+                            "sessionId": "abc123",
+                        }
+                    )
+                    + "\n"
+                )
+
+            test_logger = logging.getLogger("little_loops.cli.logs")
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                caplog.at_level(logging.WARNING, logger="little_loops.cli.logs"),
+            ):
+                discover_all_projects(test_logger, host="claude-code")
+
+        warning_messages = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+        assert not warning_messages, f"Unexpected WARNING emitted for stale path: {warning_messages}"
 
     def test_discover_finds_project_via_command_name_pattern(self, capsys) -> None:
         """discover detects ll activity via <command-name>/ll: in user messages."""
