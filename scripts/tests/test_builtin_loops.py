@@ -1286,9 +1286,7 @@ class TestVegaVizScoringGate:
         (run_dir / "critique.md").write_text(critique)
         action = data["states"]["record"].get("action", "")
         script = action.replace("${captured.run_dir.output}", str(run_dir))
-        return subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
-        )
+        return subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
 
     def test_blocking_item_overrides_claimed_pass(self, data: dict, tmp_path: Path) -> None:
         """ALL_PASS + a [BLOCKING] item → ITERATE (override), never EVAL_PASS."""

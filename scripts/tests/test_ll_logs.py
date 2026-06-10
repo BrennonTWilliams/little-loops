@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sqlite3
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-import logging
 
 from little_loops.cli.logs import (
     _aggregate_skill_stats,
@@ -239,7 +238,9 @@ class TestDiscover:
                 discover_all_projects(test_logger, host="claude-code")
 
         warning_messages = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
-        assert not warning_messages, f"Unexpected WARNING emitted for stale path: {warning_messages}"
+        assert not warning_messages, (
+            f"Unexpected WARNING emitted for stale path: {warning_messages}"
+        )
 
     def test_discover_finds_project_via_command_name_pattern(self, capsys) -> None:
         """discover detects ll activity via <command-name>/ll: in user messages."""

@@ -59,7 +59,12 @@ class TestDistillTracesSkill:
 
     def test_skill_references_route_event(self) -> None:
         content = SKILL_PATH.read_text()
-        assert '"route"' in content or "'route'" in content or "route events" in content or "`route`" in content
+        assert (
+            '"route"' in content
+            or "'route'" in content
+            or "route events" in content
+            or "`route`" in content
+        )
         # → skill extracts route events for transition data
 
     # ------------------------------------------------------------------
