@@ -6792,3 +6792,28 @@ class TestRlhfAnimatedSvgParentOrchestration:
             f"Parent loop is {line_count} lines (intermediate target: ≤800 until ENH-2051; "
             f"final target: ≤450)"
         )
+
+
+class TestRnRemediateAssessRouting:
+    """Tests that rn-remediate assess state handles non-yes verdicts without crashing (BUG-2075)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-remediate.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_assess_on_partial_routes_to_verify_scores_persisted(self, data: dict) -> None:
+        """assess.on_partial must route to verify_scores_persisted (core work done; treat like success)."""
+        state = data["states"].get("assess", {})
+        assert state.get("on_partial") == "verify_scores_persisted", (
+            f"assess.on_partial should be 'verify_scores_persisted', got {state.get('on_partial')!r}"
+        )
+
+    def test_assess_on_no_routes_to_refine(self, data: dict) -> None:
+        """assess.on_no must route to refine (genuine not-ready verdict → remediate, don't crash)."""
+        state = data["states"].get("assess", {})
+        assert state.get("on_no") == "refine", (
+            f"assess.on_no should be 'refine', got {state.get('on_no')!r}"
+        )

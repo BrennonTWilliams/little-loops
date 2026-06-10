@@ -1,4 +1,5 @@
 ---
+completed_at: 2026-06-10 17:37:00+00:00
 discovered_date: 2026-06-10
 discovered_by: debug-loop-run
 source_loop: rn-implement
@@ -14,6 +15,7 @@ score_complexity: 24
 score_test_coverage: 22
 score_ambiguity: 22
 score_change_surface: 25
+status: done
 ---
 
 # BUG-2075: rn-remediate assess terminates with error on partial verdict — missing on_partial/on_no route

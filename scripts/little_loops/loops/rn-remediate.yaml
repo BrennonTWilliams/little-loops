@@ -72,6 +72,8 @@ states:
     action: "/ll:confidence-check ${context.issue_id} --auto"
     action_type: slash_command
     on_success: verify_scores_persisted
+    on_partial: verify_scores_persisted
+    on_no: refine
     on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 
