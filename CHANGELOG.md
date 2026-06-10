@@ -14,13 +14,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.120.0] - 2026-06-09
 
-### Changed
-
-- **Session digest enabled by default** — `SessionDigestConfig.enabled` now defaults to `True` with `char_cap: 800` (conservative). Sessions on fresh installs will now inject a capped ambient digest block at session start. Opt-out: set `history.session_digest.enabled: false` in `.ll/ll-config.json`. (ENH-2040)
-
 ### Added
 
-- **Session digest prompt in `/ll:init`** — The interactive init wizard now asks about the ambient session digest in Round 9.5, following the FEAT-1743 learning-tests pattern. Default answer is Yes. (ENH-2040)
+- **`/ll:simplify-loop` skill** — Decompose loops into sub-loops and collapse state chains into flows. (FEAT-2063)
+- **`rlhf-svg-generate` sub-loop** — Standalone SVG generation sub-loop extracted from `rlhf-animated-svg` for modular composition. (34189f86)
+- **`rlhf-svg-refine` sub-loop** — Standalone refinement sub-loop for `rlhf-animated-svg`. (38742a7b)
+- **`rlhf-svg-evaluate` sub-loop** — Standalone evaluation sub-loop for `rlhf-animated-svg`. (d19945fb)
+- **`restore_best` guard in `refine-to-ready-issue`** — Score regression prevention in the refinement loop. (45edffd6)
+- **`plan-research-iteration` oracle** — Extracted `rn-plan`/`rn-refine` research chain into a reusable oracle sub-loop. (0cfb0bfb)
+- **Skip deferred issues in `verify-issues`** — `verify-issues` now skips deferred issues automatically. (20543eeb)
+- **Session digest prompt in `/ll:init`** — The interactive init wizard now includes an ambient session digest option in Round 9.5. (ENH-2040)
+
+### Changed
+
+- **`rlhf-animated-svg` refactored to orchestration-only** — Parent loop now delegates evaluate/refine to sub-loops; ~400 lines reduced. (ENH-2050, ENH-2056)
+- **`hitl-md` review loop simplified** — Reduced to core review surface with a lightweight confidence cue. (ENH-2058)
+- **`VISION_*` env vars wired into `svg-image-generator`** — Vision feature gating now uses a `vision_gate` state. (ENH-2059)
+- **Session digest enabled by default** — `SessionDigestConfig.enabled` now defaults to `True` with `char_cap: 800`. Sessions on fresh installs inject a capped ambient digest block at session start. Opt-out: set `history.session_digest.enabled: false` in `.ll/ll-config.json`. (ENH-2040)
+- **CLAUDE.md update step in `ll-init` TUI** — Init wizard now includes a CLAUDE.md update step. (7deaadc0)
+- **Evolution-trigger consumer in `analyze-history`** — Added consumer + correction retirement for evolution trigger patterns. (47de4e80)
+- **`verify-issues` active-issues filter** — Filters to active issues only; fixes broken `ll-issues` call. (52535e31)
+
+### Fixed
+
+- **`fifo_pop` telemetry noise and convergence delta threshold** — Noise filtering and delta threshold corrected in FSM loops. (ENH-2061, 774eb499)
+- **`ll-init` permission wiring** — Wired `deploy_design_tokens`, `history.session_digest`, and `explore-api` permission. (285a0b9c)
+- **Loop routing assertions and oracle delegation** — Fixed FSM routing assertions, oracle delegation, and schema version in tests. (799b8c33, 3b060664)
+- **Layered pinned-pane ladder diagram** — Added neighborhood fallback step. (a726ec9f)
 
 ## [1.119.0] - 2026-06-08
 
@@ -653,7 +673,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.120.0...HEAD
+[1.120.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.119.0...v1.120.0
 [1.119.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.118.0...v1.119.0
 [1.118.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.117.0...v1.118.0
 [1.117.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.116.0...v1.117.0
