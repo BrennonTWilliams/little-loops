@@ -9,6 +9,12 @@ captured_at: '2026-06-10T00:00:00Z'
 discovered_date: '2026-06-10'
 discovered_by: issue-size-review
 size: Small
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-2089: distill-traces: wiring and documentation updates
@@ -88,3 +94,4 @@ At `## Reusable State Fragments` — mention `distill-traces` as the extraction 
 
 ## Session Log
 - `/ll:issue-size-review` - 2026-06-10T00:00:00Z - `05bf4f79-aed4-42a8-af0b-8633b9f97798.jsonl`
+- `/ll:confidence-check` - 2026-06-10T00:00:00Z - `cc89e3ed-378c-4f48-b840-c6e6bca3b533.jsonl`
