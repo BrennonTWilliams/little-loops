@@ -30,7 +30,7 @@ states:
       hits=$(grep -rln "import ${context.target}\|from ${context.target}" \
         --include="*.py" --include="*.ts" --include="*.js" \
         . 2>/dev/null | grep -v "\.git" | wc -l | tr -d ' ')
-      echo "USAGE_HITS=${hits}"
+      echo "USAGE_HITS=$${hits}"
       [ "$hits" -gt 0 ] && exit 0 || exit 1
     capture: usage_scan
     evaluate:

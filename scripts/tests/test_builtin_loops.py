@@ -179,17 +179,37 @@ class TestBuiltinLoopFiles:
                     )
 
     def test_no_bare_bash_variable_in_shell_actions(self, builtin_loops: list[Path]) -> None:
-        """No built-in loop shell action uses unescaped ${VAR} bare bash variables.
+        """No built-in loop shell action uses unescaped ${...} bash expansions.
 
-        Bare ${VAR} (no dot) is intercepted by the FSM template engine and raises
-        InterpolationError before bash ever sees it. Use $${VAR} to pass through.
-        Regression guard for BUG-1675.
+        Any unescaped ${...} is intercepted by the FSM template engine and resolved as
+        a ${namespace.path} reference before bash ever sees it. Bare ${VAR} (BUG-1675)
+        and bash parameter expansions like ${FILE##*.}, ${FILE%.pdf}.md, ${VAR:-default}
+        all raise InterpolationError ("Unknown namespace: ...") at runtime. Use $${...}
+        to pass the literal through to the shell.
+
+        Regression guard for BUG-1675 and the apply-research ${FILE##*.} failure.
         """
         import re
 
-        bare_var_pattern = re.compile(r"(?<!\$)\$\{[A-Z_][A-Z0-9_]*\}")
-        # Context-namespace variables like ${context.x}, ${captured.y.z} are valid — skip those.
-        # We only flag bare names with no dot.
+        # Valid FSM namespaces resolvable by the interpolation engine
+        # (interpolation.py:84-110). Anything else inside an unescaped ${...} is a
+        # bash construct that must be escaped as $${...}.
+        valid_namespaces = {
+            "context",
+            "captured",
+            "prev",
+            "result",
+            "state",
+            "loop",
+            "env",
+            "messages",
+            "param",
+        }
+        # Match unescaped ${...} (negative lookbehind for the $$ escape prefix).
+        var_pattern = re.compile(r"(?<!\$)\$\{([^}]*)\}")
+        # Leading identifier inside the braces — the candidate namespace token, i.e.
+        # the part before the first separator/operator (. : # % / etc.).
+        ns_token_pattern = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*")
         for loop_file in builtin_loops:
             with open(loop_file) as f:
                 data = yaml.safe_load(f)
@@ -197,11 +217,17 @@ class TestBuiltinLoopFiles:
                 if state.get("action_type") != "shell":
                     continue
                 action = state.get("action", "")
-                matches = bare_var_pattern.findall(action)
-                assert not matches, (
-                    f"{loop_file.name}/{state_name} contains unescaped bash variable(s) "
-                    f"{matches} — use $$${{VAR}} to prevent FSM template engine interception "
-                    "(BUG-1675)"
+                bad: list[str] = []
+                for inner in var_pattern.findall(action):
+                    token_match = ns_token_pattern.match(inner)
+                    namespace = token_match.group(0) if token_match else ""
+                    if namespace not in valid_namespaces:
+                        bad.append("${" + inner + "}")
+                assert not bad, (
+                    f"{loop_file.name}/{state_name} contains unescaped bash expansion(s) "
+                    f"{bad} — these collide with the FSM template engine (resolved as "
+                    "${namespace.path}). Use $${{...}} to pass them through to the shell "
+                    "(BUG-1675)."
                 )
 
     def test_all_failure_terminals_have_diagnostic_action(self, builtin_loops: list[Path]) -> None:

@@ -83,10 +83,10 @@ states:
       tail -n +2 "$PENDING" > "$DIR/pending-files.tmp"
       mv "$DIR/pending-files.tmp" "$PENDING"
       echo "$FILE" > "$DIR/current-file.txt"
-      EXT="${FILE##*.}"
+      EXT="$${FILE##*.}"
       EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
       if [ "$EXT_LOWER" = "pdf" ]; then
-        MDFILE="${FILE%.pdf}.md"
+        MDFILE="$${FILE%.pdf}.md"
         if pandoc "$FILE" -o "$MDFILE" 2>/dev/null; then
           echo "$MDFILE" > "$DIR/current-content-file.txt"
           echo "PDF_CONVERTED:$MDFILE"
