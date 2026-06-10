@@ -2,7 +2,7 @@
 id: FEAT-2041
 title: Guided first-loop onboarding after ll init
 type: FEAT
-status: open
+status: deferred
 priority: P3
 captured_at: '2026-06-09T04:40:09Z'
 discovered_date: 2026-06-09
