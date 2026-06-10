@@ -58,7 +58,7 @@ from little_loops.work_verification import (
     verify_work_was_done,
 )
 
-__version__ = "1.119.0"
+__version__ = "1.120.0"
 __all__ = [
     "BRConfig",
     # learning_tests
