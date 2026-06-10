@@ -59,7 +59,7 @@ plugins:
 
 exclude_docs: |
   research/
-  guides/AUDIT_REPORT.md
+  development/USER_GUIDE_AUDIT_REPORT.md
   demo/
 
 nav:
@@ -74,6 +74,10 @@ nav:
     - Automatic Harnessing: guides/AUTOMATIC_HARNESSING_GUIDE.md
     - Harness Optimization: guides/HARNESS_OPTIMIZATION_GUIDE.md
     - Examples Mining: guides/EXAMPLES_MINING_GUIDE.md
+    - Decisions Log: guides/DECISIONS_LOG_GUIDE.md
+    - Learning Tests: guides/LEARNING_TESTS_GUIDE.md
+    - History & Sessions: guides/HISTORY_SESSION_GUIDE.md
+    - Built-in Hooks: guides/BUILTIN_HOOKS_GUIDE.md
   - Reference:
     - CLI Tools: reference/CLI.md
     - Commands: reference/COMMANDS.md

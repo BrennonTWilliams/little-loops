@@ -241,6 +241,6 @@ override the non-LLM `convergence` gate on any individual edit.
   wrapping a *skill* in a quality pipeline (not optimizing the harness itself)
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — full FSM reference: evaluators, state fields, CLI
 - [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md) — the normative MR-1…MR-5 rules
-- [Towards Direct Evaluation of Harness Optimizers](../research/Towards-Direct-Evaluation-of-Harness-Optimizers.md) — the empirical study behind these guardrails, with the per-step measurements, error taxonomy, and findings the rules above are distilled from
+- *Towards Direct Evaluation of Harness Optimizers* — the empirical study behind these guardrails, with the per-step measurements, error taxonomy, and findings the rules above are distilled from
 - [`scripts/little_loops/loops/harness-optimize.yaml`](../../scripts/little_loops/loops/harness-optimize.yaml) — the reference harness-optimizer loop
 - [`skills/create-loop/templates.md`](../../skills/create-loop/templates.md) — the wizard-generated "Optimize a harness" template

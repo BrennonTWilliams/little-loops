@@ -37,6 +37,10 @@ Documentation for using little-loops in your projects.
 - [Automatic Harnessing Guide](guides/AUTOMATIC_HARNESSING_GUIDE.md) - Harness loop quality pipeline: multi-stage evaluation, retries, and wizard setup
 - [Examples Mining Guide](guides/EXAMPLES_MINING_GUIDE.md) - Co-evolutionary examples mining with apo-textgrad for continuously improving prompts
 - [Workflow Analysis Guide](guides/WORKFLOW_ANALYSIS_GUIDE.md) - Discover automation opportunities from message history using ll-workflows, analyze-workflows, and workflow-automation-proposer
+- [Decisions Log Guide](guides/DECISIONS_LOG_GUIDE.md) - Record decisions and required rules, generate them from history, and sync active rules into `ll.local.md`
+- [Learning Tests Guide](guides/LEARNING_TESTS_GUIDE.md) - Verify external APIs and SDKs via the Feathers Learning Test lifecycle and the `.ll/learning-tests/` registry
+- [History & Session Guide](guides/HISTORY_SESSION_GUIDE.md) - Long-term observability via `.ll/history.db`: what ran, what changed, what was corrected
+- [Built-in Hooks Guide](guides/BUILTIN_HOOKS_GUIDE.md) - Every hook little-loops ships, what it does automatically, and the config keys that turn each on or off
 - [Issue Template Guide](reference/ISSUE_TEMPLATE.md) - Issue file structure, sections, and template v2.0 reference
 
 ## Developer Documentation
