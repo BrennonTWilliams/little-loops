@@ -7,6 +7,7 @@ status: open
 captured_at: "2026-06-10T18:12:09Z"
 discovered_date: "2026-06-10"
 discovered_by: capture-issue
+relates_to: [EPIC-2087]
 ---
 
 # ENH-2085: Add substrate constraint check state to planning loops

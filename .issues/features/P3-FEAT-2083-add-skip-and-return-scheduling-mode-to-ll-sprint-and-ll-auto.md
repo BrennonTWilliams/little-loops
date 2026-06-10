@@ -7,6 +7,7 @@ status: open
 captured_at: "2026-06-10T18:12:09Z"
 discovered_date: "2026-06-10"
 discovered_by: capture-issue
+relates_to: [EPIC-2087]
 ---
 
 # FEAT-2083: Add skip-and-return scheduling mode to ll-sprint and ll-auto
