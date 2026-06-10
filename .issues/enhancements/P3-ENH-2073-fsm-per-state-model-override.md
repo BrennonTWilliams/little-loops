@@ -9,11 +9,11 @@ discovered_date: '2026-06-10'
 discovered_by: capture-issue
 decision_needed: false
 confidence_score: 100
-outcome_confidence: 63
+outcome_confidence: 83
 score_complexity: 13
 score_test_coverage: 25
 score_ambiguity: 25
-score_change_surface: 0
+score_change_surface: 20
 ---
 
 # ENH-2073: FSM per-state model override for prompt and slash_command states
@@ -129,6 +129,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 20. Add `TestPerStateModelForwarding` to `scripts/tests/test_ll_loop_execution.py` — end-to-end test asserting `state.model` threads through `PersistentExecutor` to subprocess argv
 21. Update `docs/development/TESTING.md` — add `model: str | None = None` to `MockActionRunner.run()` example in `#### Custom Mock Classes` section
 22. Update `CHANGELOG.md` — add entry for the `model:` field addition
+23. Update `scripts/tests/test_learning_state.py:31` — add `model: str | None = None` to `_MockRunner.run()` signature (not in prior wiring list; found by verification pass)
+24. Update `scripts/tests/test_fsm_executor.py:2111,2629,2722,2909,7137,7252` — add `model: str | None = None` to `FailingRunner`, `ShutdownAfterFirstActionRunner`, `CaptureAndShutdownRunner` (second instance), `RaisingRunner`, `ProgressRunner`, `SelfWriteRunner` signatures (not in prior wiring list)
+25. Update `scripts/tests/test_fsm_schema.py:47` — add `model: str | None = None` to local `make_state()` helper signature and pass through to `StateConfig()` call (second wiring pass)
+26. Update `scripts/tests/test_subprocess_utils.py:2070` — add `model=None` to `build_streaming.assert_called_once_with(...)` in `test_delegates_to_resolve_host` (**HIGH BREAK RISK** — will fail as soon as `run_claude_command` is updated to forward `model=`)
+27. Update `docs/reference/CLI.md:547` — add `model:` to the per-state YAML fields note alongside `agent:` and `tools:`
 
 ## Integration Map
 
@@ -155,6 +160,22 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_executor.py:4254` — `TimeoutCapturingRunner` in `TestDefaultTimeout`: explicit Protocol implementation needing `model: str | None = None`
 - `scripts/tests/test_usage_journal.py` — `MockActionRunner` implements the `ActionRunner` Protocol; needs `model: str | None = None` added to signature and `del` statement
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — verification pass found 7 additional Protocol implementations not in the wiring list above:_
+
+- `scripts/tests/test_learning_state.py:31` — `_MockRunner.run()` explicit Protocol implementation; needs `model: str | None = None` added to signature (same `del`-disposal pattern as other mocks)
+- `scripts/tests/test_fsm_executor.py:2111` — `FailingRunner.run()` explicit signature; needs `model: str | None = None` (raises unconditionally but must remain Protocol-compliant)
+- `scripts/tests/test_fsm_executor.py:2629` — `ShutdownAfterFirstActionRunner.run()` explicit signature; needs `model: str | None = None`
+- `scripts/tests/test_fsm_executor.py:2722` — second `CaptureAndShutdownRunner.run()` (executor test file, distinct from line 2725 reference); needs `model: str | None = None`
+- `scripts/tests/test_fsm_executor.py:2909` — `RaisingRunner.run()` explicit signature; needs `model: str | None = None`
+- `scripts/tests/test_fsm_executor.py:7137` — `ProgressRunner.run()` explicit signature; needs `model: str | None = None`
+- `scripts/tests/test_fsm_executor.py:7252` — `SelfWriteRunner.run()` explicit signature; needs `model: str | None = None`
+
+Safe (use `**kwargs`; no update required): `_AlwaysOkRunner` (line 2270) and `_OkRunner` (line 2329) in `test_fsm_persistence.py`.
+
+Pre-existing discrepancy (not ENH-2073 scope): `CaptureAndShutdownRunner` (1950), `ShutdownAfterFirstRunner` (2010), `ProgressTrackingRunner` (2095) in `test_fsm_persistence.py` are already missing `on_usage_detailed` — add `model: str | None = None` alongside that pre-existing gap when updating those three.
+
 ### Similar Patterns
 - `scripts/little_loops/fsm/schema.py:445` — `agent: str | None = None` and `tools: list[str] | None = None` are the exact precedent for the new `model` field declaration, `to_dict()` guard, and `from_dict()` read
 - `scripts/little_loops/host_runner.py:274` — `build_blocking_json()` already accepts `model` and emits `--model`; `build_streaming()` follows the same arg-building pattern
@@ -171,6 +192,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/helpers.py:17` — `make_test_state()` factory missing `model: str | None = None` parameter; add it to the signature and pass through to `StateConfig()`; used by 6 test files (`test_ll_loop_display.py`, `test_cli_loop_layout.py`, `test_state_feed_renderer.py`, `test_review_loop.py`, `test_ll_loop_execution.py`, `test_snapshot_loop_layout.py`)
 - `scripts/tests/test_ll_loop_execution.py` — `TestEndToEndExecution` class covers global `fsm.llm.model` but not per-state `state.model`; add `TestPerStateModelForwarding` class asserting `state.model` threads through `PersistentExecutor` to subprocess argv
 
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `scripts/tests/test_fsm_schema.py:47` — local `make_state()` helper (distinct from `helpers.py:make_test_state`) does NOT include `model`, `agent`, or `tools`; add `model: str | None = None` to signature and pass through to `StateConfig()` call at line 57
+- `scripts/tests/test_subprocess_utils.py:2070` — `TestRunClaudeCommandHostRunner.test_delegates_to_resolve_host` asserts `mock_runner.build_streaming.assert_called_once_with(..., agent=None, tools=None)` — will fail once `run_claude_command` forwards `model=` to `build_streaming`; add `model=None` to the assertion (**HIGH BREAK RISK**)
+
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -179,6 +204,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/HOST_COMPATIBILITY.md` — update `build_streaming` parameter documentation in the orchestration CLI section to include `model`
 - `docs/development/TESTING.md` — `#### Custom Mock Classes` section shows `MockActionRunner.run()` with explicit `agent`/`tools` but missing `model: str | None = None`; will document incorrect Protocol signature after change
 - `CHANGELOG.md` — add entry documenting `model:` field addition to `StateConfig`, `ActionRunner.run()`, `run_claude_command()`, and `build_streaming()`
+
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `docs/reference/CLI.md:547` — `> **Note:** \`agent:\` and \`tools:\` are per-state YAML fields...` callout; append `model:` to the field enumeration so the note reads `agent:`, `tools:`, and `model:`
 
 ### Configuration / Schema
 
@@ -226,6 +254,9 @@ _Added by `/ll:confidence-check` on 2026-06-10_
 - Large change breadth (24+ files) with entirely mechanical depth — follow the enumerated wiring list step-by-step.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-10T00:00:00Z - `df278e51-a357-404f-9175-5da670693326.jsonl`
+- `/ll:wire-issue` - 2026-06-10T20:18:44 - `95dbd925-6569-41e8-8abd-f93aa6ac3332.jsonl`
+- `/ll:refine-issue` - 2026-06-10T20:03:11 - `d314cafc-792e-4c55-a666-ffca9d220400.jsonl`
 - `/ll:confidence-check` - 2026-06-10T00:00:00Z - `8869adca-05cd-442c-8558-9f490ec707af.jsonl`
 - `/ll:wire-issue` - 2026-06-10T18:55:43 - `c8a2bd06-34eb-4c38-8e58-366d997f06c6.jsonl`
 - `/ll:refine-issue` - 2026-06-10T18:43:45 - `a812e6de-569b-4295-94fb-0ab38cecaff0.jsonl`
