@@ -289,6 +289,24 @@ _Added by `/ll:wire-issue` (sixth pass) — mkdocs.yml nav gap (resolved) and te
 
 **Path consistency note**: All test assertions use `".ll/standards.md"` — the resolved canonical path. The `DOC_FILES_MUST_EXIST` entry and all `DOC_STRINGS_PRESENT` entries targeting the file's own content use this path.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` (fifth pass) — LOOPS_GUIDE.md line number drift correction:_
+
+**LOOPS_GUIDE.md has grown ~260 lines since the last verification pass (2026-06-08).** All line references for this file in the Integration Map are stale. Verified actual locations:
+
+| Issue claim | Actual line | Target content |
+|-------------|-------------|----------------|
+| `~1448` | **~1470** | Playwright failure-routing design rule blockquote (`> **Design rule: Playwright failure routing.**`) |
+| `~3361–3366` | **~3620–3626** | Meta-loop blockquote mentioning `CLAUDE.md § Loop Authoring` — only one such reference exists in the file |
+| `~3449–3451` | **~3626** | Same blockquote — `[CLAUDE.md § Loop Authoring](../../.claude/CLAUDE.md)` on line 3626 is the only CLAUDE.md § Loop Authoring link in the file; the two issue entries resolve to the same target |
+| `~4272–4280` | **~4535** | `## Further Reading` section heading |
+| `2448–2452` | **2448–2452** | MR-1/MR-3/MR-4 prose paragraphs — **confirmed still accurate, no drift** |
+
+**ENH-1903 coordination note**: ENH-1903 (document `ll-parallel` as canonical parallel substrate) remains **open at P4** as of 2026-06-09. The Scope Boundary sequencing requirement still applies — ENH-1903 should land before the CLAUDE.md § Loop Authoring compaction pass, or its `ll-parallel` note must be explicitly incorporated into the ENH-2023 diff.
+
+**`_validate_meta_loop_evaluation` function**: starts at `validation.py:1043`; the MR-2 baseline-reference WARNING (`# MR-2: should reference a captured baseline in a later evaluator`) is at approximately line 1079 — consistent with the prior claim of `1079–1094`.
+
 ### Documentation
 - `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` — the empirical study behind the MR rules; standards.md should link to it in the See Also section (as HARNESS_OPTIMIZATION_GUIDE.md line 244 already does)
 
@@ -336,6 +354,7 @@ _Added by `/ll:confidence-check` on 2026-06-09; updated 2026-06-10_
 - ENH-1903 coordination required — ENH-1903 (open) touches the same CLAUDE.md § Loop Authoring section; the compaction pass must sequence after ENH-1903 lands or explicitly incorporate its `ll-parallel` note before merging; see Scope Boundary section
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-10T04:53:42 - `3ea0a56c-29f0-415c-8377-0c5fc1b34345.jsonl`
 - `/ll:confidence-check` - 2026-06-10T00:00:00Z - `12a4304b-88ca-46d1-8a44-8ca899bcca11.jsonl`
 - `/ll:wire-issue` - 2026-06-10T04:34:06 - `a169cf57-e620-4e48-972e-dd9665d2a3ce.jsonl`
 - `/ll:confidence-check` - 2026-06-09T00:00:00Z - `753d6ec3-0599-4602-b86b-683f82320685.jsonl`
