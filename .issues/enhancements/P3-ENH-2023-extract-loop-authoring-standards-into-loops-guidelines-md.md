@@ -1,6 +1,6 @@
 ---
 id: ENH-2023
-title: Extract loop-authoring standards into docs/guides/LOOPS-GUIDELINES.md
+title: Extract loop-authoring standards into standards/loops-guidelines.md
 status: open
 priority: P3
 type: ENH
@@ -24,11 +24,11 @@ size: Very Large
 parent: EPIC-1811
 ---
 
-# ENH-2023: Extract loop-authoring standards into docs/guides/LOOPS-GUIDELINES.md
+# ENH-2023: Extract loop-authoring standards into standards/loops-guidelines.md
 
 ## Summary
 
-Loop-authoring rules, taxonomies, and conventions are currently fragmented across 6+ files with real duplication. Consolidate everything into a single canonical `docs/guides/LOOPS-GUIDELINES.md` so that every other doc references it instead of restating it. This eliminates duplication, reduces drift, and gives authors one authoritative place to consult when designing FSM loops.
+Loop-authoring rules, taxonomies, and conventions are currently fragmented across 6+ files with real duplication. Consolidate everything into a single canonical `standards/loops-guidelines.md` so that every other doc references it instead of restating it. This eliminates duplication, reduces drift, and gives authors one authoritative place to consult when designing FSM loops.
 
 ## Current Behavior
 
@@ -36,7 +36,7 @@ Loop-authoring rules (MR-1…MR-5), the 7-mode failure taxonomy, and FSM authori
 
 ## Expected Behavior
 
-A canonical `docs/guides/LOOPS-GUIDELINES.md` serves as the single authoritative source for all loop-authoring standards (MR-1…MR-5, optimizer error taxonomy, FSM authoring conventions, 7-mode failure taxonomy). All other files reference this document rather than duplicating its content, eliminating multi-location drift.
+A canonical `standards/loops-guidelines.md` serves as the single authoritative source for all loop-authoring standards (MR-1…MR-5, optimizer error taxonomy, FSM authoring conventions, 7-mode failure taxonomy). All other files reference this document rather than duplicating its content, eliminating multi-location drift.
 
 ## Motivation
 
@@ -44,7 +44,7 @@ Today the standards live in at least six places (`.claude/CLAUDE.md`, `HARNESS_O
 
 ## Implementation Steps
 
-### New file: `docs/guides/LOOPS-GUIDELINES.md`
+### New file: `standards/loops-guidelines.md`
 
 Canonical home with these sections in order:
 
@@ -59,61 +59,57 @@ Canonical home with these sections in order:
 
 ### Edits to existing files (replace duplication with references)
 
-- **`.claude/CLAUDE.md` § Loop Authoring (94–162)** — collapse ~70 lines to ~20: keep compact MR-1…MR-5 summary table (rule · one-line · severity · suppress-flag) + "Full rationale, taxonomies, conventions, and the failure-mode taxonomy live in LOOPS-GUIDELINES.md." Keep `diagnose-evaluators` / `run --baseline` one-liners.
+- **`.claude/CLAUDE.md` § Loop Authoring (94–162)** — collapse ~70 lines to ~20: keep compact MR-1…MR-5 summary table (rule · one-line · severity · suppress-flag) + "Full rationale, taxonomies, conventions, and the failure-mode taxonomy live in loops-guidelines.md." Keep `diagnose-evaluators` / `run --baseline` one-liners.
 - **`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`** — replace §"The Design Rules (MR-1…MR-5)" (84–109) and §"The Optimizer Error Taxonomy" (113–132) with 2-line pointers; keep §"The Canonical Shape" (136–187).
 - **`docs/generalized-fsm-loop.md` § Authoring Conventions (1668–1717)** — replace the two subsections with a stub pointer; keep the heading so existing anchors don't 404.
 - **`docs/guides/LOOPS_GUIDE.md`** — replace duplicated Playwright rule (~1448) with a one-line reference; add LOOPS-GUIDELINES to meta-loop pointer (~3361–3366) and Further Reading (~4275).
 - **`agents/loop-specialist.md` § Failure-Mode Taxonomy (53–65)** — replace definitional table with operational instruction ("classify against the modes in LOOPS-GUIDELINES § Loop failure-mode taxonomy; use the exact mode names") + keep the diagnosis-artifact checklist (87–93).
-- **`docs/index.md`** — add `LOOPS-GUIDELINES.md` to the guides listing.
-
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `README.md` — add a `LOOPS-GUIDELINES.md` entry to the `## Documentation` section; adjust the "FSM authoring" description on the Loops Guide quick-link (line ~71) to reflect that authoring standards now live in LOOPS-GUIDELINES
-- Update `CONTRIBUTING.md` — add `LOOPS-GUIDELINES.md` row to the `docs/guides/` table (line ~169) with a one-line description
-- Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — append `(see [Loop Authoring Guidelines](LOOPS-GUIDELINES.md) § Meta-Loop Design Rules)` after the MR-1 usage note in `§ check_contract` (~line 217) and `§ comparator` (~line 328); add LOOPS-GUIDELINES to the `## See Also` section (~line 1055)
-- Update `scripts/little_loops/loops/README.md` — change the "loop authoring guidance" pointer at line 173 (currently `docs/ARCHITECTURE.md`) to include a reference to `docs/guides/LOOPS-GUIDELINES.md`
-- Update `skills/create-loop/loop-types.md` — add `(see [Loop Authoring Guidelines](../../docs/guides/LOOPS-GUIDELINES.md) § Meta-Loop Design Rules)` after each of the two inline MR-1 compliance assertions (lines ~1488 and ~1505)
-- Add wiring assertions to `scripts/tests/test_wiring_guides_and_meta.py` and `scripts/tests/test_wiring_skills_and_commands.py` — new `DOC_FILES_MUST_EXIST` and `DOC_STRINGS_PRESENT` entries confirming `docs/guides/LOOPS-GUIDELINES.md` was created and all pointer replacements landed in the primary source files
-- Update `docs/guides/LOOPS_GUIDE.md` ~line 3449–3451 — change the `## Harness Loops` blockquote `normative design rules … live in [CLAUDE.md § Loop Authoring]` to point to `[LOOPS-GUIDELINES.md § Meta-Loop Design Rules]` [wiring pass 3]
+- Update `README.md` — add a `loops-guidelines.md` entry to the `## Documentation` section; adjust the "FSM authoring" description on the Loops Guide quick-link (line ~71) to reflect that authoring standards now live in LOOPS-GUIDELINES
+- Update `CONTRIBUTING.md` — add `loops-guidelines.md` row to the `standards/` directory table (or create that section if absent) with a one-line description
+- Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — append `(see [Loop Authoring Guidelines](../../standards/loops-guidelines.md) § Meta-Loop Design Rules)` after the MR-1 usage note in `§ check_contract` (~line 217) and `§ comparator` (~line 328); add loops-guidelines.md to the `## See Also` section (~line 1055)
+- Update `scripts/little_loops/loops/README.md` — change the "loop authoring guidance" pointer at line 173 (currently `docs/ARCHITECTURE.md`) to include a reference to `standards/loops-guidelines.md`
+- Update `skills/create-loop/loop-types.md` — add `(see [Loop Authoring Guidelines](../../standards/loops-guidelines.md) § Meta-Loop Design Rules)` after each of the two inline MR-1 compliance assertions (lines ~1488 and ~1505)
+- Add wiring assertions to `scripts/tests/test_wiring_guides_and_meta.py` and `scripts/tests/test_wiring_skills_and_commands.py` — new `DOC_FILES_MUST_EXIST` and `DOC_STRINGS_PRESENT` entries confirming `standards/loops-guidelines.md` was created and all pointer replacements landed in the primary source files
+- Update `docs/guides/LOOPS_GUIDE.md` ~line 3449–3451 — change the `## Harness Loops` blockquote `normative design rules … live in [CLAUDE.md § Loop Authoring]` to point to `[loops-guidelines.md § Meta-Loop Design Rules]` [wiring pass 3]
 - Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` ToC (lines 26–27) — remove the two `#the-design-rules-mr-1mr-5` and `#the-optimizer-error-taxonomy` entries; both sections become 2-line stub pointers with no navigable heading [wiring pass 3]
-- Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` `## See Also` (line 243) — change the `.claude/CLAUDE.md § Loop Authoring` description from "the normative MR-1…MR-5 rules" to "compact summary table (normative rules live in LOOPS-GUIDELINES.md)"; add a LOOPS-GUIDELINES.md entry [wiring pass 3]
-- Add `DOC_STRINGS_ABSENT` assertions to `scripts/tests/test_wiring_guides_and_meta.py` and `test_wiring_skills_and_commands.py` — the only automated gate verifying that definitional content was removed from source files (not just added to LOOPS-GUIDELINES.md) [wiring pass 3]
+- Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` `## See Also` (line 243) — change the `.claude/CLAUDE.md § Loop Authoring` description from "the normative MR-1…MR-5 rules" to "compact summary table (normative rules live in loops-guidelines.md)"; add a loops-guidelines.md entry [wiring pass 3]
+- Add `DOC_STRINGS_ABSENT` assertions to `scripts/tests/test_wiring_guides_and_meta.py` and `test_wiring_skills_and_commands.py` — the only automated gate verifying that definitional content was removed from source files (not just added to loops-guidelines.md) [wiring pass 3]
 - **Clarification for `agents/loop-specialist.md`**: Replace ONLY the definitional table at lines 53–65 with a pointer; the `## Failure modes observed` checklist (lines 87–93) and the `## Operating Guidelines` mode-name prohibition (line 145) **must retain all mode names inline** — these are the machine-greppable artifact schema, not taxonomy duplication. The absence assertion `"| **ambiguous-output** | The loop's exit predicate"` targets the table row format only; `- [ ] ambiguous-output` checklist entries must NOT be removed [wiring pass 4]
-- Update `docs/guides/LOOPS_GUIDE.md` lines 2448–2452 — three standalone inline MR-1/MR-3/MR-4 prose-definition paragraphs in `### CLI-Anything Bootstrap`; replace each with a one-line pointer to `LOOPS-GUIDELINES.md § Meta-Loop Design Rules` [wiring pass 4]
+- Update `docs/guides/LOOPS_GUIDE.md` lines 2448–2452 — three standalone inline MR-1/MR-3/MR-4 prose-definition paragraphs in `### CLI-Anything Bootstrap`; replace each with a one-line pointer to `loops-guidelines.md § Meta-Loop Design Rules` [wiring pass 4]
 - Note for `skills/create-loop/loop-types.md` line 1505 — raw `validation.py:76–94` line-number reference is embedded alongside the MR-1 pointer being added; verify this still resolves or update to the stable function-name anchor (`_validate_meta_loop_evaluation`) [wiring pass 4]
 
 ## Integration Map
 
 ### Files to Create
-- `docs/guides/LOOPS-GUIDELINES.md` — new canonical home (does not exist yet)
+- `standards/loops-guidelines.md` — new canonical home (does not exist yet)
 
 ### Files to Modify
 
 | File | Lines | Change |
 |------|-------|--------|
-| `.claude/CLAUDE.md` | 94–162 | Collapse ~70-line prose to ~20-line summary table + `[docs/guides/LOOPS-GUIDELINES.md](../docs/guides/LOOPS-GUIDELINES.md)` pointer |
+| `.claude/CLAUDE.md` | 94–162 | Collapse ~70-line prose to ~20-line summary table + `[standards/loops-guidelines.md](../standards/loops-guidelines.md)` pointer |
 | `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 84–109 | Replace `## The Design Rules (MR-1…MR-5)` with 2-line pointer to LOOPS-GUIDELINES; keep `## The Canonical Shape` (136–187) |
 | `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 113–132 | Replace `## The Optimizer Error Taxonomy` with 2-line pointer |
 | `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 26–27 | Remove ToC entries for `#the-design-rules-mr-1mr-5` and `#the-optimizer-error-taxonomy` — both sections become stub pointers with no subsections to navigate to [wiring pass 3] |
-| `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 243 | Update `## See Also` — change description of `.claude/CLAUDE.md § Loop Authoring` from "the normative MR-1…MR-5 rules" to reflect that CLAUDE.md now holds only the compact summary table; add LOOPS-GUIDELINES.md as normative rules destination [wiring pass 3] |
+| `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 243 | Update `## See Also` — change description of `.claude/CLAUDE.md § Loop Authoring` from "the normative MR-1…MR-5 rules" to reflect that CLAUDE.md now holds only the compact summary table; add loops-guidelines.md as normative rules destination [wiring pass 3] |
 | `docs/generalized-fsm-loop.md` | 1668–1717 | Replace the two `### Authoring Conventions` subsections with stub pointers; preserve the `## Authoring Conventions` heading so existing anchors don't 404 |
 | `docs/guides/LOOPS_GUIDE.md` | 1448 | Replace the Playwright failure-routing blockquote with a one-line reference to LOOPS-GUIDELINES |
 | `docs/guides/LOOPS_GUIDE.md` | 3361–3366 | Update the meta-loop pointer to include LOOPS-GUIDELINES as the normative rules home |
-| `docs/guides/LOOPS_GUIDE.md` | 4272–4280 | Add `- [Loop Authoring Guidelines](LOOPS-GUIDELINES.md) — ...` to `## Further Reading` |
-| `docs/guides/LOOPS_GUIDE.md` | ~3449–3451 | Update `## Harness Loops` blockquote — replace `[CLAUDE.md § Loop Authoring](../../.claude/CLAUDE.md)` pointer with `[LOOPS-GUIDELINES.md § Meta-Loop Design Rules]` [wiring pass 3] |
-| `docs/guides/LOOPS_GUIDE.md` | 2448–2452 | Replace three standalone inline MR-1/MR-3/MR-4 prose-definition paragraphs in `### CLI-Anything Bootstrap` with one-line pointers to `LOOPS-GUIDELINES.md § Meta-Loop Design Rules` [wiring pass 4] |
+| `docs/guides/LOOPS_GUIDE.md` | 4272–4280 | Add `- [Loop Authoring Guidelines](../../standards/loops-guidelines.md) — ...` to `## Further Reading` |
+| `docs/guides/LOOPS_GUIDE.md` | ~3449–3451 | Update `## Harness Loops` blockquote — replace `[CLAUDE.md § Loop Authoring](../../.claude/CLAUDE.md)` pointer with `[loops-guidelines.md § Meta-Loop Design Rules](../../standards/loops-guidelines.md)` [wiring pass 3] |
+| `docs/guides/LOOPS_GUIDE.md` | 2448–2452 | Replace three standalone inline MR-1/MR-3/MR-4 prose-definition paragraphs in `### CLI-Anything Bootstrap` with one-line pointers to `loops-guidelines.md § Meta-Loop Design Rules` [wiring pass 4] |
 | `agents/loop-specialist.md` | 53–65 | Replace the definitional 7-mode table with operational pointer ("classify against modes in LOOPS-GUIDELINES § Loop failure-mode taxonomy; use exact mode names"); keep checklist at 87–93 and Operating Guidelines mode-name prohibition at line 145 intact |
-| `docs/index.md` | 35 | Add `- [Loop Authoring Guidelines](guides/LOOPS-GUIDELINES.md) - Normative MR-1…MR-5 rules, FSM authoring conventions, failure-mode taxonomy, and validation guide` near the Loops Guide entry (line 35) |
-| `mkdocs.yml` | 71–75 | Add `- Loop Authoring Guidelines: guides/LOOPS-GUIDELINES.md` to the Guides nav section (after Loops Guide at line 71) |
-| `README.md` | Documentation section | Add `LOOPS-GUIDELINES.md` entry to the guide listing; adjust "FSM authoring" description on the Loops Guide quick-link |
-| `CONTRIBUTING.md` | ~169 | Add `LOOPS-GUIDELINES.md` row to the `docs/guides/` table |
-| `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` | ~217, ~328, ~1055 | Add `(see [LOOPS-GUIDELINES.md](LOOPS-GUIDELINES.md) § Meta-Loop Design Rules)` after two inline MR-1 usage notes (§ `check_contract` and § `comparator`); add LOOPS-GUIDELINES to `## See Also` |
-| `scripts/little_loops/loops/README.md` | 173 | Update "loop authoring guidance" pointer to reference `docs/guides/LOOPS-GUIDELINES.md` |
-| `skills/create-loop/loop-types.md` | ~1488, ~1505 | Add `(see [LOOPS-GUIDELINES.md](../../docs/guides/LOOPS-GUIDELINES.md) § Meta-Loop Design Rules)` pointer after each MR-1 compliance assertion in the meta-optimize template section |
-| `scripts/tests/test_wiring_guides_and_meta.py` | `DOC_FILES_MUST_EXIST`, `DOC_STRINGS_PRESENT` | Add existence assertion for `docs/guides/LOOPS-GUIDELINES.md` and pointer-presence assertions in `mkdocs.yml`, `docs/index.md`, `.claude/CLAUDE.md` [wiring pass 2] |
-| `scripts/tests/test_wiring_skills_and_commands.py` | `DOC_STRINGS_PRESENT` | Add assertion that `agents/loop-specialist.md` contains `LOOPS-GUIDELINES.md` pointer after inline taxonomy is replaced [wiring pass 2] |
+| `README.md` | Documentation section | Add `standards/loops-guidelines.md` entry to the standards/reference listing; adjust "FSM authoring" description on the Loops Guide quick-link |
+| `CONTRIBUTING.md` | ~169 | Add `loops-guidelines.md` row to the `standards/` directory table (or create that section if absent) |
+| `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` | ~217, ~328, ~1055 | Add `(see [Loop Authoring Guidelines](../../standards/loops-guidelines.md) § Meta-Loop Design Rules)` after two inline MR-1 usage notes (§ `check_contract` and § `comparator`); add loops-guidelines.md to `## See Also` |
+| `scripts/little_loops/loops/README.md` | 173 | Update "loop authoring guidance" pointer to reference `standards/loops-guidelines.md` |
+| `skills/create-loop/loop-types.md` | ~1488, ~1505 | Add `(see [loops-guidelines.md](../../standards/loops-guidelines.md) § Meta-Loop Design Rules)` pointer after each MR-1 compliance assertion in the meta-optimize template section |
+| `scripts/tests/test_wiring_guides_and_meta.py` | `DOC_FILES_MUST_EXIST`, `DOC_STRINGS_PRESENT` | Add existence assertion for `standards/loops-guidelines.md` and pointer-presence assertions in `README.md`, `CONTRIBUTING.md`, `.claude/CLAUDE.md` [wiring pass 2] |
+| `scripts/tests/test_wiring_skills_and_commands.py` | `DOC_STRINGS_PRESENT` | Add assertion that `agents/loop-specialist.md` contains `loops-guidelines.md` pointer after inline taxonomy is replaced [wiring pass 2] |
 
 ### Codebase Research Findings
 
@@ -128,11 +124,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `docs/reference/API.md:4157–4160` — suppress flag documentation (`meta_self_eval_ok`, `shared_state_ok`, `partial_route_ok`, `artifact_versioning_ok`).
 - `skills/review-loop/reference.md:40–44` — compact MR rules table with suppress flags.
 
-**CLAUDE.md link format** for the new pointer: `[docs/guides/LOOPS-GUIDELINES.md](../docs/guides/LOOPS-GUIDELINES.md)` (relative to `.claude/`).
+**CLAUDE.md link format** for the new pointer: `[standards/loops-guidelines.md](../standards/loops-guidelines.md)` (relative to `.claude/`).
 
-**docs/index.md entry format** (from line 35): `- [Title](guides/FILENAME.md) - sentence fragment description` (hyphen-space separator, no trailing period).
-
-**Anchor conventions** for headings in LOOPS-GUIDELINES.md: GitHub-style — lowercase, spaces → hyphens, backticks stripped, parens stripped. Example: `## The Design Rules (MR-1…MR-5)` → `#the-design-rules-mr-1mr-5`.
+**Anchor conventions** for headings in loops-guidelines.md: GitHub-style — lowercase, spaces → hyphens, backticks stripped, parens stripped. Example: `## The Design Rules (MR-1…MR-5)` → `#the-design-rules-mr-1mr-5`.
 
 **All 18 line-number claims in the Integration Map verified accurate** against the current codebase (second refinement pass, 2026-06-08). No stale anchors found.
 
@@ -153,7 +147,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **MR-2 suppress flag** (`validation.py:_validate_meta_loop_evaluation()` lines 1043–1096): MR-1 and MR-2 are both suppressed by `meta_self_eval_ok: true`; there is no separate MR-2 flag. Function docstring at line 1044–1049 states this explicitly.
 
-**Optimizer Error Taxonomy — exact 8 row names** (from `HARNESS_OPTIMIZATION_GUIDE.md:113–133`): Redundant Duplication, Hardcoding, Task-specific Addition, Hallucination, Overengineering, Direct Performance-degrading Update, Overgeneralized Heuristic, Safety Violation. (8 entries — use these exact names when drafting `## The Optimizer Error Taxonomy` in LOOPS-GUIDELINES.md.)
+**Optimizer Error Taxonomy — exact 8 row names** (from `HARNESS_OPTIMIZATION_GUIDE.md:113–133`): Redundant Duplication, Hardcoding, Task-specific Addition, Hallucination, Overengineering, Direct Performance-degrading Update, Overgeneralized Heuristic, Safety Violation. (8 entries — use these exact names when drafting `## The Optimizer Error Taxonomy` in loops-guidelines.md.)
 
 **FSM authoring convention heading names confirmed** (from `generalized-fsm-loop.md:1668–1717`):
 - `### Failure Terminals Must Include a Diagnostic Action` (lines 1670–1697): `action_type: prompt` must NOT be placed on the `terminal: true` state; use a preceding `diagnose` state and route `on_error: diagnose`.
@@ -164,8 +158,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_fsm_schema.py` — existing schema coverage; no changes needed
 
 _Wiring pass added by `/ll:wire-issue` (second pass):_
-- `scripts/tests/test_wiring_guides_and_meta.py` — add `DOC_FILES_MUST_EXIST` entry `("docs/guides/LOOPS-GUIDELINES.md", "ENH-2023")` and `DOC_STRINGS_PRESENT` entries for `"LOOPS-GUIDELINES.md"` in `mkdocs.yml`, `docs/index.md`, and `.claude/CLAUDE.md` to confirm pointer replacements landed [Agent 3 finding]
-- `scripts/tests/test_wiring_skills_and_commands.py` — add `DOC_STRINGS_PRESENT` entry `("agents/loop-specialist.md", "LOOPS-GUIDELINES.md", "ENH-2023")` to confirm taxonomy pointer was added after the inline table is replaced [Agent 3 finding]
+- `scripts/tests/test_wiring_guides_and_meta.py` — add `DOC_FILES_MUST_EXIST` entry `("standards/loops-guidelines.md", "ENH-2023")` and `DOC_STRINGS_PRESENT` entries for `"loops-guidelines.md"` in `mkdocs.yml`, `docs/index.md`, and `.claude/CLAUDE.md` to confirm pointer replacements landed [Agent 3 finding]
+- `scripts/tests/test_wiring_skills_and_commands.py` — add `DOC_STRINGS_PRESENT` entry `("agents/loop-specialist.md", "loops-guidelines.md", "ENH-2023")` to confirm taxonomy pointer was added after the inline table is replaced [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -173,50 +167,48 @@ _Added by `/ll:refine-issue` (third pass) — exact test entry tuples:_
 
 **`test_wiring_guides_and_meta.py` — append to `DOC_FILES_MUST_EXIST`:**
 ```python
-("docs/guides/LOOPS-GUIDELINES.md", "ENH-2023"),
+("standards/loops-guidelines.md", "ENH-2023"),
 ```
 
 **`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_PRESENT`:**
 ```python
-("mkdocs.yml", "LOOPS-GUIDELINES.md", "ENH-2023"),
-("docs/index.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
-(".claude/CLAUDE.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
-("docs/guides/LOOPS-GUIDELINES.md", "MR-1", "ENH-2023"),
-("docs/guides/LOOPS-GUIDELINES.md", "diagnose → propose → apply → measure-externally", "ENH-2023"),
+("README.md", "loops-guidelines.md", "ENH-2023"),
+("CONTRIBUTING.md", "loops-guidelines.md", "ENH-2023"),
+(".claude/CLAUDE.md", "loops-guidelines.md", "ENH-2023"),
+("standards/loops-guidelines.md", "MR-1", "ENH-2023"),
+("standards/loops-guidelines.md", "diagnose → propose → apply → measure-externally", "ENH-2023"),
 ```
 
 **`test_wiring_skills_and_commands.py` — append to `DOC_STRINGS_PRESENT`:**
 ```python
-("agents/loop-specialist.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+("agents/loop-specialist.md", "loops-guidelines.md", "ENH-2023"),
 ```
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` (fourth pass) — code accuracy note:_
 
-**`action_stall` missing from CLAUDE.md prose list**: `validation.py:NON_LLM_EVALUATOR_TYPES` (line 81) includes `action_stall` as a valid MR-1-satisfying evaluator type, as does the MR-1 error message (`validation.py:1069`): `"exit_code, output_numeric, convergence, diff_stall, action_stall, mcp_result"`. The current CLAUDE.md § Loop Authoring prose list and `HARNESS_OPTIMIZATION_GUIDE.md` both omit it. When authoring the MR-1 row in LOOPS-GUIDELINES.md, source the non-LLM evaluator type list from `NON_LLM_EVALUATOR_TYPES` in `validation.py:81` for accuracy. Code-accurate list: `exit_code`, `output_numeric`, `convergence`, `diff_stall`, `action_stall`, `mcp_result`.
+**`action_stall` missing from CLAUDE.md prose list**: `validation.py:NON_LLM_EVALUATOR_TYPES` (line 81) includes `action_stall` as a valid MR-1-satisfying evaluator type, as does the MR-1 error message (`validation.py:1069`): `"exit_code, output_numeric, convergence, diff_stall, action_stall, mcp_result"`. The current CLAUDE.md § Loop Authoring prose list and `HARNESS_OPTIMIZATION_GUIDE.md` both omit it. When authoring the MR-1 row in loops-guidelines.md, source the non-LLM evaluator type list from `NON_LLM_EVALUATOR_TYPES` in `validation.py:81` for accuracy. Code-accurate list: `exit_code`, `output_numeric`, `convergence`, `diff_stall`, `action_stall`, `mcp_result`.
 
 ### Codebase Research Findings
 
 _Added by `/ll:wire-issue` (third pass) — additional test assertions:_
 
-**`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_PRESENT`** (7 additional entries verifying wiring touchpoints landed):
+**`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_PRESENT`** (5 additional entries verifying wiring touchpoints landed):
 ```python
-("README.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
-("CONTRIBUTING.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
-("docs/guides/AUTOMATIC_HARNESSING_GUIDE.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
-("scripts/little_loops/loops/README.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
-("docs/guides/LOOPS-GUIDELINES.md", "ambiguous-output", "ENH-2023"),
-("docs/guides/LOOPS-GUIDELINES.md", "Redundant Duplication", "ENH-2023"),
-("docs/guides/LOOPS-GUIDELINES.md", "Failure Terminals Must Include a Diagnostic Action", "ENH-2023"),
+("docs/guides/AUTOMATIC_HARNESSING_GUIDE.md", "loops-guidelines.md", "ENH-2023"),
+("scripts/little_loops/loops/README.md", "loops-guidelines.md", "ENH-2023"),
+("standards/loops-guidelines.md", "ambiguous-output", "ENH-2023"),
+("standards/loops-guidelines.md", "Redundant Duplication", "ENH-2023"),
+("standards/loops-guidelines.md", "Failure Terminals Must Include a Diagnostic Action", "ENH-2023"),
 ```
 
 **`test_wiring_skills_and_commands.py` — append to `DOC_STRINGS_PRESENT`** (1 additional entry):
 ```python
-("skills/create-loop/loop-types.md", "LOOPS-GUIDELINES.md", "ENH-2023"),
+("skills/create-loop/loop-types.md", "loops-guidelines.md", "ENH-2023"),
 ```
 
-**`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_ABSENT`** (4 new entries — only automated gate confirming source content was removed, not just added to LOOPS-GUIDELINES.md):
+**`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_ABSENT`** (4 new entries — only automated gate confirming source content was removed, not just added to loops-guidelines.md):
 ```python
 ("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "| **MR-1** | Every `check_semantic`", "ENH-2023"),
 ("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "| **Redundant Duplication** |", "ENH-2023"),
@@ -253,14 +245,14 @@ _Added by `/ll:wire-issue` (fourth pass) — additional DOC_STRINGS_ABSENT entri
 ```
 
 ### Documentation
-- `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` — the empirical study behind the MR rules; LOOPS-GUIDELINES.md should link to it in the See Also section (as HARNESS_OPTIMIZATION_GUIDE.md line 244 already does)
+- `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` — the empirical study behind the MR rules; loops-guidelines.md should link to it in the See Also section (as HARNESS_OPTIMIZATION_GUIDE.md line 244 already does)
 
 _Wiring pass added by `/ll:wire-issue` (second pass):_
-- `docs/ARCHITECTURE.md` — references MR-1…MR-4 and loop-specialist agent; advisory review for whether an additional `[Loop Authoring Guidelines](guides/LOOPS-GUIDELINES.md)` mention benefits readers here (not required; no inline rule duplication confirmed) [Agent 1 finding]
+- `docs/ARCHITECTURE.md` — references MR-1…MR-4 and loop-specialist agent; advisory review for whether an additional `[Loop Authoring Guidelines](../standards/loops-guidelines.md)` mention benefits readers here (not required; no inline rule duplication confirmed) [Agent 1 finding]
 
 ## Division of Responsibility
 
-- `LOOPS-GUIDELINES.md` = normative rules, taxonomies, and conventions. **New canonical home.**
+- `loops-guidelines.md` = normative rules, taxonomies, and conventions. **New canonical home.**
 - `LOOPS_GUIDE.md` = tutorial/reference (how to build & run loops). Unchanged in role.
 - `HARNESS_OPTIMIZATION_GUIDE.md` = how-to deep-dive for building harness optimizers. Keeps its how-to; drops rule/taxonomy copies.
 - `validation.py` = enforcement source of truth; guidelines doc explains the *why* and points at it.
@@ -274,9 +266,9 @@ _Wiring pass added by `/ll:wire-issue` (second pass):_
 ## Verification
 
 - `ll-check-links` — confirm no broken markdown links after re-pointing.
-- Grep that MR-1…MR-5 / "Optimizer Error Taxonomy" / "never route evaluate failures back to generate" / the 7 mode names now appear authoritatively only in `LOOPS-GUIDELINES.md` (plus the kept CLAUDE.md summary table and code).
+- Grep that MR-1…MR-5 / "Optimizer Error Taxonomy" / "never route evaluate failures back to generate" / the 7 mode names now appear authoritatively only in `loops-guidelines.md` (plus the kept CLAUDE.md summary table and code).
 - `ll-loop validate <any meta-loop>` still runs unchanged.
-- Manual read-through: every "replaced" section resolves to a working LOOPS-GUIDELINES anchor.
+- Manual read-through: every "replaced" section resolves to a working `standards/loops-guidelines.md` anchor.
 - Run `ll-adapt-agents-for-codex` after updating `agents/loop-specialist.md` to regenerate `.codex/agents/loop-specialist.toml` with the updated failure taxonomy pointer.
 
 ## Impact
@@ -295,7 +287,7 @@ _Added by `/ll:confidence-check` on 2026-06-09_
 
 ### Outcome Risk Factors
 - Wide document sweep across 15 distinct files — though this is a Pattern B fanout with enumerated sites and an automated verification chain, manual execution is still required at each site; work through the Integration Map table systematically
-- No automated semantic validation — DOC_STRINGS_PRESENT/ABSENT entries confirm pointer placement and source removal, but cannot verify that the assembled LOOPS-GUIDELINES.md accurately reproduces source sections; manual read-through against all source passages is required after assembly
+- No automated semantic validation — DOC_STRINGS_PRESENT/ABSENT entries confirm pointer placement and source removal, but cannot verify that the assembled loops-guidelines.md accurately reproduces source sections; manual read-through against all source passages is required after assembly
 - ENH-1903 coordination — CLAUDE.md § Loop Authoring compaction must incorporate or sequence after ENH-1903's `ll-parallel` note to prevent silent content loss; explicit coordination required before merging
 
 ## Session Log
