@@ -884,6 +884,27 @@ Rename a loop (built-in or project-level) and update every reference to it so th
 
 **See also:** `/ll:create-loop`, `/ll:review-loop`, `ll-loop show`
 
+### `/ll:distill-traces`
+Mine loop execution history in `.loops/.history/` to extract reusable state templates and transition patterns, then write them as fragment library files under `scripts/little_loops/loops/lib/<loop-name>/`.
+
+**Arguments:**
+- `loop_name` (required): Name of the loop whose history to distill
+
+**Output files written to `scripts/little_loops/loops/lib/<loop-name>/`:**
+- `state-templates.yaml` — state definitions ranked by success frequency
+- `transitions.yaml` — transition patterns with guard conditions
+- `primitives.md` — concise human-readable catalogue of extracted primitives
+
+**Usage:**
+```bash
+/ll:distill-traces rn-plan
+/ll:distill-traces autodev
+```
+
+**Trigger keywords:** "distill traces", "extract fragments", "mine loop history", "loop primitives", "state templates from history"
+
+**See also:** `/ll:create-loop`, `/ll:review-loop`, `ll-loop fragments`
+
 ### `/ll:workflow-automation-proposer`
 Synthesize workflow patterns into concrete automation proposals. Final step (Step 3) of the `/ll:analyze-workflows` pipeline.
 
@@ -956,6 +977,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `cleanup-loops`^ | Find and clean stuck or stale loop processes |
 | `rename-loop`^ | Rename a loop and update all references |
 | `workflow-automation-proposer`^ | Synthesize workflow patterns into automation proposals |
+| `distill-traces`^ | Mine loop execution history to extract reusable state templates and transition patterns |
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
 | `review-epic` | Audit EPIC health: stalled children, scope drift, missing coverage |

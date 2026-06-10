@@ -158,7 +158,7 @@ ll-loop run harness-optimize -b        # Score-gated hill climbing in the backgr
 
 - **28 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **9 specialized agents** — codebase analysis, quality assurance, automation, and research
-- **64 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
+- **37 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
 - **33 CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
 - **87 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
 - **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic

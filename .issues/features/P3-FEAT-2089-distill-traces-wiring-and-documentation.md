@@ -1,9 +1,9 @@
 ---
 id: FEAT-2089
-title: "distill-traces: wiring and documentation updates"
+title: 'distill-traces: wiring and documentation updates'
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: FEAT-2078
 captured_at: '2026-06-10T00:00:00Z'
 discovered_date: '2026-06-10'

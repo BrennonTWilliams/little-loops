@@ -4088,6 +4088,23 @@ Both fields are optional and have no effect on loop execution.
 
 ## Reusable State Fragments
 
+### Extracting Fragments from History
+
+Before hand-authoring fragments, check whether successful runs of a loop already contain patterns worth extracting. The `/ll:distill-traces` skill mines `.loops/.history/` for a named loop, aggregates `state_enter` and `route` events by success frequency, and writes three files:
+
+- `scripts/little_loops/loops/lib/<loop-name>/state-templates.yaml` — ranked state definitions
+- `scripts/little_loops/loops/lib/<loop-name>/transitions.yaml` — transition patterns with guard conditions
+- `scripts/little_loops/loops/lib/<loop-name>/primitives.md` — human-readable catalogue
+
+```bash
+/ll:distill-traces rn-plan          # distill from rn-plan's history
+ll-loop fragments lib/rn-plan/state-templates.yaml   # browse extracted fragments
+```
+
+Use the extracted `state-templates.yaml` as the starting point for a new fragment library rather than writing from scratch.
+
+### Defining a Fragment Library
+
 A **fragment** is a named partial state definition stored in a library file. Any loop can import a library and reference a fragment by name — the fragment's fields are merged into the state at parse time, with state-level fields taking precedence. Fragments eliminate copy-pasted state structure (the same `action_type` + `evaluate` combination duplicated across states) without the overhead of a separate execution context.
 
 ### Defining a Fragment Library
