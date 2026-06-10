@@ -2349,11 +2349,12 @@ class TestDisplayProgressEvents:
         # the main buffer is left without a restricted scroll region.
         assert out.rindex("\033[r") < out.rindex("\033[?1049l")
 
-    def test_tall_fsm_falls_back_to_single_line(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """On a short terminal a tall layered FSM falls back to single-line (not neighborhood).
+    def test_tall_fsm_falls_back_to_neighborhood(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """On a short terminal (80x12) a tall layered FSM falls back to neighborhood.
 
-        Neighborhood is skipped for layered topologies because it looks like a broken
-        layered diagram.  The fallback ladder is now full → single.
+        The fallback ladder is full → neighborhood → single.  At 80×12 the full
+        diagram does not fit (20 states) but the 3-node neighborhood box does, so
+        the display stops there rather than degrading all the way to single-line.
         """
         import os
         import shutil
@@ -2377,9 +2378,11 @@ class TestDisplayProgressEvents:
         ):
             run_foreground(executor, tall_fsm, self._make_args(show_diagrams=True, clear=True))
         out = capsys.readouterr().out
-        # Single-line fallback: fsm: <preds> → [s5] → <succs>; far states must NOT appear.
-        assert "fsm:" in out
-        assert "[s5]" in out
+        # Neighborhood fallback: immediate neighbours s4/s5/s6 shown; far states must NOT appear.
+        assert "s4" in out
+        assert "s5" in out
+        assert "s6" in out
+        assert "fsm:" not in out
         assert "s19" not in out
 
     def test_extreme_short_terminal_falls_back_to_single_line(
