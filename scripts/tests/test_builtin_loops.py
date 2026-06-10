@@ -1206,6 +1206,132 @@ class TestRefineToReadyIssueSubLoop:
         )
 
 
+class TestVegaVizScoringGate:
+    """Tests the phantom-convergence gate in vega-viz.yaml.
+
+    The LLM `score` judge can self-report VERDICT: ALL_PASS while its own
+    "Issues to Address" section lists blocking defects. The deterministic
+    `record` state must override a claimed pass back to ITERATE when any
+    [BLOCKING] item is present, so a chart the judge itself describes as
+    broken cannot terminate the loop. [MINOR] items must not block.
+    """
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "vega-viz.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    # --- Structural assertions -------------------------------------------
+
+    def test_score_prompt_requires_severity_tags(self, data: dict) -> None:
+        """score prompt must instruct the judge to tag issues [BLOCKING]/[MINOR]."""
+        action = data["states"]["score"].get("action", "")
+        assert "[BLOCKING]" in action and "[MINOR]" in action, (
+            "score prompt must require severity tags on Issues to Address items"
+        )
+
+    def test_score_prompt_blocks_pass_on_blocking(self, data: dict) -> None:
+        """score prompt must state that a [BLOCKING] item forces ITERATE."""
+        action = data["states"]["score"].get("action", "")
+        assert "zero" in action and "[BLOCKING]" in action, (
+            "score prompt must tie ALL_PASS to zero [BLOCKING] items"
+        )
+
+    def test_record_action_counts_blocking_items(self, data: dict) -> None:
+        """record shell must grep for [BLOCKING] and emit BLOCKING_OVERRIDE."""
+        action = data["states"]["record"].get("action", "")
+        assert "[BLOCKING]" in action and "BLOCKING_OVERRIDE" in action, (
+            "record action must count [BLOCKING] items and override a claimed pass"
+        )
+
+    def test_record_on_yes_routes_to_done(self, data: dict) -> None:
+        """record.on_yes must still route to done on a genuine EVAL_PASS."""
+        assert data["states"]["record"].get("on_yes") == "done"
+
+    def test_record_on_no_routes_to_generate(self, data: dict) -> None:
+        """record.on_no must route back to generate to iterate."""
+        assert data["states"]["record"].get("on_no") == "generate"
+
+    # --- Shell-execution assertions --------------------------------------
+
+    def _run_record(self, data: dict, run_dir: Path, critique: str) -> subprocess.CompletedProcess:
+        (run_dir / "critique.md").write_text(critique)
+        action = data["states"]["record"].get("action", "")
+        script = action.replace("${captured.run_dir.output}", str(run_dir))
+        return subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
+        )
+
+    def test_blocking_item_overrides_claimed_pass(self, data: dict, tmp_path: Path) -> None:
+        """ALL_PASS + a [BLOCKING] item → ITERATE (override), never EVAL_PASS."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        critique = (
+            "# Evaluation\nfaithfulness: 9/10\nhonesty: 10/10\n"
+            "effectiveness: 8/10\ncraft: 7/10\n\n"
+            "## Issues to Address\n"
+            "- [BLOCKING] Service Tier legend shows empty entry groups\n"
+            "- [MINOR] palette could be warmer\n\n"
+            "SCORE_TOTAL: 34\nVERDICT: ALL_PASS\n"
+        )
+        result = self._run_record(data, run_dir, critique)
+        assert result.returncode == 0, f"record failed: {result.stderr}"
+        assert "BLOCKING_OVERRIDE" in result.stdout, (
+            f"Expected blocking override message, got: {result.stdout!r}"
+        )
+        # The routed token is the LAST line; record must emit ITERATE, not EVAL_PASS.
+        tokens = [ln for ln in result.stdout.strip().splitlines() if ln in ("EVAL_PASS", "ITERATE")]
+        assert tokens and tokens[-1] == "ITERATE", (
+            f"record must route ITERATE when a [BLOCKING] item is present, got: {result.stdout!r}"
+        )
+
+    def test_minor_only_pass_terminates(self, data: dict, tmp_path: Path) -> None:
+        """ALL_PASS with only [MINOR] items → EVAL_PASS (loop may terminate)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        critique = (
+            "# Evaluation\n## Issues to Address\n"
+            "- [MINOR] add one more annotation\n\n"
+            "SCORE_TOTAL: 36\nVERDICT: ALL_PASS\n"
+        )
+        result = self._run_record(data, run_dir, critique)
+        assert result.returncode == 0, f"record failed: {result.stderr}"
+        assert "BLOCKING_OVERRIDE" not in result.stdout
+        assert result.stdout.strip().splitlines()[-1] == "EVAL_PASS", (
+            f"[MINOR]-only issues must not block a pass, got: {result.stdout!r}"
+        )
+
+    def test_clean_pass_terminates(self, data: dict, tmp_path: Path) -> None:
+        """ALL_PASS with no issues → EVAL_PASS."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        critique = (
+            "# Evaluation\n## Issues to Address\nNo issues — all criteria pass.\n\n"
+            "SCORE_TOTAL: 38\nVERDICT: ALL_PASS\n"
+        )
+        result = self._run_record(data, run_dir, critique)
+        assert result.returncode == 0, f"record failed: {result.stderr}"
+        assert result.stdout.strip().splitlines()[-1] == "EVAL_PASS"
+
+    def test_iterate_verdict_passes_through(self, data: dict, tmp_path: Path) -> None:
+        """A genuine VERDICT: ITERATE must route ITERATE without an override message."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        critique = (
+            "# Evaluation\n## Issues to Address\n"
+            "- [BLOCKING] craft below threshold\n\n"
+            "SCORE_TOTAL: 22\nVERDICT: ITERATE\n"
+        )
+        result = self._run_record(data, run_dir, critique)
+        assert result.returncode == 0, f"record failed: {result.stderr}"
+        assert "BLOCKING_OVERRIDE" not in result.stdout, (
+            "override message should only fire when the judge claimed ALL_PASS"
+        )
+        assert result.stdout.strip().splitlines()[-1] == "ITERATE"
+
+
 class TestGeneratorEvaluatorSubLoop:
     """Regression tests for oracles/generator-evaluator.yaml routing.
 

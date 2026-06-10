@@ -415,8 +415,17 @@ states:
         contrast/accessibility, tick legibility.]
 
       ## Issues to Address
-      [Specific, actionable items the generator can fix directly next pass. If
-       everything passes, write "No issues — all criteria pass."]
+      [Specific, actionable items the generator can fix directly next pass.
+       Tag EVERY item with its severity as the first token on the line:
+         - [BLOCKING] — a defect that makes the chart wrong, misleading, or
+           visibly broken: overlapping/illegible labels, empty or missing
+           legend entries, a near-invisible reference mark, mis-positioned
+           annotations, an off-center or clipped layout, wrong/dropped fields.
+           These contradict a passing chart; they are NOT taste preferences.
+         - [MINOR] — an optional refinement or nice-to-have that a reasonable
+           reviewer could ship without: subjective palette tweaks, marginal
+           spacing, an extra annotation that would help but isn't required.
+       If everything passes, write exactly "No issues — all criteria pass."]
 
       SCORE_TOTAL: <sum of the four scores, 4-40>
       VERDICT: <ALL_PASS or ITERATE>
@@ -427,8 +436,13 @@ states:
         honesty       >= ${context.hard_gate}   (HARD GATE)
         effectiveness >= ${context.pass_threshold}
         craft         >= ${context.pass_threshold}
-      If all four meet their thresholds, VERDICT: ALL_PASS. Otherwise
-      VERDICT: ITERATE. Write the file; do not output anything else.
+      VERDICT: ALL_PASS requires BOTH (a) all four criteria meet their
+      thresholds AND (b) the "Issues to Address" section contains zero
+      [BLOCKING] items. A single [BLOCKING] item forces VERDICT: ITERATE
+      even when every numeric score clears its threshold — a chart you can
+      describe as broken has not passed, regardless of the numbers.
+      [MINOR] items do NOT block a pass. Otherwise VERDICT: ITERATE. Write
+      the file; do not output anything else.
     next: record
 
   record:
@@ -462,8 +476,20 @@ states:
         cp "$DIR"/index.html "$DIR"/best.html 2>/dev/null || true
         cp "$CRIT" "$DIR"/best.critique.md 2>/dev/null || true
       fi
+      # Deterministic convergence gate (MR-1): the LLM judge can self-report
+      # ALL_PASS while its own "Issues to Address" section lists blocking
+      # defects (phantom convergence). Count [BLOCKING] items and override a
+      # claimed pass back to ITERATE so a chart the judge itself describes as
+      # broken cannot terminate the loop. [MINOR] items do not block.
+      BLOCKING=$(grep -cE '^[[:space:]]*[-*]?[[:space:]]*\[BLOCKING\]' "$CRIT" 2>/dev/null)
+      [ -z "$BLOCKING" ] && BLOCKING=0
       if grep -qE 'VERDICT:[[:space:]]*ALL_PASS' "$CRIT" 2>/dev/null; then
-        echo "EVAL_PASS"
+        if [ "$BLOCKING" -gt 0 ]; then
+          echo "BLOCKING_OVERRIDE: judge claimed ALL_PASS with $BLOCKING blocking issue(s)"
+          echo "ITERATE"
+        else
+          echo "EVAL_PASS"
+        fi
       else
         echo "ITERATE"
       fi
