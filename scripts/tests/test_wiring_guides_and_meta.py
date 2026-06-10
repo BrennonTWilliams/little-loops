@@ -19,8 +19,8 @@ import pytest
 
 DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # (doc_path, expected_string, issue_id)
-    ("README.md", "64 skills", "FEAT-1287"),
-    ("CONTRIBUTING.md", "64 skill definitions", "FEAT-1287"),
+    ("README.md", "37 skills", "FEAT-1287"),
+    ("CONTRIBUTING.md", "37 skill definitions", "FEAT-1287"),
     ("CONTRIBUTING.md", "explore-api/", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "## Learning Test Registry", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "LearnTestRecord", "FEAT-1287"),
@@ -28,8 +28,8 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/ARCHITECTURE.md", "list", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "mark-stale", "FEAT-1287"),
     ("CONTRIBUTING.md", "verify-issue-loop/", "FEAT-1447"),
-    ("docs/ARCHITECTURE.md", "64 composable skills", "FEAT-1447"),
-    ("docs/ARCHITECTURE.md", "# 64 skill definitions", "FEAT-1447"),
+    ("docs/ARCHITECTURE.md", "37 composable skills", "FEAT-1447"),
+    ("docs/ARCHITECTURE.md", "# 37 skill definitions", "FEAT-1447"),
     ("CONTRIBUTING.md", "LLHookIntentExtension", "FEAT-1457"),
     ("CONTRIBUTING.md", "LLHookEvent", "FEAT-1457"),
     ("docs/ARCHITECTURE.md", "LLHookIntentExtension", "FEAT-1457"),
@@ -147,7 +147,8 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/ARCHITECTURE.md", "epics/", "FEAT-1407"),
     # REMOVED (stale/false-positive): ("README.md", "verify-issue-loop/", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("CONTRIBUTING.md", "63 composable skills", "FEAT-1447"),
-    ("CONTRIBUTING.md", "# 64 skill definitions", "FEAT-1447"),
+    ("CONTRIBUTING.md", "# 37 skill definitions", "FEAT-1447"),
+    ("docs/guides/LOOPS_GUIDE.md", "distill-traces", "FEAT-2078"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "/ll:verify-issue-loop", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "verify-issue-loop", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "hooks/adapters/claude-code/precompact.sh", "FEAT-1457"),

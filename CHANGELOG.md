@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`/ll:distill-traces` skill** — Mine successful execution history for a named loop and write reusable YAML state templates, transition patterns, and a `primitives.md` index to `scripts/little_loops/loops/lib/<loop-name>/`. Accepts `--min-success N` threshold (default 3); exits cleanly when history is insufficient. (FEAT-2078)
 - **Per-state `model:` override for FSM loop states** — `StateConfig` now accepts an optional `model:` field. When set on a `prompt` or `slash_command` state, the specified model ID is passed as `--model <id>` to the host CLI for that state only; other states continue using the global default. A validation WARNING is emitted when `model:` is set on `shell`, `mcp_tool`, or `contract` states (where the host CLI is not invoked). Absent = existing behavior, fully backwards-compatible. (ENH-2073)
 
 ## [1.120.0] - 2026-06-09
