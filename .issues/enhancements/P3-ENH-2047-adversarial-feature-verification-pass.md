@@ -1,15 +1,29 @@
 ---
 id: ENH-2047
-title: Adversarial feature-verification pass (try-to-break, distinct from confirmatory verify)
+title: Adversarial feature-verification pass (try-to-break, distinct from confirmatory
+  verify)
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-09T00:00:00Z"
-discovered_date: "2026-06-09"
+captured_at: '2026-06-09T00:00:00Z'
+discovered_date: '2026-06-09'
 discovered_by: capture-issue
-relates_to: [ENH-216, FEAT-808]
-labels: [verification, testing, adversarial, harness, eval]
+relates_to:
+- ENH-216
+- FEAT-808
+labels:
+- verification
+- testing
+- adversarial
+- harness
+- eval
 decision_needed: false
+confidence_score: 94
+outcome_confidence: 80
+score_complexity: 16
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2047: Adversarial feature-verification pass
@@ -259,6 +273,7 @@ The "too few break-paths attempted" gate (AC #2) has no implementable FSM mechan
 open
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-10T00:00:00Z - `ef92cf80-1078-41c4-8aca-bc4d37e1afbb.jsonl`
 - `/ll:wire-issue` - 2026-06-10T18:33:07 - `9de33298-3da0-44eb-8a7b-15b8da33a768.jsonl`
 - `/ll:decide-issue` - 2026-06-10T18:24:32 - `66e20ece-f72d-4f7b-9576-1d8885b4263b.jsonl`
 - `/ll:refine-issue` - 2026-06-10T18:22:07 - `9d980978-8e2a-4d9b-ab52-b29a954d367a.jsonl`
