@@ -2,14 +2,22 @@
 id: BUG-2065
 type: bug
 priority: P2
-status: open
-title: Rate-limit detection fires on exit_code=0 actions and consumes max_retries budget
+status: done
+title: Rate-limit detection fires on exit_code=0 actions and consumes max_retries
+  budget
 discovered_date: 2026-06-10
 discovered_by: capture-issue
-captured_at: "2026-06-10T00:39:57Z"
+captured_at: '2026-06-10T00:39:57Z'
+completed_at: '2026-06-10T01:26:09Z'
 affects:
-  - scripts/little_loops/fsm/executor.py
-  - scripts/little_loops/issue_lifecycle.py
+- scripts/little_loops/fsm/executor.py
+- scripts/little_loops/issue_lifecycle.py
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2065: Rate-limit detection fires on exit_code=0 actions and consumes max_retries budget
@@ -137,5 +145,8 @@ if self.current_state == self._prev_state:
 **Open** | Created: 2026-06-10 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-10T01:03:01 - `206b4f70-88ba-48b0-b242-51d5e51f39d4.jsonl`
+- `/ll:confidence-check` - 2026-06-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a35aa6aa-87b6-4195-9999-42a59f417280.jsonl`
+- `/ll:confidence-check` - 2026-06-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7629637a-6cfe-473e-b481-fe1a913607f6.jsonl`
 - `/ll:format-issue` - 2026-06-10T00:43:55 - `90b6c2b3-9e72-43e6-b0cd-271e91d5ea62.jsonl`
 - `/ll:capture-issue` - 2026-06-10T00:39:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5aa504ea-5921-488d-9ecf-3b2ac6ff0d2a.jsonl`

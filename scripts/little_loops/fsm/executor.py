@@ -229,6 +229,12 @@ class FSMExecutor:
         # Reset when the state completes without a rate-limit, or after exhaustion.
         self._rate_limit_retries: dict[str, dict[str, Any]] = {}
 
+        # States currently mid rate-limit in-place retry. Populated by _route_next_state
+        # when _handle_rate_limit returns an in-place target; consumed (discarded) by the
+        # retry-counting block on the next same-state re-entry.  Exempts infrastructure
+        # pauses from the max_retries budget (BUG-2065 Fix 2).
+        self._rate_limit_in_flight: set[str] = set()
+
         # Consecutive rate_limit_exhausted emissions across all states. Reset on any
         # successful non-rate-limited state transition. When this reaches
         # _RATE_LIMIT_STORM_THRESHOLD, a RATE_LIMIT_STORM event is emitted.
@@ -341,12 +347,17 @@ class FSMExecutor:
                 # If entering a different state, clear the previous state's retry count.
                 if self._prev_state is not None:
                     if self.current_state == self._prev_state:
-                        self._retry_counts[self.current_state] = (
-                            self._retry_counts.get(self.current_state, 0) + 1
-                        )
+                        # Rate-limit in-place retries are infrastructure pauses, not action
+                        # failures — exempt them from max_retries budget (BUG-2065 Fix 2).
+                        if self.current_state not in self._rate_limit_in_flight:
+                            self._retry_counts[self.current_state] = (
+                                self._retry_counts.get(self.current_state, 0) + 1
+                            )
+                        self._rate_limit_in_flight.discard(self.current_state)
                     else:
                         self._retry_counts.pop(self._prev_state, None)
                         self._throttle_counts.pop(self._prev_state, None)
+                        self._rate_limit_in_flight.discard(self._prev_state)
 
                 # Check terminal
                 if state_config.terminal:
@@ -974,22 +985,26 @@ class FSMExecutor:
         )
         # 429 / rate-limit detection — runs before interceptors so an in-place retry
         # returns early without dispatching to registered before_route hooks.
+        # BUG-2065 Fix 1: guard on exit_code != 0 so that successful actions whose
+        # output incidentally contains "rate limit" text are never intercepted.
         if action_result is not None:
             _combined = (action_result.output or "") + "\n" + (action_result.stderr or "")
             _failure_type, _reason = classify_failure(_combined, action_result.exit_code)
-            if _failure_type == FailureType.TRANSIENT and (
+            if action_result.exit_code != 0 and _failure_type == FailureType.TRANSIENT and (
                 "rate limit" in _reason.lower() or "quota" in _reason.lower()
             ):
                 _handled, _target = self._handle_rate_limit(state, route_ctx.state_name)
                 if _handled:
+                    self._rate_limit_in_flight.add(route_ctx.state_name)
                     return _target
-            elif _failure_type == FailureType.TRANSIENT and "api server error" in _reason.lower():
+            elif action_result.exit_code != 0 and _failure_type == FailureType.TRANSIENT and "api server error" in _reason.lower():
                 _handled, _target = self._handle_api_error(state, route_ctx.state_name)
                 if _handled:
                     return _target
                 # exhausted — fall through to normal verdict routing
             else:
-                # Not rate-limited or server-error: reset counters so future transients start fresh.
+                # Not rate-limited or server-error (or exit_code=0): reset counters so
+                # future transients start fresh.
                 self._rate_limit_retries.pop(route_ctx.state_name, None)
                 self._consecutive_rate_limit_exhaustions = 0
                 self._api_error_retries.pop(route_ctx.state_name, None)

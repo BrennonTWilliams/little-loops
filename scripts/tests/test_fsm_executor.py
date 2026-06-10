@@ -5198,6 +5198,10 @@ class TestRateLimitRetries:
     def _ok_result(self) -> dict:
         return {"output": "success", "exit_code": 0}
 
+    def _ok_result_with_rl_text(self) -> dict:
+        """exit_code=0 but output contains 'rate limit' text — should NOT trigger retry."""
+        return {"output": "Recovered from rate limit, operation complete.", "exit_code": 0}
+
     def test_rate_limit_retries_state_in_place(self) -> None:
         """On a rate-limit response the executor retries the same state without routing away."""
         fsm = self._make_fsm()
@@ -5428,6 +5432,84 @@ class TestRateLimitRetries:
         result = executor.run()
 
         assert result.final_state == "done"
+
+    def test_rate_limit_skipped_when_exit_code_zero(self) -> None:
+        """exit_code=0 with 'rate limit' in output must NOT trigger the rate-limit handler.
+
+        BUG-2065 Fix 1: The transient interceptor must be gated on exit_code != 0.
+        A successful action whose output incidentally mentions 'rate limit' (e.g. a
+        recovery message printed by the Claude CLI) should route normally, not be
+        retried in-place with its result discarded.
+        """
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._ok_result_with_rl_text())]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        assert result.final_state == "done"
+        assert runner.calls.count("work.sh") == 1, (
+            "work.sh should be called exactly once; rate-limit handler must not "
+            "intercept exit_code=0 results"
+        )
+        assert "execute" not in executor._rate_limit_retries, (
+            "rate_limit_retries counter must be empty after a successful (exit_code=0) run"
+        )
+
+    def test_rate_limit_retry_does_not_consume_max_retries(self) -> None:
+        """Rate-limit in-place retries must not count against max_retries budget.
+
+        BUG-2065 Fix 2: _rate_limit_in_flight exempts rate-limit re-entries from
+        _retry_counts so that infrastructure pauses don't consume the action-failure
+        budget.
+
+        Scenario: 1 rate-limit in-place retry followed by 3 true action failures
+        with max_retries=2.  Without the fix the rate-limit retry occupies one
+        retry slot → exhaustion after 2 action failures (3 total executions).
+        With the fix the rate-limit retry is invisible to retry counting →
+        exhaustion after 3 action failures (4 total executions).
+        """
+        # exit_code=1 → verdict "no" (see evaluate_exit_code). Self-loop via on_no.
+        fsm = FSMLoop(
+            name="rl-max-retries-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    on_yes="done",
+                    on_no="execute",
+                    max_retries=2,
+                    on_retry_exhausted="exhausted",
+                    max_rate_limit_retries=1,
+                    rate_limit_backoff_base_seconds=0,
+                ),
+                "done": StateConfig(terminal=True),
+                "exhausted": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._rl_result()),   # rate-limit → in-place retry (must NOT consume max_retries)
+            ("work.sh", {"exit_code": 1}),     # failure 1 → on_no=execute
+            ("work.sh", {"exit_code": 1}),     # failure 2 → on_no=execute
+            ("work.sh", {"exit_code": 1}),     # failure 3 → on_no=execute; retry_count hits limit next iter
+        ]
+        runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "exhausted", (
+            f"Expected 'exhausted' but got '{result.final_state}'; "
+            "rate-limit retry must not prematurely consume max_retries budget"
+        )
+        assert runner.calls.count("work.sh") == 4, (
+            f"Expected 4 calls (1 rl + 3 error) but got {runner.calls.count('work.sh')}; "
+            "with rate-limit retry not counting, 3 action-error retries exhaust max_retries=2"
+        )
 
 
 class TestRateLimitStorm:

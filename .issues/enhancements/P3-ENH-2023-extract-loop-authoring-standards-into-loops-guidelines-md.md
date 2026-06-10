@@ -80,6 +80,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` ToC (lines 26–27) — remove the two `#the-design-rules-mr-1mr-5` and `#the-optimizer-error-taxonomy` entries; both sections become 2-line stub pointers with no navigable heading [wiring pass 3]
 - Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` `## See Also` (line 243) — change the `.claude/CLAUDE.md § Loop Authoring` description from "the normative MR-1…MR-5 rules" to "compact summary table (normative rules live in LOOPS-GUIDELINES.md)"; add a LOOPS-GUIDELINES.md entry [wiring pass 3]
 - Add `DOC_STRINGS_ABSENT` assertions to `scripts/tests/test_wiring_guides_and_meta.py` and `test_wiring_skills_and_commands.py` — the only automated gate verifying that definitional content was removed from source files (not just added to LOOPS-GUIDELINES.md) [wiring pass 3]
+- **Clarification for `agents/loop-specialist.md`**: Replace ONLY the definitional table at lines 53–65 with a pointer; the `## Failure modes observed` checklist (lines 87–93) and the `## Operating Guidelines` mode-name prohibition (line 145) **must retain all mode names inline** — these are the machine-greppable artifact schema, not taxonomy duplication. The absence assertion `"| **ambiguous-output** | The loop's exit predicate"` targets the table row format only; `- [ ] ambiguous-output` checklist entries must NOT be removed [wiring pass 4]
+- Update `docs/guides/LOOPS_GUIDE.md` lines 2448–2452 — three standalone inline MR-1/MR-3/MR-4 prose-definition paragraphs in `### CLI-Anything Bootstrap`; replace each with a one-line pointer to `LOOPS-GUIDELINES.md § Meta-Loop Design Rules` [wiring pass 4]
+- Note for `skills/create-loop/loop-types.md` line 1505 — raw `validation.py:76–94` line-number reference is embedded alongside the MR-1 pointer being added; verify this still resolves or update to the stable function-name anchor (`_validate_meta_loop_evaluation`) [wiring pass 4]
 
 ## Integration Map
 
@@ -100,7 +103,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `docs/guides/LOOPS_GUIDE.md` | 3361–3366 | Update the meta-loop pointer to include LOOPS-GUIDELINES as the normative rules home |
 | `docs/guides/LOOPS_GUIDE.md` | 4272–4280 | Add `- [Loop Authoring Guidelines](LOOPS-GUIDELINES.md) — ...` to `## Further Reading` |
 | `docs/guides/LOOPS_GUIDE.md` | ~3449–3451 | Update `## Harness Loops` blockquote — replace `[CLAUDE.md § Loop Authoring](../../.claude/CLAUDE.md)` pointer with `[LOOPS-GUIDELINES.md § Meta-Loop Design Rules]` [wiring pass 3] |
-| `agents/loop-specialist.md` | 53–65 | Replace the definitional 7-mode table with operational pointer ("classify against modes in LOOPS-GUIDELINES § Loop failure-mode taxonomy; use exact mode names"); keep checklist at 87–93 |
+| `docs/guides/LOOPS_GUIDE.md` | 2448–2452 | Replace three standalone inline MR-1/MR-3/MR-4 prose-definition paragraphs in `### CLI-Anything Bootstrap` with one-line pointers to `LOOPS-GUIDELINES.md § Meta-Loop Design Rules` [wiring pass 4] |
+| `agents/loop-specialist.md` | 53–65 | Replace the definitional 7-mode table with operational pointer ("classify against modes in LOOPS-GUIDELINES § Loop failure-mode taxonomy; use exact mode names"); keep checklist at 87–93 and Operating Guidelines mode-name prohibition at line 145 intact |
 | `docs/index.md` | 35 | Add `- [Loop Authoring Guidelines](guides/LOOPS-GUIDELINES.md) - Normative MR-1…MR-5 rules, FSM authoring conventions, failure-mode taxonomy, and validation guide` near the Loops Guide entry (line 35) |
 | `mkdocs.yml` | 71–75 | Add `- Loop Authoring Guidelines: guides/LOOPS-GUIDELINES.md` to the Guides nav section (after Loops Guide at line 71) |
 | `README.md` | Documentation section | Add `LOOPS-GUIDELINES.md` entry to the guide listing; adjust "FSM authoring" description on the Loops Guide quick-link |
@@ -225,6 +229,29 @@ _Added by `/ll:wire-issue` (third pass) — additional test assertions:_
 ("agents/loop-specialist.md", "| **ambiguous-output** | The loop's exit predicate", "ENH-2023"),
 ```
 
+### Codebase Research Findings
+
+_Added by `/ll:wire-issue` (fourth pass) — additional DOC_STRINGS_ABSENT entries confirming source removals in CLAUDE.md, LOOPS_GUIDE.md, and HARNESS_OPTIMIZATION_GUIDE.md:_
+
+**`test_wiring_guides_and_meta.py` — append to `DOC_STRINGS_ABSENT`** (6 additional entries):
+```python
+# CLAUDE.md § Loop Authoring collapse: definitional prose that will be removed
+(".claude/CLAUDE.md", "~33–55% accurate (SHOR Table 1; Sonnet 4.6 = 33.4%)", "ENH-2023"),
+(".claude/CLAUDE.md", "`ll-loop validate` enforces rule 2 as ERROR severity", "ENH-2023"),
+# LOOPS_GUIDE.md Harness Loops blockquote: old CLAUDE.md pointer replaced by LOOPS-GUIDELINES ref
+("docs/guides/LOOPS_GUIDE.md", "normative design rules (diagnosis-first", "ENH-2023"),
+# HARNESS_OPTIMIZATION_GUIDE.md ToC entries removed (lines 26–27)
+("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "#the-design-rules-mr-1mr-5", "ENH-2023"),
+("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "#the-optimizer-error-taxonomy", "ENH-2023"),
+# HARNESS_OPTIMIZATION_GUIDE.md See Also description reworded (line 243)
+("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "the normative MR-1…MR-5 rules", "ENH-2023"),
+```
+
+**`test_wiring_skills_and_commands.py` — append to `DOC_STRINGS_ABSENT`** (1 additional entry — Codex toml mirror regenerated):
+```python
+(".codex/agents/loop-specialist.toml", "| **ambiguous-output** | The loop's exit predicate", "ENH-2023"),
+```
+
 ### Documentation
 - `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` — the empirical study behind the MR rules; LOOPS-GUIDELINES.md should link to it in the See Also section (as HARNESS_OPTIMIZATION_GUIDE.md line 244 already does)
 
@@ -272,6 +299,8 @@ _Added by `/ll:confidence-check` on 2026-06-09_
 - ENH-1903 coordination — CLAUDE.md § Loop Authoring compaction must incorporate or sequence after ENH-1903's `ll-parallel` note to prevent silent content loss; explicit coordination required before merging
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-09T00:00:00Z - `37b87700-9806-4243-a3d1-73204120aa82.jsonl`
+- `/ll:wire-issue` - 2026-06-10T00:47:56 - `92c7b00f-dcbe-4b46-b3a2-9decda4c7786.jsonl`
 - `/ll:confidence-check` - 2026-06-09T00:00:00Z - `444a3d6e-13a2-4c42-b9b3-615482739169.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
