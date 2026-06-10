@@ -1,12 +1,19 @@
 ---
 id: ENH-2073
-title: "FSM per-state model override for prompt and slash_command states"
+title: FSM per-state model override for prompt and slash_command states
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-10T16:02:38Z"
-discovered_date: "2026-06-10"
+captured_at: '2026-06-10T16:02:38Z'
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
+decision_needed: false
+confidence_score: 98
+outcome_confidence: 83
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # ENH-2073: FSM per-state model override for prompt and slash_command states
@@ -85,11 +92,84 @@ The `model:` key is **ignored** for `action_type: shell`, `mcp_tool`, and `contr
 - Add `model` to the JSON Schema for state definitions in `docs/reference/schemas/` (regenerate via `ll-generate-schemas`).
 - Document the field in `docs/guides/LOOPS_GUIDE.md` under the state-definition reference table.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**⚠ Correction to Step 2**: `build_streaming()` (`host_runner.py:233`) does **not** currently accept a `model` parameter — only `build_blocking_json()` (line 274) does. The change requires threading `model` through **four layers** before it reaches the CLI args: `executor._run_action()` → `action_runner.run()` → `subprocess_utils.run_claude_command()` → `host_runner.build_streaming()`. See Integration Map for per-file guidance.
+
+**Additional file required**: `scripts/little_loops/subprocess_utils.py:252` (`run_claude_command()`) must also accept `model: str | None = None` and forward it to `resolve_host().build_streaming(...)` at lines 298–304.
+
+**`MockActionRunner` in executor tests**: `test_fsm_executor.py:34` — this mock's `run()` signature must be updated to accept `model=None` (same `del` disposal pattern as `agent`/`tools`) to remain Protocol-compliant after the Protocol update.
+
 ### 5. Tests
 
 - Unit test: `StateConfig.from_dict` round-trips `model` field.
 - Integration test: a loop YAML with `model: claude-haiku-4-5-20251001` on one state causes `--model claude-haiku-4-5-20251001` to be passed to the host runner for that state and not for others.
 - Validation test: `model:` on a shell state emits WARNING.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `scripts/little_loops/fsm/runners.py` — add `model` to `SimulationActionRunner.run()` `del` statement alongside `agent`, `tools`
+7. Update `scripts/tests/test_fsm_persistence.py:644` — add `model: str | None = None` to its local `MockActionRunner.run()` signature and `del` list (**HIGH BREAK RISK** if missed)
+8. Update `scripts/tests/test_fsm_executor.py:5015,5055` — add `model: str | None = None` to two inline `CapturingRunner.run()` definitions in `TestAgentToolsPassThrough`
+9. Update `scripts/little_loops/fsm/fsm-loop-schema.json` — add `model` property to state-level schema properties alongside `agent` and `tools`
+10. Update `docs/reference/API.md` — add `model: str | None = None` to StateConfig dataclass listing, ActionRunner Protocol signature, and `build_streaming()` signature
+11. Update `docs/generalized-fsm-loop.md` — add `model: string` row to state-field reference table (line ~348, alongside `agent:` and `tools:`)
+12. Update `docs/reference/HOST_COMPATIBILITY.md` — add `model` to `build_streaming` parameter docs in orchestration CLI section
+13. Add `test_model_kwarg_forwarded` to `TestDefaultActionRunnerSlashPath` in `scripts/tests/test_fsm_runners.py`
+14. Add model flag test to `scripts/tests/test_subprocess_utils.py` `TestRunClaudeCommandAgentToolsFlags` class
+15. Confirm contributed-runner dispatch in `executor._run_action()` does NOT forward `model` (extension runners don't invoke host CLI)
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/schema.py` — add `model: str | None = None` to `StateConfig` (line 354 dataclass; insert after `tools: list[str] | None = None` at line 446); update `to_dict()` (line 453) and `from_dict()` (line 531) following `agent`/`tools` pattern
+- `scripts/little_loops/fsm/executor.py` — in `_run_action()` (line 1047), extend the `action_runner.run()` call at line 1103 with `model=state.model if action_mode == "prompt" else None`
+- `scripts/little_loops/fsm/runners.py` — add `model: str | None = None` to `ActionRunner` Protocol `run()` (line 33, signature at lines 36–62) and `DefaultActionRunner.run()` (line 71); thread `model` through to `run_claude_command()`
+- `scripts/little_loops/subprocess_utils.py` — add `model: str | None = None` to `run_claude_command()` (line 252); pass it to `resolve_host().build_streaming(...)` at lines 298–304
+- `scripts/little_loops/host_runner.py` — add `model: str | None = None` to `build_streaming()` in the `HostRunner` Protocol (line 173) and all concrete runners: `ClaudeCodeRunner` (line 233), `CodexRunner` (line 457), `OpenCodeRunner` (line 631), `PIRunner` (line 702); emit `--model <value>` when set (follow the pattern in `build_blocking_json()` at line 289: `if model: args += ["--model", model]`)
+- `scripts/little_loops/fsm/validation.py` — add WARNING rule in `_validate_state_action()` (line 482): if `state.model` is set and `_action_mode(state) != "prompt"`, emit `ValidationError(message="model: override is ignored for shell/mcp_tool/contract states", path=f"{path}.model", severity=ValidationSeverity.WARNING)`
+- `docs/guides/LOOPS_GUIDE.md` — add `model:` row to state-definition reference table
+- `docs/reference/schemas/` — regenerate via `ll-generate-schemas` after schema.py change
+
+### Dependent Files (Callers/Importers)
+- `scripts/tests/test_fsm_executor.py:34` — `MockActionRunner.run()` signature must add `model: str | None = None` to remain Protocol-compliant; uses `del` to discard kwargs, so same pattern applies
+- `scripts/tests/test_host_runner.py` — existing `TestClaudeCodeRunner.test_build_streaming_includes_agent_and_tools` (line 145) is the reference for adding a `build_streaming` + `model` assertion test
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/extension.py` — `ActionProviderExtension.provided_actions()` returns `dict[str, ActionRunner]`; contributed runners registered via `wire_extensions` → `FSMExecutor._contributed_actions` must match the updated Protocol; verify whether the contributed-runner dispatch in `_run_action()` (currently omits `agent`/`tools`) should also forward `model`
+- `scripts/little_loops/cli/loop/testing.py` — `cmd_test()` constructs `DefaultActionRunner` and calls `runner.run()` directly; safe if `model` has `None` default, but should be verified post-change
+- `scripts/tests/test_fsm_persistence.py:644` — second independent `MockActionRunner.run()` implementing the `ActionRunner` Protocol; must add `model: str | None = None` and `model` to its `del` statement — **HIGH BREAK RISK** if omitted
+- `scripts/tests/test_fsm_executor.py:5015,5055` — `TestAgentToolsPassThrough` has two inline `CapturingRunner.run()` definitions that mirror the Protocol; both need `model: str | None = None` added
+
+### Similar Patterns
+- `scripts/little_loops/fsm/schema.py:445` — `agent: str | None = None` and `tools: list[str] | None = None` are the exact precedent for the new `model` field declaration, `to_dict()` guard, and `from_dict()` read
+- `scripts/little_loops/host_runner.py:274` — `build_blocking_json()` already accepts `model` and emits `--model`; `build_streaming()` follows the same arg-building pattern
+
+### Tests
+- `scripts/tests/test_fsm_schema.py` — add `TestModelStateConfig` class after `TestAgentToolsStateConfig` (line 2277), mirroring its 6-method structure (defaults None, accepts value, `to_dict` includes/excludes, `from_dict` reads/defaults, round-trip)
+- `scripts/tests/test_fsm_executor.py` — add integration test with a capturing mock that records the `model` kwarg and asserts it is passed only for prompt states
+- `scripts/tests/test_fsm_validation.py` — add WARNING assertion test for `model:` on a shell state, following `TestArtifactIsolation` pattern (call `validate_fsm(fsm)`, filter for `ValidationSeverity.WARNING`, assert message contains "model")
+- `scripts/tests/test_host_runner.py` — add `test_build_streaming_with_model` following `test_build_blocking_json_argv` at line 297 (assert `"--model"` and model ID in `invocation.args`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_runners.py` — add `test_model_kwarg_forwarded` to `TestDefaultActionRunnerSlashPath` (line ~295), mirroring the existing `test_agent_kwarg_forwarded` pattern; patches `run_claude_command` and asserts `model` kwarg is forwarded
+- `scripts/tests/test_subprocess_utils.py` — add to `TestRunClaudeCommandAgentToolsFlags` (line ~1761): test asserting `--model <id>` appears in argv when `model=` is passed and is absent when `model=None`
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — add `model: str | None = None` to: (1) `#### StateConfig` dataclass field listing; (2) `#### ActionRunner Protocol` `run()` signature; (3) `## little_loops.host_runner` → `build_streaming()` signature for all runner classes
+- `docs/generalized-fsm-loop.md` — add `model: string` row to state-field reference table alongside existing `agent:` and `tools:` entries (line ~348)
+- `docs/reference/HOST_COMPATIBILITY.md` — update `build_streaming` parameter documentation in the orchestration CLI section to include `model`
+
+### Configuration / Schema
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — add `model` property to state-level JSON Schema properties alongside `agent` and `tools`; this schema drives loop YAML validation tooling
 
 ## Root Cause
 
@@ -99,7 +179,9 @@ The `model:` key is **ignored** for `action_type: shell`, `mcp_tool`, and `contr
 
 - **YAML loop files**: new optional `model:` key at state level (non-breaking; absent = existing behaviour).
 - **`StateConfig` dataclass**: new `model: str | None` field.
-- **`ActionRunner.run()`**: may need `model: str | None = None` keyword arg depending on current signature.
+- **`ActionRunner.run()`**: needs `model: str | None = None` added (confirmed missing from Protocol at `runners.py:33` and `DefaultActionRunner.run()` at line 71).
+- **`subprocess_utils.run_claude_command()`** (`subprocess_utils.py:252`): needs `model: str | None = None` to thread through to `build_streaming()`.
+- **`host_runner.build_streaming()`** (`host_runner.py:233`): needs `model: str | None = None` in all runner implementations (`ClaudeCodeRunner`, `CodexRunner`, `OpenCodeRunner`, `PIRunner`) and the `HostRunner` Protocol (line 173). Currently only `build_blocking_json()` emits `--model`.
 - No CLI changes required.
 
 ## Acceptance Criteria
@@ -119,6 +201,9 @@ The `model:` key is **ignored** for `action_type: shell`, `mcp_tool`, and `contr
 | [docs/guides/LOOPS_GUIDE.md](../../docs/guides/LOOPS_GUIDE.md) | State definition reference |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-10T00:00:00Z - `91904165-ee53-4778-a299-73d67da0c4b5.jsonl`
+- `/ll:wire-issue` - 2026-06-10T18:29:52 - `9de33298-3da0-44eb-8a7b-15b8da33a768.jsonl`
+- `/ll:refine-issue` - 2026-06-10T18:16:21 - `88c91679-4f83-4187-96a0-385cb4afe8c1.jsonl`
 - `/ll:format-issue` - 2026-06-10T16:07:29 - `44235a11-96b5-42bf-a8ef-bffe384cdaf0.jsonl`
 - `/ll:capture-issue` - 2026-06-10T16:02:38Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dae493a0-2705-496d-9f16-5c7e9a05de45.jsonl`
 

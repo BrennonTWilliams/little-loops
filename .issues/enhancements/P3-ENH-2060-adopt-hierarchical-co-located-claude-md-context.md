@@ -3,7 +3,7 @@ id: ENH-2060
 captured_at: '2026-06-09T18:14:42Z'
 discovered_date: 2026-06-09
 discovered_by: capture-issue
-status: open
+status: cancelled
 relates_to:
 - ENH-278
 labels:
@@ -340,7 +340,25 @@ _Updated by `/ll:confidence-check` on 2026-06-10 (re-run after wiring passes)_
 - **Testability gap.** Core CLAUDE.md reorganization is `testable: false`; correctness depends on manual `/context` verification and the CI gate from updating `test_wiring_cli_registry.py`. Success is observable but not automatically measurable.
 - **Two open design decisions** (wiring steps 7 and 8) need resolution before those steps execute: (a) whether to extend `apply-research.yaml`'s `head -60 .claude/CLAUDE.md` shell action to also cat the new nested loop CLAUDE.md, or document the reduced MR-1…MR-5 context scope; (b) whether to update `improve-claude-md`'s CT-1 dedup grep to span nested CLAUDE.md files, or add a Known Limitations note documenting the post-split single-file scope gap.
 
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on 2026-06-10_ — **NO-GO (SKIP)**
+
+**Deciding Factor**: The unresolved conflict with ENH-2023 over the same 70-line MR-1–MR-5 block (different canonical destination: `.ll/standards.md` vs `scripts/little_loops/loops/CLAUDE.md`), combined with the unevaluated `.claude/rules/paths:` native mechanism, means implementing now would likely require undoing the change shortly after — sequencing risk outweighs the 94/100 readiness score.
+
+### Key Arguments For
+- ENH-278 explicitly deferred the CLAUDE.md split until the file hit 200 lines; at 238 lines, the deferral condition has been met and the architectural decision was already made in principle
+- Loop Authoring block (~1,007 tokens, 26.5% of root CLAUDE.md) is only relevant when authoring loops; co-locating aligns content proximity with usage, confirmed by `docs/claude-code/memory.md` line 123
+
+### Key Arguments Against
+- **Unevaluated native alternative**: `.claude/rules/` with `paths:` frontmatter (`docs/claude-code/memory.md` lines 158–195) achieves the same conditional path-scoped loading with zero test churn, zero link re-pathing, and no on-demand load uncertainty — ENH-2060 cannot be the right decision until this mechanism is evaluated
+- **Active content conflict with ENH-2023** (open, P3): targets the identical `.claude/CLAUDE.md` lines 94–162 for a different canonical destination (`.ll/standards.md`); correct sequence is ENH-1903 → ENH-2023 → re-evaluate ENH-2060
+
+### Rationale
+The CON argument surfaces two blocking concerns the PRO argument does not resolve: a direct content conflict with ENH-2023 over the same 70-line block (different destinations would produce split-brain ownership of MR-1–MR-5), and the existence of `.claude/rules/paths:` as an unevaluated native mechanism that may render the nested-CLAUDE.md approach unnecessary entirely. The PRO argument's strongest points (ENH-278 threshold exceeded, mechanical implementation, 94/100 readiness) are all valid but do not overcome the sequencing problem or the unevaluated simpler alternative.
+
 ## Session Log
+- `/ll:go-no-go` - 2026-06-10T00:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:confidence-check` - 2026-06-10T00:00:00Z - `bd2d8c0d-8fdf-43cf-a1cd-7f41499ddcb9.jsonl`
 - `/ll:confidence-check` - 2026-06-09T18:14:42Z - `ba00f8a3-bc48-4cf6-a216-4cfafd24fe51.jsonl`
 - `/ll:wire-issue` - 2026-06-10T05:32:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
