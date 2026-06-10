@@ -1,12 +1,24 @@
 ---
 id: ENH-2060
-captured_at: "2026-06-09T18:14:42Z"
+captured_at: '2026-06-09T18:14:42Z'
 discovered_date: 2026-06-09
 discovered_by: capture-issue
 status: open
-relates_to: [ENH-278]
-labels: [enhancement, documentation, architecture, dx]
+relates_to:
+- ENH-278
+labels:
+- enhancement
+- documentation
+- architecture
+- dx
 testable: false
+decision_needed: true
+confidence_score: 94
+outcome_confidence: 65
+score_complexity: 18
+score_test_coverage: 14
+score_ambiguity: 17
+score_change_surface: 16
 ---
 
 # ENH-2060: Adopt hierarchical, co-located CLAUDE.md context (DOX-inspired)
@@ -102,6 +114,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
    Options: (a) update Step CT-1 to also grep nested CLAUDE.md files when
    `--file` is not passed, or (b) add a `## Known Limitations` note to the skill
    documenting the post-split single-file scope.
+9. Re-path the two forward links **inside** the Loop Authoring block (in
+   `.claude/CLAUDE.md`) when copying it verbatim to
+   `scripts/little_loops/loops/CLAUDE.md` — the depth changes from 1 level to
+   3 levels below repo root, so every `../` prefix needs two more `../` hops:
+   - `../docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` → `../../../docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
+   - `../docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` → `../../../docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`
+   **Important**: `ll-check-links` classifies `../`-prefixed links as "internal"
+   and skips filesystem existence validation — these broken links would pass
+   `ll-check-links` silently. Re-path them manually during the copy. [Agent 2 finding]
+10. Scope `scripts/little_loops/hooks/CLAUDE.md` and `hooks/CLAUDE.md` content to
+    conventions not already documented in existing guides (`docs/claude-code/write-a-hook.md`,
+    `docs/guides/BUILTIN_HOOKS_GUIDE.md`, `hooks/adapters/codex/README.md`). Only
+    the following are undocumented and should go into the new CLAUDE.md files:
+    - `scripts/little_loops/hooks/CLAUDE.md`: `_USAGE` constant update (step 3
+      of new intent checklist) and the `_dispatch_table()` entry requirement
+    - `hooks/CLAUDE.md`: `{{PLACEHOLDER}}` prompt template syntax and the
+      `Path(__file__).resolve().parents[3] / "hooks" / "prompts" / <name>` loading
+      path (neither appears in any existing guide)
+    [Agent 2 finding]
 
 ## Integration Map
 
@@ -135,6 +166,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   Step CT-1 to also grep nested CLAUDE.md files, or note this as a known
   post-split scope gap in the skill's documentation. [Agent 2 finding]
 
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/writers.py` — opens and writes `.claude/CLAUDE.md`
+  during `ll-init`. After the split the root still exists, so init writes are not
+  broken. Flag for a follow-up: if `ll-init` is ever extended to scaffold new
+  projects with the nested structure, this is the touch point. [Agent 1 finding]
+
 ### Similar Patterns
 - No existing nested `CLAUDE.md` in the repo (confirmed: only
   `./.claude/CLAUDE.md`), so this establishes the co-location convention.
@@ -164,6 +201,19 @@ _Wiring pass added by `/ll:wire-issue`:_
   path. Also audit `FEAT-1462` (`"host_runner"`) and `ENH-1130`
   (`".loops/tmp/scratch/"`) entries against whichever sections move. [Agent 3 finding]
 
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `scripts/tests/test_wiring_cli_registry.py` `DOC_FILES_MUST_EXIST` list —
+  **GAP: no test asserts the three new sub-CLAUDE.md files exist.** After the
+  change, add three entries following the existing `DOC_FILES_MUST_EXIST` pattern
+  (currently has one entry for `docs/reference/CLI.md`):
+  `"scripts/little_loops/loops/CLAUDE.md"`,
+  `"scripts/little_loops/hooks/CLAUDE.md"`, `"hooks/CLAUDE.md"`. [Agent 3 finding]
+- Other `test_wiring_*.py` files (`test_wiring_guides_and_meta.py`,
+  `test_wiring_init_and_configure.py`, `test_wiring_skills_and_commands.py`,
+  `test_wiring_reference_docs.py`) — also contain `DOC_STRINGS_PRESENT` rows;
+  audit each for entries targeting `.claude/CLAUDE.md` with content that will
+  move, using the same fix approach as above. [Agent 1 finding]
+
 ### Documentation
 - `CONTRIBUTING.md` and `docs/ARCHITECTURE.md` may describe the monolithic root
   `CLAUDE.md` and should be checked for stale references after the split.
@@ -177,6 +227,32 @@ _Wiring pass added by `/ll:wire-issue`:_
   single-source fact; after the split these remain in root, but the report's framing
   as a monolithic file becomes inaccurate. Verify after the split whether entries
   still hold. [Agent 1 finding]
+
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — documents the ll-init CLAUDE.md update screen (Step
+  5/5); not a content mover, but check for stale framing after the split.
+  [Agent 1 finding]
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` (`## How Hooks Work`) — already documents
+  exit code semantics (`0` = pass-through, `2` = block) and `hooks/hooks.json`
+  as the event registry; the planned `hooks/CLAUDE.md` will overlap with this
+  section. Before authoring, decide: cite the guide or keep CLAUDE.md content
+  to conventions the guide does NOT cover. [Agent 2 finding]
+- `docs/claude-code/write-a-hook.md` — substantially documents handler signature,
+  adapter flow (`## Adapter flow`), and step-by-step intent registration
+  (`## Step-by-step: register a new intent`). **High overlap risk** with planned
+  `scripts/little_loops/hooks/CLAUDE.md`. The only undocumented conventions (not in
+  any existing guide) are: `_USAGE` constant update (step 3 of new intent checklist)
+  and `{{PLACEHOLDER}}` prompt template loading path. Scope `hooks/CLAUDE.md` to
+  these undocumented gaps only to avoid a diverging second source of truth.
+  [Agent 2 finding]
+- `hooks/adapters/codex/README.md` (`## Trust-Hash Churn`, `## Trust Model`) —
+  already documents adapter minimalism rationale (adding logic triggers Codex
+  re-trust). Overlaps with planned `hooks/CLAUDE.md` content. Same guidance:
+  scope `hooks/CLAUDE.md` to conventions not already documented here. [Agent 2
+  finding]
+- `docs/reference/HOST_COMPATIBILITY.md` (lines 18, 37, 46, 198, 214–216) —
+  documents hook adapter structure at `hooks/adapters/<host>/`; check for stale
+  prose after the split but no content move expected. [Agent 1 finding]
 
 ### Configuration
 - N/A for the core move. The optional verify check would add one
@@ -253,7 +329,21 @@ Out of scope:
   rules (principles/style), with co-located docs handling only location-specific
   rules? Possibly a hybrid.
 
+## Confidence Check Notes
+
+_Updated by `/ll:confidence-check` on 2026-06-10 (re-run after wiring passes)_
+
+**Readiness Score**: 94/100 → PROCEED
+**Outcome Confidence**: 65/100 → MODERATE
+
+### Outcome Risk Factors
+- **Testability gap.** Core CLAUDE.md reorganization is `testable: false`; correctness depends on manual `/context` verification and the CI gate from updating `test_wiring_cli_registry.py`. Success is observable but not automatically measurable.
+- **Two open design decisions** (wiring steps 7 and 8) need resolution before those steps execute: (a) whether to extend `apply-research.yaml`'s `head -60 .claude/CLAUDE.md` shell action to also cat the new nested loop CLAUDE.md, or document the reduced MR-1…MR-5 context scope; (b) whether to update `improve-claude-md`'s CT-1 dedup grep to span nested CLAUDE.md files, or add a Known Limitations note documenting the post-split single-file scope gap.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-10T00:00:00Z - `bd2d8c0d-8fdf-43cf-a1cd-7f41499ddcb9.jsonl`
+- `/ll:confidence-check` - 2026-06-09T18:14:42Z - `ba00f8a3-bc48-4cf6-a216-4cfafd24fe51.jsonl`
+- `/ll:wire-issue` - 2026-06-10T05:32:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:wire-issue` - 2026-06-10T04:50:43 - `7b22612d-4a83-4078-bae9-22b2686b4ac6.jsonl`
 - `/ll:refine-issue` - 2026-06-10T04:41:43 - `2e0448dd-be80-44fc-a9c5-493f4e1343b7.jsonl`
 - `/ll:format-issue` - 2026-06-10T04:33:27 - `a169cf57-e620-4e48-972e-dd9665d2a3ce.jsonl`

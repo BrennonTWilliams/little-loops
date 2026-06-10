@@ -10,16 +10,17 @@ discovered_date: '2026-06-08'
 discovered_by: capture-issue
 testable: false
 decision_needed: true
+implementation_order_risk: true
 labels:
 - docs
 - loops
 - guidelines
 confidence_score: 93
-outcome_confidence: 68
+outcome_confidence: 71
 score_complexity: 17
 score_test_coverage: 12
-score_ambiguity: 20
-score_change_surface: 19
+score_ambiguity: 22
+score_change_surface: 20
 size: Very Large
 parent: EPIC-1811
 ---
@@ -345,15 +346,18 @@ _Wiring pass added by `/ll:wire-issue` (second pass):_
 
 _Added by `/ll:confidence-check` on 2026-06-09; updated 2026-06-10_
 
-**Readiness Score**: 93/100 → PROCEED *(−5 from 98; docs_dir path decision unresolved, ENH-1903 coordination pending)*
-**Outcome Confidence**: 68/100 → LOW *(−5 from 73; wiring passes 5–6 introduced path ambiguity in test assertions)*
+**Readiness Score**: 93/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE *(stable; all scores unchanged — standards.md not yet created, ENH-1903 still open, wiring test assertions still co-deliverables)*
 
 ### Outcome Risk Factors
-- File path is now resolved as `.ll/standards.md` — all DOC_STRINGS_PRESENT/ABSENT assertions and relative links use this path; mkdocs nav entry is N/A since `.ll/` is outside `docs_dir: docs`
-- No automated semantic validation of assembled content — DOC_STRINGS_PRESENT/ABSENT entries confirm structural placement and source removal, but cannot validate that `standards.md` faithfully reproduces source passages; manual read-through comparing each assembled section against its source is required after assembly
-- ENH-1903 coordination required — ENH-1903 (open) touches the same CLAUDE.md § Loop Authoring section; the compaction pass must sequence after ENH-1903 lands or explicitly incorporate its `ll-parallel` note before merging; see Scope Boundary section
+- Test assertions are co-deliverables — 15 DOC_STRINGS_PRESENT/ABSENT tuples specified in the issue but not yet added to `test_wiring_guides_and_meta.py`, `test_wiring_skills_and_commands.py`, `test_wiring_cli_registry.py`; implement tests first or the wiring verification suite will have gaps at merge time
+- ENH-1903 coordination still required — ENH-1903 (P4, open) touches the same `.claude/CLAUDE.md § Loop Authoring` section; the compaction pass must sequence after ENH-1903 lands or explicitly incorporate its `ll-parallel` note in the ENH-2023 diff; see Scope Boundary section
+- No automated semantic validation — DOC_STRINGS_PRESENT/ABSENT entries confirm structural presence and source removal but cannot verify that `standards.md` faithfully assembles source passages; manual read-through comparing each assembled section against its source origin is required after assembly
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-10T06:00:00Z - `66112f1e-43e6-4a63-bde3-d9487c3ff0ea.jsonl`
+- `/ll:decide-issue` - 2026-06-10T05:18:37 - `302b7cb5-d0b3-4ed6-94d5-62adc43a6e3a.jsonl`
+- `/ll:confidence-check` - 2026-06-10T00:00:00Z - `b3461a04-b3fe-4cb8-838f-bd4f71c02529.jsonl`
 - `/ll:refine-issue` - 2026-06-10T04:53:42 - `3ea0a56c-29f0-415c-8377-0c5fc1b34345.jsonl`
 - `/ll:confidence-check` - 2026-06-10T00:00:00Z - `12a4304b-88ca-46d1-8a44-8ca899bcca11.jsonl`
 - `/ll:wire-issue` - 2026-06-10T04:34:06 - `a169cf57-e620-4e48-972e-dd9665d2a3ce.jsonl`
