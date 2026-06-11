@@ -2,6 +2,12 @@ name: greenfield-builder
 category: harness
 input_key: spec
 description: |
+  DEPRECATED: This loop is superseded by rn-build and will be removed in a
+  future release. Use rn-build for new spec-driven greenfield projects.
+  rn-build delivers recursive rn-implement-based execution with goal-cluster
+  context propagation and value-ranked scheduling that greenfield-builder lacks.
+  See docs/guides/LOOPS_GUIDE.md for a migration note.
+
   End-to-end greenfield project builder meta-loop. Takes one or more project
   spec Markdown files and autonomously drives the project from zero to a
   working, evaluated implementation. Phases: spec analysis → technology

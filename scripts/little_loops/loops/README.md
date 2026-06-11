@@ -126,8 +126,8 @@ Install a loop into your project for customization: `ll-loop install <name>`
 
 | Loop | Description |
 |---|---|
-| `greenfield-builder` | End-to-end greenfield project builder: spec analysis → tech research → design artifacts → eval harness → issue decomposition → refinement → eval-driven improvement cycle |
-| `rn-build` | Capstone orchestration loop for the recursive spec-to-project builder: spec validation → tech research → design artifacts → scope EPIC → issue refinement → eval harness → goal-cluster execution (dispatching batches to rn-implement with value_ranked scheduling) → eval gate with bounded re-entry → structured JSON result. Use instead of `greenfield-builder` when you want `rn-implement` value-ranked scheduling and no `eval-driven-development` in the dispatch path. |
+| `greenfield-builder` | **[DEPRECATED → use `rn-build`]** End-to-end greenfield project builder: spec analysis → tech research → design artifacts → eval harness → issue decomposition → refinement → eval-driven improvement cycle. Scheduled for removal in a future release. |
+| `rn-build` | **(Recommended)** Capstone orchestration loop for the recursive spec-to-project builder: spec validation → tech research → design artifacts → scope EPIC → issue refinement → eval harness → goal-cluster execution (dispatching batches to rn-implement with value_ranked scheduling) → eval gate with bounded re-entry → structured JSON result. Supersedes `greenfield-builder`. |
 | `eval-driven-development` | Reusable eval-driven development cycle: implement issues, run eval harness, capture issues from failures, refine, and iterate until the harness passes |
 
 ## Harness / Templates

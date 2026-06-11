@@ -3,9 +3,10 @@ id: FEAT-1993
 title: Deprecate greenfield-builder in favor of rn-build
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: EPIC-1811
 captured_at: '2026-06-06T00:00:00Z'
+completed_at: '2026-06-11T21:05:40Z'
 discovered_date: 2026-06-06
 discovered_by: capture-issue
 size: Small
@@ -19,11 +20,11 @@ labels:
 - loops
 - deprecation
 - greenfield
-confidence_score: 82
-outcome_confidence: 70
+confidence_score: 93
+outcome_confidence: 77
 score_complexity: 21
 score_test_coverage: 12
-score_ambiguity: 15
+score_ambiguity: 22
 score_change_surface: 22
 decision_needed: false
 ---
@@ -175,6 +176,8 @@ _Added by `/ll:confidence-check` on 2026-06-11_
 - **Limited test coverage**: Changes are text/YAML edits only; `ll-loop validate` and `ll-check-links` are the sole automated verification paths.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-11T20:58:13 - `eca65b1b-2c7d-4d72-ade4-e24be89445cd.jsonl`
+- `/ll:confidence-check` - 2026-06-11T00:00:00Z - `97ef388f-49f4-4370-a23d-ba1df0bab726.jsonl`
 - `/ll:decide-issue` - 2026-06-11T20:52:40 - `baee484a-7b39-4dae-a727-1916fc9e0b6b.jsonl`
 - `/ll:confidence-check` - 2026-06-11T00:00:00Z - `7391969a-7822-4e6c-9904-071526ce8539.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

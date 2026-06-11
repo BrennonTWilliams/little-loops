@@ -344,11 +344,36 @@ Context knobs:
 | `dataset-curation` | Scan raw data, quality-gate each item, fix or reject, balance distribution, validate schema, and publish a curated dataset |
 | `sft-corpus` | Stage session transcripts, enrich with history.db session-quality metadata, filter by opt-in quality predicates, and publish SFT training corpus |
 | `general-task` | Definition-of-done driven task loop — define verifiable criteria first, then execute and verify until all criteria pass |
-| `greenfield-builder` | End-to-end greenfield project builder: spec analysis → tech research → design artifacts → eval harness → issue decomposition → refinement → eval-driven improvement cycle |
-| `rn-build` | Capstone recursive spec-to-project builder: spec validation → tech research → design artifacts → scope EPIC → enumerate children → recursive-refine (depth-first, decomposition-aware) → eval harness → goal-cluster (rn-implement/value_ranked) → eval gate → structured JSON result. Prefer over `greenfield-builder` when you want value-ranked scheduling and no `eval-driven-development` in the dispatch path. |
+| `greenfield-builder` | **[DEPRECATED — use `rn-build`]** End-to-end greenfield project builder: spec analysis → tech research → design artifacts → eval harness → issue decomposition → refinement → eval-driven improvement cycle. Scheduled for removal in a future release. |
+| `rn-build` | **(Recommended)** Capstone recursive spec-to-project builder: spec validation → tech research → design artifacts → scope EPIC → enumerate children → recursive-refine (depth-first, decomposition-aware) → eval harness → goal-cluster (rn-implement/value_ranked) → eval gate → structured JSON result. Supersedes `greenfield-builder`. |
 | `eval-driven-development` | Reusable eval-driven development cycle: implement issues, run eval harness, capture issues from failures, refine, and iterate until the harness passes |
 | `refine-to-ready-issue` | Single-issue refinement pipeline — refine → wire → confidence-check until the issue reaches ready status |
 | `cli-anything-bootstrap` | Meta-loop that bootstraps an agent-native CLI for target software (local path or repo URL), bakes a per-target rubric, caches the result, and emits a project-local task loop to `.loops/generated/` that downstream loops invoke to drive the target toward user goals |
+
+### Migrating from `greenfield-builder` to `rn-build`
+
+`greenfield-builder` is **deprecated** and will be removed in a future release. `rn-build` is the recommended replacement for all spec-driven greenfield projects.
+
+| Dimension | `greenfield-builder` | `rn-build` |
+|---|---|---|
+| Implementation dispatch | `eval-driven-development` sub-loop | `rn-implement` + `goal-cluster` |
+| Scheduling | First-in-first-out | Value-ranked (priority ordering) |
+| Goal-cluster context | Not propagated | Propagated across batches |
+| Spec normalization | Manual pre-processing required | Auto-normalized via `normalize_spec` pre-gate |
+| Resume support | None | Resume from prior EPIC checkpoint |
+| Max iterations | 20 | 30 |
+
+**Upgrade steps:**
+
+```bash
+# Old
+ll-loop run greenfield-builder --context spec=specs/my-spec.md
+
+# New (drop-in replacement — same --context spec= interface)
+ll-loop run rn-build --context spec=specs/my-spec.md
+```
+
+`greenfield-builder` continues to validate and run during the grace period. No immediate action required.
 
 The `general-task` loop requires the `input` context variable — a natural-language description of the task to complete:
 
@@ -824,7 +849,7 @@ Phase 5 — Convergence:
 
 End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives the full automated build: spec validation → tech research → design artifacts → commit → scope EPIC + feature stubs → issue refinement → eval harness → goal-cluster (batched `rn-implement`) → eval gate → structured JSON result.
 
-Prefer over `greenfield-builder` when you want value-ranked scheduling and no `eval-driven-development` in the dispatch path.
+Supersedes the deprecated `greenfield-builder`. Use `rn-build` for all new spec-driven greenfield projects. See the [migration note](#migrating-from-greenfield-builder-to-rn-build) for upgrade steps.
 
 **Usage:**
 
