@@ -51,6 +51,7 @@ def _make_namespace(**kwargs: Any) -> Any:
         timeout=120,
         output="text",
         verbose=False,
+        model=None,
     )
     for k, v in kwargs.items():
         setattr(ns, k, v)
@@ -111,6 +112,27 @@ class TestParser:
         args = _parse_harness_args(["prompt", "What is 2+2?"])
         assert args.runner == "prompt"
         assert args.target == "What is 2+2?"
+
+    def test_prompt_subparser_with_model(self) -> None:
+        args = _parse_harness_args(["prompt", "What is 2+2?", "--model", "claude-haiku-4-5-20251001"])
+        assert args.runner == "prompt"
+        assert args.model == "claude-haiku-4-5-20251001"
+
+    def test_prompt_model_defaults_none(self) -> None:
+        args = _parse_harness_args(["prompt", "What is 2+2?"])
+        assert args.model is None
+
+    def test_model_flag_absent_from_skill(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse_harness_args(["skill", "check-code", "--model", "claude-haiku-4-5-20251001"])
+
+    def test_model_flag_absent_from_cmd(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse_harness_args(["cmd", "echo hi", "--model", "claude-haiku-4-5-20251001"])
+
+    def test_model_flag_absent_from_mcp(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse_harness_args(["mcp", "srv:tool", "--model", "claude-haiku-4-5-20251001"])
 
     def test_exit_code_flag(self) -> None:
         args = _parse_harness_args(["cmd", "true", "--exit-code", "0"])
@@ -471,6 +493,47 @@ class TestCmdPrompt:
             result = cmd_prompt(args)
 
         assert result == 2
+
+    def test_prompt_threads_model(self) -> None:
+        """Passes --model value to build_blocking_json."""
+        args = _make_namespace(runner="prompt", target="What is 2+2?", model="claude-haiku-4-5-20251001")
+        captured: dict[str, object] = {}
+
+        def fake_build_blocking_json(*, prompt: str, model: str | None = None, **_: object) -> HostInvocation:
+            captured["prompt"] = prompt
+            captured["model"] = model
+            return HostInvocation(binary="claude", args=[])
+
+        fake_runner = FakeRunner()
+        fake_runner.build_blocking_json = fake_build_blocking_json  # type: ignore[method-assign]
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("subprocess.run", return_value=_make_completed(stdout="4")),
+        ):
+            cmd_prompt(args)
+
+        assert captured["model"] == "claude-haiku-4-5-20251001"
+
+    def test_prompt_model_none_when_omitted(self) -> None:
+        """Passes model=None to build_blocking_json when --model is not supplied."""
+        args = _make_namespace(runner="prompt", target="hello")
+        captured: dict[str, object] = {}
+
+        def fake_build_blocking_json(*, prompt: str, model: str | None = None, **_: object) -> HostInvocation:
+            captured["model"] = model
+            return HostInvocation(binary="claude", args=[])
+
+        fake_runner = FakeRunner()
+        fake_runner.build_blocking_json = fake_build_blocking_json  # type: ignore[method-assign]
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("subprocess.run", return_value=_make_completed(stdout="hi")),
+        ):
+            cmd_prompt(args)
+
+        assert captured["model"] is None
 
 
 # ---------------------------------------------------------------------------

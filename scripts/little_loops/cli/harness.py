@@ -130,6 +130,12 @@ Exit codes:
         description="Send a raw prompt to Claude via the active host CLI",
     )
     prompt_p.add_argument("target", help="Prompt text to send")
+    prompt_p.add_argument(
+        "--model",
+        default=None,
+        metavar="MODEL",
+        help="Override Claude model (e.g. claude-haiku-4-5-20251001)",
+    )
     _add_evaluator_flags(prompt_p)
 
     return parser
@@ -331,7 +337,7 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     """Send a raw prompt to Claude and evaluate the response."""
     label_text = args.target[:40] + ("..." if len(args.target) > 40 else "")
     runner_label = f"prompt {label_text}"
-    inv = resolve_host().build_blocking_json(prompt=args.target)
+    inv = resolve_host().build_blocking_json(prompt=args.target, model=args.model)
 
     try:
         proc = subprocess.run(

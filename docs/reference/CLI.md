@@ -181,6 +181,9 @@ One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or
 **mcp-specific flag:**
 `--args JSON` — JSON arguments forwarded to the MCP tool (default: `{}`).
 
+**prompt-specific flag:**
+`--model MODEL` — Override the Claude model used for the prompt (e.g. `claude-haiku-4-5-20251001`). Omit to use the host session default.
+
 **Exit codes:** `0` = PASS, `1` = FAIL, `2` = internal error / timeout
 
 **Examples:**

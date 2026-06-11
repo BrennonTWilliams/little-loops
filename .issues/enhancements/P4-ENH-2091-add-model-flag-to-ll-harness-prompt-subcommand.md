@@ -3,16 +3,21 @@ id: ENH-2091
 title: Add --model flag to ll-harness prompt subcommand
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-11T14:16:38Z'
+completed_at: '2026-06-11T15:48:57Z'
 discovered_date: '2026-06-11'
 discovered_by: capture-issue
-confidence_score: 100
-outcome_confidence: 100
-score_complexity: 25
-score_test_coverage: 25
-score_ambiguity: 25
-score_change_surface: 25
+confidence_score: 96
+outcome_confidence: 89
+score_complexity: 21
+score_test_coverage: 22
+score_ambiguity: 24
+score_change_surface: 22
+labels:
+- cli
+- ll-harness
+- enhancement
 ---
 
 # ENH-2091: Add --model flag to ll-harness prompt subcommand
@@ -20,6 +25,14 @@ score_change_surface: 25
 ## Summary
 
 Add a `--model` flag to the `ll-harness prompt` subcommand so callers can specify which Claude model to use for a one-shot evaluation. The `host_runner` already supports `model=` on both `build_streaming` and `build_blocking_json`; the harness just never threads it through.
+
+## Current Behavior
+
+The `ll-harness prompt` subcommand invokes Claude via `build_blocking_json` with no way to specify the model — the model is whatever the host session defaults to. Callers cannot select a cheaper or more capable model for a given evaluation without wrapping the call in a separate script.
+
+## Expected Behavior
+
+`ll-harness prompt` accepts an optional `--model` flag (e.g., `--model claude-haiku-4-5-20251001`) that threads the value to `build_blocking_json(prompt=..., model=...)`. When omitted, behavior is identical to today (`model=None`, host default). The flag is absent from `skill`, `cmd`, and `mcp` subparsers.
 
 ## Motivation
 
@@ -65,6 +78,13 @@ The `prompt` subcommand invokes Claude directly via `build_blocking_json`. Calle
 - `--model` flag is absent from `skill`, `cmd`, and `mcp` subparsers
 - Existing harness tests continue to pass
 
+## Impact
+
+- **Priority**: P4 - Low; convenience feature, not blocking any workflow
+- **Effort**: Small - Two lines of production code plus tests; all wiring exists in `host_runner`
+- **Risk**: Low - Purely additive flag; existing callers omit it and behavior is unchanged (`model=None`)
+- **Breaking Change**: No
+
 ## Out of Scope
 
 - Adding `--model` to `skill`, `cmd`, or `mcp` subcommands
@@ -76,4 +96,6 @@ open
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-11T15:45:31 - `36182a5f-2f9a-495b-b44b-0974c7521a84.jsonl`
 - `/ll:refine-issue` - 2026-06-11T14:42:49 - `1b6eda93-645a-493c-98d9-14262e8fd598.jsonl`
+- `/ll:confidence-check` - 2026-06-11T00:00:00Z - `e6f2a3ec-7fc9-4c7b-bd1d-15bc5e7ece6f.jsonl`
