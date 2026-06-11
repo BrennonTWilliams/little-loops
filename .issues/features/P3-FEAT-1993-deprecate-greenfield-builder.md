@@ -1,6 +1,6 @@
 ---
 id: FEAT-1993
-title: "Deprecate greenfield-builder in favor of rn-build"
+title: Deprecate greenfield-builder in favor of rn-build
 type: FEAT
 priority: P3
 status: open
@@ -10,7 +10,8 @@ discovered_date: 2026-06-06
 discovered_by: capture-issue
 size: Small
 testable: false
-blocked_by: [FEAT-1992]
+blocked_by:
+- FEAT-1992
 relates_to:
 - FEAT-1990
 - FEAT-1992
@@ -18,6 +19,13 @@ labels:
 - loops
 - deprecation
 - greenfield
+confidence_score: 82
+outcome_confidence: 70
+score_complexity: 21
+score_test_coverage: 12
+score_ambiguity: 15
+score_change_surface: 22
+decision_needed: false
 ---
 
 # FEAT-1993: Deprecate `greenfield-builder` in favor of `rn-build`
@@ -72,9 +80,9 @@ successor.
 ## Proposed Solution
 
 1. **Deprecation banner in the loop.** Add a `DEPRECATED:` prefix line to
-   `greenfield-builder.yaml`'s `description` block pointing to `rn-build`, and a
-   first-state notice (or `deprecated: true` top-level flag if the schema/runner
-   supports it — verify in `ll-loop validate`; otherwise description-only).
+   `greenfield-builder.yaml`'s `description` block pointing to `rn-build`. The
+   FSM executor and validator do not support a `deprecated: true` top-level flag,
+   so description-only is the correct approach.
 2. **Docs migration note.** In `docs/guides/LOOPS_GUIDE.md`, add a
    "greenfield-builder → rn-build migration" note explaining the differences
    (recursive `rn-implement` vs `eval-driven-development`; `goal-cluster` context
@@ -90,8 +98,7 @@ successor.
 
 ## Implementation Steps
 
-1. Verify whether `ll-loop validate` supports a `deprecated: true` top-level flag
-   in loop YAML schema; document finding in Open Questions
+1. ~~Verify whether `ll-loop validate` supports a `deprecated: true` top-level flag~~ (✅ resolved: description-only)
 2. Add deprecation banner/flag to `greenfield-builder.yaml`
 3. Update `docs/guides/LOOPS_GUIDE.md` with migration note and differences table
 4. Update `scripts/little_loops/loops/README.md` to mark `greenfield-builder` deprecated
@@ -136,7 +143,9 @@ successor.
 ## Open Questions
 
 1. Does the loop schema/runner support a `deprecated: true` top-level flag, or is
-   deprecation description-only? Verify before authoring.
+   deprecation description-only? ✅ **RESOLVED** (2026-06-11): The FSM executor
+   and validator do not support `deprecated: true`; description-only deprecation
+   via the `description:` block is the correct approach.
 
 ## Impact
 
@@ -154,7 +163,20 @@ successor.
 
 **Verdict: NEEDS_UPDATE** — 2026-06-09. `rn-build.yaml` now exists (29K, created 2026-06-08). `greenfield-builder.yaml` still exists (7.3K) with no deprecation marker. Acceptance criteria require a deprecation signal in the YAML — check whether `ll-loop` schema supports a `deprecated: true` top-level flag (see Open Question 1) before authoring. No deprecation work has started.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-11_
+
+**Readiness Score**: 82/100 → PROCEED
+**Outcome Confidence**: 70/100 → MODERATE
+
+### Outcome Risk Factors
+- **Open question on schema flag**: The `deprecated: true` top-level flag is not supported by the FSM executor or validator — description-only deprecation in the YAML `description:` block is the correct approach. This is a decision point: confirm description-only is acceptable before authoring `greenfield-builder.yaml`.
+- **Limited test coverage**: Changes are text/YAML edits only; `ll-loop validate` and `ll-check-links` are the sole automated verification paths.
+
 ## Session Log
+- `/ll:decide-issue` - 2026-06-11T20:52:40 - `baee484a-7b39-4dae-a727-1916fc9e0b6b.jsonl`
+- `/ll:confidence-check` - 2026-06-11T00:00:00Z - `7391969a-7822-4e6c-9904-071526ce8539.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:format-issue` - 2026-06-07T01:11:59 - `ddd29df3-8b21-4e25-9cb4-e990152c90f5.jsonl`

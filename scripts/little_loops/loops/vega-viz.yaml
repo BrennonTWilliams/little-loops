@@ -30,6 +30,7 @@ description: |
   last" finding from Anthropic's harness-design work).
 initial: init
 max_iterations: 20
+on_max_iterations: max_iterations_summary
 on_handoff: spawn
 timeout: 7200
 
@@ -499,6 +500,32 @@ states:
     on_yes: done
     on_no: generate
     on_error: generate
+
+  max_iterations_summary:
+    # HARNESS: Terminal summary state fired when the FSM engine hits max_iterations
+    # before EVAL_PASS is achieved. Surfaces the best partial result that already
+    # exists on disk (best.html, best.critique.md, best_score.txt — maintained by
+    # the record state on every scored iteration) so the user knows partial results
+    # are available and where to find them.
+    #
+    # Fires via the on_max_iterations hook in loop metadata (line 33). The engine
+    # executes this state once before terminating with terminated_by="max_iterations".
+    action_type: prompt
+    action: |
+      The vega-viz loop exhausted its max_iterations budget without achieving EVAL_PASS.
+
+      Best score so far: $(cat ${captured.run_dir.output}/best_score.txt 2>/dev/null || echo "no score recorded").
+      Best artifact: ${captured.run_dir.output}/best.html
+      Best critique: ${captured.run_dir.output}/best.critique.md
+      All scored iterations: $(ls -d ${captured.run_dir.output}/iter-*/ 2>/dev/null || echo "none")
+
+      Open best.html in a browser to inspect the highest-scoring version produced.
+      Review best.critique.md for remaining issues.
+      SUMMARY_EMITTED
+    evaluate:
+      type: output_contains
+      pattern: "SUMMARY_EMITTED"
+    terminal: true
 
   done:
     # HARNESS: Success terminal — all criteria passed. best.html is the highest

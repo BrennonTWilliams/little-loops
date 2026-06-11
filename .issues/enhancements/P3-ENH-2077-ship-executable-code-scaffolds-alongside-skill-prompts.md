@@ -4,10 +4,18 @@ title: Ship executable code scaffolds alongside skill prompts
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-10T18:12:09Z"
-discovered_date: "2026-06-10"
+captured_at: '2026-06-10T18:12:09Z'
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
-relates_to: [EPIC-2087]
+relates_to:
+- EPIC-2087
+confidence_score: 60
+outcome_confidence: 44
+score_complexity: 12
+score_test_coverage: 10
+score_ambiguity: 8
+score_change_surface: 14
+decision_needed: true
 ---
 
 # ENH-2077: Ship executable code scaffolds alongside skill prompts
@@ -101,5 +109,30 @@ N/A - No public API changes. Scaffold injection is internal to skill invocation 
 **Open** | Created: 2026-06-10 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-11_
+
+**Readiness Score**: 60/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 44/100 → VERY LOW
+
+### Concerns
+- `skill_expander.py` is absent from the Integration Map despite being the subprocess-path injection point for all `ll-auto`/`ll-parallel`/`ll-sprint`/`ll-action` invocations
+- The dual invocation paths (Skill tool vs subprocess) require different injection approaches and neither is designed
+
+### Gaps to Address
+- Add `skill_expander.py` to Integration Map under Files to Modify; spec how it reads `scaffolds/` content and prepends it to the expanded prompt
+- Distinguish scaffolds from the existing `templates.md` files in `create-loop/` and `manage-issue/` — either consolidate or explain the different purpose
+- Resolve the TBD sections: enumerate callers via `grep -r "skill_expander\|expand_skill" scripts/`, identify test strategy, confirm any relevant skill authoring docs
+- Clarify whether scaffold injection applies to both invocation paths or only one
+
+### Outcome Risk Factors
+- **Open design decision: two distinct invocation paths** — `Skill tool` direct invocation vs `skill_expander.py` subprocess path are not distinguished; resolve before implementing which path(s) receive scaffold injection and by what mechanism
+- **Blast radius extends to all automation CLI callers** — any modification to `skill_expander.py` touches `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-action`; Integration Map does not enumerate these caller sites
+- **Existing `templates.md` overlap** — `create-loop/templates.md` and `manage-issue/templates.md` already ship runnable YAML templates into skill context; no differentiation from proposed scaffolds creates a risk of redundant or conflicting artifacts
+- **No test coverage for injection verification** — acceptance criterion "Skill invocation injects scaffold content before the generation step" has no test path; integration tests are listed as TBD
+
 ## Session Log
+- `/ll:decide-issue` - 2026-06-11T20:44:55 - `c11253e7-4c76-4648-93ac-00ac2e0101cb.jsonl`
 - `/ll:format-issue` - 2026-06-11T20:10:58 - `e6b03fdf-7ce2-4da2-bdd7-2966c8e338a9.jsonl`
+- `/ll:confidence-check` - 2026-06-11T00:00:00Z - `51577893-49ed-4585-85fe-085f192947be.jsonl`
