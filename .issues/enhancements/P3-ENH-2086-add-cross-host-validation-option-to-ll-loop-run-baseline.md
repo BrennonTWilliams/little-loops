@@ -4,11 +4,17 @@ title: Add cross-host validation option to ll-loop run --baseline
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-10T18:12:09Z"
-discovered_date: "2026-06-10"
+captured_at: '2026-06-10T18:12:09Z'
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
 parent: EPIC-2087
 depends_on: ENH-2084
+confidence_score: 86
+outcome_confidence: 80
+score_complexity: 19
+score_test_coverage: 20
+score_ambiguity: 18
+score_change_surface: 23
 ---
 
 # ENH-2086: Add cross-host validation option to ll-loop run --baseline
@@ -41,18 +47,23 @@ Add a `--cross-host` flag to `ll-loop run --baseline` that re-runs the same loop
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/executor.py` or baseline runner module — add `--cross-host` flag and second-host trial logic
+- `scripts/little_loops/cli/loop/__init__.py` — add `--cross-host` argument definition
+- `scripts/little_loops/cli/loop/lifecycle.py` — add second-host trial execution and comparison table logic
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — document `--cross-host` as a pre-promotion validity check
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/host_runner.py` — `resolve_host()` and host enumeration used to identify available hosts
-- TBD - grep for baseline runner: `grep -r "baseline" scripts/little_loops/`
+- `scripts/little_loops/cli/loop/__init__.py:243` — `--baseline` argument definition (`add_argument("--baseline", ...)`)
+- `scripts/little_loops/cli/loop/run.py:258` — baseline enablement logic (`baseline_enabled = getattr(args, "baseline", False)`)
+- `scripts/little_loops/cli/loop/lifecycle.py:445` — baseline lifecycle handling
+- `scripts/little_loops/cli/loop/_helpers.py:1077` — baseline flag propagation to subprocess invocations
 
 ### Similar Patterns
 - `scripts/little_loops/host_runner.py` — existing multi-host resolution pattern to follow
 
 ### Tests
-- TBD - identify baseline runner test files: `grep -r "baseline" scripts/tests/`
+- `scripts/tests/test_fsm_evaluators.py` — existing baseline/convergence evaluator tests
+- `scripts/tests/test_fsm_validation.py` — comparator + baseline_path validation tests
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — add `--cross-host` section as validity check step
@@ -112,5 +123,7 @@ Uses existing `resolve_host()` from `scripts/little_loops/host_runner.py` for ho
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-11T04:32:07 - `36b5ff5a-3efb-4a61-a2e3-ad894d61b18c.jsonl`
 - `/ll:format-issue` - 2026-06-10T23:34:21 - `714a8869-591f-4a9c-91ec-045042d7d120.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-10T23:30:28 - `59a16773-20bc-402b-b0cb-97d45d141b4c.jsonl`
+- `/ll:confidence-check` - 2026-06-10T00:00:00Z - `bc50ebd7-c15b-46db-af40-c095d6094c96.jsonl`
