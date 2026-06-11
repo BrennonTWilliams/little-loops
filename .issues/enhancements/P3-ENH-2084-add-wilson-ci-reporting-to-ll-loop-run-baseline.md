@@ -3,11 +3,18 @@ id: ENH-2084
 title: Add Wilson CI reporting to ll-loop run --baseline
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-06-10T18:12:09Z"
-discovered_date: "2026-06-10"
+status: done
+captured_at: '2026-06-10T18:12:09Z'
+completed_at: '2026-06-11T04:23:13Z'
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
 parent: EPIC-2087
+confidence_score: 91
+outcome_confidence: 83
+score_complexity: 19
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2084: Add Wilson CI reporting to ll-loop run --baseline
@@ -43,10 +50,10 @@ Add Wilson 95% CI calculation to the baseline comparison output in `ll-loop run 
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop run --baseline` shows Wilson 95% CI bounds `[lower, upper]` alongside point estimate
-- [ ] `ll-loop diagnose-evaluators` includes Wilson CI in Bernoulli variance report
-- [ ] Formula implemented without `scipy` or other new dependencies
-- [ ] Unit tests cover p=0, p=1, n=1, and typical mid-range values
+- [x] `ll-loop run --baseline` shows Wilson 95% CI bounds `[lower, upper]` alongside point estimate
+- [x] `ll-loop diagnose-evaluators` includes Wilson CI in Bernoulli variance report
+- [x] Formula implemented without `scipy` or other new dependencies
+- [x] Unit tests cover p=0, p=1, n=1, and typical mid-range values
 
 ## Impact
 
@@ -70,6 +77,18 @@ Add Wilson 95% CI calculation to the baseline comparison output in `ll-loop run 
 
 `enhancement`, `ll-loop`, `statistics`, `reporting`
 
+## Resolution
+
+Implemented Wilson 95% CI (`(p + z²/2n ± z√(p(1-p)/n + z²/4n²)) / (1 + z²/n)` with z=1.96) in a new shared `scripts/little_loops/stats.py` module. Integrated into:
+- `ll-loop run --baseline` diff table: harness/baseline pass-rates now display `XX%  [lo, hi]` CI bounds
+- `ll-loop diagnose-evaluators`: variance line now includes `CI=[lo, hi]`
+- `ll-loop calibrate-budget`: same CI alongside each evaluator's `p*(1-p)` line
+- `EvaluatorVariance.to_dict()` serializes `ci_lower`/`ci_upper` for JSON consumers
+
+No new runtime dependencies. 14 unit tests added covering p=0, p=1, n=1, midrange, custom z, and error cases.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-11T04:23:13Z - implementation complete
+- `/ll:ready-issue` - 2026-06-11T04:06:40 - `0c981cab-32d8-4229-bc5d-eb371e08d0c4.jsonl`
 - `/ll:format-issue` - 2026-06-10T23:33:25 - `c1ec6a7d-1589-4894-bc72-c32d1a4d4c69.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-10T23:30:28 - `59a16773-20bc-402b-b0cb-97d45d141b4c.jsonl`

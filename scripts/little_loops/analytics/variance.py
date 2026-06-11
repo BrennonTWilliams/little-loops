@@ -19,6 +19,7 @@ class EvaluatorVariance:
         pass_rate: pass_count / total (0.0 if total == 0).
         variance: Bernoulli variance p*(1-p).
         recommendation: Human-readable recommendation if variance is low, else None.
+        ci: Wilson 95% CI (lower, upper) for pass_rate, or None if not computed.
     """
 
     state: str
@@ -28,6 +29,7 @@ class EvaluatorVariance:
     pass_rate: float
     variance: float
     recommendation: str | None = None
+    ci: tuple[float, float] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -39,6 +41,9 @@ class EvaluatorVariance:
             "pass_rate": round(self.pass_rate, 4),
             "variance": round(self.variance, 4),
         }
+        if self.ci is not None:
+            result["ci_lower"] = round(self.ci[0], 4)
+            result["ci_upper"] = round(self.ci[1], 4)
         if self.recommendation:
             result["recommendation"] = self.recommendation
         return result
@@ -230,6 +235,8 @@ def compute_evaluator_variance(
     except (FileNotFoundError, ValueError):
         pass
 
+    from little_loops.stats import wilson_ci
+
     states: list[EvaluatorVariance] = []
     for state_name in sorted(all_verdicts.keys()):
         verdicts = all_verdicts[state_name]
@@ -239,6 +246,7 @@ def compute_evaluator_variance(
         pass_count = sum(1 for v in verdicts if v)
         pass_rate = pass_count / total
         variance = pass_rate * (1 - pass_rate)
+        ci = wilson_ci(pass_count, total)
 
         config = evaluator_configs.get(state_name, {})
         eval_type = config.get("type", "unknown")
@@ -260,6 +268,7 @@ def compute_evaluator_variance(
                 pass_rate=pass_rate,
                 variance=variance,
                 recommendation=recommendation,
+                ci=ci,
             )
         )
 

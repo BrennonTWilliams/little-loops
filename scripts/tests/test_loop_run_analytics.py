@@ -316,3 +316,69 @@ class TestComputeEvaluatorVariance:
         # mixed should be second (variance=0.25)
         assert result.states[1].state == "mixed"
         assert result.states[1].variance == 0.25
+
+
+class TestEvaluatorVarianceWilsonCI:
+    """Wilson CI is computed and stored on EvaluatorVariance (ENH-2084)."""
+
+    def _make_events_jsonl(self, run_dir: Path, events: list[dict]) -> None:
+        import json
+
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "events.jsonl").write_text(
+            "\n".join(json.dumps(e) for e in events) + "\n"
+        )
+
+    def test_evaluator_variance_has_ci_field(self) -> None:
+        """EvaluatorVariance dataclass has a ci attribute."""
+        ev = EvaluatorVariance(
+            state="check",
+            evaluator_type="exit_code",
+            pass_count=5,
+            total=10,
+            pass_rate=0.5,
+            variance=0.25,
+        )
+        assert hasattr(ev, "ci")
+
+    def test_ci_populated_by_compute(self, tmp_path: Path) -> None:
+        """compute_evaluator_variance populates ci on each state."""
+        loops_dir = tmp_path / ".loops"
+        history_root = loops_dir / ".history"
+
+        for i in range(10):
+            run_dir = history_root / f"20260101T0000{i:02d}-my-loop"
+            events = [
+                {"event": "state_enter", "state": "check", "iteration": 1},
+                {"event": "evaluate", "verdict": "yes" if i < 7 else "no"},
+            ]
+            self._make_events_jsonl(run_dir, events)
+
+        result = compute_evaluator_variance("my-loop", loops_dir, min_runs=10)
+        assert result is not None
+        state = result.states[0]
+        assert state.ci is not None
+        lo, hi = state.ci
+        assert 0.0 <= lo <= 1.0
+        assert 0.0 <= hi <= 1.0
+        assert lo <= hi
+        # k=7, n=10: lo ≈ 0.397, hi ≈ 0.892
+        assert lo == pytest.approx(0.397, abs=0.01)
+        assert hi == pytest.approx(0.892, abs=0.01)
+
+    def test_ci_in_to_dict(self, tmp_path: Path) -> None:
+        """to_dict() includes ci bounds when present."""
+        ev = EvaluatorVariance(
+            state="check",
+            evaluator_type="exit_code",
+            pass_count=7,
+            total=10,
+            pass_rate=0.7,
+            variance=0.21,
+            ci=(0.397, 0.892),
+        )
+        d = ev.to_dict()
+        assert "ci_lower" in d
+        assert "ci_upper" in d
+        assert d["ci_lower"] == pytest.approx(0.397)
+        assert d["ci_upper"] == pytest.approx(0.892)

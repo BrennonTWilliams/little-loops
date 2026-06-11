@@ -1409,6 +1409,7 @@ def _print_ab_summary(ab_path: Path) -> None:
         ab_path: Path to ab.json file written by the executor
     """
     from little_loops.ab_writer import read_ab_json
+    from little_loops.stats import wilson_ci
 
     results = read_ab_json(str(ab_path.parent))
     if results is None or not results.per_item:
@@ -1418,6 +1419,11 @@ def _print_ab_summary(ab_path: Path) -> None:
     harness_pct = results.harness_pass_rate * 100
     baseline_pct = results.baseline_pass_rate * 100
     delta_pct = results.delta * 100
+
+    k_harness = sum(1 for item in results.per_item if item.get("harness_pass", False))
+    k_baseline = sum(1 for item in results.per_item if item.get("baseline_pass", False))
+    h_lo, h_hi = wilson_ci(k_harness, n)
+    b_lo, b_hi = wilson_ci(k_baseline, n)
 
     tokens_ratio = (
         results.median_tokens_harness / results.median_tokens_baseline
@@ -1443,8 +1449,8 @@ def _print_ab_summary(ab_path: Path) -> None:
 
     print()
     print(f"A/B Summary (n={n})")
-    print(f"  Harness pass-rate:  {harness_pct:.0f}%")
-    print(f"  Baseline pass-rate: {baseline_pct:.0f}%")
+    print(f"  Harness pass-rate:  {harness_pct:.0f}%  [{h_lo:.2f}, {h_hi:.2f}]")
+    print(f"  Baseline pass-rate: {baseline_pct:.0f}%  [{b_lo:.2f}, {b_hi:.2f}]")
     print(f"  Delta:              {delta_pct:+.0f}%")
     print()
     print(

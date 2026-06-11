@@ -4405,3 +4405,39 @@ class TestABSummaryDisplay:
         _print_ab_summary(Path("/nonexistent/ab.json"))
         captured = capsys.readouterr()
         assert captured.out == ""
+
+    def test_ab_summary_shows_wilson_ci(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """_print_ab_summary shows Wilson CI bounds alongside pass-rates (ENH-2084)."""
+        from little_loops.ab_writer import ABResults, write_ab_json
+        from little_loops.cli.loop._helpers import _print_ab_summary
+
+        per_items = [
+            {"index": i, "harness_pass": i < 7, "baseline_pass": i < 4,
+             "harness_tokens": 1000, "baseline_tokens": 500,
+             "harness_duration_ms": 2000, "baseline_duration_ms": 1000}
+            for i in range(10)
+        ]
+        results = ABResults(
+            harness_pass_rate=0.7,
+            baseline_pass_rate=0.4,
+            delta=0.3,
+            median_tokens_harness=1000,
+            median_tokens_baseline=500,
+            median_duration_harness=2000.0,
+            median_duration_baseline=1000.0,
+            per_item=per_items,
+        )
+        run_dir = str(tmp_path)
+        write_ab_json(results, run_dir)
+        ab_path = tmp_path / "ab.json"
+
+        _print_ab_summary(ab_path)
+        captured = capsys.readouterr()
+
+        # CI bounds should appear in the output as [X.XX, X.XX]
+        assert "[" in captured.out
+        assert "]" in captured.out
+        # Harness CI for k=7,n=10: roughly [0.40, 0.89]
+        assert "0." in captured.out

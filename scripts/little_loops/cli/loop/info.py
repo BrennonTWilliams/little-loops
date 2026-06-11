@@ -744,9 +744,12 @@ def cmd_diagnose_evaluators(loop_name: str, args: argparse.Namespace, loops_dir:
             print("  No evaluator states found in run history.")
         for state in report.states:
             disc_label = "✓ discriminating" if state.variance >= threshold else "⚠ low variance"
+            ci_str = ""
+            if state.ci is not None:
+                ci_str = f"  CI=[{state.ci[0]:.2f}, {state.ci[1]:.2f}]"
             print(
                 f"  {state.state:20s} pass_rate={state.pass_rate:.2f}  "
-                f"variance={state.variance:.2f}   {disc_label}"
+                f"variance={state.variance:.2f}{ci_str}   {disc_label}"
             )
             if state.recommendation:
                 for line in state.recommendation.split("\n"):
@@ -797,14 +800,17 @@ def cmd_calibrate_budget(loop_name: str, args: argparse.Namespace, loops_dir: Pa
     for state in report.states:
         evaluator_type = state.evaluator_type or "unknown"
         print(f"Evaluator: {state.state} ({evaluator_type})")
+        ci_str = ""
+        if state.ci is not None:
+            ci_str = f"  CI=[{state.ci[0]:.2f}, {state.ci[1]:.2f}]"
         if state.variance < threshold:
             print(
-                f"  Variance p*(1-p): {state.variance:.2f}"
+                f"  Variance p*(1-p): {state.variance:.2f}{ci_str}"
                 f"   ⚠ WARN: below {threshold} threshold"
                 f" — fix evaluator before increasing max_iterations"
             )
         else:
-            print(f"  Variance p*(1-p): {state.variance:.2f}   ✓ OK")
+            print(f"  Variance p*(1-p): {state.variance:.2f}{ci_str}   ✓ OK")
 
     return 1 if flagged else 0
 
