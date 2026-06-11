@@ -109,7 +109,7 @@ Decided by `/ll:decide-issue` on 2026-06-11.
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 1. **Add `--dsl` argument handling to `skills/create-eval-from-issues/SKILL.md`**: add an `$ARGUMENTS` parsing branch detecting `--dsl <source-file>` and routing to DSL task generation instructions; follow the existing `if [[ "$FLAGS" == *"--dsl"* ]]` shell guard pattern used by other skills
-2. **Implement DSL task generation in the skill**: for loop YAML inputs, load via `ll-loop validate --json <file>` to extract `states` and routing tables; for issue inputs, read frontmatter via `parse_frontmatter()` (`scripts/little_loops/frontmatter.py`); generate fill-in-the-blank YAML files to `evals/dsl/<source-name>/` using the task schema decided in Proposed Solution
+2. **Implement DSL task generation in the skill**: for loop YAML inputs, load via `ll-loop show -j <file>` to extract `states` and routing tables (JSON output includes full FSM config); for issue inputs, read frontmatter via `parse_frontmatter()` (`scripts/little_loops/frontmatter.py`); generate fill-in-the-blank YAML files to `evals/dsl/<source-name>/` using the task schema decided in Proposed Solution
 3. **Add `dsl` subparser to `harness.py:_build_harness_parser()`**: `subparsers.add_parser("dsl", help="Run a DSL task set and report pass rates by model")` with `path` positional arg and `_add_evaluator_flags(dsl_p)`; follow the existing pattern at `_build_harness_parser()` lines ~80–130
 4. **Implement `cmd_dsl()` in `harness.py`**: glob `*.yaml` task files from `args.path`; per file, construct a prompt from `prompt:` + `blanks:` fields, invoke `cmd_prompt`, collect pass/fail via `_evaluate_and_report()`; aggregate and print pass-rate table using `wilson_ci(k, n)` from `scripts/little_loops/stats.py`
 5. **Add dispatch in `main_harness()`**: add `elif args.runner == "dsl": return cmd_dsl(args)` branch after existing runner branches
@@ -119,7 +119,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-**`cmd_dsl()` per-task invocation via `cmd_prompt`**: `cmd_prompt` (`harness.py:330`) reads `args.target` as the raw prompt string and calls `resolve_host().build_blocking_json(prompt=args.target)`. Invoke it per DSL task by constructing a synthetic `argparse.Namespace` — do not call the parser again:
+**`cmd_dsl()` per-task invocation via `cmd_prompt`**: `cmd_prompt` (`harness.py:336`) reads `args.target` as the raw prompt string and calls `resolve_host().build_blocking_json(prompt=args.target, model=args.model)`. Invoke it per DSL task by constructing a synthetic `argparse.Namespace` — do not call the parser again:
 ```python
 import argparse
 task_args = argparse.Namespace(
@@ -129,6 +129,7 @@ task_args = argparse.Namespace(
     timeout=args.timeout,
     output=args.output,
     verbose=args.verbose,
+    model=args.model,          # pass through --model from dsl subparser
 )
 result_code = cmd_prompt(task_args)
 ```
@@ -145,6 +146,35 @@ Use `_print_ab_summary` only as a formatting reference (column widths, percentag
 **`_add_evaluator_flags()` is a nested function** inside `_build_harness_parser()` (`harness.py:55`), not a module-level helper. The DSL subparser registration (`subparsers.add_parser("dsl", ...)`) and `_add_evaluator_flags(dsl_p)` call must both happen inside `_build_harness_parser()`, just like the existing `skill`/`cmd`/`mcp`/`prompt` subparsers. `cmd_dsl()` itself (module-level) cannot call `_add_evaluator_flags` — it only receives the already-populated `args.Namespace`.
 
 **`TestCrossHostFlagParsed` exact pattern**: stubs execution with `monkeypatch.setattr("little_loops.cli.loop.run.cmd_run", MagicMock(return_value=0))`, patches `sys.argv` via `patch.object(sys, "argv", [...])`, calls `main_loop()`, then asserts `mock_run.call_args[0][1].cross_host is True`. For DSL: stub `cmd_dsl`, patch `sys.argv = ["ll-harness", "dsl", str(task_path)]`, call `main_harness()`, assert `mock_dsl.call_args[0][0].path == str(task_path)`.
+
+### Go/No-Go Blocker Resolutions (added by `/ll:refine-issue`)
+
+_The two blockers from the No-Go verdict are resolved below with verified codebase findings._
+
+**Blocker 1 (resolved): Use `ll-loop show -j` for state extraction, not `ll-loop validate -j`**
+
+`ll-loop validate -j` exists (`scripts/little_loops/cli/loop/__init__.py:271`) but its JSON output is `{loop, valid, violations}` only — no `states` or routing tables. For extracting FSM states and routing tables for fill-in-the-blank task generation, use `ll-loop show -j <loop>` instead, which outputs the full FSM config:
+```json
+{"name": "...", "initial": "...", "states": {"<state>": {"action": "...", "action_type": "...", "evaluate": {...}, "on_yes": "...", "on_no": "...", "route": {...}}}, "description": "...", "max_iterations": N}
+```
+For Python code in `cmd_dsl()` that needs the fully expanded config (with `from:` inheritance, `flow:` shorthands, and `fragments:` applied), call `load_and_validate(path, raise_on_error=False)` from `scripts/little_loops/fsm/validation.py` directly — it returns `(FSMLoop, list[ValidationError])` and the `FSMLoop.states` dict has all state objects post-expansion.
+
+**Correction to implementation step 2**: replace "load via `ll-loop validate --json <file>` to extract `states` and routing tables" with "load via `ll-loop show -j <file>` to extract `states` and routing tables (CLI), or call `load_and_validate(path, raise_on_error=False)` directly (Python)".
+
+**Blocker 2 (resolved): `--model` flag exists on `prompt` subparser; mirror on `dsl`**
+
+`--model` was added to the `prompt_p` subparser in commit `947179ba` (`harness.py:133-138`); `cmd_prompt` passes it as `resolve_host().build_blocking_json(prompt=args.target, model=args.model)`. Add identical `--model` to `dsl_p` and pass it through the synthetic `task_args.model` to `cmd_prompt`:
+```python
+dsl_p.add_argument("path", help="DSL task file or directory")
+dsl_p.add_argument(
+    "--model",
+    default=None,
+    metavar="MODEL",
+    help="Override Claude model (e.g. claude-haiku-4-5-20251001)",
+)
+_add_evaluator_flags(dsl_p)
+```
+"Pass rates by model" = per-invocation (`ll-harness dsl <path> --model <model-id>` once per model to compare). Multi-model comparison in a single run is out of scope.
 
 ## Integration Map
 
@@ -216,26 +246,30 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Go/No-Go Findings
 
-_Added by `/ll:go-no-go` on 2026-06-11_ — **NO-GO (REFINE)**
+_Added by `/ll:go-no-go` on 2026-06-11_ — **NO-GO (REFINE)** → _Blockers resolved by `/ll:refine-issue` on 2026-06-11_
 
-**Deciding Factor**: `ll-loop validate --json` does not exist (`loop/__init__.py:266–270` — `validate_parser` accepts only a positional `loop` arg with no flags). Implementation step 2 references this non-existent API for DSL extraction. Combined with `harness.py` having no `--model` flag anywhere (`harness.py:32–135`), the acceptance criterion "pass rates by model" is unimplementable as written.
+**Original deciding factor**: Two blockers were cited: (1) `ll-loop validate --json` does not exist; (2) `harness.py` has no `--model` flag.
+
+**Blocker 1 (resolved)**: `ll-loop validate -j/--json` does exist (`loop/__init__.py:271`), but its JSON output is `{loop, valid, violations}` — not states/routing tables. **Fix**: implementation step 2 now uses `ll-loop show -j <file>` which outputs the full FSM config including `states`. See "Go/No-Go Blocker Resolutions" in the Updated Codebase Research Findings section.
+
+**Blocker 2 (resolved)**: `--model` was added to the `prompt` subparser in commit `947179ba` (`harness.py:133-138`). **Fix**: `dsl_p` mirrors the identical `--model` argument; "pass rates by model" = per-invocation comparison (run `ll-harness dsl <path> --model <model-id>` once per model). Acceptance criterion 3 updated accordingly.
 
 ### Key Arguments For
-- `cmd_dsl()` implementation is a mechanical application of existing patterns — `dsl` subparser mirrors `prompt` in `harness.py:32–135`, `DslTask` mirrors `RunnerResult` at line 21, `wilson_ci` already in `stats.py`; changes are purely additive.
+- `cmd_dsl()` implementation is a mechanical application of existing patterns — `dsl` subparser mirrors `prompt` in `harness.py:32–141`, `DslTask` mirrors `RunnerResult` at line 21, `wilson_ci` already in `stats.py`; changes are purely additive.
 - Three of six EPIC-2087 siblings are `done`; foundational infrastructure (Wilson CI, `evals/` convention) is in place.
 
-### Key Arguments Against
-- `ll-harness` has no `--model` flag (`harness.py:32–135`); `cmd_dsl` calling `cmd_prompt` in a single pass yields a pass rate against the host-default model only — the acceptance criterion "pass rates by model" cannot be satisfied without a prerequisite `--model` flag or multi-pass design.
-- Implementation step 2 references `ll-loop validate --json <file>` which does not exist; the task-generation extraction path is broken as specified and needs a replacement (e.g., direct `yaml.safe_load` on the loop YAML file).
+### Key Arguments Against (previously; now resolved)
+- ~~`ll-harness` has no `--model` flag~~ — `--model` exists on `prompt_p`; `dsl_p` mirrors it.
+- ~~Implementation step 2 references `ll-loop validate --json <file>` which does not exist~~ — corrected to `ll-loop show -j <file>`.
 
 ### Rationale
-Two concrete, verified blockers require targeted refinement: replace `ll-loop validate --json` in implementation step 2 with a workable alternative, and resolve the per-model measurement design (either accept single-host pass rates and revise acceptance criterion 3, or add a `--model` flag as an explicit prerequisite). The core feature concept and Option B schema decision are valid.
+Both blockers are resolved with verified codebase findings. The core feature concept and Option B schema decision remain valid. Issue is now implementation-ready.
 
 ## Acceptance Criteria
 
 - [ ] `ll:create-eval-from-issues --dsl <loop-yaml>` generates DSL-specific tasks in `evals/dsl/`
 - [ ] Generated tasks include fill-in-the-blank and transform variants for ll YAML/frontmatter syntax
-- [ ] `ll-harness --dsl` runs the task set and reports pass rates by model
+- [ ] `ll-harness dsl <path>` runs the task set and reports a pass rate with Wilson CI; `--model <model-id>` overrides the model for cross-model comparison via separate invocations
 - [ ] Task files include metadata header with source DSL reference
 
 ## Scope Boundaries
@@ -278,6 +312,7 @@ _Added by `/ll:confidence-check` on 2026-06-10; updated 2026-06-10_
 - **Open question: evaluation scoring** — "report pass rates per model" is stated but the grading rubric (exact match, partial match, semantic judge?) is not defined.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-11T19:07:05 - `6629f98d-c43f-4ffa-bfee-4e29baead61f.jsonl`
 - `/ll:go-no-go` - 2026-06-11T00:00:00Z - `b95b2d03-efb8-4e85-96bb-84acda74afc4.jsonl`
 - `/ll:confidence-check` - 2026-06-11T14:00:00Z - `3b0e3fbc-1efe-4adb-997b-120bb2f1792a.jsonl`
 - `/ll:refine-issue` - 2026-06-11T13:47:01 - `4db5f025-34a9-4096-91e0-fde7dc7d687f.jsonl`
