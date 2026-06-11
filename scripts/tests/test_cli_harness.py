@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ import pytest
 from little_loops.cli.harness import (
     _parse_harness_args,
     cmd_cmd,
+    cmd_dsl,
     cmd_mcp,
     cmd_prompt,
     cmd_skill,
@@ -727,3 +729,179 @@ class TestMainHarness:
         assert result == 0
         out = capsys.readouterr().out
         assert "secret output" in out
+
+    def test_main_harness_dsl_dispatches(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        """main_harness dispatches 'dsl' runner to cmd_dsl."""
+        from pathlib import Path as _Path
+        from unittest.mock import MagicMock
+
+        task_file = tmp_path / "task.yaml"
+        task_file.write_text(
+            "prompt: complete the transition\nblanks: [on_yes]\n"
+            "expected: {on_yes: done}\nsource_dsl: loop\ntask_type: fill-in-the-blank\n"
+        )
+
+        with patch("little_loops.cli.harness.cmd_dsl", return_value=0) as mock_dsl:
+            result = main_harness(["dsl", str(task_file)])
+
+        assert result == 0
+        mock_dsl.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestDslSubcommandParser
+# ---------------------------------------------------------------------------
+
+
+class TestDslSubcommandParser:
+    """Tests for the 'dsl' subparser in _build_harness_parser()."""
+
+    def test_dsl_subparser_path(self, tmp_path: "Path") -> None:
+        args = _parse_harness_args(["dsl", str(tmp_path)])
+        assert args.runner == "dsl"
+        assert args.path == str(tmp_path)
+
+    def test_dsl_subparser_with_model(self, tmp_path: "Path") -> None:
+        args = _parse_harness_args(["dsl", str(tmp_path), "--model", "claude-haiku-4-5-20251001"])
+        assert args.model == "claude-haiku-4-5-20251001"
+
+    def test_dsl_model_defaults_none(self, tmp_path: "Path") -> None:
+        args = _parse_harness_args(["dsl", str(tmp_path)])
+        assert args.model is None
+
+    def test_dsl_subparser_exit_code_flag(self, tmp_path: "Path") -> None:
+        args = _parse_harness_args(["dsl", str(tmp_path), "--exit-code", "0"])
+        assert args.exit_code == 0
+
+    def test_dsl_subparser_semantic_flag(self, tmp_path: "Path") -> None:
+        args = _parse_harness_args(["dsl", str(tmp_path), "--semantic", "contains expected"])
+        assert args.semantic == "contains expected"
+
+    def test_dsl_subparser_timeout_override(self, tmp_path: "Path") -> None:
+        args = _parse_harness_args(["dsl", str(tmp_path), "--timeout", "60"])
+        assert args.timeout == 60
+
+    def test_dsl_subparser_output_json(self, tmp_path: "Path") -> None:
+        args = _parse_harness_args(["dsl", str(tmp_path), "--output", "json"])
+        assert args.output == "json"
+
+    def test_dsl_subparser_verbose(self, tmp_path: "Path") -> None:
+        args = _parse_harness_args(["dsl", str(tmp_path), "--verbose"])
+        assert args.verbose is True
+
+
+# ---------------------------------------------------------------------------
+# TestCmdDsl
+# ---------------------------------------------------------------------------
+
+
+class TestCmdDsl:
+    """Tests for cmd_dsl()."""
+
+    def _make_task_yaml(self, tmp_path: "Path", name: str = "task.yaml") -> "Path":
+        p = tmp_path / name
+        p.write_text(
+            "prompt: Complete this FSM transition.\n"
+            "blanks:\n  - on_yes\nblanks:\n  - on_yes\n"
+            "expected:\n  on_yes: done\n"
+            "source_dsl: loop\n"
+            "task_type: fill-in-the-blank\n"
+            "source_file: loops/my-loop.yaml\n"
+            "generated_at: 2026-06-11T00:00:00Z\n"
+        )
+        return p
+
+    def test_cmd_dsl_single_file_pass(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+        """Single task file with passing prompt → exits 0 and prints pass-rate."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "pass-rate" in out
+        assert "1/1" in out
+
+    def test_cmd_dsl_single_file_fail(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+        """Single task file with failing prompt → exits 1."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file), exit_code=0)
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=1, stdout="")),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "pass-rate" in out
+        assert "0/1" in out
+
+    def test_cmd_dsl_directory_scans_yaml_files(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+        """Directory with multiple .yaml files runs each task."""
+        for i in range(3):
+            self._make_task_yaml(tmp_path, f"task{i}.yaml")
+        args = _make_namespace(runner="dsl", path=str(tmp_path))
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "3/3" in out
+
+    def test_cmd_dsl_path_not_found(self, capsys: pytest.CaptureFixture) -> None:
+        """Missing path returns 2."""
+        args = _make_namespace(runner="dsl", path="/nonexistent/path")
+        result = cmd_dsl(args)
+        assert result == 2
+
+    def test_cmd_dsl_empty_directory(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+        """Directory with no .yaml files returns 2."""
+        args = _make_namespace(runner="dsl", path=str(tmp_path))
+        result = cmd_dsl(args)
+        assert result == 2
+
+    def test_cmd_dsl_passes_model_to_prompt(self, tmp_path: "Path") -> None:
+        """--model flag is forwarded to cmd_prompt."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file), model="claude-haiku-4-5-20251001")
+        captured: dict[str, object] = {}
+
+        def fake_build_blocking_json(*, prompt: str, model: str | None = None, **_: object) -> HostInvocation:
+            captured["model"] = model
+            return HostInvocation(binary="claude", args=[])
+
+        fake_runner = FakeRunner()
+        fake_runner.build_blocking_json = fake_build_blocking_json  # type: ignore[method-assign]
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
+        ):
+            cmd_dsl(args)
+
+        assert captured["model"] == "claude-haiku-4-5-20251001"
+
+    def test_cmd_dsl_wilson_ci_in_output(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+        """Output includes Wilson CI bounds."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
+        ):
+            cmd_dsl(args)
+
+        out = capsys.readouterr().out
+        assert "95% CI" in out

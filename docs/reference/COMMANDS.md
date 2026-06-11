@@ -570,12 +570,17 @@ Create FSM loop configurations — interactively or from a natural language desc
 ### `/ll:create-eval-from-issues`
 Generate a ready-to-run FSM eval harness YAML from one or more issue IDs. Reads each issue's Expected Behavior, Use Case, and Acceptance Criteria sections to synthesize a natural-language execute prompt and `llm_structured` evaluation criteria — no hand-authoring required.
 
+Also supports `--dsl <source-file>` to generate DSL-native fill-in-the-blank/transform/correction tasks from a loop YAML or issue file.
+
 **Arguments:**
-- `issue_ids` (required): One or more issue IDs (e.g., `FEAT-919`, `ENH-950`). Accepts open and completed issues.
+- `issue_ids` (required without `--dsl`): One or more issue IDs (e.g., `FEAT-919`, `ENH-950`). Accepts open and completed issues.
+- `--dsl <source-file>` (optional): Path to a loop YAML or issue file. Generates DSL-native eval tasks under `evals/dsl/<source-name>/` instead of an FSM harness. Run the generated tasks with `ll-harness dsl evals/dsl/<source-name>/`.
 
-**Output:** `.loops/eval-harness-<slug>.yaml` (validated with `ll-loop validate` before writing)
+**Output (standard mode):** `.loops/eval-harness-<slug>.yaml` (validated with `ll-loop validate` before writing)
 
-**Variants:**
+**Output (DSL mode):** `evals/dsl/<source-name>/task-01.yaml`, `task-02.yaml`, ... (Option B lightweight schema)
+
+**Variants (standard mode):**
 - Single issue → Variant A: `initial: execute`, states: `execute → check_skill → done`
 - 2+ issues → Variant B: `initial: discover`, states: `discover → execute → check_skill → advance → done`
 
@@ -585,6 +590,8 @@ Generate a ready-to-run FSM eval harness YAML from one or more issue IDs. Reads 
 ```bash
 /ll:create-eval-from-issues FEAT-919
 /ll:create-eval-from-issues FEAT-919 ENH-950
+/ll:create-eval-from-issues --dsl loops/my-loop.yaml
+/ll:create-eval-from-issues --dsl .issues/enhancements/P3-ENH-2081-example.md
 ```
 
 **See also:** `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `/ll:create-loop`

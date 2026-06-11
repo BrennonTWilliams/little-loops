@@ -1,7 +1,7 @@
 """CLI entry points for little-loops tools.
 
 Provides command-line interfaces for automated issue management:
-- ll-harness: One-shot runner evaluation (skill, cmd, mcp, prompt) with exit-code and semantic criteria
+- ll-harness: One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria
 - ll-action: Invoke ll skills as one-shot commands with JSON-structured output
 - ll-adapt-agents-for-codex: Add Codex subagent TOML files to .codex/agents/
 - ll-adapt-skills-for-codex: Add Codex Skills API frontmatter to ll skill SKILL.md files

@@ -8,7 +8,10 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from little_loops.cli.output import configure_output, print_json, status_block, use_color_enabled
 from little_loops.fsm.evaluators import evaluate_llm_structured
@@ -27,6 +30,31 @@ class RunnerResult:
     exit_code: int
     timed_out: bool = False
     error: str | None = None
+
+
+@dataclass
+class DslTask:
+    """A single DSL evaluation task loaded from a task YAML file."""
+
+    prompt: str
+    blanks: list[str]
+    expected: dict[str, str]
+    source_dsl: str
+    task_type: str
+    source_file: str = ""
+    generated_at: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DslTask:
+        return cls(
+            prompt=data["prompt"],
+            blanks=data.get("blanks") or [],
+            expected=data.get("expected") or {},
+            source_dsl=data.get("source_dsl", ""),
+            task_type=data.get("task_type", ""),
+            source_file=data.get("source_file", ""),
+            generated_at=data.get("generated_at", ""),
+        )
 
 
 def _build_harness_parser() -> argparse.ArgumentParser:
@@ -137,6 +165,20 @@ Exit codes:
         help="Override Claude model (e.g. claude-haiku-4-5-20251001)",
     )
     _add_evaluator_flags(prompt_p)
+
+    dsl_p = subparsers.add_parser(
+        "dsl",
+        help="Run a DSL task set and report pass rates by model",
+        description="Load and run DSL eval task YAML files, reporting pass rate with Wilson CI",
+    )
+    dsl_p.add_argument("path", help="DSL task file or directory of .yaml task files")
+    dsl_p.add_argument(
+        "--model",
+        default=None,
+        metavar="MODEL",
+        help="Override Claude model (e.g. claude-haiku-4-5-20251001)",
+    )
+    _add_evaluator_flags(dsl_p)
 
     return parser
 
@@ -355,6 +397,54 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     return _evaluate_and_report(runner_label, result, args)
 
 
+def cmd_dsl(args: argparse.Namespace) -> int:
+    """Run a DSL task set and report pass rates with Wilson CI."""
+    from little_loops.stats import wilson_ci
+
+    path = Path(args.path)
+    if path.is_dir():
+        task_files = sorted(path.glob("*.yaml"))
+    elif path.is_file():
+        task_files = [path]
+    else:
+        print(f"Error: DSL path not found: {path}", file=sys.stderr)
+        return 2
+
+    if not task_files:
+        print(f"Error: no .yaml task files found in {path}", file=sys.stderr)
+        return 2
+
+    pass_count = 0
+    total = 0
+
+    for task_file in task_files:
+        with open(task_file) as f:
+            data = yaml.safe_load(f)
+        task = DslTask.from_dict(data)
+
+        prompt_text = task.prompt
+        if task.blanks:
+            prompt_text += f"\n\nBlanks to fill: {task.blanks}"
+
+        task_args = argparse.Namespace(
+            target=prompt_text,
+            exit_code=args.exit_code,
+            semantic=args.semantic,
+            timeout=args.timeout,
+            output=args.output,
+            verbose=args.verbose,
+            model=args.model,
+        )
+        rc = cmd_prompt(task_args)
+        total += 1
+        if rc == 0:
+            pass_count += 1
+
+    lo, hi = wilson_ci(pass_count, total)
+    print(f"\nDSL pass-rate: {pass_count}/{total}  [{lo:.2f}, {hi:.2f}] (95% CI)")
+    return 0 if pass_count == total else 1
+
+
 def main_harness(argv: list[str] | None = None) -> int:
     """Entry point for ll-harness CLI."""
     with cli_event_context(DEFAULT_DB_PATH, "ll-harness", sys.argv[1:]):
@@ -370,6 +460,8 @@ def main_harness(argv: list[str] | None = None) -> int:
             return cmd_mcp(args)
         elif args.runner == "prompt":
             return cmd_prompt(args)
+        elif args.runner == "dsl":
+            return cmd_dsl(args)
         else:
             print(f"Unknown runner: {args.runner}", file=sys.stderr)
             return 2

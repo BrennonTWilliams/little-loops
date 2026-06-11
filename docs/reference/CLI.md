@@ -167,6 +167,7 @@ One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or
 | `cmd` | Run a shell command and capture its output |
 | `mcp` | Call an MCP tool via JSON-RPC |
 | `prompt` | Send a raw prompt to Claude via the active host CLI |
+| `dsl` | Run a DSL task set and report pass rates with Wilson CI |
 
 **Shared evaluator flags:**
 
@@ -184,6 +185,9 @@ One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or
 **prompt-specific flag:**
 `--model MODEL` — Override the Claude model used for the prompt (e.g. `claude-haiku-4-5-20251001`). Omit to use the host session default.
 
+**dsl-specific flag:**
+`--model MODEL` — Override the Claude model for all task invocations. Run `ll-harness dsl` once per model to compare pass rates across models.
+
 **Exit codes:** `0` = PASS, `1` = FAIL, `2` = internal error / timeout
 
 **Examples:**
@@ -193,6 +197,8 @@ ll-harness cmd "echo hello" --exit-code 0
 ll-harness mcp my-server:my-tool --args '{"key": "val"}' --semantic "tool returned results"
 ll-harness prompt "What is 2+2?" --semantic "response contains a number"
 ll-harness skill refine-issue P2-ENH-1229 --semantic "has implementation plan" --output json
+ll-harness dsl evals/dsl/my-loop/
+ll-harness dsl evals/dsl/my-loop/ --model claude-haiku-4-5-20251001
 ```
 
 ---

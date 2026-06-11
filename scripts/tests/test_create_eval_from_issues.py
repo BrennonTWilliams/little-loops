@@ -378,3 +378,99 @@ class TestEvalHarnessValidation:
             result = main_loop()
 
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# DSL Task YAML Structural Tests (ENH-2081)
+# ---------------------------------------------------------------------------
+
+DSL_TASK_YAML = """
+prompt: >
+  Given the FSM state below, complete the missing on_yes transition.
+  State: check_quality
+  on_no: execute
+  action_type: llm_structured
+blanks:
+  - on_yes
+expected:
+  on_yes: done
+source_dsl: loop
+source_file: loops/my-loop.yaml
+task_type: fill-in-the-blank
+generated_at: '2026-06-11T00:00:00Z'
+"""
+
+DSL_TASK_YAML_ISSUE = """
+prompt: >
+  Fix the malformed issue frontmatter below.
+  status: completed
+blanks:
+  - status
+expected:
+  status: done
+source_dsl: issue
+source_file: .issues/enhancements/P3-ENH-2081-example.md
+task_type: correction
+generated_at: '2026-06-11T00:00:00Z'
+"""
+
+
+class TestDslTaskYamlStructure:
+    """Structural tests for DSL eval task YAML files (ENH-2081 Option B schema)."""
+
+    @pytest.fixture
+    def loop_task(self) -> dict:
+        return yaml.safe_load(DSL_TASK_YAML)
+
+    @pytest.fixture
+    def issue_task(self) -> dict:
+        return yaml.safe_load(DSL_TASK_YAML_ISSUE)
+
+    def test_parses_as_yaml(self, loop_task: dict) -> None:
+        assert isinstance(loop_task, dict)
+
+    def test_has_prompt_field(self, loop_task: dict) -> None:
+        assert "prompt" in loop_task
+        assert isinstance(loop_task["prompt"], str)
+
+    def test_has_blanks_field(self, loop_task: dict) -> None:
+        assert "blanks" in loop_task
+        assert isinstance(loop_task["blanks"], list)
+
+    def test_has_expected_field(self, loop_task: dict) -> None:
+        assert "expected" in loop_task
+        assert isinstance(loop_task["expected"], dict)
+
+    def test_has_source_dsl_field(self, loop_task: dict) -> None:
+        assert "source_dsl" in loop_task
+        assert loop_task["source_dsl"] in ("loop", "issue")
+
+    def test_has_task_type_field(self, loop_task: dict) -> None:
+        assert "task_type" in loop_task
+        assert loop_task["task_type"] in ("fill-in-the-blank", "transform", "correction")
+
+    def test_loop_source_dsl(self, loop_task: dict) -> None:
+        assert loop_task["source_dsl"] == "loop"
+
+    def test_issue_source_dsl(self, issue_task: dict) -> None:
+        assert issue_task["source_dsl"] == "issue"
+
+    def test_correction_task_type(self, issue_task: dict) -> None:
+        assert issue_task["task_type"] == "correction"
+
+    def test_source_file_is_string(self, loop_task: dict) -> None:
+        assert isinstance(loop_task.get("source_file", ""), str)
+
+    def test_generated_at_is_string(self, loop_task: dict) -> None:
+        assert isinstance(loop_task.get("generated_at", ""), str)
+
+    def test_loadable_by_dsl_task_dataclass(self, loop_task: dict) -> None:
+        """DslTask.from_dict() can load the task without error."""
+        from little_loops.cli.harness import DslTask
+
+        task = DslTask.from_dict(loop_task)
+        assert task.prompt != ""
+        assert task.blanks == ["on_yes"]
+        assert task.expected == {"on_yes": "done"}
+        assert task.source_dsl == "loop"
+        assert task.task_type == "fill-in-the-blank"

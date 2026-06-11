@@ -3,16 +3,17 @@ id: ENH-2081
 title: Generate DSL-native eval tasks from ll's own config formats
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-10T18:12:09Z'
+completed_at: '2026-06-11T20:05:27Z'
 discovered_date: '2026-06-10'
 discovered_by: capture-issue
 parent: EPIC-2087
-confidence_score: 96
-outcome_confidence: 80
-score_complexity: 17
+confidence_score: 99
+outcome_confidence: 82
+score_complexity: 18
 score_test_coverage: 20
-score_ambiguity: 22
+score_ambiguity: 23
 score_change_surface: 21
 decision_needed: false
 ---
@@ -311,7 +312,18 @@ _Added by `/ll:confidence-check` on 2026-06-10; updated 2026-06-10_
 - **Open question: metadata header structure** — "metadata header indicating the source DSL" is mentioned but the format is unspecified (YAML frontmatter? JSON? inline comment?).
 - **Open question: evaluation scoring** — "report pass rates per model" is stated but the grading rubric (exact match, partial match, semantic judge?) is not defined.
 
+## Resolution
+
+- Added `dsl` subparser to `ll-harness` (`scripts/little_loops/cli/harness.py`) with `DslTask` dataclass and `cmd_dsl()` implementing Option B lightweight YAML schema
+- Added `--dsl <source-file>` mode to `ll:create-eval-from-issues` skill (`skills/create-eval-from-issues/SKILL.md`) for generating fill-in-the-blank/transform/correction tasks under `evals/dsl/<source-name>/`
+- Created `evals/dsl/` directory as the storage root for generated DSL task files
+- Updated all documentation: `docs/reference/CLI.md`, `commands/help.md`, `scripts/little_loops/cli/__init__.py`, `scripts/little_loops/init/writers.py`, `skills/init/SKILL.md`, `.claude/CLAUDE.md`, `docs/reference/COMMANDS.md`
+- Added 16 tests in `test_cli_harness.py` (`TestDslSubcommandParser`, `TestCmdDsl`, dispatch test) and 13 DSL structural tests in `test_create_eval_from_issues.py`
+- All 171 targeted tests pass; lint and mypy clean
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-11T19:52:16 - `2a361b86-3249-43d1-bbe6-7e28464dba59.jsonl`
+- `/ll:confidence-check` - 2026-06-11T00:00:00Z - `f33ba808-6bac-42a7-bedf-708478379450.jsonl`
 - `/ll:refine-issue` - 2026-06-11T19:07:05 - `6629f98d-c43f-4ffa-bfee-4e29baead61f.jsonl`
 - `/ll:go-no-go` - 2026-06-11T00:00:00Z - `b95b2d03-efb8-4e85-96bb-84acda74afc4.jsonl`
 - `/ll:confidence-check` - 2026-06-11T14:00:00Z - `3b0e3fbc-1efe-4adb-997b-120bb2f1792a.jsonl`

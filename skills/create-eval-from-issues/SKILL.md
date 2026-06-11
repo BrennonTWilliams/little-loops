@@ -1,7 +1,7 @@
 ---
 name: create-eval-from-issues
-description: Use when asked to generate an FSM eval harness YAML from one or more issue IDs.
-argument-hint: "<issue-id> [issue-id...]"
+description: Use when asked to generate an FSM eval harness YAML from one or more issue IDs, or DSL eval tasks from a loop/issue file with --dsl.
+argument-hint: "<issue-id> [issue-id...] | --dsl <loop-yaml-or-issue-file>"
 allowed-tools:
   - Bash(ll-issues:*, ll-loop:*, mkdir:*)
   - Read
@@ -9,9 +9,12 @@ allowed-tools:
 arguments:
   - name: issue_ids
     description: One or more issue IDs (e.g., FEAT-919, ENH-950, BUG-347). Accepts open or completed issues.
-    required: true
+    required: false
+  - name: --dsl
+    description: Path to a loop YAML or issue file. Generates DSL-native fill-in-the-blank/transform/correction tasks under evals/dsl/<source-name>/ instead of an FSM eval harness.
+    required: false
 metadata:
-  short-description: Use when asked to generate an FSM eval harness YAML from one or more issue IDs.
+  short-description: Generate FSM eval harness YAML from issue IDs, or DSL eval tasks with --dsl.
 ---
 
 # Create Eval From Issues
@@ -37,19 +40,134 @@ Parse arguments:
 
 ```bash
 ISSUE_IDS=()
+DSL_SOURCE=""
 for token in $ARGUMENTS; do
   case "$token" in
-    --*) ;;  # skip flags (reserved for future use)
-    *) ISSUE_IDS+=("$token") ;;
+    --dsl) DSL_MODE=true ;;
+    --dsl=*) DSL_SOURCE="${token#--dsl=}"; DSL_MODE=true ;;
+    *)
+      if [ "${DSL_MODE_NEXT:-}" = "true" ]; then
+        DSL_SOURCE="$token"
+        DSL_MODE_NEXT=false
+      elif [ "${DSL_MODE:-}" = "true" ] && [ -z "$DSL_SOURCE" ]; then
+        DSL_SOURCE="$token"
+      else
+        ISSUE_IDS+=("$token")
+      fi
+      ;;
   esac
+  [ "${token}" = "--dsl" ] && DSL_MODE_NEXT=true
 done
 
-if [ ${#ISSUE_IDS[@]} -eq 0 ]; then
-  echo "Error: at least one issue ID is required."
-  echo "Usage: /ll:create-eval-from-issues FEAT-919 [ENH-950 ...]"
-  exit 1
+if [ "${DSL_MODE:-false}" = "true" ]; then
+  # Route to DSL task generation mode (see DSL Mode section below)
+  if [ -z "$DSL_SOURCE" ]; then
+    echo "Error: --dsl requires a source file path."
+    echo "Usage: /ll:create-eval-from-issues --dsl <loop-yaml-or-issue-file>"
+    exit 1
+  fi
+  # Continue to DSL Mode section below
+else
+  if [ ${#ISSUE_IDS[@]} -eq 0 ]; then
+    echo "Error: at least one issue ID is required."
+    echo "Usage: /ll:create-eval-from-issues FEAT-919 [ENH-950 ...]"
+    echo "       /ll:create-eval-from-issues --dsl <loop-yaml-or-issue-file>"
+    exit 1
+  fi
 fi
 ```
+
+## DSL Mode (`--dsl <source-file>`)
+
+When `DSL_MODE=true`, skip Steps 1–7 below and follow these instructions instead.
+
+### DSL Step 1: Identify Source Type
+
+```bash
+SOURCE_FILE="$DSL_SOURCE"
+# Determine source type from extension or content
+if echo "$SOURCE_FILE" | grep -qE '\.issues/|frontmatter|\.md$'; then
+  SOURCE_TYPE="issue"
+else
+  SOURCE_TYPE="loop"
+fi
+SOURCE_NAME=$(basename "$SOURCE_FILE" | sed 's/\.[^.]*$//' | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+OUTPUT_DIR="evals/dsl/${SOURCE_NAME}"
+mkdir -p "$OUTPUT_DIR"
+```
+
+### DSL Step 2: Extract DSL Content
+
+**For loop YAML sources** (`SOURCE_TYPE=loop`):
+
+```bash
+ll-loop show -j "$SOURCE_NAME" 2>/dev/null || cat "$SOURCE_FILE"
+```
+
+Extract all states and their routing fields (`on_yes`, `on_no`, `on_partial`, `on_error`, `next`, `route` tables). These are the fill-in-the-blank targets.
+
+**For issue file sources** (`SOURCE_TYPE=issue`):
+
+Read the frontmatter fields using the Read tool. Focus on:
+- `status:` field (common malformation: `completed`, `wip`, `done` → canonical values)
+- `priority:` format (P0–P5)
+- Required fields: `id`, `title`, `type`, `priority`, `status`
+
+### DSL Step 3: Generate Task Files
+
+Generate 3–5 DSL task YAML files in `$OUTPUT_DIR/`. Each file follows the Option B schema:
+
+```yaml
+prompt: |
+  <natural-language instruction describing what to fill in or correct>
+blanks:
+  - <field_name_1>
+  - <field_name_2>
+expected:
+  <field_name_1>: <correct_value>
+  <field_name_2>: <correct_value>
+source_dsl: <loop|issue>
+source_file: <relative-path-to-SOURCE_FILE>
+task_type: <fill-in-the-blank|transform|correction>
+generated_at: '<ISO-8601-timestamp>'
+```
+
+**Task types to generate:**
+
+For **loop YAML** sources:
+1. `fill-in-the-blank`: Remove one `on_yes` or `on_no` field from a state and ask the model to complete it
+2. `fill-in-the-blank`: Remove a `next:` field from a non-evaluating state and ask the model to complete the transition
+3. `correction`: Introduce a malformed routing value (e.g., `on_yes: invalid_state`) and ask the model to fix it
+4. `transform`: Given a state definition with missing `evaluate:` block, ask the model to add the correct evaluator type for the action
+
+For **issue file** sources:
+1. `correction`: Show `status: completed` and ask model to correct to canonical value
+2. `correction`: Show a missing required field and ask model to supply it with correct format
+3. `fill-in-the-blank`: Show partial frontmatter with `priority:` missing and ask model to assign based on severity description
+
+Name files sequentially: `task-01.yaml`, `task-02.yaml`, etc.
+
+### DSL Step 4: Report
+
+After writing all task files:
+
+```
+✓ DSL eval tasks generated: evals/dsl/<source-name>/
+
+Source: <SOURCE_FILE> (<loop|issue>)
+Tasks generated:
+  - task-01.yaml  (fill-in-the-blank: on_yes transition)
+  - task-02.yaml  (correction: malformed routing)
+  ...
+
+To run:
+  ll-harness dsl evals/dsl/<source-name>/
+  ll-harness dsl evals/dsl/<source-name>/ --model claude-haiku-4-5-20251001
+```
+
+**Stop here.** Do not proceed to Steps 1–7 below.
+
+---
 
 ## Step 1: Resolve Issue Files
 
