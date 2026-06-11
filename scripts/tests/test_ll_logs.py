@@ -2255,6 +2255,141 @@ class TestScanFailures:
         captured = capsys.readouterr()
         assert "No ll-* failures found" in captured.out
 
+    def test_scan_failures_non_cli_token_filtered(self, capsys) -> None:
+        """Tokens like ll-labs that are not in the CLI allowlist are suppressed."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-labs build --prod", tool_use_id="t1"),
+                    self._user_tool_result_record(
+                        tool_use_id="t1",
+                        content="build failed: missing dependency",
+                        is_error=True,
+                    ),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+                patch(
+                    "little_loops.cli.logs._load_cli_allowlist",
+                    return_value=frozenset(["ll-issues", "ll-history"]),
+                ),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "ll-labs" not in captured.out
+        assert "No ll-* failures found" in captured.out
+
+    def test_scan_failures_content_free_cluster_suppressed(self, capsys) -> None:
+        """Clusters whose only signal is a bare 'Exit code N' are dropped."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record(
+                        tool_use_id="t1",
+                        content="Exit code 1",
+                        is_error=True,
+                    ),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No ll-* failures found" in captured.out
+
+    def test_scan_failures_capture_foreign_flag_parsed(self) -> None:
+        """--capture-foreign flag is accepted."""
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--capture", "--capture-foreign"]):
+            args = _parse_args()
+        assert args.capture is True
+        assert args.capture_foreign is True
+
+    def test_scan_failures_capture_scoped_to_current_project(self) -> None:
+        """--all --capture without --capture-foreign skips foreign-project clusters."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            current_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1", session_id="s1"),
+                    self._user_tool_result_record(
+                        "t1", "KeyError: 'current_project_key'", is_error=True, session_id="s1"
+                    ),
+                ],
+            )
+            self._make_project_dir(
+                claude_projects,
+                home,
+                "ll-labs",
+                [
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t2", session_id="s2"),
+                    self._user_tool_result_record(
+                        "t2", "NameError: foreign_project_error", is_error=True, session_id="s2"
+                    ),
+                ],
+            )
+
+            captured_errors: list[str] = []
+
+            def mock_create_issue(error_output, *args, **kwargs):
+                captured_errors.append(error_output)
+                return None
+
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--capture"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch.object(Path, "cwd", return_value=current_path),
+                patch(
+                    "little_loops.cli.logs._load_cli_allowlist",
+                    return_value=frozenset(["ll-issues"]),
+                ),
+                patch(
+                    "little_loops.issue_lifecycle.create_issue_from_failure",
+                    side_effect=mock_create_issue,
+                ),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        assert len(captured_errors) == 1
+        assert "current_project_key" in captured_errors[0]
+
 
 class TestDiff:
     """Tests for the diff subcommand."""

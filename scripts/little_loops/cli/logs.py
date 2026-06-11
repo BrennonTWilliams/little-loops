@@ -10,7 +10,7 @@ import sqlite3
 import sys
 import time
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -207,6 +207,7 @@ def _cmd_matches(record: dict, cmd: str) -> bool:
 _LL_BASH_RE = re.compile(r"\b(ll-[\w-]+)")
 _QUEUE_SKILL_RE = re.compile(r"^/ll:(\S+)")
 _COMMAND_NAME_SKILL_RE = re.compile(r"<command-name>/ll:(\S+)")
+_CONTENT_FREE_RE = re.compile(r"^exit\s+code\s+\d+$", re.IGNORECASE)
 
 
 @dataclass
@@ -855,6 +856,29 @@ def _cmd_dead_skills(args: argparse.Namespace, logger: Logger) -> int:
     return 0
 
 
+def _load_cli_allowlist(root: Path) -> frozenset[str]:
+    """Return ll-* CLI names from [project.scripts] in scripts/pyproject.toml.
+
+    Returns an empty frozenset if the file cannot be read; the allowlist check
+    is skipped when the set is empty so fallback behavior is open (no filtering).
+    """
+    import tomllib
+
+    pyproject = root / "scripts" / "pyproject.toml"
+    try:
+        with open(pyproject, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, ValueError):
+        return frozenset()
+    scripts = data.get("project", {}).get("scripts", {})
+    return frozenset(k for k in scripts if k.startswith("ll-"))
+
+
+def _is_content_free_error(error_text: str) -> bool:
+    """Return True if error_text carries no signal beyond a bare exit code."""
+    return bool(_CONTENT_FREE_RE.match(error_text.strip()))
+
+
 _STACK_FRAME_RE = re.compile(r'\s*File "[^"]+", line \d+[^\n]*')
 _ABS_PATH_RE = re.compile(r"/(?:[^\s,;\"']+/)+[^\s,;\"']+")
 _LINE_NUM_RE = re.compile(r"\bline \d+\b")
@@ -889,18 +913,21 @@ def _extract_error_text(content: object) -> str:
 
 @dataclass
 class _FailureCluster:
-    """Aggregated failure cluster keyed on (tool_name, normalized_sig)."""
+    """Aggregated failure cluster keyed on (cwd_path, tool_name, normalized_sig)."""
 
     tool_name: str
     normalized_sig: str
     count: int
     sample_error: str
     session_ids: list[str]
+    cwd_path: Path = field(default_factory=lambda: Path("."))
 
 
 def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
     """Mine failed ll-* Bash calls from interactive session JSONL logs."""
     from little_loops.issue_lifecycle import FailureType, classify_failure
+
+    _cli_allowlist = _load_cli_allowlist(Path.cwd())
 
     if args.project:
         cwd_path: Path = args.project
@@ -917,8 +944,8 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
             if folder is not None:
                 project_items.append((decoded_path, folder))
 
-    # raw_clusters maps (tool_name, normalized_sig) -> (count, sample_error, session_ids, latest_ts)
-    raw_clusters: dict[tuple[str, str], tuple[int, str, list[str], str]] = {}
+    # raw_clusters maps (cwd_path, tool_name, normalized_sig) -> (count, sample_error, session_ids, latest_ts)
+    raw_clusters: dict[tuple[Path, str, str], tuple[int, str, list[str], str]] = {}
     latest_ts_overall: str = ""
 
     for _cwd_path, project_folder in project_items:
@@ -965,6 +992,9 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
                         if not m:
                             continue
                         tool_name = m.group(1)
+                        # Skip tokens that are not real ll CLIs (e.g. ll-labs, ll-marketing)
+                        if _cli_allowlist and tool_name not in _cli_allowlist:
+                            continue
                         block_id = block.get("id", "")
                         if block_id:
                             pending[block_id] = (tool_name, ts)
@@ -1002,7 +1032,7 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
                             continue
 
                         normalized_sig = _normalize_error_sig(error_text)
-                        key = (tool_name, normalized_sig)
+                        key = (_cwd_path, tool_name, normalized_sig)
 
                         if key in raw_clusters:
                             cnt, sample, sids, _lts = raw_clusters[key]
@@ -1019,14 +1049,18 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
             k: v for k, v in raw_clusters.items() if _parse_iso_timestamp(v[3]) >= cutoff
         }
 
+    # Drop content-free clusters (bare "Exit code N" with no error body)
+    raw_clusters = {k: v for k, v in raw_clusters.items() if not _is_content_free_error(v[1])}
+
     clusters: list[_FailureCluster] = sorted(
         [
             _FailureCluster(
-                tool_name=k[0],
-                normalized_sig=k[1],
+                tool_name=k[1],
+                normalized_sig=k[2],
                 count=v[0],
                 sample_error=v[1],
                 session_ids=v[2],
+                cwd_path=k[0],
             )
             for k, v in raw_clusters.items()
         ],
@@ -1042,7 +1076,8 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
         return 0
 
     if args.capture:
-        return _capture_failure_clusters(clusters, logger)
+        capture_foreign = getattr(args, "capture_foreign", False)
+        return _capture_failure_clusters(clusters, logger, capture_foreign=capture_foreign)
 
     if args.json:
         print_json(
@@ -1069,15 +1104,22 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
     return 0
 
 
-def _capture_failure_clusters(clusters: list[_FailureCluster], logger: Logger) -> int:
+def _capture_failure_clusters(
+    clusters: list[_FailureCluster], logger: Logger, capture_foreign: bool = False
+) -> int:
     """Create bug issue files for each distinct failure cluster (--capture mode)."""
     from little_loops.issue_lifecycle import create_issue_from_failure
     from little_loops.issue_parser import IssueInfo
 
     config = BRConfig(Path.cwd())
+    current_project = Path.cwd().resolve()
     created = 0
+    skipped_foreign = 0
 
     for c in clusters:
+        if not capture_foreign and c.cwd_path.resolve() != current_project:
+            skipped_foreign += 1
+            continue
         stub_info = IssueInfo(
             path=Path(f"cli/{c.tool_name}"),
             issue_type="bugs",
@@ -1090,6 +1132,11 @@ def _capture_failure_clusters(clusters: list[_FailureCluster], logger: Logger) -
             logger.info(f"Created: {result.name}")
             created += 1
 
+    if skipped_foreign:
+        logger.info(
+            f"Skipped {skipped_foreign} cluster(s) from other projects "
+            "(use --capture-foreign to include them)."
+        )
     logger.info(f"Captured {created} failure cluster(s) as bug issues.")
     return 0
 
@@ -1785,6 +1832,11 @@ Examples:
         "--capture",
         action="store_true",
         help="Create bug issue files for each failure cluster (one per tool+error signature)",
+    )
+    scan_failures_parser.add_argument(
+        "--capture-foreign",
+        action="store_true",
+        help="Allow --capture to include failures from projects other than the current directory (only meaningful with --all)",
     )
     add_json_arg(scan_failures_parser)
 

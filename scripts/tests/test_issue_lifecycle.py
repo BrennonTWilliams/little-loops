@@ -604,6 +604,17 @@ class TestClassifyFailure:
                 "TRANSIENT",
                 "session",
             ),
+            # Shell sandbox environment errors (exit 127 indicators)
+            ("(eval): command not found: grep", "TRANSIENT", "sandbox"),
+            ("bash: status: read-only variable", "TRANSIENT", "sandbox"),
+            # Process killed by OS (exit 137 / SIGKILL / OOM)
+            ("Killed", "TRANSIENT", "killed"),
+            ("Process was Killed by signal 9", "TRANSIENT", "killed"),
+            # User-cancelled tool calls
+            ("<tool_use_error>Cancelled", "TRANSIENT", "cancelled"),
+            # Ad-hoc Python snippet tracebacks
+            ('File "<string>", line 1\nNameError: name \'true\' is not defined', "TRANSIENT", "snippet"),
+            ('File "<stdin>", line 3\nSyntaxError: invalid syntax', "TRANSIENT", "snippet"),
             # Real failure patterns
             ("SyntaxError: unexpected token at line 42", "REAL", "implementation"),
             (

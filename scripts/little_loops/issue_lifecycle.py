@@ -160,6 +160,26 @@ def classify_failure(error_output: str, returncode: int) -> tuple[FailureType, s
     if any(pattern in error_lower for pattern in session_id_patterns):
         return (FailureType.TRANSIENT, "CLI session continuation error")
 
+    # Shell sandbox environment errors — the ll CLI never executed (exit 127 indicators)
+    sandbox_patterns = [
+        "command not found",
+        "read-only variable",
+    ]
+    if any(pattern in error_lower for pattern in sandbox_patterns):
+        return (FailureType.TRANSIENT, "Shell sandbox environment error")
+
+    # Process killed by OS (SIGKILL/OOM kill) — exit 137 text signal
+    if re.search(r"\bkilled\b", error_lower):
+        return (FailureType.TRANSIENT, "Process killed (OOM/SIGKILL)")
+
+    # User-cancelled tool calls — not a defect
+    if "<tool_use_error>" in error_output:
+        return (FailureType.TRANSIENT, "User-cancelled tool call")
+
+    # Ad-hoc Python snippet tracebacks — not from an ll CLI
+    if 'file "<string>"' in error_lower or 'file "<stdin>"' in error_lower:
+        return (FailureType.TRANSIENT, "Ad-hoc Python snippet error, not an ll CLI failure")
+
     # Default: treat as real failure
     return (FailureType.REAL, "Implementation error")
 
