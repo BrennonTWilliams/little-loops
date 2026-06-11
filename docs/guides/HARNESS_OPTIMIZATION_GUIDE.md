@@ -215,6 +215,11 @@ rules.
   actually *discriminating*. A gate can satisfy MR-1 yet be toothless if its verdict never
   varies; this flags evaluators with Bernoulli variance `p*(1-p)` below 0.05 across ≥10
   runs.
+- **`ll-loop calibrate-budget <loop>`** — decide whether increasing `max_iterations` will
+  earn its token cost. Reports `p*(1-p)` per evaluator state with a WARN when variance
+  falls below 0.05: iterations spent against a toothless evaluator change nothing, so fix
+  the evaluator before raising the budget. Complements `diagnose-evaluators` with a
+  retry-budget framing.
 - **`ll-loop run <loop> --baseline`** — empirically validate the optimizer earns its cost
   by running a blind A/B against an unguided single call. A strong skill is not necessarily
   a strong optimizer — don't assume, measure.

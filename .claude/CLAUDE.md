@@ -166,6 +166,23 @@ satisfied) but still be toothless if its verdict never varies across runs.
 Bernoulli variance `p*(1-p)` below 0.05 across ≥10 runs flags an evaluator that
 isn't measuring anything useful.
 
+Use `ll-loop calibrate-budget <loop>` to decide whether increasing `max_iterations`
+will actually improve outcomes. Additional iterations amplify a sound strategy but
+produce near-zero returns when the underlying evaluator is unhealthy. Example:
+
+```
+Evaluator: check_quality (llm_structured)
+  Variance p*(1-p): 0.02   ⚠ WARN: below 0.05 threshold — fix evaluator before increasing max_iterations
+Evaluator: check_exit (exit_code)
+  Variance p*(1-p): 0.23   ✓ OK
+```
+
+`check_quality` has `p*(1-p) = 0.02` — it nearly always returns the same verdict, so
+the loop cannot learn from its signal regardless of how many iterations you allow.
+`check_exit` has `p*(1-p) = 0.23` — it discriminates well; more iterations here earn
+their token cost.  Fix toothless evaluators (broaden the judge prompt, tighten the
+exit-code command) *before* raising `max_iterations`, or the extra budget is wasted.
+
 Use `ll-loop run --baseline` to empirically validate that a meta-loop harness
 improves output quality over an unguided LLM call. See
 [docs/guides/AUTOMATIC_HARNESSING_GUIDE.md § Validating Your Harness](../docs/guides/AUTOMATIC_HARNESSING_GUIDE.md).

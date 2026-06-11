@@ -25,6 +25,7 @@ def main_loop() -> int:
         from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
         from little_loops.cli.loop.info import (
             cmd_audit_meta,
+            cmd_calibrate_budget,
             cmd_diagnose_evaluators,
             cmd_fragments,
             cmd_history,
@@ -63,6 +64,7 @@ def main_loop() -> int:
             "fragments",
             "next-loop",
             "audit-meta",
+            "calibrate-budget",
             "diagnose-evaluators",
             "promote-baseline",
             "monitor",
@@ -670,6 +672,29 @@ Examples:
             "-j", "--json", action="store_true", help="Output as JSON"
         )
 
+        # Calibrate-budget subcommand
+        calibrate_budget_parser = subparsers.add_parser(
+            "calibrate-budget",
+            help="Report per-evaluator Bernoulli variance to guide max_iterations calibration",
+        )
+        calibrate_budget_parser.set_defaults(command="calibrate-budget")
+        calibrate_budget_parser.add_argument("loop", help="Loop name")
+        calibrate_budget_parser.add_argument(
+            "--threshold",
+            type=float,
+            default=0.05,
+            help="Variance floor below which a state is flagged (default: 0.05)",
+        )
+        calibrate_budget_parser.add_argument(
+            "--min-runs",
+            type=int,
+            default=10,
+            help="Minimum runs required for meaningful variance (default: 10)",
+        )
+        calibrate_budget_parser.add_argument(
+            "-j", "--json", action="store_true", help="Output as JSON"
+        )
+
         # Promote-baseline subcommand
         promote_bl_parser = subparsers.add_parser(
             "promote-baseline",
@@ -711,6 +736,8 @@ Examples:
             return cmd_next_loop(args, loops_dir, logger)
         elif args.command == "audit-meta":
             return cmd_audit_meta(args.loop, args, loops_dir)
+        elif args.command == "calibrate-budget":
+            return cmd_calibrate_budget(args.loop, args, loops_dir)
         elif args.command == "diagnose-evaluators":
             return cmd_diagnose_evaluators(args.loop, args, loops_dir)
         elif args.command == "promote-baseline":

@@ -757,6 +757,58 @@ def cmd_diagnose_evaluators(loop_name: str, args: argparse.Namespace, loops_dir:
     return 1 if flagged else 0
 
 
+def cmd_calibrate_budget(loop_name: str, args: argparse.Namespace, loops_dir: Path) -> int:
+    """Report per-evaluator Bernoulli variance to guide max_iterations calibration.
+
+    Calls compute_evaluator_variance() from analytics.variance and reports
+    p*(1-p) per evaluator state.  Variance below threshold signals that
+    increasing max_iterations is unlikely to help; fix the evaluator first.
+
+    Returns 0 if all evaluators are healthy, 1 if any are flagged.
+    """
+    from little_loops.analytics.variance import compute_evaluator_variance
+
+    threshold = getattr(args, "threshold", 0.05)
+    min_runs = getattr(args, "min_runs", 10)
+    as_json = getattr(args, "json", False)
+
+    report = compute_evaluator_variance(loop_name, loops_dir, threshold, min_runs)
+
+    if report is None:
+        if not (loops_dir / ".history").exists():
+            print(f"No history for: {loop_name}")
+        elif len(list((loops_dir / ".history").glob(f"*-{loop_name}"))) < min_runs:
+            runs_found = len(list((loops_dir / ".history").glob(f"*-{loop_name}")))
+            print(
+                f"Insufficient history for: {loop_name} "
+                f"(found {runs_found} run(s), need {min_runs})"
+            )
+        else:
+            print(f"No evaluate events for: {loop_name}")
+        return 0
+
+    flagged = [s for s in report.states if s.variance < threshold]
+
+    if as_json:
+        print_json(report.to_dict())
+        return 0
+
+    print(f"Loop: {loop_name}")
+    for state in report.states:
+        evaluator_type = state.evaluator_type or "unknown"
+        print(f"Evaluator: {state.state} ({evaluator_type})")
+        if state.variance < threshold:
+            print(
+                f"  Variance p*(1-p): {state.variance:.2f}"
+                f"   ⚠ WARN: below {threshold} threshold"
+                f" — fix evaluator before increasing max_iterations"
+            )
+        else:
+            print(f"  Variance p*(1-p): {state.variance:.2f}   ✓ OK")
+
+    return 1 if flagged else 0
+
+
 def cmd_promote_baseline(loop_name: str, args: argparse.Namespace, loops_dir: Path) -> int:
     """Promote the latest run's action output as the new comparator baseline.
 

@@ -798,6 +798,25 @@ ll-loop diagnose-evaluators harness-refine-issue --json        # JSON output for
 ll-loop diagnose-evaluators harness-refine-issue --threshold 0.1 --min-runs 5
 ```
 
+#### `ll-loop calibrate-budget`
+
+Report per-evaluator Bernoulli variance `p*(1-p)` to decide whether increasing `max_iterations` will improve outcomes. Calls the same analytics engine as `diagnose-evaluators` but frames output around retry-budget ROI: evaluators below the variance threshold waste iterations and should be fixed before raising `max_iterations`.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--threshold` | | Variance floor below which a state is flagged (default: 0.05) |
+| `--min-runs` | | Minimum runs required for meaningful variance (default: 10) |
+| `--json` | `-j` | Output results as a JSON object |
+
+**Exit codes:** 0 = all evaluators healthy or insufficient data; 1 = at least one evaluator flagged (fix before increasing `max_iterations`).
+
+**Examples:**
+```bash
+ll-loop calibrate-budget rn-refine                    # Human-readable variance report
+ll-loop calibrate-budget rn-refine --json              # JSON output for scripting
+ll-loop calibrate-budget rn-refine --threshold 0.1 --min-runs 5
+```
+
 #### `ll-loop promote-baseline`
 
 Promote the latest run's action output as the new comparator baseline. Reads `action_output` events from the most recent `.loops/.history/*-<loop>/events.jsonl` and writes the concatenated output to `.loops/baselines/<loop>/output.txt`. Use this to manually set the baseline after inspecting a run, as an alternative to `auto_promote: true`.

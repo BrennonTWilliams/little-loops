@@ -36,6 +36,7 @@ def _mock_handlers(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
                 "cmd_show",
                 "cmd_fragments",
                 "cmd_audit_meta",
+                "cmd_calibrate_budget",
                 "cmd_diagnose_evaluators",
                 "cmd_promote_baseline",
             ],
@@ -418,6 +419,22 @@ class TestMainLoopDispatch:
 
         assert result == 0
         mocks["cmd_audit_meta"].assert_called_once()
+
+    # -- calibrate-budget --
+
+    def test_calibrate_budget_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """main_loop dispatches 'calibrate-budget' to cmd_calibrate_budget."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "calibrate-budget", "test-loop"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_calibrate_budget"].assert_called_once()
 
     # -- diagnose-evaluators --
 
