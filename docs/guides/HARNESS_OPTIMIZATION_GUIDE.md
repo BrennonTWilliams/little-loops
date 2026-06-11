@@ -23,7 +23,7 @@ exist to make harness optimization safe — see [Why It Needs Guardrails](#why-i
 
 - [What Is Harness Optimization?](#what-is-harness-optimization)
 - [Why It Needs Guardrails](#why-it-needs-guardrails)
-- [The Design Rules (MR-1…MR-5)](#the-design-rules-mr-1mr-5)
+- [The Design Rules (MR-1…MR-6)](#the-design-rules-mr-1mr-6)
 - [The Optimizer Error Taxonomy](#the-optimizer-error-taxonomy)
 - [The Canonical Shape](#the-canonical-shape)
 - [Creating One](#creating-one)
@@ -81,7 +81,7 @@ trial-and-error into *safe* trial-and-error.
 
 ---
 
-## The Design Rules (MR-1…MR-5)
+## The Design Rules (MR-1…MR-6)
 
 The normative source for these rules is [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md);
 `ll-loop validate` enforces them. This section explains *why* each exists. Each rule can be
@@ -93,6 +93,7 @@ suppressed with a top-level flag when you have a justified reason.
 | **MR-3** | Intermediate artifacts write under `${context.run_dir}/`, not bare `.loops/tmp/` | Concurrency safety | WARNING | `shared_state_ok: true` |
 | **MR-4** | An LLM-judged state with `on_yes` must also route `on_no`/`on_partial` (or `next:`/full `route:`) — no silent dead-end on a non-yes verdict | Half of verdicts are adverse | WARNING | `partial_route_ok: true` |
 | **MR-5** | A harness loop that writes artifacts in a generate→evaluate cycle must snapshot per-iteration (`artifact_versioning: true`), not overwrite a flat path | Errors persist — keep the trajectory | WARNING | `artifact_versioning_ok: true` |
+| **MR-6** | A meta-loop must not have a `shell` state that writes to the same path as an LLM-generator state (`prompt`/`slash_command` with `yaml_state_editor` or `replace_action` markers) | Hand-patching creates output that diverges from the generator on the next run; fix the generator instead | WARNING | `generator_fix_ok: true` |
 
 MR-1 is the load-bearing one: an optimizer's self-assessment is no better than a coin
 flip, so pair the LLM judge with something it cannot talk its way around — an exit code, a
@@ -208,7 +209,7 @@ rules.
 
 ## Validating and Measuring
 
-- **`ll-loop validate <loop>`** — enforces MR-1 (ERROR) and MR-3/MR-4/MR-5 (WARNING)
+- **`ll-loop validate <loop>`** — enforces MR-1 (ERROR) and MR-3/MR-4/MR-5/MR-6 (WARNING)
   before you run.
 - **`ll-loop diagnose-evaluators <loop>`** — after MR-1 passes, checks that your gate is
   actually *discriminating*. A gate can satisfy MR-1 yet be toothless if its verdict never
@@ -240,7 +241,7 @@ override the non-LLM `convergence` gate on any individual edit.
 - [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) — the sibling pattern:
   wrapping a *skill* in a quality pipeline (not optimizing the harness itself)
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — full FSM reference: evaluators, state fields, CLI
-- [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md) — the normative MR-1…MR-5 rules
+- [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md) — the normative MR-1…MR-6 rules
 - *Towards Direct Evaluation of Harness Optimizers* — the empirical study behind these guardrails, with the per-step measurements, error taxonomy, and findings the rules above are distilled from
 - [`scripts/little_loops/loops/harness-optimize.yaml`](../../scripts/little_loops/loops/harness-optimize.yaml) — the reference harness-optimizer loop
 - [`skills/create-loop/templates.md`](../../skills/create-loop/templates.md) — the wizard-generated "Optimize a harness" template

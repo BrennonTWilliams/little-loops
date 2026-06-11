@@ -183,7 +183,7 @@ ll-loop validate fix-tests
 ```
 
 The validator checks your YAML for schema errors, unreachable states, missing transitions,
-captured variable reachability (ENH-1961), and meta-loop evaluation rules (MR-1 through MR-5).
+captured variable reachability (ENH-1961), and meta-loop evaluation rules (MR-1 through MR-6).
 
 ### 3. Test (Dry Run)
 
@@ -2450,6 +2450,8 @@ ll-loop run cli-anything-bootstrap --context target="https://github.com/user/rep
 **Per-run artifact isolation (MR-3)**: Loops must write intermediate artifacts under `${context.run_dir}/`, not bare `.loops/tmp/`. The runner injects `run_dir` as `.loops/runs/<loop>-<timestamp>/` and creates the folder before execution. Writing to shared `.loops/tmp/` causes state corruption when two instances of the same loop run concurrently. Set `shared_state_ok: true` at the loop top-level to suppress this validation warning when cross-run sharing is intentional.
 
 **Partial-route dead-end guard (MR-4)**: An LLM-judged state (action_type: `prompt` or `slash_command`, or an explicit `llm_structured`/`check_semantic` evaluator) can receive `yes`, `no`, or `partial` verdicts from the default judge. If the state maps `on_yes` but provides no route for `no` or `partial` — and has no `next:` or `route:` table with a `default` — then a `no`/`partial` verdict causes `_route` to return `None`, silently terminating the loop. A parent loop reads this as a failure, discarding any progress made. `ll-loop validate` emits a WARNING (MR-4) for this shape so the dead-end is caught at authoring time. Fix by adding `on_no`/`on_partial`, using `next:` for an unconditional handoff, or providing a `route:` table. Set `partial_route_ok: true` at the loop top-level to suppress when intentional.
+
+**Generator-fix discipline (MR-6)**: A meta-loop must not use a `shell` state to hand-patch the same file path that an LLM-generator state (`prompt`/`slash_command` with `yaml_state_editor` or `replace_action` markers) writes. Hand-patching produces output that diverges from the generator on the next run — the next iteration regenerates the file, overwriting the patch. The stable fix is to update the generator action so every run produces correct output automatically. `ll-loop validate` emits a WARNING (MR-6) when both a shell writer and an LLM generator target the same path. Set `generator_fix_ok: true` at the loop top-level to suppress for intentional post-processing cases.
 
 ## Cluster vs. Composer vs. Router
 
