@@ -2840,9 +2840,7 @@ class TestGeneratorFixDiscipline:
         shell_path = gen_path if same_path else "${context.run_dir}/other.txt"
 
         if with_marker:
-            gen_action = (
-                f"Use yaml_state_editor to generate {gen_path} with the proposed changes."
-            )
+            gen_action = f"Use yaml_state_editor to generate {gen_path} with the proposed changes."
         else:
             gen_action = f"Write the result to {gen_path} with the proposed changes."
 

@@ -1490,8 +1490,8 @@ def _validate_generator_fix_discipline(fsm: FSMLoop) -> list[ValidationError]:
                 paths.add(m.group(1).rstrip("/"))
         return paths
 
-    shell_targets: dict[str, set[str]] = {}      # state_name -> set of file paths
-    generator_targets: dict[str, set[str]] = {}   # state_name -> set of file paths
+    shell_targets: dict[str, set[str]] = {}  # state_name -> set of file paths
+    generator_targets: dict[str, set[str]] = {}  # state_name -> set of file paths
 
     for state_name, state in fsm.states.items():
         if not state.action:
