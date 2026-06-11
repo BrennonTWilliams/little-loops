@@ -150,6 +150,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "partial_route_ok",
         "artifact_versioning",
         "artifact_versioning_ok",
+        "generator_fix_ok",
         "import",
         "fragments",
         "from",
@@ -1012,6 +1013,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_artifact_overwrite(fsm))
 
+    errors.extend(_validate_generator_fix_discipline(fsm))
+
     errors.extend(_validate_zero_retry_counter(fsm))
 
     errors.extend(_validate_on_max_iterations(fsm, defined_states))
@@ -1454,6 +1457,76 @@ def _validate_artifact_overwrite(fsm: FSMLoop) -> list[ValidationError]:
                 for r in target_refs:
                     if r != "$current" and r not in visited:
                         to_visit.append(r)
+
+    return errors
+
+
+def _validate_generator_fix_discipline(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-6 (ENH-2079): meta-loops should not hand-patch generator artifacts.
+
+    Detects the hand-patching anti-pattern: a ``shell``-type state that writes to the
+    same file path as a non-shell (LLM-type) generator state in the same loop.
+    Hand-patching creates fragile output that diverges from the generator on the next
+    run; the stable fix is to update the generator action instead.
+
+    Suppressed by ``generator_fix_ok: true`` at the loop top-level for intentional
+    post-processing cases.
+    """
+    if fsm.generator_fix_ok or not _is_meta_loop(fsm):
+        return []
+
+    # Markers that indicate a prompt/slash_command state is generating file artifacts
+    _GENERATOR_MARKERS = ("yaml_state_editor", "replace_action", "to_file:")
+
+    _PATH_PATTERNS = (
+        re.compile(r'\$\{context\.run_dir\}/([^\s"\';&|]+)'),
+        re.compile(r'\$\{captured\.[^}]+\}/([^\s"\';&|]+)'),
+    )
+
+    def _extract_paths(action: str) -> set[str]:
+        paths: set[str] = set()
+        for pat in _PATH_PATTERNS:
+            for m in pat.finditer(action):
+                paths.add(m.group(1).rstrip("/"))
+        return paths
+
+    shell_targets: dict[str, set[str]] = {}      # state_name -> set of file paths
+    generator_targets: dict[str, set[str]] = {}   # state_name -> set of file paths
+
+    for state_name, state in fsm.states.items():
+        if not state.action:
+            continue
+        action = state.action
+        paths = _extract_paths(action)
+        if not paths:
+            continue
+        action_type = state.action_type
+        if action_type in ("shell", None):
+            shell_targets[state_name] = paths
+        elif action_type in ("prompt", "slash_command"):
+            if any(marker in action for marker in _GENERATOR_MARKERS):
+                generator_targets[state_name] = paths
+
+    errors: list[ValidationError] = []
+    for gen_name, gen_paths in generator_targets.items():
+        for shell_name, shell_paths in shell_targets.items():
+            overlap = gen_paths & shell_paths
+            if overlap:
+                artifact_list = ", ".join(sorted(overlap))
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"[states: {gen_name}, {shell_name}] Hand-patching anti-pattern: "
+                            f"LLM-generator state '{gen_name}' and shell state '{shell_name}' "
+                            f"both write to ({artifact_list}). Move the fix into the generator "
+                            "action so every run produces correct output automatically. "
+                            "Set `generator_fix_ok: true` to suppress for intentional "
+                            "post-processing. (ENH-2079)"
+                        ),
+                        path=f"states.{shell_name}",
+                        severity=ValidationSeverity.WARNING,
+                    )
+                )
 
     return errors
 

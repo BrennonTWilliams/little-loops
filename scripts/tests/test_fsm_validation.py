@@ -27,6 +27,7 @@ from little_loops.fsm.validation import (
     _validate_artifact_overwrite,
     _validate_capture_reachability,
     _validate_evaluator,
+    _validate_generator_fix_discipline,
     _validate_harness_multimodal_evaluator_blind_spot,
     _validate_input_key_without_guard,
     _validate_meta_loop_evaluation,
@@ -2818,3 +2819,88 @@ class TestCaptureReachabilityValidation:
         assert len(warnings) >= 1, f"Expected bypass WARNING, got: {errors}"
         assert any("input" in e.message for e in warnings)
         assert any("branch_b" in e.message for e in warnings)
+
+
+class TestGeneratorFixDiscipline:
+    """MR-6 (ENH-2079): meta-loops should not hand-patch LLM-generator artifacts."""
+
+    def _mr6_fsm(
+        self,
+        *,
+        generator_fix_ok: bool = False,
+        same_path: bool = True,
+        with_marker: bool = True,
+        is_meta_loop: bool = True,
+    ) -> FSMLoop:
+        """Build a minimal FSM for MR-6 testing.
+
+        Default: meta-loop with overlapping shell + generator paths (should trigger MR-6).
+        """
+        gen_path = "${context.run_dir}/output.yaml"
+        shell_path = gen_path if same_path else "${context.run_dir}/other.txt"
+
+        if with_marker:
+            gen_action = (
+                f"Use yaml_state_editor to generate {gen_path} with the proposed changes."
+            )
+        else:
+            gen_action = f"Write the result to {gen_path} with the proposed changes."
+
+        states = {
+            "generate": make_state(
+                action=gen_action,
+                action_type="prompt",
+                next="patch",
+            ),
+            "patch": make_state(
+                action=f"echo patched > {shell_path}",
+                action_type="shell",
+                next="done",
+            ),
+            "done": make_state(terminal=True),
+        }
+        imports = ["lib/benchmark.yaml"] if is_meta_loop and not with_marker else []
+        return FSMLoop(
+            name="test-mr6",
+            initial="generate",
+            states=states,
+            generator_fix_ok=generator_fix_ok,
+            imports=imports,
+        )
+
+    def test_mr6_fires_when_shell_and_generator_write_same_path(self) -> None:
+        """MR-6 WARNING fires when a shell state patches the same path as a generator state."""
+        fsm = self._mr6_fsm()
+        errors = _validate_generator_fix_discipline(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "ENH-2079" in errors[0].message
+
+    def test_mr6_does_not_fire_when_no_path_overlap(self) -> None:
+        """MR-6 does NOT fire when shell and generator states write to different paths."""
+        fsm = self._mr6_fsm(same_path=False)
+        errors = _validate_generator_fix_discipline(fsm)
+        assert errors == []
+
+    def test_mr6_does_not_fire_without_generator_marker(self) -> None:
+        """MR-6 does NOT fire when the prompt state has no yaml_state_editor marker."""
+        fsm = self._mr6_fsm(with_marker=False, is_meta_loop=True)
+        errors = _validate_generator_fix_discipline(fsm)
+        assert errors == []
+
+    def test_mr6_suppressed_by_generator_fix_ok(self) -> None:
+        """MR-6 does NOT fire when generator_fix_ok: true is set."""
+        fsm = self._mr6_fsm(generator_fix_ok=True)
+        errors = _validate_generator_fix_discipline(fsm)
+        assert errors == []
+
+    def test_mr6_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes MR-6 warnings for hand-patching anti-pattern."""
+        fsm = self._mr6_fsm()
+        errors = validate_fsm(fsm)
+        mr6 = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING and "ENH-2079" in e.message
+        ]
+        assert len(mr6) == 1

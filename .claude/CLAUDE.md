@@ -143,6 +143,15 @@ output — only the final version survives. Add per-iteration snapshots and
 declare `artifact_versioning: true`, or set `artifact_versioning_ok: true`
 to suppress when intentional overwrite is the desired behavior. See ENH-1957.
 
+`ll-loop validate` enforces rule 6 as WARNING severity (rule MR-6). A
+meta-loop where a `shell`-type state writes to the same file path as an
+LLM-generator state (`prompt`/`slash_command` with `yaml_state_editor` or
+`replace_action` markers) is flagged as the hand-patching anti-pattern.
+Hand-patching creates fragile output that diverges from the generator on the
+next run; the stable fix is to update the generator action so every subsequent
+run produces correct output automatically. Set `generator_fix_ok: true` to
+suppress for intentional post-processing cases. See ENH-2079.
+
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.

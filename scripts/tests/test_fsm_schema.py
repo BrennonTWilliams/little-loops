@@ -3441,3 +3441,41 @@ class TestFSMLoopArtifactVersioning:
         restored = FSMLoop.from_dict(original.to_dict())
         assert restored.artifact_versioning is True
         assert restored.artifact_versioning_ok is True
+
+
+class TestGeneratorFixOk:
+    """MR-6 (ENH-2079): generator_fix_ok field round-trip serialization."""
+
+    def test_generator_fix_ok_true_round_trips(self) -> None:
+        """generator_fix_ok=True is present in to_dict() and restored by from_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            generator_fix_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("generator_fix_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.generator_fix_ok is True
+
+    def test_generator_fix_ok_false_omitted_from_dict(self) -> None:
+        """generator_fix_ok=False (default) is omitted from to_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "generator_fix_ok" not in d
+
+    def test_generator_fix_ok_defaults_false(self) -> None:
+        """FSMLoop.from_dict() without generator_fix_ok defaults to False."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+            }
+        )
+        assert fsm.generator_fix_ok is False

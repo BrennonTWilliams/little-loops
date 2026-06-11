@@ -14,6 +14,7 @@ import yaml
 from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.validation import (
     ValidationSeverity,
+    _validate_generator_fix_discipline,
     _validate_partial_route_dead_end,
     load_and_validate,
     validate_fsm,
@@ -258,6 +259,25 @@ class TestBuiltinLoopFiles:
             assert not diagnose.get("terminal", False), (
                 f"{loop_file.name}: 'diagnose' state must not be terminal"
             )
+
+
+class TestMR6BuiltinFalsePositives:
+    """MR-6 (ENH-2079): verify no false positives on known built-in loops."""
+
+    def test_harness_optimize_no_mr6_warnings(self) -> None:
+        """harness-optimize.yaml produces no unexpected MR-6 warnings.
+
+        harness-optimize uses both yaml_state_editor (LLM-type) and shell states, but
+        they should not write to overlapping file paths. This is a regression guard.
+        """
+        loop_file = BUILTIN_LOOPS_DIR / "harness-optimize.yaml"
+        assert loop_file.exists(), f"harness-optimize.yaml not found at {loop_file}"
+        fsm, _ = load_and_validate(loop_file)
+        errors = _validate_generator_fix_discipline(fsm)
+        assert errors == [], (
+            f"harness-optimize.yaml produced unexpected MR-6 warnings: "
+            f"{[e.message for e in errors]}"
+        )
 
 
 class TestMR4BuiltinFalsePositives:
