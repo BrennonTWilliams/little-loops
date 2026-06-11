@@ -36,32 +36,64 @@ def _wire_q(
     lint_cmd: str = "ruff check .",
     type_cmd: str = "mypy",
     format_cmd: str = "ruff format .",
+    focus_dirs: str = "src/",
+    add_excludes: bool = False,
+    custom_excludes: str = "",
     features: list[str] | None = None,
     workers: str = "4",
+    worktree_files: list[str] | None = None,
+    session_digest: bool = True,
     hosts: list[str] | None = None,
     settings: str = "local",
     confirmed: bool | None = True,
 ) -> None:
     """Wire a questionary mock for a complete TUI interaction.
 
-    There are now two checkbox() calls: one for features (screen 2) and one for
-    hosts (screen 3). Use side_effect to return the right value per call.
+    Screen flow (6 screens):
+      1. Project Basics: name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd (text)
+      2. Scan: focus_dirs (text), add_excludes (confirm), [custom_excludes (text) if add_excludes]
+      3. Features: features (checkbox), [workers (text) + worktree_files (checkbox) if parallel],
+                   session_digest (confirm)
+      4. Hosts: hosts (checkbox)
+      5. Settings: settings (select)
+      6. CLAUDE.md: (select, via select return_value)
     """
     if features is None:
         features = ["parallel", "product", "learning_tests", "analytics", "context_monitor"]
     if hosts is None:
         hosts = ["claude-code"]
+    if worktree_files is None:
+        worktree_files = []
 
-    text_returns = [name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd]
+    # Text calls: Screen 1 (6 fields) + Screen 2 focus_dirs
+    text_returns = [name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd, focus_dirs]
+    if add_excludes:
+        text_returns.append(custom_excludes)
     if "parallel" in features:
         text_returns.append(workers)
 
     mock_q.text.side_effect = [_mock_ask(v) for v in text_returns]
-    # Two checkbox calls: first is features, second is hosts
-    mock_q.checkbox.side_effect = [_mock_ask(features), _mock_ask(hosts)]
+
+    # Checkbox calls: features, [worktree_files if parallel], hosts
+    checkbox_returns: list[list[str]] = [features]
+    if "parallel" in features:
+        checkbox_returns.append(worktree_files)
+    checkbox_returns.append(hosts)
+    mock_q.checkbox.side_effect = [_mock_ask(v) for v in checkbox_returns]
+
+    # Select: settings (screen 5) + CLAUDE.md (screen 6) — shared return_value
+    # (no curated menus since tests use generic.json which has no command_options;
+    #  and design_tokens not in default features so no profile select)
     mock_q.select.return_value.ask.return_value = settings
-    mock_q.confirm.return_value.ask.return_value = confirmed
-    # Choice is used only to build the checkbox lists; let it return a plain MagicMock
+
+    # Confirm: add_excludes (screen 2), session_digest (screen 3), apply (final)
+    mock_q.confirm.side_effect = [
+        _mock_ask(add_excludes),
+        _mock_ask(session_digest),
+        _mock_ask(confirmed),
+    ]
+
+    # Choice is used only to build checkbox/select lists; let it return a plain MagicMock
     mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
 
 
@@ -188,8 +220,8 @@ class TestConditionalParallel:
             _wire_q(mock_q, features=["parallel"], workers="6")
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
-        # 6 basics + 1 workers question = 7 text() calls (hosts is a checkbox, not text)
-        assert mock_q.text.call_count == 7
+        # 6 basics + 1 focus_dirs (scan) + 1 workers = 8 text() calls
+        assert mock_q.text.call_count == 8
         assert rc == 0
 
     @patch("little_loops.init.tui.questionary")
@@ -201,8 +233,8 @@ class TestConditionalParallel:
             _wire_q(mock_q, features=["analytics"])
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
-        # 6 basics only — no workers question
-        assert mock_q.text.call_count == 6
+        # 6 basics + 1 focus_dirs (scan) = 7 text() calls — no workers question
+        assert mock_q.text.call_count == 7
         assert rc == 0
 
     @patch("little_loops.init.tui.questionary")
@@ -247,7 +279,8 @@ class TestCtrlC:
     def test_ctrl_c_on_features_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
-            # Basics answer normally, features returns None (Ctrl-C on first checkbox)
+            # Screen 1: 6 basics, Screen 2: focus_dirs, Screen 2 confirm: add_excludes=False
+            # Then features checkbox Ctrl-C
             mock_q.text.side_effect = [
                 _mock_ask("myapp"),
                 _mock_ask("src/"),
@@ -255,8 +288,11 @@ class TestCtrlC:
                 _mock_ask("ruff check ."),
                 _mock_ask("mypy"),
                 _mock_ask("ruff format ."),
+                _mock_ask("src/"),  # focus_dirs
             ]
-            mock_q.checkbox.side_effect = [_mock_ask(None)]
+            mock_q.confirm.side_effect = [_mock_ask(False)]  # add_excludes
+            mock_q.checkbox.side_effect = [_mock_ask(None)]  # features Ctrl-C
+            mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
         assert rc == 130
@@ -265,6 +301,7 @@ class TestCtrlC:
     def test_ctrl_c_on_confirm_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
+            # confirmed=None triggers Ctrl-C on the final "Apply?" confirm
             _wire_q(mock_q, confirmed=None)
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
@@ -444,7 +481,9 @@ class TestHostSelection:
     def test_ctrl_c_on_hosts_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
-            # Features returns normally, hosts returns None (Ctrl-C on second checkbox)
+            # Screen 1: 6 basics, Screen 2: focus_dirs + add_excludes=False confirm,
+            # Screen 3: features=["analytics"] (no parallel/design_tokens) + session_digest confirm,
+            # then hosts checkbox Ctrl-C
             mock_q.text.side_effect = [
                 _mock_ask("myapp"),
                 _mock_ask("src/"),
@@ -452,11 +491,17 @@ class TestHostSelection:
                 _mock_ask("ruff check ."),
                 _mock_ask("mypy"),
                 _mock_ask("ruff format ."),
+                _mock_ask("src/"),  # focus_dirs
+            ]
+            mock_q.confirm.side_effect = [
+                _mock_ask(False),  # add_excludes
+                _mock_ask(True),   # session_digest
             ]
             mock_q.checkbox.side_effect = [
                 _mock_ask(["analytics"]),  # features
-                _mock_ask(None),  # hosts — Ctrl-C
+                _mock_ask(None),           # hosts — Ctrl-C
             ]
+            mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
         assert rc == 130
@@ -502,5 +547,339 @@ class TestHostSelection:
             _wire_q(mock_q, hosts=["codex"])
             run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, hosts=["codex"])
 
-        # Verify two checkbox() calls were made (features + hosts)
-        assert mock_q.checkbox.call_count == 2
+        # features checkbox + parallel worktree_files checkbox + hosts checkbox = 3
+        assert mock_q.checkbox.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# New parity features: github_sync / confidence_gate / tdd
+# ---------------------------------------------------------------------------
+
+
+class TestNewFeatureToggles:
+    @patch("little_loops.init.tui.questionary")
+    def test_github_sync_produces_sync_key(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["github_sync", "analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["sync"] == {"enabled": True}
+
+    @patch("little_loops.init.tui.questionary")
+    def test_confidence_gate_produces_commands_key(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["confidence_gate", "analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["commands"]["confidence_gate"]["enabled"] is True
+        assert config["commands"]["confidence_gate"]["readiness_threshold"] == 85
+
+    @patch("little_loops.init.tui.questionary")
+    def test_tdd_mode_produces_commands_tdd_key(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["tdd", "analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["commands"]["tdd_mode"] is True
+
+    @patch("little_loops.init.tui.questionary")
+    def test_confidence_gate_and_tdd_merged_into_one_commands_block(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["confidence_gate", "tdd", "analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["commands"]["confidence_gate"]["enabled"] is True
+        assert config["commands"]["tdd_mode"] is True
+
+
+# ---------------------------------------------------------------------------
+# Design-token profile picker
+# ---------------------------------------------------------------------------
+
+
+class TestDesignTokenProfilePicker:
+    @patch("little_loops.init.tui.questionary")
+    def test_profile_warm_paper_written_to_config(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+
+            # Wire basics (no parallel → 7 text calls), then design_tokens feature selected
+            # Profile select must fire before session_digest confirm and settings select
+            text_returns = ["proj", "src/", "pytest", "ruff check .", "mypy", "ruff format .", "src/"]
+            mock_q.text.side_effect = [_mock_ask(v) for v in text_returns]
+            mock_q.checkbox.side_effect = [
+                _mock_ask(["design_tokens", "analytics"]),  # features
+                _mock_ask(["claude-code"]),                  # hosts
+            ]
+            mock_q.select.side_effect = [
+                _mock_ask("warm-paper"),   # profile picker (screen 3)
+                _mock_ask("local"),        # settings (screen 5)
+                _mock_ask("skip"),         # CLAUDE.md (screen 6)
+            ]
+            mock_q.confirm.side_effect = [
+                _mock_ask(False),   # add_excludes
+                _mock_ask(True),    # session_digest
+                _mock_ask(True),    # apply
+            ]
+            mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert rc == 0
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["design_tokens"]["active"] == "warm-paper"
+
+    @patch("little_loops.init.tui.questionary")
+    def test_design_tokens_no_profile_prompt_when_not_selected(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert "design_tokens" not in config
+
+
+# ---------------------------------------------------------------------------
+# Scan screen
+# ---------------------------------------------------------------------------
+
+
+class TestScanScreen:
+    @patch("little_loops.init.tui.questionary")
+    def test_custom_focus_dirs_written_to_config(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], focus_dirs="app/, lib/")
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["scan"]["focus_dirs"] == ["app/", "lib/"]
+
+    @patch("little_loops.init.tui.questionary")
+    def test_custom_excludes_appended_to_template_defaults(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(
+                mock_q,
+                features=["analytics"],
+                add_excludes=True,
+                custom_excludes="**/scratch/**",
+            )
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert "**/scratch/**" in config["scan"]["exclude_patterns"]
+
+    @patch("little_loops.init.tui.questionary")
+    def test_no_custom_excludes_by_default(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], add_excludes=False)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        # Confirm: add_excludes was called, custom_excludes text was NOT called
+        # (7 text calls: 6 basics + focus_dirs)
+        assert mock_q.text.call_count == 7
+
+
+# ---------------------------------------------------------------------------
+# Worktree copy files
+# ---------------------------------------------------------------------------
+
+
+class TestWorktreeCopyFiles:
+    @patch("little_loops.init.tui.questionary")
+    def test_worktree_files_written_to_config(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["parallel", "analytics"], worktree_files=[".env", ".secrets"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["parallel"]["worktree_copy_files"] == [".env", ".secrets"]
+
+    @patch("little_loops.init.tui.questionary")
+    def test_empty_worktree_files_no_key(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["parallel", "analytics"], workers="4", worktree_files=[])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        # Neither max_workers nor worktree_copy_files → parallel section omitted
+        assert "parallel" not in config
+
+
+# ---------------------------------------------------------------------------
+# Session digest
+# ---------------------------------------------------------------------------
+
+
+class TestSessionDigest:
+    @patch("little_loops.init.tui.questionary")
+    def test_session_digest_off_written_to_config(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], session_digest=False)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["history"]["session_digest"]["enabled"] is False
+
+    @patch("little_loops.init.tui.questionary")
+    def test_session_digest_on_by_default(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["history"]["session_digest"]["enabled"] is True
+
+
+# ---------------------------------------------------------------------------
+# Settings "Skip" option
+# ---------------------------------------------------------------------------
+
+
+class TestSettingsSkip:
+    @patch("little_loops.init.tui.questionary")
+    def test_settings_skip_writes_no_settings_file(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], settings="skip")
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert not (tmp_path / ".claude" / "settings.local.json").exists()
+        assert not (tmp_path / ".claude" / "settings.json").exists()
+
+    @patch("little_loops.init.tui.questionary")
+    def test_settings_skip_still_writes_config(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], settings="skip")
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert (tmp_path / ".ll" / "ll-config.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# _build_final_config unit tests — new parity params
+# ---------------------------------------------------------------------------
+
+
+class TestBuildFinalConfigParity:
+    @pytest.fixture
+    def generic_template(self, tmp_path: Path) -> object:
+        from little_loops.init.detect import detect_project_type
+
+        return detect_project_type(tmp_path, _TEMPLATES_DIR)
+
+    def _base_kwargs(self, template: object) -> dict:
+        return {
+            "template": template,
+            "name": "proj",
+            "src_dir": "src/",
+            "test_cmd": "pytest",
+            "lint_cmd": "ruff",
+            "type_cmd": "",
+            "format_cmd": "",
+            "parallel_workers": 4,
+        }
+
+    def test_github_sync_key(self, generic_template: object) -> None:
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set={"github_sync"},
+        )
+        assert config["sync"] == {"enabled": True}
+
+    def test_confidence_gate_key(self, generic_template: object) -> None:
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set={"confidence_gate"},
+        )
+        assert config["commands"]["confidence_gate"]["enabled"] is True
+        assert config["commands"]["confidence_gate"]["readiness_threshold"] == 85
+
+    def test_tdd_key(self, generic_template: object) -> None:
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set={"tdd"},
+        )
+        assert config["commands"]["tdd_mode"] is True
+
+    def test_session_digest_disabled(self, generic_template: object) -> None:
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set=set(),
+            session_digest_enabled=False,
+        )
+        assert config["history"]["session_digest"]["enabled"] is False
+
+    def test_design_token_profile_in_config(self, generic_template: object) -> None:
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set={"design_tokens"},
+            design_token_profile="warm-paper",
+        )
+        assert config["design_tokens"]["active"] == "warm-paper"
+
+    def test_documents_categories_written(self, generic_template: object) -> None:
+        cats = {"architecture": {"description": "Arch docs", "files": ["docs/ARCH.md"]}}
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set={"documents"},
+            documents_categories=cats,
+        )
+        assert config["documents"]["categories"] == cats
+
+    def test_custom_focus_dirs_in_scan(self, generic_template: object) -> None:
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set=set(),
+            scan_focus_dirs=["app/", "lib/"],
+        )
+        assert config["scan"]["focus_dirs"] == ["app/", "lib/"]
+
+    def test_custom_excludes_appended(self, generic_template: object) -> None:
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set=set(),
+            scan_custom_excludes=["**/scratch/**"],
+        )
+        assert "**/scratch/**" in config["scan"]["exclude_patterns"]
+
+    def test_worktree_copy_files_in_parallel(self, generic_template: object) -> None:
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set={"parallel"},
+            worktree_copy_files=[".env", ".secrets"],
+        )
+        assert config["parallel"]["worktree_copy_files"] == [".env", ".secrets"]
+
+    def test_yes_path_unaffected_by_new_defaults(self, generic_template: object) -> None:
+        """--yes path: calling _build_final_config with all defaults is unchanged."""
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set={"parallel", "product", "learning_tests", "analytics", "context_monitor"},
+        )
+        # No new top-level keys added by default
+        assert "sync" not in config
+        assert "commands" not in config

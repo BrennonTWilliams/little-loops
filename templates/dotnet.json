@@ -12,7 +12,12 @@
       "dotnet",
       "csharp",
       "fsharp"
-    ]
+    ],
+    "command_options": {
+      "test_cmd": ["dotnet test", "dotnet test --logger trx", "dotnet test --no-build"],
+      "lint_cmd": ["dotnet format --verify-no-changes", "dotnet build /p:TreatWarningsAsErrors=true"],
+      "format_cmd": ["dotnet format", "dotnet format --include src/"]
+    }
   },
   "project": {
     "src_dir": "src/",

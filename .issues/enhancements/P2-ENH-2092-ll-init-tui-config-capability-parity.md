@@ -2,9 +2,10 @@
 id: ENH-2092
 title: Bring ll-init TUI to config-capability parity with /ll:init
 type: enhancement
-status: open
+status: done
 priority: P2
-captured_at: "2026-06-11T19:02:25Z"
+captured_at: '2026-06-11T19:02:25Z'
+completed_at: '2026-06-11T19:42:36Z'
 discovered_date: 2026-06-11
 discovered_by: capture-issue
 parent: EPIC-1978
@@ -19,6 +20,12 @@ labels:
 - init
 - tui
 - parity
+confidence_score: 98
+outcome_confidence: 79
+score_complexity: 13
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 21
 ---
 
 # ENH-2092: Bring ll-init TUI to config-capability parity with /ll:init
@@ -252,6 +259,25 @@ screens, plus one new `detect.py` helper.
 
 **Open** | Created: 2026-06-11 | Priority: P2
 
+## Resolution
+
+Implemented config-capability parity between `ll-init` TUI and `/ll:init` skill:
+
+- Added `_meta.command_options` to 8 typed templates (python-generic, typescript, javascript, go, rust, java-maven, java-gradle, dotnet) with curated command menus per language. `generic.json` intentionally omitted.
+- Added `detect_documents()` to `detect.py` — globs arch/product doc patterns, excludes `.git`/`node_modules`/`.issues`, returns `categories` dict.
+- Extended `_FEATURE_CHOICES` / `_FEATURE_LABELS` with `github_sync`, `confidence_gate`, `tdd` (default unchecked).
+- Added `_ask_command()` helper for curated-menu select + "Custom…" fallthrough to text.
+- Reflowed TUI from 5 to 6 screens: Project Basics → Scan (new) → Features → Hosts → Settings → CLAUDE.md.
+- New Scan screen: `focus_dirs` text + `add_excludes` confirm + optional custom excludes text.
+- Features screen additions: worktree_copy_files checkbox (when parallel selected), design-token profile picker select (when design_tokens selected), session_digest confirm (always).
+- Settings screen: added "Skip" option (skips `merge_settings`).
+- Updated `_build_final_config` with all new config keys; `_apply_config` skips `merge_settings` on "skip" and passes `active_profile` to `deploy_design_tokens`.
+- Extended `_render_summary` with new rows: sync, commands, design-token profile, document categories, worktree files, session digest.
+- Added 60+ new unit tests covering all new prompts; 332 tests pass; ruff + mypy clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-11T19:42:36Z - implementation complete
+- `/ll:ready-issue` - 2026-06-11T19:16:23 - `bf50dd5d-2ebd-4317-b1fb-51875872b688.jsonl`
+- `/ll:confidence-check` - 2026-06-11T00:00:00Z - `6b731e5c-2829-41b3-ac17-201e3db7a0bd.jsonl`
 - `/ll:format-issue` - 2026-06-11T19:06:19 - `6629f98d-c43f-4ffa-bfee-4e29baead61f.jsonl`
 - `/ll:capture-issue` - 2026-06-11T19:02:25Z - `6629f98d-c43f-4ffa-bfee-4e29baead61f.jsonl`

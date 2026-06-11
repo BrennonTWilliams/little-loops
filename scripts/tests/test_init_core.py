@@ -1247,3 +1247,102 @@ class TestHostDispatch:
         assert code == 0
         plan = json.loads(capsys.readouterr().out)
         assert "has_pi" in plan["host_options"]
+
+
+# ===========================================================================
+# TestDetectDocuments
+# ===========================================================================
+
+
+class TestDetectDocuments:
+    def test_returns_empty_when_no_docs(self, tmp_project: Path) -> None:
+        from little_loops.init.detect import detect_documents
+
+        result = detect_documents(tmp_project)
+        assert result == {}
+
+    def test_finds_architecture_doc(self, tmp_project: Path) -> None:
+        from little_loops.init.detect import detect_documents
+
+        docs_dir = tmp_project / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "architecture.md").write_text("# Architecture")
+        result = detect_documents(tmp_project)
+        assert "architecture" in result
+        assert "docs/architecture.md" in result["architecture"]["files"]
+
+    def test_finds_product_doc(self, tmp_project: Path) -> None:
+        from little_loops.init.detect import detect_documents
+
+        (tmp_project / "roadmap.md").write_text("# Roadmap")
+        result = detect_documents(tmp_project)
+        assert "product" in result
+        assert "roadmap.md" in result["product"]["files"]
+
+    def test_excludes_node_modules(self, tmp_project: Path) -> None:
+        from little_loops.init.detect import detect_documents
+
+        nm = tmp_project / "node_modules" / "some-pkg"
+        nm.mkdir(parents=True)
+        (nm / "architecture.md").write_text("noise")
+        result = detect_documents(tmp_project)
+        assert result == {}
+
+    def test_excludes_dot_git(self, tmp_project: Path) -> None:
+        from little_loops.init.detect import detect_documents
+
+        git_dir = tmp_project / ".git" / "info"
+        git_dir.mkdir(parents=True)
+        (git_dir / "goals.md").write_text("noise")
+        result = detect_documents(tmp_project)
+        assert result == {}
+
+    def test_architecture_and_product_both_detected(self, tmp_project: Path) -> None:
+        from little_loops.init.detect import detect_documents
+
+        docs = tmp_project / "docs"
+        docs.mkdir()
+        (docs / "api.md").write_text("# API")
+        (docs / "vision.md").write_text("# Vision")
+        result = detect_documents(tmp_project)
+        assert "architecture" in result
+        assert "product" in result
+
+
+# ===========================================================================
+# TestTemplateCommandOptions — integrity check for all typed templates
+# ===========================================================================
+
+
+class TestTemplateCommandOptions:
+    """All 8 non-generic project-type templates must have _meta.command_options."""
+
+    TYPED_TEMPLATES = [
+        "python-generic.json",
+        "typescript.json",
+        "javascript.json",
+        "go.json",
+        "rust.json",
+        "java-maven.json",
+        "java-gradle.json",
+        "dotnet.json",
+    ]
+
+    @pytest.mark.parametrize("filename", TYPED_TEMPLATES)
+    def test_has_command_options(self, filename: str, templates_dir: Path) -> None:
+        data = json.loads((templates_dir / filename).read_text())
+        assert "command_options" in data["_meta"], (
+            f"{filename} is missing _meta.command_options"
+        )
+
+    @pytest.mark.parametrize("filename", TYPED_TEMPLATES)
+    def test_command_options_has_test_cmd(self, filename: str, templates_dir: Path) -> None:
+        data = json.loads((templates_dir / filename).read_text())
+        opts = data["_meta"]["command_options"]
+        assert "test_cmd" in opts and len(opts["test_cmd"]) >= 2, (
+            f"{filename} command_options.test_cmd is missing or has fewer than 2 choices"
+        )
+
+    def test_generic_has_no_command_options(self, templates_dir: Path) -> None:
+        data = json.loads((templates_dir / "generic.json").read_text())
+        assert "command_options" not in data["_meta"]

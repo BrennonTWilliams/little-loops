@@ -10,7 +10,11 @@
       "java",
       "maven",
       "jvm"
-    ]
+    ],
+    "command_options": {
+      "test_cmd": ["mvn test", "mvn test -pl .", "mvn verify"],
+      "lint_cmd": ["mvn checkstyle:check", "mvn pmd:check", "mvn spotbugs:check"]
+    }
   },
   "project": {
     "src_dir": "src/main/java/",

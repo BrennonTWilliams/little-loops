@@ -9,7 +9,12 @@
     "tags": [
       "go",
       "golang"
-    ]
+    ],
+    "command_options": {
+      "test_cmd": ["go test ./...", "go test -v ./...", "go test -race ./..."],
+      "lint_cmd": ["golangci-lint run", "go vet ./..."],
+      "format_cmd": ["gofmt -w .", "goimports -w ."]
+    }
   },
   "project": {
     "src_dir": ".",

@@ -9,7 +9,12 @@
     "tags": [
       "rust",
       "cargo"
-    ]
+    ],
+    "command_options": {
+      "test_cmd": ["cargo test", "cargo test --all", "cargo nextest run"],
+      "lint_cmd": ["cargo clippy -- -D warnings", "cargo clippy", "cargo check"],
+      "format_cmd": ["cargo fmt", "cargo fmt --check"]
+    }
   },
   "project": {
     "src_dir": "src/",

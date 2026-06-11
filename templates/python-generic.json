@@ -13,7 +13,12 @@
       "pytest",
       "ruff",
       "mypy"
-    ]
+    ],
+    "command_options": {
+      "test_cmd": ["pytest", "pytest -v", "python -m pytest"],
+      "lint_cmd": ["ruff check .", "flake8", "pylint"],
+      "format_cmd": ["ruff format .", "black .", "autopep8"]
+    }
   },
   "project": {
     "src_dir": "src/",

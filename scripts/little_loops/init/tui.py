@@ -20,6 +20,9 @@ _FEATURE_CHOICES: list[tuple[str, str]] = [
     ("Learning tests registry", "learning_tests"),
     ("Analytics capture", "analytics"),
     ("Context monitor  (auto-handoff)", "context_monitor"),
+    ("GitHub sync  (ll-sync)", "github_sync"),
+    ("Confidence gate", "confidence_gate"),
+    ("TDD mode", "tdd"),
 ]
 
 _DEFAULT_FEATURES: frozenset[str] = frozenset(
@@ -34,6 +37,9 @@ _FEATURE_LABELS: dict[str, str] = {
     "learning_tests": "Learning tests",
     "analytics": "Analytics",
     "context_monitor": "Context monitor",
+    "github_sync": "GitHub sync",
+    "confidence_gate": "Confidence gate",
+    "tdd": "TDD mode",
 }
 
 # Host choices for the multi-select screen
@@ -48,6 +54,36 @@ _HOST_LABELS: dict[str, str] = {
     "codex": "Codex CLI",
     "pi": "Pi",
 }
+
+# Sentinel used in curated command menus for the free-text fallthrough
+_CUSTOM_SENTINEL = "Custom…"
+
+# Named design-token profiles (discovered from templates/design-tokens/profiles/)
+_DESIGN_TOKEN_PROFILES: list[tuple[str, str]] = [
+    ("Default", "default"),
+    ("Editorial Mono", "editorial-mono"),
+    ("Warm Paper", "warm-paper"),
+    ("Custom path…", "_custom"),
+]
+
+
+def _ask_command(label: str, default: str, options: list[str] | None) -> str | None:
+    """Ask for a command field using a curated menu when options are provided.
+
+    Falls through to free-text if the user selects "Custom…" or if no options are given.
+    Returns None on Ctrl-C.
+    """
+    if options:
+        sel_default = default if default in options else options[0]
+        choices = [questionary.Choice(o, value=o) for o in options]
+        choices.append(questionary.Choice(_CUSTOM_SENTINEL, value=_CUSTOM_SENTINEL))
+        chosen = questionary.select(label, choices=choices, default=sel_default).ask()
+        if chosen is None:
+            return None
+        if chosen == _CUSTOM_SENTINEL:
+            return questionary.text(f"{label} (enter custom value):", default=default).ask()
+        return chosen
+    return questionary.text(label, default=default).ask()
 
 
 def run_tui(
@@ -89,6 +125,7 @@ def run_tui(
 
     template = detect_project_type(project_root, templates_dir)
     project_data = template.data.get("project", {})
+    cmd_options: dict[str, list[str]] = template.meta.get("command_options", {})
 
     console.print(
         f"\n[bold blue]little-loops setup[/bold blue] — detected [cyan]{template.name}[/cyan]\n"
@@ -96,8 +133,8 @@ def run_tui(
 
     default_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
 
-    # --- Screen 1: Project basics ---
-    console.rule("[bold]1 / 5  Project Basics[/bold]")
+    # --- Screen 1 / 6: Project Basics ---
+    console.rule("[bold]1 / 6  Project Basics[/bold]")
 
     name = questionary.text("Project name:", default=project_root.name).ask()
     if name is None:
@@ -109,11 +146,15 @@ def run_tui(
     if src_dir is None:
         return 130
 
-    test_cmd = questionary.text("Test command:", default=project_data.get("test_cmd") or "").ask()
+    test_cmd = _ask_command(
+        "Test command:", default=project_data.get("test_cmd") or "", options=cmd_options.get("test_cmd")
+    )
     if test_cmd is None:
         return 130
 
-    lint_cmd = questionary.text("Lint command:", default=project_data.get("lint_cmd") or "").ask()
+    lint_cmd = _ask_command(
+        "Lint command:", default=project_data.get("lint_cmd") or "", options=cmd_options.get("lint_cmd")
+    )
     if lint_cmd is None:
         return 130
 
@@ -124,16 +165,45 @@ def run_tui(
     if type_cmd is None:
         return 130
 
-    format_cmd = questionary.text(
+    format_cmd = _ask_command(
         "Format command (optional):",
         default=project_data.get("format_cmd") or "",
-    ).ask()
+        options=cmd_options.get("format_cmd"),
+    )
     if format_cmd is None:
         return 130
 
-    # --- Screen 2: Features ---
+    # --- Screen 2 / 6: Scan ---
     console.print()
-    console.rule("[bold]2 / 5  Features[/bold]")
+    console.rule("[bold]2 / 6  Scan[/bold]")
+
+    _scan_data = template.data.get("scan", {})
+    _default_focus = ", ".join(_scan_data.get("focus_dirs", ["src/"]))
+    focus_dirs_str = questionary.text(
+        "Focus directories (comma-separated):",
+        default=_default_focus,
+    ).ask()
+    if focus_dirs_str is None:
+        return 130
+
+    add_excludes: bool | None = questionary.confirm(
+        "Add custom exclude patterns?", default=False
+    ).ask()
+    if add_excludes is None:
+        return 130
+
+    custom_excludes_str = ""
+    if add_excludes:
+        custom_excludes_str = questionary.text(
+            "Custom exclude patterns (comma-separated glob patterns):",
+            default="",
+        ).ask()
+        if custom_excludes_str is None:
+            return 130
+
+    # --- Screen 3 / 6: Features ---
+    console.print()
+    console.rule("[bold]3 / 6  Features[/bold]")
 
     selected_features: list[str] | None = questionary.checkbox(
         "Enable features:",
@@ -147,8 +217,9 @@ def run_tui(
 
     selected_set = set(selected_features)
 
-    # Conditional: parallel worker count (only when parallel is selected)
+    # Conditional: parallel worker count + worktree copy files
     parallel_workers: int = 4
+    worktree_copy_files: list[str] = []
     if "parallel" in selected_set:
         workers_str = questionary.text("Max parallel workers:", default="4").ask()
         if workers_str is None:
@@ -161,9 +232,45 @@ def run_tui(
             console.print("[yellow]Invalid worker count; defaulting to 4.[/yellow]")
             parallel_workers = 4
 
-    # --- Screen 3: Hosts ---
+        wt_files: list[str] | None = questionary.checkbox(
+            "Copy these files into each worktree:",
+            choices=[
+                questionary.Choice(".env", value=".env"),
+                questionary.Choice(".env.local", value=".env.local"),
+                questionary.Choice(".secrets", value=".secrets"),
+            ],
+        ).ask()
+        if wt_files is None:
+            return 130
+        worktree_copy_files = wt_files
+
+    # Conditional: design-token profile picker
+    design_token_profile = "default"
+    if "design_tokens" in selected_set:
+        _profile: str | None = questionary.select(
+            "Design-token profile:",
+            choices=[questionary.Choice(label, value=val) for label, val in _DESIGN_TOKEN_PROFILES],
+        ).ask()
+        if _profile is None:
+            return 130
+        if _profile == "_custom":
+            _custom_path = questionary.text("Custom profile path:").ask()
+            if _custom_path is None:
+                return 130
+            design_token_profile = _custom_path
+        else:
+            design_token_profile = _profile
+
+    # Session digest toggle (always asked)
+    session_digest_enabled: bool | None = questionary.confirm(
+        "Enable ambient session digest?", default=True
+    ).ask()
+    if session_digest_enabled is None:
+        return 130
+
+    # --- Screen 4 / 6: Hosts ---
     console.print()
-    console.rule("[bold]3 / 5  Hosts[/bold]")
+    console.rule("[bold]4 / 6  Hosts[/bold]")
 
     selected_hosts: list[str] | None = questionary.checkbox(
         "Which host harnesses should ll-init wire adapters for?",
@@ -175,9 +282,9 @@ def run_tui(
     if selected_hosts is None:
         return 130
 
-    # --- Screen 4: Settings target ---
+    # --- Screen 5 / 6: Settings target ---
     console.print()
-    console.rule("[bold]4 / 5  Settings[/bold]")
+    console.rule("[bold]5 / 6  Settings[/bold]")
 
     settings_target: str | None = questionary.select(
         "Where should ll tool permissions be written?",
@@ -190,14 +297,18 @@ def run_tui(
                 ".claude/settings.json  (shared with team)",
                 value="shared",
             ),
+            questionary.Choice(
+                "Skip — don't write tool permissions",
+                value="skip",
+            ),
         ],
     ).ask()
     if settings_target is None:
         return 130
 
-    # --- Screen 5: CLAUDE.md ---
+    # --- Screen 6 / 6: CLAUDE.md ---
     console.print()
-    console.rule("[bold]5 / 5  CLAUDE.md[/bold]")
+    console.rule("[bold]6 / 6  CLAUDE.md[/bold]")
 
     _dot_claude_md = project_root / ".claude" / "CLAUDE.md"
     _root_claude_md = project_root / "CLAUDE.md"
@@ -229,6 +340,17 @@ def run_tui(
             return 130
         claude_md_opt_in = _claude_md_choice == "yes"
 
+    # --- Compute documents categories ---
+    from little_loops.init.detect import detect_documents
+
+    documents_categories: dict[str, Any] = {}
+    if "documents" in selected_set:
+        documents_categories = detect_documents(project_root)
+
+    # --- Parse scan inputs ---
+    scan_focus_dirs = [d.strip() for d in focus_dirs_str.split(",") if d.strip()]
+    scan_custom_excludes = [p.strip() for p in custom_excludes_str.split(",") if p.strip()]
+
     # --- Build config ---
     config = _build_final_config(
         template=template,
@@ -240,6 +362,12 @@ def run_tui(
         format_cmd=format_cmd,
         selected_set=selected_set,
         parallel_workers=parallel_workers,
+        scan_focus_dirs=scan_focus_dirs,
+        scan_custom_excludes=scan_custom_excludes,
+        worktree_copy_files=worktree_copy_files,
+        design_token_profile=design_token_profile,
+        documents_categories=documents_categories,
+        session_digest_enabled=bool(session_digest_enabled),
     )
 
     # --- Summary ---
@@ -290,6 +418,12 @@ def _build_final_config(
     format_cmd: str,
     selected_set: set[str],
     parallel_workers: int,
+    scan_focus_dirs: list[str] | None = None,
+    scan_custom_excludes: list[str] | None = None,
+    worktree_copy_files: list[str] | None = None,
+    design_token_profile: str = "default",
+    documents_categories: dict[str, Any] | None = None,
+    session_digest_enabled: bool = True,
 ) -> dict[str, Any]:
     """Build the ll-config.json dict from TUI answers."""
     from little_loops.init.core import build_config
@@ -303,6 +437,7 @@ def _build_final_config(
             "analytics_enabled": "analytics" in selected_set,
             "context_monitor_enabled": "context_monitor" in selected_set,
             "learning_tests_enabled": "learning_tests" in selected_set,
+            "session_digest_enabled": session_digest_enabled,
         },
     )
 
@@ -315,15 +450,44 @@ def _build_final_config(
     ]:
         config["project"][key] = val or None
 
+    # Update scan section with TUI-provided values
+    if scan_focus_dirs:
+        config["scan"]["focus_dirs"] = scan_focus_dirs
+    if scan_custom_excludes:
+        existing = list(config["scan"].get("exclude_patterns", []))
+        config["scan"]["exclude_patterns"] = existing + scan_custom_excludes
+
     # Optional sections from feature toggles
-    if "parallel" in selected_set and parallel_workers != 4:
-        config["parallel"] = {"max_workers": parallel_workers}
+    if "parallel" in selected_set:
+        parallel_section: dict[str, Any] = {}
+        if parallel_workers != 4:
+            parallel_section["max_workers"] = parallel_workers
+        if worktree_copy_files:
+            parallel_section["worktree_copy_files"] = list(worktree_copy_files)
+        if parallel_section:
+            config["parallel"] = parallel_section
 
     if "documents" in selected_set:
-        config["documents"] = {"enabled": True}
+        doc_section: dict[str, Any] = {"enabled": True}
+        if documents_categories:
+            doc_section["categories"] = documents_categories
+        config["documents"] = doc_section
 
     if "design_tokens" in selected_set:
-        config["design_tokens"] = {"enabled": True}
+        config["design_tokens"] = {"enabled": True, "active": design_token_profile}
+
+    # GitHub sync
+    if "github_sync" in selected_set:
+        config["sync"] = {"enabled": True}
+
+    # commands block (confidence_gate + tdd_mode)
+    commands: dict[str, Any] = {}
+    if "confidence_gate" in selected_set:
+        commands["confidence_gate"] = {"enabled": True, "readiness_threshold": 85}
+    if "tdd" in selected_set:
+        commands["tdd_mode"] = True
+    if commands:
+        config["commands"] = commands
 
     return config
 
@@ -365,7 +529,44 @@ def _render_summary(
     host_labels = [_HOST_LABELS.get(h, h) for h in selected_hosts]
     table.add_row("Hosts", ", ".join(host_labels) if host_labels else "none")
 
-    sf = ".claude/settings.local.json" if settings_target == "local" else ".claude/settings.json"
+    # New: sync / commands
+    if config.get("sync", {}).get("enabled"):
+        table.add_row("Sync", "GitHub sync enabled")
+
+    cmds = config.get("commands", {})
+    cmd_parts = []
+    if cmds.get("confidence_gate", {}).get("enabled"):
+        cmd_parts.append("confidence gate")
+    if cmds.get("tdd_mode"):
+        cmd_parts.append("TDD mode")
+    if cmd_parts:
+        table.add_row("Commands", ", ".join(cmd_parts))
+
+    # Design-token profile
+    dt = config.get("design_tokens", {})
+    if dt.get("enabled"):
+        table.add_row("Design tokens", dt.get("active", "default"))
+
+    # Documents categories
+    doc_cats = config.get("documents", {}).get("categories", {})
+    if doc_cats:
+        table.add_row("Documents", f"{len(doc_cats)} categories detected")
+
+    # Worktree copy files
+    wt_files = config.get("parallel", {}).get("worktree_copy_files", [])
+    if wt_files:
+        table.add_row("Worktree files", ", ".join(wt_files))
+
+    # Session digest
+    sd_enabled = config.get("history", {}).get("session_digest", {}).get("enabled", True)
+    table.add_row("Session digest", "on" if sd_enabled else "off")
+
+    if settings_target == "skip":
+        sf = "Skip — no permissions written"
+    elif settings_target == "local":
+        sf = ".claude/settings.local.json"
+    else:
+        sf = ".claude/settings.json"
     table.add_row("Settings", sf)
 
     if claude_md_section_present:
@@ -415,20 +616,22 @@ def _apply_config(
         deploy_goals(ll_dir, templates_dir)
 
     if config.get("design_tokens", {}).get("enabled"):
-        deploy_design_tokens(ll_dir, templates_dir)
+        active_profile = config["design_tokens"].get("active", "default")
+        deploy_design_tokens(ll_dir, templates_dir, active_profile=active_profile)
 
     if config.get("learning_tests", {}).get("enabled"):
         make_learning_tests_dir(ll_dir)
 
     update_gitignore(project_root)
 
-    settings_file = (
-        ".claude/settings.local.json" if settings_target == "local" else ".claude/settings.json"
-    )
-    extra_permissions: list[str] | None = None
-    if config.get("learning_tests", {}).get("enabled"):
-        extra_permissions = ["Skill(ll:explore-api)"]
-    merge_settings(project_root, settings_file=settings_file, extra_permissions=extra_permissions)
+    if settings_target != "skip":
+        settings_file = (
+            ".claude/settings.local.json" if settings_target == "local" else ".claude/settings.json"
+        )
+        extra_permissions: list[str] | None = None
+        if config.get("learning_tests", {}).get("enabled"):
+            extra_permissions = ["Skill(ll:explore-api)"]
+        merge_settings(project_root, settings_file=settings_file, extra_permissions=extra_permissions)
 
     if claude_md_opt_in:
         write_claude_md(project_root)

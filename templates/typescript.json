@@ -10,7 +10,12 @@
       "typescript",
       "node",
       "npm"
-    ]
+    ],
+    "command_options": {
+      "test_cmd": ["npm test", "npx jest", "npx vitest run"],
+      "lint_cmd": ["npm run lint", "npx eslint .", "npx tslint --project ."],
+      "format_cmd": ["npm run format", "npx prettier --write .", "npx prettier --check ."]
+    }
   },
   "project": {
     "src_dir": "src/",

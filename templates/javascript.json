@@ -13,7 +13,12 @@
       "javascript",
       "node",
       "npm"
-    ]
+    ],
+    "command_options": {
+      "test_cmd": ["npm test", "npx jest", "npx mocha"],
+      "lint_cmd": ["npm run lint", "npx eslint .", "npx standard"],
+      "format_cmd": ["npm run format", "npx prettier --write .", "npx standard --fix"]
+    }
   },
   "project": {
     "src_dir": "src/",

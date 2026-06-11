@@ -59,6 +59,55 @@ def _load_templates(templates_dir: Path) -> list[tuple[dict, Path]]:
     return results
 
 
+def detect_documents(project_root: Path) -> dict:
+    """Glob architecture and product documents into a categories dict.
+
+    Patterns mirror the /ll:init skill's document auto-detection logic.
+    Returns a dict suitable for config["documents"]["categories"]; empty if no docs found.
+    """
+    _EXCLUDE_DIRS = {".git", "node_modules", ".issues", ".ll", "dist", "build"}
+
+    def _find(patterns: list[str]) -> list[str]:
+        found: list[str] = []
+        seen: set[str] = set()
+        for pattern in patterns:
+            for p in sorted(project_root.glob(pattern)):
+                parts = p.relative_to(project_root).parts
+                if any(part in _EXCLUDE_DIRS for part in parts):
+                    continue
+                rel = str(p.relative_to(project_root))
+                if rel not in seen:
+                    seen.add(rel)
+                    found.append(rel)
+        return found
+
+    arch_files = _find([
+        "**/architecture*.md",
+        "**/design*.md",
+        "**/api*.md",
+        "docs/*.md",
+    ])
+    product_files = _find([
+        "**/goal*.md",
+        "**/roadmap*.md",
+        "**/vision*.md",
+        "**/requirements*.md",
+    ])
+
+    categories: dict = {}
+    if arch_files:
+        categories["architecture"] = {
+            "description": "Architecture and design documents",
+            "files": arch_files,
+        }
+    if product_files:
+        categories["product"] = {
+            "description": "Product and requirements documents",
+            "files": product_files,
+        }
+    return categories
+
+
 def detect_project_type(root: Path, templates_dir: Path | None = None) -> TemplateMatch:
     """Detect the project type by matching template detect patterns against *root*.
 

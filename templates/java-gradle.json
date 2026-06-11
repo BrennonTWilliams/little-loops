@@ -11,7 +11,11 @@
       "java",
       "gradle",
       "jvm"
-    ]
+    ],
+    "command_options": {
+      "test_cmd": ["./gradlew test", "./gradlew test --info", "./gradlew check"],
+      "lint_cmd": ["./gradlew checkstyleMain", "./gradlew lint", "./gradlew spotbugsMain"]
+    }
   },
   "project": {
     "src_dir": "src/main/java/",
