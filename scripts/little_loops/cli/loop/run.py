@@ -263,6 +263,7 @@ def cmd_run(
             "enabled": True,
             "skill": getattr(args, "baseline_skill", None),
             "items": getattr(args, "items", None),
+            "cross_host": getattr(args, "cross_host", False),
         }
 
     # Background mode: spawn detached process and return

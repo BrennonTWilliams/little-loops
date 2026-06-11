@@ -1082,6 +1082,8 @@ def run_background(
     items = getattr(args, "items", None)
     if items is not None:
         cmd.extend(["--items", str(items)])
+    if getattr(args, "cross_host", False):
+        cmd.append("--cross-host")
 
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "w") as log_fh:
@@ -1329,6 +1331,21 @@ def run_foreground(
                     except Exception:
                         pass  # Non-fatal: display failure shouldn't block exit
 
+                    # ENH-2086: Cross-host validation when --cross-host was requested
+                    baseline_ctx = fsm.context.get("_baseline") or {}
+                    if baseline_ctx.get("cross_host"):
+                        loop_name = getattr(args, "loop", "")
+                        try:
+                            _run_cross_host_validation(
+                                args,
+                                loop_path,
+                                Path(run_dir),
+                                ab_path,
+                                loop_name,
+                            )
+                        except Exception:
+                            pass  # Non-fatal
+
         return EXIT_CODES.get(result.terminated_by, 1)
     finally:
         sys.stdout = _orig_stdout
@@ -1484,3 +1501,143 @@ def _print_ab_summary(ab_path: Path) -> None:
     print(f"  Verdict:            {quality_verdict}, {cost_verdict}")
     print()
     print(f"Per-item: {ab_path}")
+
+
+def _run_cross_host_validation(
+    args: argparse.Namespace,
+    loop_path: "Path | None",
+    primary_run_dir: Path,
+    primary_ab_path: Path,
+    loop_name: str,
+) -> None:
+    """Re-run the loop on a second available host and print a cross-host comparison.
+
+    Identifies a second host via _PROBE_ORDER, runs the same baseline trial with
+    LL_HOST_CLI overridden, then calls _print_cross_host_table if both ab.json
+    files are available.
+    """
+    import os
+    import shutil
+
+    from little_loops.host_runner import HostNotConfigured, _PROBE_ORDER, resolve_host
+
+    # Identify the current (primary) host
+    try:
+        primary_host = resolve_host().name
+    except HostNotConfigured:
+        primary_host = None
+
+    # Find a second available host different from the primary
+    second_host: str | None = None
+    for host_name, binary in _PROBE_ORDER:
+        if host_name == primary_host:
+            continue
+        if shutil.which(binary) is not None:
+            second_host = host_name
+            break
+
+    if second_host is None:
+        print("\nCross-host: only one host available — skipping cross-host validation.")
+        return
+
+    print(f"\nCross-host: running {loop_name!r} on {second_host}...")
+
+    # Build the second-host command
+    cmd = ["ll-loop", "run", "--baseline"]
+    baseline_skill = getattr(args, "baseline_skill", None)
+    if baseline_skill is not None:
+        cmd.extend(["--baseline-skill", baseline_skill])
+    items = getattr(args, "items", None)
+    if items is not None:
+        cmd.extend(["--items", str(items)])
+    cmd.append(loop_name)
+
+    env = dict(os.environ)
+    env["LL_HOST_CLI"] = second_host
+
+    before = time.time()
+    result = subprocess.run(cmd, env=env)
+
+    if result.returncode != 0:
+        print(
+            f"\nCross-host: second-host run ({second_host}) failed "
+            f"(exit {result.returncode}) — no comparison available."
+        )
+        return
+
+    # Find the second run's ab.json: newest file under the same runs directory
+    # that appeared after the second run started and differs from the primary.
+    runs_dir = primary_run_dir.parent
+    candidates = sorted(
+        runs_dir.glob("*/ab.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    second_ab_path = next(
+        (
+            p
+            for p in candidates
+            if p != primary_ab_path and p.stat().st_mtime >= before
+        ),
+        None,
+    )
+
+    if second_ab_path is None:
+        print(
+            "\nCross-host: second-host run completed but no ab.json found — "
+            "no comparison available."
+        )
+        return
+
+    from little_loops.ab_writer import read_ab_json
+
+    primary_results = read_ab_json(str(primary_run_dir))
+    second_results = read_ab_json(str(second_ab_path.parent))
+
+    if primary_results is None or second_results is None:
+        return
+
+    _print_cross_host_table(
+        primary_host or "primary", primary_results, second_host, second_results
+    )
+
+
+def _print_cross_host_table(
+    host1: str,
+    results1: Any,
+    host2: str,
+    results2: Any,
+) -> None:
+    """Print a cross-host pass-rate comparison table with Wilson 95% CIs."""
+    from little_loops.stats import wilson_ci
+
+    def _host_stats(results: Any) -> tuple[int, int, float, float, float]:
+        n = len(results.per_item)
+        k = sum(1 for item in results.per_item if item.get("harness_pass", False))
+        rate = results.harness_pass_rate * 100
+        lo, hi = wilson_ci(k, n) if n > 0 else (0.0, 0.0)
+        return n, k, rate, lo, hi
+
+    n1, _k1, rate1, lo1, hi1 = _host_stats(results1)
+    n2, _k2, rate2, lo2, hi2 = _host_stats(results2)
+
+    print()
+    print("Cross-host Comparison")
+    print(f"  {'Host':<20}  {'Pass rate':>10}  {'95% CI':>18}  {'n':>5}")
+    print(f"  {'-' * 20}  {'-' * 10}  {'-' * 18}  {'-' * 5}")
+    print(f"  {host1:<20}  {rate1:>9.0f}%  [{lo1:.2f}, {hi1:.2f}]  {n1:>5}")
+    print(f"  {host2:<20}  {rate2:>9.0f}%  [{lo2:.2f}, {hi2:.2f}]  {n2:>5}")
+
+    # Warn when the harness-vs-baseline ordering reverses between hosts
+    host1_harness_wins = results1.delta > 0
+    host2_harness_wins = results2.delta > 0
+    if host1_harness_wins != host2_harness_wins:
+        winner1 = "harness" if host1_harness_wins else "baseline"
+        winner2 = "harness" if host2_harness_wins else "baseline"
+        print()
+        print(
+            f"  ⚠ Ordering reversal: {host1} shows {winner1} ahead, "
+            f"{host2} shows {winner2} ahead. "
+            "Improvement may be host-specific."
+        )
+    print()

@@ -256,6 +256,11 @@ Examples:
             metavar="N",
             help="Limit sample size for baseline comparison",
         )
+        run_parser.add_argument(
+            "--cross-host",
+            action="store_true",
+            help="Re-run the loop on a second available host and append a cross-host comparison table",
+        )
 
         # Validate subcommand
         validate_parser = subparsers.add_parser(
