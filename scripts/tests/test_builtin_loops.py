@@ -6835,3 +6835,57 @@ class TestRnRemediateAssessRouting:
         assert state.get("on_no") == "refine", (
             f"assess.on_no should be 'refine', got {state.get('on_no')!r}"
         )
+
+
+class TestCheckSubstrateOptionalState:
+    """Tests that check_substrate optional state is documented in planning loop templates (ENH-2085)."""
+
+    HARNESS_PLAN_FILE = BUILTIN_LOOPS_DIR / "harness-plan-research-implement-report.yaml"
+    LOOP_TYPES_FILE = Path(__file__).parent.parent.parent / "skills" / "create-loop" / "loop-types.md"
+
+    def test_harness_plan_file_documents_check_substrate(self) -> None:
+        """harness-plan-research-implement-report.yaml must document check_substrate optional state."""
+        assert self.HARNESS_PLAN_FILE.exists(), f"Loop file not found: {self.HARNESS_PLAN_FILE}"
+        content = self.HARNESS_PLAN_FILE.read_text()
+        assert "check_substrate" in content, (
+            "harness-plan-research-implement-report.yaml must contain a commented-out "
+            "check_substrate optional state block per ENH-2085"
+        )
+
+    def test_check_substrate_routes_on_no_to_plan(self) -> None:
+        """check_substrate block must route on_no back to plan for infeasible actions."""
+        assert self.HARNESS_PLAN_FILE.exists(), f"Loop file not found: {self.HARNESS_PLAN_FILE}"
+        content = self.HARNESS_PLAN_FILE.read_text()
+        # Find the check_substrate block and verify on_no: plan appears within it
+        cs_pos = content.find("check_substrate")
+        assert cs_pos != -1, "check_substrate block not found in harness-plan-research-implement-report.yaml"
+        # on_no: plan must appear after check_substrate and before research:
+        research_pos = content.find("\n  research:", cs_pos)
+        block_slice = content[cs_pos:research_pos] if research_pos != -1 else content[cs_pos:]
+        assert "on_no: plan" in block_slice, (
+            "check_substrate block must contain 'on_no: plan' to route infeasible actions "
+            "back to the plan state for revision"
+        )
+
+    def test_check_substrate_positioned_between_review_plan_and_research(self) -> None:
+        """check_substrate block must appear between review_plan and research in the file."""
+        assert self.HARNESS_PLAN_FILE.exists(), f"Loop file not found: {self.HARNESS_PLAN_FILE}"
+        content = self.HARNESS_PLAN_FILE.read_text()
+        review_plan_pos = content.find("review_plan")
+        check_substrate_pos = content.find("check_substrate")
+        research_pos = content.find("\n  research:")
+        assert review_plan_pos != -1, "review_plan block must be present in harness-plan-research-implement-report.yaml"
+        assert check_substrate_pos != -1, "check_substrate block must be present in harness-plan-research-implement-report.yaml"
+        assert research_pos != -1, "research state must be present in harness-plan-research-implement-report.yaml"
+        assert review_plan_pos < check_substrate_pos < research_pos, (
+            "check_substrate must appear after review_plan and before the research state"
+        )
+
+    def test_loop_types_documents_check_substrate(self) -> None:
+        """loop-types.md specialist pipeline template must document check_substrate optional state."""
+        assert self.LOOP_TYPES_FILE.exists(), f"loop-types.md not found: {self.LOOP_TYPES_FILE}"
+        content = self.LOOP_TYPES_FILE.read_text()
+        assert "check_substrate" in content, (
+            "skills/create-loop/loop-types.md specialist pipeline template must include "
+            "a check_substrate optional state block per ENH-2085"
+        )

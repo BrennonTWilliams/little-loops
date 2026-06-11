@@ -6,8 +6,9 @@
 # Pipeline in order:
 #   plan -> research -> implement -> check_stall -> check_concrete -> check_semantic -> check_invariants -> report -> done
 #
-# Optional HITL review gate (between plan and research) is shown as a commented-out block.
-# Activate once FEAT-1794 (action_type: human_approval) lands.
+# Optional gates (between plan and research) are shown as commented-out blocks:
+#   review_plan   -- HITL approval gate (activate once FEAT-1794 lands)
+#   check_substrate -- feasibility gate for non-standard execution environments
 #
 # Usage:    ll-loop run harness-plan-research-implement-report
 # Validate: ll-loop test harness-plan-research-implement-report
@@ -50,6 +51,27 @@ states:
   #   prompt: >
   #     Review the plan: ${captured.plan.output}
   #     Reply APPROVE to proceed to research, or REVISE to re-plan.
+  #   on_yes: research
+  #   on_no: plan
+
+  # OPTIONAL: check_substrate (feasibility gate for non-standard execution environments)
+  # Uncomment when targeting Claude Code, Codex, restricted shells, or other environments
+  # with specific constraints (limited MCP tool access, restricted write paths, token budget).
+  # Routes infeasible actions back to plan so the planner can revise before execution.
+  # See docs/guides/HARNESS_OPTIMIZATION_GUIDE.md § Planning Loop Guards for details.
+  #
+  # check_substrate:
+  #   action: "echo 'Checking substrate constraints'"
+  #   action_type: shell
+  #   evaluate:
+  #     type: llm_structured
+  #     source: "${captured.plan.output}"
+  #     prompt: >
+  #       Enumerate the target execution environment's known constraints:
+  #       shell command availability, MCP tool access, file write permissions, token budget.
+  #       Validate each proposed action in the plan against these constraints.
+  #       Answer YES if every action is feasible in the target environment.
+  #       Otherwise NO, listing each infeasible action and the constraint it violates.
   #   on_yes: research
   #   on_no: plan
 

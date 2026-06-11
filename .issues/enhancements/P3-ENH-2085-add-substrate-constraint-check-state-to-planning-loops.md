@@ -3,17 +3,18 @@ id: ENH-2085
 title: Add substrate constraint check state to planning loops
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-10T18:12:09Z'
+completed_at: '2026-06-11T22:28:53Z'
 discovered_date: '2026-06-10'
 discovered_by: capture-issue
 relates_to:
 - EPIC-2087
 confidence_score: 86
-outcome_confidence: 70
+outcome_confidence: 77
 score_complexity: 20
 score_test_coverage: 12
-score_ambiguity: 13
+score_ambiguity: 20
 score_change_surface: 25
 decision_needed: false
 ---
@@ -81,10 +82,10 @@ Document the `check_substrate` state shape (with `on_no: plan` routing) in `docs
 
 ## Acceptance Criteria
 
-- [ ] `create-loop` wizard optionally inserts a `check_substrate` state into the planning template
-- [ ] State enumerates environment constraints and validates each proposed action
-- [ ] Infeasible actions route to `plan`
-- [ ] `HARNESS_OPTIMIZATION_GUIDE.md` documents the state shape and example use cases
+- [x] `create-loop` wizard optionally inserts a `check_substrate` state into the planning template
+- [x] State enumerates environment constraints and validates each proposed action
+- [x] Infeasible actions route to `plan`
+- [x] `HARNESS_OPTIMIZATION_GUIDE.md` documents the state shape and example use cases
 
 ## Scope Boundaries
 
@@ -101,7 +102,7 @@ Document the `check_substrate` state shape (with `on_no: plan` routing) in `docs
 - TBD — `grep -r "create-loop" scripts/little_loops/` to find any automation that invokes the wizard
 
 ### Similar Patterns
-- `loops/iterate-plan.yaml` — existing planning loop; `check_substrate` state shape should be consistent with its state conventions
+- `scripts/little_loops/loops/harness-plan-research-implement-report.yaml` — existing planning loop; `check_substrate` state shape should be consistent with its state conventions
 
 ### Tests
 - TBD — `scripts/tests/test_builtin_loops.py` may need a test for loops that include `check_substrate`
@@ -140,7 +141,17 @@ _Updated by `/ll:confidence-check` on 2026-06-11_
 - **Integration Map gap**: `skills/create-loop/loop-types.md` is not listed in Files to Modify, but the actual YAML templates for all loop types (including the specialist-pipeline planning branch) live there (2071 lines). Any wizard change in `SKILL.md` that generates a new optional state must be paired with a matching template addition in `loop-types.md`.
 - **Test strategy TBD**: No planned test for the wizard's optional `check_substrate` state generation; `test_builtin_loops.py` tests loop execution, not wizard output generation.
 
+## Resolution
+
+Implemented via three file changes:
+- `skills/create-loop/loop-types.md`: Added Step S3.5 wizard question and `check_substrate` commented template block between `review_plan` and `research` in the specialist-pipeline YAML; updated Wiring notes
+- `scripts/little_loops/loops/harness-plan-research-implement-report.yaml`: Added commented `check_substrate` block with full state shape (`on_no: plan`, `llm_structured` evaluator with `source: "${captured.plan.output}"`)
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`: Added `## Planning Loop Guards` section documenting state shape, when to use, activation via wizard, and MR-1 note; added to Table of Contents and See Also
+- `scripts/tests/test_builtin_loops.py`: Added `TestCheckSubstrateOptionalState` class (4 tests) verifying block presence, `on_no: plan` routing, positioning, and loop-types.md coverage
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-11T22:16:37 - `3593115f-7fc5-4f91-8ec3-015fd50c2249.jsonl`
+- `/ll:confidence-check` - 2026-06-11T00:00:00 - `d98afb5e-b2c2-457e-b007-9f1daca686ac.jsonl`
 - `/ll:decide-issue` - 2026-06-11T20:43:15 - `434467be-41b0-476c-9ed1-087b016d3835.jsonl`
 - `/ll:decide-issue` - 2026-06-11T20:32:12 - `8b1aefbe-0c6a-4b37-85dc-00aedc97dd6e.jsonl`
 - `/ll:format-issue` - 2026-06-11T20:10:06 - `c7137f2d-4a6a-4394-aed0-6e8fc886629b.jsonl`

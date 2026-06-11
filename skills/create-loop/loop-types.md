@@ -1118,6 +1118,24 @@ questions:
         description: "Omit the plan state; implement role acts directly on the task."
 ```
 
+### Step S3.5: Substrate Constraints (Optional)
+
+```yaml
+questions:
+  - question: "Does this loop target a non-standard execution environment?"
+    header: "Substrate"
+    multiSelect: false
+    options:
+      - label: "No — standard shell and tool access"
+        description: "Proceed without a substrate check. Most local loops use this path."
+      - label: "Yes — Codex, restricted shell, or limited MCP access"
+        description: "Add a check_substrate gate after planning to validate each action is feasible before research begins."
+```
+
+If "Yes": include the `check_substrate` state (uncommented, active) between `review_plan` and `research` in the generated YAML. Use the template from the `# OPTIONAL: check_substrate` block. The `on_no: plan` routing is mandatory.
+
+If "No" (default): emit `check_substrate` only as a commented-out block so users can activate it later.
+
 ### Step S4: Evaluation Phases
 
 Read `.ll/ll-config.json` to detect `test_cmd`, `lint_cmd`, `type_cmd`. Present evaluation phase options (same as H3):
@@ -1184,6 +1202,27 @@ states:
   #   prompt: "Review the plan: ${captured.plan.output}. Reply APPROVE to proceed."
   #   on_yes: research
   #   on_no: plan
+
+  # OPTIONAL: check_substrate (feasibility gate for non-standard execution environments)
+  # Recommend when the loop targets Claude Code, Codex, a restricted shell, or any
+  # environment with specific constraints (MCP tool availability, write permissions,
+  # token budget). Prompt: wizard question "Does this loop target a non-standard
+  # execution environment (Codex, restricted shell, limited MCP access)?"
+  #
+  # check_substrate:
+  #   action: "echo 'Checking substrate constraints'"
+  #   action_type: shell
+  #   evaluate:
+  #     type: llm_structured
+  #     source: "${captured.plan.output}"
+  #     prompt: >
+  #       Enumerate the target execution environment's known constraints:
+  #       shell command availability, MCP tool access, file write permissions, token budget.
+  #       Validate each proposed action in the plan against these constraints.
+  #       Answer YES if every action is feasible. Otherwise NO, listing each infeasible
+  #       action and the constraint it violates.
+  #   on_yes: research                # or implement if Research omitted
+  #   on_no: plan                     # re-plan with infeasibility context
 
   research:                          # include if "Research" selected in S1
     action: "Research the codebase and documentation relevant to the plan."
@@ -1258,6 +1297,7 @@ states:
 - If "Research" is omitted: route `plan -> implement`
 - All evaluation phases are optional; route each state `on_yes` to the next enabled phase or to `report`
 - The `# OPTIONAL: review_plan` block must always appear as a commented-out example between `plan` and `research`
+- The `# OPTIONAL: check_substrate` block must always appear as a commented-out example after `review_plan` and before `research`; activate when loop targets non-standard execution environments
 
 ---
 
