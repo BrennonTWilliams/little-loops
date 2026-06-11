@@ -268,6 +268,7 @@ Examples:
         )
         validate_parser.set_defaults(command="validate")
         validate_parser.add_argument("loop", help="Loop name or path")
+        validate_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON")
 
         # List subcommand
         list_parser = subparsers.add_parser("list", aliases=["l"], help="List loops")
@@ -716,7 +717,7 @@ Examples:
         if args.command == "run":
             return cmd_run(args.loop, args, loops_dir, logger)
         elif args.command == "validate":
-            return cmd_validate(args.loop, loops_dir, logger)
+            return cmd_validate(args.loop, args, loops_dir, logger)
         elif args.command == "list":
             return cmd_list(args, loops_dir)
         elif args.command == "status":

@@ -1954,19 +1954,25 @@ def is_runnable_loop(path: Path) -> bool:
     return "name" in data and "initial" in data and has_flow
 
 
-def load_and_validate(path: Path) -> tuple[FSMLoop, list[ValidationError]]:
+def load_and_validate(
+    path: Path,
+    raise_on_error: bool = True,
+) -> tuple[FSMLoop, list[ValidationError]]:
     """Load YAML file and validate FSM structure.
 
     Args:
         path: Path to the YAML file to load
+        raise_on_error: When True (default), raise ValueError on ERROR violations.
+            When False, return all violations (errors + warnings) without raising.
 
     Returns:
-        Tuple of (validated FSMLoop instance, list of WARNING-severity ValidationErrors)
+        When raise_on_error=True: (FSMLoop, list of WARNING-severity ValidationErrors)
+        When raise_on_error=False: (FSMLoop, list of all ValidationErrors sorted errors-first)
 
     Raises:
         FileNotFoundError: If the file doesn't exist
         yaml.YAMLError: If the file is not valid YAML
-        ValueError: If validation fails (contains error details)
+        ValueError: If raise_on_error=True and validation fails (contains error details)
     """
     if not path.exists():
         raise FileNotFoundError(f"FSM file not found: {path}")
@@ -2024,14 +2030,16 @@ def load_and_validate(path: Path) -> tuple[FSMLoop, list[ValidationError]]:
 
     # Filter to errors only (not warnings) for raising
     error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+    struct_warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+    all_warnings = unknown_key_warnings + struct_warnings
+
+    if not raise_on_error:
+        return fsm, error_list + all_warnings
 
     if error_list:
         error_messages = "\n  ".join(str(e) for e in error_list)
         raise ValueError(f"FSM validation failed:\n  {error_messages}")
 
-    # Collect all warnings (unknown-key warnings + structural warnings)
-    struct_warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
-    all_warnings = unknown_key_warnings + struct_warnings
     for warning in all_warnings:
         logger.warning(str(warning))
 

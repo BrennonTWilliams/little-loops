@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import get_builtin_loops_dir, resolve_loop_path
@@ -10,14 +11,35 @@ from little_loops.logger import Logger
 
 def cmd_validate(
     loop_name: str,
+    args: argparse.Namespace,
     loops_dir: Path,
     logger: Logger,
 ) -> int:
     """Validate a loop definition."""
-    from little_loops.fsm.validation import load_and_validate
+    from little_loops.fsm.validation import ValidationSeverity, load_and_validate
+
+    as_json = getattr(args, "json", False)
 
     try:
         path = resolve_loop_path(loop_name, loops_dir)
+
+        if as_json:
+            from little_loops.cli.output import print_json
+
+            fsm, violations = load_and_validate(path, raise_on_error=False)
+            has_errors = any(v.severity == ValidationSeverity.ERROR for v in violations)
+            print_json(
+                {
+                    "loop": loop_name,
+                    "valid": not has_errors,
+                    "violations": [
+                        {"severity": v.severity.value, "path": v.path, "message": v.message}
+                        for v in violations
+                    ],
+                }
+            )
+            return 1 if has_errors else 0
+
         fsm, warnings = load_and_validate(path)
         logger.success(f"{loop_name} is valid")
         print(f"  States: {', '.join(fsm.states.keys())}")
@@ -27,7 +49,18 @@ def cmd_validate(
             print(f"  ⚠ {w}")
         return 0
     except FileNotFoundError as e:
-        logger.error(str(e))
+        if as_json:
+            from little_loops.cli.output import print_json
+
+            print_json(
+                {
+                    "loop": loop_name,
+                    "valid": False,
+                    "violations": [{"severity": "error", "path": "<root>", "message": str(e)}],
+                }
+            )
+        else:
+            logger.error(str(e))
         return 1
     except ValueError as e:
         logger.error(f"{loop_name} is invalid: {e}")

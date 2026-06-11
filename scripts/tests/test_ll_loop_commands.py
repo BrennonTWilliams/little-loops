@@ -113,7 +113,7 @@ states:
         )
 
         logger = Logger(use_color=False)
-        result = cmd_validate("test-loop", loops_dir, logger)
+        result = cmd_validate("test-loop", argparse.Namespace(), loops_dir, logger)
 
         assert result == 0
         captured = capsys.readouterr()
@@ -136,7 +136,7 @@ states:
         )
 
         logger = Logger(use_color=False)
-        result = cmd_validate("no-desc", loops_dir, logger)
+        result = cmd_validate("no-desc", argparse.Namespace(), loops_dir, logger)
 
         assert result == 0
         captured = capsys.readouterr()
@@ -167,11 +167,87 @@ states:
         )
 
         logger = Logger(use_color=False)
-        result = cmd_validate("custom-routing", loops_dir, logger)
+        result = cmd_validate("custom-routing", argparse.Namespace(), loops_dir, logger)
 
         assert result == 0
         captured = capsys.readouterr()
         assert "not reachable" not in captured.out
+
+    def test_validate_json_output_valid_loop(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json flag outputs valid=true with empty violations for a valid loop."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "valid-loop.yaml").write_text(
+            "name: valid-loop\ndescription: Test\ninitial: check\nstates:\n  check:\n    terminal: true\n"
+        )
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=True)
+        result = cmd_validate("valid-loop", args, loops_dir, logger)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["loop"] == "valid-loop"
+        assert data["valid"] is True
+        assert data["violations"] == []
+
+    def test_validate_json_output_invalid_loop(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json flag outputs valid=false with non-empty violations for an invalid loop."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "bad-loop.yaml").write_text(
+            "name: bad-loop\ninitial: nonexistent\nstates:\n  check:\n    action: echo\n    on_yes: check\n    on_no: check\n"
+        )
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=True)
+        result = cmd_validate("bad-loop", args, loops_dir, logger)
+
+        assert result == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["loop"] == "bad-loop"
+        assert data["valid"] is False
+        assert len(data["violations"]) > 0
+        assert all("severity" in v and "path" in v and "message" in v for v in data["violations"])
+        assert any(v["severity"] == "error" for v in data["violations"])
+
+    def test_validate_json_no_flag_unchanged(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Without --json, plain-text output is unchanged when args are passed."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "plain-loop.yaml").write_text(
+            "name: plain-loop\ndescription: Test\ninitial: check\nstates:\n  check:\n    terminal: true\n"
+        )
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=False)
+        result = cmd_validate("plain-loop", args, loops_dir, logger)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "plain-loop is valid" in out
+        assert "States:" in out
 
 
 class TestCmdList:

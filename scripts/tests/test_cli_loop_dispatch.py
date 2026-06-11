@@ -138,6 +138,23 @@ class TestMainLoopDispatch:
         assert result == 0
         mocks["cmd_validate"].assert_called_once()
 
+    def test_validate_json_flag_forwarded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--json flag is parsed and forwarded to cmd_validate via args."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "validate", "--json", "test-loop"]):
+            result = main_loop()
+
+        assert result == 0
+        call_args = mocks["cmd_validate"].call_args
+        # args is the second positional argument in new signature (loop_name, args, loops_dir, logger)
+        passed_args = call_args[0][1]
+        assert getattr(passed_args, "json", False) is True
+
     # -- list --
 
     def test_list_routes_to_handler(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
