@@ -12,6 +12,18 @@ relates_to: [EPIC-2087]
 
 # ENH-2085: Add substrate constraint check state to planning loops
 
+## Summary
+
+Planning loops (`iterate-plan`, `create-loop`) optimize for logical correctness without explicitly checking whether each proposed action is feasible in the target execution environment. An unsound plan may only surface as a runtime failure in Claude Code, Codex, or a constrained shell. This enhancement adds an optional `check_substrate` state to the `create-loop` wizard's planning template that enumerates environment constraints and validates proposed actions before execution.
+
+## Current Behavior
+
+Planning loops reason about the correctness of their proposed plan but do not validate whether each action is feasible under the execution substrate's constraints (shell command availability, MCP tool access, file write permissions, token budget). Infeasible actions are discovered only at execution time, often producing opaque failures.
+
+## Expected Behavior
+
+An optional `check_substrate` state in the `create-loop` wizard's planning branch prompts the agent to enumerate known target-environment constraints and explicitly validate each proposed action against them. If any action is flagged infeasible, the state routes to `revise_plan`; otherwise execution proceeds normally. The state shape is documented in `HARNESS_OPTIMIZATION_GUIDE.md` as a recommended addition for loops targeting non-standard execution environments.
+
 ## Motivation
 
 Planning loops (iterate-plan, create-loop) optimize for correctness without explicitly reasoning about execution environment constraints. Approaches that are sound in principle can fail in practice because Claude Code, Codex, or shell environments have specific limitations — just as a correct algorithm can be impractical in a constrained target language.
@@ -35,6 +47,47 @@ Add an optional `check_substrate` state to the `create-loop` wizard's planning t
 - [ ] Infeasible actions route to `revise_plan`
 - [ ] `HARNESS_OPTIMIZATION_GUIDE.md` documents the state shape and example use cases
 
+## Scope Boundaries
+
+- **In scope**: Adding `check_substrate` as an optional state to `create-loop` wizard planning branch; documenting the state shape with example infeasibility scenarios in `HARNESS_OPTIMIZATION_GUIDE.md`
+- **Out of scope**: Automatic substrate detection via tooling (the state prompts the agent, not an auto-detect mechanism); retrofitting existing loops to include this state; changes to the FSM executor or runner
+
+## Integration Map
+
+### Files to Modify
+- `skills/create-loop/SKILL.md` — wizard planning branch: add optional `check_substrate` state template
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — document `check_substrate` state shape and example use cases
+
+### Dependent Files (Callers/Importers)
+- TBD — `grep -r "create-loop" scripts/little_loops/` to find any automation that invokes the wizard
+
+### Similar Patterns
+- `loops/iterate-plan.yaml` — existing planning loop; `check_substrate` state shape should be consistent with its state conventions
+
+### Tests
+- TBD — `scripts/tests/test_builtin_loops.py` may need a test for loops that include `check_substrate`
+
+### Documentation
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — primary documentation target
+
+### Configuration
+- N/A
+
+## Impact
+
+- **Priority**: P3 — Planning loops work correctly today; this is a quality-of-life guard that prevents hard-to-debug substrate failures at execution time
+- **Effort**: Small — Adding a wizard state template and updating one guide document; no FSM executor changes required
+- **Risk**: Low — The state is optional and opt-in via a wizard prompt; existing loops are entirely unaffected
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `loops`, `planning`
+
 ## Status
 
-open
+**Open** | Created: 2026-06-10 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-11T20:10:06 - `c7137f2d-4a6a-4394-aed0-6e8fc886629b.jsonl`
