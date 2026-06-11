@@ -1,0 +1,19 @@
+name: assess-shallow-iteration
+description: "Iteratively improve a data pipeline until quality threshold is met"
+initial: process
+context:
+  input_file: "data/input.json"
+  quality_threshold: 80
+max_iterations: 50
+states:
+  process:
+    action_type: prompt
+    action: "Process the data in ${context.input_file} and improve quality."
+    evaluate:
+      type: diff_stall
+      command: "diff ${context.input_file}.prev ${context.input_file}"
+    on_yes: done
+    on_no: process
+    on_error: process
+  done:
+    terminal: true

@@ -4,10 +4,17 @@ title: Generate DSL-native eval tasks from ll's own config formats
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-10T18:12:09Z"
-discovered_date: "2026-06-10"
+captured_at: '2026-06-10T18:12:09Z'
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
 parent: EPIC-2087
+confidence_score: 88
+outcome_confidence: 65
+score_complexity: 17
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 20
+decision_needed: true
 ---
 
 # ENH-2081: Generate DSL-native eval tasks from ll's own config formats
@@ -70,5 +77,26 @@ Extend `ll:create-eval-from-issues` to include a DSL task generation mode: given
 **Open** | Created: 2026-06-10 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-10; updated 2026-06-10_
+
+**Readiness Score**: 88/100 → PROCEED
+**Outcome Confidence**: 65/100 → LOW
+
+### Concerns
+- Missing Integration Map / Files to Modify section
+
+### Outcome Risk Factors
+- **Open question: DSL task file format** — the issue does not specify the schema/fields for fill-in-the-blank FSM task files or expected response format. This is an open decision that needs to be resolved before writing the task template engine.
+- **Open question: `ll-harness --dsl` task-discovery protocol** — the issue does not specify how `ll-harness --dsl` locates tasks (directory scan vs. explicit path argument) or what evaluation criteria it applies to DSL task outputs.
+- **Open question: metadata header structure** — "metadata header indicating the source DSL" is mentioned but the format is unspecified (YAML frontmatter? JSON? inline comment?).
+- **Open question: evaluation scoring** — "report pass rates per model" is stated but the grading rubric (exact match, partial match, semantic judge?) is not defined.
+
 ## Session Log
+- `/ll:decide-issue` - 2026-06-11T03:47:32 - `26bee10d-f173-4904-92ec-7625750a7371.jsonl`
+- `/ll:confidence-check` - 2026-06-10T00:00:00Z - `7c955a46-8e58-4db5-98b5-f8965296ecab.jsonl`
+- `/ll:confidence-check` - 2026-06-11T00:00:00Z - `4a059ba1-7741-429c-acd5-bbaa7aeb09dc.jsonl`
+- `/ll:decide-issue` - 2026-06-11T03:22:56 - `d894c9c1-6275-4e3c-8327-c75215a32cb0.jsonl`
 - `/ll:format-issue` - 2026-06-10T23:31:13 - `714a8869-591f-4a9c-91ec-045042d7d120.jsonl`
+- `/ll:confidence-check` - 2026-06-10T23:45:00Z - `7a3f7d68-548f-4c2a-bce7-6414775a985c.jsonl`

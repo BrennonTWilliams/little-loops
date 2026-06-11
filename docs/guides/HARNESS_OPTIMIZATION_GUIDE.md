@@ -132,6 +132,19 @@ The first six map cleanly onto the `diagnose → score → gate → revert` shap
 what you can at diagnosis, and let the score gate catch the rest by reverting any edit
 that doesn't measurably help.
 
+### Runtime Failure Modes
+
+These failure modes occur during loop **execution** (detected post-hoc by `/ll:audit-loop-run`
+rather than during optimization). They are distinct from the optimizer error taxonomy above,
+which covers mistakes a harness-optimizer loop makes when editing another loop.
+
+| Failure mode | What it looks like | Detection signal | Remediation |
+|---|---|---|---|
+| **feature-stubbing** | Loop claims it implemented X but only added a placeholder, comment, or TODO; no real code change. | External verification state (run tests, lint, or smoke command) absent before `success`. | Add a non-LLM exit-code evaluator that runs the target and confirms real output before allowing `success`. |
+| **shallow-iteration** | Burns high tool-call budget (>30 `action_complete` events) without creating or modifying helper files outside the primary artifact path. Loop iterates without accumulating reusable structure. | `ll:audit-loop-run` Step 5.5 flags when `action_complete` count exceeds threshold with no auxiliary file mutations. Corroborated by a co-present `diff_stall` evaluator verdict. | Add intermediate artifact-write states that produce named helper files each iteration; break monolithic iteration into smaller sub-tasks. |
+
+**Relationship between the two modes**: `feature-stubbing` is about the *content* of the output (placeholder vs. real work); `shallow-iteration` is about the *shape* of execution (high budget with no structural accumulation). A run can exhibit both simultaneously — shallow iteration that never produces real output — in which case both warnings are emitted and the `diff_stall` corroboration signal is particularly diagnostic.
+
 ---
 
 ## The Canonical Shape

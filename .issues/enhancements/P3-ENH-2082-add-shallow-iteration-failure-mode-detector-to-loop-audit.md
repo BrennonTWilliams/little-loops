@@ -3,11 +3,18 @@ id: ENH-2082
 title: Add shallow-iteration failure mode detector to loop audit
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-06-10T18:12:09Z"
-discovered_date: "2026-06-10"
+status: done
+captured_at: '2026-06-10T18:12:09Z'
+completed_at: '2026-06-11T04:00:47Z'
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
 parent: EPIC-2087
+confidence_score: 93
+outcome_confidence: 83
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # ENH-2082: Add shallow-iteration failure mode detector to loop audit
@@ -92,4 +99,8 @@ Add a heuristic to `ll:audit-loop-run` that flags runs where the tool-call count
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-11T03:54:08 - `3ddf2422-577e-4dfc-8b7c-0d181fb69d87.jsonl`
+- `/ll:ready-issue` - 2026-06-11T03:31:56 - `51051097-4e84-426b-80d7-3a69806057f7.jsonl`
 - `/ll:format-issue` - 2026-06-10T23:31:49 - `20d6c357-b807-4649-87f0-e98fb94ab6bf.jsonl`
+- `/ll:confidence-check` - 2026-06-10T23:45:00 - `ecb359fa-11ce-4856-8a5d-fc9e0f7af230.jsonl`
+- `/ll:confidence-check` - 2026-06-10T18:00:00 - `793b5ac4-6dc4-4790-8fa0-31f200928ece.jsonl`

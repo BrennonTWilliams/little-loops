@@ -156,6 +156,44 @@ Key signals to flag (fault subset only):
 
 ---
 
+## Step 5.5: Shallow-Iteration Check
+
+Using the history loaded in Step 2 and the artifact evidence from Step 4, run the shallow-iteration heuristic:
+
+**1. Count tool calls**: Count the number of `action_complete` events in the loaded history. Call this `TOOL_CALL_COUNT`.
+
+**2. Identify auxiliary mutations**: From the `git diff HEAD` evidence collected in Step 4, list all files that were created or modified and are **not** in the primary artifact path set (the paths identified in Step 4: `context.prompt_file`, `context.output_file`, and similar path-like context keys). Call this count `AUX_MUTATION_COUNT`.
+
+**3. Check for diff_stall corroboration**: Scan `evaluate` events in the history. For each, check whether the resolved FSM (loaded in Step 2) has `evaluate.type == "diff_stall"` for that state and the recorded `verdict` is `"stall"` or `"no"`. Call this `DIFF_STALL_PRESENT` (true/false).
+
+**4. Apply threshold** (default threshold: 30):
+
+```
+IF TOOL_CALL_COUNT > 30 AND AUX_MUTATION_COUNT == 0:
+  IF DIFF_STALL_PRESENT:
+    result = "corroborated"   # both heuristic and diff_stall agree
+  ELSE:
+    result = "warning"        # heuristic alone
+ELSE:
+  result = "clear"
+```
+
+The default threshold of 30 `action_complete` events is intentionally conservative — most well-structured loops either produce auxiliary artifacts or converge within this budget. Loops that burn more than 30 iterations without creating helper structure are iterating without building.
+
+**5. Emit finding** when result is `"warning"` or `"corroborated"`:
+
+```
+⚠ Shallow-iteration: <TOOL_CALL_COUNT> action_complete events with no auxiliary file mutations
+  outside the primary artifact path (<primary_paths>).
+  [Corroborated by diff_stall evaluator verdict in state '<state_name>'.]
+  Remediation: add intermediate artifact-write states; break monolithic iteration into
+  smaller sub-tasks that each produce a named helper file.
+```
+
+Pass `result` and `TOOL_CALL_COUNT` to the scorecard in Step 6.
+
+---
+
 ## Step 6: Goal-vs-Outcome Scorecard
 
 Determine the verdict using the terminal state from `loop_complete` event (`terminated_by`) and the artifact/contract evidence:
@@ -177,6 +215,7 @@ Output the structured scorecard block:
 **Contract**: <threshold keys and values, or "none detected">
 **Artifacts checked**: <list of paths and mutation status>
 **Phase 1 signals**: <fault signal count from Step 5, or "none">
+**Shallow-iteration check**: `<warning | corroborated | clear>` (<TOOL_CALL_COUNT> tool calls, <AUX_MUTATION_COUNT> auxiliary mutations)
 **Verdict**: `<met | phantom | partial | degraded>`
 
 **Rationale**: <one paragraph explaining the verdict>
@@ -279,6 +318,7 @@ Assessment complete for loop: <loop_name>
 Verdict: `<met | phantom | partial | degraded>`
 Rubric audit: <N evaluators checked, M flagged — or "skipped (--no-rubric-audit)">
 Laundering check: <N sub-loop states checked, M flagged — or "no sub-loop states">
+Shallow-iteration check: `<warning | corroborated | clear>` (<N> tool calls, <M> auxiliary mutations — or "below threshold")
 Issues created: <N>
 ```
 

@@ -313,3 +313,108 @@ class TestAssessLoopSkill:
         states = spec.get("states", {})
         assert states.get(path[-1], {}).get("terminal") is True
         # → loop completes but child verdict was lost; skill must detect this structurally
+
+    # ------------------------------------------------------------------
+    # Discriminator: shallow-iteration
+    # ------------------------------------------------------------------
+
+    def test_shallow_iteration_fixture_validates(self) -> None:
+        fsm, _ = load_and_validate(FIXTURES_DIR / "assess-shallow-iteration.yaml")
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, f"FSM errors: {[str(e) for e in error_list]}"
+
+    def test_shallow_iteration_has_diff_stall_evaluator(self) -> None:
+        """Shallow-iteration fixture uses diff_stall evaluator — corroboration signal present."""
+        spec = self._load_fixture("assess-shallow-iteration.yaml")
+        states = spec.get("states", {})
+        initial = spec.get("initial")
+        state = states.get(initial, {})
+        assert state.get("evaluate", {}).get("type") == "diff_stall"
+        # → skill Step 5.5 can use diff_stall verdict as corroboration for shallow-iteration
+
+    def test_shallow_iteration_has_high_max_iterations(self) -> None:
+        """Shallow-iteration fixture declares a high max_iterations budget."""
+        spec = self._load_fixture("assess-shallow-iteration.yaml")
+        assert spec.get("max_iterations", 0) > 30
+        # → loop is designed to allow high tool-call counts — shallow-iteration threshold can trigger
+
+    def test_shallow_iteration_primary_artifact_path_in_context(self) -> None:
+        """Primary artifact path is declared in context — aux mutations are those outside this."""
+        spec = self._load_fixture("assess-shallow-iteration.yaml")
+        context = spec.get("context", {})
+        path_keys = {"input_file", "output_file", "prompt_file", "system_file"}
+        assert any(k in context for k in path_keys)
+        # → skill Step 5.5 uses context path keys to define primary artifact paths
+
+    def test_shallow_iteration_on_no_loops_back_to_self(self) -> None:
+        """Failure path loops back to the same state — loop can exhaust budget without aux output."""
+        spec = self._load_fixture("assess-shallow-iteration.yaml")
+        states = spec.get("states", {})
+        initial = spec.get("initial")
+        state = states.get(initial, {})
+        assert state.get("on_no") == initial
+        # → loop structure permits high iteration count without guaranteed auxiliary file creation
+
+    def test_shallow_iteration_skill_has_step_55(self) -> None:
+        """Skill file contains Step 5.5 (shallow-iteration check)."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        assert "Step 5.5" in content or "5.5" in content
+        assert "shallow-iteration" in content.lower() or "shallow_iteration" in content.lower()
+        # → skill must implement the shallow-iteration detection step
+
+    def test_shallow_iteration_skill_scorecard_has_check_field(self) -> None:
+        """Scorecard block in skill includes a Shallow-iteration check field."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step6_start = content.index("## Step 6:")
+        step7_start = content.index("## Step 7:")
+        step6_section = content[step6_start:step7_start]
+        assert "Shallow-iteration check" in step6_section
+        # → scorecard must surface the shallow-iteration verdict alongside other fields
+
+    def test_shallow_iteration_skill_final_report_has_summary_line(self) -> None:
+        """Final Report block includes a Shallow-iteration check summary line."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        final_report_start = content.index("## Final Report")
+        final_report_section = content[final_report_start:]
+        assert "Shallow-iteration check" in final_report_section
+        # → final report must surface the shallow-iteration verdict
+
+    def test_shallow_iteration_skill_threshold_documented(self) -> None:
+        """Skill documents the default tool-call threshold (30)."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        assert "30" in content
+        # → threshold must be documented so users know when shallow-iteration fires
+
+    def test_shallow_iteration_guide_documents_pattern(self) -> None:
+        """HARNESS_OPTIMIZATION_GUIDE.md documents shallow-iteration under runtime failure modes."""
+        guide_path = (
+            Path(__file__).parent.parent.parent
+            / "docs"
+            / "guides"
+            / "HARNESS_OPTIMIZATION_GUIDE.md"
+        )
+        content = guide_path.read_text()
+        assert "shallow-iteration" in content.lower()
+        assert "feature-stubbing" in content.lower()
+        # → both patterns must be documented together per acceptance criteria
+
+    def test_shallow_iteration_guide_documents_alongside_feature_stubbing(self) -> None:
+        """shallow-iteration and feature-stubbing appear in the same section of the guide."""
+        guide_path = (
+            Path(__file__).parent.parent.parent
+            / "docs"
+            / "guides"
+            / "HARNESS_OPTIMIZATION_GUIDE.md"
+        )
+        content = guide_path.read_text()
+        shallow_pos = content.lower().find("shallow-iteration")
+        stubbing_pos = content.lower().find("feature-stubbing")
+        assert shallow_pos != -1 and stubbing_pos != -1
+        # They should be within 2000 chars of each other (same section)
+        assert abs(shallow_pos - stubbing_pos) < 2000
+        # → both patterns co-located for discoverability
