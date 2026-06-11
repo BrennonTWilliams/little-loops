@@ -59,11 +59,12 @@ Initialize little-loops for a project. Detects the project root, selects host ad
 
 | Screen | Prompt | Notes |
 |--------|--------|-------|
-| 1 / 5  | Project type template | Auto-detected from repo contents |
-| 2 / 5  | Project name, src dir, test/lint/format commands | Pre-filled from detection |
-| 3 / 5  | Host adapters to install | Defaults to detected hosts |
-| 4 / 5  | Settings target (project vs. user) | Controls where hook permissions are written |
-| 5 / 5  | CLAUDE.md update | Offers to create `.claude/CLAUDE.md` (or append to an existing one) with ll CLI command stubs; skipped if a `## little-loops` section is already present (ENH-2043) |
+| 1 / 6  | Project type template | Auto-detected from repo contents |
+| 2 / 6  | Project name, src dir, test/lint/format commands | Pre-filled from detection; command fields offer curated-menu select with "Custom…" fallthrough |
+| 3 / 6  | Scan settings | `focus_dirs` text entry; confirm/override exclude patterns |
+| 4 / 6  | Features | Checkboxes for `github_sync`, `confidence_gate`, `tdd` (all opt-in); profile picker for `design_tokens`; worktree copy-files toggle; session-digest confirm |
+| 5 / 6  | Host adapters + settings target | Defaults to detected hosts; third "Skip" option skips `merge_settings` entirely |
+| 6 / 6  | CLAUDE.md update | Offers to create `.claude/CLAUDE.md` (or append to an existing one) with ll CLI command stubs; skipped if a `## little-loops` section is already present (ENH-2043, ENH-2092) |
 
 **Examples:**
 ```bash
@@ -508,6 +509,7 @@ Run a loop.
 | `--worktree` | | Run loop in an isolated git worktree on a new branch named `TIMESTAMP-LOOP-NAME`; worktree and branch are removed on exit. **Cannot be combined with `--background`** — passing both exits with an error. |
 | `--baseline` | | Run a blind A/B comparison: executes primary skill with full evaluation gates (harness arm) and creates a matching ungated invocation (baseline arm) in parallel, then feeds both outputs into a blind LLM judge. Writes `ab.json` to the run directory and prints a terminal summary with pass-rate delta and token/duration ratios. **Cannot be combined with `--worktree`** — passing both exits with an error. |
 | `--baseline-skill` | | Override the baseline arm skill (default: extracted from the execute state action). Accepts a full slash command such as `/ll:some-skill`. |
+| `--cross-host` | | Re-run the loop on a second available host CLI and append a cross-host comparison table to the baseline report. Requires `--baseline`. The comparison runs the execute state on the alternate host, then feeds both outputs into the same blind LLM judge. (ENH-2086) |
 | `--items` | | Number of compare cycles to run (default: iterate with MIMO packing heuristics) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
@@ -607,6 +609,12 @@ MR-1, MR-2, and the multimodal evaluator blind-spot rule are suppressed by setti
 - **Zero-retry counter pattern (WARNING)**: Detects states whose `retry` config sets `max_retries: 0` alongside a non-zero `retry_count` counter variable, or `retry_count` that is never incremented in any on-error transition. A zero-retry counter pattern means the state will never actually retry despite having retry infrastructure wired — this is almost always a configuration mistake. Does not block validation.
 - **Multimodal evaluator blind-spot (WARNING)**: Detects harness-loop states that use an LLM multimodal prompt (screenshot/image) evaluated via `output_contains` as the sole gate routing directly to a terminal state. LLMs can silently fall back to text-only analysis when reading images, producing verdicts from incomplete information without the `output_contains` evaluator detecting the gap. Consider adding a shell-action verification state (e.g., functional smoke test) between scoring and the terminal. Does not block validation. Suppressed by `meta_self_eval_ok: true`.
 - **Capture reachability (WARNING/ERROR)**: Detects states that reference ``${captured.<var>.*}`` in their action or evaluator source where the capturing state may not execute on all code paths to the referencing state. Uses dominance analysis (reverse BFS) to check whether every path from ``initial`` to the referencing state passes through at least one of the capturing states. When a variable is produced by more than one state on mutually-exclusive branches (e.g. `fifo_pop` and `select_next` both capture `input`), the validator accepts the reference as safe if the set of capturing states collectively dominates the referencing state — every path must pass through at least one member of the set. Emits an **ERROR** when the referenced capture variable has no capturing state at all in the current FSM (likely a missing ``capture:`` declaration). Emits a **WARNING** when a bypassing path exists — the variable may be undefined at runtime if the bypass path is taken. **Sub-loop exception**: when the loop contains sub-loop states and the variable has no capturing state in the *parent* FSM, the validator emits a **WARNING** rather than an ERROR — the capture may legitimately live in a child namespace; the WARNING ensures typos still surface rather than going completely dark. Does not block validation for warnings; errors block validation. (ENH-1961, BUG-1997, ENH-1998)
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | `-j` | Output validation result as JSON. On success: `{"valid": true, "loop": "<name>", "warnings": [...]}`. On failure: `{"valid": false, "loop": "<name>", "error": "<message>", "warnings": [...]}`. Exit code is unchanged (1 for ERROR, 0 for clean/warnings-only). (ENH-2090) |
 
 #### `ll-loop list` / `ll-loop l`
 
