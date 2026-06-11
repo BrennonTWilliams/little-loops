@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`/ll:distill-traces` skill** — Mine successful execution history for a named loop and write reusable YAML state templates, transition patterns, and a `primitives.md` index to `scripts/little_loops/loops/lib/<loop-name>/`. Accepts `--min-success N` threshold (default 3); exits cleanly when history is insufficient. (FEAT-2078)
 - **Per-state `model:` override for FSM loop states** — `StateConfig` now accepts an optional `model:` field. When set on a `prompt` or `slash_command` state, the specified model ID is passed as `--model <id>` to the host CLI for that state only; other states continue using the global default. A validation WARNING is emitted when `model:` is set on `shell`, `mcp_tool`, or `contract` states (where the host CLI is not invoked). Absent = existing behavior, fully backwards-compatible. (ENH-2073)
+- **MR-6 generator-fix discipline rule in `ll-loop validate`** — Detects hand-patching anti-patterns where a `shell`-type state writes to the same file path as an LLM-generator state in the same loop, emitting a WARNING. Suppressed by `generator_fix_ok: true` for intentional post-processing cases. (ENH-2079)
+
+### Fixed
+
+- **`ll-issues` crashes on unrecognized argument `EPIC`** — `ll-issues list` no longer raises an unrecognized argument error when passed the `EPIC` type. (BUG-2069)
+- **FSM shell actions crash on bash parameter expansion** — `${...}` in FSM `shell` actions no longer raises "Unknown namespace"; the interpolation engine now correctly passes through bash-style parameter expansions. (BUG-2074)
+- **vega-viz phantom convergence** — `vega-viz` no longer terminates on the first `ALL_PASS` verdict while the judge still documents blocking defects; the convergence gate is now deterministic. (BUG-2066)
+- **`rn-remediate` assess state missing routes** — Added `on_partial` and `on_no` routes to the `assess` state to prevent silent dead-ends on non-yes verdicts. (ab52d0df)
+- **FSM rate-limit interceptor budget drain on success** — The interceptor now ignores `exit_code=0` and no longer consumes the `max_retries` budget on non-error responses. (fd25fcab)
+- **`ll-logs` stale-worktree log severity** — Downgraded decoded-path log message from WARNING to DEBUG to reduce noise in normal operation. (a02045e3)
 
 ## [1.120.0] - 2026-06-09
 
@@ -680,7 +690,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.120.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.121.0...HEAD
+[1.121.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.120.0...v1.121.0
 [1.120.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.119.0...v1.120.0
 [1.119.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.118.0...v1.119.0
 [1.118.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.117.0...v1.118.0
