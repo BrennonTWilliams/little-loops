@@ -9,6 +9,7 @@ discovered_by: capture-issue
 parent: EPIC-1978
 blocked_by:
 - BUG-2042
+- ENH-2092
 relates_to:
 - EPIC-1978
 - FEAT-1979

@@ -6,7 +6,7 @@ status: open
 priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue
-relates_to: [EPIC-1463, EPIC-1622, FEAT-1475, FEAT-2041]
+relates_to: [EPIC-1463, EPIC-1622, FEAT-1475, FEAT-2041, ENH-2092]
 labels: [epic, init, cli, host-compat, dx]
 ---
 
@@ -97,6 +97,9 @@ Prior art to lean on: `ll-doctor` (host capability detection) and
   `interactive.md` prose flow. Blocked by BUG-2042.
 - **ENH-2043** — Add CLAUDE.md update step to the TUI (Round 12 parity). P3;
   doesn't block ENH-1982.
+- **ENH-2092** — Bring `ll-init` TUI to config-capability parity with `/ll:init`
+  (add every missing config-producing question to the interactive flow). P2;
+  blocks ENH-1982.
 - **FEAT-2041** — Guided first-loop onboarding after ll init. Blocked by ENH-1982.
 
 ## Scope
