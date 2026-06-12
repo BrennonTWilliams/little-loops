@@ -24,6 +24,9 @@ context:
   sample_frames: "0,90,240"   # comma-separated __loopFrame values to screenshot
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
+import:
+  - lib/common.yaml
+
 states:
 
   init:
@@ -280,8 +283,23 @@ states:
       type: output_contains
       pattern: "ALL_PASS"
     on_yes: done
-    on_no: generate
+    on_no: check_stall
     on_error: failed
+
+  check_stall:
+    # HARNESS: Diff-stall guard — if the model has produced no file changes for
+    # max_stall consecutive refine cycles, the plateau is detected early and the
+    # loop routes to done (accept best-so-far) rather than burning the remaining
+    # iteration budget. on_yes = new changes observed; on_no = plateaued.
+    # on_error = git unavailable — don't block the loop, continue generating.
+    fragment: diff_stall_gate
+    action: echo "stall check"
+    action_type: shell
+    evaluate:
+      max_stall: 3
+    on_yes: generate
+    on_no: done
+    on_error: generate
 
   done:
     # HARNESS: Success terminal — reached when all criteria pass or

@@ -42,6 +42,9 @@ context:
                               # required for a render to count as "drew something"
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
+import:
+  - lib/common.yaml
+
 states:
 
   init:
@@ -315,7 +318,22 @@ states:
       operator: ge
       target: "${context.pass_threshold}"
     on_yes: finalize
-    on_no: generate
+    on_no: check_stall
+    on_error: generate
+
+  check_stall:
+    # HARNESS: Diff-stall guard — if the model has produced no file changes for
+    # max_stall consecutive refine cycles, the plateau is detected early and the
+    # loop routes to finalize (accept best-so-far) rather than burning the
+    # remaining iteration budget. on_yes = new changes observed; on_no = plateaued.
+    # on_error = git unavailable — don't block the loop, continue generating.
+    fragment: diff_stall_gate
+    action: echo "stall check"
+    action_type: shell
+    evaluate:
+      max_stall: 3
+    on_yes: generate
+    on_no: finalize
     on_error: generate
 
   finalize:

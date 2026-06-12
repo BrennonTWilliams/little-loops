@@ -1297,9 +1297,9 @@ class TestVegaVizScoringGate:
         """record.on_yes must still route to done on a genuine EVAL_PASS."""
         assert data["states"]["record"].get("on_yes") == "done"
 
-    def test_record_on_no_routes_to_generate(self, data: dict) -> None:
-        """record.on_no must route back to generate to iterate."""
-        assert data["states"]["record"].get("on_no") == "generate"
+    def test_record_on_no_routes_to_check_stall(self, data: dict) -> None:
+        """record.on_no must route to check_stall (diff-stall guard) before regenerating."""
+        assert data["states"]["record"].get("on_no") == "check_stall"
 
     # --- Shell-execution assertions --------------------------------------
 
