@@ -1,7 +1,7 @@
 # Built-in Loop Reference
 
 This document provides detailed reference information for selected built-in FSM loops.
-For a full catalog and conceptual guide, see [LOOPS_GUIDE.md](../guides/LOOPS_GUIDE.md).
+For the full catalog see [LOOPS_REFERENCE.md](../guides/LOOPS_REFERENCE.md); for the conceptual guide see [LOOPS_GUIDE.md](../guides/LOOPS_GUIDE.md).
 
 ---
 

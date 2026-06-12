@@ -1,5 +1,11 @@
 # Issue Management Guide
 
+## When to Use This Guide
+
+Use the full refinement pipeline when you have multiple issues to prepare for a sprint, or when implementing a feature that requires careful planning. For a quick bug fix, skip to the [Fix a Bug in 5 Steps](#fix-a-bug-in-5-steps) recipe at the end.
+
+---
+
 ## What Is Issue Management?
 
 Issues in little-loops are structured Markdown files that capture bugs, features, and enhancements as first-class objects. They're not tickets in an external system — they live in your repository, travel with your code, and serve as the primary input to automated implementation tools.
@@ -35,7 +41,7 @@ P2-BUG-042-sprint-runner-ignores-failed-issues.md
 └────────── priority: P0 (critical) to P5 (low)
 ```
 
-> **Note**: Issue lifecycle state is tracked in frontmatter `status` field. All issues live in their type directory (`bugs/`, `features/`, `enhancements/`, `epics/`) regardless of whether they are open, deferred, or done.
+> **Status vs. Directory**: The `status:` frontmatter field drives CLI tools — `ll-issues list`, `ll-auto`, `ll-sprint`, and similar commands all filter by this field. The directory (`bugs/`, `features/`, etc.) is just organization by type. A completed bug stays in `.issues/bugs/` with `status: done`; it is never moved. Scanning for open work means filtering by `status: open`, not by directory.
 
 Issue files use YAML-style frontmatter for metadata, followed by Markdown sections. The v2.0 template (see [Issue Template Guide](../reference/ISSUE_TEMPLATE.md)) adds four high-value sections: Motivation, Integration Map, Implementation Steps, and Root Cause (BUG only).
 
@@ -120,18 +126,6 @@ Synonyms (`complete`, `completed`, `finished`, `wip`, `in-progress`) are silentl
 
 **Frontmatter `status` determines CLI bucketing.** Tools like `ll-issues list`, `ll-auto`, and `ll-sprint` filter issues by the `status` frontmatter field — not by directory location. All active issues live in type directories (`bugs/`, `features/`, `enhancements/`, `epics/`); their lifecycle state is recorded in frontmatter.
 
-### Reopen a Completed Issue
-
-When a fix regresses or an issue was closed prematurely:
-
-```
-1. Update frontmatter: set status from `done` back to `open` using the Edit tool
-2. Update Status footer: **Reopened** | Reopened: 2026-02-24 | Reason: regression in commit abc123
-3. Add a "Reopen Note" section explaining what changed
-4. Run /ll:verify-issues <file> to refresh codebase claims
-5. Continue from Phase 3 (validate) or Phase 4 (implement)
-```
-
 Not every issue goes through every state. A trivial bug fix might go Discovered → Ready → Completed in one session. A large feature might stay in Validating for multiple refinement cycles.
 
 ---
@@ -195,26 +189,35 @@ Both commands can generate many issues at once. Run them when onboarding to a ne
 
 ### The Refinement Pipeline
 
-Refinement transforms raw captures into implementation-ready issues. The steps run in order, each building on the previous:
+Refinement transforms raw captures into implementation-ready issues. **You don't need all eight steps on every issue** — use the decision tree below to pick your path:
+
+```
+What kind of issue is it?
+│
+├─ Small bug (< 1 day to fix, root cause obvious)
+│    → normalize → wire → manage-issue
+│
+├─ Medium issue (known problem, needs codebase research)
+│    → normalize → format --auto → refine → wire → verify → manage-issue
+│
+└─ Large feature or complex change
+     → all 8 steps below
+```
+
+The full pipeline in order:
 
 ```
 1. normalize-issues    ← fix filenames (missing IDs, bad format)
 2. prioritize-issues   ← set P0-P5 prefix
 3. format-issue        ← promote to v2.0 template
-4. refine-issue        ← research codebase, fill gaps
+4. refine-issue        ← research codebase, fill knowledge gaps
 5. decide-issue        ← resolve competing options (only if decision_needed: true)
 6. wire-issue          ← complete integration map (callers, config, docs, tests)
 7. verify-issues       ← test claims against actual code
-8. tradeoff-review-issues ← prune low-value issues
+8. tradeoff-review-issues ← prune low-value issues before investing more time
 ```
 
 > See [Decisions Log Guide](DECISIONS_LOG_GUIDE.md) for the full decisions system: how `decision_needed` gates automation, the four entry types (decisions, rules, exceptions, coupling contracts), and how `ll-issues decisions sync` propagates required rules to `.ll/ll.local.md`.
-
-> **When to skip steps:** `normalize` and `prioritize` are safe to run on every issue.
-> Skip `verify` for issues you just wrote yourself. Skip `align` if you're not using a goals doc.
-> Skip `refine` for small, well-understood bugs. Skip `wire` unless the integration map feels incomplete.
-
-You don't have to run all seven on every issue. A well-described issue captured from conversation might skip normalize and go straight to format → refine → verify.
 
 ### Fixing Filenames
 
@@ -242,6 +245,18 @@ Analyzes issue content and assigns a P0-P5 priority prefix to each filename. The
 | P5 | Minimal — won't miss it | Cosmetic, highly speculative |
 
 After prioritization, review the assignments. The AI doesn't know your deadlines or business context — you might move P3s up or P1s down.
+
+**Priority heuristics:**
+
+| Situation | Likely priority |
+|-----------|----------------|
+| Production outage, data loss, security breach | P0 |
+| Users actively blocked right now, no workaround | P1 |
+| Silent data corruption (even if not user-visible) | P1 |
+| Important feature broken, workaround exists | P2 |
+| Normal bugs, nice-to-have improvements | P3 |
+| Polish, minor edge cases, "while we're in there" | P4 |
+| Cosmetic, highly speculative, may never do | P5 |
 
 ### Formatting to Template v2.0
 
@@ -566,6 +581,24 @@ When you inherit an unfamiliar project and need to understand what's broken:
 ```
 
 After triage, you have a prioritized backlog of real problems with dependency ordering. Start with P0/P1 issues and work down.
+
+---
+
+---
+
+## Edge Cases
+
+### Reopen a Completed Issue
+
+When a fix regresses or an issue was closed prematurely:
+
+```
+1. Update frontmatter: set status from `done` back to `open` using the Edit tool
+2. Update Status footer: **Reopened** | Reopened: 2026-02-24 | Reason: regression in commit abc123
+3. Add a "Reopen Note" section explaining what changed
+4. Run /ll:verify-issues <file> to refresh codebase claims
+5. Continue from Phase 3 (validate) or Phase 4 (implement)
+```
 
 ---
 

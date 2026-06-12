@@ -189,6 +189,60 @@ even when individual edits are reverted (MR-3 / MR-5).
 > refuse to advance to `propose` without one, so every iteration spends its first step on
 > the highest-leverage component rather than drifting into an unscoped edit.
 
+### Minimal Example
+
+A 20-line harness optimizer for a single skill file, with one comment per key state:
+
+```yaml
+name: optimize-capture-issue
+category: harness
+initial: diagnose
+max_iterations: 10
+
+states:
+  diagnose:                          # identify WHICH component is weakest before editing
+    action: "Review skills/capture-issue/SKILL.md against the test results and name the single highest-priority component to fix (prompt/tool/workflow). Output: COMPONENT=<name>"
+    action_type: prompt
+    next: baseline
+
+  baseline:                          # measure BEFORE the edit so the gate has a reference
+    action: "pytest scripts/tests/test_capture_issue.py -q --tb=no && echo SCORE=$(pytest --co -q | wc -l)"
+    on_yes: propose
+    on_error: propose
+
+  propose:                           # LLM generates ONE targeted edit
+    action: "Propose exactly one change to the ${captured.diagnose.output} component of skills/capture-issue/SKILL.md that would fix the pattern you diagnosed. Output the diff."
+    action_type: prompt
+    next: apply
+
+  apply:                             # apply the edit
+    action: "Apply the proposed diff to skills/capture-issue/SKILL.md"
+    action_type: prompt
+    next: score
+
+  score:                             # measure AFTER the edit
+    action: "pytest scripts/tests/test_capture_issue.py -q --tb=no"
+    next: gate
+
+  gate:                              # NON-LLM convergence gate: keep on improvement, revert on regression
+    evaluate:
+      type: convergence
+      source: "${captured.score.exit_code}"
+      target: "0"
+    on_yes: commit
+    on_no: revert
+
+  commit:                            # accept and loop back to diagnose
+    action: "git add skills/capture-issue/SKILL.md && git commit -m 'harness: optimizer improvement'"
+    action_type: shell
+    next: diagnose
+
+  revert:                            # discard the failed edit
+    action: "git restore skills/capture-issue/SKILL.md"
+    action_type: shell
+    terminal: true
+```
+
 ### Feed the trajectory forward: cumulative summaries
 
 The per-iteration `trajectory.jsonl` is also the substrate for the optimizer's `memory`
@@ -222,6 +276,24 @@ rules.
 ---
 
 ## Validating and Measuring
+
+Run these three commands in sequence before declaring a harness optimizer production-ready:
+
+```bash
+# Step 1: Check the YAML for rule violations
+ll-loop validate my-optimizer
+# → Enforces MR-1 (ERROR) and MR-3/MR-4/MR-5/MR-6 (WARNING). Fix all ERRORs before continuing.
+
+# Step 2: Verify the gate actually discriminates
+ll-loop diagnose-evaluators my-optimizer
+# → Reports Bernoulli variance p*(1-p) per evaluator. A score below 0.05 means the gate
+#   always returns the same verdict — it's not measuring anything useful. Fix before raising max_iterations.
+
+# Step 3: Confirm the harness beats a single unguided call
+ll-loop run my-optimizer --baseline
+# → Runs two arms: harness vs. single-shot. Reports quality delta and token cost.
+#   If the harness doesn't beat baseline by a meaningful margin, the loop isn't worth the overhead.
+```
 
 - **`ll-loop validate <loop>`** — enforces MR-1 (ERROR) and MR-3/MR-4/MR-5/MR-6 (WARNING)
   before you run.

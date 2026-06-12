@@ -1,16 +1,33 @@
 # Workflow Analysis Guide
 
+## When to Use This Guide
+
+Use this when you want to discover automation opportunities in your own working patterns — repeated multi-step tasks, recurring friction points, or sequences you run by hand that could become loops or commands.
+
+**New? Jump straight to the quick start:**
+
+```bash
+ll-messages -n 200              # 1. Extract your recent messages
+/ll:analyze-workflows           # 2. Run the full pipeline (auto-detects the file)
+# Results: .ll/workflow-analysis/summary-*.md
+```
+
+Read the rest of this guide if you want to interpret the output, run steps manually, or tune the analysis.
+
+---
+
 ## Table of Contents
 
 - [What Is Workflow Analysis?](#what-is-workflow-analysis)
 - [The Pipeline at a Glance](#the-pipeline-at-a-glance)
 - [Prerequisites: Extracting Messages (`ll-messages`)](#prerequisites-extracting-messages-ll-messages)
 - [Running the Full Pipeline: `/ll:analyze-workflows`](#running-the-full-pipeline-llanalyze-workflows)
+- [Reading Your Output](#reading-your-output)
 - [Understanding the Outputs](#understanding-the-outputs)
   - [Key fields in `step1-patterns.yaml`](#key-fields-in-step1-patternsyaml)
   - [Key fields in `step2-workflows.yaml`](#key-fields-in-step2-workflowsyaml)
   - [Key fields in `step3-proposals.yaml`](#key-fields-in-step3-proposalsyaml)
-- [CLI Deep Dive: `ll-workflows`](#cli-deep-dive-ll-workflows)
+- [Manual Pipeline: `ll-workflows`](#cli-deep-dive-ll-workflows)
   - [Argument Reference](#argument-reference)
   - [How the Analysis Works](#how-the-analysis-works)
 - [The Automation Proposer: `/ll:workflow-automation-proposer`](#the-automation-proposer-llworkflow-automation-proposer)
@@ -169,7 +186,35 @@ Here's what a typical pattern entry looks like:
 - `existing_command_suggestions` — patterns that already have a `/ll:*` command you may not be using
 - `implementation_roadmap` — proposals grouped into `immediate`, `short_term`, and `future` buckets
 
-## CLI Deep Dive: `ll-workflows`
+## Reading Your Output
+
+After `/ll:analyze-workflows` completes, open `summary-*.md` for the human-readable report. Here's how to interpret the key numbers:
+
+**In `step2-workflows.yaml`:**
+- `pattern_confidence` (0–1): how consistently this sequence appears across sessions. **≥ 0.7 = strong candidate for automation.** Below 0.4 means the pattern is loosely structured and harder to automate reliably.
+- `cohesion_score` (0–1): how tightly the messages in a cluster relate to each other. High cohesion (≥ 0.7) means messages are clearly about one thing.
+
+**In `step3-proposals.yaml`:**
+- `priority: HIGH` = 5+ occurrences with significant friction — act on these first
+- `priority: MEDIUM` = 3–4 occurrences, moderate friction — worth doing soon
+- `priority: LOW` = 1–2 occurrences — note it, but don't invest yet
+
+**Automation types in plain English:**
+
+| Type in output | What it means |
+|---------------|---------------|
+| `slash_command` | Create a new `/ll:` command for this multi-step workflow |
+| `fsm_loop` | Create a recurring loop (use `/ll:create-loop`) |
+| `sprint` | Group these as a sprint for batch execution |
+| `hook_pre_tool` / `hook_post_tool` / `hook_stop` | Add a background hook that fires automatically |
+| `existing_command` | You already have a command for this — you just aren't using it |
+| `script_python` / `script_bash` | Write a standalone script |
+
+**Where to start:** Look at the `implementation_roadmap` section in `step3-proposals.yaml`. The `immediate` bucket lists items that either already exist (use them!) or are small enough to do in an hour. Start there before investing in `short_term` or `future` items.
+
+---
+
+## Manual Pipeline: `ll-workflows`
 
 You can run Step 2 independently — useful if you've run Step 1 manually or want to re-analyze with updated patterns.
 
@@ -259,12 +304,12 @@ It also checks for existing `/ll:*` commands before proposing new ones. If your 
 | `slash_command` | Multi-step workflow with 3+ occurrences | `/ll:cleanup-refs` for repeated reference removal |
 | `script_python` | Complex logic, data processing, external APIs | Entity extraction script with argparse |
 | `script_bash` | Simple file operations, tool chains | Batch rename script |
-| `hook_pre_tool` | Prevent unwanted tool usage | Block `rm -rf` patterns before they run |
-| `hook_post_tool` | React to tool completions | Auto-lint after every Edit |
+| `hook_pre_tool` | Prevent unwanted tool usage before it happens | Block `rm -rf` patterns before they run |
+| `hook_post_tool` | React to tool completions automatically | Auto-lint after every Edit |
 | `hook_stop` | Session-end automation | Commit reminder when session ends |
 | `agent_enhancement` | Extend an existing agent's capabilities | Add entity extraction to the pattern analyzer |
-| `fsm_loop` | Repeated multi-step CLI workflows | `ll-loop` config for a test → fix → lint cycle |
-| `existing_command` | User should adopt an existing command | Suggest `/ll:commit` for repeated commit requests |
+| `fsm_loop` | Recurring multi-step workflow — runs automatically on a schedule or trigger | A recurring test → fix → lint cycle |
+| `existing_command` | A `/ll:` command already handles this — use it | Suggest `/ll:commit` for repeated commit requests |
 
 ### Priority Scoring
 

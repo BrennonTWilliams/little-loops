@@ -1,5 +1,9 @@
 # Decisions Log Guide
 
+> **When to use this**: You want a durable record of implementation choices — so settled
+> decisions aren't re-litigated, team rules are enforced automatically, and automation
+> pauses on issues with unresolved options instead of guessing.
+
 Record implementation choices, enforce team rules, and prevent automation from proceeding on unresolved options.
 
 ## Table of Contents
@@ -15,6 +19,15 @@ Record implementation choices, enforce team rules, and prevent automation from p
 - [Superseding Old Entries](#superseding-old-entries)
 - [Configuration](#configuration)
 - [See Also](#see-also)
+
+---
+
+## Why Record Decisions?
+
+- **Prevents re-litigating settled choices.** When a question comes up again ("why didn't we use approach B?"), `ll-issues decisions list` answers it in seconds instead of `git log` spelunking.
+- **Drives implementation constraints automatically.** Required rules (`enforcement: required`) are propagated to `.ll/ll.local.md` and injected into every planning session — Claude sees them without you having to repeat them.
+- **Creates an audit trail.** The `outcome:` field closes the loop: after a decision ages 3+ months in production, you can record whether it worked, mixed, or was reversed.
+- **Gates automation on unresolved options.** When `confidence-check` detects competing approaches, it sets `decision_needed: true`. Automation won't implement until `/ll:decide-issue` clears the flag.
 
 ---
 
@@ -50,13 +63,28 @@ Records a choice made with rationale and the alternatives considered. Optionally
   issue: ENH-1945
 ```
 
-After the change ships, record whether it worked:
+After the change ships, record whether it worked. Here's what the same entry looks like after 3 months in production:
 
 ```yaml
+- id: ARCHITECTURE-004
+  type: decision
+  timestamp: '2026-06-04T23:32:01Z'
+  category: architecture
+  labels: [design, fsm]
+  rationale: >
+    Option A scored 11/12 vs Option B 5/12. _config_candidates() is a
+    near-identical precedent in the codebase.
+  rule: 'Option A: Host-aware get_project_folder()'
+  alternatives_rejected: 'Option B: New resolve_session_dir() wrapper'
+  scope: issue
+  issue: ENH-1945
   outcome:
     result: worked          # worked | did_not_work | mixed | reversed
-    measured_at: '2026-07-01T00:00:00Z'
-    notes: No call-site breakage. Backward-compatible parameter addition held.
+    measured_at: '2026-09-01T00:00:00Z'
+    notes: >
+      No call-site breakage in 90 days. The backward-compatible parameter
+      addition held through three subsequent refactors. Would make the same
+      call again.
 ```
 
 ### Rule

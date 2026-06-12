@@ -19,6 +19,25 @@ Long-term observability for your little-loops project: what ran, what changed, w
 
 ---
 
+## When to Use This Guide
+
+Use this when you want to query what happened in past sessions, inject historical context into planning, or analyze trends across your project. Start with the **Querying Recipes** table below — most common needs are one command.
+
+## Querying Recipes
+
+| I want to know... | Command |
+|------------------|---------|
+| Which files I touched in the last week | `ll-session recent --kind file` |
+| All times I debugged authentication | `ll-session search --fts "authentication"` |
+| Every correction Claude received about a topic | `ll-session search --fts "rate limit" --kind correction` |
+| How long issue BUG-123 took | `ll-history-context BUG-123 --effort` |
+| Which sessions worked on issue FEAT-42 | `ll-history sessions FEAT-42` |
+| A trend analysis for the last quarter | `ll-history analyze --since 2026-01-01 --format markdown` |
+| All tools used across sessions | `ll-session recent --kind tool --limit 20` |
+| What the project summary looks like | `ll-history summary` |
+
+---
+
 ## What Is history.db?
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI).
@@ -315,7 +334,9 @@ Extracts turn-pair fixtures from session logs for SFT training corpus constructi
 
 ---
 
-## Optional: LCM Compaction
+---
+
+## Advanced: LCM Compaction
 
 By default, history.db stores raw events only. Enable LCM-style compaction to additionally generate hierarchical summaries:
 
@@ -359,6 +380,8 @@ history.db grows over time. The `prune` command deletes raw events older than a 
 ll-session prune --dry-run   # show what would be deleted
 ll-session prune             # apply
 ```
+
+**When to prune:** If your project is under 1 year old, leave the defaults alone — the guards prevent premature pruning. Only lower `raw_event_max_age_days` if `ll-session` commands feel slow (consistently > 500ms), which indicates the database has grown large.
 
 Pruning is guarded by two minimums to prevent accidental data loss on young or small projects:
 

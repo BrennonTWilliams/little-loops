@@ -12,6 +12,11 @@ The system has three layers you can use independently or together:
 
 The core flow in one line: **observe → capture → refine → implement → complete**.
 
+```
+observe ──→ /ll:capture-issue ──→ /ll:ready-issue ──→ /ll:manage-issue ──→ /ll:commit
+ (spot it)      (record it)         (validate it)       (implement it)      (ship it)
+```
+
 ---
 
 ## Installation
@@ -81,12 +86,11 @@ ll-init
 | Flag | What it does | When to use it |
 |------|-------------|---------------|
 | _(none)_ | Launches an interactive TUI to configure options step by step | Default — works for most projects |
-| `--yes` | Accepts all auto-detected defaults without any confirmation prompts | When you trust the defaults and want a fast, non-interactive setup |
+| `--yes` | Accepts all auto-detected defaults without any confirmation prompts | Fastest path when auto-detection gets it right |
 | `--force` | Overwrites an existing `.ll/ll-config.json` | Re-initializing a project that already has a config |
 | `--dry-run` | Previews what would be generated without writing any files | Checking what `ll-init` would produce before committing |
-| `--hosts HOST…` | Specifies which host harnesses to wire adapters for (`claude-code`, `codex`, `pi`). Accepts space- or comma-separated values. Defaults to auto-detected hosts. | Setting up little-loops for a project you also use with Codex CLI (`--hosts codex`) |
 
-For a straightforward project where auto-detection gets it right, `--yes` is the fastest path. The TUI (no flags) walks through source directories, test and lint commands, parallel worker counts, and more for non-standard tooling.
+> **More options:** `--hosts HOST…` wires adapters for additional host CLIs (Claude Code, Codex, OpenCode). Only needed if you use little-loops with multiple AI coding tools.
 
 ### Key Config Fields
 
@@ -98,7 +102,11 @@ The three fields most relevant to beginners:
 | `project.lint_cmd` | Command to run lint/format | `ruff check scripts/` |
 | `project.src_dir` | Primary source directory | `scripts/` |
 
-Start with the auto-detected defaults. Use `/ll:configure` later to tune individual settings.
+Start with the auto-detected defaults.
+
+### After Setup
+
+Tune individual settings interactively with `/ll:configure` — it presents every config option with its current value and lets you edit in-place. For less common options, see the [Configuration Reference](../reference/CONFIGURATION.md).
 
 ---
 
@@ -202,48 +210,28 @@ Root cause is at line 1847 in sprint.py.
 
 ### Minimal vs. Full Template
 
-`/ll:capture-issue` uses the template style set in `ll-config.json` (`issues.capture_template`, default: `"full"`). The full template includes all v2.0 sections; the minimal template has only Summary, Current Behavior, Expected Behavior, Impact, and Status. Pass `--quick` to force minimal regardless of config. Run `/ll:format-issue` later to promote a minimal issue to the full template when you're ready to implement.
+By default, `/ll:capture-issue` creates a full v2.0 issue with all sections. Pass `--quick` to create a minimal issue (Summary + Impact only) when you just want to record an idea quickly.
+
+```bash
+/ll:capture-issue "login button broken"           # full template (default)
+/ll:capture-issue "login button broken" --quick   # minimal — 5 fields only
+/ll:format-issue BUG-001                          # promote minimal → full when ready to implement
+```
 
 ---
 
 ## Discovering Issues You Didn't Know Existed
 
-Three commands for finding problems and gaps proactively, without waiting for them to surface in production.
+Three scanning commands find problems proactively. Use the table below to pick the right one:
 
-### Scanning Your Codebase
+| You want to find... | Use this command |
+|--------------------|-----------------|
+| Bugs, tech debt, and error handling gaps in existing code | `/ll:scan-codebase` |
+| Structural problems (bad coupling, missing abstractions, inconsistencies) | `/ll:audit-architecture` |
+| Feature gaps relative to what you said you wanted to build | `/ll:scan-product` |
+| A single issue you spotted yourself | `/ll:capture-issue "description"` |
 
-```bash
-/ll:scan-codebase
-#    → Static analysis: finds bugs, tech debt, and missing error handling
-```
-
-Creates issue files for anything it finds. Run this periodically or after major refactors.
-
-```bash
-/ll:audit-architecture
-#    → Identifies structural problems: coupling, missing abstractions, consistency issues
-```
-
-Analyzes code organization and design patterns rather than individual bugs. Good for understanding systemic issues in an unfamiliar codebase.
-
-### Goal-Oriented Scanning
-
-```bash
-/ll:scan-product
-#    → Compares codebase against your goals document, finds feature gaps
-```
-
-Uses product goals file if present (`.ll/ll-goals.md`), or discovers goals automatically from README and roadmap docs. Useful for identifying what the codebase is missing relative to what you said you wanted to build.
-
-### Manual Capture
-
-For issues you spot yourself — a bug you just hit, a feature request from a stakeholder, or a code smell you noticed during review — use `/ll:capture-issue` directly:
-
-```bash
-/ll:capture-issue "description of the problem or idea"
-```
-
-This skips scanning entirely and creates a single issue file from your description. It's the fastest path from observation to a tracked issue.
+`/ll:scan-codebase` is the right default for most projects. `/ll:audit-architecture` is especially useful when you've just inherited an unfamiliar codebase and want to understand its systemic problems before diving in. `/ll:scan-product` requires a goals doc (`.ll/ll-goals.md`) — `ll-init` creates one automatically, or `scan-product` discovers goals automatically from your README and roadmap docs.
 
 ### After Scanning
 
@@ -308,6 +296,20 @@ Once you're comfortable with the basic workflow, each guide covers a deeper area
 | [Session Handoff Guide](SESSION_HANDOFF.md) | Your sessions are hitting context limits and you need seamless continuation |
 | [History & Session Guide](HISTORY_SESSION_GUIDE.md) | You want to query past sessions, inject historical context into planning, or analyze project trends |
 | [Decisions Log Guide](DECISIONS_LOG_GUIDE.md) | You want to record architectural decisions, enforce team rules, or understand how `decision_needed` gates automation |
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `ll-init` fails with "project type not detected" | Run `ll-init` with the TUI (no flags) and specify `src_dir`, `test_cmd`, and `lint_cmd` manually. |
+| `/ll:manage-issue` says "issue not found" | Issue IDs are case-sensitive. Run `ll-issues list` to see exact IDs. Check that the issue has `status: open` (not `done` or `cancelled`). |
+| Issue doesn't appear in `ll-issues list` | The file may have a malformed filename. Run `/ll:normalize-issues` to fix naming problems. |
+| You assigned P1 but the issue isn't being processed first | `ll-auto` processes by filename priority prefix. Rename the file or run `/ll:prioritize-issues` to update the prefix. |
+| Commands aren't showing up in Claude Code | Run `/ll:help` — if it returns nothing, the plugin may not be loaded. Re-run `/plugin install ll@little-loops`. |
+
+For deeper diagnostics, see [Troubleshooting](../development/TROUBLESHOOTING.md).
 
 ---
 

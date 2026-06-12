@@ -46,6 +46,8 @@ ll-learning-tests check "Anthropic SDK streaming" && echo "already proven, reuse
 
 The record lives at `.ll/learning-tests/anthropic-sdk-streaming.md`. The raw proof output is at `.ll/learning-tests/raw/anthropic-sdk-streaming.txt`.
 
+**Choosing a starting point:** Use `proof-first-task` when you don't know which specific gate fits — it handles assumption extraction automatically and runs your usual implementation loop once proven. Use `assumption-firewall` directly when you already have an issue file and want to gate it on its API dependencies. The [Gate Entry Points](#gate-entry-points) table below has the full comparison.
+
 **New to the registry?** Start with `proof-first-task` — it runs your API assumptions through `assumption-firewall` before handing off to any implementation loop, so you never write integration code against unverified assumptions:
 
 ```bash
@@ -71,7 +73,12 @@ The skill generates 3–7 **falsifiable claims** about the target's behavior —
 - `text deltas arrive on event.delta.text when event.type == "content_block_delta"`
 - `the stream emits a final event with type "message_stop"`
 
-A good claim names a specific field, event type, or behavior. `"the API returns data"` is too vague — it will always pass. `"the response object has a .usage.input_tokens field"` is specific enough that running code either confirms or denies it. Avoid compound claims (`"X and Y both work"`) — split them; each claim should be independently evaluable.
+A good claim names a specific field, event type, or behavior. `"the API returns data"` is too vague — it will always pass. `"the response object has a .usage.input_tokens field"` is specific enough that running code either confirms or denies it.
+
+**Claim-writing tips:**
+- Avoid compound claims (`"X and Y both work"`) — split them into independent claims, each verifiable on its own
+- Prefer observable behavior over internal implementation: `"the first event has type message_start"` not `"the SDK initializes the stream buffer"`
+- Name specific field paths, not general concepts: `.usage.input_tokens` not `"has token counts"`
 
 Pre-seeded `--assume` claims (see below) are added at this stage with `result: untested`.
 
@@ -151,7 +158,7 @@ ll-learning-tests mark-stale "Anthropic SDK streaming"
 
 Why bother recording something you didn't test? Because an `untested` claim is a structured TODO, not a comment. It travels with the record, shows up in `ll-learning-tests check` output, and gets upgraded to `pass` or `fail` automatically if a future proof script happens to cover it. Use it for claims you believe to be true but can't cheaply test now — typically because they require expensive setup, depend on long-running behavior, or are stated by vendor docs without a local way to falsify them.
 
-The `assumption-firewall` loop (see [LOOPS_GUIDE.md](LOOPS_GUIDE.md#api-adoption)) now auto-records untestable claims via `--assume`: after extracting API assumptions from an issue file, it classifies each as testable or untestable, and records the untestable ones as structured TODOs in the Learning-Test Registry. This eliminates false gate blocks from assumptions that require live credentials or vendor-only environments.
+The `assumption-firewall` loop (see [LOOPS_REFERENCE.md](LOOPS_REFERENCE.md#api-adoption)) now auto-records untestable claims via `--assume`: after extracting API assumptions from an issue file, it classifies each as testable or untestable, and records the untestable ones as structured TODOs in the Learning-Test Registry. This eliminates false gate blocks from assumptions that require live credentials or vendor-only environments.
 
 ```bash
 /ll:explore-api "Claude API tool use" \
@@ -211,7 +218,7 @@ Five named loops compose the learning-test gate stack. Pick the one that matches
 | `adopt-third-party-api` | You are starting from a vendor docs URL and want an end-to-end pipeline: scrape → enumerate endpoints → prove each → write an integration playbook. |
 | `proof-first-task` | **Recommended default** — wraps any implementation loop with an `assumption-firewall` gate. Use this when you are not sure which specific gate fits; it handles assumption extraction automatically and delegates to `general-task` (or a caller-specified impl loop) once proven. |
 
-See [LOOPS_GUIDE.md → API Adoption](LOOPS_GUIDE.md#api-adoption) for the full description and `Run:` examples for each loop.
+See [LOOPS_REFERENCE.md → API Adoption](LOOPS_REFERENCE.md#api-adoption) for the full description and `Run:` examples for each loop.
 
 ## Troubleshooting
 
@@ -251,13 +258,29 @@ Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. To
 
 ## Practical Patterns
 
+**The integration workflow in four steps:**
+
+```
+1. You're writing code and hit an unfamiliar import (e.g., `from httpx import AsyncClient`)
+   → PreToolUse gate warns: "No learning-test record for httpx"
+
+2. Run: /ll:explore-api "httpx AsyncClient"
+   → Proves the API: which methods exist, what responses look like, whether streaming works
+
+3. Write the integration code with the proven interface
+   → Add a comment: # Verified shape: .ll/learning-tests/httpx-asyncclient.md
+
+4. Future sessions and agents skip re-discovery — the record is there
+   → ll-learning-tests check "httpx AsyncClient" → exit 0, prints the record
+```
+
 **Prove before integrating.** Run `/ll:explore-api` against any new SDK, undocumented HTTP API, or stdlib corner you're uncertain about *before* writing the integration code. Cheaper than discovering the behavior mid-implementation.
 
 **Cite the record in the code.** When you write the integration code, reference the record path in a comment near the call site (e.g. `# Verified shape: .ll/learning-tests/anthropic-sdk-streaming.md`). Future readers — human or agent — get a direct pointer to the evidence.
 
 **Survey what's already proven at session start.** `ll-learning-tests list | jq -r '.[] | "\(.status)\t\(.target)"'` gives a one-shot inventory of verified targets before planning new work.
 
-> For end-to-end workflows that chain learning tests into larger automations — `adopt-third-party-api` (docs URL → integration playbook) and `assumption-firewall` (issue ID → pre-implementation gate) — see [LOOPS_GUIDE.md → API Adoption](LOOPS_GUIDE.md#api-adoption).
+> For end-to-end workflows that chain learning tests into larger automations — `adopt-third-party-api` (docs URL → integration playbook) and `assumption-firewall` (issue ID → pre-implementation gate) — see [LOOPS_REFERENCE.md → API Adoption](LOOPS_REFERENCE.md#api-adoption).
 
 ## Using Learning Tests in Issue Lifecycle Gates
 

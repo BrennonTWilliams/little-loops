@@ -1,5 +1,17 @@
 # Built-in Hooks Guide
 
+## When to Use This Guide
+
+Read this when you want to understand what little-loops is doing in the background, tune a specific automatic behavior, or disable something you don't need. If hooks are working fine and you just want to get things done, you don't need this guide.
+
+## What Is a Hook?
+
+A hook is a lifecycle callback — a script that fires automatically at a specific moment in your Claude Code session. Hooks can load config, inject context, record events, or block tool calls. They run silently: you usually only notice them when they inject a message or deny an action.
+
+All little-loops hooks are declared in `hooks/hooks.json`. They fire through a thin adapter layer and route to Python handlers under `scripts/little_loops/hooks/`. You never need to invoke them directly.
+
+---
+
 Everything little-loops does automatically in the background — and the exact config key that turns each behavior on or off.
 
 When you install the little-loops plugin, it registers a set of Claude Code lifecycle hooks. These fire silently as you work: loading config when a session starts, recording what ran, watching context usage, guarding issue-file integrity, and preserving state before compaction. This guide documents every one of them so nothing about your session is a mystery — and so you can disable anything you don't want.
@@ -54,6 +66,33 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PreCompact** | precompact | Snapshots task state before compaction | exit 2 | on |
 
 The rest of this guide walks each event in firing order.
+
+### A Session from Hook's Perspective
+
+Here's what fires during a typical session:
+
+```
+You start a session
+  → SessionStart: loads config + local overrides, injects project digest
+
+You submit a prompt
+  → UserPromptSubmit: optimizes vague prompts; records skill calls and corrections
+
+You use the Write or Edit tool
+  → PreToolUse (duplicate-ID guard): blocks if the issue ID collides with an existing one
+  → PreToolUse (learning-tests gate, if enabled): warns if import has no proven record
+
+The tool finishes
+  → PostToolUse (analytics, if enabled): records tool + file events to history.db
+  → PostToolUse (context monitor): estimates context usage; nudges handoff near the limit
+  → PostToolUse (issue completion log): if issue was just marked done, appends session log
+
+Session ends
+  → Stop (cleanup): removes locks, temp files, orphaned worktrees
+  → Stop (stale refs): reports any open-issue references pointing at done issues
+```
+
+---
 
 ---
 
@@ -301,6 +340,15 @@ A few quick controls:
 | `parallel.worktree_base` | Stop | `.worktrees` | Worktree cleanup scope |
 
 Full schema and substitution rules: [Configuration Reference](../reference/CONFIGURATION.md).
+
+### Common Combinations
+
+| Combination | Interaction |
+|-------------|------------|
+| `analytics.enabled` + `history.session_digest.enabled` | Complementary — analytics writes the data; digest reads it back at session start. Enable both for the full historical context experience. |
+| `scratch_pad.enabled` + `learning_tests.enabled` | Compatible — scratch pad affects output size; learning tests affect import gates. No interaction. |
+| `scratch_pad.enabled` + `scratch_pad.automation_contexts_only: true` | Safe default — scratch pad only fires inside automation sessions (`bypassPermissions`), never during interactive work. |
+| `issues.auto_commit` + manual `/ll:commit` | Redundant — `auto_commit` will commit issue files automatically after each change; `/ll:commit` is for source code. Keep `auto_commit: false` if you want to review all changes in one commit. |
 
 ---
 

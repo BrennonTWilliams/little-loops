@@ -1,5 +1,16 @@
 # Sprint Guide
 
+## When to Use This Guide
+
+Use a sprint when you have 4 or more issues, or issues with dependencies that must run in order. For 1–3 independent issues, `/ll:manage-issue` is simpler. For recurring automated workflows, use a loop instead.
+
+**Sprint sizing guidance:**
+- **1–5 issues** — focused burst (a morning's work)
+- **5–20 issues** — weekly sprint
+- **20+ issues** — run `/ll:map-dependencies` first; a large sprint benefits from explicit dependency ordering before it runs
+
+---
+
 ## What Is a Sprint?
 
 A sprint is a named, persistent list of issues executed as a coordinated batch. It lives in `.sprints/` as a YAML file, travels with your repository, and can be paused and resumed across sessions.
@@ -60,6 +71,8 @@ Use `blocked_by` when ISSUE-A **cannot start** until ISSUE-B is merged (e.g., IS
 - **Single-issue wave**: runs in-place without worktree overhead (fast path)
 - **Multi-issue wave**: each issue runs in its own git worktree in parallel, up to `max_workers` at once
 
+> **What is a worktree?** A git worktree is an isolated checkout of your repository at a temporary directory. Each issue in a multi-issue wave gets its own worktree so the agents don't share file state or context — they work in parallel without interfering with each other. Your main working directory is never touched during the run.
+
 ### File Contention Splitting
 
 When two issues in the same wave touch the same files, running them in parallel would cause merge conflicts. The system detects this automatically using the Integration Map sections of each issue file, and splits the wave into sequential sub-waves:
@@ -76,7 +89,7 @@ Wave 2 (2 issues, serialized — file overlap [min_files=2, ratio=0.25]):
 
 Sub-waves are displayed as a single logical wave in the execution plan. The user sees "Wave 2 (serialized)" rather than two separate waves — the contention is handled transparently. The effective threshold values are shown in the wave header so users can tune `dependency_mapping` in `ll-config.json` if the sprint over-serializes.
 
-**Overlap detection AND semantics**: Serialization is triggered only when **both** `overlap_min_files` and `overlap_min_ratio` are met simultaneously — not either one alone. This means an issue pair sharing 3 files out of 100 total (high count, low ratio) will not serialize unless both thresholds are crossed. Raise `overlap_min_files` or `overlap_min_ratio` in `ll-config.json` to reduce serialization for large issue sets.
+**Both thresholds must be crossed to trigger serialization** — crossing just one is not enough. An issue pair sharing 3 files out of 100 total (high count, low ratio) will not serialize unless both `overlap_min_files` and `overlap_min_ratio` are exceeded simultaneously. Raise either threshold in `ll-config.json` to reduce over-serialization on large issue sets.
 
 ---
 
@@ -259,6 +272,30 @@ If an issue fails during a **multi-issue parallel wave**, the runner:
 Issues that fail in a **single-issue wave** are immediately marked as failed — no retry is attempted.
 
 A sprint with some failures still completes — it doesn't stop at the first failure. Failed issues are reported in the summary with their reason.
+
+### Diagnosing a Failed Issue
+
+```bash
+ll-sprint show sprint-name        # see which issues failed and their error messages
+```
+
+The show output includes a **Failed Issues** section with the error output from each failure. Common causes:
+- Issue file has open questions (`manage-issue` requires all questions answered before starting)
+- Test command fails before the agent can even begin (pre-existing test failures)
+- Context limit hit mid-issue (lower `--handoff-threshold` and re-run)
+
+To re-run only the failed issues without re-running the whole sprint:
+
+```bash
+ll-sprint run sprint-name --only FAILED-ID-1,FAILED-ID-2
+```
+
+If the issue itself needs fixing before re-running (missing context, vague implementation steps), update it first:
+
+```bash
+/ll:refine-issue FAILED-ID-1      # add missing context
+ll-sprint run sprint-name --only FAILED-ID-1
+```
 
 ### Graceful Shutdown
 

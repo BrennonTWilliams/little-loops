@@ -1,5 +1,13 @@
 # Automatic Harnessing Guide
 
+## When to Use This Guide
+
+Use a harness when you want to run a skill over multiple work items and automatically gate quality — catching regressions, retrying on failure, and advancing only when the output passes your criteria. Skip this if you just want to run a skill once; a harness adds overhead (typically 3–5× the token cost of a single call) in exchange for automated quality assurance.
+
+> **Why bother?** A single skill call on a novel task fails ~30% of the time. A harness with two evaluation phases catches most of those failures automatically, retries, and only declares success when the result passes. For batch work (10+ issues), that 30% saved from manual review compounds quickly.
+
+---
+
 A harness loop wraps your skill in a multi-stage quality pipeline — automatically retrying until the output passes your quality bar.
 
 The hard problem in automated iteration isn't running the skill — it's knowing when the output is actually good. A harness loop is a quality evaluation pipeline that applies a skill or prompt to work items, then evaluates the result from multiple angles before advancing: mechanical tests catch regressions, LLM judgment assesses semantic quality, user-simulation skills verify the experience as a real user would, and diff invariants catch runaway changes. The wizard auto-derives this evaluation framework from your project config so you don't write it by hand.
@@ -489,6 +497,18 @@ Compare to hand-authoring a loop:
 | Hand-authored YAML | 30–60 min | Manual | Manual |
 
 If your workflow is highly custom (e.g., multi-branch routing, complex captured-variable logic), hand-author using the [FSM reference](../../skills/create-loop/reference.md). Otherwise, use the harness wizard.
+
+### Deviating From the Wizard
+
+The wizard generates a complete harness that covers the most common cases. Here's when and how to modify it:
+
+| You want to... | How |
+|---------------|-----|
+| Add an MCP verification gate | Add a `check_mcp` state after `check_concrete` (see [MCP Tool Gates](#mcp-tool-gates-check_mcp)). The wizard omits this if your project has no `.mcp.json`. |
+| Drop a phase that's too expensive | Remove the state and update any `on_yes` transitions that pointed to it to skip directly to the next state. |
+| Add a phase after generation | Install the loop locally with `ll-loop install <name>`, edit the YAML, and re-validate with `ll-loop validate`. |
+| Raise the retry cap | Increase `max_retries` on the `execute` state. Default is 3; raise for skills that occasionally time out. |
+| Stop retrying a stuck item instead of looping forever | Add `on_retry_exhausted: advance` to the `execute` state — the item is skipped after `max_retries` attempts. |
 
 ---
 
@@ -1060,9 +1080,9 @@ two output strings.
 - [`scripts/little_loops/loops/issue-refinement.yaml`](../../scripts/little_loops/loops/issue-refinement.yaml) — Real-world harness-like loop: multi-skill pipeline over active issues with commit cadence
 - [`scripts/little_loops/loops/harness-single-shot.yaml`](../../scripts/little_loops/loops/harness-single-shot.yaml) — Runnable Variant A example: single-shot harness with all evaluation phases annotated
 - [`scripts/little_loops/loops/harness-multi-item.yaml`](../../scripts/little_loops/loops/harness-multi-item.yaml) — Runnable Variant B example: multi-item harness including `check_mcp` and `check_skill` gates
-- [`scripts/little_loops/loops/html-anything.yaml`](../../scripts/little_loops/loops/html-anything.yaml) — Real-world GAN-style harness: generalized HTML artifact generator with runtime artifact classification, dynamic rubric, and per-criterion thresholds across 9 surface types
+- [`scripts/little_loops/loops/html-anything.yaml`](../../scripts/little_loops/loops/html-anything.yaml) — Real-world generator-evaluator harness: generalized HTML artifact generator with runtime artifact classification, dynamic rubric, and per-criterion thresholds across 9 surface types
 - [`scripts/little_loops/loops/hitl-compare.yaml`](../../scripts/little_loops/loops/hitl-compare.yaml) — Human-in-the-loop comparison harness: identify → prune → oracle delegation to `oracles/generator-evaluator` producing an interactive HTML comparison page with an "Export selections" affordance
 - [`scripts/little_loops/loops/hitl-md.yaml`](../../scripts/little_loops/loops/hitl-md.yaml) — Human-in-the-loop single-document review harness: GP-TSM segment (with multi-channel saliency + length-normalized credibility) → oracle delegation to `oracles/generator-evaluator` producing an interactive HTML page with sensemaking enhancements (staged highlighting, density slider, schema-switching, canvas minimap, calibrated friction), edit affordances, and "Copy AI prompt" / "Copy updated markdown" controls. Styles source from design token CSS custom properties.
-- [`scripts/little_loops/loops/html-website-generator.yaml`](../../scripts/little_loops/loops/html-website-generator.yaml) — Real-world GAN-style harness: generator-evaluator loop for single-page website design with Playwright screenshot evaluation
-- [`scripts/little_loops/loops/svg-image-generator.yaml`](../../scripts/little_loops/loops/svg-image-generator.yaml) — Real-world GAN-style harness: generator-evaluator loop for SVG icon and illustration creation with Playwright screenshot evaluation
+- [`scripts/little_loops/loops/html-website-generator.yaml`](../../scripts/little_loops/loops/html-website-generator.yaml) — Real-world generator-evaluator harness: generator-evaluator loop for single-page website design with Playwright screenshot evaluation
+- [`scripts/little_loops/loops/svg-image-generator.yaml`](../../scripts/little_loops/loops/svg-image-generator.yaml) — Real-world generator-evaluator harness: generator-evaluator loop for SVG icon and illustration creation with Playwright screenshot evaluation
 - `/ll:create-eval-from-issues` — Generate a `check_skill`-only eval harness from one or more issue IDs; translates Expected Behavior and Acceptance Criteria into synthesized execute and evaluation prompts automatically

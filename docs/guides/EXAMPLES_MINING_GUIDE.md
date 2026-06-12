@@ -1,8 +1,14 @@
 # Co-evolutionary Examples Mining Guide
 
+## When to Use This Guide
+
+Use `examples-miner` when `apo-textgrad` pass rates have plateaued (≥ 90% on your corpus) but the prompt still fails on real inputs, or when your `examples.json` was hand-crafted months ago and the skill has since evolved. **You need ≥ 5 completed issues with session logs before `harvest` returns useful results.** If you're starting fresh, complete a few issues first, then come back.
+
+---
+
 Static `examples.json` files have a natural expiry date. When `apo-textgrad` is first set up, examples are written for the prompt's current capability — but as the prompt improves, those examples become trivially easy, `PASS_RATE` saturates, the gradient signal disappears, and optimization stalls at a local optimum. Meanwhile, the skill itself evolves: new conventions, new file layouts, new issue formats. The corpus quietly goes stale.
 
-`examples-miner` breaks this pattern by coupling the corpus to the project's own history. Every completed issue with a session log is an implicit human approval — the agent's output was good enough that a human accepted it and the issue closed. `examples-miner` harvests these real labeled invocations, quality-gates them through a three-layer judge, calibrates difficulty to an informative 40–80% band, runs `apo-textgrad` as an inner sub-loop to extract a gradient signal, and synthesizes adversarial examples targeting exactly the failure pattern the optimizer found. Repeat, and difficulty always leads the prompt's current capability.
+`examples-miner` breaks this pattern by coupling the corpus to the project's own history. Every completed issue with a session log is an implicit human approval — the agent's output was good enough that a human accepted it and the issue closed. `examples-miner` harvests these real labeled invocations, quality-gates them through a three-layer judge, calibrates difficulty to an informative 40–80% band, runs `apo-textgrad` as an inner sub-loop to extract a gradient signal, and synthesizes **targeted weakness examples** — inputs crafted to trigger the exact failure pattern the optimizer found (not hostile inputs, but surgical test cases that expose the current prompt's weak spot). Repeat, and difficulty always leads the prompt's current capability.
 
 ---
 
@@ -46,7 +52,7 @@ When examples are hand-crafted at the time the skill is written:
 
 The result is a prompt optimized for the hand-crafted corpus, not for the full distribution of real invocations. The corpus is also frozen in time: as the skill's conventions evolve, examples reference old file paths, old issue formats, old tool patterns. The optimizer silently reinforces stale behavior.
 
-`examples-miner` solves both problems. It sources examples from the project's completed issue history — real invocations that real humans accepted. It continuously recalibrates difficulty to keep examples in the informative 40–80% pass-rate band. And after each optimizer run, it synthesizes new adversarial examples that specifically target the current gradient's failure pattern, so the corpus always stays ahead of the prompt's current capability.
+`examples-miner` solves both problems. It sources examples from the project's completed issue history — real invocations that real humans accepted. It continuously recalibrates difficulty to keep examples in the informative 40–80% pass-rate band. And after each optimizer run, it synthesizes new targeted weakness examples (labelled `adversarial` in the pipeline's state and field names) that specifically target the current gradient's failure pattern, so the corpus always stays ahead of the prompt's current capability.
 
 ---
 
@@ -253,7 +259,7 @@ run_optimizer (sub-loop: apo-textgrad, context_passthrough: true)
 
 ---
 
-### Stage 5: Synthesize — Adversarial Examples
+### Stage 5: Synthesize — Targeted Weakness Examples
 
 ```
 synthesize (prompt, 300s)
@@ -261,7 +267,7 @@ synthesize (prompt, 300s)
   produces: adversarial_candidates (JSON array)
 ```
 
-If the optimizer produced a gradient (not `CONVERGED`), the synthesize state uses it to generate adversarial examples. The gradient includes:
+If the optimizer produced a gradient (not `CONVERGED`), the synthesize state uses it to generate targeted weakness examples — inputs designed to expose the current prompt's specific failure pattern (not adversarial in the ML sense of "designed to fool", but surgical test cases that target the identified weak spot). The gradient includes:
 
 ```
 FAILURE_PATTERN: <common theme across all failures>
@@ -476,6 +482,8 @@ ll-loop run examples-miner --context skill_name=<name> ...
 
 ## The Oracle Sub-loop (v2 Upgrade)
 
+The built-in inline oracle is a generic rubric that works across all skills. For production use on a specific skill where you need invariant checking (e.g., `refine-issue` must always modify an issue file), upgrade to a dedicated oracle sub-loop. **This upgrade is required for skill-specific quality gates** — optional for general use.
+
 This upgrade is optional for most projects. Adopt it when your quality rubric needs to vary per-skill rather than using a global judge.
 
 > **Advanced** — The v2 oracle pattern requires familiarity with nested FSM loops.
@@ -586,6 +594,44 @@ The loop exits at `done` (terminal). If it exits early via `on_blocked: done` on
 | Final corpus is empty | All paths produced empty arrays | Run with `--verbose` and trace which state first produced `[]`; the most common cause is an empty harvest (no sessions) flowing through to an empty judge and calibrate |
 | `publish` writes the intermediate corpus | `diversify` was blocked or skipped; `publish` reads whatever `calibrated_corpus` last held | Check `diversify` in `--verbose` for blocking; increase the `diversify` timeout |
 | Sentinel `corpus.last_harvested` has wrong date | System clock skew or a previous run wrote a future timestamp | `cat corpus.last_harvested` to inspect; delete and let the next run rebuild from scratch |
+
+---
+
+---
+
+## End-to-End Example
+
+Here's what the artifacts look like at each stage for a `capture-issue` skill run:
+
+**`harvest` output** (raw candidates, JSON lines):
+```json
+{"type":"example","skill":"capture-issue","input":"I found a bug where the login button doesn't respond on Safari","session_id":"abc123","timestamp":"2026-03-21T22:21:36"}
+{"type":"example","skill":"capture-issue","input":"The sprint runner crashes when an issue has merge conflicts","session_id":"def456","timestamp":"2026-03-22T10:15:00"}
+```
+
+**`judge` output** (after quality gating — weaker candidates dropped):
+```json
+[
+  {"input":"...", "persistence_score":1.0, "revision_distance":0.1, "oracle_score":87},
+  {"input":"...", "persistence_score":0.8, "revision_distance":0.3, "oracle_score":71}
+]
+```
+
+**`calibrate` output** (difficulty-filtered, 40–80 band only):
+```
+CALIBRATED_COUNT=2
+[{"input":"...","difficulty_score":62,...},{"input":"...","difficulty_score":74,...}]
+```
+
+**Final `examples.json`** (after optimizer + synthesis + publish):
+```json
+[
+  {"input":"I found a bug where...","expected":"{\"tools_used\":[\"Write\"],\"files_modified\":[\".issues/bugs/P3-BUG-001-login-button.md\"],\"completion_status\":\"success\"}","source":"harvested","difficulty_score":62,"oracle_score":87,"freshness_weight":1.0},
+  {"input":"...","source":"adversarial","difficulty_score":68,"failure_cluster":"type_confusion","perturbation_type":"type_confusion","oracle_score":79,"freshness_weight":1.0}
+]
+```
+
+The `source` field distinguishes harvested real examples from synthesized targeted weakness examples. `apo-textgrad` only reads `input` and `expected`; the other fields are miner bookkeeping.
 
 ---
 
