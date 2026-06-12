@@ -78,7 +78,7 @@ states:
         Return "no" if any gates failed or produced errors.
     on_yes: done
     on_no: refine_issues
-    on_error: failed
+    on_error: diagnose
     on_blocked: refine_issues
 
   # Refine newly captured issues to implementation readiness.
@@ -100,6 +100,21 @@ states:
 
   done:
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    timeout: 600
+    action: |
+      The eval-driven-development loop is terminating: the route_eval gate hit
+      an evaluation error while judging the harness results.
+
+      Diagnose what happened:
+      - Summarize the captured harness output (${captured.run_harness.output}).
+      - Check whether `ll-loop run ${context.harness_name}` actually executed
+        (harness_name may be empty or the harness loop missing).
+      - Report the most likely failure cause in one paragraph the operator can
+        use to fix the harness configuration and re-run.
+    next: failed
 
   failed:
     terminal: true

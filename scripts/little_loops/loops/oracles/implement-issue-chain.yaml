@@ -84,6 +84,3 @@ states:
 
   done:
     terminal: true
-
-  failed:
-    terminal: true
