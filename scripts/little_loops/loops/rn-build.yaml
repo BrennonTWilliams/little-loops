@@ -348,7 +348,26 @@ states:
           "docs: add technology research and design artifacts from spec"
         - Stub only (tech_research timed out):
           "docs: add design artifacts from spec (research.md stubbed — research step timed out)"
-    next: scope_project
+    next: check_substrate
+
+  # ENH-2098: feasibility gate — validates proposed design actions against execution-environment
+  # constraints before committing to project scoping and cluster execution. Routes infeasible
+  # findings back to design_artifacts so the designer can revise before scoping begins.
+  check_substrate:
+    action: "echo 'Checking substrate constraints'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      source: "${captured.design_artifacts.output}"
+      prompt: >
+        Enumerate the target execution environment's known constraints:
+        shell command availability, MCP tool access, file write permissions, token budget.
+        Validate each proposed action in the design artifacts against these constraints.
+        Answer YES if every action is feasible in the target environment.
+        Otherwise NO, listing each infeasible action and the constraint it violates.
+    on_yes: scope_project
+    on_no: design_artifacts
+    on_partial: design_artifacts
 
   # ─── Phase 5: Scope EPIC + feature stubs from spec + design artifacts ─────────
 

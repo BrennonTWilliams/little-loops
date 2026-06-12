@@ -6846,6 +6846,8 @@ class TestCheckSubstrateOptionalState:
     LOOP_TYPES_FILE = (
         Path(__file__).parent.parent.parent / "skills" / "create-loop" / "loop-types.md"
     )
+    RN_PLAN_FILE = BUILTIN_LOOPS_DIR / "rn-plan.yaml"
+    RN_BUILD_FILE = BUILTIN_LOOPS_DIR / "rn-build.yaml"
 
     def test_harness_plan_file_documents_check_substrate(self) -> None:
         """harness-plan-research-implement-report.yaml must document check_substrate optional state."""
@@ -6900,6 +6902,84 @@ class TestCheckSubstrateOptionalState:
         assert "check_substrate" in content, (
             "skills/create-loop/loop-types.md specialist pipeline template must include "
             "a check_substrate optional state block per ENH-2085"
+        )
+
+    # ── ENH-2098: rn-plan check_substrate gate ─────────────────────────────────
+
+    def test_rn_plan_has_check_substrate(self) -> None:
+        """rn-plan.yaml must contain a check_substrate feasibility gate (ENH-2098)."""
+        assert self.RN_PLAN_FILE.exists(), f"Loop file not found: {self.RN_PLAN_FILE}"
+        content = self.RN_PLAN_FILE.read_text()
+        assert "check_substrate" in content, (
+            "rn-plan.yaml must contain a check_substrate state per ENH-2098"
+        )
+
+    def test_rn_plan_check_substrate_has_full_routing(self) -> None:
+        """rn-plan check_substrate must declare on_yes, on_no, and on_partial (MR-4)."""
+        assert self.RN_PLAN_FILE.exists(), f"Loop file not found: {self.RN_PLAN_FILE}"
+        content = self.RN_PLAN_FILE.read_text()
+        cs_pos = content.find("check_substrate:")
+        assert cs_pos != -1, "check_substrate state not found in rn-plan.yaml"
+        # Slice to the next top-level state (research_iteration)
+        next_state_pos = content.find("\n  research_iteration:", cs_pos)
+        block = content[cs_pos:next_state_pos] if next_state_pos != -1 else content[cs_pos:]
+        assert "on_yes:" in block, "rn-plan check_substrate must have on_yes route (MR-4)"
+        assert "on_no:" in block, "rn-plan check_substrate must have on_no route (MR-4)"
+        assert "on_partial:" in block, "rn-plan check_substrate must have on_partial route (MR-4)"
+
+    def test_rn_plan_check_substrate_positioned_between_generate_rubric_and_research_iteration(
+        self,
+    ) -> None:
+        """check_substrate in rn-plan must appear after generate_rubric and before research_iteration."""
+        assert self.RN_PLAN_FILE.exists(), f"Loop file not found: {self.RN_PLAN_FILE}"
+        content = self.RN_PLAN_FILE.read_text()
+        generate_rubric_pos = content.find("generate_rubric:")
+        check_substrate_pos = content.find("check_substrate:")
+        research_iteration_pos = content.find("\n  research_iteration:")
+        assert generate_rubric_pos != -1, "generate_rubric state not found in rn-plan.yaml"
+        assert check_substrate_pos != -1, "check_substrate state not found in rn-plan.yaml"
+        assert research_iteration_pos != -1, "research_iteration state not found in rn-plan.yaml"
+        assert generate_rubric_pos < check_substrate_pos < research_iteration_pos, (
+            "check_substrate must appear after generate_rubric and before research_iteration in rn-plan.yaml"
+        )
+
+    # ── ENH-2098: rn-build check_substrate gate ────────────────────────────────
+
+    def test_rn_build_has_check_substrate(self) -> None:
+        """rn-build.yaml must contain a check_substrate feasibility gate (ENH-2098)."""
+        assert self.RN_BUILD_FILE.exists(), f"Loop file not found: {self.RN_BUILD_FILE}"
+        content = self.RN_BUILD_FILE.read_text()
+        assert "check_substrate" in content, (
+            "rn-build.yaml must contain a check_substrate state per ENH-2098"
+        )
+
+    def test_rn_build_check_substrate_has_full_routing(self) -> None:
+        """rn-build check_substrate must declare on_yes, on_no, and on_partial (MR-4)."""
+        assert self.RN_BUILD_FILE.exists(), f"Loop file not found: {self.RN_BUILD_FILE}"
+        content = self.RN_BUILD_FILE.read_text()
+        cs_pos = content.find("check_substrate:")
+        assert cs_pos != -1, "check_substrate state not found in rn-build.yaml"
+        # Slice to the next top-level state (scope_project)
+        next_state_pos = content.find("\n  scope_project:", cs_pos)
+        block = content[cs_pos:next_state_pos] if next_state_pos != -1 else content[cs_pos:]
+        assert "on_yes:" in block, "rn-build check_substrate must have on_yes route (MR-4)"
+        assert "on_no:" in block, "rn-build check_substrate must have on_no route (MR-4)"
+        assert "on_partial:" in block, "rn-build check_substrate must have on_partial route (MR-4)"
+
+    def test_rn_build_check_substrate_positioned_between_commit_design_and_scope_project(
+        self,
+    ) -> None:
+        """check_substrate in rn-build must appear after commit_design and before scope_project."""
+        assert self.RN_BUILD_FILE.exists(), f"Loop file not found: {self.RN_BUILD_FILE}"
+        content = self.RN_BUILD_FILE.read_text()
+        commit_design_pos = content.find("commit_design:")
+        check_substrate_pos = content.find("check_substrate:")
+        scope_project_pos = content.find("\n  scope_project:")
+        assert commit_design_pos != -1, "commit_design state not found in rn-build.yaml"
+        assert check_substrate_pos != -1, "check_substrate state not found in rn-build.yaml"
+        assert scope_project_pos != -1, "scope_project state not found in rn-build.yaml"
+        assert commit_design_pos < check_substrate_pos < scope_project_pos, (
+            "check_substrate must appear after commit_design and before scope_project in rn-build.yaml"
         )
 
 

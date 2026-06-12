@@ -95,7 +95,28 @@ states:
       Start all dimensions at LOW (score 1/4) since the plan is in its initial state.
       Update the aggregate score = mean of all dimension scores.
       Write ITERATE as the verdict (the score state will update this each iteration).
-    next: research_iteration
+    next: check_substrate
+
+  # ENH-2098: feasibility gate — validates proposed plan actions against execution-environment
+  # constraints before committing to the research/iteration cycle. Routes infeasible findings
+  # back to generate_rubric so the planner can revise before any research is run.
+  check_substrate:
+    action_type: shell
+    action: |
+      cat "${captured.run_dir.output}/plan.md"
+    capture: plan_for_substrate
+    evaluate:
+      type: llm_structured
+      source: "${captured.plan_for_substrate.output}"
+      prompt: >
+        Enumerate the target execution environment's known constraints:
+        shell command availability, MCP tool access, file write permissions, token budget.
+        Validate each proposed action in the plan against these constraints.
+        Answer YES if every action is feasible in the target environment.
+        Otherwise NO, listing each infeasible action and the constraint it violates.
+    on_yes: research_iteration
+    on_no: generate_rubric
+    on_partial: generate_rubric
 
   research_iteration:
     # Delegates the classify → research → synthesize chain to the shared oracle.
