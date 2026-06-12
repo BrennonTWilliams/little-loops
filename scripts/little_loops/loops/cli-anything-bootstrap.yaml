@@ -2,6 +2,9 @@ name: cli-anything-bootstrap
 category: harness
 input_key: target
 required_inputs: ["target"]
+# classification.yaml/rubric.yaml/refine_count.txt/delegate-error.txt are
+# single-slot status artifacts; latest-wins overwrite is intentional.
+artifact_versioning_ok: true
 description: |
   Meta-loop that bootstraps an agent-native CLI for a target software (local path or
   repo URL) by delegating to CLI-Anything's /cli-anything skill, bakes a per-target

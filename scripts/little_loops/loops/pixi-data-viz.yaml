@@ -2,6 +2,8 @@ name: pixi-data-viz
 category: harness
 input_key: description
 required_inputs: ["description"]
+# The viz file is the single deliverable; latest-wins overwrite is intentional.
+artifact_versioning_ok: true
 description: |
   Generator-evaluator harness for animated PixiJS data visualizations.
   Generates a single self-contained HTML file that embeds synthetic but

@@ -2,6 +2,8 @@ name: p5js-sketch-generator
 category: harness
 input_key: description
 required_inputs: ["description"]
+# The sketch file is the single deliverable; latest-wins overwrite is intentional.
+artifact_versioning_ok: true
 description: |
   Generator-evaluator harness for p5.js creative coding sketches.
   Accepts a natural language sketch description via loop_input and iteratively

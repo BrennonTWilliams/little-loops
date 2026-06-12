@@ -2,6 +2,8 @@ name: pixi-generative-art
 category: harness
 input_key: description
 required_inputs: ["description"]
+# The art file is the single deliverable; latest-wins overwrite is intentional.
+artifact_versioning_ok: true
 description: |
   Generator-evaluator harness for PixiJS generative art sketches.
   Iteratively generates a single self-contained HTML file embedding a

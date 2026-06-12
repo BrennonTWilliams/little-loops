@@ -1,5 +1,6 @@
 name: apo-beam
 from: lib/apo-base
+category: apo
 description: |
   Beam search prompt optimization (APO technique): generates N candidate variants
   per iteration, scores all of them against evaluation criteria, selects the
