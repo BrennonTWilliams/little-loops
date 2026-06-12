@@ -6,7 +6,8 @@ priority: P2
 captured_at: "2026-06-04T00:00:00Z"
 discovered_date: 2026-06-04
 discovered_by: scope-epic
-status: open
+status: blocked
+blocked_by: [FEAT-1930]
 parent: EPIC-1929
 relates_to: [FEAT-1930, FEAT-1794, FEAT-1931]
 labels:
@@ -127,7 +128,9 @@ class PushNotificationAdapter(CommunicationAdapter):
 
 ## Proposed Solution
 
-**Response callback mechanism** (resolve during refinement):
+**Response callback mechanism**:
+
+> **Selected:** Option B — file-poller — works cross-host with no new inbound transport, and the issue's own implementation steps already specify a polling loop; the event bus has no path for an off-terminal operator's response to enter the process.
 
 - **Option A: Event bus subscription** — `EventBus.register()` with a glob
   filter for `human_response` events. The FSM emits `human_approval_request` on
@@ -138,6 +141,21 @@ class PushNotificationAdapter(CommunicationAdapter):
   the operator (or a helper script) writes a response file; the adapter polls
   for it. Simpler, works cross-host, no event bus dependency. The response file
   is the callback.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-12 (epic audit follow-through, paired with the FEAT-1930 extension-protocol decision).
+
+**Selected**: Option B — file-poller (`.ll/hitl-responses/<alert-id>.json`).
+
+**Reasoning**: The push-notification operator is by definition away from the terminal, often on another device; their response has no existing path into the in-process `EventBus` — Option A would require building a new inbound transport (existing transports `UnixSocketTransport`/`WebhookTransport` in `transport.py` serve outbound/local delivery) before the adapter could work at all. Option B needs zero new infrastructure, works cross-host, and matches the implementation steps already written for this issue (`await_response()` polling loop with `_interruptible_sleep()`). An event-bus subscription can layer on later as a v2 latency optimization without changing the `CommunicationAdapter` protocol surface.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A — event bus subscription | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
+| B — file-poller | 2/3 | 3/3 | 3/3 | 3/3 | 11/12 |
 
 **Push notification format**: The `PushNotification` tool has a ~200 char
 message limit. The adapter should send a concise summary + instructions, not the
@@ -213,6 +231,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The `API/Interface` section above shows `PushNotificationAdapter.send_alert(prompt, context)` but the `CommunicationAdapter` protocol in FEAT-1930 defines `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> str` (returning an `alert_id`). Align this issue's `send_alert()` signature with FEAT-1930's protocol **before** implementing — the mismatch will produce a non-conforming `CommunicationAdapter` implementation. Also add the `alert_id` return type to match the `await_response(alert_id, timeout)` correlation contract.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-12T16:31:51 - `5f156fda-1001-478e-926c-73ffddf7e4b1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:01 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:18:11 - `cb5e8fb4-eab5-4e81-938d-fe8a00b0ba87.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

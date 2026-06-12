@@ -3,7 +3,8 @@ id: FEAT-1794
 type: FEAT
 title: HITL interrupt FSM state type (action_type human_approval)
 priority: P2
-status: open
+status: blocked
+blocked_by: [FEAT-1930]
 captured_at: '2026-05-29T20:37:23Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
@@ -161,9 +162,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Option A: Hardcoded dispatch (mcp_tool pattern)**
 Add `human_approval` as a built-in action type in the executor core, following the exact pattern `action_type: mcp_tool` used:
-- `_action_mode()` at `executor.py:1330` — add `if state.action_type == "human_approval": return "human_approval"` (before the heuristic fallthrough)
-- `_execute_state()` at `executor.py:780` — add dispatch branch before line 831 (similar to learning-state dispatch at line 797): `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`
-- New method `_execute_human_approval_state()`: emit event via `self._emit()`, block with `_interruptible_sleep()`-style polling (existing pattern at `executor.py:1647`), route by verdict
+- `_action_mode()` at `executor.py:1421` — add `if state.action_type == "human_approval": return "human_approval"` (before the heuristic fallthrough)
+- `_execute_state()` at `executor.py:838` — add dispatch branch before the generic action path (similar to the learning-state dispatch near the top of the method, `executor.py:863`): `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`
+- New method `_execute_human_approval_state()`: emit event via `self._emit()`, block with `_interruptible_sleep()`-style polling (existing pattern at `executor.py:1766`), route by verdict
 - Pros: simpler, single-file executor change, follows existing pattern
 - Cons: couples HITL logic to executor core
 
@@ -171,7 +172,7 @@ Add `human_approval` as a built-in action type in the executor core, following t
 Implement as a contributed action via the extension protocol:
 - Register via `ActionProviderExtension.provided_actions()` (`extension.py:81`)
 - Wired through `wire_extensions()` at `extension.py:246` which populates `executor._contributed_actions`
-- The executor already dispatches contributed actions in `_action_mode()` (line 1288) and `_run_action()` (line 980)
+- The executor already dispatches contributed actions in `_action_mode()` (`executor.py:1421`) and `_run_action()` (`executor.py:1053`)
 - Pros: decoupled, testable in isolation, follows extension architecture
 - Cons: the contributed-action path runs through `_run_action()` which assumes fire-and-evaluate semantics — blocking on external response requires either extending the protocol or adding a dispatch branch in `_execute_state()` anyway
 
@@ -183,8 +184,8 @@ Implement as a contributed action via the extension protocol:
 - **`ll-auto` and `ll-sprint` do NOT directly load FSM loop YAMLs** — they invoke Claude CLI slash commands. The "referenced by unattended automation" validation check would need a cross-reference mechanism that doesn't currently exist in `validate_fsm()`. Simplest v1 approach: warn whenever a `human_approval` state has no `timeout`, regardless of context.
 
 **Reusable infrastructure identified:**
-- `_interruptible_sleep()` at `executor.py:1647` — polling sleep with shutdown-signal respect, directly reusable for the HITL wait loop
-- `_emit()` at `executor.py:1523` — event emission, emit `human_approval_request` on state entry
+- `_interruptible_sleep()` at `executor.py:1766` — polling sleep with shutdown-signal respect, directly reusable for the HITL wait loop
+- `_emit()` at `executor.py:1642` — event emission, emit `human_approval_request` on state entry
 - `EventBus.register()` at `events.py:81` — subscribe to `human_response` events with glob filter
 - `UnixSocketTransport._accept_loop()` at `transport.py:177` — socket-based polling with timeout, pattern for out-of-band response channel
 - `SignalDetector` in `signal_detector.py` — detects in-band signals from action output; a `human_response` signal type could reuse this path
@@ -237,9 +238,9 @@ accept the default.
 
 ### Files to Modify
 - `scripts/little_loops/fsm/schema.py:309` — `StateConfig` dataclass: add `on_edit: str | None`, `on_timeout: str | None` fields; add `"on_edit"` and `"on_timeout"` to `_known_on_keys` set (line ~485); update `to_dict()`/`from_dict()`/`get_referenced_states()` (lines 395-575)
-- `scripts/little_loops/fsm/executor.py:780` — `_execute_state()`: add dispatch branch for `action_type == "human_approval"` (before the generic action path at line 831, following the learning-state dispatch pattern at line 797)
-- `scripts/little_loops/fsm/executor.py:1330` — `_action_mode()`: add `"human_approval"` to mode classification
-- `scripts/little_loops/fsm/executor.py:943` — `_run_action()`: add branch for the new mode (emit `LLEvent`, block on external response, route by verdict)
+- `scripts/little_loops/fsm/executor.py:838` — `_execute_state()`: add dispatch branch for `action_type == "human_approval"` (before the generic action path, following the learning-state dispatch pattern at `executor.py:863`)
+- `scripts/little_loops/fsm/executor.py:1421` — `_action_mode()`: add `"human_approval"` to mode classification
+- `scripts/little_loops/fsm/executor.py:1053` — `_run_action()`: add branch for the new mode (emit `LLEvent`, block on external response, route by verdict)
 - `scripts/little_loops/fsm/validation.py:374` — `_validate_state_action()`: add human_approval validations (warn if no `timeout`, require `on_yes`/`on_no`)
 - `scripts/little_loops/fsm/validation.py:78` — Add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness (it IS a non-LLM evaluator per MR-1)
 - `scripts/little_loops/fsm/fsm-loop-schema.json:247` — Document `human_approval` as valid `action_type`, add `on_edit`/`on_timeout` properties
@@ -254,9 +255,9 @@ accept the default.
 - `scripts/little_loops/fsm/schema.py:539` — `get_referenced_states()`: must include `on_edit` and `on_timeout` targets
 
 ### Similar Patterns
-- `action_type: mcp_tool` was added across 4 files (schema + executor + validator + JSON schema) — the exact pattern to follow. See `executor.py:1282` for the `_action_mode()` branch, `executor.py:967` for the `_run_action()` dispatch, `validation.py:388` for the `params`-only-with-mcp_tool check.
-- `executor.py:1647` — `_interruptible_sleep()`: existing polling-with-timeout pattern for blocking while respecting shutdown signals — directly reusable for the HITL wait loop
-- `executor.py:1523` — `_emit()`: existing event emission pattern — emit `human_approval_request` on state entry
+- `action_type: mcp_tool` was added across 4 files (schema + executor + validator + JSON schema) — the exact pattern to follow. See `executor.py:1421` for the `_action_mode()` branch, `executor.py:1053` for the `_run_action()` dispatch, `validation.py:388` for the `params`-only-with-mcp_tool check.
+- `executor.py:1766` — `_interruptible_sleep()`: existing polling-with-timeout pattern for blocking while respecting shutdown signals — directly reusable for the HITL wait loop
+- `executor.py:1642` — `_emit()`: existing event emission pattern — emit `human_approval_request` on state entry
 - `events.py:70` — `EventBus` with `register()`/`emit()`/`add_transport()`: existing pub/sub infrastructure
 - `transport.py:115` — `UnixSocketTransport._accept_loop()`: socket polling with timeout — pattern for out-of-band response channel
 - `schema.py:389` — `extra_routes: dict[str, str]`: catches unrecognized `on_*` keys — `on_edit` could be handled via `extra_routes` instead of a dedicated field, simplifying the schema change
@@ -281,8 +282,8 @@ accept the default.
 1. **Schema** (`fsm/schema.py:309`): Add `on_edit: str | None` and `on_timeout: str | None` to `StateConfig`; add `"on_edit"` and `"on_timeout"` to `_known_on_keys` (~line 485); update `to_dict()`/`from_dict()`/`get_referenced_states()`. Also update `fsm-loop-schema.json:247` to document `human_approval` as valid `action_type`.
    - Alternative: use `extra_routes` (`schema.py:389`) for `on_edit`/`on_timeout` to avoid schema changes — unrecognized `on_*` keys are already captured there.
 2. **Validator** (`fsm/validation.py:374`): In `_validate_state_action()`, add: require `on_yes`/`on_no` when `action_type == "human_approval"`; WARNING if no `timeout` is set; add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness at line 78 (it IS a non-LLM evaluator per MR-1).
-3. **Executor dispatch** (`fsm/executor.py`): Add `"human_approval"` to `_action_mode()` (line 1280, before the heuristic fallthrough). In `_execute_state()` (line 772), add a dispatch branch before the generic action path at line 831 — follow the learning-state dispatch pattern at line 797: `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`.
-4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render prompt with `${captured.*}` interpolation, resolve the active `CommunicationAdapter` from config + extension registry (FEAT-1930), call `adapter.send_alert()` to deliver the prompt, call `adapter.await_response()` to block for verdict (using `_interruptible_sleep()`-style polling, existing pattern at line 1463), route based on verdict/timeout. The executor never imports a specific adapter — it only calls the protocol methods.
+3. **Executor dispatch** (`fsm/executor.py`): Add `"human_approval"` to `_action_mode()` (`executor.py:1421`, before the heuristic fallthrough). In `_execute_state()` (`executor.py:838`), add a dispatch branch before the generic action path — follow the learning-state dispatch pattern (`executor.py:863`): `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`.
+4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render prompt with `${captured.*}` interpolation, resolve the active `CommunicationAdapter` from config + extension registry (FEAT-1930), call `adapter.send_alert()` to deliver the prompt, call `adapter.await_response()` to block for verdict (using `_interruptible_sleep()`-style polling, existing pattern at `executor.py:1766`), route based on verdict/timeout. The executor never imports a specific adapter — it only calls the protocol methods.
 5. **Host capability** (`host_runner.py:74`): Add `interactive: bool` flag to `HostCapabilities`. Set based on `sys.stdin.isatty()` (existing pattern in `hooks/__init__.py:111`). In the HITL handler, if not interactive, short-circuit to `on_timeout`/`on_no`.
 6. **Tests**: Add `TestActionTypeHumanApproval` in `test_fsm_executor.py` (model after `TestActionTypeMcpTool` at line 401) — mock event callback, verify approve/reject/edit/timeout routing. Add `TestHumanApprovalSchema` in `test_fsm_schema.py` (model after `TestMcpToolSchema` at line 1801). Add timeout-warning test in `test_fsm_validation.py`.
 7. **Docs**: Add HITL phase section to `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`; document `human_approval` action_type and new routing fields in `skills/create-loop/reference.md:415`; add example loop under `loops/examples/`.
@@ -319,7 +320,7 @@ accept the default.
 
 _Added by `/ll:verify-issues` on 2026-06-03_
 
-**Verdict: NEEDS_UPDATE** — Line numbers have drifted in executor.py: `_execute_state` is now at L818 (issue says 780); `_action_mode` is at L1390 (says 1330); `_emit` is at L1611 (says 1523); `_interruptible_sleep` is at L1735 (says 1647). Update Integration Map line references before implementing.
+**Verdict: UPDATED (2026-06-12, epic audit)** — Integration Map line references refreshed to current `executor.py` anchors: `_execute_state` :838, `_run_action` :1053, `_action_mode` :1421, `_emit` :1642, `_interruptible_sleep` :1766 (with the learning-state dispatch at :863). These drift quickly; prefer the function-name anchors over raw numbers when implementing.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`

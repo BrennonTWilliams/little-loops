@@ -8,7 +8,6 @@ parent: EPIC-1811
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 captured_at: "2026-05-30T04:44:25Z"
-blocked_by: [FEAT-1808]
 ---
 
 # FEAT-1806: Opponent-Aware Market Strategy Optimization Loop
@@ -173,7 +172,8 @@ states:
 - [ ] Structured output schemas enforce valid strategy artifacts at each LLM state
 - [ ] Non-LLM evaluator is paired with at least one LLM-structured state per MR-1
 - [ ] Convergence or max-iterations terminates the loop cleanly (no infinite oscillation)
-- [ ] **Decision gate (from `/ll:audit-issue-conflicts` 2026-06-04)**: Before writing any loop YAML, a decision must be recorded (in this issue or a `decisions.yaml` entry) on whether `market-strategy-optimize` ships as a standalone bespoke YAML or as a `loop-composer` plan template. If the latter, this issue's scope changes from "create a new loop YAML" to "create a saved plan template for loop-composer." Do not implement until FEAT-1808 has shipped and the decision is resolved.
+- [x] **Decision gate (from `/ll:audit-issue-conflicts` 2026-06-04)**: Before writing any loop YAML, a decision must be recorded (in this issue or a `decisions.yaml` entry) on whether `market-strategy-optimize` ships as a standalone bespoke YAML or as a `loop-composer` plan template. If the latter, this issue's scope changes from "create a new loop YAML" to "create a saved plan template for loop-composer." Do not implement until FEAT-1808 has shipped and the decision is resolved.
+  - **Decision (2026-06-12, epic audit)**: Ship as a **standalone bespoke YAML**. FEAT-1808 shipped (`loops/loop-composer.yaml`, `loop-composer-adaptive.yaml`) but loop-composer generates plans at runtime and has no saved/reusable plan-template mechanism, so the template option is not implementable today. Include a comment in the loop YAML noting it can be re-expressed as a composer plan if saved plan templates land later. Stale `blocked_by: [FEAT-1808]` removed from frontmatter — FEAT-1808 is done; this issue is unblocked.
 
 ## Use Case
 

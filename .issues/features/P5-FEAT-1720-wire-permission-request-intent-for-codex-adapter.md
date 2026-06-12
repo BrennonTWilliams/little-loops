@@ -3,15 +3,20 @@ id: FEAT-1720
 title: Wire `permission_request` intent for Codex adapter
 type: FEAT
 priority: P5
-status: done
-captured_at: "2026-05-26T02:23:05Z"
+status: cancelled
+captured_at: '2026-05-26T02:23:05Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
-blocked_by: [ENH-1718]
-depends_on: [FEAT-1719]
+blocked_by:
+- ENH-1718
+depends_on:
+- FEAT-1719
 blocks: FEAT-1721
-labels: [codex, hooks, host-compat]
+labels:
+- codex
+- hooks
+- host-compat
 ---
 
 # FEAT-1720: Wire `permission_request` intent for Codex adapter
@@ -101,4 +106,5 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - **Status**: Closed - Superseded
 - **Completed**: 2026-06-09
 - **Reason**: Superseded by FEAT-1719 via conflict resolution audit (`/ll:audit-issue-conflicts`)
+- **Status correction** (2026-06-12, epic audit): frontmatter was `done`, which implied the `permission_request` artifacts shipped — they did not (`scripts/little_loops/hooks/permission_request.py`, `hooks/adapters/codex/permission-request.sh`, and the `hooks.json` entry do not exist). Corrected to `cancelled` to match this supersession; the scope lives in FEAT-1719 (open).
 - **Proposed change**: Both `post_compact` and `permission_request` handlers batched into a single PR under FEAT-1719, eliminating the rebase coordination burden on `scripts/little_loops/hooks/__init__.py`, `hooks/adapters/codex/hooks.json`, and `scripts/tests/test_codex_adapter.py`. See FEAT-1719 Scope Addition for the full implementation spec.

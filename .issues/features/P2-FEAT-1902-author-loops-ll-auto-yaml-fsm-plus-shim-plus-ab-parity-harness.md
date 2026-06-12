@@ -3,7 +3,7 @@ id: FEAT-1902
 title: Author loops/ll-auto.yaml FSM + ll-auto shim + A/B parity harness
 type: FEAT
 priority: P2
-status: done
+status: cancelled
 captured_at: 2026-06-03 19:12:39+00:00
 discovered_date: 2026-06-03
 discovered_by: scope-epic
@@ -324,3 +324,5 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - **Decomposed into**: FEAT-2000, FEAT-2001, FEAT-2002
 
 Work for FEAT-1902 is now carried by its child issues; this parent was closed by rn-decompose.
+
+- **Status correction** (2026-06-12, epic audit): frontmatter was `done`, which inflated EPIC-1867 progress (1/7 done) although `loops/ll-auto.yaml` was never authored under this issue. Corrected to `cancelled` (superseded by the FEAT-2000/FEAT-2001/FEAT-2002 decomposition).

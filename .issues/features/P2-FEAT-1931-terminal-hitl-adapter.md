@@ -6,7 +6,8 @@ priority: P2
 captured_at: "2026-06-04T00:00:00Z"
 discovered_date: 2026-06-04
 discovered_by: scope-epic
-status: open
+status: blocked
+blocked_by: [FEAT-1930]
 parent: EPIC-1929
 relates_to: [FEAT-1930, FEAT-1794, FEAT-1932]
 labels:

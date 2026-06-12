@@ -44,8 +44,9 @@ extension-based discovery, and no config-driven channel selection.
    - `await_response(alert_id, timeout) → HumanResponse | TimeoutResponse`
    - `supports_async() → bool` — whether the channel can reach an operator who
      isn't watching the terminal
-2. Adapters register via the extension system (either extending
-   `ActionProviderExtension` or a new `CommunicationAdapterExtension`).
+2. Adapters register via the extension system through a new
+   `CommunicationAdapterExtension` Protocol (decided 2026-06-12 — see
+   Decision Rationale in Proposed Solution).
 3. Config-driven channel selection: `.ll/ll-config.json` key `hitl.channel`
    selects the active adapter (default: `terminal`).
 4. The FSM executor resolves the configured adapter and calls the protocol
@@ -96,9 +97,30 @@ Model after the existing transport abstraction (`transport.py`:
 (`extension.py:81` `ActionProviderExtension`).
 
 Key design decision: extend `ActionProviderExtension` (adds
-`provided_adapters()`) vs. create a new `CommunicationAdapterExtension`. The
-former reuses the existing contributed-action dispatch in `_run_action()`; the
-latter is cleaner separation. Resolve during refinement.
+`provided_adapters()`) vs. create a new `CommunicationAdapterExtension`.
+
+> **Selected:** Option B — new `CommunicationAdapterExtension` Protocol class — matches the codebase's one-Protocol-per-capability convention (4 existing precedents), and Option A's claimed `_run_action()` dispatch reuse does not hold (adapter resolution is `hitl.channel` config-key-driven, not `action_type`-driven).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-12.
+
+**Selected**: Option B — create a new `CommunicationAdapterExtension` Protocol class with a single `provided_adapters()` method, detected via `hasattr()` in `wire_extensions()`.
+
+**Reasoning**: `extension.py` already contains four separate capability Protocols (`InterceptorExtension` :61, `ActionProviderExtension` :81, `EvaluatorProviderExtension` :92, `LLHookIntentExtension` :104), each with a narrow typed return and its own `hasattr()` gate in `wire_extensions()` (:246–273) — and the most recently added capability (`LLHookIntentExtension`) was created as a new Protocol rather than appended to an existing one. Option A would create the codebase's first fat interface and force `ActionProviderExtension` to carry two methods returning unrelated types (`dict[str, ActionRunner]` vs adapters); its core rationale — reusing the contributed-action dispatch in `_run_action()` — does not survive inspection, because adapter lookup is keyed by the `hitl.channel` config value, not by `state.action_type`. The net-new infrastructure (a `_contributed_adapters` registry on `FSMExecutor` alongside `_contributed_actions`/`_contributed_evaluators` at `executor.py:272–274`, the `hitl.channel` config property, and the resolution call site) is identical under both options, so separation costs nothing extra.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A — extend `ActionProviderExtension` | 1/3 | 2/3 | 2/3 | 2/3 | 7/12 |
+| B — new `CommunicationAdapterExtension` | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+
+**Key evidence**:
+- **Option A**: `wire_extensions()` loop and conflict-detection guards are reusable, but no existing extension class mixes `provided_*` methods from different capability types; `provided_actions()` is precisely typed as `dict[str, ActionRunner]`, which a `CommunicationAdapter` does not satisfy.
+- **Option B**: replicates a mechanical 4-precedent pattern end-to-end — Protocol class, `hasattr()` gate, `_contributed_*` executor slot, `ValueError` duplicate guard, `__init__.py` export, `TestNewProtocols` smoke/protocol-satisfied tests (`test_extension.py:524–691`), and a one-line addition to the `ll-create-extension` scaffold docstring (`create_extension.py:84`).
+
+**Follow-through for implementation**: register via `hasattr(ext, "provided_adapters")` in `wire_extensions()`; add `_contributed_adapters: dict[str, CommunicationAdapter]` to `FSMExecutor.__init__`; resolve the active adapter from `hitl.channel` with `terminal` fallback; update the `ll-create-extension` docstring and `__init__.py` exports; sibling issues FEAT-1931/FEAT-1932 implement adapters against the new Protocol.
 
 ## API/Interface
 
@@ -144,14 +166,14 @@ class CommunicationAdapter:
         ...
 ```
 
-Extension registration (via `ActionProviderExtension` or new
-`CommunicationAdapterExtension`):
+Extension registration (via the new `CommunicationAdapterExtension` — see
+Decision Rationale):
 
 ```python
 class TerminalAdapter(CommunicationAdapter):
     ...
 
-class TerminalAdapterExtension(ActionProviderExtension):
+class TerminalAdapterExtension(CommunicationAdapterExtension):
     def provided_adapters(self) -> list[type[CommunicationAdapter]]:
         return [TerminalAdapter]
 ```
@@ -185,9 +207,9 @@ class TerminalAdapterExtension(ActionProviderExtension):
 1. Define `CommunicationAdapter` abstract class with `send_alert()`,
    `await_response()`, and `supports_async()` in a new
    `scripts/little_loops/fsm/communication_adapter.py`
-2. Add adapter registration to the extension system — extend
-   `ActionProviderExtension` with `provided_adapters()` or create a new
-   `CommunicationAdapterExtension` in `extension.py`
+2. Add adapter registration to the extension system — create a new
+   `CommunicationAdapterExtension` Protocol with `provided_adapters()` in
+   `extension.py` (decided; see Decision Rationale)
 3. Wire adapter discovery into `wire_extensions()` so the executor can
    resolve registered adapters
 4. Update FSM executor in `executor.py` to resolve the configured adapter
@@ -222,5 +244,6 @@ class TerminalAdapterExtension(ActionProviderExtension):
 open
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-12T16:30:50 - `5f156fda-1001-478e-926c-73ffddf7e4b1.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:16:53 - `8041e61d-a9eb-4655-91d2-d32792836de3.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
