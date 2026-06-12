@@ -32,17 +32,28 @@ relates_to:
 - ENH-2014
 - ENH-2015
 - ENH-2016
-- ENH-2023
+- ENH-2017
+- BUG-2018
+- ENH-2038
 ---
 
 # EPIC-1811: Built-in Orchestration Loops
 
 ## Summary
 
-Ship five new built-in FSM loops that operate above the single-loop level: a goal decomposer
-that breaks complex objectives into sub-loops, an adaptive variant that re-plans on failure,
-a multi-goal orchestrator for sprint/EPIC-shaped input, and two domain-specific loops
-(market strategy optimization, adversarial figure redesign).
+Ship new built-in FSM loops that operate above the single-loop level. The original
+five-loop scope — goal decomposer (`loop-composer`), adaptive re-plan variant
+(`loop-composer-adaptive`), multi-goal orchestrator (`goal-cluster`), market strategy
+optimization, adversarial figure redesign — later grew an **integration capstone**:
+the `rn-build` recursive spec-to-project builder and its sub-issue cluster
+(FEAT-1991…1994, ENH-2012…2017, BUG-2013/2018, ENH-2038).
+
+As of 2026-06-12: `loop-composer`, `loop-composer-adaptive`, `goal-cluster`,
+`adversarial-redesign`, and the full rn-build stack are shipped (all under
+`scripts/little_loops/loops/`). The single remaining in-scope loop is **FEAT-1806**
+(market strategy optimization), now unblocked — FEAT-1808 shipped and the
+standalone-YAML-vs-composer-template decision was resolved in favor of a
+standalone YAML (see FEAT-1806).
 
 These loops extend the built-in loop catalog beyond the four EPIC-1694 loops
 (which are proof/gate-focused) into higher-level orchestration and domain-specific
@@ -83,28 +94,35 @@ When this epic is done, users can:
 
 ## Children
 
-- **FEAT-1808** — `loop-composer` — Goal Decomposer Built-in FSM Loop (One Level Above `loop-router`)
-- **FEAT-1809** — Adaptive `loop-composer` — Re-plan-on-Failure Variant
-- **FEAT-1810** — `goal-cluster` — Multi-Goal Orchestrator for Sprint- or EPIC-Shaped Input
-- **FEAT-1806** — Opponent-Aware Market Strategy Optimization Loop
+- ✅ **FEAT-1808** — `loop-composer` — Goal Decomposer Built-in FSM Loop (One Level Above `loop-router`)
+- ✅ **FEAT-1809** — Adaptive `loop-composer` — Re-plan-on-Failure Variant
+- ✅ **FEAT-1810** — `goal-cluster` — Multi-Goal Orchestrator for Sprint- or EPIC-Shaped Input
+- **FEAT-1806** — Opponent-Aware Market Strategy Optimization Loop (open — last remaining in-scope loop; unblocked 2026-06-12)
 - ✅ **FEAT-1807** — Adversarial-Redesign Figure Loop with AutoFigure
-- **FEAT-1990** — `rn-build` — Recursive Spec-to-Project Builder (integration capstone; greenfield-builder successor)
-  - **FEAT-1991** — rn-implement — Value-Ranked Dequeue (`select_next` scheduler)
-  - **FEAT-1992** — rn-build — Core Loop YAML, Loaders, and Integration
-  - **FEAT-1993** — Deprecate `greenfield-builder` in favor of `rn-build`
-  - **FEAT-1994** — rn-build — `create-loop` Wizard, Docs, and Guide
-- **ENH-2012** — rn-build — Spec file format guide and sample spec
-- **BUG-2013** — rn-build — `eval_gate` crashes with empty harness name when `eval_harness` errors
-- **ENH-2014** — rn-build — E2E smoke test and sample spec for integration validation
-- **ENH-2015** — rn-build — Add to "Cluster vs. Composer vs. Router" decision table
-- **ENH-2016** — rn-build — Resume-from-epic path for continuing a partial build
-- **ENH-2023** — Extract loop-authoring standards into docs/guides/LOOPS-GUIDELINES.md
+- ✗ **FEAT-1990** — `rn-build` parent spec (**cancelled** — the rn-build implementation shipped via FEAT-1992; FEAT-1990 was the superseded planning parent)
+  - ✅ **FEAT-1991** — rn-implement — Value-Ranked Dequeue (`select_next` scheduler)
+  - ✅ **FEAT-1992** — rn-build — Core Loop YAML, Loaders, and Integration (delivered the rn-build loop)
+  - ✅ **FEAT-1993** — Deprecate `greenfield-builder` in favor of `rn-build`
+  - ✅ **FEAT-1994** — rn-build — `create-loop` Wizard, Docs, and Guide
+- ✅ **FEAT-1983 / FEAT-1984 / FEAT-1987 / FEAT-1988 / FEAT-1989** — rn-build sub-tasks spawned mid-execution (backfilled into this list 2026-06-12; all done)
+- ✅ **ENH-2012** — rn-build — Spec file format guide and sample spec
+- ✅ **BUG-2013** — rn-build — `eval_gate` crashes with empty harness name when `eval_harness` errors
+- ✅ **ENH-2014** — rn-build — E2E smoke test and sample spec for integration validation
+- ✅ **ENH-2015** — rn-build — Add to "Cluster vs. Composer vs. Router" decision table
+- ✅ **ENH-2016** — rn-build — Resume-from-epic path for continuing a partial build
+- ✅ **ENH-2017 / ENH-2038 / BUG-2018** — rn-build follow-ups (backfilled 2026-06-12; all done)
+
+_ENH-2023 (loop-authoring standards doc) was detached from this epic on
+2026-06-12 — docs consolidation is outside the "ship loops" scope; it now
+stands alone in the backlog._
 
 ## Verification Notes
 
 _Added by `/ll:verify-issues` on 2026-05-31_
 
-**Verdict: NEEDS_UPDATE** — adversarial-redesign.yaml now exists and FEAT-1807 is done. Still open: FEAT-1806 (market-strategy), FEAT-1808 (loop-composer), FEAT-1809 (adaptive loop-composer), FEAT-1810 (goal-cluster).
+**Verdict: UPDATED (2026-06-12, epic audit)** — Epic is ~95% complete: every child except FEAT-1806 is terminal (done or cancelled). FEAT-1806 is unblocked (stale `blocked_by: FEAT-1808` cleared; standalone-YAML decision recorded in the issue). Shipped loops verified under `scripts/little_loops/loops/`: `loop-composer.yaml`, `loop-composer-adaptive.yaml`, `goal-cluster.yaml`, `adversarial-redesign.yaml`, rn-build stack. The 2026-05-31/2026-06-05 notes below ("20% complete") are stale snapshots.
+
+**Stale verdict (2026-05-31): NEEDS_UPDATE** — adversarial-redesign.yaml now exists and FEAT-1807 is done. Still open: FEAT-1806 (market-strategy), FEAT-1808 (loop-composer), FEAT-1809 (adaptive loop-composer), FEAT-1810 (goal-cluster).
 
 - `/ll:verify-issues` - 2026-06-05 - Epic is 20% complete (1/5 children done: FEAT-1807 `adversarial-redesign.yaml` confirmed at `scripts/little_loops/loops/`). Summary should acknowledge FEAT-1807 completion. Body references `loops/` at project root — actual loops directory is `scripts/little_loops/loops/`. Correct path references and update Summary to reflect that 1 of 5 loops is shipped.
 

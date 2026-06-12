@@ -7,7 +7,7 @@ priority: P5
 captured_at: "2026-05-26T02:06:59Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
-relates_to: [EPIC-1622, EPIC-1463, FEAT-992, FEAT-1480, FEAT-1850]
+relates_to: [EPIC-1622, EPIC-1463, FEAT-992, FEAT-1480]
 labels: [epic, captured, pi-adapter, host-compat, tracking, parity]
 ---
 
@@ -61,7 +61,6 @@ Out of scope (separately owned):
 - **FEAT-1714** — Audit Pi CLI headless flag surface & define `PiRunner` `HostCapabilities`
 - **FEAT-1715** — Pi hook-event parity gap (PreToolUse / PostToolUse / UserPromptSubmit / Stop / SessionEnd)
 - **FEAT-1716** — Pi `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden paths)
-- **FEAT-1850** — Add OmpRunner host runner for oh-my-pi (`omp` CLI)
 
 ## Motivation
 
@@ -137,3 +136,14 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:18 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-26T02:06:59Z - `3eaac8be-eba9-48b8-a2d9-322df5114921.jsonl`
+
+## Audit Note (2026-06-12)
+
+- **FEAT-1850 detached**: the `omp` (oh-my-pi) runner targets a different
+  host CLI than `pi` (pi-mono) and is outside this epic's parity-gap scope;
+  it now stands alone in the backlog. Its P3 priority had also inverted the
+  epic's P5 children in scheduling order.
+- **Discovery-surface coverage**: FEAT-1714's scope was expanded (2026-06-12)
+  to add the Pi column to HOST_COMPATIBILITY.md's discovery-surface and
+  Runner Capabilities tables — the FEAT-1487-for-Codex equivalent required by
+  this epic's third acceptance criterion (no "unknown" Pi cells).

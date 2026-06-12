@@ -3,7 +3,7 @@ id: ENH-839
 title: Split layout.py diagram rendering into focused modules
 type: ENH
 priority: P3
-status: open
+status: deferred
 discovered_commit: 8c6cf90
 discovered_branch: main
 discovered_date: 2026-03-19 00:00:00+00:00

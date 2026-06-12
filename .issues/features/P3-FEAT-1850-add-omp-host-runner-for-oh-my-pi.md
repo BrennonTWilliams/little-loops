@@ -4,12 +4,11 @@ title: Add OmpRunner host runner for oh-my-pi (`omp` CLI)
 type: feat
 status: open
 priority: P3
-parent: EPIC-1713
 captured_at: "2026-06-01T15:06:49Z"
 discovered_date: 2026-06-01
 discovered_by: capture-issue
 labels: [feat, captured, host-compat, pi-adapter, omp]
-relates_to: [EPIC-1713, FEAT-1480, FEAT-1714, FEAT-1715]
+relates_to: [FEAT-1480, FEAT-1714, FEAT-1715]
 ---
 
 # FEAT-1850: Add OmpRunner host runner for oh-my-pi (`omp` CLI)
@@ -196,3 +195,7 @@ class OmpRunner:
 ## Status
 
 **Open** | Created: 2026-06-01 | Priority: P3
+
+## Scope Note
+
+**Detached from its former parent epic on 2026-06-12 (epic audit)**: this issue was tangential/off-theme for the epic's stated scope and now stands alone in the backlog.

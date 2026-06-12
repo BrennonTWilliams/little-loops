@@ -10,11 +10,12 @@ discovered_by: scope-epic
 parent: EPIC-1867
 relates_to:
 - FEAT-1901
-- FEAT-1902
+- FEAT-2000
 blocked_by:
 - FEAT-1901
-- FEAT-1902
+- FEAT-2000
 - FEAT-2001
+- ENH-2106
 labels:
 - feature
 - orchestration

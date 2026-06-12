@@ -47,6 +47,7 @@ Half the skill catalog being unused while carrying open issues is a backlog-hygi
 - Issues for skills with 0 invocations over 30 days are at P4 or lower
 - Skills in an exemption list are not flagged
 - `ll-logs dead-skills` JSON output is consumed without modification (no new ll-logs changes needed)
+- `/ll:find-dead-code` surfaces a "Skills never invoked (last 30 days)" section sourced from `ll-logs dead-skills` output, with exempt skills omitted (scope added 2026-06-12 — EPIC-1918's scope states dead-skills "feeds find-dead-code"; backlog flagging alone does not satisfy that consumer wiring)
 
 ## Success Metrics
 

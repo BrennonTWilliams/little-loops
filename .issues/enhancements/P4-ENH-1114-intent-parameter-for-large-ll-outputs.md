@@ -18,7 +18,6 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 milestone: refined-ready
-parent: EPIC-1812
 ---
 
 # ENH-1114: Intent Parameter for Large ll-* CLI Outputs
@@ -256,3 +255,7 @@ Update first — This issue is explicitly blocked by FEAT-1112 (SQLite + FTS5 st
 ## Status
 
 **Open** | Created: 2026-04-15 | Priority: P4
+
+## Scope Note
+
+**Detached from its former parent epic on 2026-06-12 (epic audit)**: this issue was tangential/off-theme for the epic's stated scope and now stands alone in the backlog.

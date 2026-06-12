@@ -7,7 +7,7 @@ priority: P5
 discovered_date: 2026-05-22
 discovered_by: verify-issues
 labels: [epic, pi-adapter, tracking]
-relates_to: [FEAT-992, FEAT-1474, FEAT-1477]
+relates_to: [FEAT-992, FEAT-1474, FEAT-1477, FEAT-1714]
 ---
 
 # EPIC-1622: Pi adapter — remaining work
@@ -65,6 +65,20 @@ explicitly closed/deferred with rationale recorded in their own files).
 ## Labels
 
 `epic`, `pi-adapter`, `tracking`, `captured`
+
+## Cross-Epic Dependency (audit note 2026-06-12)
+
+FEAT-1480 carries `depends_on: [FEAT-1714]`, and **FEAT-1714 lives under
+EPIC-1713**, not this epic — so this epic cannot close until FEAT-1714 (Pi
+CLI headless-flag audit + `HostCapabilities` definition) completes. FEAT-1714
+was added to `relates_to` to make the chain visible.
+
+**Recommended implementation sequence**: FEAT-1479 (pure Python config; most
+implementation-ready) → FEAT-1478 (TypeScript adapter; can run in parallel) →
+FEAT-1480 (after FEAT-1714 lands) → FEAT-1475 (init flag; note its ENH-494
+sequencing warning is obsolete — ENH-494 is done, target the current
+`skills/init/SKILL.md` layout, which ENH-1982 has since reduced to a redirect
+stub) → FEAT-1476 (docs, last — depends on all four).
 
 ## Verification Notes
 

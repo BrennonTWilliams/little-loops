@@ -22,7 +22,6 @@ score_test_coverage: 12
 score_ambiguity: 22
 score_change_surface: 20
 size: Very Large
-parent: EPIC-1811
 ---
 
 # ENH-2023: Extract loop-authoring standards into .ll/standards.md
@@ -398,3 +397,7 @@ _Added by `/ll:confidence-check` on 2026-06-09; updated 2026-06-10_
 - [x] Issue captured
 - [ ] Implementation
 - [ ] Verification
+
+## Scope Note
+
+**Detached from its former parent epic on 2026-06-12 (epic audit)**: this issue was tangential/off-theme for the epic's stated scope and now stands alone in the backlog.

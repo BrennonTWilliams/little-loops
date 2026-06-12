@@ -57,6 +57,8 @@ FSM loops and automation scripts can use these as non-LLM evaluators and dispatc
 - [ ] `ll-issues next --skip <id>` excludes the specified issue from results
 - [ ] `ll-issues verify-work <id> --baseline <sha>` exits 0 when commits/file changes exist since baseline, exits 1 when none
 - [ ] `ll-issues classify-failure --rc <n>` reads stderr from stdin and classifies the failure type
+- [ ] `ll-issues complete <id>` sets status `done`, writes the Resolution section, commits the issue file, and emits the history.db issue event (scope added 2026-06-12 — required by the reference FSM YAML's `complete_issue` state)
+- [ ] `ll-issues mark-failed <id> --reason <text>` records the failure reason and sets an appropriate status (scope added 2026-06-12 — required by the reference FSM YAML's failure-handling states)
 - [ ] All three subcommands are documented in `docs/reference/API.md` under the `ll-issues` section
 - [ ] Existing tests for the wrapped functions continue to pass unchanged
 - [ ] At least one integration test per subcommand covering the happy path
@@ -68,6 +70,8 @@ Wrap each function in a thin `ll-issues` subcommand handler in `scripts/little_l
 1. **`next` subcommand**: Call `DependencyGraph(issues).get_ready_issues()`, apply `--priority` filter and `--skip` exclusions, serialize to JSON, and print. No new logic — pure delegation.
 2. **`verify-work` subcommand**: Call `verify_work_was_done(issue_id, baseline_sha)` and map its boolean result to `sys.exit(0)` / `sys.exit(1)`. If `verify_issue_completed()` is a better fit for the check, delegate to it instead.
 3. **`classify-failure` subcommand**: Read stdin, call `classify_failure(stderr_text, rc)`, optionally call `create_issue_from_failure(result)` if `--create-issue` flag is set.
+4. **`complete` subcommand** (scope added 2026-06-12 by epic audit): wrap the existing completion path — set status `done`, write Resolution, commit, emit issue event — as one atomic lifecycle transition. The reference FSM YAML in `docs/research/ll-orchestrator-decomposition-plan-v0.2.md` invokes `ll-issues complete <id>` from its `complete_issue` state; without it, FEAT-2000 would need a fragile multi-command shell workaround (`set-status` + git commit + event emit).
+5. **`mark-failed` subcommand** (scope added 2026-06-12 by epic audit): record a failure reason on the issue and set status, for the FSM's failure route. Pairs with `classify-failure` (classification) by owning the state transition.
 
 No behavioral changes to the underlying functions. Existing callers in `ll-auto`/`ll-parallel`/`ll-sprint` continue to import and call the Python functions directly.
 
@@ -83,6 +87,9 @@ ll-issues verify-work <issue-id> --baseline <git-sha>
     Exit: 0 = real work detected since baseline, 1 = no work detected
 
 ll-issues classify-failure --rc <int> [--create-issue]
+
+ll-issues complete <issue-id>
+ll-issues mark-failed <issue-id> --reason <text>
     Reads: stderr text from stdin
     Outputs: JSON classification result to stdout
     Exit: 0 always (classification errors reported in JSON)

@@ -97,16 +97,30 @@ When this epic is done:
 
 ## Children
 
-- **FEAT-1901** — Stabilize shared orchestration core and expose as ll-issues subcommands (Layer 0)
-- **FEAT-1902** — Author loops/ll-auto.yaml FSM + ll-auto shim + A/B parity harness (Layer 1)
+- **FEAT-1901** — Stabilize shared orchestration core and expose as ll-issues subcommands (Layer 0). Scope expanded 2026-06-12 to include `ll-issues complete` and `ll-issues mark-failed` lifecycle subcommands (required by the reference FSM YAML's `complete_issue`/failure states).
+- ✗ **FEAT-1902** — Author loops/ll-auto.yaml FSM + ll-auto shim + A/B parity harness (Layer 1). **Cancelled 2026-06-12** — it had been marked `done` although `loops/ll-auto.yaml` was never authored; the work was decomposed into FEAT-2000 (loop YAML), FEAT-2001 (CLI shim + A/B parity), and FEAT-2002 (docs/config), which now carry Layer 1.
+- **FEAT-2000** — Author `loops/ll-auto.yaml` FSM definition and validate (Layer 1)
+- **FEAT-2001** — Convert `ll-auto` CLI shim + A/B parity harness (Layer 1). Scope expanded 2026-06-12: migrate/retire `.auto-manage-state.json` (Open Question 3).
+- **FEAT-2002** — Docs/config migration for the ll-auto FSM conversion (Layer 1)
 - **FEAT-1899** — Implement ll-sprint FSM wave driver and shim (Layer 2)
 - **ENH-1903** — Document ll-parallel as canonical parallel substrate (Layer 3)
+- **ENH-2106** — Decide: reusable sub-loop composition vs inlined per-issue states for Layers 1+2 (added 2026-06-12; resolves Open Question 1; blocks FEAT-2000 and FEAT-1899)
+
+### Critical path (audit note 2026-06-12)
+
+Four of the children are serialized: **FEAT-1901 → FEAT-2000 → FEAT-2001 →
+FEAT-1899** (FEAT-2000 also waits on ENH-2106's composition decision). Only
+ENH-1903 and FEAT-2002 can proceed in parallel — and both touch the
+CLAUDE.md CLI Tools section, so they should coordinate (sequence ENH-1903
+after FEAT-2002, or batch the CLAUDE.md edits) to avoid divergent edits.
+Real delivered-artifact progress is 0 of 4 layers; FEAT-1901 is the
+highest-leverage next step.
 
 ## Verification Notes
 
 _Added by `/ll:verify-issues` on 2026-06-09_
 
-**Verdict: NEEDS_UPDATE** — FEAT-1902 (shared orchestration core) is completed but not acknowledged in the epic body. All other child issues (FEAT-1899, FEAT-1901, ENH-1903, FEAT-2000, FEAT-2001, FEAT-2002) are still open. Update the Summary/Children section to mark FEAT-1902 as done.
+**Verdict: UPDATED (2026-06-12, epic audit)** — FEAT-1902's `done` status was incorrect (no `loops/ll-auto.yaml` artifact existed); it is now **cancelled** as superseded by FEAT-2000/FEAT-2001/FEAT-2002, and the Children section above reflects the real layer ownership and critical path.
 
 ### Acceptance gates from the plan:
 - `ll-loop validate ll-auto` passes (MR-1, MR-3).
@@ -120,10 +134,14 @@ _Added by `/ll:verify-issues` on 2026-06-09_
 
 1. Should the per-issue states be a reusable sub-loop (`ll-loop` composition) so
    Layers 1 and 2 share one definition rather than duplicating states?
+   → **Tracked by ENH-2106** (added 2026-06-12); decision will be recorded in
+   `.ll/decisions.yaml` before FEAT-2000/FEAT-1899 authoring begins.
 2. Does `ll-issues next --respect-deps` need the full `DependencyGraph`, or is the
    lighter `get_ready_issues()` path sufficient for the `ll-auto` case?
 3. Keep `.auto-manage-state.json` semantics anywhere, or fully delegate resume to
    `ll-loop` persistence (preferred)?
+   → **Folded into FEAT-2001's scope** (2026-06-12): migrate or retire the file
+   as part of the shim conversion.
 
 ## Related Key Documentation
 

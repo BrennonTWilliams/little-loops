@@ -64,6 +64,8 @@ In `skills/init/SKILL.md`:
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-18): This issue adds a `--pi` flag and Step 8.5 block to `skills/init/SKILL.md`. ENH-494 also modifies the same file — it extracts overflow content from lines 130–201, 505–550, and 554–583 into companion files. If both PRs land concurrently, the line-region deletions in ENH-494 will conflict with the new content FEAT-1475 inserts. Sequence FEAT-1475 after ENH-494 has restructured `init/SKILL.md` so insertions target the post-extraction line layout.
 
+**Update (2026-06-12, epic audit)**: the sequencing warning above is **obsolete** — ENH-494 is done. Note also that ENH-1982 (done 2026-06-12) has since collapsed `skills/init/SKILL.md` to a ~56-line redirect stub over the `ll-init` CLI and deleted `interactive.md`; this issue's planned `--pi` flag and Step 8.5 insertion points no longer exist in that form. Re-scope this issue against the `ll-init` CLI surface (its `--hosts` multi-select already exists — see FEAT-1981) before implementation.
+
 ## Verification Notes
 
 _Added by `/ll:verify-issues` on 2026-06-01_

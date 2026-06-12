@@ -7,7 +7,7 @@ priority: P5
 captured_at: "2026-05-15T12:15:21Z"
 discovered_date: 2026-05-15
 discovered_by: capture-issue
-relates_to: [FEAT-957, FEAT-1462, FEAT-992, ENH-1718, FEAT-1719, FEAT-1720, FEAT-1721, ENH-1722, ENH-1615, ENH-1529]
+relates_to: [FEAT-957, FEAT-1462, FEAT-992, ENH-1718, FEAT-1719, FEAT-1720, FEAT-1721, ENH-1722, ENH-1615, ENH-1529, FEAT-1486, FEAT-1487, FEAT-1488, FEAT-1489, FEAT-1493, BUG-1494, ENH-1495, FEAT-1496, ENH-1497, FEAT-1526, ENH-1531, ENH-2105]
 labels: [epic, captured, codex, host-compat, tracking]
 ---
 
@@ -118,7 +118,7 @@ FEAT-992).
 
 ## Children
 
-- **FEAT-1483** — Research spike: Codex slash-command and skill discovery
+- **FEAT-1483** — Research spike: Codex slash-command and skill discovery (note 2026-06-12: FEAT-1483's frontmatter parent is FEAT-957, not this epic — it is an upstream ancestor listed here for context, and is correctly excluded from `epic-progress` counts)
   (completed — Codex Skills API confirmed stable; see
   `thoughts/research/codex-command-discovery.md`).
 - **FEAT-1486** — Adapt ll `skills/*/SKILL.md` for Codex Skills API
@@ -213,6 +213,22 @@ FEAT-992).
 ## Labels
 
 `epic`, `captured`, `codex`, `host-compat`, `tracking`
+
+## Audit Note (2026-06-12)
+
+- **FEAT-1720 status corrected `done` → `cancelled`**: its `permission_request`
+  artifacts were never built; the scope was absorbed into FEAT-1719 (see
+  FEAT-1720's Resolution). Progress counts that showed 13/18 done included it
+  erroneously.
+- **New child ENH-2105**: tracks the `stop/session_end` deferred intent for
+  Codex — the one remaining unannotated `(deferred)` cell in
+  HOST_COMPATIBILITY.md's Codex column.
+- **`relates_to` synced** with all `parent: EPIC-1463` children (11 previously
+  missing entries added). The `parent:` field on children remains the
+  authoritative link; `relates_to` is kept in sync for readability.
+- The 2026-06-04 footer note ("5 of 12 children are done") and the 2026-05-22
+  NEEDS_UPDATE verdict below are stale snapshots — see `ll-issues
+  epic-progress EPIC-1463` for live counts.
 
 ## Verification Notes
 

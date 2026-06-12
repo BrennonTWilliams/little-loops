@@ -8,7 +8,7 @@ discovered_date: 2026-06-04
 discovered_by: scope-epic
 status: open
 parent: null
-relates_to: [FEAT-1794, FEAT-1545, FEAT-1613]
+relates_to: [FEAT-1794, FEAT-1930, FEAT-1931, FEAT-1932, FEAT-2102, FEAT-1545, FEAT-1613]
 ---
 
 # EPIC-1929: Async HITL Communication Adapter Framework
@@ -101,6 +101,12 @@ When this epic is done:
 
 ## Children
 
+Dependency order (audit note 2026-06-12): **FEAT-1930 first** — its
+`CommunicationAdapterExtension` interface (decided 2026-06-12, see FEAT-1930
+Decision Rationale) gates the other three, which carry
+`blocked_by: [FEAT-1930]`. FEAT-2102 (adapter-swap integration test, added
+2026-06-12) owns this epic's two cross-cutting acceptance gates and lands last.
+
 - **FEAT-1930** — Communication adapter protocol: abstract interface, extension
   registration, config schema, channel selection
 - **FEAT-1794** (existing, reparented) — `human_approval` FSM state type:
@@ -108,7 +114,11 @@ When this epic is done:
 - **FEAT-1931** — Terminal adapter: stdin/stdout `CommunicationAdapter`
   implementation
 - **FEAT-1932** — PushNotification adapter: push-based `CommunicationAdapter`
-  with response callback
+  with response callback (file-poller decided 2026-06-12, see its Decision
+  Rationale)
+- **FEAT-2102** — Adapter-swap integration test for `human_approval`: same
+  loop YAML against both adapters with only `hitl.channel` changed (owns the
+  epic's config-only-swap and no-executor-changes acceptance gates)
 
 ## Dependency Order
 

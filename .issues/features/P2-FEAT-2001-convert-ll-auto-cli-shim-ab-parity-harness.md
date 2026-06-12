@@ -250,6 +250,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `test_cli_e2e.py` — e2e tests updated to reflect `ll-loop` subprocess invocation
 - [ ] `test_issue_workflow_integration.py` — `test_dry_run_makes_no_changes` wrapped with `pytest.warns`
 - [ ] Dependent loop audit complete; no breaking changes in exit-code routing
+- [ ] `.auto-manage-state.json` (repo root) is migrated or retired: resume responsibility moves to `ll-loop` run persistence, and the legacy state file is either converted on first run or documented as obsolete and removed (scope added 2026-06-12 — resolves Open Question 3 of the decomposition plan; without this, two resume mechanisms coexist after the FSM conversion)
 
 ## Files to Touch
 

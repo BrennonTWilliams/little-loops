@@ -3,10 +3,15 @@ id: EPIC-1812
 title: Codebase Health & Performance
 type: EPIC
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-05-30
 discovered_by: link-epics
-relates_to: [ENH-972, ENH-974, ENH-975, ENH-976, ENH-839, ENH-1114]
+relates_to:
+- ENH-972
+- ENH-974
+- ENH-975
+- ENH-976
+- ENH-839
 ---
 
 # EPIC-1812: Codebase Health & Performance
@@ -57,7 +62,6 @@ When this epic is done:
 - **ENH-975** — `IssueParser.parse_file` double-scans content for session log data
 - **ENH-976** — `detect_manual_patterns` recompiles regex patterns on each call
 - **ENH-839** — Split layout.py diagram rendering into focused modules
-- **ENH-1114** — Intent Parameter for Large `ll-*` CLI Outputs
 
 ## Verification Notes
 
@@ -74,3 +78,15 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - `/ll:verify-issues` - 2026-06-01T03:08:52 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+
+## Deferral Note
+
+**Deferred 2026-06-12 by epic audit.** All five in-scope children had been
+stalled 49-85 days (no implementation activity since the April 2026 scans),
+while `/ll:verify-issues` (2026-06-05) confirmed all five underlying code
+issues are still present and valid. Parked for bandwidth, not invalidated —
+un-defer the epic and its children together when scheduling them into a
+sprint. ENH-1114 was removed from this epic on the same date: a new
+`--intent` CLI flag is a feature, which the epic's own out-of-scope line
+("New features or behavior changes") disqualifies; it now stands alone in
+the backlog.

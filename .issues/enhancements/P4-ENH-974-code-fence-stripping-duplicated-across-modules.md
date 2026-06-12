@@ -3,10 +3,10 @@ id: ENH-974
 title: Code-fence stripping logic duplicated across 3 modules
 type: ENH
 priority: P4
-status: open
+status: deferred
 discovered_commit: 96d74cda12b892bac305b81a527c66021302df6a
 discovered_branch: main
-discovered_date: 2026-04-06T15:57:51Z
+discovered_date: 2026-04-06 15:57:51+00:00
 discovered_by: scan-codebase
 parent: EPIC-1812
 ---

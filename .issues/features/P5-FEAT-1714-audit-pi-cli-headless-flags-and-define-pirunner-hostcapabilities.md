@@ -60,6 +60,12 @@ as `claude -p` replacement."
   the audit
 - Recommendations recorded as `## Codebase Research Notes` (or equivalent)
   inside FEAT-1480 so the wiring PR can reference them verbatim
+- A Pi column entry for the **discovery surface** and **Runner Capabilities**
+  tables in `docs/reference/HOST_COMPATIBILITY.md` (not just the CLI-flag
+  capability rows), so no Pi cell remains "unknown"/unannotated — the
+  FEAT-1487-for-Codex equivalent (scope added 2026-06-12 by epic audit;
+  EPIC-1713's third acceptance criterion requires every Pi row to be ✓, ✗,
+  or a link to an open child)
 
 ## Use Case
 
