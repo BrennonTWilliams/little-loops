@@ -1,15 +1,23 @@
 ---
 id: BUG-2094
-title: FSM loops reference captures from states that may not have executed (InterpolationError crashes)
+title: FSM loops reference captures from states that may not have executed (InterpolationError
+  crashes)
 type: BUG
 priority: P1
-status: open
+status: deferred
 captured_at: '2026-06-12T14:10:00Z'
 discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 relates_to:
 - ENH-1961
 parent: EPIC-1811
+confidence_score: 94
+outcome_confidence: 72
+score_complexity: 14
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 18
+size: Very Large
 ---
 
 # BUG-2094: FSM loops reference captures from states that may not have executed
@@ -96,6 +104,18 @@ For `harness-optimize.yaml`: verify whether `init_prev` seeds `state_name` and `
 4. Remove Bucket B entries from the allowlist (they should no longer produce validator warnings once `:default=` is in place)
 5. Run `python -m pytest scripts/tests/test_builtin_loops.py` and verify all tests pass
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be addressed in the implementation:_
+
+6. **CRITICAL — Step 4 correction re: ALLOWLIST**: `_validate_capture_reachability` at `validation.py:108` uses `_CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")` which is suffix-blind — it matches the `${captured.X` prefix regardless of any `:default=` suffix. Adding `:default=` to Bucket B YAML states does **NOT** suppress the validator warnings. `test_allowlist_entries_are_not_stale` (`test_builtin_loops.py:7043`) will FAIL if Bucket B ALLOWLIST entries are removed while their warnings still fire. Choose one of:
+   - **(A, recommended)** Keep all Bucket B ALLOWLIST entries; update their comments from "unfixed" to "safe — `:default=` fallback in place"
+   - **(B)** Also modify `_validate_capture_reachability` in `validation.py` to skip or downgrade `:default=`-suffixed references — this suppresses the warning and allows ALLOWLIST entries to be removed, but requires adding `validation.py` to Files to Modify
+
+7. **ALLOWLIST merge dependency**: ENH-2095, ENH-2096, and ENH-2100 also modify `TestValidatorWarningBudget.ALLOWLIST` in `test_builtin_loops.py` (non-overlapping keys: `partial-route`, `shared-tmp`, `required-inputs` respectively). Coordinate merge order to avoid conflicts on the same file.
+
+8. **Write bypass-path execution guard test**: add a test to `test_fsm_interpolation.py` or a new `test_builtin_loops_bypass.py` that injects `captured={}` into a Bucket B loop's executor call and asserts `InterpolationError` is NOT raised after the `:default=` fix is applied. See `TestSafeInterpolation.test_default_suffix_uses_fallback_when_missing` for the pattern.
+
 ## Integration Map
 
 ### Files to Modify
@@ -116,11 +136,21 @@ For `harness-optimize.yaml`: verify whether `init_prev` seeds `state_name` and `
 - `scripts/little_loops/fsm/executor.py` — propagates `InterpolationError` (`executor.py:506-513`); no changes needed
 - `scripts/little_loops/fsm/validation.py` — capture-dominance validator that surfaces the warnings; no changes needed
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/evaluators.py` — imports `interpolate()` and catches `InterpolationError` by type in 6 sites (`evaluate_output_numeric`, `evaluate_convergence`, `evaluate_llm_structured`); catches by type, not by message text; no changes needed [Agent 1 finding]
+- `scripts/little_loops/fsm/__init__.py` — re-exports `InterpolationError` and `interpolate()` from the public FSM API; no changes needed [Agent 1 finding]
+
 ### Similar Patterns
 - All other builtin loops under `scripts/little_loops/loops/` — run `ll-loop validate` on each to confirm no additional bypass-path references are present
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — `TestValidatorWarningBudget` class; entries must be removed from allowlist after fixes
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_interpolation.py` — `TestSafeInterpolation` class fully covers the `:default=` mechanism; `test_default_suffix_uses_fallback_when_missing` (line 540) and `test_no_suffix_still_raises_on_missing_captured` (line 636) are directly relevant; no changes needed — existing coverage validates the mechanism [Agent 3 finding]
+- `scripts/tests/test_fsm_validation.py` — `TestCaptureReachabilityValidation` class covers `_validate_capture_reachability()`; tests use synthetic FSMs (not real YAML files) so will not break; NOTE: WARNING still fires after the `:default=` fix because the validator regex is suffix-blind (see Wiring Phase note) [Agent 2/3 finding]
+- `scripts/tests/test_fsm_executor.py` — `TestInterpolationErrorHandling` class; tests `context.*` namespace, not `captured.*`; unaffected [Agent 3 finding]
+- **New test to write**: bypass-path execution guard — load a real YAML (e.g. `general-task.yaml`), inject `captured={}`, execute `check_done` state via the executor, assert no `InterpolationError` is raised; follow `TestSafeInterpolation` pattern [Agent 3 finding]
 
 ### Documentation
 - N/A
@@ -151,5 +181,21 @@ For `harness-optimize.yaml`: verify whether `init_prev` seeds `state_name` and `
 **Open** | Created: 2026-06-12 | Priority: P1
 
 
+## Confidence Check Notes
+
+_Updated by `/ll:confidence-check` on 2026-06-12 (post-wiring re-run)_
+
+**Readiness Score**: 94/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
+
+### Outcome Risk Factors
+- Wide change surface across 12 sites (10 loop YAMLs + `test_builtin_loops.py` + new bypass-guard test); per-site default selection requires bypass-path semantic reasoning — not a uniform mechanical substitution
+- `harness-optimize` confirmed Bucket B: `init_prev` captures `prev_score` only (NOT `state_name`/`benchmark_score`); `propose` and `init_prev` both need `:default=` for those slots
+- ALLOWLIST merge coordination required with ENH-2095, ENH-2096, ENH-2100 (all modify `TestValidatorWarningBudget.ALLOWLIST` in `test_builtin_loops.py` on non-overlapping keys); recommend landing this fix before or after those ENHs to avoid merge conflicts
+- No standalone verification grep in the issue body; completeness relies entirely on the ALLOWLIST staleness test (`test_allowlist_entries_are_not_stale`)
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-12T21:00:00Z - `1790e51f-c814-452f-a40b-920f45d56f49.jsonl`
+- `/ll:wire-issue` - 2026-06-12T20:45:56 - `0d2af10e-d5a9-4677-9cf2-4695fd7f519f.jsonl`
 - `/ll:format-issue` - 2026-06-12T19:22:51 - `af5b5e51-5164-4278-b851-0c8573b39dca.jsonl`
+- `/ll:confidence-check` - 2026-06-12T00:00:00Z - `2000dfa5-31ee-445e-b574-4c20f6c98a02.jsonl`
