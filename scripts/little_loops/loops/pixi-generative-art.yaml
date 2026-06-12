@@ -1,6 +1,7 @@
 name: pixi-generative-art
 category: harness
 input_key: description
+required_inputs: ["description"]
 description: |
   Generator-evaluator harness for PixiJS generative art sketches.
   Iteratively generates a single self-contained HTML file embedding a

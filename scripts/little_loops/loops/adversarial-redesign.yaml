@@ -1,6 +1,7 @@
 name: adversarial-redesign
 category: example
 input_key: concept
+required_inputs: ["concept"]
 description: |
   Generator-vs-critic figure refinement demo using AutoFigure.
   A generator agent produces an SVG diagram from a text concept; a critic

@@ -1,6 +1,7 @@
 name: svg-image-generator
 category: harness
 input_key: description
+required_inputs: ["description"]
 description: |
   Generator-evaluator harness for SVG icon and illustration creation.
   Accepts a natural language description via loop_input and iteratively

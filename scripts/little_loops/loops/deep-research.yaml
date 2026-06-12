@@ -1,6 +1,7 @@
 name: deep-research
 category: research
 input_key: topic
+required_inputs: ["topic"]
 description: |
   Iterative web research synthesis loop. Accepts a research topic or question,
   generates search queries, performs web searches, evaluates sources, identifies

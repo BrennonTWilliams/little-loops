@@ -8,6 +8,7 @@ description: |
   all issues that passed refinement. Skips issues that fail refinement or are
   decomposed. Stops when the sprint is exhausted.
 input_key: sprint_name
+required_inputs: ["sprint_name"]
 initial: get_next_issue
 max_iterations: 500
 timeout: 28800

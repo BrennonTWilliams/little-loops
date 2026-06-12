@@ -1,6 +1,7 @@
 name: deep-research-arxiv
 category: research
 input_key: topic
+required_inputs: ["topic"]
 description: |
   Iterative arxiv-only research synthesis loop. Sibling of deep-research (FEAT-1540)
   specialized for academic literature search: constrains web search to site:arxiv.org,

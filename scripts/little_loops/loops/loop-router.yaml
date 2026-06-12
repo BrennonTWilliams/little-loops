@@ -5,6 +5,7 @@ description: |
   but not which loop to run. Dispatches the chosen loop as a sub-loop and summarises the result.
 category: routing
 input_key: goal
+required_inputs: ["goal"]
 initial: discover_loops
 max_iterations: 50
 timeout: 345600

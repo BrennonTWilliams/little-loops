@@ -1,6 +1,7 @@
 name: html-anything
 category: harness
 input_key: description
+required_inputs: ["description"]
 description: |
   Generalized HTML artifact harness — classifies the artifact type (email, social card,
   résumé, dashboard, presentation, invoice, component, poster, or website) from a natural

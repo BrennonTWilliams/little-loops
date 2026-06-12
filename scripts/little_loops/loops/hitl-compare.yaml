@@ -2,6 +2,7 @@ name: hitl-compare
 category: harness
 labels: [hitl, comparison, html, interactive]
 input_key: inputs
+required_inputs: ["inputs"]
 description: |
   Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text),
   extracts candidate review items (decisions, designs, requirement variants) with 2+ options each,

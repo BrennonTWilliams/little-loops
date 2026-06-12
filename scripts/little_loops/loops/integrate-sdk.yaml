@@ -6,6 +6,7 @@ description: >
   (ready-to-implement-gate sub-loop), then scaffold integration code with # Verified: citations.
   Blocks with a structured diagnosis if any required surface is refuted or proof fails.
 input_key: target
+required_inputs: ["target"]
 initial: scan_existing_usage
 max_iterations: 150
 timeout: 7200

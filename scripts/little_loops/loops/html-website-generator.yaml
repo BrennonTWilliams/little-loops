@@ -1,6 +1,7 @@
 name: html-website-generator
 category: harness
 input_key: description
+required_inputs: ["description"]
 description: |
   Generator-evaluator harness for single-page HTML website creation.
   Accepts a natural language website description via loop_input and

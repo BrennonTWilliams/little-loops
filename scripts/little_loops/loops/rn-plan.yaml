@@ -1,6 +1,7 @@
 name: rn-plan
 category: planning
 input_key: task
+required_inputs: ["task"]
 description: |
   Recursive planning loop with self-scoring rubric. Accepts a natural language
   task description, generates a structured plan and 8-dimension scoring rubric,
