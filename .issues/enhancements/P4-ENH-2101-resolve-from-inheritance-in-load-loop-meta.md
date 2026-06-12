@@ -7,6 +7,7 @@ status: open
 captured_at: '2026-06-12T14:10:00Z'
 discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
+parent: EPIC-1811
 ---
 
 # ENH-2101: Resolve `from:` inheritance in `_load_loop_meta`

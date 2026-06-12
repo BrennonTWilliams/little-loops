@@ -9,6 +9,7 @@ discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 relates_to:
 - ENH-2085
+parent: EPIC-1811
 ---
 
 # ENH-2098: Add check_substrate feasibility gate to rn-plan and rn-build

@@ -7,7 +7,7 @@ priority: P5
 captured_at: "2026-05-26T02:06:59Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
-relates_to: [EPIC-1622, EPIC-1463, FEAT-992, FEAT-1480]
+relates_to: [EPIC-1622, EPIC-1463, FEAT-992, FEAT-1480, FEAT-1850]
 labels: [epic, captured, pi-adapter, host-compat, tracking, parity]
 ---
 
@@ -61,6 +61,7 @@ Out of scope (separately owned):
 - **FEAT-1714** — Audit Pi CLI headless flag surface & define `PiRunner` `HostCapabilities`
 - **FEAT-1715** — Pi hook-event parity gap (PreToolUse / PostToolUse / UserPromptSubmit / Stop / SessionEnd)
 - **FEAT-1716** — Pi `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden paths)
+- **FEAT-1850** — Add OmpRunner host runner for oh-my-pi (`omp` CLI)
 
 ## Motivation
 

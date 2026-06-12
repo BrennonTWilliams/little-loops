@@ -9,6 +9,7 @@ discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 relates_to:
 - ENH-1961
+parent: EPIC-1811
 ---
 
 # BUG-2094: FSM loops reference captures from states that may not have executed

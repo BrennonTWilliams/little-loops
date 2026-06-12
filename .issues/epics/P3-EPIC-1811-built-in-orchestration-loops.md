@@ -35,6 +35,12 @@ relates_to:
 - ENH-2017
 - BUG-2018
 - ENH-2038
+- BUG-2094
+- ENH-2096
+- ENH-2098
+- ENH-2099
+- ENH-2100
+- ENH-2101
 ---
 
 # EPIC-1811: Built-in Orchestration Loops
@@ -115,6 +121,12 @@ When this epic is done, users can:
 _ENH-2023 (loop-authoring standards doc) was detached from this epic on
 2026-06-12 — docs consolidation is outside the "ship loops" scope; it now
 stands alone in the backlog._
+- **BUG-2094** — FSM loops reference captures from states that may not have executed (InterpolationError crashes)
+- **ENH-2096** — Migrate run-local .loops/tmp/ paths to ${context.run_dir} in 7 loops with no external consumers
+- **ENH-2098** — Add check_substrate feasibility gate to rn-plan and rn-build
+- **ENH-2099** — Add diff_stall guards to iterative generator loops to halt no-progress refinement
+- **ENH-2100** — Remove deprecated greenfield-builder loop (superseded by rn-build)
+- **ENH-2101** — Resolve one level of from: inheritance in _load_loop_meta so inherited metadata shows in ll-loop list
 
 ## Verification Notes
 
