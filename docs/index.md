@@ -32,7 +32,8 @@ Documentation for using little-loops in your projects.
 - [Session Handoff](guides/SESSION_HANDOFF.md) - Context management and session continuation guide
 - [Issue Management Guide](guides/ISSUE_MANAGEMENT_GUIDE.md) - End-to-end issue workflow: discovery, refinement, validation, and implementation
 - [Sprint Guide](guides/SPRINT_GUIDE.md) - Sprint creation, wave execution, dependency ordering, file contention, and resume
-- [Loops Guide](guides/LOOPS_GUIDE.md) - Loop creation, FSM YAML, built-in loops, and walkthrough
+- [Loops Guide](guides/LOOPS_GUIDE.md) - Loop creation, FSM YAML, and walkthrough
+- [Built-in Loops Reference](guides/LOOPS_REFERENCE.md) - Full catalog of built-in loops, APO loops, and fragment libraries
 - [Learning Tests Guide](guides/LEARNING_TESTS_GUIDE.md) - Verify external APIs and SDKs via the Feathers Learning Test lifecycle and the `.ll/learning-tests/` registry
 - [Automatic Harnessing Guide](guides/AUTOMATIC_HARNESSING_GUIDE.md) - Harness loop quality pipeline: multi-stage evaluation, retries, and wizard setup
 - [Examples Mining Guide](guides/EXAMPLES_MINING_GUIDE.md) - Co-evolutionary examples mining with apo-textgrad for continuously improving prompts

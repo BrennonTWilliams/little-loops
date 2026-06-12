@@ -165,6 +165,7 @@ little-loops/
 │   │   ├── GETTING_STARTED.md           # Getting started guide
 │   │   ├── ISSUE_MANAGEMENT_GUIDE.md    # Issue management workflow
 │   │   ├── LOOPS_GUIDE.md               # Loop creation guide
+│   │   ├── LOOPS_REFERENCE.md           # Built-in loop catalog
 │   │   ├── SESSION_HANDOFF.md           # Context management guide
 │   │   ├── SPRINT_GUIDE.md             # Sprint planning and execution
 │   │   └── WORKFLOW_ANALYSIS_GUIDE.md  # Workflow analysis guide

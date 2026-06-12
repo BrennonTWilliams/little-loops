@@ -221,7 +221,7 @@ ll-loop fragments lib/cli.yaml
 ll-loop fragments lib/prompt-fragments.yaml
 ```
 
-See [`docs/guides/LOOPS_GUIDE.md`](../docs/guides/LOOPS_GUIDE.md) for fragment authoring and the full fragment table.
+See [`docs/guides/LOOPS_GUIDE.md`](../docs/guides/LOOPS_GUIDE.md) for fragment authoring and [`docs/guides/LOOPS_REFERENCE.md`](../docs/guides/LOOPS_REFERENCE.md) for the full fragment table.
 
 ### Composing Loops
 

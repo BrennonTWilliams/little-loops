@@ -33,7 +33,7 @@ description: |
   Note: the evaluate state's on_no and on_error both route to score inside the
   oracles/generator-evaluator oracle (graceful degradation). The on_error path in the original
   hitl-md loop routed to generate instead of score — this deliberate divergence from the
-  LOOPS_GUIDE.md design rule is now handled by the oracle's internal routing logic.
+  LOOPS_REFERENCE.md design rule is now handled by the oracle's internal routing logic.
 initial: init
 max_iterations: 20
 timeout: 7200
