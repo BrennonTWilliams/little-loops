@@ -4,7 +4,7 @@ description: |
   Reusable eval-driven development cycle: implement viable issues, run an eval
   harness, capture issues from failures, refine them, and iterate until the
   harness passes or the iteration budget is exhausted. Usable standalone by any
-  project with an eval harness, or as a sub-loop of greenfield-builder.
+  project with an eval harness, or as a sub-loop of rn-build.
 initial: implement
 max_iterations: 20
 timeout: 14400

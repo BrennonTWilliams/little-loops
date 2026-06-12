@@ -3,11 +3,18 @@ id: ENH-2100
 title: Remove deprecated greenfield-builder loop (superseded by rn-build)
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-12T14:10:00Z'
+completed_at: '2026-06-12T22:12:35Z'
 discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 parent: EPIC-1811
+confidence_score: 94
+outcome_confidence: 79
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 15
 ---
 
 # ENH-2100: Remove deprecated greenfield-builder loop
@@ -35,7 +42,7 @@ After removal, `ll-loop list` no longer shows `greenfield-builder`. Running `ll-
 - **In scope**:
   - Delete `scripts/little_loops/loops/greenfield-builder.yaml`
   - Remove its row from `scripts/little_loops/loops/README.md`
-  - Remove its entry from `test_expected_loops_exist` in `scripts/tests/test_builtin_loops.py` (~line 74-86) and any other structural tests referencing it
+  - Remove its entry from `test_expected_loops_exist` in `scripts/tests/test_builtin_loops.py` (~line 112) and any other structural tests referencing it
   - Remove the `("greenfield-builder", "required-inputs")` entry from `TestValidatorWarningBudget.ALLOWLIST`
   - Update `eval-driven-development.yaml`'s description (mentions greenfield-builder as a possible parent) to reference `rn-build`
   - Update any `docs/guides/` references from greenfield-builder to rn-build
@@ -62,7 +69,7 @@ After removal, `ll-loop list` no longer shows `greenfield-builder`. Running `ll-
 ### Files to Modify
 - `scripts/little_loops/loops/greenfield-builder.yaml` (delete)
 - `scripts/little_loops/loops/README.md` (remove row)
-- `scripts/tests/test_builtin_loops.py` (remove from `test_expected_loops_exist` ~line 74-86; remove from `TestValidatorWarningBudget.ALLOWLIST`)
+- `scripts/tests/test_builtin_loops.py` (remove from `test_expected_loops_exist` ~line 112; remove from `TestValidatorWarningBudget.ALLOWLIST` ~line 7014)
 - `CHANGELOG.md` (add entry)
 
 ### Dependent Files (Callers/Importers)
@@ -99,4 +106,6 @@ After removal, `ll-loop list` no longer shows `greenfield-builder`. Running `ll-
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-12T22:07:35 - `f4986f92-a6d3-42f2-a6d6-3486121523a4.jsonl`
 - `/ll:format-issue` - 2026-06-12T20:24:24 - `a1ec72f5-b2fb-4515-a490-94794292cae6.jsonl`
+- `/ll:confidence-check` - 2026-06-12T20:30:00Z - `cfd4ce28-ec18-49c7-89d1-0d2bb86254f9.jsonl`

@@ -7427,7 +7427,7 @@ Built-in loops live in `scripts/little_loops/loops/`. Full documentation and a d
 
 End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives: spec validation → tech research → design artifacts → commit → scope EPIC + feature stubs → issue refinement → eval harness → `goal-cluster` (batched `rn-implement`, `value_ranked` scheduling) → eval gate with bounded re-entry → structured JSON result.
 
-Prefer over `greenfield-builder` when you want value-ranked scheduling and no `eval-driven-development` in the dispatch path.
+Uses value-ranked scheduling via `rn-implement` + `goal-cluster` rather than an `eval-driven-development` sub-loop.
 
 **CLI invocation:**
 

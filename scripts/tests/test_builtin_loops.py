@@ -109,7 +109,6 @@ class TestBuiltinLoopFiles:
             "prompt-regression-test",
             "test-coverage-improvement",
             "eval-driven-development",
-            "greenfield-builder",
             "outer-loop-eval",
             "p5js-sketch-generator",
             "pixi-data-viz",
@@ -7005,13 +7004,11 @@ class TestValidatorWarningBudget:
 
     # (loop stem, category) -> allowed warning paths.
     # partial-route: owned by the semantic MR-4 routing issue.
-    # required-inputs: greenfield-builder is deprecated; owned by its removal issue.
     # capture-ordering: owned by the :default= interpolation issue, except the
     #   documented sub-loop false positives (adopt-third-party-api enumeration,
     #   integrate-sdk targets/enumeration, examples-miner run_optimizer,
     #   goal-cluster/rn-build plan_display) which are produced by child loops.
     ALLOWLIST: dict[tuple[str, str], set[str]] = {
-        ("greenfield-builder", "required-inputs"): {"required_inputs"},
         ("adopt-third-party-api", "capture-ordering"): {
             "states.build_playbook.action",
             "states.build_playbook_partial.action",

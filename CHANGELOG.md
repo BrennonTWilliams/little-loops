@@ -12,11 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.123.0] - 2026-06-12
+
+### Removed
+
+- **`greenfield-builder` loop** — Removed the deprecated `greenfield-builder.yaml` loop. `rn-build` is the replacement for all spec-driven greenfield projects. (ENH-2100)
+
 ## [1.122.0] - 2026-06-11
 
 ### Deprecated
 
-- **`greenfield-builder` loop** — Deprecated in favor of `rn-build`, which delivers recursive `rn-implement`-based execution with goal-cluster context propagation and value-ranked scheduling. `greenfield-builder` continues to validate and run during the one-release grace period and will be removed in a future release. See the [migration note in LOOPS_REFERENCE.md](docs/guides/LOOPS_REFERENCE.md#migrating-from-greenfield-builder-to-rn-build) for upgrade steps. (FEAT-1993)
+- **`greenfield-builder` loop** — Deprecated in favor of `rn-build`, which delivers recursive `rn-implement`-based execution with goal-cluster context propagation and value-ranked scheduling. (FEAT-1993)
 
 ## [1.121.0] - 2026-06-10
 
