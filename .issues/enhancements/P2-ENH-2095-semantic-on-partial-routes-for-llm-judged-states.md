@@ -17,6 +17,10 @@ relates_to:
 
 Nine LLM-judged states across nine builtin loops route only `on_yes`/`on_no`; a `partial` verdict has no route and dead-ends the loop (parent reads this as failed) — MR-4 / ENH-1917. Unlike the mechanical batch fixed in the 2026-06-12 audit (where yes and no shared a target), these states need a *conservative* routing decision: partial must go to the continue/retry branch, never the success/destructive branch.
 
+## Motivation
+
+Nine builtin loops can silently dead-end at runtime when an LLM judge returns `partial` — the FSM has no route for that verdict and the parent interprets the run as failed. This produces incorrect failure signals and wastes iterations for loops that could have continued retrying. ENH-1917 / MR-4 introduced the validation rule; ENH-2095 applies the conservative fix to the remaining nine states that need a semantic routing decision (the previous batch fix only handled states where `on_yes` and `on_no` shared the same target).
+
 ## Current Behavior
 
 `ll-loop validate` reports the ENH-1917 partial-route warning for each state below. A partial verdict at runtime dead-ends the loop.
@@ -41,9 +45,85 @@ Each state routes `on_partial` to its conservative branch per this table:
 
 Note: dataset-curation's fix also clears the warning bubbled into sft-corpus by `ll-loop validate` (sub-loop recursion).
 
+## Proposed Solution
+
+For each of the nine states in the table above, add `on_partial: <conservative-branch>` to the state definition in the corresponding YAML file. The conservative branch is always the continue/retry path — never the success or destructive branch. Then remove the nine `partial-route` entries from `TestValidatorWarningBudget.ALLOWLIST` in `scripts/tests/test_builtin_loops.py`.
+
+Example edit for `incremental-refactor.yaml :: check_complete`:
+```yaml
+# Before
+on_yes: done
+on_no: execute_step
+
+# After
+on_yes: done
+on_no: execute_step
+on_partial: execute_step
+```
+
 ## Acceptance Criteria
 
 - [ ] All nine states route on_partial per the table
 - [ ] `ll-loop validate` reports zero ENH-1917 warnings across builtin loops
 - [ ] Corresponding `partial-route` entries removed from `TestValidatorWarningBudget.ALLOWLIST` in `scripts/tests/test_builtin_loops.py`
 - [ ] `python -m pytest scripts/tests/test_builtin_loops.py` passes
+
+## Scope Boundaries
+
+- **In scope**: Adding `on_partial` to the 9 states listed in the Expected Behavior table; removing their corresponding `partial-route` entries from `TestValidatorWarningBudget.ALLOWLIST`
+- **Out of scope**: Changing existing `on_yes`/`on_no` routes; modifying FSM executor logic or the MR-4 validation rule itself; addressing any MR-4 violations beyond the nine listed; setting `partial_route_ok: true` on any state
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/agent-eval-improve.yaml` — add `on_partial: route_quality` to `analyze_failures` state
+- `scripts/little_loops/loops/dataset-curation.yaml` — add `on_partial: fix_item` to `validate_schema` state
+- `scripts/little_loops/loops/eval-driven-development.yaml` — add `on_partial: refine_issues` to `route_eval` state
+- `scripts/little_loops/loops/harness-multi-item.yaml` — add `on_partial: execute` to `check_skill` state
+- `scripts/little_loops/loops/incremental-refactor.yaml` — add `on_partial: execute_step` to `check_complete` state
+- `scripts/little_loops/loops/issue-staleness-review.yaml` — add `on_partial: reprioritize` to `triage` state
+- `scripts/little_loops/loops/loop-specialist-eval.yaml` — add `on_partial: execute` to `check_skill` state
+- `scripts/little_loops/loops/outer-loop-eval.yaml` — add `on_partial: refine_analysis` to `generate_report` state
+- `scripts/little_loops/loops/loop-router.yaml` — add `on_partial: present_result` to `propose_new_loop` state
+- `scripts/tests/test_builtin_loops.py` — remove 9 `partial-route` entries from `TestValidatorWarningBudget.ALLOWLIST`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/sft-corpus.yaml` — sub-loop of dataset-curation; MR-4 warning propagated via sub-loop recursion clears automatically once dataset-curation is fixed
+
+### Similar Patterns
+- The 2026-06-12 batch fix (mechanical on_yes/on_no same-target cases) is the prior art for this pattern — grep `on_partial` in `scripts/little_loops/loops/` for examples
+
+### Tests
+- `scripts/tests/test_builtin_loops.py::TestValidatorWarningBudget` — ALLOWLIST entries must be removed to shrink the allowlist
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. For each of the 9 states in the Expected Behavior table, open the corresponding YAML file and add the `on_partial` key to the state definition
+2. Remove the 9 `partial-route` entries from `TestValidatorWarningBudget.ALLOWLIST` in `scripts/tests/test_builtin_loops.py`
+3. Run `ll-loop validate` across all builtin loops to confirm zero ENH-1917 warnings remain
+4. Run `python -m pytest scripts/tests/test_builtin_loops.py` to confirm test suite passes
+
+## Impact
+
+- **Priority**: P2 — MR-4 warnings outstanding after the 2026-06-12 batch fix; nine loops affected
+- **Effort**: Small — nine targeted one-line YAML edits plus allowlist cleanup in one test file
+- **Risk**: Low — additive routing only; existing `on_yes`/`on_no` paths are unchanged
+- **Breaking Change**: No
+
+## Labels
+
+`fsm-loops`, `routing`, `validation`, `maint`
+
+## Status
+
+**Open** | Created: 2026-06-12 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-12T18:27:58 - `b949881c-905f-41d2-8e07-bcf80e4e5eeb.jsonl`
