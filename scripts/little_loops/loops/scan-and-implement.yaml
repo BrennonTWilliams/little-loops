@@ -14,7 +14,6 @@ on_handoff: spawn
 states:
   snapshot_pre:
     action: |
-      mkdir -p .loops/tmp
       ll-issues list --json 2>/dev/null | python3 -c "
       import json, sys
       try:
@@ -23,8 +22,8 @@ states:
               print(i)
       except Exception:
           pass
-      " | sort > .loops/tmp/scan-and-implement-pre-ids.txt
-      COUNT=$(wc -l < .loops/tmp/scan-and-implement-pre-ids.txt | tr -d ' ')
+      " | sort > ${context.run_dir}/scan-and-implement-pre-ids.txt
+      COUNT=$(wc -l < ${context.run_dir}/scan-and-implement-pre-ids.txt | tr -d ' ')
       echo "Baseline: $COUNT existing active issue(s)"
     action_type: shell
     next: discover
@@ -49,13 +48,13 @@ states:
               print(i)
       except Exception:
           pass
-      " | sort > .loops/tmp/scan-and-implement-post-ids.txt
+      " | sort > ${context.run_dir}/scan-and-implement-post-ids.txt
 
-      comm -13 .loops/tmp/scan-and-implement-pre-ids.txt \
-               .loops/tmp/scan-and-implement-post-ids.txt \
-               > .loops/tmp/scan-and-implement-new-ids.txt
+      comm -13 ${context.run_dir}/scan-and-implement-pre-ids.txt \
+               ${context.run_dir}/scan-and-implement-post-ids.txt \
+               > ${context.run_dir}/scan-and-implement-new-ids.txt
 
-      NEW_IDS=$(grep -v '^[[:space:]]*$' .loops/tmp/scan-and-implement-new-ids.txt \
+      NEW_IDS=$(grep -v '^[[:space:]]*$' ${context.run_dir}/scan-and-implement-new-ids.txt \
                 | paste -sd ',' -)
       if [ -n "$NEW_IDS" ]; then
         NEW_COUNT=$(echo "$NEW_IDS" | tr ',' '\n' | grep -c '[^[:space:]]')

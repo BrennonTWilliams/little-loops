@@ -25,7 +25,6 @@ states:
     action_type: shell
     timeout: 60
     action: |
-      mkdir -p .loops/tmp
       ll-loop list --json 2>/dev/null | python3 -c "
       import json, sys, os
       loops = json.load(sys.stdin)
@@ -52,8 +51,7 @@ states:
           else:
               project.append(entry)
       catalog = {'project': project, 'builtin': builtin}
-      os.makedirs('.loops/tmp', exist_ok=True)
-      with open('.loops/tmp/loop-router-catalog.json', 'w') as f:
+      with open('${context.run_dir}/loop-router-catalog.json', 'w') as f:
           json.dump(catalog, f, indent=2)
       print(json.dumps(catalog, indent=2))
       "
@@ -167,15 +165,15 @@ states:
       conf  = float(conf_m.group(1)) if conf_m else 0.0
       inp   = (input_m.group(1).strip() if input_m else '') or '${context.goal}'
       tops  = (top_m.group(1).strip() if top_m else name)
-      with open('.loops/tmp/loop-router-chosen.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-chosen.txt', 'w') as f:
           f.write(name)
-      with open('.loops/tmp/loop-router-input.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-input.txt', 'w') as f:
           f.write(inp)
-      with open('.loops/tmp/loop-router-confidence.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-confidence.txt', 'w') as f:
           f.write(str(conf))
-      with open('.loops/tmp/loop-router-branch.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-branch.txt', 'w') as f:
           f.write('project')
-      with open('.loops/tmp/loop-router-top.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-top.txt', 'w') as f:
           f.write(tops)
       print(name)
       PYEOF
@@ -225,15 +223,15 @@ states:
       conf  = float(conf_m.group(1)) if conf_m else 0.0
       inp   = (input_m.group(1).strip() if input_m else '') or '${context.goal}'
       tops  = (top_m.group(1).strip() if top_m else name)
-      with open('.loops/tmp/loop-router-chosen.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-chosen.txt', 'w') as f:
           f.write(name)
-      with open('.loops/tmp/loop-router-input.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-input.txt', 'w') as f:
           f.write(inp)
-      with open('.loops/tmp/loop-router-confidence.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-confidence.txt', 'w') as f:
           f.write(str(conf))
-      with open('.loops/tmp/loop-router-branch.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-branch.txt', 'w') as f:
           f.write('builtin')
-      with open('.loops/tmp/loop-router-top.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-top.txt', 'w') as f:
           f.write(tops)
       print(name)
       PYEOF
@@ -246,7 +244,7 @@ states:
   extract_input:
     action_type: shell
     action: |
-      cat .loops/tmp/loop-router-input.txt 2>/dev/null || echo "${context.goal}"
+      cat ${context.run_dir}/loop-router-input.txt 2>/dev/null || echo "${context.goal}"
     capture: derived_params
     on_error: select_loop
     next: select_loop
@@ -260,9 +258,9 @@ states:
           try:
               with open(p) as f: return f.read().strip()
           except Exception: return default
-      name       = _read('.loops/tmp/loop-router-chosen.txt', 'NONE')
-      confidence = float(_read('.loops/tmp/loop-router-confidence.txt', '0') or '0')
-      tops       = _read('.loops/tmp/loop-router-top.txt', name)
+      name       = _read('${context.run_dir}/loop-router-chosen.txt', 'NONE')
+      confidence = float(_read('${context.run_dir}/loop-router-confidence.txt', '0') or '0')
+      tops       = _read('${context.run_dir}/loop-router-top.txt', name)
       threshold  = float('${context.confidence_threshold}')
       auto       = '${context.auto}'.strip().lower() == 'true'
       print(f'loop={name}  confidence={confidence:.2f}  threshold={threshold}  auto={auto}  top_candidates={tops}')
@@ -316,12 +314,12 @@ states:
           try:
               with open(p) as f: return f.read().strip()
           except Exception: return default
-      inp = _read('.loops/tmp/loop-router-input.txt') or '${context.goal}'
-      with open('.loops/tmp/loop-router-chosen.txt', 'w') as f:
+      inp = _read('${context.run_dir}/loop-router-input.txt') or '${context.goal}'
+      with open('${context.run_dir}/loop-router-chosen.txt', 'w') as f:
           f.write(name)
-      with open('.loops/tmp/loop-router-input.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-input.txt', 'w') as f:
           f.write(inp)
-      with open('.loops/tmp/loop-router-confidence.txt', 'w') as f:
+      with open('${context.run_dir}/loop-router-confidence.txt', 'w') as f:
           f.write('1.0')
       print(name)
       PYEOF
@@ -332,7 +330,7 @@ states:
   refresh_input:
     action_type: shell
     action: |
-      cat .loops/tmp/loop-router-input.txt 2>/dev/null || echo "${context.goal}"
+      cat ${context.run_dir}/loop-router-input.txt 2>/dev/null || echo "${context.goal}"
     capture: derived_params
     on_error: dispatch
     next: dispatch
@@ -439,9 +437,9 @@ states:
           try:
               with open(p) as f: return f.read().strip()
           except Exception: return default
-      branch         = _read('.loops/tmp/loop-router-branch.txt', 'unknown')
-      chosen         = _read('.loops/tmp/loop-router-chosen.txt', 'NONE')
-      conf_raw       = _read('.loops/tmp/loop-router-confidence.txt', '0')
+      branch         = _read('${context.run_dir}/loop-router-branch.txt', 'unknown')
+      chosen         = _read('${context.run_dir}/loop-router-chosen.txt', 'NONE')
+      conf_raw       = _read('${context.run_dir}/loop-router-confidence.txt', '0')
       confidence     = float(conf_raw) if conf_raw else 0.0
       proposal_out   = """${captured.new_loop_proposal.output}"""
       review_out     = """${captured.review_result.output}"""

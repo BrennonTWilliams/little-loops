@@ -14,6 +14,7 @@
 
 name: harness-multi-item
 category: harness
+artifact_versioning_ok: true  # example loop; flat write per iteration is intentional for simplicity
 description: |
   EXAMPLE: Multi-item harness demonstrating all evaluation phases in sequence.
   Discovers items from a dynamic list, processes each with a skill, and gates
@@ -89,9 +90,8 @@ states:
       cfg = json.loads(p.read_text()) if p.exists() else {}
       print(cfg.get('project', {}).get('test_cmd', 'pytest'))
       ")
-      mkdir -p .loops/tmp
       set -o pipefail
-      eval "$CMD" 2>&1 | tee .loops/tmp/harness-multi-item-tests.txt
+      eval "$CMD" 2>&1 | tee ${context.run_dir}/harness-multi-item-tests.txt
     fragment: shell_exit
     on_yes: check_mcp                 # tests pass → MCP gate
     on_no: execute                    # tests fail → retry skill

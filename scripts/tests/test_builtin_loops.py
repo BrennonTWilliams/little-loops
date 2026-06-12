@@ -553,15 +553,16 @@ class TestEvaluationQualityLoop:
         assert "code_health_threshold" in ctx
         assert "backlog_health_threshold" in ctx
 
-    def test_evaluate_code_uses_loops_tmp(self, data: dict) -> None:
-        """evaluate_code state must use .loops/tmp/ paths, not bare /tmp/."""
+    def test_evaluate_code_uses_run_dir(self, data: dict) -> None:
+        """evaluate_code state must use ${context.run_dir} paths, not bare /tmp/ or .loops/tmp/."""
         action = data["states"].get("evaluate_code", {}).get("action", "")
-        assert ".loops/tmp/" in action, "evaluate_code must use .loops/tmp/ for output files"
-        # Bare /tmp/... references are forbidden; .loops/tmp/... is fine.
-        # Use negative lookbehind to avoid false positives on ".loops/tmp/eval-..."
+        assert "${context.run_dir}" in action, "evaluate_code must use ${context.run_dir} for output files"
+        # Bare /tmp/... references are forbidden.
         assert not re.search(r"(?<!\.loops)/tmp/eval-", action), (
             "evaluate_code must not use bare /tmp/ paths"
         )
+        # .loops/tmp/... references are forbidden after run_dir migration.
+        assert ".loops/tmp/" not in action, "evaluate_code must not use shared .loops/tmp/ paths"
 
     def test_prepare_report_is_shell_state(self, data: dict) -> None:
         """prepare_report must be a shell state (date expansion needs shell context)."""
@@ -6923,7 +6924,6 @@ class TestValidatorWarningBudget:
     }
 
     # (loop stem, category) -> allowed warning paths.
-    # shared-tmp: owned by the MR-3 run_dir migration issue (no external consumers).
     # partial-route: owned by the semantic MR-4 routing issue.
     # required-inputs: greenfield-builder is deprecated; owned by its removal issue.
     # capture-ordering: owned by the :default= interpolation issue, except the
@@ -6931,40 +6931,6 @@ class TestValidatorWarningBudget:
     #   integrate-sdk targets/enumeration, examples-miner run_optimizer,
     #   goal-cluster/rn-build plan_display) which are produced by child loops.
     ALLOWLIST: dict[tuple[str, str], set[str]] = {
-        ("dead-code-cleanup", "shared-tmp"): {
-            "states.count_findings.action",
-            "states.revert_and_scan.action",
-            "states.scan.action",
-            "states.verify_tests.action",
-        },
-        ("evaluation-quality", "shared-tmp"): {"states.evaluate_code.action"},
-        ("fix-quality-and-tests", "shared-tmp"): {
-            "states.check-tests.action",
-            "states.fix-tests.action",
-        },
-        ("harness-multi-item", "shared-tmp"): {"states.check_concrete.action"},
-        ("loop-router", "shared-tmp"): {
-            "states.apply_user_choice.action",
-            "states.discover_loops.action",
-            "states.extract_input.action",
-            "states.parse_builtin_score.action",
-            "states.parse_project_score.action",
-            "states.present_result.action",
-            "states.refresh_input.action",
-            "states.select_loop.action",
-        },
-        ("scan-and-implement", "shared-tmp"): {
-            "states.diff_issues.action",
-            "states.snapshot_pre.action",
-        },
-        ("test-coverage-improvement", "shared-tmp"): {
-            "states.extract_percentage.action",
-            "states.fix_tests.action",
-            "states.identify_gaps.action",
-            "states.measure.action",
-            "states.revert.action",
-            "states.verify_tests.action",
-        },
         ("greenfield-builder", "required-inputs"): {"required_inputs"},
         ("adopt-third-party-api", "capture-ordering"): {
             "states.build_playbook.action",

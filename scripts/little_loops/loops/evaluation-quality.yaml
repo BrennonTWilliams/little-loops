@@ -48,10 +48,9 @@ states:
       cfg = json.loads(p.read_text()) if p.exists() else {}
       print(cfg.get('project', {}).get('test_cmd', 'pytest'))
       ")
-      mkdir -p .loops/tmp
       set -o pipefail
-      eval "$CMD" 2>&1 | tee .loops/tmp/eval-test-results.txt
-      ruff check scripts/ 2>&1 | tee .loops/tmp/eval-lint-results.txt || true
+      eval "$CMD" 2>&1 | tee ${context.run_dir}/eval-test-results.txt
+      ruff check scripts/ 2>&1 | tee ${context.run_dir}/eval-lint-results.txt || true
     capture: code_results
     next: score
 

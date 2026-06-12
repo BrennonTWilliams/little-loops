@@ -1,16 +1,24 @@
 ---
 id: ENH-2096
-title: Migrate run-local .loops/tmp/ paths to ${context.run_dir} in 7 loops with no external consumers
+title: Migrate run-local .loops/tmp/ paths to ${context.run_dir} in 7 loops with no
+  external consumers
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-12T14:10:00Z'
+completed_at: '2026-06-12T21:09:03Z'
 discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 relates_to:
 - BUG-1960
 - ENH-2097
 parent: EPIC-1811
+confidence_score: 100
+outcome_confidence: 88
+score_complexity: 19
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # ENH-2096: Migrate run-local `.loops/tmp/` paths to `${context.run_dir}`
@@ -77,13 +85,13 @@ All seven loops write artifacts exclusively under `${context.run_dir}/` (e.g., `
 ## Integration Map
 
 ### Files to Modify
-- `loops/loop-router.yaml`
-- `loops/test-coverage-improvement.yaml`
-- `loops/dead-code-cleanup.yaml`
-- `loops/scan-and-implement.yaml`
-- `loops/fix-quality-and-tests.yaml`
-- `loops/evaluation-quality.yaml`
-- `loops/harness-multi-item.yaml`
+- `scripts/little_loops/loops/loop-router.yaml`
+- `scripts/little_loops/loops/test-coverage-improvement.yaml`
+- `scripts/little_loops/loops/dead-code-cleanup.yaml`
+- `scripts/little_loops/loops/scan-and-implement.yaml`
+- `scripts/little_loops/loops/fix-quality-and-tests.yaml`
+- `scripts/little_loops/loops/evaluation-quality.yaml`
+- `scripts/little_loops/loops/harness-multi-item.yaml`
 - `scripts/tests/test_builtin_loops.py`
 
 ### Dependent Files (Callers/Importers)
@@ -118,4 +126,5 @@ All seven loops write artifacts exclusively under `${context.run_dir}/` (e.g., `
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-12T20:59:17 - `139296a5-54ef-432e-8ff1-1f41dae3ccca.jsonl`
 - `/ll:format-issue` - 2026-06-12T20:23:52 - `051a8502-cb48-4c5c-bcc3-3f728b6c3074.jsonl`
