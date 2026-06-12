@@ -5813,7 +5813,6 @@ class TestImplementIssueChainOracle:
             "go_no_go",
             "implement_issue",
             "done",
-            "failed",
         ):
             assert name in states, f"required state '{name}' missing"
 
@@ -5821,9 +5820,11 @@ class TestImplementIssueChainOracle:
         state = data["states"].get("done", {})
         assert state.get("terminal") is True, "done.terminal should be True"
 
-    def test_failed_is_terminal(self, data: dict) -> None:
-        state = data["states"].get("failed", {})
-        assert state.get("terminal") is True, "failed.terminal should be True"
+    def test_no_unreachable_failed_state(self, data: dict) -> None:
+        """All failure paths drain to done; an unreachable failed terminal was removed."""
+        assert "failed" not in data["states"], (
+            "implement-issue-chain intentionally has no failed state; all error paths route to done"
+        )
 
     def test_imports_common_yaml(self, data: dict) -> None:
         imports = data.get("import", [])
@@ -6841,7 +6842,9 @@ class TestCheckSubstrateOptionalState:
     """Tests that check_substrate optional state is documented in planning loop templates (ENH-2085)."""
 
     HARNESS_PLAN_FILE = BUILTIN_LOOPS_DIR / "harness-plan-research-implement-report.yaml"
-    LOOP_TYPES_FILE = Path(__file__).parent.parent.parent / "skills" / "create-loop" / "loop-types.md"
+    LOOP_TYPES_FILE = (
+        Path(__file__).parent.parent.parent / "skills" / "create-loop" / "loop-types.md"
+    )
 
     def test_harness_plan_file_documents_check_substrate(self) -> None:
         """harness-plan-research-implement-report.yaml must document check_substrate optional state."""
@@ -6858,7 +6861,9 @@ class TestCheckSubstrateOptionalState:
         content = self.HARNESS_PLAN_FILE.read_text()
         # Find the check_substrate block and verify on_no: plan appears within it
         cs_pos = content.find("check_substrate")
-        assert cs_pos != -1, "check_substrate block not found in harness-plan-research-implement-report.yaml"
+        assert cs_pos != -1, (
+            "check_substrate block not found in harness-plan-research-implement-report.yaml"
+        )
         # on_no: plan must appear after check_substrate and before research:
         research_pos = content.find("\n  research:", cs_pos)
         block_slice = content[cs_pos:research_pos] if research_pos != -1 else content[cs_pos:]
@@ -6874,9 +6879,15 @@ class TestCheckSubstrateOptionalState:
         review_plan_pos = content.find("review_plan")
         check_substrate_pos = content.find("check_substrate")
         research_pos = content.find("\n  research:")
-        assert review_plan_pos != -1, "review_plan block must be present in harness-plan-research-implement-report.yaml"
-        assert check_substrate_pos != -1, "check_substrate block must be present in harness-plan-research-implement-report.yaml"
-        assert research_pos != -1, "research state must be present in harness-plan-research-implement-report.yaml"
+        assert review_plan_pos != -1, (
+            "review_plan block must be present in harness-plan-research-implement-report.yaml"
+        )
+        assert check_substrate_pos != -1, (
+            "check_substrate block must be present in harness-plan-research-implement-report.yaml"
+        )
+        assert research_pos != -1, (
+            "research state must be present in harness-plan-research-implement-report.yaml"
+        )
         assert review_plan_pos < check_substrate_pos < research_pos, (
             "check_substrate must appear after review_plan and before the research state"
         )
@@ -6888,4 +6899,166 @@ class TestCheckSubstrateOptionalState:
         assert "check_substrate" in content, (
             "skills/create-loop/loop-types.md specialist pipeline template must include "
             "a check_substrate optional state block per ENH-2085"
+        )
+
+
+class TestValidatorWarningBudget:
+    """Ratchet on deterministic validator warning categories (FSM loop audit 2026-06-12).
+
+    Every warning in the categories below must be either fixed or explicitly
+    allowlisted. Allowlist entries are owned by open issues and must shrink as
+    those issues are processed: test_allowlist_entries_are_not_stale fails when
+    a fixed warning is still allowlisted, so the ratchet is bidirectional.
+    """
+
+    # category -> substring that identifies the warning message
+    CATEGORY_PATTERNS: dict[str, str] = {
+        "shared-tmp": "writes to shared '.loops/tmp",
+        "partial-route": "routes only on_yes",
+        "required-inputs": "does not declare required_inputs",
+        "unreachable": "not reachable from initial state",
+        "failure-terminal": "no predecessor state with a diagnostic action",
+        "artifact-versioning": "to a flat path in an iterative cycle",
+        "capture-ordering": "References ${captured.",
+    }
+
+    # (loop stem, category) -> allowed warning paths.
+    # shared-tmp: owned by the MR-3 run_dir migration issue (no external consumers).
+    # partial-route: owned by the semantic MR-4 routing issue.
+    # required-inputs: greenfield-builder is deprecated; owned by its removal issue.
+    # capture-ordering: owned by the :default= interpolation issue, except the
+    #   documented sub-loop false positives (adopt-third-party-api enumeration,
+    #   integrate-sdk targets/enumeration, examples-miner run_optimizer,
+    #   goal-cluster/rn-build plan_display) which are produced by child loops.
+    ALLOWLIST: dict[tuple[str, str], set[str]] = {
+        ("dead-code-cleanup", "shared-tmp"): {
+            "states.count_findings.action",
+            "states.revert_and_scan.action",
+            "states.scan.action",
+            "states.verify_tests.action",
+        },
+        ("evaluation-quality", "shared-tmp"): {"states.evaluate_code.action"},
+        ("fix-quality-and-tests", "shared-tmp"): {
+            "states.check-tests.action",
+            "states.fix-tests.action",
+        },
+        ("harness-multi-item", "shared-tmp"): {"states.check_concrete.action"},
+        ("loop-router", "shared-tmp"): {
+            "states.apply_user_choice.action",
+            "states.discover_loops.action",
+            "states.extract_input.action",
+            "states.parse_builtin_score.action",
+            "states.parse_project_score.action",
+            "states.present_result.action",
+            "states.refresh_input.action",
+            "states.select_loop.action",
+        },
+        ("scan-and-implement", "shared-tmp"): {
+            "states.diff_issues.action",
+            "states.snapshot_pre.action",
+        },
+        ("test-coverage-improvement", "shared-tmp"): {
+            "states.extract_percentage.action",
+            "states.fix_tests.action",
+            "states.identify_gaps.action",
+            "states.measure.action",
+            "states.revert.action",
+            "states.verify_tests.action",
+        },
+        ("agent-eval-improve", "partial-route"): {"states.analyze_failures"},
+        ("dataset-curation", "partial-route"): {"states.validate_schema"},
+        ("eval-driven-development", "partial-route"): {"states.route_eval"},
+        ("harness-multi-item", "partial-route"): {"states.check_skill"},
+        ("incremental-refactor", "partial-route"): {"states.check_complete"},
+        ("issue-staleness-review", "partial-route"): {"states.triage"},
+        ("loop-specialist-eval", "partial-route"): {"states.check_skill"},
+        ("outer-loop-eval", "partial-route"): {"states.generate_report"},
+        ("loop-router", "partial-route"): {"states.propose_new_loop"},
+        ("greenfield-builder", "required-inputs"): {"required_inputs"},
+        ("adopt-third-party-api", "capture-ordering"): {
+            "states.build_playbook.action",
+            "states.build_playbook_partial.action",
+        },
+        ("examples-miner", "capture-ordering"): {"states.synthesize.action"},
+        ("general-task", "capture-ordering"): {"states.check_done.action"},
+        ("goal-cluster", "capture-ordering"): {
+            "states.present_result.action",
+            "states.propagate_context.action",
+            "states.reassess.action",
+            "states.synthesize_cluster_result.action",
+        },
+        ("harness-optimize", "capture-ordering"): {
+            "states.apply.action",
+            "states.propose.action",
+        },
+        ("integrate-sdk", "capture-ordering"): {
+            "states.diagnose_and_block.action",
+            "states.scaffold_integration.action",
+        },
+        ("learning-tests-audit", "capture-ordering"): {"states.build_report.action"},
+        ("loop-composer", "capture-ordering"): {"states.present_result.action"},
+        ("loop-composer-adaptive", "capture-ordering"): {"states.present_result.action"},
+        ("loop-router", "capture-ordering"): {
+            "states.present_choices.action",
+            "states.present_result.action",
+        },
+        ("rl-coding-agent", "capture-ordering"): {"states.diagnose.action"},
+        ("rn-build", "capture-ordering"): {
+            "states.check_harness_name.action",
+            "states.synthesize_result.action",
+        },
+    }
+
+    @pytest.fixture
+    def builtin_loops(self) -> list[Path]:
+        files = sorted(p for p in BUILTIN_LOOPS_DIR.rglob("*.yaml") if is_runnable_loop(p))
+        assert files, "No built-in loop files found"
+        return files
+
+    def _classify(self, message: str) -> str | None:
+        for category, pattern in self.CATEGORY_PATTERNS.items():
+            if pattern in message:
+                return category
+        return None
+
+    def _collect_findings(self, builtin_loops: list[Path]) -> set[tuple[str, str, str]]:
+        """Return (loop stem, category, warning path) for every ratcheted warning."""
+        findings: set[tuple[str, str, str]] = set()
+        for loop_file in builtin_loops:
+            _, warnings = load_and_validate(loop_file)
+            for warning in warnings:
+                if warning.severity is not ValidationSeverity.WARNING:
+                    continue
+                category = self._classify(warning.message)
+                if category is None:
+                    continue
+                findings.add((loop_file.stem, category, warning.path or ""))
+        return findings
+
+    def test_deterministic_warning_categories_do_not_regrow(
+        self, builtin_loops: list[Path]
+    ) -> None:
+        """No builtin loop may add warnings in ratcheted categories without allowlisting."""
+        unexpected = [
+            f"{loop} [{category}] {path}"
+            for loop, category, path in sorted(self._collect_findings(builtin_loops))
+            if path not in self.ALLOWLIST.get((loop, category), set())
+        ]
+        assert not unexpected, (
+            "New validator warnings in ratcheted categories (fix the loop, or add an "
+            "ALLOWLIST entry referencing the issue that owns it):\n" + "\n".join(unexpected)
+        )
+
+    def test_allowlist_entries_are_not_stale(self, builtin_loops: list[Path]) -> None:
+        """Every allowlist entry must still produce its warning; remove entries once fixed."""
+        findings = self._collect_findings(builtin_loops)
+        stale = [
+            f"{loop} [{category}] {path}"
+            for (loop, category), paths in sorted(self.ALLOWLIST.items())
+            for path in sorted(paths)
+            if (loop, category, path) not in findings
+        ]
+        assert not stale, (
+            "Allowlist entries no longer produce warnings - remove them to lock in the fix:\n"
+            + "\n".join(stale)
         )
