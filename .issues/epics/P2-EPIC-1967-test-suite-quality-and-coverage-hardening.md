@@ -2,11 +2,15 @@
 id: EPIC-1967
 type: EPIC
 priority: P2
-status: open
-captured_at: "2026-06-05T22:00:00Z"
+status: done
+captured_at: '2026-06-05T22:00:00Z'
 discovered_date: 2026-06-05
 discovered_by: scope-epic
-relates_to: [ENH-1963, ENH-1964, ENH-1965, ENH-1966]
+relates_to:
+- ENH-1963
+- ENH-1964
+- ENH-1965
+- ENH-1966
 ---
 
 # EPIC-1967: Test Suite Quality & Coverage Hardening

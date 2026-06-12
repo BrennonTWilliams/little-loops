@@ -3,7 +3,7 @@ id: ENH-2086
 title: Add cross-host validation option to ll-loop run --baseline
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-10T18:12:09Z'
 discovered_date: '2026-06-10'
 discovered_by: capture-issue
@@ -127,3 +127,9 @@ Uses existing `resolve_host()` from `scripts/little_loops/host_runner.py` for ho
 - `/ll:format-issue` - 2026-06-10T23:34:21 - `714a8869-591f-4a9c-91ec-045042d7d120.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-10T23:30:28 - `59a16773-20bc-402b-b0cb-97d45d141b4c.jsonl`
 - `/ll:confidence-check` - 2026-06-10T00:00:00Z - `bc50ebd7-c15b-46db-af40-c095d6094c96.jsonl`
+
+## Resolution
+
+- **Status**: Done
+- **Completed**: 2026-06-12
+- Code (`--cross-host` flag, `_run_cross_host_validation`, `_print_cross_host_table` in `scripts/little_loops/cli/loop/_helpers.py`) had already merged; the final outstanding AC — documenting the flag in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — was completed 2026-06-12 ("Cross-host validation (`--cross-host`)" section under Validating and Measuring).

@@ -3,11 +3,17 @@ id: EPIC-2087
 title: Loop Harness Quality & Evaluation Tooling
 type: EPIC
 priority: P3
-status: open
-captured_at: "2026-06-10T18:37:38Z"
-discovered_date: "2026-06-10"
+status: done
+captured_at: '2026-06-10T18:37:38Z'
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
-relates_to: [ENH-2079, ENH-2080, ENH-2081, ENH-2082, ENH-2084, ENH-2086]
+relates_to:
+- ENH-2079
+- ENH-2080
+- ENH-2081
+- ENH-2082
+- ENH-2084
+- ENH-2086
 ---
 
 # EPIC-2087: Loop Harness Quality & Evaluation Tooling
@@ -55,7 +61,7 @@ Delivery order suggestion:
 - [ ] `ll-loop validate` enforces MR-6 with suppression flag
 - [ ] `ll-loop run --baseline` reports Wilson 95% CI alongside point estimates
 - [ ] `ll-loop run --baseline` supports `--cross-host` validation
-- [ ] `ll-loop audit` detects shallow-iteration failure mode
+- [x] Shallow-iteration failure mode detection — delivered by ENH-2082 as a step in the `/ll:audit-loop-run` skill (fixture `assess-shallow-iteration.yaml` + skill step), not as an `ll-loop audit` CLI subcommand; AC wording updated 2026-06-12 to match the shipped surface
 - [ ] DSL-native eval task generation is available for ll config formats
 - [ ] Retry-budget calibration guidance is documented
 

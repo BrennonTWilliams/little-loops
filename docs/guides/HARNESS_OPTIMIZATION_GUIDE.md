@@ -240,6 +240,65 @@ rules.
 - **`ll-loop promote-baseline <loop>`** — after inspecting a run's output, promote it as
   the new comparator baseline.
 
+### Cross-host validation (`--cross-host`)
+
+A harness improvement measured on one host CLI may not transfer to another —
+judge prompts, slash-command dispatch, and output formatting all vary by host.
+Add `--cross-host` to a baseline run to check whether the improvement is
+host-general or host-specific:
+
+```bash
+ll-loop run my-optimizer --baseline --cross-host
+```
+
+What it does:
+
+1. Runs the normal baseline A/B on your primary host (whatever `resolve_host()`
+   selects — `LL_HOST_CLI` / `orchestration.host_cli` / probe order).
+2. Picks the next available host from the probe order (`claude`, `codex`,
+   `opencode`, `pi`) whose binary is on `PATH`, and re-runs the identical
+   baseline trial with `LL_HOST_CLI` overridden to it. `--baseline-skill` and
+   `--items` are forwarded unchanged.
+3. Prints a **Cross-host Comparison** table: per-host harness pass rate with
+   Wilson 95% confidence intervals and trial counts.
+
+```
+Cross-host Comparison
+  Host                   Pass rate              95% CI      n
+  --------------------  ----------  ------------------  -----
+  claude                       80%  [0.49, 0.94]           10
+  codex                        60%  [0.31, 0.83]           10
+```
+
+If the harness-vs-baseline **ordering reverses** between hosts (harness wins on
+one, baseline wins on the other), the run prints an explicit
+`⚠ Ordering reversal` warning — treat the improvement as host-specific and
+don't bake it into a shared loop without a host guard.
+
+If only one host binary is installed, the step is skipped with a notice
+(`Cross-host: only one host available`) — the primary baseline results are
+unaffected.
+
+### Debugging a Stuck Optimizer
+
+**Symptom: the optimizer keeps proposing the same change it already tried (or very similar ones)**
+
+Cause: `diagnose` doesn't have memory of prior rejected edits. Without a trajectory summary, the optimizer treats each iteration as a fresh start and rediscovers the same dead end.
+
+Fix: implement cumulative trajectory summarization (see [Feed the trajectory forward](#feed-the-trajectory-forward-cumulative-summaries) above). The `diagnose` prompt should receive a summary of what was tried and rejected, not just the current state of the file.
+
+**Symptom: the gate always passes (or always fails) regardless of what was changed**
+
+Cause: the convergence evaluator is miscalibrated — it measures something that doesn't vary with edit quality, or the scorer is brittle. Diagnose with `ll-loop diagnose-evaluators` to check Bernoulli variance; a score below 0.05 means the gate is toothless.
+
+Fix: broaden the scorer (add more test cases, diversify the benchmark), or tighten the convergence threshold so meaningful improvement is required to pass.
+
+**Symptom: the optimizer makes many edits but the benchmark score doesn't improve over 10 iterations**
+
+Cause: the diagnosis step isn't identifying the right component. The highest-leverage fix may be in a different part of the harness than `diagnose` is pointing at.
+
+Fix: lower `max_iterations` temporarily to 3 and inspect the `trajectory.jsonl` to see what's actually being proposed. Often the fix is to make `diagnose` output more specific component identification.
+
 ### Tracking which strategies actually work
 
 Once `trajectory.jsonl` tags each edit by component and strategy (which component was

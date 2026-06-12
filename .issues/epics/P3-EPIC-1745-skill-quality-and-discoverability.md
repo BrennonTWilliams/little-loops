@@ -3,12 +3,25 @@ id: EPIC-1745
 title: Skill Quality & Discoverability
 type: EPIC
 priority: P3
-status: open
-captured_at: "2026-05-27T00:00:00Z"
-discovered_date: "2026-05-27"
+status: done
+captured_at: '2026-05-27T00:00:00Z'
+discovered_date: '2026-05-27'
 discovered_by: manual
-labels: [epic, skills, context-engineering, routing]
-relates_to: [ENH-1617, ENH-1618, ENH-977, ENH-494, BUG-1799, BUG-1800, ENH-1801, ENH-1802]
+labels:
+- epic
+- skills
+- context-engineering
+- routing
+relates_to:
+- ENH-1617
+- ENH-1618
+- ENH-977
+- ENH-494
+- BUG-1799
+- BUG-1800
+- ENH-1801
+- ENH-1802
+- ENH-1615
 ---
 
 # EPIC-1745: Skill Quality & Discoverability
@@ -20,10 +33,10 @@ Improve the health of the ll skill surface in four dimensions: **routing** (nega
 ## Goal
 
 When this epic is done:
-- Tier 1 skill descriptions include explicit "Do NOT use for X — use Y instead" disambiguation, measurably reducing routing collisions on adjacent issue-lifecycle requests.
-- The five `audit-*` skills are reachable through a single Tier 1 entry point, cutting the audit footprint in the listing budget from ~5 entries to 1.
-- All `skills/*/SKILL.md` files are under 500 lines; overflowing content has been moved to companion files.
-- CI rejects any new skill that exceeds 500 lines via `ll-verify-skills`.
+- ~~Tier 1 skill descriptions include explicit "Do NOT use for X — use Y instead" disambiguation, measurably reducing routing collisions on adjacent issue-lifecycle requests.~~ **Dropped** — ENH-1617 was cancelled after three consecutive tradeoff reviews concluded routing instructions cannot be written until the Tier 1 topology stabilizes. Successor: **ENH-1615** (suppress the 30 `ll-*` bridge stubs), which addresses the routing-collision problem structurally.
+- ~~The five `audit-*` skills are reachable through a single Tier 1 entry point, cutting the audit footprint in the listing budget from ~5 entries to 1.~~ **Dropped** — ENH-1618 was cancelled via go-no-go: its premise was wrong (only 1 audit Tier 1 slot was consumed, not 5; a meta-skill would *add* a slot). ENH-1615 eliminates the remaining audit entry as part of bridge-stub suppression.
+- All `skills/*/SKILL.md` files are under 500 lines; overflowing content has been moved to companion files. **Achieved** (ENH-494).
+- CI rejects any new skill that exceeds 500 lines via `ll-verify-skills`. **Achieved** (ENH-977).
 
 ## Motivation
 
@@ -61,10 +74,12 @@ ENH-494 (companion files) and ENH-977 (lint CLI) are the size-discipline side of
 
 ## Implementation Order
 
-1. **ENH-494** — establishes the companion-file convention and cap; prerequisite for ENH-977.
-2. **ENH-977** — adds the lint gate once the convention is defined.
-3. **ENH-1618** — consolidates audit skills; finalizes Tier 1 topology before descriptions are written.
-4. **ENH-1617** — writes negative routing instructions; best done after Tier 1 shape is stable (ENH-1618 done).
+1. **ENH-494** ✓ done — establishes the companion-file convention and cap; prerequisite for ENH-977.
+2. **ENH-977** ✓ done — adds the lint gate once the convention is defined.
+3. **ENH-1618** ✗ cancelled (go-no-go: premise factually wrong — only 1 audit Tier 1 slot consumed; a meta-skill would add a slot, not save one).
+4. **ENH-1617** ✗ cancelled (three tradeoff reviews: Tier 1 topology must stabilize via ENH-1615 before routing instructions can be written).
+
+The routing-quality residue of goals 1–2 is carried by **ENH-1615** (open, not a child of this epic — linked in `relates_to` as successor).
 
 ## Integration Map
 
@@ -93,13 +108,17 @@ ENH-494 (companion files) and ENH-977 (lint CLI) are the size-discipline side of
 
 ---
 
-**Open** | Created: 2026-05-27 | Priority: P3
+**Done** | Created: 2026-05-27 | Closed: 2026-06-12 | Priority: P3
 
 ## Verification Notes
 
+_Updated by epic audit on 2026-06-12_
+
+**Verdict: CLOSED (partial delivery)** — All 8 children terminal: 6 done (ENH-494, ENH-977, BUG-1799, BUG-1800, ENH-1801, ENH-1802), 2 cancelled (ENH-1617, ENH-1618). Size-discipline goals fully delivered (`ll-verify-skills` passes clean; listing budget 1412/2000 tokens). Routing goals 1–2 were consciously dropped, with ENH-1615 as the structural successor (see Goal section).
+
 _Added by `/ll:verify-issues` on 2026-05-31_
 
-**Verdict: NEEDS_UPDATE** — ENH-494 and ENH-977 are now done (ll-verify-skills CLI exists). ENH-1801 and ENH-1802 are also done. Still open: ENH-1617 (negative routing instructions) and ENH-1618 (consolidate audit skills); skills/audit/ meta-skill does not exist yet.
+**Verdict: NEEDS_UPDATE** (stale) — ENH-494 and ENH-977 are now done (ll-verify-skills CLI exists). ENH-1801 and ENH-1802 are also done. Still open: ENH-1617 (negative routing instructions) and ENH-1618 (consolidate audit skills); skills/audit/ meta-skill does not exist yet.
 
 - `/ll:verify-issues` - 2026-06-05 - Epic is 75% complete (6/8 children done). Implementation Order section hasn't been updated to mark ENH-494 and ENH-977 as complete. `ll-verify-skills` CLI is fully implemented and wired. Remaining: ENH-1617 (negative routing) and ENH-1618 (consolidate audit skills — `skills/audit/` dir does not exist). Update body to reflect completed prerequisites and focus remaining scope.
 

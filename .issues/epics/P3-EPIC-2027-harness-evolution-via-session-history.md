@@ -3,12 +3,21 @@ id: EPIC-2027
 title: Harness evolution via session history
 type: EPIC
 priority: P3
-status: open
-captured_at: "2026-06-08T00:00:00Z"
-discovered_date: "2026-06-08"
+status: done
+captured_at: '2026-06-08T00:00:00Z'
+discovered_date: '2026-06-08'
 discovered_by: capture-issue
-labels: [epic, history, analyze-history, improve-claude-md, evolution, harness]
-relates_to: [EPIC-1707, EPIC-1918, ENH-1911]
+labels:
+- epic
+- history
+- analyze-history
+- improve-claude-md
+- evolution
+- harness
+relates_to:
+- EPIC-1707
+- EPIC-1918
+- ENH-1911
 ---
 
 # EPIC-2027: Harness evolution via session history
@@ -63,12 +72,19 @@ list for human review — never an auto-edit.
   recurrence ≥ N) and skill-bypass detector (user performed work manually
   that a registered skill covers, counted per skill). Surfaces an
   `## Evolution Triggers` section in `analyze-history` reports; feeds
-  `improve-claude-md` with count-backed candidates.
+  `improve-claude-md` with count-backed candidates. **Done.**
+- **ENH-2046** — Evolution-trigger consumer + correction retirement:
+  `improve-claude-md --consume-triggers` (CT-0…CT-4 pipeline: candidates →
+  dedup → per-candidate approval, including "Add to CLAUDE.md" with the
+  recurrence count in the rationale → persist to `decisions.yaml` →
+  retirement records in `correction_retirements`, schema v13). **Done.**
+  Satisfies success metric 3.
 
 ## Potential Future Children
 
-- An `improve-claude-md` enhancement that consumes evolution-trigger output
-  and proposes CLAUDE.md rule additions annotated with recurrence counts.
+- ~~An `improve-claude-md` enhancement that consumes evolution-trigger output
+  and proposes CLAUDE.md rule additions annotated with recurrence counts.~~
+  **Delivered by ENH-2046.**
 - A periodic FSM loop that runs the full detect → propose pipeline and
   files candidate-rule issues when thresholds are crossed.
 - A "harness drift score" metric: composite of bypass rate + uncorrected
@@ -97,7 +113,11 @@ epic, history, analyze-history, improve-claude-md, evolution, harness
 
 ## Status
 
-open
+done — closed 2026-06-12 by epic audit. Both children (ENH-1911, ENH-2046)
+done; all three success metrics verified (metric 3 confirmed against
+`skills/improve-claude-md/SKILL.md` `--consume-triggers` pipeline). The two
+remaining "Potential Future Children" (periodic FSM loop, harness drift
+score) were explicitly optional and are not carried forward.
 
 ## Session Log
 

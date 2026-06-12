@@ -183,4 +183,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-06-09 | Priority: P3
+**Deferred** | Created: 2026-06-09 | Priority: P3
+
+**Deferral rationale (2026-06-12, epic audit)**: former blocker ENH-1982 is
+done (commit `e9fc3578`), so `blocked_by` no longer applies — but the issue
+keeps `decision_needed: true` with low confidence scores (50/52): the
+onboarding-flow design (which loop to suggest, how much hand-holding, where it
+runs) is an open product decision. Deferred as a scope extension beyond
+EPIC-1978's success criteria; revisit via `/ll:decide-issue FEAT-2041` when
+onboarding becomes a priority.

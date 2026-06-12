@@ -2,7 +2,7 @@
 id: ENH-1982
 title: Deprecate /ll:init skill to a redirect stub
 type: enhancement
-status: deferred
+status: done
 priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue

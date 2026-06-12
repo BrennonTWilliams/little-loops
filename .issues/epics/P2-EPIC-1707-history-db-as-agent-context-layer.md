@@ -3,21 +3,21 @@ id: EPIC-1707
 title: history.db as Agent Context Layer
 type: EPIC
 priority: P2
-status: open
+status: done
 discovered_date: 2026-05-26
 captured_at: "2026-05-26T00:48:43Z"
 discovered_by: capture-issue
 labels:
   - epic
   - captured
-relates_to: [ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1830, FEAT-1680, ENH-1839, ENH-1846, ENH-1847, ENH-1887, ENH-1888, ENH-1904, ENH-1905, ENH-1906, ENH-1907, ENH-1909, ENH-1911, ENH-1913, ENH-1914, ENH-1915, ENH-1916, BUG-1926, ENH-1927, BUG-1928, ENH-1945, ENH-1946, ENH-2028, ENH-2040]
+relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1834, ENH-1835, ENH-1830, FEAT-948, FEAT-1680, ENH-1839, ENH-1846, ENH-1847, ENH-1887, ENH-1888, ENH-1904, ENH-1905, ENH-1906, ENH-1907, ENH-1909, ENH-1911, ENH-1913, ENH-1914, ENH-1915, ENH-1916, BUG-1926, ENH-1927, BUG-1928, ENH-1945, ENH-1946, ENH-2028, ENH-2040]
 ---
 
 # EPIC-1707: history.db as Agent Context Layer
 
 ## Summary
 
-Turn `.ll/history.db` from a write-only telemetry sink into a queryable context layer that ll skills, commands, and agents read from to make better decisions. The producer side (6 event tables + FTS5 `search_index`, writer hooks, `SQLiteTransport`) is built; the read API (`history_reader.py`, ENH-1752) is **done**; the `ll-history-context` CLI (ENH-1846) is **done**; and the initial 3-skill consumer wiring (ENH-1847: `refine-issue`, `ready-issue`, `confidence-check`) is **done**. Remaining work: broaden correction detection quality (ENH-1887), expand consumer coverage to `go-no-go` and `capture-issue` (ENH-1888), and the P3 features (FEAT-1712, FEAT-948, FEAT-1736).
+Turn `.ll/history.db` from a write-only telemetry sink into a queryable context layer that ll skills, commands, and agents read from to make better decisions. The producer side (6 event tables + FTS5 `search_index`, writer hooks, `SQLiteTransport`) is built; the read API (`history_reader.py`, ENH-1752) and `ll-history-context` CLI (ENH-1846) shipped; and consumer wiring now covers **7 skills** (`confidence-check`, `go-no-go`, `refine-issue`, `ready-issue`, `manage-issue`, `scope-epic`, `create-sprint`), well past the "at least 3 skills" success metric. All 34 tracked children are done — the epic is complete.
 
 ## Goal
 
@@ -138,9 +138,9 @@ ENH-1911 (Quantified evolution triggers from history) is `relates_to` this EPIC,
 
 ## Verification Notes
 
-_Updated by `/ll:verify-issues` on 2026-06-09_
+_Updated by epic audit on 2026-06-12_
 
-**Verdict: DEP_ISSUES** — 4 broken child references: ENH-1834, ENH-1835, ENH-1927, BUG-1928 are listed as children but no issue files exist for any of them. Remove or create these entries before implementing child issues to avoid orphaned references.
+**Verdict: CLOSED** — All 34 tracked children are done (confirmed via `ll-issues epic-progress EPIC-1707`). The 2026-06-09 DEP_ISSUES verdict (4 broken child references: ENH-1834, ENH-1835, ENH-1927, BUG-1928) is stale — all four issue files now exist and are done. Summary updated from "3 skills wired" to the actual 7-skill coverage. Success metric 4 (reduction in repeated user_corrections) is qualitative with no tracking mechanism; accepted as qualitative per the epic body.
 
 _Added by `/ll:verify-issues` on 2026-06-04 (updated from 2026-05-31)_
 
@@ -169,6 +169,6 @@ _Added by `/ll:verify-issues` on 2026-06-04 (updated from 2026-05-31)_
 
 ---
 
-**Open** | Created: 2026-05-26 | Priority: P2
+**Done** | Created: 2026-05-26 | Closed: 2026-06-12 | Priority: P2
 
 **Update 2026-06-04 (re-verified)**: Confirmed 7 skills now wired (confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, create-sprint) — up from the 3 claimed by the Summary. 25 of 29 children are `done`. Remaining open: FEAT-1736 (missing status field, now fixed to `open`), ENH-1906, ENH-1927, ENH-1945. Body Summary text still needs updating to reflect 7-skill coverage.

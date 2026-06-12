@@ -1,13 +1,23 @@
 ---
 id: EPIC-1978
-title: CLI-first init — headless core with thin frontends
+title: "CLI-first init \u2014 headless core with thin frontends"
 type: epic
-status: open
+status: done
 priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue
-relates_to: [EPIC-1463, EPIC-1622, FEAT-1475, FEAT-2041, ENH-2092]
-labels: [epic, init, cli, host-compat, dx]
+relates_to:
+- EPIC-1463
+- EPIC-1622
+- FEAT-1475
+- FEAT-2041
+- ENH-2092
+labels:
+- epic
+- init
+- cli
+- host-compat
+- dx
 ---
 
 # EPIC-1978: CLI-first init — headless core with thin frontends
@@ -90,17 +100,18 @@ Prior art to lean on: `ll-doctor` (host capability detection) and
 - **FEAT-1979** ✓ done — Extract init logic into a headless `ll-init` Python core.
 - **FEAT-1980** ✓ done — `ll-init` interactive terminal TUI.
 - **FEAT-1981** ✓ done — Host multi-select wiring (Claude Code / Codex / Pi).
-- **BUG-2042** — Three parity gaps in the Python core: `deploy_design_tokens`
+- **BUG-2042** ✓ done — Three parity gaps in the Python core: `deploy_design_tokens`
   not called, `history.session_digest` absent from generated config,
-  `Skill(ll:explore-api)` permission not wired for learning-tests. Blocks ENH-1982.
-- **ENH-1982** — Deprecate `/ll:init` skill to a redirect stub; delete
-  `interactive.md` prose flow. Blocked by BUG-2042.
-- **ENH-2043** — Add CLAUDE.md update step to the TUI (Round 12 parity). P3;
-  doesn't block ENH-1982.
-- **ENH-2092** — Bring `ll-init` TUI to config-capability parity with `/ll:init`
-  (add every missing config-producing question to the interactive flow). P2;
-  blocks ENH-1982.
-- **FEAT-2041** — Guided first-loop onboarding after ll init. Blocked by ENH-1982.
+  `Skill(ll:explore-api)` permission not wired for learning-tests.
+- **ENH-1982** ✓ done (commit `e9fc3578`, 2026-06-12) — Deprecate `/ll:init` skill
+  to a redirect stub; delete `interactive.md` prose flow.
+- **ENH-2043** ✓ done — Add CLAUDE.md update step to the TUI (Round 12 parity).
+- **ENH-2092** ✓ done — Bring `ll-init` TUI to config-capability parity with
+  `/ll:init` (add every missing config-producing question to the interactive flow).
+- **FEAT-2041** — Guided first-loop onboarding after ll init. **Deferred** —
+  former blocker ENH-1982 is now done, but the issue carries `decision_needed: true`
+  (onboarding-flow design ambiguity); it is a scope extension beyond this epic's
+  success criteria and does not gate closure.
 
 ## Scope
 
