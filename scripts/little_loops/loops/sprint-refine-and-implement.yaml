@@ -13,10 +13,6 @@ initial: get_next_issue
 max_iterations: 500
 timeout: 28800
 on_handoff: spawn
-# The .loops/tmp/sprint-refine-and-implement-{skipped,impl-queue}.txt files are
-# part of the caller_prefix contract with oracles/implement-issue-chain (which
-# also declares shared_state_ok). Not safe for concurrent runs of this loop.
-shared_state_ok: true
 import:
   - lib/common.yaml
 context:
@@ -26,8 +22,8 @@ context:
 states:
   get_next_issue:
     action: |
-      mkdir -p .loops/tmp
-      SKIP_FILE=".loops/tmp/sprint-refine-and-implement-skipped.txt"
+      mkdir -p "${context.run_dir}"
+      SKIP_FILE="${context.run_dir}/sprint-refine-and-implement-skipped.txt"
       if [ -z "${context.sprint_name}" ]; then
         echo "Usage: ll-loop run sprint-refine-and-implement <sprint-name>" >&2
         exit 1
@@ -70,7 +66,7 @@ states:
   skip_and_continue:
     action: |
       echo "Skipping ${captured.input.output} after refinement failure"
-      echo "${captured.input.output}" >> .loops/tmp/sprint-refine-and-implement-skipped.txt
+      echo "${captured.input.output}" >> ${context.run_dir}/sprint-refine-and-implement-skipped.txt
     fragment: queue_track
     next: get_next_issue
 

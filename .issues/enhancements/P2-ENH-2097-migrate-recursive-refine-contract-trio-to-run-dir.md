@@ -1,15 +1,23 @@
 ---
 id: ENH-2097
-title: Migrate the recursive-refine / implement-issue-chain shared-tmp contract to ${context.run_dir}
+title: Migrate the recursive-refine / implement-issue-chain shared-tmp contract to
+  ${context.run_dir}
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-12T14:10:00Z'
+completed_at: '2026-06-12T21:25:04Z'
 discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 relates_to:
 - ENH-2096
 - ENH-1874
+confidence_score: 100
+outcome_confidence: 88
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 23
 ---
 
 # ENH-2097: Migrate the recursive-refine contract trio to `${context.run_dir}`
@@ -83,5 +91,18 @@ Running `oracles/implement-issue-chain` standalone after a *standalone* recursiv
 - N/A
 
 
+## Resolution
+
+All four loop files migrated atomically to `${context.run_dir}`:
+- `recursive-refine.yaml`: 128 `.loops/tmp/recursive-refine-*` path literals replaced; two Python f-string blocks updated with explicit `run_dir` variable; `shared_state_ok: true` and stale comment removed
+- `oracles/implement-issue-chain.yaml`: `recursive-refine-{passed,skipped}.txt` reader paths and caller_prefix queue/skip paths migrated; `shared_state_ok: true` removed
+- `auto-refine-and-implement.yaml`: skipped/impl-queue paths migrated; `shared_state_ok: true` and comment removed
+- `sprint-refine-and-implement.yaml`: skipped file path migrated; `shared_state_ok: true` and comment removed
+- `test_builtin_loops.py`: 5 tests updated (3 `.loops/tmp/` → `${context.run_dir}` assertions, 1 `shared_state_ok` inversion, 1 queue path assertion)
+
+All 820 tests pass. `ll-loop validate` reports zero MR-3 warnings for all four loops.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-12T21:14:27 - `c075077a-db89-41ce-be86-35b3dc26256a.jsonl`
 - `/ll:format-issue` - 2026-06-12T18:27:09 - `b707c5d1-5008-4de5-bbcc-8364948be699.jsonl`
+- `/ll:manage-issue` - 2026-06-12T21:25:04 - implementation complete

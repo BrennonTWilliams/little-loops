@@ -1715,8 +1715,8 @@ class TestAutoRefineAndImplementLoop:
         state = data["states"].get("skip_and_continue", {})
         assert state.get("next") == "get_next_issue"
 
-    def test_skipped_file_uses_loops_tmp(self, data: dict) -> None:
-        """Skipped tracking file must use .loops/tmp/ path."""
+    def test_skipped_file_uses_run_dir(self, data: dict) -> None:
+        """Skipped tracking file must use ${context.run_dir} path."""
         states = data.get("states", {})
         skipped_ref = "auto-refine-and-implement-skipped"
         found = False
@@ -1724,7 +1724,7 @@ class TestAutoRefineAndImplementLoop:
             action = state_data.get("action", "")
             if skipped_ref in action:
                 found = True
-                assert ".loops/tmp/" in action
+                assert "${context.run_dir}" in action
         assert found, f"No state references {skipped_ref!r}"
 
 
@@ -2835,8 +2835,8 @@ class TestRecursiveRefineLoop:
         assert "on_success" in state
         assert "on_failure" in state
 
-    def test_queue_file_uses_loops_tmp(self, data: dict) -> None:
-        """Queue file references must use .loops/tmp/ (not bare /tmp/)."""
+    def test_queue_file_uses_run_dir(self, data: dict) -> None:
+        """Queue file references must use ${context.run_dir} (not bare .loops/tmp/)."""
         states = data.get("states", {})
         queue_ref = "recursive-refine-queue"
         found = False
@@ -2844,13 +2844,13 @@ class TestRecursiveRefineLoop:
             action = state_data.get("action", "")
             if queue_ref in action:
                 found = True
-                assert ".loops/tmp/" in action, (
-                    f"Queue file reference must use .loops/tmp/, got: {action[:200]}"
+                assert "${context.run_dir}" in action, (
+                    f"Queue file reference must use ${{context.run_dir}}, got: {action[:200]}"
                 )
         assert found, f"No state references {queue_ref!r}"
 
-    def test_skipped_file_uses_loops_tmp(self, data: dict) -> None:
-        """Skipped tracking file must use .loops/tmp/ path."""
+    def test_skipped_file_uses_run_dir(self, data: dict) -> None:
+        """Skipped tracking file must use ${context.run_dir} path."""
         states = data.get("states", {})
         skipped_ref = "recursive-refine-skipped"
         found = False
@@ -2858,7 +2858,7 @@ class TestRecursiveRefineLoop:
             action = state_data.get("action", "")
             if skipped_ref in action:
                 found = True
-                assert ".loops/tmp/" in action
+                assert "${context.run_dir}" in action
         assert found, f"No state references {skipped_ref!r}"
 
     def test_parse_input_validates_context_input(self, data: dict) -> None:
@@ -5801,9 +5801,9 @@ class TestImplementIssueChainOracle:
         assert "caller_prefix" in params, "parameters block must declare caller_prefix"
         assert params["caller_prefix"].get("required") is True
 
-    def test_shared_state_ok_is_set(self, data: dict) -> None:
-        assert data.get("shared_state_ok") is True, (
-            "shared_state_ok must be True (queue files cross-run by design)"
+    def test_shared_state_ok_not_set(self, data: dict) -> None:
+        assert data.get("shared_state_ok") is not True, (
+            "shared_state_ok must not be set after ENH-2097 run_dir migration"
         )
 
     def test_required_states_exist(self, data: dict) -> None:
@@ -5855,16 +5855,16 @@ class TestImplementIssueChainOracle:
         action = state.get("action", "")
         assert "${context.caller_prefix}" in action
 
-    def test_impl_queue_file_uses_loops_tmp(self, data: dict) -> None:
-        """Impl queue file must use .loops/tmp/ path with caller_prefix interpolation."""
+    def test_impl_queue_file_uses_run_dir(self, data: dict) -> None:
+        """Impl queue file must use ${context.run_dir} with caller_prefix interpolation."""
         states = data.get("states", {})
         found = False
         for state_data in states.values():
             action = state_data.get("action", "")
             if "${context.caller_prefix}-impl-queue" in action:
                 found = True
-                assert ".loops/tmp/" in action
-        assert found, "No state references ${context.caller_prefix}-impl-queue in .loops/tmp/"
+                assert "${context.run_dir}" in action
+        assert found, "No state references ${context.caller_prefix}-impl-queue in ${context.run_dir}"
 
     def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
         """go_no_go must call ll-action via the invoke subcommand."""

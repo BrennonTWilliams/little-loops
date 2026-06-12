@@ -9,10 +9,6 @@ initial: init
 max_iterations: 500
 timeout: 28800
 on_handoff: spawn
-# The .loops/tmp/auto-refine-and-implement-{skipped,impl-queue}.txt files are
-# part of the caller_prefix contract with oracles/implement-issue-chain (which
-# also declares shared_state_ok). Not safe for concurrent runs of this loop.
-shared_state_ok: true
 import:
   - lib/common.yaml
 context:
@@ -20,16 +16,16 @@ context:
 
 states:
   init:
-    action: mkdir -p .loops/tmp && rm -f .loops/tmp/auto-refine-and-implement-skipped.txt && rm -f .loops/tmp/auto-refine-and-implement-impl-queue.txt
+    action: mkdir -p "${context.run_dir}" && rm -f ${context.run_dir}/auto-refine-and-implement-skipped.txt && rm -f ${context.run_dir}/auto-refine-and-implement-impl-queue.txt
     action_type: shell
     next: get_next_issue
 
   get_next_issue:
     action: |
-      mkdir -p .loops/tmp
+      mkdir -p "${context.run_dir}"
       SKIPPED=""
-      if [ -f .loops/tmp/auto-refine-and-implement-skipped.txt ]; then
-        SKIPPED=$(paste -sd ',' .loops/tmp/auto-refine-and-implement-skipped.txt)
+      if [ -f ${context.run_dir}/auto-refine-and-implement-skipped.txt ]; then
+        SKIPPED=$(paste -sd ',' ${context.run_dir}/auto-refine-and-implement-skipped.txt)
       fi
       if [ -n "$SKIPPED" ]; then
         ll-issues next-issue --skip "$SKIPPED"
@@ -61,7 +57,7 @@ states:
   skip_and_continue:
     action: |
       echo "Skipping ${captured.input.output} after refinement failure"
-      echo "${captured.input.output}" >> .loops/tmp/auto-refine-and-implement-skipped.txt
+      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-skipped.txt
     fragment: queue_track
     next: get_next_issue
 

@@ -17,14 +17,6 @@ max_iterations: 500
 timeout: 28800
 on_handoff: spawn
 artifact_versioning: true
-# The .loops/tmp/recursive-refine-*.txt files form a cross-loop contract:
-# oracles/implement-issue-chain (which also declares shared_state_ok) reads
-# recursive-refine-passed.txt / -skipped.txt at the same bare paths when both
-# run as sibling sub-loops of auto-refine-and-implement or
-# sprint-refine-and-implement. Not safe for concurrent runs of this loop;
-# migrating the whole contract trio to ${context.run_dir} is tracked as a
-# follow-up issue.
-shared_state_ok: true
 parameters:
   input:
     type: string
@@ -48,32 +40,32 @@ states:
         echo "ERROR: input is required. Usage: ll-loop run recursive-refine \"ID1,ID2\""
         exit 1
       fi
-      mkdir -p .loops/tmp
-      printf '' > .loops/tmp/recursive-refine-passed.txt
-      printf '' > .loops/tmp/recursive-refine-skipped.txt
-      printf '' > .loops/tmp/recursive-refine-visited.txt
+      mkdir -p "${context.run_dir}"
+      printf '' > ${context.run_dir}/recursive-refine-passed.txt
+      printf '' > ${context.run_dir}/recursive-refine-skipped.txt
+      printf '' > ${context.run_dir}/recursive-refine-visited.txt
       echo "${context.input}" | tr ',' '\n' \
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
         | grep -v '^[[:space:]]*$' \
         | sort -u \
-        > .loops/tmp/recursive-refine-queue.txt
-      cp .loops/tmp/recursive-refine-queue.txt \
-        .loops/tmp/recursive-refine-original-queue.txt
+        > ${context.run_dir}/recursive-refine-queue.txt
+      cp ${context.run_dir}/recursive-refine-queue.txt \
+        ${context.run_dir}/recursive-refine-original-queue.txt
       while IFS= read -r id; do echo "$id 0"; done \
-        < .loops/tmp/recursive-refine-queue.txt \
-        > .loops/tmp/recursive-refine-depth-map.txt
-      > .loops/tmp/recursive-refine-skipped-depth.txt
-      printf '' > .loops/tmp/recursive-refine-attempts.txt
-      printf '' > .loops/tmp/recursive-refine-skipped-budget.txt
-      printf '' > .loops/tmp/recursive-refine-skipped-decomposed.txt
-      printf '' > .loops/tmp/recursive-refine-skipped-deadend.txt
-      printf '' > .loops/tmp/recursive-refine-skipped-decision.txt
-      printf '' > .loops/tmp/recursive-refine-skipped-missing-artifacts.txt
-      printf '' > .loops/tmp/recursive-refine-wire-attempts.txt
-      printf '' > .loops/tmp/recursive-refine-decomposition.tsv
-      printf '0' > .loops/tmp/recursive-refine-dequeued-count.txt
-      COUNT=$(wc -l < .loops/tmp/recursive-refine-queue.txt | tr -d ' ')
-      printf '%s' "$COUNT" > .loops/tmp/recursive-refine-total-enqueued.txt
+        < ${context.run_dir}/recursive-refine-queue.txt \
+        > ${context.run_dir}/recursive-refine-depth-map.txt
+      > ${context.run_dir}/recursive-refine-skipped-depth.txt
+      printf '' > ${context.run_dir}/recursive-refine-attempts.txt
+      printf '' > ${context.run_dir}/recursive-refine-skipped-budget.txt
+      printf '' > ${context.run_dir}/recursive-refine-skipped-decomposed.txt
+      printf '' > ${context.run_dir}/recursive-refine-skipped-deadend.txt
+      printf '' > ${context.run_dir}/recursive-refine-skipped-decision.txt
+      printf '' > ${context.run_dir}/recursive-refine-skipped-missing-artifacts.txt
+      printf '' > ${context.run_dir}/recursive-refine-wire-attempts.txt
+      printf '' > ${context.run_dir}/recursive-refine-decomposition.tsv
+      printf '0' > ${context.run_dir}/recursive-refine-dequeued-count.txt
+      COUNT=$(wc -l < ${context.run_dir}/recursive-refine-queue.txt | tr -d ' ')
+      printf '%s' "$COUNT" > ${context.run_dir}/recursive-refine-total-enqueued.txt
       echo "Queued $COUNT issue(s) for recursive refinement"
     fragment: shell_exit
     on_yes: dequeue_next
@@ -86,24 +78,24 @@ states:
     # the refine-to-ready-issue sub-loop as context.input.
     # Exits 1 (→ done) when the queue is empty.
     action: |
-      if [ ! -s .loops/tmp/recursive-refine-queue.txt ]; then
+      if [ ! -s ${context.run_dir}/recursive-refine-queue.txt ]; then
         exit 1
       fi
-      CURRENT=$(head -1 .loops/tmp/recursive-refine-queue.txt)
-      tail -n +2 .loops/tmp/recursive-refine-queue.txt \
-        > .loops/tmp/recursive-refine-queue.tmp
-      mv .loops/tmp/recursive-refine-queue.tmp \
-        .loops/tmp/recursive-refine-queue.txt
-      echo "$CURRENT" >> .loops/tmp/recursive-refine-visited.txt
-      DEPTH=$(grep "^$CURRENT " .loops/tmp/recursive-refine-depth-map.txt 2>/dev/null | awk '{print $2}')
-      printf '%s' "$${DEPTH:-0}" > .loops/tmp/recursive-refine-current-depth.txt
-      DEQUEUED=$(cat .loops/tmp/recursive-refine-dequeued-count.txt 2>/dev/null || echo 0)
+      CURRENT=$(head -1 ${context.run_dir}/recursive-refine-queue.txt)
+      tail -n +2 ${context.run_dir}/recursive-refine-queue.txt \
+        > ${context.run_dir}/recursive-refine-queue.tmp
+      mv ${context.run_dir}/recursive-refine-queue.tmp \
+        ${context.run_dir}/recursive-refine-queue.txt
+      echo "$CURRENT" >> ${context.run_dir}/recursive-refine-visited.txt
+      DEPTH=$(grep "^$CURRENT " ${context.run_dir}/recursive-refine-depth-map.txt 2>/dev/null | awk '{print $2}')
+      printf '%s' "$${DEPTH:-0}" > ${context.run_dir}/recursive-refine-current-depth.txt
+      DEQUEUED=$(cat ${context.run_dir}/recursive-refine-dequeued-count.txt 2>/dev/null || echo 0)
       DEQUEUED=$((DEQUEUED + 1))
-      printf '%s' "$DEQUEUED" > .loops/tmp/recursive-refine-dequeued-count.txt
-      TOTAL=$(cat .loops/tmp/recursive-refine-total-enqueued.txt 2>/dev/null || echo '?')
-      PASSED=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-passed.txt 2>/dev/null || echo 0)
-      QUEUED=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-queue.txt 2>/dev/null || echo 0)
-      SKIPPED=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-skipped.txt 2>/dev/null || echo 0)
+      printf '%s' "$DEQUEUED" > ${context.run_dir}/recursive-refine-dequeued-count.txt
+      TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo '?')
+      PASSED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-passed.txt 2>/dev/null || echo 0)
+      QUEUED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || echo 0)
+      SKIPPED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-skipped.txt 2>/dev/null || echo 0)
       DEPTH_STR=$${DEPTH:+" (depth: $DEPTH)"}
       printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
         "$DEQUEUED" "$TOTAL" "$CURRENT" "$DEPTH_STR" "$PASSED" "$QUEUED" "$SKIPPED" >&2
@@ -133,16 +125,16 @@ states:
           except Exception:
               pass
       cap = cfg.get('max_refine_count', ${context.max_refine_count})
-      attempts_file = '.loops/tmp/recursive-refine-attempts.txt'
+      attempts_file = '${context.run_dir}/recursive-refine-attempts.txt'
       try:
           lines = Path(attempts_file).read_text().splitlines()
       except FileNotFoundError:
           lines = []
       count = sum(1 for ln in lines if ln.strip() == issue_id)
       if count >= cap:
-          with open('.loops/tmp/recursive-refine-skipped-budget.txt', 'a') as f:
+          with open('${context.run_dir}/recursive-refine-skipped-budget.txt', 'a') as f:
               f.write(issue_id + '\n')
-          with open('.loops/tmp/recursive-refine-skipped.txt', 'a') as f:
+          with open('${context.run_dir}/recursive-refine-skipped.txt', 'a') as f:
               f.write(issue_id + '\n')
           sys.exit(1)
       with open(attempts_file, 'a') as f:
@@ -167,7 +159,7 @@ states:
       issues = json.load(sys.stdin)
       for i in sorted(i['id'] for i in issues):
           print(i)
-      " > .loops/tmp/recursive-refine-pre-ids.txt
+      " > ${context.run_dir}/recursive-refine-pre-ids.txt
     action_type: shell
     next: run_refine
     on_error: run_refine
@@ -219,7 +211,7 @@ states:
       passed = (int(d.get('confidence') or 0) >= readiness
                 and int(d.get('outcome') or 0) >= outcome)
       if passed:
-          with open('.loops/tmp/recursive-refine-passed.txt', 'a') as f:
+          with open('${context.run_dir}/recursive-refine-passed.txt', 'a') as f:
               f.write(issue_id + '\n')
       sys.exit(0 if passed else 1)
       PYEOF
@@ -240,11 +232,11 @@ states:
       issues = json.load(sys.stdin)
       for i in sorted(i['id'] for i in issues):
           print(i)
-      " | sort > .loops/tmp/recursive-refine-post-ids.txt
+      " | sort > ${context.run_dir}/recursive-refine-post-ids.txt
 
-      comm -13 .loops/tmp/recursive-refine-pre-ids.txt \
-               .loops/tmp/recursive-refine-post-ids.txt \
-               > .loops/tmp/recursive-refine-diff-ids.txt
+      comm -13 ${context.run_dir}/recursive-refine-pre-ids.txt \
+               ${context.run_dir}/recursive-refine-post-ids.txt \
+               > ${context.run_dir}/recursive-refine-diff-ids.txt
 
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
@@ -252,11 +244,11 @@ states:
         if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
           echo "$child_id"
         fi
-      done < .loops/tmp/recursive-refine-diff-ids.txt \
-        > .loops/tmp/recursive-refine-new-children.txt
+      done < ${context.run_dir}/recursive-refine-diff-ids.txt \
+        > ${context.run_dir}/recursive-refine-new-children.txt
 
-      if [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
-        cat .loops/tmp/recursive-refine-new-children.txt
+      if [ -s ${context.run_dir}/recursive-refine-new-children.txt ]; then
+        cat ${context.run_dir}/recursive-refine-new-children.txt
         exit 0
       else
         exit 1
@@ -274,15 +266,16 @@ states:
       python3 << 'PYEOF'
       from pathlib import Path
       import sys
+      run_dir = '${context.run_dir}'
       visited = set()
       for f in ['recursive-refine-visited.txt', 'recursive-refine-passed.txt']:
-          p = Path(f'.loops/tmp/{f}')
+          p = Path(f'{run_dir}/{f}')
           if p.exists():
               visited.update(ln.strip() for ln in p.read_text().splitlines() if ln.strip())
-      queue_p = Path('.loops/tmp/recursive-refine-queue.txt')
+      queue_p = Path(f'{run_dir}/recursive-refine-queue.txt')
       if queue_p.exists():
           visited.update(ln.strip() for ln in queue_p.read_text().splitlines() if ln.strip())
-      candidates_p = Path('.loops/tmp/recursive-refine-new-children.txt')
+      candidates_p = Path(f'{run_dir}/recursive-refine-new-children.txt')
       candidates = []
       if candidates_p.exists():
           candidates = [ln.strip() for ln in candidates_p.read_text().splitlines() if ln.strip()]
@@ -292,34 +285,34 @@ states:
       survivors = [cid for cid in candidates if cid not in visited]
       candidates_p.write_text(''.join(f'{c}\n' for c in survivors))
       PYEOF
-      CHILDREN=$(cat .loops/tmp/recursive-refine-new-children.txt)
-      EXISTING=$(cat .loops/tmp/recursive-refine-queue.txt 2>/dev/null || true)
+      CHILDREN=$(cat ${context.run_dir}/recursive-refine-new-children.txt)
+      EXISTING=$(cat ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || true)
       { echo "$CHILDREN"; echo "$EXISTING"; } \
         | grep -v '^[[:space:]]*$' \
-        > .loops/tmp/recursive-refine-queue.txt
-      PARENT_DEPTH=$(cat .loops/tmp/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
+        > ${context.run_dir}/recursive-refine-queue.txt
+      PARENT_DEPTH=$(cat ${context.run_dir}/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
       while IFS= read -r child; do
-        echo "$child $((PARENT_DEPTH + 1))" >> .loops/tmp/recursive-refine-depth-map.txt
-      done < .loops/tmp/recursive-refine-new-children.txt
-      CHILD_IDS=$(cat .loops/tmp/recursive-refine-new-children.txt | tr '\n' ',' | sed 's/,$//')
+        echo "$child $((PARENT_DEPTH + 1))" >> ${context.run_dir}/recursive-refine-depth-map.txt
+      done < ${context.run_dir}/recursive-refine-new-children.txt
+      CHILD_IDS=$(cat ${context.run_dir}/recursive-refine-new-children.txt | tr '\n' ',' | sed 's/,$//')
       printf '%s\t%s\t%s\t%s\n' "${captured.input.output}" "$CHILD_IDS" "sub-loop" \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .loops/tmp/recursive-refine-decomposition.tsv
-      echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
-      echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${context.run_dir}/recursive-refine-decomposition.tsv
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decomposed.txt
       PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
       if [ -n "$PARENT_FILE" ]; then
         mkdir -p .issues/completed
         git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
           || mv "$PARENT_FILE" .issues/completed/
       fi
-      CHILD_COUNT=$(wc -l < .loops/tmp/recursive-refine-new-children.txt | tr -d ' ')
-      PREV_TOTAL=$(cat .loops/tmp/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
-      printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > .loops/tmp/recursive-refine-total-enqueued.txt
+      CHILD_COUNT=$(wc -l < ${context.run_dir}/recursive-refine-new-children.txt | tr -d ' ')
+      PREV_TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
+      printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > ${context.run_dir}/recursive-refine-total-enqueued.txt
       echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
       PEEK_COUNT=5
-      QUEUE_LINES=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-queue.txt 2>/dev/null || echo 0)
+      QUEUE_LINES=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || echo 0)
       if [ "$QUEUE_LINES" -gt 0 ]; then
-        PEEK=$(head -"$PEEK_COUNT" .loops/tmp/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
+        PEEK=$(head -"$PEEK_COUNT" ${context.run_dir}/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
         if [ "$QUEUE_LINES" -gt "$PEEK_COUNT" ]; then
           REMAINING=$((QUEUE_LINES - PEEK_COUNT))
           printf '  Next up: %s [+%d more]\n' "$PEEK" "$REMAINING" >&2
@@ -336,9 +329,9 @@ states:
     # so the enqueue_or_skip diff reflects only what the explicit size-review creates,
     # not children already created by the sub-loop.
     action: |
-      if [ -f .loops/tmp/recursive-refine-post-ids.txt ]; then
-        cp .loops/tmp/recursive-refine-post-ids.txt \
-           .loops/tmp/recursive-refine-pre-ids.txt
+      if [ -f ${context.run_dir}/recursive-refine-post-ids.txt ]; then
+        cp ${context.run_dir}/recursive-refine-post-ids.txt \
+           ${context.run_dir}/recursive-refine-pre-ids.txt
       fi
     action_type: shell
     next: check_broke_down
@@ -355,7 +348,7 @@ states:
     # children exist still shortcuts past run_size_review.
     action: |
       FLAG=$(cat ${context.run_dir}/refine-broke-down 2>/dev/null || echo 0)
-      if [ "$FLAG" = "1" ] && [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
+      if [ "$FLAG" = "1" ] && [ -s ${context.run_dir}/recursive-refine-new-children.txt ]; then
         echo 1
       else
         echo 0
@@ -402,7 +395,7 @@ states:
       passed = (int(d.get('confidence') or 0) >= readiness
                 and int(d.get('outcome') or 0) >= outcome)
       if passed:
-          with open('.loops/tmp/recursive-refine-passed.txt', 'a') as f:
+          with open('${context.run_dir}/recursive-refine-passed.txt', 'a') as f:
               f.write(issue_id + '\n')
       sys.exit(0 if passed else 1)
       PYEOF
@@ -432,10 +425,10 @@ states:
       PYEOF
       )
       [ -z "$MAX_DEPTH" ] && MAX_DEPTH=${context.max_depth}
-      CURRENT_DEPTH=$(cat .loops/tmp/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
+      CURRENT_DEPTH=$(cat ${context.run_dir}/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
       if [ "$CURRENT_DEPTH" -ge "$MAX_DEPTH" ]; then
-        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-depth.txt
-        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-depth.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
         echo 1
       else
         echo 0
@@ -455,8 +448,8 @@ states:
     action: |
       ISSUE_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
       if [ -n "$ISSUE_FILE" ] && grep -q "decision_needed: true" "$ISSUE_FILE"; then
-        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decision.txt
-        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decision.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
         exit 1
       fi
       exit 0
@@ -484,7 +477,7 @@ states:
       import sys
       from pathlib import Path
       issue_id = '${captured.input.output}'
-      attempts_file = Path('.loops/tmp/recursive-refine-wire-attempts.txt')
+      attempts_file = Path('${context.run_dir}/recursive-refine-wire-attempts.txt')
       lines = attempts_file.read_text().splitlines() if attempts_file.exists() else []
       if issue_id in {ln.strip() for ln in lines if ln.strip()}:
           sys.exit(1)
@@ -510,8 +503,8 @@ states:
 
   skip_missing_artifacts:
     action: |
-      echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-missing-artifacts.txt
-      echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-missing-artifacts.txt
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
       echo "Skipped: ${captured.input.output} (missing_artifacts — wire repair attempted but unresolved)"
     action_type: shell
     next: dequeue_next
@@ -537,11 +530,11 @@ states:
       issues = json.load(sys.stdin)
       for i in sorted(i['id'] for i in issues):
           print(i)
-      " | sort > .loops/tmp/recursive-refine-post-ids.txt
+      " | sort > ${context.run_dir}/recursive-refine-post-ids.txt
 
-      comm -13 .loops/tmp/recursive-refine-pre-ids.txt \
-               .loops/tmp/recursive-refine-post-ids.txt \
-               > .loops/tmp/recursive-refine-diff-ids.txt
+      comm -13 ${context.run_dir}/recursive-refine-pre-ids.txt \
+               ${context.run_dir}/recursive-refine-post-ids.txt \
+               > ${context.run_dir}/recursive-refine-diff-ids.txt
 
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
@@ -549,21 +542,22 @@ states:
         if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
           echo "$child_id"
         fi
-      done < .loops/tmp/recursive-refine-diff-ids.txt \
-        > .loops/tmp/recursive-refine-new-children.txt
+      done < ${context.run_dir}/recursive-refine-diff-ids.txt \
+        > ${context.run_dir}/recursive-refine-new-children.txt
 
       python3 << 'PYEOF'
       from pathlib import Path
       import sys
+      run_dir = '${context.run_dir}'
       visited = set()
       for f in ['recursive-refine-visited.txt', 'recursive-refine-passed.txt']:
-          p = Path(f'.loops/tmp/{f}')
+          p = Path(f'{run_dir}/{f}')
           if p.exists():
               visited.update(ln.strip() for ln in p.read_text().splitlines() if ln.strip())
-      queue_p = Path('.loops/tmp/recursive-refine-queue.txt')
+      queue_p = Path(f'{run_dir}/recursive-refine-queue.txt')
       if queue_p.exists():
           visited.update(ln.strip() for ln in queue_p.read_text().splitlines() if ln.strip())
-      candidates_p = Path('.loops/tmp/recursive-refine-new-children.txt')
+      candidates_p = Path(f'{run_dir}/recursive-refine-new-children.txt')
       candidates = []
       if candidates_p.exists():
           candidates = [ln.strip() for ln in candidates_p.read_text().splitlines() if ln.strip()]
@@ -573,39 +567,39 @@ states:
       survivors = [cid for cid in candidates if cid not in visited]
       candidates_p.write_text(''.join(f'{c}\n' for c in survivors))
       if len(candidates) > 0 and len(survivors) == 0:
-          with open('.loops/tmp/recursive-refine-skipped-cycle.txt', 'a') as cf:
+          with open('${context.run_dir}/recursive-refine-skipped-cycle.txt', 'a') as cf:
               cf.write('${captured.input.output}\n')
       PYEOF
 
-      if [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
-        CHILDREN=$(cat .loops/tmp/recursive-refine-new-children.txt)
-        EXISTING=$(cat .loops/tmp/recursive-refine-queue.txt 2>/dev/null || true)
+      if [ -s ${context.run_dir}/recursive-refine-new-children.txt ]; then
+        CHILDREN=$(cat ${context.run_dir}/recursive-refine-new-children.txt)
+        EXISTING=$(cat ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || true)
         { echo "$CHILDREN"; echo "$EXISTING"; } \
           | grep -v '^[[:space:]]*$' \
-          > .loops/tmp/recursive-refine-queue.txt
-        PARENT_DEPTH=$(cat .loops/tmp/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
+          > ${context.run_dir}/recursive-refine-queue.txt
+        PARENT_DEPTH=$(cat ${context.run_dir}/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
         while IFS= read -r child; do
-          echo "$child $((PARENT_DEPTH + 1))" >> .loops/tmp/recursive-refine-depth-map.txt
-        done < .loops/tmp/recursive-refine-new-children.txt
-        CHILD_IDS=$(cat .loops/tmp/recursive-refine-new-children.txt | tr '\n' ',' | sed 's/,$//')
+          echo "$child $((PARENT_DEPTH + 1))" >> ${context.run_dir}/recursive-refine-depth-map.txt
+        done < ${context.run_dir}/recursive-refine-new-children.txt
+        CHILD_IDS=$(cat ${context.run_dir}/recursive-refine-new-children.txt | tr '\n' ',' | sed 's/,$//')
         printf '%s\t%s\t%s\t%s\n' "${captured.input.output}" "$CHILD_IDS" "size-review" \
-          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .loops/tmp/recursive-refine-decomposition.tsv
-        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
-        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${context.run_dir}/recursive-refine-decomposition.tsv
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decomposed.txt
         PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
         if [ -n "$PARENT_FILE" ]; then
           mkdir -p .issues/completed
           git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
             || mv "$PARENT_FILE" .issues/completed/
         fi
-        CHILD_COUNT=$(wc -l < .loops/tmp/recursive-refine-new-children.txt | tr -d ' ')
-        PREV_TOTAL=$(cat .loops/tmp/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
-        printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > .loops/tmp/recursive-refine-total-enqueued.txt
+        CHILD_COUNT=$(wc -l < ${context.run_dir}/recursive-refine-new-children.txt | tr -d ' ')
+        PREV_TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
+        printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > ${context.run_dir}/recursive-refine-total-enqueued.txt
         echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
         PEEK_COUNT=5
-        QUEUE_LINES=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-queue.txt 2>/dev/null || echo 0)
+        QUEUE_LINES=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || echo 0)
         if [ "$QUEUE_LINES" -gt 0 ]; then
-          PEEK=$(head -"$PEEK_COUNT" .loops/tmp/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
+          PEEK=$(head -"$PEEK_COUNT" ${context.run_dir}/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
           if [ "$QUEUE_LINES" -gt "$PEEK_COUNT" ]; then
             REMAINING=$((QUEUE_LINES - PEEK_COUNT))
             printf '  Next up: %s [+%d more]\n' "$PEEK" "$REMAINING" >&2
@@ -614,8 +608,8 @@ states:
           fi
         fi
       else
-        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
-        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-deadend.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-deadend.txt
         echo "Skipped: ${captured.input.output} (no further decomposition possible)"
       fi
     action_type: shell
@@ -626,7 +620,7 @@ states:
     # Cross-reference decomposition.tsv against passed.txt and emit a rollup block.
     # Runs after the queue is exhausted (dequeue_next on_no) and before done.
     action: |
-      if [ ! -s .loops/tmp/recursive-refine-decomposition.tsv ]; then
+      if [ ! -s ${context.run_dir}/recursive-refine-decomposition.tsv ]; then
         exit 0
       fi
       python3 << 'PYEOF'
@@ -638,11 +632,11 @@ states:
           except FileNotFoundError:
               return []
 
-      passed = set(read_ids('.loops/tmp/recursive-refine-passed.txt'))
+      passed = set(read_ids('${context.run_dir}/recursive-refine-passed.txt'))
 
       rows = []
       try:
-          for line in Path('.loops/tmp/recursive-refine-decomposition.tsv').read_text().splitlines():
+          for line in Path('${context.run_dir}/recursive-refine-decomposition.tsv').read_text().splitlines():
               parts = line.strip().split('\t')
               if len(parts) >= 2:
                   parent_id = parts[0]
@@ -674,21 +668,21 @@ states:
   done:
     # Emit a structured summary of passed and skipped issues for this run.
     action: |
-      PASSED_IDS=$(cat .loops/tmp/recursive-refine-passed.txt 2>/dev/null \
+      PASSED_IDS=$(cat ${context.run_dir}/recursive-refine-passed.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
-      DECOMPOSED_IDS=$(cat .loops/tmp/recursive-refine-skipped-decomposed.txt 2>/dev/null \
+      DECOMPOSED_IDS=$(cat ${context.run_dir}/recursive-refine-skipped-decomposed.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
-      DEADEND_IDS=$(cat .loops/tmp/recursive-refine-skipped-deadend.txt 2>/dev/null \
+      DEADEND_IDS=$(cat ${context.run_dir}/recursive-refine-skipped-deadend.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
-      DEPTH_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-depth.txt 2>/dev/null \
+      DEPTH_SKIPPED_IDS=$(cat ${context.run_dir}/recursive-refine-skipped-depth.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
-      CYCLE_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-cycle.txt 2>/dev/null \
+      CYCLE_SKIPPED_IDS=$(cat ${context.run_dir}/recursive-refine-skipped-cycle.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
-      BUDGET_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-budget.txt 2>/dev/null \
+      BUDGET_SKIPPED_IDS=$(cat ${context.run_dir}/recursive-refine-skipped-budget.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
-      DECISION_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-decision.txt 2>/dev/null \
+      DECISION_SKIPPED_IDS=$(cat ${context.run_dir}/recursive-refine-skipped-decision.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
-      MISSING_ARTIFACTS_IDS=$(cat .loops/tmp/recursive-refine-skipped-missing-artifacts.txt 2>/dev/null \
+      MISSING_ARTIFACTS_IDS=$(cat ${context.run_dir}/recursive-refine-skipped-missing-artifacts.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
@@ -729,16 +723,16 @@ states:
           except FileNotFoundError:
               return []
 
-      roots = read_ids('.loops/tmp/recursive-refine-original-queue.txt')
+      roots = read_ids('${context.run_dir}/recursive-refine-original-queue.txt')
       if not roots:
           sys.exit(0)
 
-      passed = set(read_ids('.loops/tmp/recursive-refine-passed.txt'))
-      skipped = set(read_ids('.loops/tmp/recursive-refine-skipped.txt'))
-      depth_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-depth.txt'))
-      cycle_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-cycle.txt'))
-      budget_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-budget.txt'))
-      decision_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-decision.txt'))
+      passed = set(read_ids('${context.run_dir}/recursive-refine-passed.txt'))
+      skipped = set(read_ids('${context.run_dir}/recursive-refine-skipped.txt'))
+      depth_skipped = set(read_ids('${context.run_dir}/recursive-refine-skipped-depth.txt'))
+      cycle_skipped = set(read_ids('${context.run_dir}/recursive-refine-skipped-cycle.txt'))
+      budget_skipped = set(read_ids('${context.run_dir}/recursive-refine-skipped-budget.txt'))
+      decision_skipped = set(read_ids('${context.run_dir}/recursive-refine-skipped-decision.txt'))
       all_ids = passed | skipped
 
       def build_parent_map():
@@ -827,8 +821,8 @@ states:
       The recursive-refine loop has terminated with an unrecoverable failure.
 
       Diagnose what happened:
-      - If ${env.PWD}/.loops/tmp/recursive-refine-queue.txt exists, report its contents (remaining issues).
-      - If ${env.PWD}/.loops/tmp/recursive-refine-visited.txt exists, report how many issues were processed.
+      - If ${env.PWD}/${context.run_dir}/recursive-refine-queue.txt exists, report its contents (remaining issues).
+      - If ${env.PWD}/${context.run_dir}/recursive-refine-visited.txt exists, report how many issues were processed.
       - If failure was in parse_input, report whether the input issue list was empty or malformed.
       - Identify the most likely failure cause.
 

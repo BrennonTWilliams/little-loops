@@ -7,7 +7,6 @@ description: |
 
 initial: get_passed_issues
 on_handoff: spawn
-shared_state_ok: true
 
 parameters:
   caller_prefix:
@@ -21,16 +20,16 @@ import:
 states:
   get_passed_issues:
     action: |
-      SKIP_FILE=".loops/tmp/${context.caller_prefix}-skipped.txt"
-      IMPL_QUEUE=".loops/tmp/${context.caller_prefix}-impl-queue.txt"
+      SKIP_FILE="${context.run_dir}/${context.caller_prefix}-skipped.txt"
+      IMPL_QUEUE="${context.run_dir}/${context.caller_prefix}-impl-queue.txt"
 
-      if [ -s .loops/tmp/recursive-refine-skipped.txt ]; then
-        grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-skipped.txt >> "$SKIP_FILE"
+      if [ -s ${context.run_dir}/recursive-refine-skipped.txt ]; then
+        grep -v '^[[:space:]]*$' ${context.run_dir}/recursive-refine-skipped.txt >> "$SKIP_FILE"
       fi
 
       PASSED=""
-      if [ -s .loops/tmp/recursive-refine-passed.txt ]; then
-        PASSED=$(grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-passed.txt)
+      if [ -s ${context.run_dir}/recursive-refine-passed.txt ]; then
+        PASSED=$(grep -v '^[[:space:]]*$' ${context.run_dir}/recursive-refine-passed.txt)
       fi
 
       if [ -n "$PASSED" ]; then
@@ -48,7 +47,7 @@ states:
 
   implement_next:
     action: |
-      IMPL_QUEUE=".loops/tmp/${context.caller_prefix}-impl-queue.txt"
+      IMPL_QUEUE="${context.run_dir}/${context.caller_prefix}-impl-queue.txt"
       if [ ! -s "$IMPL_QUEUE" ]; then
         exit 1
       fi
