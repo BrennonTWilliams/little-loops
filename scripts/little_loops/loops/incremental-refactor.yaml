@@ -47,6 +47,7 @@ states:
       prompt: "Are all planned refactoring steps complete and committed? Answer YES if the refactoring goal has been fully achieved, NO if there are remaining steps to execute."
     on_yes: done
     on_no: execute_step
+    on_partial: execute_step
 
   revert:
     action: "git checkout -- ."

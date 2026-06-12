@@ -49,6 +49,7 @@ states:
         needs work).
     on_yes: close_issue
     on_no: reprioritize
+    on_partial: reprioritize
     on_error: find_stale
     on_blocked: find_stale
   close_issue:

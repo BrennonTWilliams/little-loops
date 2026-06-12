@@ -180,6 +180,7 @@ states:
         items failed validation or if errors were encountered.
     on_yes: publish
     on_no: fix_item
+    on_partial: fix_item
 
   publish:
     # Write the final curated dataset and generate a manifest with curation metrics.

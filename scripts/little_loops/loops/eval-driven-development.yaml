@@ -78,6 +78,7 @@ states:
         Return "no" if any gates failed or produced errors.
     on_yes: done
     on_no: refine_issues
+    on_partial: refine_issues
     on_error: diagnose
     on_blocked: refine_issues
 

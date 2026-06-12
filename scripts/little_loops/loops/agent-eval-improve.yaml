@@ -67,6 +67,7 @@ states:
         no patterns emerged, or no actionable fixes were identified.
     on_yes: route_quality
     on_no: done
+    on_partial: route_quality
     on_error: diagnose
   route_quality:
     fragment: convergence_gate

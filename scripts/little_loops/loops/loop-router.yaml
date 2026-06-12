@@ -405,6 +405,7 @@ states:
       min_confidence: 0.5
     on_yes: check_auto_create
     on_no: present_result
+    on_partial: present_result
     on_error: present_result
 
   check_auto_create:

@@ -1,14 +1,22 @@
 ---
 id: ENH-2095
-title: Add semantic on_partial routes to LLM-judged states that dead-end on partial verdicts
+title: Add semantic on_partial routes to LLM-judged states that dead-end on partial
+  verdicts
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-12T14:10:00Z'
+completed_at: '2026-06-12T19:24:21Z'
 discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 relates_to:
 - ENH-1917
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 21
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # ENH-2095: Add semantic on_partial routes to LLM-judged states
@@ -63,10 +71,10 @@ on_partial: execute_step
 
 ## Acceptance Criteria
 
-- [ ] All nine states route on_partial per the table
-- [ ] `ll-loop validate` reports zero ENH-1917 warnings across builtin loops
-- [ ] Corresponding `partial-route` entries removed from `TestValidatorWarningBudget.ALLOWLIST` in `scripts/tests/test_builtin_loops.py`
-- [ ] `python -m pytest scripts/tests/test_builtin_loops.py` passes
+- [x] All nine states route on_partial per the table
+- [x] `ll-loop validate` reports zero ENH-1917 warnings across builtin loops
+- [x] Corresponding `partial-route` entries removed from `TestValidatorWarningBudget.ALLOWLIST` in `scripts/tests/test_builtin_loops.py`
+- [x] `python -m pytest scripts/tests/test_builtin_loops.py` passes
 
 ## Scope Boundaries
 
@@ -126,4 +134,6 @@ on_partial: execute_step
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-12T19:15:36 - `184d4317-63b7-47f0-9b07-d9e3fe44c9f4.jsonl`
 - `/ll:format-issue` - 2026-06-12T18:27:58 - `b949881c-905f-41d2-8e07-bcf80e4e5eeb.jsonl`
+- `/ll:confidence-check` - 2026-06-12T00:00:00Z - `91fb6aeb-ff73-4199-95e8-ad0d184347c9.jsonl`

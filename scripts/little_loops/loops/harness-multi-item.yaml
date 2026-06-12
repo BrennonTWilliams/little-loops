@@ -131,6 +131,7 @@ states:
         Answer YES if the skill confirmed success, NO if it reported problems or incompleteness.
     on_yes: check_semantic            # user simulation passed → LLM quality judge
     on_no: execute                    # user simulation failed → retry skill
+    on_partial: execute               # ambiguous → retry skill
 
   check_semantic:
     # EXAMPLE: LLM-as-judge evaluates whether the skill achieved its intent.
