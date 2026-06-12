@@ -98,7 +98,7 @@ if config_file.exists():
 
     print(config_text)  # Full output
 else:
-    print("[little-loops] Warning: No config found. Run /ll:init to create one.", file=sys.stderr)
+    print("[little-loops] Warning: No config found. Run ll-init to create one.", file=sys.stderr)
 PYTHON
 }
 
@@ -149,5 +149,5 @@ if [ -f "$CONFIG_FILE" ] || [ -f "$LOCAL_FILE" ]; then
     # Validate enabled features have required sub-configuration
     validate_enabled_features "$CONFIG_FILE"
 else
-    echo "[little-loops] Warning: No config found. Run /ll:init to create one."
+    echo "[little-loops] Warning: No config found. Run ll-init to create one."
 fi

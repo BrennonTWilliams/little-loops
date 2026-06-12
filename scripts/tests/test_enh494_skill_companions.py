@@ -24,7 +24,7 @@ SKILL_LINE_LIMIT = 500
 EXPECTED_COMPANIONS = [
     SKILLS_DIR / "audit-claude-config" / "wave1-prompts.md",
     SKILLS_DIR / "confidence-check" / "rubric.md",
-    SKILLS_DIR / "init" / "templates.md",
+
     SKILLS_DIR / "debug-loop-run" / "reference.md",
     SKILLS_DIR / "review-loop" / "reference.md",
     SKILLS_DIR / "manage-issue" / "templates.md",

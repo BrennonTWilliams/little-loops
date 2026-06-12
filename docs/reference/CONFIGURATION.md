@@ -1,6 +1,6 @@
 # Configuration Reference
 
-little-loops uses `.ll/ll-config.json` for project-specific settings. All settings have sensible defaults. Run `/ll:init` to auto-detect your project type and generate a config file.
+little-loops uses `.ll/ll-config.json` for project-specific settings. All settings have sensible defaults. Run `ll-init` to auto-detect your project type and generate a config file.
 
 For interactive editing, use `/ll:configure`.
 
@@ -347,7 +347,7 @@ Product analysis configuration for `/ll:scan-product`:
 | `goals_discovery.max_files` | `5` | Maximum markdown files to analyze for goal discovery (1-20) |
 | `goals_discovery.required_files` | `["README.md"]` | Files that must exist for discovery (warning if missing) |
 
-For new projects, `/ll:init` sets `product.enabled: true` and deploys `.ll/ll-goals.md` automatically (opt-in during `--interactive`, enabled by default during `--yes`). For existing projects, set `product.enabled: true` in `.ll/ll-config.json`. `ll-goals.md` is optional — if absent, goals are auto-discovered from existing project documentation (README, CHANGELOG, architecture docs). Create a hand-authored goals file only when you want precise control over product vision, personas, and strategic priorities.
+For new projects, `ll-init` sets `product.enabled: true` and deploys `.ll/ll-goals.md` automatically (enabled by default with `--yes`). For existing projects, set `product.enabled: true` in `.ll/ll-config.json`. `ll-goals.md` is optional — if absent, goals are auto-discovered from existing project documentation (README, CHANGELOG, architecture docs). Create a hand-authored goals file only when you want precise control over product vision, personas, and strategic priorities.
 
 ### `commands`
 
@@ -1232,7 +1232,7 @@ Each summary is stored as a node in `summary_nodes`. Condensed nodes receive `pa
 
 ## Manual Configuration
 
-The following fields are defined in `config-schema.json` but are not exposed through `/ll:init` or `/ll:configure`. To set them, edit `.ll/ll-config.json` directly. All have sensible defaults and rarely need changing.
+The following fields are defined in `config-schema.json` but are not exposed through `ll-init` or `/ll:configure`. To set them, edit `.ll/ll-config.json` directly. All have sensible defaults and rarely need changing.
 
 ### `scan.custom_agents`
 

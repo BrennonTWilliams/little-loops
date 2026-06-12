@@ -181,7 +181,7 @@ Use `--quick` alongside `--parent` to create a minimal template when capturing m
 To find issues you didn't know existed, use the scanning commands:
 
 - `/ll:scan-codebase` — analyzes code for bugs, technical debt, and improvement opportunities; creates issue files for each finding
-- `/ll:scan-product` — analyzes codebase against your `ll-goals.md` document to find feature gaps and UX problems (`/ll:init` creates `.ll/ll-goals.md` automatically for new projects; if absent, scan-product discovers goals from existing docs)
+- `/ll:scan-product` — analyzes codebase against your `ll-goals.md` document to find feature gaps and UX problems (`ll-init` creates `.ll/ll-goals.md` automatically for new projects; if absent, scan-product discovers goals from existing docs)
 
 Both commands can generate many issues at once. Run them when onboarding to a new codebase or doing a periodic audit, then use `/ll:prioritize-issues` and `/ll:tradeoff-review-issues` to cull the low-value ones before investing in refinement.
 

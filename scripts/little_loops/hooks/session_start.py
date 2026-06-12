@@ -214,7 +214,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
             )
     else:
         feedback_lines.append(
-            "[little-loops] Warning: No config found. Run /ll:init to create one."
+            "[little-loops] Warning: No config found. Run ll-init to create one."
         )
 
     # 6. Feature-flag validation warnings.

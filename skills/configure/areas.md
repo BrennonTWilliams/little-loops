@@ -866,7 +866,7 @@ Current Hook Configuration
 
 Note: the table above shows Claude Code's `hooks/hooks.json` wiring. Codex
 CLI users wire their hooks through the user-project's `.codex/hooks.json`
-(written by `/ll:init --codex`), which points at the bash adapter scripts
+(written by `ll-init --hosts codex`), which points at the bash adapter scripts
 under `hooks/adapters/codex/`. The display layer of `/ll:configure hooks
 show` does not currently introspect `.codex/hooks.json` — verify Codex
 hooks via `cat .codex/hooks.json` or by checking the Codex startup

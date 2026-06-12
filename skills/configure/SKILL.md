@@ -24,7 +24,7 @@ metadata:
 
 <!-- PLUGIN_VERSION: 1.106.0 -->
 
-Interactively configure specific areas of `.ll/ll-config.json` without re-running the full `/ll:init` wizard.
+Interactively configure specific areas of `.ll/ll-config.json` without re-running `ll-init`.
 
 ## Configuration
 
@@ -424,5 +424,5 @@ $ARGUMENTS
 Changes take effect immediately. Commands that read from `.ll/ll-config.json` will use the updated values.
 
 Related commands:
-- `/ll:init` - Full interactive initialization wizard
+- `ll-init` - Bootstrap a new project config from the CLI
 - `/ll:toggle-autoprompt` - Quick toggle for prompt optimization settings

@@ -55,10 +55,10 @@ ll-auto --help
 
 ## Set Up Your Project
 
-Run `/ll:init` once per project. It auto-detects your project type and generates a starter configuration.
+Run `ll-init` once per project. It auto-detects your project type and generates a starter configuration.
 
 ```bash
-/ll:init
+ll-init
 ```
 
 **Detected project types:** Python, JavaScript/TypeScript, Go, Rust, Java (Maven or Gradle), and .NET. For each type, it infers sensible defaults for test commands, lint commands, and source directories. Unrecognized projects fall back to a generic template.
@@ -74,22 +74,19 @@ Run `/ll:init` once per project. It auto-detects your project type and generates
 .ll/ll-config.json
 ```
 
-**What else happens:** `/ll:init` also appends little-loops state files to your `.gitignore` (e.g. `.auto-manage-state.json`, `.ll/ll-context-state.json`) so runtime state never ends up committed.
+**What else happens:** `ll-init` also appends little-loops state files to your `.gitignore` (e.g. `.auto-manage-state.json`, `.ll/ll-context-state.json`) so runtime state never ends up committed.
 
 ### Flags
 
 | Flag | What it does | When to use it |
 |------|-------------|---------------|
-| _(none)_ | Auto-detects project type, previews settings, and asks for confirmation | Default — works for most projects |
-| `--interactive` | Launches a guided wizard to configure every option step by step | First setup when auto-detection won't cover non-standard tooling |
+| _(none)_ | Launches an interactive TUI to configure options step by step | Default — works for most projects |
 | `--yes` | Accepts all auto-detected defaults without any confirmation prompts | When you trust the defaults and want a fast, non-interactive setup |
 | `--force` | Overwrites an existing `.ll/ll-config.json` | Re-initializing a project that already has a config |
-| `--dry-run` | Previews what would be generated without writing any files | Checking what `/ll:init` would produce before committing |
+| `--dry-run` | Previews what would be generated without writing any files | Checking what `ll-init` would produce before committing |
 | `--hosts HOST…` | Specifies which host harnesses to wire adapters for (`claude-code`, `codex`, `pi`). Accepts space- or comma-separated values. Defaults to auto-detected hosts. | Setting up little-loops for a project you also use with Codex CLI (`--hosts codex`) |
 
-`--interactive` and `--yes` are mutually exclusive. All other combinations are valid — for example, `--interactive --force` runs the wizard and overwrites the existing config, `--dry-run --force` previews what an overwrite would produce, and `--hosts codex --dry-run` previews the Codex hook adapter without touching `.codex/`.
-
-Use `--interactive` the first time you set up a project with non-standard tooling. The wizard walks through source directories, test and lint commands, parallel worker counts, GitHub sync, and more. For a straightforward project where auto-detection gets it right, `--yes` is faster.
+For a straightforward project where auto-detection gets it right, `--yes` is the fastest path. The TUI (no flags) walks through source directories, test and lint commands, parallel worker counts, and more for non-standard tooling.
 
 ### Key Config Fields
 
@@ -284,7 +281,7 @@ The ten commands you'll use most often:
 
 | Command | What It Does |
 |---------|-------------|
-| `/ll:init` | Auto-detect project type and create config + issue directories |
+| `ll-init` | Auto-detect project type and create config + issue directories |
 | `/ll:capture-issue` | Create an issue file from a natural-language description |
 | `/ll:ready-issue` | Validate an issue for implementation readiness |
 | `/ll:manage-issue` | Plan, implement, test, and complete an issue end-to-end |

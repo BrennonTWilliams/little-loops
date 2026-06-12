@@ -228,8 +228,8 @@ META-ANALYSIS
 SESSION & CONFIG
 ----------------
 /ll:init [flags]
-    Initialize little-loops configuration for a project
-    Flags: --interactive, --yes, --force
+    Initialize little-loops configuration (delegates to ll-init CLI)
+    Flags: --yes, --force, --dry-run, --hosts, --codex
 
 /ll:configure [area]
     Interactive configuration editor
@@ -331,7 +331,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 
 ```bash
 # Get started with a new project
-/ll:init
+ll-init
 
 # Run all code quality checks
 /ll:check-code

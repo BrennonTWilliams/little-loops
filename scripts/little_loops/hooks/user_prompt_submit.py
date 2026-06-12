@@ -29,7 +29,7 @@ from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.session_store import is_correction, record_correction, record_skill_event
 
 _NO_CONFIG_MSG = (
-    "[little-loops] No config found. Run /ll:init to set up little-loops for this project."
+    "[little-loops] No config found. Run ll-init to set up little-loops for this project."
 )
 
 # Navigate from this file up to the plugin root, then into hooks/prompts/.

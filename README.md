@@ -89,7 +89,7 @@ Harness-driven development is TDD's analog for agent-built software: define what
 pip install little-loops
 ```
 
-**Using Codex CLI?** See [docs/codex/getting-started.md](docs/codex/getting-started.md) — run `/ll:init --codex` and `ll-adapt-skills-for-codex --apply` to get started.
+**Using Codex CLI?** See [docs/codex/getting-started.md](docs/codex/getting-started.md) — run `ll-init --hosts codex` and `ll-adapt-skills-for-codex --apply` to get started.
 
 <details>
 <summary>Alternative install methods</summary>
@@ -125,7 +125,7 @@ Four ways to feel the difference, top to bottom:
 ### Scan and triage a codebase
 
 ```bash
-/ll:init                  # Auto-detect project type, generate config
+ll-init                   # Auto-detect project type, generate config
 /ll:scan-codebase         # Find issues (technical)
 /ll:prioritize-issues     # Auto-assign P0–P5 priorities
 /ll:map-dependencies      # Cross-issue dependency graph

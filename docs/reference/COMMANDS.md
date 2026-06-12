@@ -26,13 +26,13 @@ Not all commands support all flags. See individual command documentation for sup
 ## Setup & Configuration
 
 ### `/ll:init`
-Initialize little-loops configuration for a project.
+Redirect stub — delegates to `ll-init` for project bootstrap and config setup.
 
-**Flags:** `--interactive`, `--yes` (non-interactive, accepts all defaults), `--force`
+**Flags:** `--yes` (accepts all defaults), `--force`, `--dry-run`, `--hosts`, `--codex`
 
-**Interactive wizard:** `--interactive` runs a multi-round setup that covers project type, issue directories, test commands, document tracking, sprint settings, and more. The final round offers to add ll- CLI command documentation to the target project's `.claude/CLAUDE.md` (or root `CLAUDE.md`). If the file already contains a `## little-loops` section, the write is skipped automatically.
+Prints a one-line handoff banner, then runs `ll-init --yes` with any recognized flags passed through. For full interactive setup use `ll-init` directly in a terminal.
 
-**Auto-update:** If the installed `little_loops` package version does not match the plugin version, `init` automatically runs `pip install` to upgrade the package before proceeding.
+**CLI equivalent:** `ll-init --yes` (canonical path; run directly in a terminal for more control)
 
 ### `/ll:help`
 List all available little-loops commands with descriptions.
@@ -49,7 +49,7 @@ Interactively configure specific areas in ll-config.json.
 - `allowed-tools` — writes to `.claude/settings.json` or `.claude/settings.local.json`, not `ll-config.json`
 - `hooks` — shows/validates ll- lifecycle hooks (not `ll-config.json`; hooks are automatic via plugin)
 
-**Auto-update:** Like `/ll:init`, `configure` checks the installed package version and auto-upgrades if a mismatch is detected.
+**Auto-update:** `configure` checks the installed package version and auto-upgrades if a mismatch is detected.
 
 ### `/ll:update`
 Update the little-loops Claude Code plugin and pip package to the latest version. Consumer-first: works in any project.
@@ -187,7 +187,7 @@ Validate active issues against key documents for relevance and alignment.
 - `issues` (optional): Comma-separated issue IDs to limit processing (e.g., `ENH-1362,BUG-123`). When omitted, all active issues are processed.
 - `flags` (optional): `--verbose` (detailed analysis), `--dry-run` (report only, no auto-fixing)
 
-**Prerequisites:** Configure document tracking via `/ll:init --interactive`
+**Prerequisites:** Configure document tracking via `ll-init` or `/ll:configure documents`
 
 ### `/ll:normalize-issues`
 Find and fix issue filenames lacking valid IDs (BUG-001, etc.).
@@ -996,7 +996,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 
 ```bash
 # Get started with a new project
-/ll:init
+ll-init
 
 # Run all code quality checks
 /ll:check-code

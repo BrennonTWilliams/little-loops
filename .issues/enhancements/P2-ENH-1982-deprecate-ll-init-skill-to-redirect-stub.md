@@ -2,14 +2,12 @@
 id: ENH-1982
 title: Deprecate /ll:init skill to a redirect stub
 type: enhancement
-status: open
+status: deferred
 priority: P2
 discovered_date: 2026-06-05
 discovered_by: capture-issue
 parent: EPIC-1978
-blocked_by:
-- BUG-2042
-- ENH-2092
+blocked_by: []
 relates_to:
 - EPIC-1978
 - FEAT-1979
@@ -27,6 +25,7 @@ score_test_coverage: 15
 score_ambiguity: 20
 score_change_surface: 20
 decision_needed: false
+size: Very Large
 ---
 
 # ENH-1982: Deprecate /ll:init skill to a redirect stub
@@ -156,6 +155,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_enh494_skill_companions.py` — line 27: `SKILLS_DIR / "init" / "templates.md"` is in `EXPECTED_COMPANIONS`; three tests in `TestCompanionFilesExist` will break when `templates.md` is deleted (`test_companion_exists`, `test_companion_non_empty`, `test_skill_links_to_companion`); remove this entry from the list
 - `scripts/tests/test_enh1768_profile_system.py` — three test methods will break: `test_init_round_7_offers_profile_picker` (reads `interactive.md` directly → file not found), `test_init_skill_references_profiles_dir` (asserts SKILL.md contains `"profiles/"`), `test_init_skill_references_active` (asserts SKILL.md contains `"design_tokens.active"`); all three must be removed (stub contains none of this content)
 
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `scripts/tests/test_adapt_skills_for_codex.py` — `TestRealSkillsIntegrationGuard::test_all_real_skills_have_openai_yaml` (line 403) iterates all `skills/*/SKILL.md` files; if the stub has `disable-model-invocation: true` in frontmatter, the guard at line 422 auto-skips it and no change is needed — verify the stub includes this flag
+- `scripts/tests/test_wiring_init_and_configure.py` — after the stub is written, consider adding a `DOC_STRINGS_PRESENT` entry asserting the stub body contains `"ll-init"` (natural placement follows the existing parametrized `test_string_present_in_doc` pattern)
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -175,8 +178,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `docs/reference/CONFIGURATION.md` — update init section to reference `ll-init`
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/development/TROUBLESHOOTING.md` — line 31: `"Run /ll:init to create config"` in the "Config file not found" section; update to `ll-init` (low-priority; stub still handles the invocation but pointing directly to `ll-init` is clearer)
+- `docs/development/TROUBLESHOOTING.md` — line 30: `"Run /ll:init to create config"` in the "Config file not found" section; update to `ll-init` (low-priority; stub still handles the invocation but pointing directly to `ll-init` is clearer)
 - `config-schema.json` — `learning_tests.enabled` description at line 901 contains `"Set via /ll:init or /ll:configure."`; update to `ll-init` (cosmetic/low-priority)
+
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` — lines 158–161 in the `skills/init/` subtree of the directory listing explicitly enumerate `interactive.md` and `templates.md` as children; prune those two lines after the files are deleted
 
 ### Codebase Research Findings
 
@@ -212,11 +218,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 12. Update `skills/configure/SKILL.md` — remove "full interactive initialization wizard" framing at lines 27 and 427; rewrite to reference `ll-init` or the redirect stub
 13. Update `hooks/scripts/session-start.sh` — change "run `/ll:init`" warning (lines 101, 152) to `ll-init` so the cold-start message points directly to the CLI
 14. Update `scripts/little_loops/hooks/session_start.py` — same warning at line 217; update to `ll-init`
-15. Update `scripts/tests/test_enh494_skill_companions.py` — remove `SKILLS_DIR / "init" / "templates.md"` entry from `EXPECTED_COMPANIONS` (line 27)
-16. Update `scripts/tests/test_enh1768_profile_system.py` — remove `test_init_round_7_offers_profile_picker`, `test_init_skill_references_profiles_dir`, and `test_init_skill_references_active` (all three methods will fail after `interactive.md` is deleted and SKILL.md loses wizard content)
-17. Update `docs/development/TROUBLESHOOTING.md` — line 31: change `"/ll:init"` to `"ll-init"` in "Config file not found" section (low-priority)
-18. Update `config-schema.json` — `learning_tests.enabled` description at line 901: change `"/ll:init"` to `"ll-init"` (low-priority cosmetic)
-19. Run `ll-verify-skills` and full test suite (`python -m pytest scripts/tests/`). All tests must pass.
+15. Update `scripts/little_loops/hooks/user_prompt_submit.py` — analogous "config not found" warning; update any `/ll:init` reference to `ll-init` (parallels session_start.py)
+16. Update `scripts/tests/test_enh494_skill_companions.py` — remove `SKILLS_DIR / "init" / "templates.md"` entry from `EXPECTED_COMPANIONS` (line 27)
+17. Update `scripts/tests/test_enh1768_profile_system.py` — remove `test_init_round_7_offers_profile_picker`, `test_init_skill_references_profiles_dir`, and `test_init_skill_references_active` (all three methods will fail after `interactive.md` is deleted and SKILL.md loses wizard content)
+18. Update `docs/development/TROUBLESHOOTING.md` — line 30: change `"/ll:init"` to `"ll-init"` in "Config file not found" section (low-priority)
+19. Update `config-schema.json` — `learning_tests.enabled` description at line 901: change `"/ll:init"` to `"ll-init"` (low-priority cosmetic)
+20. Update `docs/ARCHITECTURE.md` — lines 158–161: prune `interactive.md` and `templates.md` from the `skills/init/` directory tree listing (stale after deletion)
+21. Run `ll-verify-skills` and full test suite (`python -m pytest scripts/tests/`). All tests must pass.
 
 ## Impact
 
@@ -245,15 +253,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-06-11 (original: 2026-06-08)_
+_Updated by `/ll:confidence-check` on 2026-06-11 (original: 2026-06-08; re-check: 2026-06-12)_
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 72/100 → MODERATE
 
 ### Outcome Risk Factors
 - **No automated coverage for stub behavior**: The redirect stub in `skills/init/SKILL.md` has no unit tests (`disable-model-invocation: true` skills have none by convention). Flag pass-through and banner display require manual verification after implementation.
-- **Test suite will regress unless wiring fixtures are updated atomically**: `test_wiring_reference_docs.py` (lines 101–102) and `test_wiring_init_and_configure.py` (~72 assertions) must be updated in the same commit as their corresponding doc/skill changes (Implementation Steps 8–9).
-- **Wide change surface (~22 files) demands atomic commit discipline**: A partial implementation leaves inconsistent `/ll:init` references across docs, commands, hooks, and tests. Follow Implementation Steps through Step 19 (`ll-verify-skills` + full pytest) before committing.
+- ~~**Test suite will regress unless wiring fixtures are updated atomically**~~ — RESOLVED: 278 tests pass; all wiring fixtures updated in-place.
+- ~~**Wide change surface (~22 files) demands atomic commit discipline**~~ — RESOLVED: all ~22 files modified per git status; `ll-verify-skills` passes.
 
 ## Verification Notes
 
@@ -266,11 +274,15 @@ behavior decision (auto-invoke vs. message only) is now resolved: auto-run
 is fixed.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-12T20:33:00Z - `fdea7118-8718-4357-abe6-32db6351ae9d.jsonl`
+- `/ll:wire-issue` - 2026-06-12T01:31:23 - `9ab2ad5a-1245-4cab-83b8-f47ea8eb1c38.jsonl`
+- `/ll:ready-issue` - 2026-06-12T00:39:34 - `8ed7aa30-e925-4c7e-8629-900661d98f3b.jsonl`
 - `/ll:wire-issue` - 2026-06-12T00:12:56 - `421907b7-eeef-46d2-b4eb-d698176407f2.jsonl`
 - `/ll:refine-issue` - 2026-06-12T00:03:15 - `b8539015-3d2c-4e3f-84f9-37010ba5ba93.jsonl`
 - `/ll:format-issue` - 2026-06-11T23:49:58 - `2ec440c1-aa4c-45d8-abed-c897ed087b60.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
+- `/ll:confidence-check` - 2026-06-11T00:00:00Z - `1c7dce95-6845-4389-9c56-57075e094e21.jsonl`
 - `/ll:confidence-check` - 2026-06-11T00:00:00Z - `59ba1f73-a50f-4768-a7e5-e52acf93219a.jsonl`
 - `/ll:confidence-check` - 2026-06-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f4b8008-562a-49e0-b070-2b75fe480d05.jsonl`
 

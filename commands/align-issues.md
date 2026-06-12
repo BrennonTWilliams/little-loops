@@ -43,7 +43,7 @@ If not configured or disabled, display:
 Document tracking is not configured or is disabled.
 
 To enable:
-1. Run /ll:init --interactive and enable document tracking
+1. Run `ll-init` and enable document tracking, or use `/ll:configure documents`
 2. Or manually add to .ll/ll-config.json:
 
    "documents": {
@@ -445,7 +445,7 @@ When checking all categories, produce combined report with per-category sections
 ## Integration
 
 This command works well with:
-- `/ll:init --interactive` - Set up document tracking
+- `ll-init` / `/ll:configure documents` - Set up document tracking
 - `/ll:capture-issue` - Creates issues with doc references
 - `/ll:normalize-issues` - Adds doc references to existing issues
 - `/ll:verify-issues` - Verify issue accuracy before alignment check
@@ -456,7 +456,7 @@ This command works well with:
 ## Troubleshooting
 
 **"Document tracking is not configured"**
-- Run `/ll:init --interactive` and enable document tracking in Round 5
+- Run `ll-init` then `/ll:configure documents` to enable document tracking
 - Or manually add `documents` section to `.ll/ll-config.json`
 
 **"Category not found"**

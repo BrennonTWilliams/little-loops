@@ -27,7 +27,7 @@ Common issues and solutions for little-loops.
 **Cause**: Missing or mislocated `.ll/ll-config.json`
 
 **Solution**:
-1. Run `/ll:init` to create config
+1. Run `ll-init` to create config
 2. Verify path is `.ll/ll-config.json` (not project root)
 3. Check file permissions
 

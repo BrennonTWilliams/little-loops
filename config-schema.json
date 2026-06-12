@@ -898,7 +898,7 @@
       "properties": {
         "enabled": {
           "type": "boolean",
-          "description": "Master switch for the Learning Test Registry. When false, all LT-related surfaces (discoverability hook, gate-loop hints) are silenced. Set via /ll:init or /ll:configure.",
+          "description": "Master switch for the Learning Test Registry. When false, all LT-related surfaces (discoverability hook, gate-loop hints) are silenced. Set via ll-init or /ll:configure.",
           "default": false
         },
         "stale_after_days": {

@@ -1,3 +1,3 @@
 interface:
   display_name: "Init"
-  short_description: "Use when asked to initialize little-loops, set up ll for a project, or bootstrap"
+  short_description: "Redirect stub — delegates to ll-init CLI for project bootstrap and config setup"

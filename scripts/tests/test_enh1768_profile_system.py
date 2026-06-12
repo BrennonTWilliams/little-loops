@@ -375,28 +375,6 @@ class TestConfigSchemaProfileFields:
 # ---------------------------------------------------------------------------
 
 
-class TestInitWiringForProfiles:
-    """Init must materialize profiles dir and write `active`."""
-
-    def test_init_skill_references_profiles_dir(self) -> None:
-        content = (PROJECT_ROOT / "skills" / "init" / "SKILL.md").read_text()
-        assert "profiles/" in content or "profiles" in content, (
-            "skills/init/SKILL.md must reference the profiles directory in materialization"
-        )
-
-    def test_init_skill_references_active(self) -> None:
-        content = (PROJECT_ROOT / "skills" / "init" / "SKILL.md").read_text()
-        assert "design_tokens.active" in content or '"active"' in content, (
-            "skills/init/SKILL.md must write design_tokens.active during materialization"
-        )
-
-    def test_init_round_7_offers_profile_picker(self) -> None:
-        content = (PROJECT_ROOT / "skills" / "init" / "interactive.md").read_text()
-        for name in PROFILE_NAMES:
-            assert name in content, (
-                f"interactive.md Round 7 must list profile '{name}' in the picker"
-            )
-
 
 class TestConfigureWiringForProfiles:
     """Configure must expose `active` + show installed profiles."""
