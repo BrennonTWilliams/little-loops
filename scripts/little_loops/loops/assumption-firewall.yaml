@@ -51,6 +51,7 @@ states:
       min_confidence: 0.5
     on_yes: parse_assumptions
     on_no: parse_assumptions
+    on_partial: parse_assumptions
 
   parse_assumptions:
     fragment: parse_tagged_json

@@ -251,6 +251,7 @@ states:
       min_confidence: 0.5
     on_yes: done
     on_no: done
+    on_partial: done
     on_blocked: done
     on_error: done
 

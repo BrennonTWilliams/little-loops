@@ -93,6 +93,7 @@ states:
       min_confidence: 0.5
     on_yes: route_branch_project
     on_no: route_branch_project
+    on_partial: route_branch_project
     on_error: failed
 
   route_branch_project:
@@ -148,6 +149,7 @@ states:
       min_confidence: 0.5
     on_yes: parse_project_score
     on_no: parse_project_score
+    on_partial: parse_project_score
     on_error: parse_project_score
 
   parse_project_score:
@@ -205,6 +207,7 @@ states:
       min_confidence: 0.5
     on_yes: parse_builtin_score
     on_no: parse_builtin_score
+    on_partial: parse_builtin_score
     on_error: parse_builtin_score
 
   parse_builtin_score:
@@ -371,6 +374,7 @@ states:
       min_confidence: 0.5
     on_yes: present_result
     on_no: present_result
+    on_partial: present_result
     on_error: present_result
 
   # ─── Phase 3C: Propose New Loop ──────────────────────────────────────────────

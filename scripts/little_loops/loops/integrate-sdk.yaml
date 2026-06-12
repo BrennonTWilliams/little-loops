@@ -74,6 +74,7 @@ states:
       min_confidence: 0.5
     on_yes: prove
     on_no: prove
+    on_partial: prove
 
   # ─── Phase 2b: Enumerate from docs/knowledge (greenfield branch) ────────────
 
@@ -113,6 +114,7 @@ states:
       min_confidence: 0.5
     on_yes: prove
     on_no: prove
+    on_partial: prove
 
   # ─── Phase 3 & 4: Parse, flatten, and prove via oracle ──────────────────────
 

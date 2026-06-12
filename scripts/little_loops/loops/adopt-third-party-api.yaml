@@ -56,6 +56,7 @@ states:
       min_confidence: 0.5
     on_yes: prove
     on_no: prove
+    on_partial: prove
 
   prove:
     loop: oracles/enumerate-and-prove
