@@ -17,6 +17,14 @@ max_iterations: 500
 timeout: 28800
 on_handoff: spawn
 artifact_versioning: true
+# The .loops/tmp/recursive-refine-*.txt files form a cross-loop contract:
+# oracles/implement-issue-chain (which also declares shared_state_ok) reads
+# recursive-refine-passed.txt / -skipped.txt at the same bare paths when both
+# run as sibling sub-loops of auto-refine-and-implement or
+# sprint-refine-and-implement. Not safe for concurrent runs of this loop;
+# migrating the whole contract trio to ${context.run_dir} is tracked as a
+# follow-up issue.
+shared_state_ok: true
 parameters:
   input:
     type: string

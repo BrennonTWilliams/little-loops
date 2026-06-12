@@ -9,6 +9,10 @@ initial: init
 max_iterations: 500
 timeout: 28800
 on_handoff: spawn
+# The .loops/tmp/auto-refine-and-implement-{skipped,impl-queue}.txt files are
+# part of the caller_prefix contract with oracles/implement-issue-chain (which
+# also declares shared_state_ok). Not safe for concurrent runs of this loop.
+shared_state_ok: true
 import:
   - lib/common.yaml
 context:
