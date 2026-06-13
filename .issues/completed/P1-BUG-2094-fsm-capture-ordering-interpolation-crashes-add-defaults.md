@@ -4,7 +4,7 @@ title: FSM loops reference captures from states that may not have executed (Inte
   crashes)
 type: BUG
 priority: P1
-status: deferred
+status: done
 captured_at: '2026-06-12T14:10:00Z'
 discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
@@ -112,9 +112,16 @@ _These touchpoints were identified by wiring analysis and must be addressed in t
    - **(A, recommended)** Keep all Bucket B ALLOWLIST entries; update their comments from "unfixed" to "safe — `:default=` fallback in place"
    - **(B)** Also modify `_validate_capture_reachability` in `validation.py` to skip or downgrade `:default=`-suffixed references — this suppresses the warning and allows ALLOWLIST entries to be removed, but requires adding `validation.py` to Files to Modify
 
-7. **ALLOWLIST merge dependency**: ENH-2095, ENH-2096, and ENH-2100 also modify `TestValidatorWarningBudget.ALLOWLIST` in `test_builtin_loops.py` (non-overlapping keys: `partial-route`, `shared-tmp`, `required-inputs` respectively). Coordinate merge order to avoid conflicts on the same file.
+7. **ALLOWLIST merge dependency (resolved)**: ENH-2095, ENH-2096, and ENH-2100 are now `done` and their ALLOWLIST changes have landed; the current `ALLOWLIST` in `test_builtin_loops.py` contains only `"capture-ordering"` entries. No merge conflict risk. [Second wiring pass — 2026-06-13]
 
-8. **Write bypass-path execution guard test**: add a test to `test_fsm_interpolation.py` or a new `test_builtin_loops_bypass.py` that injects `captured={}` into a Bucket B loop's executor call and asserts `InterpolationError` is NOT raised after the `:default=` fix is applied. See `TestSafeInterpolation.test_default_suffix_uses_fallback_when_missing` for the pattern.
+8. **Write bypass-path execution guard test**: add to `TestSafeInterpolation` class in `test_fsm_interpolation.py` **after line 744** (after `test_nullable_suffix_in_interpolate_dict`), as a new subsection `# ── Real-loop bypass-path guards (BUG-2094) ──`. Pattern: load real YAML via `yaml.safe_load`, extract the state's `action` string, call `interpolate(action, InterpolationContext(captured={}))`, assert no `InterpolationError` is raised. Write one method per affected state-in-loop (e.g., `test_loop_composer_present_result_action_safe_with_empty_captured`). Follow `test_default_suffix_uses_fallback_when_missing` at line 540 as the template. [Second wiring pass — 2026-06-13]
+
+9a. **Update `test_general_task_loop.py` alongside `general-task.yaml`**: `TestChange6CheckDoneDeltaAware.test_check_done_references_captured_work_result` (line 239) asserts the exact literal `"${captured.work_result.output}" in action`. Change the assertion to `"captured.work_result.output" in action` so it matches the new `:default=`-suffixed form and any future suffix changes. Do this in the same commit as step 2 for `general-task.yaml`. [Third wiring pass — 2026-06-13]
+
+9b. **Two ALLOWLIST entries not in triage table — must classify**: the current `ALLOWLIST` in `test_builtin_loops.py` contains two `"capture-ordering"` paths absent from the issue's triage table:
+   - `("goal-cluster", "capture-ordering")`: `"states.reassess.action"` — not listed in triage
+   - `("integrate-sdk", "capture-ordering")`: `"states.scaffold_integration.action"` — not listed in triage
+   Run `ll-loop validate scripts/little_loops/loops/goal-cluster.yaml` and `ll-loop validate scripts/little_loops/loops/integrate-sdk.yaml` to confirm what `${captured.*}` references these states contain, then classify each as **Bucket A** (sub-loop false positive → keep in ALLOWLIST with explanatory comment) or **Bucket B** (bypass-path crash risk → add `:default=` then handle the ALLOWLIST entry per Approach A or B). If left unclassified, `test_allowlist_entries_are_not_stale` will fail when the sibling paths in those same tuples are removed. [Second wiring pass — 2026-06-13]
 
 ## Integration Map
 
@@ -151,6 +158,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_validation.py` — `TestCaptureReachabilityValidation` class covers `_validate_capture_reachability()`; tests use synthetic FSMs (not real YAML files) so will not break; NOTE: WARNING still fires after the `:default=` fix because the validator regex is suffix-blind (see Wiring Phase note) [Agent 2/3 finding]
 - `scripts/tests/test_fsm_executor.py` — `TestInterpolationErrorHandling` class; tests `context.*` namespace, not `captured.*`; unaffected [Agent 3 finding]
 - **New test to write**: bypass-path execution guard — load a real YAML (e.g. `general-task.yaml`), inject `captured={}`, execute `check_done` state via the executor, assert no `InterpolationError` is raised; follow `TestSafeInterpolation` pattern [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — `TestValidatorWarningBudget.test_deterministic_warning_categories_do_not_regrow` (partner ratchet to `test_allowlist_entries_are_not_stale`): if Bucket B entries are kept with updated comments (Approach A), both tests stay green; if Bucket B entries are removed (Approach B), this test catches any remaining un-allowlisted `capture-ordering` warnings; ALLOWLIST path format is `states.<state_name>.action` (e.g., `("general-task", "capture-ordering"): {"states.check_done.action"}`) [Agent 2/3 finding — second wiring pass]
+- `scripts/tests/test_loop_composer.py`, `scripts/tests/test_loop_composer_adaptive.py`, `scripts/tests/test_goal_cluster.py`, `scripts/tests/test_harness_optimize.py`, `scripts/tests/test_rn_build.py`, `scripts/tests/test_loop_router.py` — per-loop structural validation tests (`test_validates_as_fsm`, errors-only); adding `:default=` suffixes does not affect FSM structural validity; no changes needed [Agent 1/3 finding — advisory, second wiring pass]
+- `scripts/tests/test_ll_loop_commands.py` — integration tests for `ll-loop validate` CLI; output format uses plain string rendering of `ValidationError.message`, no hardcoded category strings in CLI layer; no changes needed [Agent 1/2 finding — advisory, second wiring pass]
+- `scripts/tests/test_ll_loop_execution.py` — tests loop execution with interpolation via `InterpolationContext`; exercises FSM executor error paths; adding `:default=` to YAML action strings does not change error-path behavior tested here; no changes needed [Agent 1 finding — advisory, second wiring pass]
+
+_Wiring pass added by `/ll:wire-issue` (third pass — 2026-06-13):_
+- `scripts/tests/test_general_task_loop.py` line 239 — **WILL BREAK**: `TestChange6CheckDoneDeltaAware.test_check_done_references_captured_work_result` asserts `"${captured.work_result.output}" in action` on `general-task.yaml`'s `check_done.action`. When the fix adds `:default=<value>`, the exact unsuffixed literal is no longer present in the action string; the assertion fails. Update to use `"captured.work_result.output"` as the substring (survives any suffix) or match the new suffixed form explicitly. Update this test **in the same PR step** as the `general-task.yaml` YAML change. [Agent 3 finding]
 
 ### Documentation
 - N/A
@@ -183,18 +197,38 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-06-12 (post-wiring re-run)_
+_Updated by `/ll:confidence-check` on 2026-06-13 (re-run after third wiring pass; scores unchanged)_
 
 **Readiness Score**: 94/100 → PROCEED
 **Outcome Confidence**: 72/100 → MODERATE
 
 ### Outcome Risk Factors
-- Wide change surface across 12 sites (10 loop YAMLs + `test_builtin_loops.py` + new bypass-guard test); per-site default selection requires bypass-path semantic reasoning — not a uniform mechanical substitution
-- `harness-optimize` confirmed Bucket B: `init_prev` captures `prev_score` only (NOT `state_name`/`benchmark_score`); `propose` and `init_prev` both need `:default=` for those slots
-- ALLOWLIST merge coordination required with ENH-2095, ENH-2096, ENH-2100 (all modify `TestValidatorWarningBudget.ALLOWLIST` in `test_builtin_loops.py` on non-overlapping keys); recommend landing this fix before or after those ENHs to avoid merge conflicts
+- Wide change surface across 12+ sites (10 loop YAMLs + `test_builtin_loops.py` + `test_general_task_loop.py` + new bypass-guard tests); per-site default selection requires bypass-path semantic reasoning — not a uniform mechanical substitution
+- Two ALLOWLIST entries not in triage table require classification during implementation: `("goal-cluster", "capture-ordering"): states.reassess.action` and `("integrate-sdk", "capture-ordering"): states.scaffold_integration.action` — if left unclassified, `test_allowlist_entries_are_not_stale` will fail; run `ll-loop validate` on each loop to classify as Bucket A (sub-loop false positive → keep with comment) or Bucket B (bypass-path risk → add `:default=`)
+- `test_general_task_loop.py:239` asserts exact literal `${captured.work_result.output}` — **confirmed still present** — will break when `general-task.yaml` adds `:default=`; must be updated in the same commit (step 9a)
 - No standalone verification grep in the issue body; completeness relies entirely on the ALLOWLIST staleness test (`test_allowlist_entries_are_not_stale`)
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-06-13
+- **Reason**: Issue too large for single session (score 11/11)
+
+### Decomposed Into
+- BUG-2111: FSM capture-ordering fix prerequisites — verify harness-optimize seeding and classify unlisted ALLOWLIST entries
+- BUG-2112: FSM capture-ordering fix — add :default= to all Bucket B states and update test infrastructure
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-06-13T00:00:00Z - `d3e9937f-e366-49de-8410-e1dbe3b669f8.jsonl`
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `dfac8893-2a30-4f01-844b-625d65791776.jsonl`
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `03377602-2633-46d8-b6bb-fd9dff102ff6.jsonl`
+- `/ll:wire-issue` - 2026-06-13T17:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:wire-issue` - 2026-06-13T15:45:28 - `1e717bb9-21db-4cbb-8853-34dec0c89368.jsonl`
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `eab7ea17-4878-4958-ad7e-d5920532d639.jsonl`
+- `/ll:wire-issue` - 2026-06-13T15:33:18 - `b0dea2e2-549b-4557-ad9d-8f72fd723a64.jsonl`
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `ca501a9d-1cc6-48b5-891d-0c38f5e97c9c.jsonl`
 - `/ll:confidence-check` - 2026-06-12T21:00:00Z - `1790e51f-c814-452f-a40b-920f45d56f49.jsonl`
 - `/ll:wire-issue` - 2026-06-12T20:45:56 - `0d2af10e-d5a9-4677-9cf2-4695fd7f519f.jsonl`
 - `/ll:format-issue` - 2026-06-12T19:22:51 - `af5b5e51-5164-4278-b851-0c8573b39dca.jsonl`
