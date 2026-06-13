@@ -1003,3 +1003,60 @@ class TestDiagnoseAmbiguityWireDiscrimination:
         assert "CHANGE_SURFACE" in action and "-eq 0" in action, (
             "diagnose action must guard the ambiguity→WIRE branch with CHANGE_SURFACE -eq 0"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestCounterIncrementInEmitImplemented — ENH-2119
+# ---------------------------------------------------------------------------
+
+
+class TestCounterIncrementInEmitImplemented:
+    """ENH-2119: counter increment must live in emit_implemented, not implement."""
+
+    def test_implement_does_not_reference_implemented_count(self) -> None:
+        """implement state must not reference implemented_count.txt (ENH-2119)."""
+        data = _load_loop()
+        action = data["states"]["implement"]["action"]
+        assert "implemented_count.txt" not in action, (
+            "implement action must not increment implemented_count.txt; "
+            "that belongs in emit_implemented (ENH-2119)"
+        )
+
+    def test_implement_does_not_reference_counted_txt(self) -> None:
+        """implement state must not reference counted.txt (ENH-2119)."""
+        data = _load_loop()
+        action = data["states"]["implement"]["action"]
+        assert "counted.txt" not in action, (
+            "implement action must not reference counted.txt; "
+            "dedup guard belongs in emit_implemented (ENH-2119)"
+        )
+
+    def test_emit_implemented_increments_counter(self) -> None:
+        """emit_implemented state must increment implemented_count.txt (ENH-2119)."""
+        data = _load_loop()
+        action = data["states"]["emit_implemented"]["action"]
+        assert "implemented_count.txt" in action, (
+            "emit_implemented must increment implemented_count.txt (ENH-2119)"
+        )
+
+    def test_emit_implemented_writes_counted_guard(self) -> None:
+        """emit_implemented state must write to counted.txt to prevent double-counting (ENH-2119)."""
+        data = _load_loop()
+        action = data["states"]["emit_implemented"]["action"]
+        assert "counted.txt" in action, (
+            "emit_implemented must append to counted.txt for dedup (ENH-2119)"
+        )
+
+    def test_emit_implemented_uses_run_dir_for_counter(self) -> None:
+        """emit_implemented counter files must be scoped to run_dir (ENH-2119)."""
+        data = _load_loop()
+        action = data["states"]["emit_implemented"]["action"]
+        assert "${context.run_dir}/implemented_count.txt" in action
+        assert "${context.run_dir}/counted.txt" in action
+
+    def test_implement_action_is_minimal(self) -> None:
+        """implement action contains only ll-auto invocation and exit (ENH-2119)."""
+        data = _load_loop()
+        action = data["states"]["implement"]["action"]
+        assert "ll-auto --only" in action
+        assert "exit $?" in action or "exit $EXIT_CODE" in action

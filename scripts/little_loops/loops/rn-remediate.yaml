@@ -257,18 +257,9 @@ states:
     action: |
       ID="${context.issue_id}"
       ll-auto --only "$ID" 2>&1
-      EXIT_CODE=$?
-      if [ $EXIT_CODE -eq 0 ]; then
-        ALREADY_COUNTED=$(grep -cxF "$ID" "${context.run_dir}/counted.txt" 2>/dev/null || echo 0)
-        if [ "$ALREADY_COUNTED" -eq 0 ]; then
-          COUNT=$(cat "${context.run_dir}/implemented_count.txt" 2>/dev/null || echo 0)
-          echo $((COUNT + 1)) > "${context.run_dir}/implemented_count.txt"
-          echo "$ID" >> "${context.run_dir}/counted.txt"
-        fi
-      fi
       # Failure recording is owned by the parent's record_failure state
       # (driven by the IMPLEMENT_FAILED outcome token) to avoid double-counting.
-      exit $EXIT_CODE
+      exit $?
     on_yes: emit_implemented
     on_no: emit_implement_failed
     on_error: emit_implement_failed
@@ -485,7 +476,14 @@ states:
   emit_implemented:
     action_type: shell
     action: |
-      echo "IMPLEMENTED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      ID="${context.issue_id}"
+      echo "IMPLEMENTED" > "${context.run_dir}/subloop_outcome_$ID.txt"
+      ALREADY_COUNTED=$(grep -cxF "$ID" "${context.run_dir}/counted.txt" 2>/dev/null || echo 0)
+      if [ "$ALREADY_COUNTED" -eq 0 ]; then
+        COUNT=$(cat "${context.run_dir}/implemented_count.txt" 2>/dev/null || echo 0)
+        echo $((COUNT + 1)) > "${context.run_dir}/implemented_count.txt"
+        echo "$ID" >> "${context.run_dir}/counted.txt"
+      fi
     next: done
 
   emit_needs_decompose:

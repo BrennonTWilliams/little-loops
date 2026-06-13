@@ -2,15 +2,22 @@
 id: ENH-2119
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-13T19:18:13Z'
+completed_at: '2026-06-13T19:42:16Z'
 discovered_date: '2026-06-13'
 discovered_by: capture-issue
 labels:
-  - loops
-  - rn-remediate
-  - rn-implement
-  - reliability
+- loops
+- rn-remediate
+- rn-implement
+- reliability
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 25
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2119: rn-remediate: move implemented counter increment to `emit_implemented`
@@ -144,5 +151,7 @@ N/A — no public API changes (YAML-only state refactor)
 - **Breaking change**: No
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-13T19:31:57 - `39f1857d-ad8c-4cf0-9408-517d481c1f59.jsonl`
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `30fecd3a-65e4-46ed-b8ba-7762ae72c9c1.jsonl`
 - `/ll:format-issue` - 2026-06-13T19:25:01 - `ccf64f00-fdbe-43e8-91a3-b7eccc08992b.jsonl`
 - `/ll:capture-issue` - 2026-06-13T19:18:13Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
