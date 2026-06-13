@@ -367,6 +367,18 @@ class TestReassessAndConvergence:
         reassess = data["states"]["re_assess"]
         assert reassess["on_success"] == "verify_re_assess_scores"
 
+    def test_re_assess_has_on_partial_route(self) -> None:
+        """re_assess routes partial → verify_re_assess_scores (MR-4 — BUG-2115)."""
+        data = _load_loop()
+        reassess = data["states"]["re_assess"]
+        assert reassess.get("on_partial") == "verify_re_assess_scores"
+
+    def test_re_assess_has_on_no_route(self) -> None:
+        """re_assess routes no → refine (MR-4 — BUG-2115)."""
+        data = _load_loop()
+        reassess = data["states"]["re_assess"]
+        assert reassess.get("on_no") == "refine"
+
     def test_verify_re_assess_scores_uses_exit_code_evaluator(self) -> None:
         """verify_re_assess_scores uses exit_code evaluator (not output_numeric)."""
         data = _load_loop()
