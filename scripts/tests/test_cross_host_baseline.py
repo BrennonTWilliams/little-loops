@@ -5,13 +5,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from little_loops.ab_writer import ABResults, calculate_ab_summary, write_ab_json
 from little_loops.cli.loop import main_loop
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -153,26 +152,29 @@ class TestCrossHostContextStorage:
     def test_cross_host_stored_when_baseline_and_cross_host(self, tmp_path: Path) -> None:
         """cross_host=True is stored in _baseline context when both flags are set."""
         from little_loops.cli.loop.run import cmd_run
-        from little_loops.fsm.schema import FSMLoop
+        from little_loops.logger import Logger
 
         args = self._make_args(cross_host=True)
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         loop_yaml = loops_dir / "my-loop.yaml"
         loop_yaml.write_text(
-            "name: my-loop\ninitial: start\nstates:\n  start:\n    action: /test\n    on_success: __done__\n"
+            "name: my-loop\ninitial: start\nstates:\n"
+            "  start:\n    action: /test\n    on_success: done\n  done:\n    terminal: true\n"
         )
 
         with (
             patch("little_loops.cli.loop.run.run_foreground", return_value=0) as mock_fg,
-            patch("little_loops.cli.loop.run._reconcile_stale_runs"),
-            patch("little_loops.cli.loop.run.LockManager"),
+            # _reconcile_stale_runs is a function-local import in run.py, so it is
+            # not a module attribute of cli.loop.run — patch it at its source.
+            patch("little_loops.fsm.persistence._reconcile_stale_runs"),
+            patch("little_loops.fsm.concurrency.LockManager"),
             patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
-            patch("little_loops.cli.loop.run.wire_extensions"),
-            patch("little_loops.cli.loop.run.wire_transports"),
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
             patch("os.getpid", return_value=12345),
         ):
-            cmd_run(loops_dir, args)
+            cmd_run("my-loop", args, loops_dir, Logger())
 
         # run_foreground was called; check the FSM it received has _baseline.cross_host
         _, fsm, *_ = mock_fg.call_args[0]
@@ -181,24 +183,28 @@ class TestCrossHostContextStorage:
     def test_cross_host_false_stored_when_not_set(self, tmp_path: Path) -> None:
         """cross_host=False is stored in _baseline context when only --baseline is set."""
         from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
 
         args = self._make_args(cross_host=False)
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "my-loop.yaml").write_text(
-            "name: my-loop\ninitial: start\nstates:\n  start:\n    action: /test\n    on_success: __done__\n"
+            "name: my-loop\ninitial: start\nstates:\n"
+            "  start:\n    action: /test\n    on_success: done\n  done:\n    terminal: true\n"
         )
 
         with (
             patch("little_loops.cli.loop.run.run_foreground", return_value=0) as mock_fg,
-            patch("little_loops.cli.loop.run._reconcile_stale_runs"),
-            patch("little_loops.cli.loop.run.LockManager"),
+            # _reconcile_stale_runs is a function-local import in run.py, so it is
+            # not a module attribute of cli.loop.run — patch it at its source.
+            patch("little_loops.fsm.persistence._reconcile_stale_runs"),
+            patch("little_loops.fsm.concurrency.LockManager"),
             patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
-            patch("little_loops.cli.loop.run.wire_extensions"),
-            patch("little_loops.cli.loop.run.wire_transports"),
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
             patch("os.getpid", return_value=12345),
         ):
-            cmd_run(loops_dir, args)
+            cmd_run("my-loop", args, loops_dir, Logger())
 
         _, fsm, *_ = mock_fg.call_args[0]
         assert fsm.context.get("_baseline", {}).get("cross_host") is False
@@ -219,7 +225,8 @@ class TestCrossHostBackgroundForwarding:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "my-loop.yaml").write_text(
-            "name: my-loop\ninitial: s\nstates:\n  s:\n    action: /x\n    on_success: __done__\n"
+            "name: my-loop\ninitial: s\nstates:\n"
+            "  s:\n    action: /x\n    on_success: done\n  done:\n    terminal: true\n"
         )
         args = argparse.Namespace(
             loop="my-loop",
@@ -259,12 +266,13 @@ class TestCrossHostBackgroundForwarding:
             proc.pid = 9999
             return proc
 
-        with (
-            patch("subprocess.Popen", side_effect=fake_popen),
-            patch("builtins.open", MagicMock()),
-            patch("pathlib.Path.write_text"),
-            patch("pathlib.Path.mkdir"),
-        ):
+        # NOTE: Do not patch builtins.open globally here. run_background() now
+        # runs a pre-flight scope check that calls load_loop() -> yaml.safe_load
+        # on the loop file handle; a MagicMock open() returns a stream that never
+        # reaches EOF, so PyYAML's reader loops forever, accumulating mock calls
+        # until the process OOMs (observed >100GB RAM). loops_dir is under
+        # tmp_path, so real file ops are isolated — only the spawn is mocked.
+        with patch("subprocess.Popen", side_effect=fake_popen):
             run_background("my-loop", args, loops_dir)
 
         assert len(captured_cmds) == 1
@@ -279,7 +287,8 @@ class TestCrossHostBackgroundForwarding:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "my-loop.yaml").write_text(
-            "name: my-loop\ninitial: s\nstates:\n  s:\n    action: /x\n    on_success: __done__\n"
+            "name: my-loop\ninitial: s\nstates:\n"
+            "  s:\n    action: /x\n    on_success: done\n  done:\n    terminal: true\n"
         )
         args = argparse.Namespace(
             loop="my-loop",
@@ -319,12 +328,13 @@ class TestCrossHostBackgroundForwarding:
             proc.pid = 9999
             return proc
 
-        with (
-            patch("subprocess.Popen", side_effect=fake_popen),
-            patch("builtins.open", MagicMock()),
-            patch("pathlib.Path.write_text"),
-            patch("pathlib.Path.mkdir"),
-        ):
+        # NOTE: Do not patch builtins.open globally here. run_background() now
+        # runs a pre-flight scope check that calls load_loop() -> yaml.safe_load
+        # on the loop file handle; a MagicMock open() returns a stream that never
+        # reaches EOF, so PyYAML's reader loops forever, accumulating mock calls
+        # until the process OOMs (observed >100GB RAM). loops_dir is under
+        # tmp_path, so real file ops are isolated — only the spawn is mocked.
+        with patch("subprocess.Popen", side_effect=fake_popen):
             run_background("my-loop", args, loops_dir)
 
         assert "--cross-host" not in captured_cmds[0]
@@ -365,7 +375,7 @@ class TestRunCrossHostValidation:
         fake_which, mock_resolve = self._make_probe_env(["claude-code"])
 
         with (
-            patch("little_loops.cli.loop._helpers.shutil.which", side_effect=fake_which),
+            patch("shutil.which", side_effect=fake_which),
             patch("little_loops.host_runner.resolve_host", mock_resolve),
             patch("subprocess.run") as mock_sub,
         ):
@@ -408,7 +418,7 @@ class TestRunCrossHostValidation:
             return result
 
         with (
-            patch("little_loops.cli.loop._helpers.shutil.which", side_effect=fake_which),
+            patch("shutil.which", side_effect=fake_which),
             patch("little_loops.host_runner.resolve_host", mock_resolve),
             patch("subprocess.run", side_effect=fake_subprocess_run_capture),
         ):
@@ -438,7 +448,7 @@ class TestRunCrossHostValidation:
         fake_which, mock_resolve = self._make_probe_env(["claude-code", "codex"])
 
         with (
-            patch("little_loops.cli.loop._helpers.shutil.which", side_effect=fake_which),
+            patch("shutil.which", side_effect=fake_which),
             patch("little_loops.host_runner.resolve_host", mock_resolve),
             patch("subprocess.run", side_effect=fake_run),
         ):
@@ -477,7 +487,7 @@ class TestRunCrossHostValidation:
         fake_which, mock_resolve = self._make_probe_env(["claude-code", "codex"])
 
         with (
-            patch("little_loops.cli.loop._helpers.shutil.which", side_effect=fake_which),
+            patch("shutil.which", side_effect=fake_which),
             patch("little_loops.host_runner.resolve_host", mock_resolve),
             patch("subprocess.run", side_effect=fake_run),
         ):
@@ -508,7 +518,7 @@ class TestRunCrossHostValidation:
         fake_which, mock_resolve = self._make_probe_env(["claude-code", "codex"])
 
         with (
-            patch("little_loops.cli.loop._helpers.shutil.which", side_effect=fake_which),
+            patch("shutil.which", side_effect=fake_which),
             patch("little_loops.host_runner.resolve_host", mock_resolve),
             patch("subprocess.run", side_effect=fake_run),
         ):
@@ -535,7 +545,7 @@ class TestRunCrossHostValidation:
         fake_which, mock_resolve = self._make_probe_env(["claude-code", "codex"])
 
         with (
-            patch("little_loops.cli.loop._helpers.shutil.which", side_effect=fake_which),
+            patch("shutil.which", side_effect=fake_which),
             patch("little_loops.host_runner.resolve_host", mock_resolve),
             patch("subprocess.run", side_effect=fake_run),
         ):
@@ -564,7 +574,7 @@ class TestRunCrossHostValidation:
         fake_which, mock_resolve = self._make_probe_env(["claude-code", "codex"])
 
         with (
-            patch("little_loops.cli.loop._helpers.shutil.which", side_effect=fake_which),
+            patch("shutil.which", side_effect=fake_which),
             patch("little_loops.host_runner.resolve_host", mock_resolve),
             patch("subprocess.run", side_effect=fake_run),
         ):
@@ -596,7 +606,7 @@ class TestRunCrossHostValidation:
         fake_which, mock_resolve = self._make_probe_env(["claude-code", "codex"])
 
         with (
-            patch("little_loops.cli.loop._helpers.shutil.which", side_effect=fake_which),
+            patch("shutil.which", side_effect=fake_which),
             patch("little_loops.host_runner.resolve_host", mock_resolve),
             patch("subprocess.run", side_effect=fake_run),
         ):
