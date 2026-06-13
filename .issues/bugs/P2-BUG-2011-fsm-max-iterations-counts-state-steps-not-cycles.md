@@ -139,6 +139,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `skills/review-loop/reference.md` — `QC-1` check reads `max_iterations` from the YAML dict by key name; SIM-1/SIM-2/SIM-3 checks parse `"Terminated by: max_iterations"` from `ll-loop simulate` stdout; exit-code table references the `"max_iterations"` string key. These are executable skill parsing targets — update if the displayed termination string changes.
 - `skills/audit-loop-run/SKILL.md:168` — `partial` verdict rule checks `terminated_by == "max_iterations"` AND `max_iterations_summary` event present in JSONL. Update if the termination reason string or event type name changes.
 
+### Wiring Pass 3 — Additional Dependent Files (2026-06-13)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/vega-viz.yaml:33` — **3rd loop YAML using `on_max_iterations:`** (`on_max_iterations: max_iterations_summary`); requires explicit migration to `on_max_steps: max_iterations_summary` for the same reason as `general-task.yaml` and `canvas-sketch-generator.yaml` — the alias cannot cover it because the new Python field `on_max_iterations` is the iteration-cap summary state. Counts as 3 total explicit migrations, not 2 as previously stated in the issue.
+- `scripts/little_loops/loops/lib/task-templates/data-lib-task.yaml.tmpl:15` — `max_iterations: 5`; runtime-safe via `from_dict()` alias but documents old key; update to `max_steps: 5` so template-generated loops use new terminology.
+- `scripts/little_loops/loops/lib/task-templates/stateful-service-task.yaml.tmpl:14` — `max_iterations: 8`; same; update to `max_steps: 8`.
+- `scripts/little_loops/loops/lib/task-templates/desktop-gui-task.yaml.tmpl:14` — `max_iterations: 8`; same; update to `max_steps: 8`.
+- `skills/review-loop/SKILL.md:215-226` — contains its own copy of SIM-1/SIM-2/SIM-3 patterns and `"Terminated by: max_iterations"` string matching separate from `skills/review-loop/reference.md` (already in the issue); update `"Terminated by: max_iterations"` → `"Terminated by: max_steps"` here independently.
+- `skills/cleanup-loops/SKILL.md:343` — `terminated_by` value enumeration (`"Any terminated_by values in loop_complete events"`); update example values if `"max_iterations"` → `"max_steps"` as a termination string.
+- `skills/create-eval-from-issues/SKILL.md:253,293` — `max_iterations: 5` and `max_iterations: 50` in inline YAML examples; update to `max_steps:` so generated eval loops use new terminology.
+- `skills/workflow-automation-proposer/SKILL.md:144` — `max_iterations: 10` in inline YAML example; update to `max_steps: 10`.
+- `skills/verify-issue-loop/SKILL.md:154` — `max_iterations: 20` in inline YAML; update to `max_steps: 20`.
+- `docs/reference/COMMANDS.md:820,828` — `max_iterations` in `ll-loop calibrate-budget` description ("increasing `max_iterations` will improve outcomes"); update to `max_steps` / `max_iterations` (iteration-cap) terminology (separate from lines 646-673 already noted in the issue).
+
 ### Similar Patterns
 - Any other budget/limit counter in the executor (runaway step backstop) —
   keep increment semantics consistent if a step ceiling is retained.
@@ -195,6 +209,35 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_session_store.py` — add test class (model after `test_ignores_unrecognized_event` at line 230) that imports `_LOOP_EVENT_TYPES` from `little_loops.session_store` and asserts: (a) `"max_steps_summary"` is a member (post-rename); (b) `"max_iterations_reached_summary"` is a member (new iteration-cap event); (c) stable members (`"loop_start"`, `"loop_complete"`, `"state_enter"`) remain present.
 - `scripts/tests/test_canvas_sketch_generator.py` (does not exist — new file) — following the `TestENH1631SummarizePartial` pattern from `test_general_task_loop.py`: load `canvas-sketch-generator.yaml`, assert `raw_data.get("on_max_steps") == "finalize"` (post-rename), assert `ll-loop validate canvas-sketch-generator` passes with no new errors.
 
+### Wiring Pass 3 — Additional Tests (2026-06-13)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that BREAK on CLI argparse dest rename (`max_iterations` → `max_steps`):**
+- `scripts/tests/test_cli_loop_testing.py` — `TestCmdSimulateMaxIterations.test_max_iterations_applied` (line ~202): uses `_make_args(max_iterations=3)` and verifies `cmd_simulate()` respects the cap; `_make_args()` at line 63 sets `"max_iterations": None` in `argparse.Namespace`; rename to `max_steps` throughout and add `max_iterations=None` for the iteration-cap flag.
+- `scripts/tests/test_cli_loop_background.py:210` — `test_forwards_max_iterations` explicitly asserts `--max-iterations` flag is forwarded in the background subprocess command; rename to `test_forwards_max_steps` and update the flag assertion.
+- `scripts/tests/test_cli_loop_queue.py` — `argparse.Namespace(max_iterations=None)` in fixtures; rename to `max_steps=None`; add `max_iterations=None` for iteration-cap flag.
+- `scripts/tests/test_cli_loop_worktree.py` — `argparse.Namespace(max_iterations=None)` in fixtures; same rename.
+- `scripts/tests/test_ll_loop_program_md.py:150` — `max_iterations=None` in argparse defaults fixture; rename to `max_steps=None`.
+- `scripts/tests/test_cross_host_baseline.py:132,246,308` — `argparse.Namespace(max_iterations=None)` in fixtures; rename to `max_steps=None`.
+
+**Tests that BREAK due to `FSMLoop(max_iterations=N)` Python constructor semantics shift:**
+- `scripts/tests/test_cli.py` — multiple `FSMLoop(max_iterations=50)` constructor calls used as step-cap (e.g. `test_max_iterations_override`); under Option 2 `max_iterations=N` sets the iteration cap (new field), not the step cap — update to `FSMLoop(max_steps=50)`.
+- `scripts/tests/test_fsm_schema_fuzz.py:264-268` — Hypothesis strategy sets `fsm["max_iterations"]` via dict; `from_dict()` aliases this to `max_steps` (step cap), so no semantic shift for dict-based construction — but verify direct `FSMLoop(max_iterations=...)` constructor calls in the same file.
+
+**Tests that BREAK when generated/template YAML output switches from `max_iterations:` to `max_steps:` (coordinate with step 19):**
+- `scripts/tests/test_create_loop.py` — inline YAML fixture strings asserting `max_iterations: 50`; update to `max_steps: 50` once template generation changes.
+- `scripts/tests/test_loop_suggester.py:354-640` — multiple inline YAML fixtures with `max_iterations:`; update to `max_steps:` in generated-output assertions.
+- `scripts/tests/test_create_eval_from_issues.py:30,72` — inline YAML asserts `max_iterations: 5` / `max_iterations: 50`; update to `max_steps:` once eval-loop templates change.
+- `scripts/tests/test_verify_issue_loop.py:34` — inline YAML with `max_iterations: 20`; update to `max_steps: 20`.
+
+**Tests that BREAK only if `state_enter` event payload field is renamed from `"iteration"` to `"step"` (conditional — see sub-decision note in Confidence Check Notes):**
+- `scripts/tests/test_events.py:84-89` — constructs `state_enter` event with `{"iteration": 1}` and asserts equality; update if field renamed.
+- `scripts/tests/test_usage_reporter.py:25,51,75,97,131-153,180` — `state_enter` events with `"iteration": N`; same condition.
+- `scripts/tests/test_loop_run_analytics.py:88-350` — many `state_enter` event dicts with `"iteration": N`; same condition.
+- `scripts/tests/test_fsm_interpolation.py:94` — `ctx.resolve("state", "iteration") == 5`; update if `InterpolationContext.iteration` attribute is renamed.
+- `scripts/tests/test_usage_journal.py:106` — `assert "iteration" in row`; update if the column is renamed in the usage journal.
+
 ### Documentation
 - `ll-loop run --help`, the loop README, and the loop-authoring guide
   (`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`).
@@ -227,6 +270,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `skills/create-loop/reference.md:743` — `"terminated by max_iterations"` routing description; 20+ `max_iterations` references in canonical YAML snippets and guidance prose (lines 323, 341, 372, 431, 450, 531, 550, 588, 608, 721, 743, 849, 882, 920, 935, 983, 1000, 1013, 1060). Update to `max_steps` / `max_iterations` (iteration-cap) terminology throughout.
 - `scripts/little_loops/cli/loop/_helpers.py:EventFeedRenderer.render_event():794-799` — `elif event_type == "max_iterations_summary":` branch in the event feed renderer. This file is already in the Integration Map but this specific dispatch and string literal are not called out. Update the matched string to `"max_steps_summary"`; add a new elif handler for `"max_iterations_reached_summary"`.
 - `scripts/little_loops/generate_schemas.py:SCHEMA_DEFINITIONS` — `generate_schemas.py` does NOT auto-discover new event types; the `SCHEMA_DEFINITIONS` dict (starting at line 82) must be manually edited: rename the `"max_iterations_summary"` entry (lines 397–407) to `"max_steps_summary"` (update description to "Emitted when the step cap fires and on_max_steps is set") and add a new `"max_iterations_reached_summary"` entry alongside it. Then re-run `ll-generate-schemas` to produce `docs/reference/schemas/max_steps_summary.json` (renamed) and `docs/reference/schemas/max_iterations_reached_summary.json` (new; does not yet exist).
+
+### Wiring Pass 3 — Additional Documentation (2026-06-13)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/review-loop/SKILL.md:215-226` — contains its own SIM-1/SIM-2/SIM-3 `"Terminated by: max_iterations"` string patterns, independent of `skills/review-loop/reference.md` (already in the issue); must be updated alongside reference.md.
+- `skills/cleanup-loops/SKILL.md:343` — `terminated_by` value enumeration mentions `max_iterations`; update example values to `max_steps` if the termination reason string changes.
+- `skills/create-eval-from-issues/SKILL.md:253,293` — `max_iterations:` in inline YAML examples; update to `max_steps:` for consistency with new terminology in generated output.
+- `skills/workflow-automation-proposer/SKILL.md:144` — `max_iterations: 10` in inline YAML example; update to `max_steps: 10`.
+- `skills/verify-issue-loop/SKILL.md:154` — `max_iterations: 20` in inline YAML; update to `max_steps: 20`.
+- `docs/reference/COMMANDS.md:820,828` — `ll-loop calibrate-budget` description references `max_iterations`; update to clarify `max_steps` (per-step safety backstop, governs `calibrate-budget` advice) vs. `max_iterations` (full-iteration cap). This is distinct from lines 646-673 already in the issue.
 
 ### Configuration
 - Loop YAML schema: `max_iterations` (iteration cap, new semantics) and `max_steps`
@@ -353,11 +406,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 13. Regenerate event schemas via `scripts/little_loops/generate_schemas.py` if `state_enter` or `max_steps_summary` payloads gain an `iteration_count` field.
 14. Add `TestFSMLoopMaxIterations` to `test_fsm_schema.py` (model after `TestFSMLoopArtifactVersioning` line 3282); add `TestMaxIterationsValidation` and `TestMaxStepsValidation` to `test_fsm_validation.py` (model after `TestOnMaxIterationsValidation` line 1421); rename existing `test_max_iterations_forwarded` (line 533) → `test_max_steps_forwarded`; add new `test_max_iterations_forwarded` to `test_cli_loop_dispatch.py`.
 15. Update docs: `docs/reference/API.md:4147`, `docs/generalized-fsm-loop.md:357`, `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:581`, `docs/reference/COMMANDS.md:646-673`, `skills/create-loop/SKILL.md` — use iteration/step terminology throughout.
-16. Add `_iteration_summary_executed: bool = False` alongside `_summary_state_executed` at `executor.py:212`; add parallel iteration-cap branch with event name `"max_iterations_reached_summary"` (distinct from `"max_iterations_summary"` → `"max_steps_summary"`) and terminal intercept preserving `terminated_by="max_iterations_reached"`. Add `"on_max_iterations"` and `"on_max_steps"` to `known_top_level_keys` in `validation.py:131`; add `_validate_on_max_iterations()` for the iteration-cap summary state (parallel to renamed `_validate_on_max_steps()`). Update `general-task.yaml:9` and `canvas-sketch-generator.yaml:32` from `on_max_iterations:` → `on_max_steps:` — the backward-compat `from_dict()` alias cannot cover this because the new Python field `on_max_iterations` is the iteration-cap summary state; these 2 YAML files need explicit migration.
+16. Add `_iteration_summary_executed: bool = False` alongside `_summary_state_executed` at `executor.py:212`; add parallel iteration-cap branch with event name `"max_iterations_reached_summary"` (distinct from `"max_iterations_summary"` → `"max_steps_summary"`) and terminal intercept preserving `terminated_by="max_iterations_reached"`. Add `"on_max_iterations"` and `"on_max_steps"` to `known_top_level_keys` in `validation.py:131`; add `_validate_on_max_iterations()` for the iteration-cap summary state (parallel to renamed `_validate_on_max_steps()`). Update `general-task.yaml:9`, `canvas-sketch-generator.yaml:32`, and `vega-viz.yaml:33` from `on_max_iterations:` → `on_max_steps:` — the backward-compat `from_dict()` alias cannot cover this because the new Python field `on_max_iterations` is the iteration-cap summary state; these 3 YAML files need explicit migration.
 17. Update `scripts/little_loops/cli/loop/_helpers.py:EventFeedRenderer.render_event():794-799` — rename `"max_iterations_summary"` branch to `"max_steps_summary"`; add new elif handler for `"max_iterations_reached_summary"`.
 18. Edit `scripts/little_loops/generate_schemas.py:SCHEMA_DEFINITIONS` — rename the `"max_iterations_summary"` key (lines 397–407) to `"max_steps_summary"` (description: "Emitted when the step cap fires and on_max_steps is set"); add a new `"max_iterations_reached_summary"` entry. Then re-run `ll-generate-schemas` to produce `docs/reference/schemas/max_steps_summary.json` and `docs/reference/schemas/max_iterations_reached_summary.json` (does not yet exist).
 19. Update `skills/create-loop/loop-types.md` — rename `on_max_iterations:` → `on_max_steps:` in the "Iteration-Cap Summary Hook" section (line 942); update the step-count formula label at line 694; update all 27+ remaining `max_iterations` references to `max_steps` terminology.
 20. Update `skills/create-loop/reference.md` — update `"terminated by max_iterations"` routing description (line 743) and 20+ `max_iterations` references to `max_steps` / `max_iterations` (iteration-cap) terminology throughout.
+
+### Wiring Phase 3 (added by `/ll:wire-issue` on 2026-06-13)
+
+_Additional touchpoints identified by third wiring pass:_
+
+21. Migrate `scripts/little_loops/loops/vega-viz.yaml:33` — `on_max_iterations: max_iterations_summary` → `on_max_steps: max_iterations_summary`; this is the **3rd** loop YAML requiring explicit migration (step 16 listed 2; now confirmed 3 total). The state name `max_iterations_summary` in the YAML body can remain as-is since it is a user-defined state name, not the event type.
+22. Update `skills/review-loop/SKILL.md:215-226` — this file has its own SIM-1/SIM-2/SIM-3 `"Terminated by: max_iterations"` patterns independent of `skills/review-loop/reference.md` (step 12); update both files separately.
+23. Update skill YAML examples: `skills/create-eval-from-issues/SKILL.md:253,293`, `skills/workflow-automation-proposer/SKILL.md:144`, `skills/verify-issue-loop/SKILL.md:154` (rename `max_iterations:` → `max_steps:` in inline YAML examples); `skills/cleanup-loops/SKILL.md:343` (update `terminated_by` enumeration from `"max_iterations"` → `"max_steps"`).
+24. Update task templates: `scripts/little_loops/loops/lib/task-templates/data-lib-task.yaml.tmpl:15`, `stateful-service-task.yaml.tmpl:14`, `desktop-gui-task.yaml.tmpl:14` — rename `max_iterations:` → `max_steps:` so new loops generated from these templates use new terminology.
+25. Update argparse-plumbing tests (coordinate with CLI changes in steps 3, 10): `scripts/tests/test_cli_loop_testing.py` (`_make_args(max_iterations=3)` → `_make_args(max_steps=3)`, rename `test_max_iterations_applied` → `test_max_steps_applied`); `test_cli_loop_background.py:210` (`test_forwards_max_iterations` → `test_forwards_max_steps`); `test_cli_loop_queue.py`, `test_cli_loop_worktree.py`, `test_ll_loop_program_md.py:150`, `test_cross_host_baseline.py:132,246,308` — all `Namespace(max_iterations=None)` → `Namespace(max_steps=None)`; add `max_iterations=None` for iteration-cap flag.
+26. Update generated/template YAML assertions (do after step 19): `test_create_loop.py` (inline `max_iterations: 50` → `max_steps: 50`), `test_loop_suggester.py` (fixture YAML strings), `test_create_eval_from_issues.py:30,72`, `test_verify_issue_loop.py:34`.
+27. Update `scripts/tests/test_cli.py` — `FSMLoop(max_iterations=50)` calls used as step-cap; rename to `FSMLoop(max_steps=50)` (under Option 2, `max_iterations=N` in the Python constructor sets the iteration cap, not the step cap).
+28. Update `docs/reference/COMMANDS.md:820,828` — `max_iterations` references in `ll-loop calibrate-budget` description (separate from lines 646-673 in step 15); clarify `max_steps` as the step budget that `calibrate-budget` advises on.
+29. (Conditional — only if `state_enter` payload field `"iteration"` is renamed to `"step"`) Update: `test_events.py:84-89`, `test_usage_reporter.py`, `test_loop_run_analytics.py`, `test_fsm_interpolation.py:94` (`ctx.resolve("state", "iteration")`), `test_usage_journal.py:106` (`assert "iteration" in row`). Recommend keeping `"iteration"` as the field name for backwards compatibility and only adding `"iteration_count"` as a new parallel field if observability parity is needed.
 
 ## Acceptance Criteria
 
@@ -367,7 +434,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] A loop YAML with both `max_steps: 50` and `max_iterations: 3` applies both caps independently.
 - [ ] `on_max_steps: <state>` executes the named summary state when the step cap fires; `terminated_by="max_steps"` is preserved in `ExecutionResult` and the `loop_complete` event.
 - [ ] `on_max_iterations: <state>` executes the named summary state when the iteration cap fires; `terminated_by="max_iterations_reached"` is preserved.
-- [ ] `general-task.yaml` and `canvas-sketch-generator.yaml` are updated from `on_max_iterations:` → `on_max_steps:` (the 2 existing loop YAMLs using the step-cap summary hook).
+- [ ] `general-task.yaml`, `canvas-sketch-generator.yaml`, and `vega-viz.yaml` are updated from `on_max_iterations:` → `on_max_steps:` (the 3 existing loop YAMLs using the step-cap summary hook).
 - [ ] `ll-loop validate` recognizes `max_steps`, `on_max_steps`, `max_iterations` (iteration cap), and `on_max_iterations` as valid top-level keys; legacy `max_iterations:` YAML key (step cap) no longer emits an unknown-key warning.
 - [ ] `ll-loop validate` confirms `on_max_steps` and `on_max_iterations` each name an existing state in the loop definition.
 - [ ] All existing built-in loops pass `ll-loop validate` with no new warnings after implementation (`test_builtin_loops.py:test_all_validate_as_valid_fsm` passes unchanged).
@@ -381,14 +448,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-07_
+_Updated by `/ll:confidence-check` on 2026-06-13 (re-check after Wiring Pass 3)_
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 56/100 → LOW
 
 ### Outcome Risk Factors
-- **Very wide blast radius**: 16+ distinct change sites across 6+ subsystems (fsm core, CLI commands, test suite, skills, documentation). Depth at each site is mechanical (add one parallel field alongside `max_iterations`), but the count demands a systematic checklist to avoid missed sites — the wiring pass in the issue serves this purpose.
-- **Sub-decision unresolved**: Whether to add an `on_max_iterations` summary-state callback (mirror of `on_max_steps`) alongside the new `max_iterations` iteration-cap field — the wiring pass marks this as optional ("if added") but does not decide. Settling this early in the implementation session avoids rework in validation and testing.
+- **Very wide blast radius**: 50+ distinct change sites across 6+ subsystems (fsm core, CLI commands, persistence, session store, test suite, skills, documentation, loop YAMLs). Wiring Pass 3 added 10+ more test files and 5+ skill/doc files; scores unchanged (breadth was already at the sweeping floor). Work through Implementation Steps 1–29 sequentially; each step is mechanical once tracked systematically.
+- **Conditional payload field**: `iteration_count` in `state_enter` event is mentioned as "if added" in docs/schema sections — resolve at session start whether to add it (recommended: yes, for observability parity with the existing `iteration` field; keep `"iteration"` as the field name and add `"iteration_count"` as a new parallel field per step 29 guidance) to avoid revisiting docs and schema steps mid-way.
 
 ### Sub-Decision Resolved (2026-06-07 Refine Pass)
 
@@ -405,6 +472,9 @@ The existing `_summary_state_executed` flag at `executor.py:212` and the `TestMa
 **YAML alias conflict**: `from_dict()` cannot alias `on_max_iterations` YAML key → `on_max_steps` Python field because the new `on_max_iterations` Python field is the iteration-cap summary state. The 2 existing loops (`general-task.yaml:9`, `canvas-sketch-generator.yaml:32`) must be explicitly updated to `on_max_steps:` as part of this implementation — there is no non-breaking alias path.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-13T18:30:00Z - `b2d4feeb-e222-4a6a-8608-9774ec172c24.jsonl`
+- `/ll:wire-issue` - 2026-06-13T18:05:54Z - `ecae74c3-ea98-4133-b95f-77f464d27531.jsonl`
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `71b001de-828d-4dd5-bf66-25c9d0924c2d.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:wire-issue` - 2026-06-08T01:30:54 - `bd674972-d40a-41d7-8755-4b2991056e84.jsonl`
 - `/ll:refine-issue` - 2026-06-08T01:21:46 - `bd674972-d40a-41d7-8755-4b2991056e84.jsonl`
