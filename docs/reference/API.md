@@ -3635,13 +3635,13 @@ Entry point for `ll-learning-tests` command. Query and manage the learning test 
 def main_ctx_stats() -> int
 ```
 
-Entry point for `ll-ctx-stats` command. Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent.
+Entry point for `ll-ctx-stats` command. Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Also aggregates skill-health signals (per-skill invocation frequency and correction rate) via `_aggregate_skill_stats()` from the same `.ll/history.db` (ENH-1921); when skill events are present a "Skill health" section is appended to the human-readable report and a `skill_health` array is included in `--json` output. Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent.
 
 **Returns:** 0 when a report was rendered (data present or fallback used), 1 when no data found in either the SQLite store or the fallback file.
 
 **Flags:**
 - `--db PATH` — Use a non-default session database (default `.ll/history.db`)
-- `--json` — Emit the report as JSON instead of the human-readable summary
+- `--json` — Emit the report as JSON instead of the human-readable summary; includes `skill_health: [{skill, invocations, corrections, correction_rate}]` or `null`
 
 Enable per-tool byte tracking by setting `"analytics": {"enabled": true}` in `.ll/ll-config.json`. The `post_tool_use` hook reads this gate and no-ops when disabled or absent. Use `analytics.capture` for per-category control (e.g. `analytics.capture.file_events: false` disables file-event recording while keeping tool-event metrics active). See [CONFIGURATION.md § analytics.capture](CONFIGURATION.md#analyticscapture) for the full key reference.
 

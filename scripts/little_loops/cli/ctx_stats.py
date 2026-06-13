@@ -17,6 +17,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from little_loops.cli.logs import _aggregate_skill_stats
 from little_loops.cli.output import (
     configure_output,
     format_relative_time,
@@ -34,13 +35,18 @@ def _build_parser() -> argparse.ArgumentParser:
     """Build the ll-ctx-stats argument parser (exposed for testing)."""
     parser = argparse.ArgumentParser(
         prog="ll-ctx-stats",
-        description="Show context-window savings metrics for the current project",
+        description=(
+            "Show context-window savings metrics and skill-health signals for the current project. "
+            "Reads per-tool byte metrics from .ll/history.db and renders how much data was processed "
+            "by tools vs. how much entered conversation context. Also surfaces per-skill invocation "
+            "frequency and correction rate from the same database."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s                 # Print savings summary
+  %(prog)s                 # Print savings summary and skill-health section
   %(prog)s --db PATH       # Use a non-default session database
-  %(prog)s --json          # Output as JSON
+  %(prog)s --json          # Output as JSON (includes skill_health array)
 
 Exit codes:
   0 - Report rendered (data present or fallback used)
@@ -165,7 +171,11 @@ def _load_fallback_state(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def _render(summary: dict[str, Any], logger: Logger) -> None:
+def _render(
+    summary: dict[str, Any],
+    logger: Logger,
+    skill_stats: dict[str, dict[str, int]] | None = None,
+) -> None:
     """Print the savings report for an aggregated SQLite ``summary`` dict."""
     total_processed = int(summary["total_in"]) + int(summary["total_out"])
     in_context = max(0, int(summary["total_out"]) - int(summary["cache_bytes"]))
@@ -210,6 +220,18 @@ def _render(summary: dict[str, Any], logger: Logger) -> None:
     else:
         logger.info("Cache: no hits recorded in this session")
 
+    if skill_stats:
+        print()
+        print("Skill health:")
+        ranked_skills = sorted(skill_stats.items(), key=lambda kv: kv[1]["invocations"], reverse=True)
+        for skill, counts in ranked_skills:
+            inv = counts["invocations"]
+            corr = counts["corrections"]
+            rate = round(100 * corr / inv) if inv > 0 else 0
+            print(f"  {skill:<22} {inv:>3} invocations   {corr:>2} corrections ({rate}%)")
+    elif skill_stats is not None:
+        logger.info("No skill events recorded yet.")
+
 
 def _render_fallback(state: dict[str, Any], logger: Logger) -> None:
     """Render the ``.ll/ll-context-state.json`` fallback (token estimates)."""
@@ -231,12 +253,33 @@ def _render_fallback(state: dict[str, Any], logger: Logger) -> None:
             print(f"  {str(tool):<20} {int(tokens):>8} tokens")
 
 
-def _print_json(summary: dict[str, Any] | None, state: dict[str, Any] | None) -> None:
+def _print_json(
+    summary: dict[str, Any] | None,
+    state: dict[str, Any] | None,
+    skill_stats: dict[str, dict[str, int]] | None = None,
+) -> None:
     """Emit a JSON document combining SQLite + fallback data."""
     if summary is not None:
         total_processed = int(summary["total_in"]) + int(summary["total_out"])
         in_context = max(0, int(summary["total_out"]) - int(summary["cache_bytes"]))
         saved = max(0, total_processed - in_context)
+        skill_health = None
+        if skill_stats:
+            skill_health = [
+                {
+                    "skill": skill,
+                    "invocations": counts["invocations"],
+                    "corrections": counts["corrections"],
+                    "correction_rate": (
+                        round(counts["corrections"] / counts["invocations"], 4)
+                        if counts["invocations"] > 0
+                        else 0.0
+                    ),
+                }
+                for skill, counts in sorted(
+                    skill_stats.items(), key=lambda kv: kv[1]["invocations"], reverse=True
+                )
+            ]
         payload: dict[str, Any] = {
             "source": "sqlite",
             "bytes_processed": total_processed,
@@ -246,6 +289,7 @@ def _print_json(summary: dict[str, Any] | None, state: dict[str, Any] | None) ->
             "cache_hits": int(summary["cache_hits"]),
             "cache_bytes_saved": int(summary["cache_bytes"]),
             "per_tool": summary["per_tool"],
+            "skill_health": skill_health,
         }
     elif state is not None:
         payload = {
@@ -276,10 +320,11 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         state_path = cwd / DEFAULT_STATE_RELPATH
 
         summary = _aggregate_tool_events(db_path)
+        skill_stats = _aggregate_skill_stats(db_path)
         fallback = _load_fallback_state(state_path) if summary is None else None
 
         if args.json_mode:
-            _print_json(summary, fallback)
+            _print_json(summary, fallback, skill_stats)
             return 0 if (summary is not None or fallback is not None) else 1
 
         if summary is not None:
@@ -292,7 +337,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
                 if fallback is None:
                     fallback = _load_fallback_state(state_path)
             else:
-                _render(summary, logger)
+                _render(summary, logger, skill_stats)
                 return 0
 
         if fallback is not None:

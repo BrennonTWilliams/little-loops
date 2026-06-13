@@ -250,11 +250,11 @@ ll-doctor --json
 
 ### ll-ctx-stats
 
-Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent so first-time users still get useful output.
+Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Also surfaces skill-health signals (per-skill invocation frequency and correction rate) from `ll-logs stats` (ENH-1921). Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent so first-time users still get useful output.
 
 **Flags:**
 - `--db PATH` — Use a non-default session database (default `.ll/history.db`).
-- `--json` — Emit the report as JSON instead of the human-readable summary.
+- `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not.
 
 **Exit codes:** `0` = report rendered (data present or fallback used), `1` = no data found in either the SQLite store or the fallback file.
 

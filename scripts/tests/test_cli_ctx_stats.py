@@ -20,6 +20,38 @@ from little_loops.cli.ctx_stats import (
 from little_loops.session_store import connect, ensure_db
 
 
+def _populate_skill_events(
+    db_path: Path,
+    rows: list[tuple[str, str, str, str]],
+) -> None:
+    """Insert (ts, session_id, skill_name, args) rows into skill_events."""
+    ensure_db(db_path)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        for ts, session_id, skill_name, args in rows:
+            conn.execute(
+                "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+                (ts, session_id, skill_name, args),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _insert_correction(db_path: Path, ts: str, session_id: str, content: str) -> None:
+    """Insert a user_corrections row directly."""
+    ensure_db(db_path)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "INSERT INTO user_corrections(ts, session_id, content, source) VALUES(?, ?, ?, 'test')",
+            (ts, session_id, content),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _capture_print() -> tuple[list[str], object]:
     """Return (lines, side_effect) for capturing print() calls including no-arg ones."""
     lines: list[str] = []
@@ -214,6 +246,84 @@ class TestMainCtxStats:
         assert data["bytes_processed"] == 1000
         assert "reduction_pct" in data
         assert "per_tool" in data
+        assert data.get("skill_health") is None  # no skill events seeded
+
+    def test_skill_health_section_present(self, tmp_path: Path, monkeypatch) -> None:
+        """Skill-health section appears in human-readable output when skill events present."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        _populate_skill_events(db, [("2026-01-01T00:00:00Z", "s1", "manage-issue", "")])
+        lines, side_effect = _capture_print()
+        with (
+            patch("sys.argv", ["ll-ctx-stats"]),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            result = main_ctx_stats()
+        assert result == 0
+        output = "\n".join(lines)
+        assert "Skill health" in output
+        assert "manage-issue" in output
+
+    def test_skill_health_absent_when_no_skill_rows(self, tmp_path: Path, monkeypatch) -> None:
+        """Skill-health section is omitted when skill_events table is empty."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        lines, side_effect = _capture_print()
+        with (
+            patch("sys.argv", ["ll-ctx-stats"]),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            result = main_ctx_stats()
+        assert result == 0
+        output = "\n".join(lines)
+        assert "Skill health" not in output
+
+    def test_json_mode_skill_health_present(self, tmp_path: Path, monkeypatch) -> None:
+        """--json includes skill_health list when skill events are present."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 100, 900, 0)])
+        _populate_skill_events(db, [
+            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+            ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
+            ("2026-01-01T00:02:00Z", "s1", "run-tests", ""),
+        ])
+        _insert_correction(db, "2026-01-01T00:00:30Z", "s1", "no, not that")
+        lines, side_effect = _capture_print()
+        with (
+            patch("sys.argv", ["ll-ctx-stats", "--json"]),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            result = main_ctx_stats()
+        assert result == 0
+        data = json.loads("\n".join(lines))
+        assert "skill_health" in data
+        assert isinstance(data["skill_health"], list)
+        skills = {row["skill"]: row for row in data["skill_health"]}
+        assert "manage-issue" in skills
+        assert skills["manage-issue"]["invocations"] == 2
+        assert "correction_rate" in skills["manage-issue"]
+
+    def test_json_mode_skill_health_none_when_no_skill_rows(self, tmp_path: Path, monkeypatch) -> None:
+        """--json has skill_health=null when no skill events recorded."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 100, 900, 0)])
+        lines, side_effect = _capture_print()
+        with (
+            patch("sys.argv", ["ll-ctx-stats", "--json"]),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            result = main_ctx_stats()
+        assert result == 0
+        data = json.loads("\n".join(lines))
+        assert data.get("skill_health") is None
 
     def test_db_flag_uses_explicit_path(self, tmp_path: Path, monkeypatch) -> None:
         """--db PATH overrides the default .ll/history.db location."""

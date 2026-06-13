@@ -3,8 +3,9 @@ id: ENH-2104
 title: Wire `ll-logs stats` signals into `ll-ctx-stats`
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-12T00:00:00Z'
+completed_at: '2026-06-13T15:00:15Z'
 discovered_date: 2026-06-12
 discovered_by: review-epic
 parent: EPIC-1918
@@ -59,13 +60,13 @@ produces the data; nothing consumes it from the analytics side.
 
 ## Acceptance Criteria
 
-- [ ] `ll-ctx-stats` gains a section (or `--with-skill-health` flag) showing
+- [x] `ll-ctx-stats` gains a section (or `--with-skill-health` flag) showing
   per-skill invocation frequency and correction-rate signals from
   `ll-logs stats --json`
-- [ ] Graceful degradation when `ll-logs` data is unavailable (no session
+- [x] Graceful degradation when `ll-logs` data is unavailable (no session
   logs, empty index) — section is omitted with a notice, exit code unchanged
-- [ ] Output documented in the CLI `--help` text and the relevant guide
-- [ ] Tests cover the merged output and the degradation path
+- [x] Output documented in the CLI `--help` text and the relevant guide
+- [x] Tests cover the merged output and the degradation path
 
 ## Scope Boundaries
 
@@ -207,10 +208,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-06-12 | Priority: P3
+**Done** | Created: 2026-06-12 | Completed: 2026-06-13 | Priority: P3
+
+## Resolution
+
+Implemented Option A (always-on skill-health section) in `scripts/little_loops/cli/ctx_stats.py`:
+- Added `from little_loops.cli.logs import _aggregate_skill_stats` import
+- Extended `main_ctx_stats()` to call `_aggregate_skill_stats(db_path)` alongside `_aggregate_tool_events(db_path)`
+- Updated `_render()` to append a "Skill health:" section (skill, invocations, corrections, correction%) when data present; logger notice when empty
+- Updated `_print_json()` to include `skill_health: [{skill, invocations, corrections, correction_rate}]` or `null` in the sqlite payload
+- Updated `--help` description, `docs/reference/CLI.md`, `docs/reference/API.md`, `commands/help.md`, `.claude/CLAUDE.md`, and `scripts/little_loops/init/writers.py`
+- Added 5 new tests in `TestMainCtxStats` plus `_populate_skill_events`/`_insert_correction` helpers
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-13T14:50:39 - `07fbf515-5a87-406c-a2df-3dd124578258.jsonl`
 - `/ll:confidence-check` - 2026-06-13T00:00:00Z - `fcd9eacf-8926-445e-b304-74197fc2e3fb.jsonl`
 - `/ll:wire-issue` - 2026-06-13T14:17:09 - `bb95cdb9-2fae-4775-ad2d-2ee497cc504b.jsonl`
 - `/ll:decide-issue` - 2026-06-13T14:13:57 - `9aaae9fc-d0da-4b2b-80af-8f24ea621c5f.jsonl`

@@ -1,13 +1,23 @@
 ---
 id: ENH-2109
-title: "ll-loop run: persistent default flags via config (--clear, --show-diagrams, --mode)"
+title: 'll-loop run: persistent default flags via config (--clear, --show-diagrams,
+  --mode)'
 type: ENH
 status: open
 priority: P3
-captured_at: "2026-06-13T14:38:41Z"
-discovered_date: "2026-06-13"
+captured_at: '2026-06-13T14:38:41Z'
+discovered_date: '2026-06-13'
 discovered_by: capture-issue
-labels: [loops, cli, config]
+labels:
+- loops
+- cli
+- config
+confidence_score: 90
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 16
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2109: ll-loop run: persistent default flags via config (--clear, --show-diagrams, --mode)
@@ -42,6 +52,14 @@ Running `ll-loop run my-loop` behaves identically to `ll-loop run my-loop --clea
 
 Users who run loops interactively nearly always want the same display settings. Requiring repetitive flag entry adds friction and leads to inconsistent loop output between runs where the user forgets to add the flags.
 
+## Scope Boundaries
+
+- **In scope**: `--clear`, `--show-diagrams`, and `--mode` flags for `ll-loop run` only
+- **Out of scope**: Persistent defaults for other `ll-loop` subcommands (`validate`, `diagnose`, `list`, etc.)
+- **Out of scope**: Per-loop overrides — `run_defaults` is project-wide config, not per-loop YAML
+- **Out of scope**: New `ll-loop run` flags beyond the three named here; only existing flags are wired
+- **Out of scope**: Changes to FSM execution logic; this is purely a CLI/config-layer change
+
 ## Proposed Solution
 
 1. **Schema** (`config-schema.json`): Add a `run_defaults` object under `loops` with:
@@ -55,10 +73,56 @@ Users who run loops interactively nearly always want the same display settings. 
 
 ## Integration Map
 
-- `config-schema.json` — add `loops.run_defaults` object with `clear`, `show_diagrams`, `mode` properties
-- `scripts/little_loops/cli/loop/__init__.py` — inject defaults after `parse_args()` in the `run` subcommand handler, before dispatching
-- `scripts/little_loops/cli/loop/diagram_modes.py` — re-export the valid values list for schema enum generation
-- `scripts/little_loops/config.py` (or equivalent config loader) — expose `loops.run_defaults` as a typed config field
+### Files to Modify
+- `config-schema.json` — add `loops.run_defaults` object with `clear`, `show_diagrams`, `mode` properties and enum constraint for `show_diagrams`
+- `scripts/little_loops/cli/loop/__init__.py` — inject defaults after `parse_args()` in the `run` subcommand handler, before dispatching to the run handler
+- `scripts/little_loops/cli/loop/diagram_modes.py` — re-export the valid values list (`_PARSE_SHOW_DIAGRAMS_VALID`) for schema enum generation
+- `scripts/little_loops/config.py` (or equivalent config loader) — add `LoopRunDefaults` dataclass; expose `loops.run_defaults` as a typed config field
+
+### Dependent Files (Callers/Importers)
+- Grep `loops` config block references: `grep -r "loops" scripts/little_loops/config.py` to confirm loader location
+- Grep `ll-loop run` invocations in automation scripts to verify no callers break with new backfill logic
+
+### Similar Patterns
+- Check how other CLI tools in `scripts/little_loops/cli/` apply config defaults to argparse args for consistency
+- Check if `config-schema.json` already has a `defaults` object under another section to follow that naming pattern
+
+### Tests
+- `scripts/tests/test_loop_cli_defaults.py` (new) — three cases: (a) config default applied when flag omitted, (b) explicit CLI flag overrides config default, (c) invalid `show_diagrams` value raises config validation error
+
+### Documentation
+- `docs/guides/LOOPS_GUIDE.md` — document new `run_defaults` block with JSON example and CLI behavior note
+
+### Configuration
+- `.ll/ll-config.json` — new `loops.run_defaults` block (user-facing; not committed to repo)
+
+## API/Interface
+
+**New config block** (`config-schema.json` / `.ll/ll-config.json`):
+```json
+{
+  "loops": {
+    "run_defaults": {
+      "clear": true,
+      "show_diagrams": "clean",
+      "mode": null
+    }
+  }
+}
+```
+- `show_diagrams` valid values: topologies (`layered`, `neighborhood`, `inline`) and presets (`detailed`, `summary`, `clean`, `local`, `slim`, `oneline`, `"default"` for bare `--show-diagrams`)
+- All fields optional; absent field = argparse default wins
+
+**New dataclass** (`scripts/little_loops/config.py`):
+```python
+@dataclass
+class LoopRunDefaults:
+    clear: bool = False
+    show_diagrams: str | None = None
+    mode: str | None = None
+```
+
+**CLI behavior**: `run_defaults` values are backfilled only when the corresponding `args` attribute equals its argparse-declared default — explicit CLI flags always take precedence.
 
 ## Implementation Steps
 
@@ -70,9 +134,10 @@ Users who run loops interactively nearly always want the same display settings. 
 
 ## Impact
 
-- **Users**: No friction for repeat flag patterns; display settings persist across sessions.
-- **Scope**: Config-layer change only; no FSM execution logic touched.
-- **Risk**: Low — defaults only apply when CLI arg is at its null/false default; existing invocations with explicit flags are unaffected.
+- **Priority**: P3 — Quality-of-life improvement; unblocked by other work; primarily affects interactive loop users
+- **Effort**: Small — new `LoopRunDefaults` dataclass, schema extension, ~20-line backfill in `__init__.py`, and one new test file; no FSM or execution logic changes
+- **Risk**: Low — defaults only apply when CLI arg is at its argparse-declared default; all existing invocations with explicit flags are unaffected
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -87,6 +152,8 @@ Users who run loops interactively nearly always want the same display settings. 
 loops, cli, config
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `579b1a98-2ed2-4b4e-aa3b-ebba4a134d2b.jsonl`
+- `/ll:format-issue` - 2026-06-13T14:43:30 - `fed867ff-c49e-4716-8027-9c1986e1033e.jsonl`
 - `/ll:capture-issue` - 2026-06-13T14:38:41Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10f332cc-0aed-4ae6-b16b-d88cb5f34bdd.jsonl`
 
 ---
