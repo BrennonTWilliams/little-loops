@@ -44,6 +44,9 @@ states:
       AVAILABLE LOOPS (project[] and builtin[] arrays):
       ${captured.catalog.output}
 
+      PREVIOUS VALIDATION ERRORS (empty on first attempt — your last plan was rejected for these; fix them):
+      ${captured.validation_result.output:default=(none — this is the first attempt)}
+
       Rules:
       1. Emit a plan of 1–${context.max_plan_nodes} steps (fewer is better).
       2. Each step must use a loop from the catalog above. When uncertain, prefer

@@ -333,6 +333,96 @@ class TestCatalogExclusivity:
         )
 
 
+class TestValidatePlanFragmentExecution:
+    """Functional tests that actually run the validate_plan fragment Python body.
+
+    Regression coverage for the composer audit (2026-06-13): the fragment used to
+    interpolate ${captured.catalog.output} into a single-quoted Python string literal,
+    which crashed with a SyntaxError on every invocation because the catalog JSON is
+    multi-line and contains embedded quotes. The fix reads the catalog from disk
+    (composer-catalog.json) instead. These tests execute the fragment to ensure it
+    parses and validates correctly, not just that the YAML has the right shape.
+    """
+
+    @pytest.fixture
+    def lib_data(self) -> dict:
+        with open(LIB_FILE) as f:
+            return yaml.safe_load(f)
+
+    def _extract_python_body(self, action: str) -> str:
+        """Pull the heredoc Python body out of a `python3 << 'PYEOF' ... PYEOF` action."""
+        lines = action.splitlines()
+        start = next(i for i, ln in enumerate(lines) if "<< 'PYEOF'" in ln)
+        end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == "PYEOF")
+        return "\n".join(lines[start + 1 : end])
+
+    def _run_validate_plan(
+        self, lib_data: dict, tmp_path: Path, catalog: dict, plan: list, max_nodes: int = 8
+    ):
+        import subprocess
+        import sys
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "composer-catalog.json").write_text(__import__("json").dumps(catalog))
+        (run_dir / "composer-plan.json").write_text(__import__("json").dumps(plan))
+
+        body = self._extract_python_body(lib_data["fragments"]["validate_plan"]["action"])
+        body = body.replace("${context.run_dir}", str(run_dir))
+        body = body.replace("${context.max_plan_nodes}", str(max_nodes))
+        script = tmp_path / "validate_plan.py"
+        script.write_text(body)
+        return subprocess.run(
+            [sys.executable, str(script)], capture_output=True, text=True
+        ), run_dir
+
+    def test_fragment_does_not_interpolate_catalog_into_string_literal(self, lib_data: dict) -> None:
+        """Guard the anti-pattern that caused the original SyntaxError."""
+        action = lib_data["fragments"]["validate_plan"]["action"]
+        assert "'${captured.catalog.output}'" not in action, (
+            "validate_plan must NOT interpolate the multi-line catalog JSON into a "
+            "string literal — read composer-catalog.json from disk instead (audit 2026-06-13)"
+        )
+        assert "composer-catalog.json" in action, (
+            "validate_plan must read the catalog from disk via composer-catalog.json"
+        )
+
+    def test_valid_plan_exits_zero_and_writes_topo_order(self, lib_data: dict, tmp_path: Path) -> None:
+        catalog = {
+            "project": [{"name": "loop-a"}, {"name": "loop-b"}],
+            "builtin": [{"name": "loop-router"}],
+        }
+        plan = [
+            {"step_id": "s1", "loop_name": "loop-a", "input": "x", "depends_on": []},
+            {"step_id": "s2", "loop_name": "loop-b", "input": "y", "depends_on": ["s1"]},
+        ]
+        result, run_dir = self._run_validate_plan(lib_data, tmp_path, catalog, plan)
+        assert result.returncode == 0, f"valid plan should pass: {result.stdout}\n{result.stderr}"
+        assert "PLAN_VALID" in result.stdout
+        assert (run_dir / "topo-order.json").exists()
+
+    def test_unknown_loop_name_is_rejected_via_disk_catalog(self, lib_data: dict, tmp_path: Path) -> None:
+        """The catalog-read fix must still enforce the unknown-loop-name check."""
+        catalog = {"project": [{"name": "loop-a"}], "builtin": []}
+        plan = [{"step_id": "s1", "loop_name": "does-not-exist", "input": "x", "depends_on": []}]
+        result, _ = self._run_validate_plan(lib_data, tmp_path, catalog, plan)
+        assert result.returncode == 1
+        assert "not in catalog" in result.stdout
+
+    def test_catalog_with_quotes_and_newlines_does_not_crash(self, lib_data: dict, tmp_path: Path) -> None:
+        """The exact failure mode from the audit: descriptions with quotes/newlines."""
+        catalog = {
+            "project": [
+                {"name": "loop-a", "description": "has 'single' and \"double\" quotes\nand a newline"}
+            ],
+            "builtin": [],
+        }
+        plan = [{"step_id": "s1", "loop_name": "loop-a", "input": "x", "depends_on": []}]
+        result, _ = self._run_validate_plan(lib_data, tmp_path, catalog, plan)
+        assert result.returncode == 0, f"catalog with quotes must not crash: {result.stderr}"
+        assert "SyntaxError" not in result.stderr
+
+
 @pytest.mark.slow
 @pytest.mark.skipif(shutil.which("claude") is None, reason="claude CLI not available")
 class TestLoopComposerLive:
