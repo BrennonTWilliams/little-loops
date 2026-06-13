@@ -1,0 +1,1204 @@
+name: "cua-agent-desktop"
+category: "harness"
+input_key: description
+required_inputs: ["description"]
+description: |
+  Computer-Use Agent harness that drives macOS desktop automation via the
+  agent-desktop CLI tool. Accepts a natural-language task description and
+  iterates through observe → plan → act → verify cycles until the task
+  is complete or max_iterations is exhausted. Uses the macOS Accessibility
+  API through agent-desktop for element-level interaction (click, type,
+  scroll, keyboard shortcuts, window management) with structured error
+  recovery for STALE_REF, ELEMENT_NOT_FOUND, PERM_DENIED, TIMEOUT, and
+  ACTION_FAILED. Produces a summary artifact with the full action evidence
+  chain in the run directory.
+initial: init
+max_iterations: 50
+on_max_iterations: max_iterations_summary
+artifact_versioning: true
+on_handoff: spawn
+timeout: 7200
+
+# Per-run context: description is injected via loop_input or --context.
+# All other variables have defaults that can be overridden at runtime.
+context:
+  description: ""                # task description, populated from input_key
+  app_name: ""                   # optional: target app to automate (empty = any app)
+  stale_ref_max: 3               # max consecutive STALE_REF before replan
+  timeout_max: 2                 # max consecutive TIMEOUT before replan
+  element_not_found_max: 2       # max consecutive ELEMENT_NOT_FOUND before replan
+  judge_error_max: 3             # max consecutive LLM judge errors before replan
+  judge_retry_max: 3             # max evaluate retries for transient LLM API errors
+  action_fail_max: 3             # max consecutive action failures before replan
+  plan_error_max: 2              # max consecutive plan LLM errors before diagnosing
+  plan_timeout_sec: 300          # plan state timeout in seconds (configurable)
+  plan_retry_max: 2              # max plan timeout retries before escalating to diagnose
+  cc_error_max: 2                # max consecutive check_completion LLM errors before diagnosing
+  snapshot_detail: "compact"     # compact (default) or full snapshot output
+
+states:
+
+  # ---------------------------------------------------------------------------
+  # GROUP 1: INITIALIZATION
+  # ---------------------------------------------------------------------------
+
+  init:
+    # Captures an absolute run_dir path so all downstream shell states write
+    # to an isolated per-run directory independent of the runner's working dir.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR/snapshots"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: validate_input
+
+  validate_input:
+    # Pre-flight gate: rejects empty description before any tool invocation.
+    action_type: shell
+    action: |
+      if [ -z "${context.description}" ]; then
+        echo "EMPTY_DESCRIPTION_ERROR"
+        exit 1
+      fi
+      echo "INPUT_VALID"
+    timeout: 10
+    evaluate:
+      type: output_contains
+      pattern: "INPUT_VALID"
+    on_yes: check_install
+    on_no: input_missing
+    on_error: input_missing
+
+  input_missing:
+    terminal: true
+    description: "context.description is empty — provide a task description via loop_input or --context"
+
+  check_install:
+    # Verifies agent-desktop CLI is on PATH. Terminal on failure with install guide.
+    action_type: shell
+    action: |
+      if command -v agent-desktop &>/dev/null; then
+        VERSION=$(agent-desktop --version 2>/dev/null || echo "version unknown")
+        echo "AGENT_DESKTOP_INSTALLED: $VERSION"
+      else
+        echo "AGENT_DESKTOP_NOT_FOUND"
+        exit 1
+      fi
+    timeout: 15
+    evaluate:
+      type: output_contains
+      pattern: "AGENT_DESKTOP_INSTALLED"
+    on_yes: check_permissions
+    on_no: not_installed
+    on_error: not_installed
+
+  not_installed:
+    terminal: true
+    description: "agent-desktop not found. Install with: npm install -g agent-desktop"
+
+  check_permissions:
+    # Probes macOS Accessibility permissions by issuing a trial snapshot.
+    # Terminal on PERM_DENIED as this cannot be recovered at runtime.
+    action_type: shell
+    action: |
+      TARGET="${context.app_name}"
+      if [ -n "$TARGET" ]; then
+        RESULT=$(agent-desktop snapshot --app "$TARGET" -i --compact 2>&1 || true)
+      else
+        RESULT=$(agent-desktop snapshot -i --compact 2>&1 || true)
+      fi
+      echo "$RESULT"
+      if echo "$RESULT" | jq -e '.ok == true' >/dev/null 2>&1; then
+        echo "PERMISSION_ACCEPTED"
+      elif echo "$RESULT" | grep -q "PERM_DENIED"; then
+        echo "PERMISSION_DENIED"
+        exit 1
+      else
+        # Some other error (no app, etc.) — permissions are OK, proceed
+        echo "PERMISSION_ACCEPTED"
+      fi
+    timeout: 30
+    evaluate:
+      type: output_contains
+      pattern: "PERMISSION_ACCEPTED"
+    on_yes: observe
+    on_no: perm_denied
+    on_error: perm_denied
+
+  perm_denied:
+    terminal: true
+    description: |
+      macOS Accessibility permissions not granted. Grant access in:
+      System Settings > Privacy & Security > Accessibility
+      Then re-run the loop.
+
+  # ---------------------------------------------------------------------------
+  # GROUP 2: OBSERVE
+  # ---------------------------------------------------------------------------
+
+  observe:
+    # Runs agent-desktop snapshot to capture the current UI state as a
+    # structured accessibility tree with reference IDs (@e1, @e2, ...).
+    # Archives each snapshot per-iteration for the evidence trail.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+
+      # Per-iteration snapshot archival (artifact versioning)
+      SNAP_FILE="$ABS_DIR/.snapshot_count"
+      SNAP=$(cat "$SNAP_FILE" 2>/dev/null || echo 0)
+      SNAP=$((SNAP + 1))
+      echo "$SNAP" > "$SNAP_FILE"
+
+      # Run snapshot
+      TARGET="${context.app_name}"
+      if [ -n "$TARGET" ]; then
+        SNAPSHOT_OUTPUT=$(agent-desktop snapshot --app "$TARGET" -i --compact 2>&1 || true)
+      else
+        SNAPSHOT_OUTPUT=$(agent-desktop snapshot -i --compact 2>&1 || true)
+      fi
+
+      echo "=== SNAPSHOT ==="
+      echo "$SNAPSHOT_OUTPUT"
+
+      VALID=$(echo "$SNAPSHOT_OUTPUT" | jq -e '.ok == true' >/dev/null 2>&1 && echo true || echo false)
+      if [ "$VALID" = "true" ]; then
+        echo "$SNAPSHOT_OUTPUT" > "$ABS_DIR/snapshots/snapshot_$SNAP.json"
+        echo "SNAPSHOT_ARCHIVED: snapshots/snapshot_$SNAP.json"
+
+        # Optional screenshot capture (non-fatal if unavailable).
+        # agent-desktop screenshot outputs JSON with base64-encoded PNG data,
+        # so we pipe through jq to extract and base64 to decode to raw PNG.
+        if [ -n "$TARGET" ]; then
+          agent-desktop screenshot --app "$TARGET" 2>/dev/null \
+            | jq -r '.data.data // empty' 2>/dev/null \
+            | base64 -d > "$ABS_DIR/snapshots/screenshot_$SNAP.png" 2>/dev/null || \
+            echo "SCREENSHOT_NOT_AVAILABLE"
+        else
+          agent-desktop screenshot 2>/dev/null \
+            | jq -r '.data.data // empty' 2>/dev/null \
+            | base64 -d > "$ABS_DIR/snapshots/screenshot_$SNAP.png" 2>/dev/null || \
+            echo "SCREENSHOT_NOT_AVAILABLE"
+        fi
+
+        echo "OBSERVE_COMPLETE"
+      else
+        ERROR_CODE=$(echo "$SNAPSHOT_OUTPUT" | jq -r '.error.code // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+        echo "SNAPSHOT_ERROR: $ERROR_CODE"
+        echo "$SNAPSHOT_OUTPUT" > "$ABS_DIR/snapshots/snapshot_error_$SNAP.json"
+        if [ "$ERROR_CODE" = "STALE_REF" ]; then
+          echo "SNAPSHOT_STALE_REF"
+        elif [ "$ERROR_CODE" = "PERM_DENIED" ]; then
+          echo "SNAPSHOT_PERM_DENIED"
+          exit 1
+        else
+          echo "SNAPSHOT_FAILED"
+        fi
+      fi
+    timeout: 30
+    capture: observe_output
+    evaluate:
+      type: output_contains
+      pattern: "OBSERVE_COMPLETE"
+    on_yes: plan
+    on_no: _route_observe_error
+    on_error: _route_observe_error
+
+  _route_observe_error:
+    # Observe errors: STALE_REF retries the snapshot; PERM_DENIED is terminal;
+    # any other failure falls through to plan with whatever state we have.
+    evaluate:
+      type: output_contains
+      pattern: "SNAPSHOT_STALE_REF"
+    on_yes: observe
+    on_no: _route_observe_error2
+
+  _route_observe_error2:
+    evaluate:
+      type: output_contains
+      pattern: "SNAPSHOT_PERM_DENIED"
+    on_yes: perm_denied
+    on_no: plan
+
+  # ---------------------------------------------------------------------------
+  # GROUP 3: PLAN
+  # ---------------------------------------------------------------------------
+
+  plan:
+    # LLM-driven planning state. Reviews the UI snapshot and task description,
+    # then decides the next action to take. Outputs structured JSON with a
+    # commands[] array that execute_action parses with jq (replaces fragile
+    # grep "^EXECUTE:" text extraction — ENH-055).
+    action_type: prompt
+    action: |
+      You are a computer-use agent executing desktop automation via the agent-desktop CLI.
+      Your goal is to complete this task:
+
+      "${context.description}"
+
+      Target application: ${context.app_name}
+
+      ## CURRENT UI STATE
+
+      The following snapshot was captured from the screen. Each interactive element
+      has a reference ID (@e1, @e2, ...) that you can use to click, type, or focus it.
+
+      ${captured.observe_output}
+
+      ## PREVIOUS ACTION CONTEXT
+
+      The current UI snapshot above reflects the result of any previous actions taken.
+      If this is not the first action, compare the snapshot against what you expected
+      to happen and adjust your plan accordingly.
+
+      ## AVAILABLE COMMANDS
+
+      You can use these agent-desktop commands:
+
+      - Click an element:     agent-desktop click @e<N>
+      - Type text:            agent-desktop type @e<N> "text content"
+      - Press a key combo:    agent-desktop press cmd+s, agent-desktop press return
+      - Scroll:               agent-desktop scroll @e<N> --direction down --amount 3
+      - Find role elements:   agent-desktop find --role button
+      - Launch an app:        agent-desktop launch Safari
+      - Focus a window:       agent-desktop focus-window w-XXXX
+      - Resize a window:      agent-desktop resize-window w-XXXX 1024 768
+      - Move a window:        agent-desktop move-window w-XXXX 100 100
+      - Minimize/maximize:    agent-desktop minimize|maximize|restore w-XXXX
+      - Get clipboard:        agent-desktop clipboard-get
+      - Set clipboard:        agent-desktop clipboard-set "text"
+      - Re-snapshot:          agent-desktop snapshot -i --compact
+
+      ## INSTRUCTIONS
+
+      1. Examine the snapshot above. Identify the next action that moves toward
+         completing the task.
+      2. IMPORTANT — keep each command simple and avoid:
+         - Inline scripts with python3 -c, ruby -e, perl -e, or similar
+         - Multi-line commands that span more than one physical line
+         For multi-step logic, use separate array entries per step.
+
+      ## OUTPUT FORMAT
+
+      You MUST output a single JSON object with exactly these fields:
+
+      {
+        "commands": ["agent-desktop click @e1"],
+        "rationale": "Brief explanation of why this action was chosen and what is expected to happen",
+        "complete": false,
+        "error": ""
+      }
+
+      Field rules:
+      - "commands": Array of 1-3 agent-desktop command strings (array of strings).
+        Use an empty array [] if no action is needed.
+      - "rationale": String explaining the reasoning — what you expect the action to accomplish (1-3 sentences).
+      - "complete": Set to true if you believe the task is already fully complete. false otherwise.
+      - "error": Set to a non-empty error description string if the previous action resulted in an
+        unrecoverable error (wrong approach, element fundamentally missing) and you need to replan.
+        Set to "" (empty string) when no replan is needed.
+
+      CRITICAL OUTPUT RULES:
+      - Output ONLY the JSON object — no markdown fences (```json), no commentary outside the JSON.
+      - The entire response must be valid, parseable JSON.
+      - Default to "complete": false and "error": "" for normal action planning.
+
+      Remember: you can only interact through agent-desktop commands. You
+      cannot run arbitrary shell scripts or system commands.
+    timeout: 300                                # plan state timeout in seconds (see context.plan_timeout_sec)
+    capture: plan_output
+    evaluate:
+      type: output_contains
+      pattern: '"commands"'
+    on_yes: execute_action
+    on_no: _route_plan_verdict
+    on_error: _handle_plan_error
+    on_timeout: _handle_plan_timeout
+
+  _route_plan_verdict:
+    # If plan output doesn't contain a commands array, check whether the
+    # LLM marked the task as complete (JSON boolean field).
+    evaluate:
+      type: output_contains
+      pattern: '"complete": true'
+    on_yes: verify_action
+    on_no: _route_plan_verdict2
+
+  _route_plan_verdict2:
+    # If the task isn't complete, check whether the LLM signaled a replan
+    # is needed (non-empty error string in JSON).
+    evaluate:
+      type: output_contains
+      pattern: '"error": "'
+    on_yes: _handle_replan
+    on_no: plan
+
+  _handle_replan:
+    # When the LLM indicates a replan is needed, extract the error reason
+    # from the JSON output and log it, then re-observe the UI state.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      REASON=$(echo "${captured.plan_output.output}" | jq -r '.error // "unknown"' 2>/dev/null)
+      echo "Replan reason: $REASON" > "$ABS_DIR/.replan_reason.txt"
+      echo "REPLAN_LOGGED"
+    next: observe
+
+  # ---------------------------------------------------------------------------
+  # GROUP 4: ACT
+  # ---------------------------------------------------------------------------
+
+  execute_action:
+    # Parses the structured JSON plan output and runs each command from
+    # the commands[] array via agent-desktop. Each command's result is
+    # checked; if any command fails with a known error code, routing
+    # signals are emitted for the error recovery states.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+
+      # Write plan output to file using heredoc with quoted delimiter —
+      # prevents ALL shell expansion of nested quotes, backticks, $(),
+      # and other metacharacters in the JSON content. This eliminates the
+      # ~25% failure rate caused by echo "..." corrupting the data.
+      cat > "$ABS_DIR/.plan_output.txt" << 'PLANEOF'
+      ${captured.plan_output.output}
+      PLANEOF
+
+      # Extract commands from the structured JSON output using jq.
+      # Each command arrives as a clean, unescaped string — no shell
+      # metacharacter corruption possible between the LLM and execution.
+      COMMANDS_JSON=$(jq -r '.commands[]?' "$ABS_DIR/.plan_output.txt" 2>/dev/null)
+
+      if [ -z "$COMMANDS_JSON" ]; then
+        echo "NO_EXECUTABLE_ACTIONS"
+        exit 0
+      fi
+
+      # Log actions to evidence file
+      echo "## Actions executed at iteration $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        >> "$ABS_DIR/.action_log.md"
+      echo "$COMMANDS_JSON" >> "$ABS_DIR/.action_log.md"
+
+      # Execute each action in sequence
+      echo "=== ACTIONS ==="
+      echo "$COMMANDS_JSON"
+
+      OVERALL_STATUS="ACTION_OK"
+      while IFS= read -r CMD; do
+        [ -z "$CMD" ] && continue
+        echo ">>> $CMD"
+        RESULT=$($CMD 2>&1 || true)
+
+        # Save raw result
+        echo "$RESULT" >> "$ABS_DIR/.action_results.log"
+
+        if echo "$RESULT" | jq -e '.ok == true' >/dev/null 2>&1; then
+          echo "  -> success"
+        else
+          ERROR_CODE=$(echo "$RESULT" | jq -r '.error.code // "ACTION_FAILED"' 2>/dev/null)
+          echo "  -> error: $ERROR_CODE"
+          if [ "$ERROR_CODE" = "STALE_REF" ]; then
+            echo "ACTION_STALE_REF"
+            OVERALL_STATUS="ACTION_STALE_REF"
+            break
+          elif [ "$ERROR_CODE" = "ELEMENT_NOT_FOUND" ]; then
+            echo "ACTION_ELEMENT_NOT_FOUND"
+            OVERALL_STATUS="ACTION_ELEMENT_NOT_FOUND"
+            break
+          elif [ "$ERROR_CODE" = "PERM_DENIED" ]; then
+            echo "ACTION_PERM_DENIED"
+            OVERALL_STATUS="ACTION_PERM_DENIED"
+            break
+          elif [ "$ERROR_CODE" = "TIMEOUT" ]; then
+            echo "ACTION_TIMEOUT"
+            OVERALL_STATUS="ACTION_TIMEOUT"
+            break
+          else
+            echo "ACTION_FAILED: $ERROR_CODE"
+            OVERALL_STATUS="ACTION_FAILED"
+            break
+          fi
+        fi
+      done <<< "$COMMANDS_JSON"
+
+      echo "=== RESULT ==="
+      echo "$OVERALL_STATUS"
+      echo "$OVERALL_STATUS" > "$ABS_DIR/.action_status"
+    timeout: 60
+    capture: act_output
+    evaluate:
+      type: output_contains
+      pattern: "ACTION_OK"
+    on_yes: verify_action
+    on_no: check_act_result
+    on_error: check_action_failed
+
+  check_act_result:
+    # Evaluates the captured act output for specific error codes and routes
+    # to the appropriate recovery handler.
+    evaluate:
+      type: output_contains
+      pattern: "ACTION_STALE_REF"
+    on_yes: check_stale_ref_limit
+    on_no: _route_act_error2
+
+  _route_act_error2:
+    evaluate:
+      type: output_contains
+      pattern: "ACTION_ELEMENT_NOT_FOUND"
+    on_yes: check_enf_limit
+    on_no: _route_act_error3
+
+  _route_act_error3:
+    evaluate:
+      type: output_contains
+      pattern: "ACTION_PERM_DENIED"
+    on_yes: perm_denied
+    on_no: _route_act_error4
+
+  _route_act_error4:
+    evaluate:
+      type: output_contains
+      pattern: "ACTION_TIMEOUT"
+    on_yes: check_timeout_limit
+    on_no: _route_act_error5
+
+  _route_act_error5:
+    evaluate:
+      type: output_contains
+      pattern: "NO_EXECUTABLE_ACTIONS"
+    on_yes: _check_phantom_complete   # check if plan signaled completion with empty commands
+    on_no: plan   # ACTION_FAILED or ACTION_UNKNOWN -> replan
+
+  _check_phantom_complete:
+    # When execute_action produces NO_EXECUTABLE_ACTIONS (empty commands array),
+    # checks whether the plan LLM signaled task completion (complete:true with no
+    # error) vs. a genuine action failure. Phantom completions short-circuit
+    # directly to check_completion instead of looping back to plan, preventing
+    # the plan → execute_action → error-chain → plan spiral that burns tokens
+    # with zero progress (BUG-057).
+    #
+    # Counter file limits consecutive phantom completions to 2 before forcing
+    # a fresh observe, which breaks the stale-snapshot feedback loop that
+    # amplifies this problem (BUG-053).
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+
+      # Read the plan output to check for completeness signal
+      PLAN_DATA=$(cat "$ABS_DIR/.plan_output.txt" 2>/dev/null)
+      COMPLETE=$(echo "$PLAN_DATA" | jq -r '.complete // false' 2>/dev/null)
+      HAS_ERROR=$(echo "$PLAN_DATA" | jq -r '.error // ""' 2>/dev/null)
+
+      if [ "$COMPLETE" = "true" ] && [ -z "$HAS_ERROR" ]; then
+        # Plan LLM signaled completion with empty commands — phantom completion.
+        # Use counter to prevent the LLM from perpetually claiming "done" against
+        # the same stale snapshot (BUG-053 interaction).
+        COUNTER_FILE="$ABS_DIR/.phantom_complete_count"
+        COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+        COUNT=$((COUNT + 1))
+        echo "$COUNT" > "$COUNTER_FILE"
+        if [ "$COUNT" -ge 2 ]; then
+          echo "0" > "$COUNTER_FILE"
+          echo "PHANTOM_COMPLETION_LIMIT: $COUNT consecutive — forcing re-observe for fresh snapshot"
+        else
+          echo "PHANTOM_COMPLETION_DETECTED"
+        fi
+      else
+        # Genuine failure (error present or complete not true) — reset counter
+        # and return to plan for standard retry.
+        echo "0" > "$ABS_DIR/.phantom_complete_count" 2>/dev/null || true
+        echo "TRUE_ACTION_FAILURE"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "PHANTOM_COMPLETION_DETECTED"
+    on_yes: verify_action
+    on_no: _route_phantom_complete
+
+  _route_phantom_complete:
+    # Separates phantom completion limit (force re-observe) from true action
+    # failure (replan). PHANTOM_COMPLETION_LIMIT means we've hit 2 consecutive
+    # phantom completions against a stale snapshot — the only recovery is a
+    # fresh observe to get updated UI state.
+    evaluate:
+      type: output_contains
+      pattern: "PHANTOM_COMPLETION_LIMIT"
+    on_yes: observe
+    on_no: plan
+
+  check_action_failed:
+    # Catches shell-level action failures (exit code != 0) that bypass
+    # the normal on_no routing. Distinguishes NO_EXECUTABLE_ACTIONS (no
+    # plan output to execute — replan immediately) from general action
+    # failures (bash errors, truncated commands — retry with counter).
+    evaluate:
+      type: output_contains
+      pattern: "NO_EXECUTABLE_ACTIONS"
+    on_yes: plan
+    on_no: _retry_action
+
+  _retry_action:
+    # Increments the action failure counter and retries execute_action up
+    # to action_fail_max times. After exhausting retries, routes to plan
+    # for re-planning. Follows the same counter-file pattern established
+    # by check_stale_ref_limit, check_enf_limit, and check_timeout_limit.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      COUNTER_FILE="$ABS_DIR/.action_fail_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      if [ "$COUNT" -ge "${context.action_fail_max}" ]; then
+        echo "ACTION_FAIL_LIMIT_EXCEEDED: $COUNT consecutive action failures"
+        echo "0" > "$COUNTER_FILE"
+      else
+        echo "ACTION_FAIL_RETRY: attempt $COUNT of ${context.action_fail_max}"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "ACTION_FAIL_LIMIT_EXCEEDED"
+    on_yes: plan
+    on_no: execute_action
+
+  # --- Error limit checkers ---
+
+  check_stale_ref_limit:
+    # STALE_REF means the element references from the last snapshot are out
+    # of date. Recovery is to re-snapshot and retry. If STALE_REF occurs
+    # consecutively more than stale_ref_max times, replan instead.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      COUNTER_FILE="$ABS_DIR/.stale_ref_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      if [ "$COUNT" -ge "${context.stale_ref_max}" ]; then
+        echo "STALE_REF_LIMIT_EXCEEDED: $COUNT consecutive STALE_REF errors"
+        echo "0" > "$COUNTER_FILE"
+      else
+        echo "STALE_REF_RETRY: attempt $COUNT of ${context.stale_ref_max}"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "STALE_REF_LIMIT_EXCEEDED"
+    on_yes: plan
+    on_no: observe
+
+  check_enf_limit:
+    # ELEMENT_NOT_FOUND means the referenced element does not exist in the
+    # current UI. Retry with a fresh snapshot a few times before replanning.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      COUNTER_FILE="$ABS_DIR/.enf_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      if [ "$COUNT" -ge "${context.element_not_found_max}" ]; then
+        echo "ENF_LIMIT_EXCEEDED: $COUNT consecutive ELEMENT_NOT_FOUND errors"
+        echo "0" > "$COUNTER_FILE"
+      else
+        echo "ENF_RETRY: attempt $COUNT of ${context.element_not_found_max}"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "ENF_LIMIT_EXCEEDED"
+    on_yes: plan
+    on_no: observe
+
+  check_timeout_limit:
+    # TIMEOUT means the agent-desktop command did not complete within its
+    # internal deadline. This is often transient (busy app, slow rendering).
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      COUNTER_FILE="$ABS_DIR/.timeout_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      if [ "$COUNT" -ge "${context.timeout_max}" ]; then
+        echo "TIMEOUT_LIMIT_EXCEEDED: $COUNT consecutive TIMEOUT errors"
+        echo "0" > "$COUNTER_FILE"
+      else
+        echo "TIMEOUT_RETRY: attempt $COUNT of ${context.timeout_max}"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "TIMEOUT_LIMIT_EXCEEDED"
+    on_yes: plan
+    on_no: observe
+
+  # ---------------------------------------------------------------------------
+  # GROUP 5: VERIFY
+  # ---------------------------------------------------------------------------
+
+  verify_action:
+    # Takes a post-action snapshot and routes to the LLM judge to evaluate
+    # whether the action had the intended effect. Uses a fresh snapshot rather
+    # than the action's JSON output because the visual/accessibility state is
+    # the ground truth.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+
+      # Post-action snapshot
+      TARGET="${context.app_name}"
+      if [ -n "$TARGET" ]; then
+        POST_OUTPUT=$(agent-desktop snapshot --app "$TARGET" -i --compact 2>&1 || true)
+      else
+        POST_OUTPUT=$(agent-desktop snapshot -i --compact 2>&1 || true)
+      fi
+
+      echo "=== POST_ACTION_SNAPSHOT ==="
+      echo "$POST_OUTPUT"
+
+      if echo "$POST_OUTPUT" | jq -e '.ok == true' >/dev/null 2>&1; then
+        # Save for evidence trail
+        SNAP=$(cat "$ABS_DIR/.snapshot_count" 2>/dev/null || echo 0)
+        SNAP=$((SNAP + 1))
+        echo "$SNAP" > "$ABS_DIR/.snapshot_count"
+        echo "$POST_OUTPUT" > "$ABS_DIR/snapshots/post_action_$SNAP.json"
+        echo "POST_SNAPSHOT_ARCHIVED: snapshots/post_action_$SNAP.json"
+        echo "VERIFY_READY"
+      else
+        echo "POST_SNAPSHOT_FAILED"
+      fi
+    capture: verify_snapshot
+    evaluate:
+      type: output_contains
+      pattern: "VERIFY_READY"
+    on_yes: _judge_action
+    on_no: _judge_action  # proceed even if post-snapshot fails
+    on_error: _judge_action
+
+  _judge_action:
+    # LLM evaluates whether the action had the intended effect by comparing
+    # the pre-action snapshot with the post-action snapshot.
+    action_type: shell
+    action: echo "Routing to LLM judge"
+    evaluate:
+      type: llm_structured
+      source: |
+        Task: ${context.description}
+        App target: ${context.app_name}
+        Pre-action snapshot: ${captured.observe_output}
+        Post-action snapshot: ${captured.verify_snapshot}
+      prompt: |
+        You are verifying whether a computer-use action had the intended effect.
+
+        TASK GOAL:
+        ${context.description}
+
+        PRE-ACTION SNAPSHOT (before the action):
+        ${captured.observe_output}
+
+        POST-ACTION SNAPSHOT (after the action):
+        ${captured.verify_snapshot}
+
+        Evaluate whether the action had the intended effect. Consider:
+        1. Does the post-action snapshot show a meaningful state change from the pre-action snapshot?
+        2. Is the change in the expected direction (toward completing the task)?
+        3. If the task goal was already reached, is the current state complete?
+
+        Answer:
+        - YES: the action had the intended effect and we made progress.
+        - NO: the action did not have the intended effect (no visible change or wrong result).
+        - PARTIAL: the action partially worked.
+
+        If YES: output VERDICT: YES followed by a brief note on what changed.
+        If NO: output VERDICT: NO followed by what went wrong and what to try instead.
+        If PARTIAL: output VERDICT: PARTIAL followed by what worked and what still needs to happen.
+    on_yes: _route_judge_verdict
+    on_no: observe
+    on_partial: observe
+    on_error: _retry_judge
+
+  _route_judge_verdict:
+    # Confirms the YES verdict from _judge_action. YES -> completion check.
+    # Non-YES fallthrough -> _route_judge_verdict2 for further routing.
+    # (NO and PARTIAL now route to observe directly from _judge_action.)
+    evaluate:
+      type: output_contains
+      pattern: "VERDICT: YES"
+    on_yes: check_completion
+    on_no: _route_judge_verdict2
+
+  _route_judge_verdict2:
+    evaluate:
+      type: output_contains
+      pattern: "VERDICT: PARTIAL"
+    on_yes: plan
+    on_no: plan
+
+  _retry_judge:
+    # Lightweight retry: re-runs the _judge_action LLM evaluate up to
+    # judge_retry_max times for transient API errors (rate limits, temporary
+    # unavailability). This retries ONLY the evaluate call (~15K tokens) rather
+    # than the full observe→plan→act→judge cycle. Escalates to _handle_judge_error
+    # for heavyweight recovery (re-observe / replan) only after retries are
+    # exhausted.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      COUNTER_FILE="$ABS_DIR/.judge_retry_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      if [ "$COUNT" -ge "${context.judge_retry_max}" ]; then
+        echo "0" > "$COUNTER_FILE"
+        echo "JUDGE_RETRY_EXCEEDED: $COUNT consecutive LLM API errors — escalating to recovery"
+      else
+        echo "JUDGE_RETRY: attempt $COUNT of ${context.judge_retry_max} — transient API error, retrying evaluate"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "JUDGE_RETRY_EXCEEDED"
+    on_yes: _handle_judge_error
+    on_no: _judge_action
+
+  _handle_judge_error:
+    # LLM judge evaluator returned an API error that survived evaluate-level
+    # retries. Log the error and use a counter-based recovery pattern (matching
+    # check_stale_ref_limit / check_enf_limit / check_timeout_limit). On transient
+    # errors, re-observe and retry the judge. On repeated errors exceeding
+    # judge_error_max, replan instead.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      # Log the error for post-run diagnostics
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] LLM judge API error at iteration ${state.iteration}" \
+        >> "$ABS_DIR/.judge_errors.log"
+      # Counter-based recovery
+      COUNTER_FILE="$ABS_DIR/.judge_error_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      if [ "$COUNT" -ge "${context.judge_error_max}" ]; then
+        echo "JUDGE_ERROR_LIMIT_EXCEEDED: $COUNT consecutive LLM judge errors"
+        echo "0" > "$COUNTER_FILE"
+      else
+        echo "JUDGE_ERROR_RETRY: attempt $COUNT of ${context.judge_error_max}"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "JUDGE_ERROR_LIMIT_EXCEEDED"
+    on_yes: plan
+    on_no: observe
+
+  _handle_plan_error:
+    # Handles LLM API errors and timeouts from the plan state. Logs the error
+    # for post-run diagnostics, then uses the counter-file retry pattern (matching
+    # check_stale_ref_limit / check_enf_limit / check_timeout_limit). Retries the
+    # plan LLM call on transient errors; escalates to diagnose after exhausting
+    # plan_error_max retries.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM API error at iteration ${state.iteration}" \
+        >> "$ABS_DIR/.plan_errors.log"
+      COUNTER_FILE="$ABS_DIR/.plan_error_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      if [ "$COUNT" -ge "${context.plan_error_max}" ]; then
+        echo "PLAN_ERROR_LIMIT_EXCEEDED: $COUNT consecutive plan LLM errors — escalating to diagnose"
+        echo "0" > "$COUNTER_FILE"
+      else
+        echo "PLAN_ERROR_RETRY: attempt $COUNT of ${context.plan_error_max}"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "PLAN_ERROR_LIMIT_EXCEEDED"
+    on_yes: diagnose
+    on_no: plan
+
+  _handle_plan_timeout:
+    # Handles plan state timeouts (SIGTERM / exit 124). Logs the timeout event
+    # with a timestamp for post-mortem diagnostics, then routes to the retry
+    # counter. Separate from _handle_plan_error (which handles LLM API errors)
+    # so timeout behavior (retry count, escalation) is independently configurable.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] plan state timed out (> ${context.plan_timeout_sec}s at iteration ${state.iteration})" \
+        >> "$ABS_DIR/.plan_timeout.log"
+      echo "PLAN_TIMEOUT_LOGGED"
+    evaluate:
+      type: output_contains
+      pattern: "PLAN_TIMEOUT_LOGGED"
+    on_yes: _retry_plan_timeout
+    on_no: plan
+
+  _retry_plan_timeout:
+    # Increments the plan timeout retry counter. Retries the plan state up to
+    # plan_retry_max times. After exhausting retries, escalates to diagnose
+    # for structured diagnostics output instead of silent termination.
+    # Follows the same counter-file pattern as all other retry states.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      COUNTER_FILE="$ABS_DIR/.plan_timeout_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      if [ "$COUNT" -ge "${context.plan_retry_max}" ]; then
+        echo "PLAN_TIMEOUT_LIMIT_EXCEEDED: $COUNT consecutive plan timeouts (> ${context.plan_timeout_sec}s) — escalating to diagnose"
+        echo "0" > "$COUNTER_FILE"
+      else
+        echo "PLAN_TIMEOUT_RETRY: attempt $COUNT of ${context.plan_retry_max}"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "PLAN_TIMEOUT_LIMIT_EXCEEDED"
+    on_yes: diagnose
+    on_no: plan
+
+  check_completion:
+    # LLM determines whether the overall task is complete. Broader than the
+    # per-action verify — assesses accumulated state against original task.
+    action_type: prompt
+    action: |
+      COMPLETION CHECK
+
+      Task: "${context.description}"
+      Target app: ${context.app_name}
+
+      CURRENT UI STATE:
+      ${captured.verify_snapshot}
+
+      Evaluate whether the task is COMPLETE or INCOMPLETE based on ALL evidence:
+
+      1. Does the current UI state match the task goal?
+      2. Have all steps described in the task been completed?
+      3. Is there any remaining work needed?
+
+      Output exactly one of:
+      TASK_COMPLETE - the task is fully done, no more actions needed
+      TASK_INCOMPLETE - the task still needs more work
+      TASK_BLOCKED - the task cannot be completed due to a fundamental obstacle
+    timeout: 120
+    capture: completion_verdict
+    evaluate:
+      type: output_contains
+      pattern: "TASK_COMPLETE"
+    on_yes: verify_artifact
+    on_no: _route_completion
+    on_error: _handle_cc_error
+
+  _route_completion:
+    evaluate:
+      type: output_contains
+      pattern: "TASK_BLOCKED"
+    on_yes: diagnose
+    on_no: observe
+
+  _handle_cc_error:
+    # Handles LLM API errors from the check_completion state. Logs the error
+    # for post-run diagnostics, then uses the counter-file retry pattern. Retries
+    # the check_completion LLM call on transient errors; escalates to diagnose
+    # after exhausting cc_error_max retries.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Completion check LLM API error at iteration ${state.iteration}" \
+        >> "$ABS_DIR/.cc_errors.log"
+      COUNTER_FILE="$ABS_DIR/.cc_error_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      if [ "$COUNT" -ge "${context.cc_error_max}" ]; then
+        echo "CC_ERROR_LIMIT_EXCEEDED: $COUNT consecutive check_completion LLM errors — escalating to diagnose"
+        echo "0" > "$COUNTER_FILE"
+      else
+        echo "CC_ERROR_RETRY: attempt $COUNT of ${context.cc_error_max}"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "CC_ERROR_LIMIT_EXCEEDED"
+    on_yes: diagnose
+    on_no: check_completion
+
+  verify_artifact:
+    # ENH-058: Artifact verification gate — confirms the output file named in
+    # the task description actually exists on disk before accepting completion.
+    # Extracts the filename from context.description, checks file existence and
+    # modification timestamp against the run start time, and routes accordingly.
+    # Without this check, the LLM can hallucinate completion by claiming a
+    # pre-existing file proves the task is done (phantom success path).
+    # Pattern based on p5js-sketch-generator verify_index/verify_brief gates
+    # and cua-agent-desktop check_install output_contains approach.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      TASK="${context.description}"
+
+      # Extract likely output filename from task description.
+      # Common patterns: "write to X.md", "save as X.txt", "create X.json"
+      OUTPUT_FILE=$(echo "$TASK" | grep -oE '[a-zA-Z0-9_./-]+\.(md|txt|json|csv|html|yaml|yml|png|jpg|pdf)' | head -1)
+
+      if [ -z "$OUTPUT_FILE" ]; then
+        # No recognizable output file in task — skip verification.
+        # Non-file tasks (e.g., "open Safari", "check email") preserve the
+        # existing LLM-only completion path.
+        echo "NO_RECOGNIZABLE_OUTPUT"
+      else
+        # Check multiple locations: absolute path, relative to run dir,
+        # and just the basename in the run dir (LLMs often write to run dir).
+        FOUND_FILE=""
+        if [ -f "$OUTPUT_FILE" ]; then
+          FOUND_FILE="$OUTPUT_FILE"
+        elif [ -f "$ABS_DIR/$OUTPUT_FILE" ]; then
+          FOUND_FILE="$ABS_DIR/$OUTPUT_FILE"
+        elif [ -f "$ABS_DIR/$(basename "$OUTPUT_FILE")" ]; then
+          FOUND_FILE="$ABS_DIR/$(basename "$OUTPUT_FILE")"
+        fi
+
+        if [ -n "$FOUND_FILE" ]; then
+          # Get file modification time (seconds since epoch).
+          # macOS: stat -f %m, Linux: stat -c %Y.
+          FILE_MTIME=$(stat -f %m "$FOUND_FILE" 2>/dev/null || stat -c %Y "$FOUND_FILE" 2>/dev/null)
+
+          # Parse run start time from loop.started_at (ISO 8601), falling back
+          # to the run directory's creation (birth) time on macOS.
+          if [ -n "${loop.started_at}" ]; then
+            RUN_START=$(date -jf "%Y-%m-%dT%H:%M:%S" "${loop.started_at:0:19}" +%s 2>/dev/null || echo 0)
+          else
+            RUN_START=$(stat -f %B "$ABS_DIR" 2>/dev/null || echo 0)
+          fi
+
+          if [ "$FILE_MTIME" -ge "$RUN_START" ] 2>/dev/null; then
+            echo "ARTIFACT_VERIFIED: $OUTPUT_FILE (modified during run)"
+          else
+            echo "ARTIFACT_PREEXISTING: $OUTPUT_FILE (modified before run started)"
+          fi
+        else
+          echo "ARTIFACT_NOT_FOUND: $OUTPUT_FILE"
+        fi
+      fi
+    timeout: 10
+    capture: artifact_status
+    evaluate:
+      type: output_contains
+      pattern: "ARTIFACT_VERIFIED"
+    on_yes: gather_evidence
+    on_no: _route_artifact_status
+
+  _route_artifact_status:
+    # ENH-058: Routes artifact verification outcomes.
+    # ARTIFACT_PREEXISTING: the file exists but predates this run. Route to
+    #   observe for a fresh UI snapshot — a prior loop iteration may have
+    #   legitimately created the file, or the LLM may be claiming a stale
+    #   artifact as proof of completion. A fresh snapshot lets the loop
+    #   re-evaluate the actual desktop state.
+    # ARTIFACT_NOT_FOUND: the task claims to have created a file that doesn't
+    #   exist on disk. This is a fundamental failure — route to diagnose for
+    #   structured diagnostics before terminating.
+    # Fallthrough (NO_RECOGNIZABLE_OUTPUT): the task description doesn't name
+    #   a file output. Preserve the existing LLM-only completion path by
+    #   routing directly to gather_evidence.
+    evaluate:
+      type: output_contains
+      pattern: "ARTIFACT_PREEXISTING"
+    on_yes: observe
+    on_no: _route_artifact_status2
+
+  _route_artifact_status2:
+    evaluate:
+      type: output_contains
+      pattern: "ARTIFACT_NOT_FOUND"
+    on_yes: diagnose
+    on_no: gather_evidence
+
+  diagnose:
+    # Collects diagnostic information about why the task failed, then
+    # routes to the terminal 'failed' state. The captured diagnostics are
+    # available in the run directory for analysis.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
+      echo "=== cua-agent-desktop failure diagnostics ===" > "$DIR/diagnostics.md"
+      echo "Task: ${context.description}" >> "$DIR/diagnostics.md"
+      echo "Iteration: ${state.iteration}" >> "$DIR/diagnostics.md"
+      echo "" >> "$DIR/diagnostics.md"
+      echo "## Action Log" >> "$DIR/diagnostics.md"
+      cat "$DIR/.action_log.md" 2>/dev/null || echo "(no actions logged)" >> "$DIR/diagnostics.md"
+      echo "" >> "$DIR/diagnostics.md"
+      echo "## Action Results" >> "$DIR/diagnostics.md"
+      cat "$DIR/.action_results.log" 2>/dev/null || echo "(no action results)" >> "$DIR/diagnostics.md"
+      echo "" >> "$DIR/diagnostics.md"
+      echo "## Snapshots" >> "$DIR/diagnostics.md"
+      ls "$DIR/snapshots/" 2>/dev/null || echo "(no snapshots)" >> "$DIR/diagnostics.md"
+      echo "" >> "$DIR/diagnostics.md"
+      echo "## Replan Reasons" >> "$DIR/diagnostics.md"
+      cat "$DIR/.replan_reason.txt" 2>/dev/null || echo "(none)" >> "$DIR/diagnostics.md"
+      echo "" >> "$DIR/diagnostics.md"
+      echo "## LLM API Errors" >> "$DIR/diagnostics.md"
+      echo "### Plan Errors" >> "$DIR/diagnostics.md"
+      cat "$DIR/.plan_errors.log" 2>/dev/null || echo "(none)" >> "$DIR/diagnostics.md"
+      echo "### Plan Timeouts" >> "$DIR/diagnostics.md"
+      cat "$DIR/.plan_timeout.log" 2>/dev/null || echo "(none)" >> "$DIR/diagnostics.md"
+      echo "### Completion Check Errors" >> "$DIR/diagnostics.md"
+      cat "$DIR/.cc_errors.log" 2>/dev/null || echo "(none)" >> "$DIR/diagnostics.md"
+      echo "### Judge Errors" >> "$DIR/diagnostics.md"
+      cat "$DIR/.judge_errors.log" 2>/dev/null || echo "(none)" >> "$DIR/diagnostics.md"
+      echo "DIAGNOSTICS_COMPLETE"
+    next: failed
+
+  # ---------------------------------------------------------------------------
+  # GROUP 6: TERMINAL STATES
+  # ---------------------------------------------------------------------------
+
+  gather_evidence:
+    # Collects all evidence files (action log, action results, snapshot list)
+    # into a single structured text block so compose_summary only needs to
+    # reason about formatting — no filesystem operations in the LLM prompt.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+
+      echo "=== EVIDENCE BUNDLE ==="
+      echo ""
+
+      echo "## Action Log"
+      if [ -f "$ABS_DIR/.action_log.md" ]; then
+        cat "$ABS_DIR/.action_log.md"
+      else
+        echo "(no actions logged)"
+      fi
+      echo ""
+
+      echo "## Action Results"
+      if [ -f "$ABS_DIR/.action_results.log" ]; then
+        cat "$ABS_DIR/.action_results.log"
+      else
+        echo "(no action results)"
+      fi
+      echo ""
+
+      echo "## Snapshots"
+      ls "$ABS_DIR/snapshots/" 2>/dev/null || echo "(no snapshots)"
+      echo ""
+
+      echo "EVIDENCE_COLLECTED"
+    timeout: 30
+    capture: evidence_bundle
+    evaluate:
+      type: output_contains
+      pattern: "EVIDENCE_COLLECTED"
+    on_yes: compose_summary
+    on_no: compose_summary
+    on_error: compose_summary
+
+  compose_summary:
+    # Composes the final summary artifact from pre-collected evidence.
+    # All file reads happened in gather_evidence — this state only formats.
+    action_type: prompt
+    action: |
+      Write a terminal summary document for a completed cua-agent-desktop run.
+
+      Run directory: ${captured.run_dir.output}
+      Task: "${context.description}"
+      Target app: ${context.app_name}
+      Total iterations: ${state.iteration}
+      Final state: done
+
+      ## COLLECTED EVIDENCE
+
+      ${captured.evidence_bundle}
+
+      ## INSTRUCTIONS
+
+      Write ${captured.run_dir.output}/summary.md with these sections:
+
+      # CUA Agent Summary
+
+      ## Task
+      ${context.description}
+
+      ## Termination
+      Task completed successfully at iteration ${state.iteration}.
+
+      ## Action Sequence
+      Copy the action log from the evidence above.
+
+      ## Evidence
+      - Snapshots: ${captured.run_dir.output}/snapshots/
+      - Action log: ${captured.run_dir.output}/.action_log.md
+      - Action results: ${captured.run_dir.output}/.action_results.log
+
+      ## Notes
+      [Any observations about what worked, what didn't, or what could be improved.]
+
+      After writing summary.md, output exactly:
+      SUMMARY_WRITTEN
+    timeout: 300
+    evaluate:
+      type: output_contains
+      pattern: "SUMMARY_WRITTEN"
+    on_yes: done
+    on_no: done
+
+  done:
+    terminal: true
+    description: "Task completed successfully"
+
+  failed:
+    terminal: true
+    description: "Task failed due to a fundamental obstacle or error"
+
+  max_iterations_summary:
+    # Graceful termination when max_iterations is exhausted. Writes a
+    # summary of what was accomplished even if the task wasn't fully done.
+    action_type: prompt
+    action: |
+      Write a terminal summary for a cua-agent-desktop run that reached
+      max_iterations.
+
+      Run directory: ${captured.run_dir.output}
+      Task: "${context.description}"
+      Target app: ${context.app_name}
+      Max iterations: ${context.max_iterations}
+      Final state before termination: ${state.last_state}
+
+      STEP 1 - Read the action log:
+      Read ${captured.run_dir.output}/.action_log.md if it exists.
+
+      STEP 2 - Write summary document:
+      Write ${captured.run_dir.output}/summary.md with these sections:
+
+      # CUA Agent Summary (Max Iterations)
+
+      ## Task
+      ${context.description}
+
+      ## Termination
+      Max iterations (${context.max_iterations}) reached at state: ${state.last_state}.
+      The task may not be fully complete.
+
+      ## Actions Completed
+      [List all actions that were executed, in order.]
+
+      ## Remaining Work
+      [Based on the task and what was accomplished, describe what still needs
+       to be done.]
+
+      ## Evidence
+      - Snapshots: ${captured.run_dir.output}/snapshots/
+      - Action log: ${captured.run_dir.output}/.action_log.md
+
+      ## Continuation Recommended?
+      YES if: the task is partially complete and continuing would be productive.
+      NO if: the approach is fundamentally not working or the goal is unreachable.
+
+      After writing summary.md, output exactly:
+      SUMMARY_WRITTEN
+    timeout: 300
+    evaluate:
+      type: output_contains
+      pattern: "SUMMARY_WRITTEN"
+    terminal: true
