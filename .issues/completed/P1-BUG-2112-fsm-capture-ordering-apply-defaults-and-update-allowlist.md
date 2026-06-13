@@ -14,6 +14,12 @@ relates_to:
 - BUG-2111
 - ENH-1961
 size: Large
+confidence_score: 98
+outcome_confidence: 83
+score_complexity: 21
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # BUG-2112: FSM capture-ordering fix — add :default= to all Bucket B states and update test infrastructure
@@ -27,6 +33,13 @@ Core fix branch for BUG-2094. Adds `:default=<sensible-value>` to every Bucket B
 ## Parent Issue
 
 Decomposed from BUG-2094: FSM loops reference captures from states that may not have executed (InterpolationError crashes)
+
+## Root Cause
+
+- **File**: `scripts/little_loops/fsm/interpolation.py`
+- **Anchor**: `_get_nested()` (called from `interpolate()` → inner `replace_var()` closure, lines 202–270)
+- **Cause**: When a `${captured.X.path}` reference has no `:default=` suffix and the capturing state was bypassed, `_get_nested()` at line 133 raises `InterpolationError("Path '...' not found in captured")`. The `replace_var()` closure only suppresses this error when `default_value is not None` (`:default=` suffix) or `nullable is True` (`?` suffix); without either, the exception propagates out of `interpolate()` and terminates the loop executor with no message.
+- **Validator blindness**: `_validate_capture_reachability()` in `validation.py` uses `_CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")` (line 108) — this regex cannot see `:default=` suffixes, so it emits `WARNING` regardless. This is the Approach A rationale: ALLOWLIST entries stay in place since the validator cannot self-suppress.
 
 ## Current Behavior
 
@@ -170,6 +183,36 @@ All must pass.
 - `scripts/tests/test_fsm_interpolation.py` — new bypass-path guard tests after line 744
 - `scripts/little_loops/fsm/validation.py` — only if Approach B chosen
 
+## Integration Map
+
+### Loop YAML Files — Bucket B `:default=` Additions (Confirmed)
+
+- `scripts/little_loops/loops/general-task.yaml` — `states.check_done.action` (lines 226, 231)
+- `scripts/little_loops/loops/goal-cluster.yaml` — `states.propagate_context.action` (line 597), `states.synthesize_cluster_result.action` (lines 669, 705), `states.present_result.action` (lines 711, 734)
+- `scripts/little_loops/loops/harness-optimize.yaml` — `states.propose.action` (lines 119, 121, 125), `states.apply.action` (lines 145, 159)
+- `scripts/little_loops/loops/rl-coding-agent.yaml` — `states.diagnose.action` (line 142)
+- `scripts/little_loops/loops/rn-build.yaml` — `states.check_harness_name.action` (line 605), `states.synthesize_result.action` (line 670)
+- `scripts/little_loops/loops/learning-tests-audit.yaml` — `states.build_report.action` (line 276)
+- `scripts/little_loops/loops/integrate-sdk.yaml` — `states.diagnose_and_block.action` (lines 198–201)
+- `scripts/little_loops/loops/loop-router.yaml` — `states.present_choices.action` (lines 290, 293), `states.present_result.action` (lines 444, 445)
+- `scripts/little_loops/loops/loop-composer.yaml` — already had `:default=` (lines 475, 481); no change
+- `scripts/little_loops/loops/loop-composer-adaptive.yaml` — already had `:default=` (lines 666, 672); no change
+
+### Core Implementation Files (Read-only / Approach A — unchanged)
+
+- `scripts/little_loops/fsm/interpolation.py` — `interpolate()` / `replace_var()` closure (lines 202–270): `:default=` split before `?` check; suppressed in `except InterpolationError` block
+- `scripts/little_loops/fsm/validation.py` — `_validate_capture_reachability()` (line 108): `_CAPTURED_REF_RE` is suffix-blind; left unchanged under Approach A
+
+### Tests Modified
+
+- `scripts/tests/test_builtin_loops.py` — `TestValidatorWarningBudget.ALLOWLIST` (lines 7010–7073): Bucket B entries now carry "safe — `:default=` fallback in place (BUG-2112)" comments
+- `scripts/tests/test_general_task_loop.py` — `TestChange6CheckDoneDeltaAware.test_check_done_references_captured_work_result()` (line 237): assertion widened to `"captured.work_result.output" in action` (suffix-agnostic)
+- `scripts/tests/test_fsm_interpolation.py` — `TestSafeInterpolation` section `# ── Real-loop bypass-path guards (BUG-2094) ──` (lines 747–807): 6 bypass-path guard tests added
+
+### Known Test Gap
+
+`test_loop_composer_present_result_safe_with_empty_captured` (line 749) loads `loop-composer.yaml` and builds `InterpolationContext` but does not call `interpolate(action, ctx)` — the assertion is absent. The remaining 5 guard tests (general-task, loop-router ×2, harness-optimize ×2) correctly call `interpolate()`. The loop-composer bypass path is effectively untested by this guard.
+
 ## Acceptance Criteria
 
 - [ ] Every Bucket B reference uses `:default=` with a semantically sensible default
@@ -189,6 +232,8 @@ All must pass.
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-13T16:37:49 - `b1845505-ec4e-4018-adab-a794cd20ae25.jsonl`
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `63233114-0375-4898-ae1f-c6d0d87305f3.jsonl`
 - `/ll:issue-size-review` - 2026-06-13T00:00:00Z - `d3e9937f-e366-49de-8410-e1dbe3b669f8.jsonl`
 
 ---

@@ -1,21 +1,33 @@
 ---
 id: ENH-2106
-title: "Decide: reusable sub-loop composition vs inlined per-issue states for orchestrator FSM Layers 1+2"
+title: 'Decide: reusable sub-loop composition vs inlined per-issue states for orchestrator
+  FSM Layers 1+2'
 type: ENH
 priority: P2
-status: open
-captured_at: "2026-06-12T00:00:00Z"
+status: done
+captured_at: '2026-06-12T00:00:00Z'
 discovered_date: 2026-06-12
 discovered_by: review-epic
 parent: EPIC-1867
-relates_to: [FEAT-2000, FEAT-1899]
-blocks: [FEAT-2000, FEAT-1899]
+relates_to:
+- FEAT-2000
+- FEAT-1899
+blocks:
+- FEAT-2000
+- FEAT-1899
 decision_needed: false
 labels:
-  - fsm
-  - orchestration
-  - decision
-  - spike
+- fsm
+- orchestration
+- decision
+- spike
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 25
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 25
+completed_at: '2026-06-13T17:19:27Z'
 ---
 
 # ENH-2106: Decide: reusable sub-loop composition vs inlined per-issue states for orchestrator FSM Layers 1+2
@@ -213,5 +225,21 @@ Decided by `/ll:decide-issue` on 2026-06-13.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-13T17:19:04 - `cc5bcce2-3f05-4353-ba8e-3680f0a0d414.jsonl`
 - `/ll:decide-issue` - 2026-06-13T14:10:31 - `9aaae9fc-d0da-4b2b-80af-8f24ea621c5f.jsonl`
 - `/ll:refine-issue` - 2026-06-13T14:05:31 - `0df548d1-097e-4c28-ab0b-0c0e9ac98101.jsonl`
+- `/ll:confidence-check` - 2026-06-13T17:16:37Z - `46a15b76-f53e-49a9-94ca-52fdbbad3fd6.jsonl`
+
+
+---
+
+## Resolution
+
+- **Status**: Closed - Already Fixed
+- **Closed**: 2026-06-13
+- **Reason**: already_fixed
+- **Closure**: Automated (ready-issue validation)
+
+### Closure Notes
+Issue was automatically closed during validation.
+The issue was determined to be invalid, already resolved, or not actionable.
