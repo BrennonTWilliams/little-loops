@@ -838,7 +838,7 @@ The `from:` value resolves like any loop name — project `.loops/` first, then 
 
 > **Merge rules**: the loader deep-merges parent and child *before* validation. Scalars (`name`, `initial`, `max_iterations`, …) — child wins. Lists (`labels`) — child replaces outright. Dicts (`context`, `states`, `route`, nested `evaluate`) — recursive merge, child keys override. A parent's `import:`/`fragments:` are merged in first, so a child can use any fragment its parent imports. Circular chains (`A → B → A`) raise an error naming the full chain. The `from:` key is stripped from the merged result — there is no runtime overhead.
 
-`ll-loop validate`, `ll-loop info`, and `/ll:review-loop` all see the *materialized* (merged) loop; `ll-loop info --raw` shows what the author wrote.
+`ll-loop validate`, `ll-loop info`, and `/ll:review-loop` all see the *materialized* (merged) loop; `ll-loop info --raw` shows what the author wrote. `ll-loop list` also resolves inheritance before extracting the loop description, so loops that inherit their `description:` from a parent template display correctly in the list view (fixed in ENH-2101; previously showed a blank description).
 
 ## Linear Flow Shorthand via `flow:`
 

@@ -254,15 +254,15 @@ ll-loop run rn-plan "build a rate-limiting middleware for the API"
 ```
 init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / research.md)
   → generate_rubric     (prompt: write initial outline + 8-dim rubric at LOW)
-    → classify_research (prompt: emit NEEDS_FILES or NEEDS_WEB token)
-      → route_files / route_web  (router: dispatch to file or web research branch)
-        → research_files  (prompt: Read/Grep/Glob to inspect local code and files)
-        → research_web    (prompt: WebSearch/WebFetch to gather external facts)
-          → synthesize   (prompt: merge research.md findings into plan.md)
-            → score      (prompt: rate all 8 dims; emit ALL_VERY_HIGH or ITERATE)
-              on_yes (ALL_VERY_HIGH) → verify_score → report → done
-              on_no  (ITERATE)       → classify_research  (next iteration)
+    → check_substrate   (llm: validate plan actions against env constraints; ENH-2098)
+        on_yes (feasible)   → research_iteration
+        on_no/partial       → generate_rubric  (revise plan before iterating)
+          → research_iteration (oracle: classify→research→synthesize→score)
+              on_yes (ALL_VERY_HIGH) → done
+              on_no  (ITERATE)       → research_iteration (next iteration)
 ```
+
+> **`check_substrate` gate** (ENH-2098): After the initial rubric is generated, an LLM feasibility check validates that every proposed action is achievable in the target execution environment (shell commands, MCP tool access, file write permissions, token budget). Infeasible plans route back to `generate_rubric` for revision before any research is run. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](../HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
 
 ### `rn-refine` — Recursive Refinement of an Existing Plan
 
@@ -554,7 +554,9 @@ Phase 5 — Convergence:
 **Category**: orchestration  
 **File**: `scripts/little_loops/loops/rn-build.yaml`
 
-End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives the full automated build: spec validation → tech research → design artifacts → commit → scope EPIC + feature stubs → issue refinement → eval harness → goal-cluster (batched `rn-implement`) → eval gate → structured JSON result.
+End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives the full automated build: spec validation → tech research → design artifacts → **check_substrate** (ENH-2098) → commit → scope EPIC + feature stubs → issue refinement → eval harness → goal-cluster (batched `rn-implement`) → eval gate → structured JSON result.
+
+> **`check_substrate` gate** (ENH-2098): After `design_artifacts` completes, an LLM feasibility check validates every proposed action against target environment constraints (shell commands, MCP tool access, file write permissions, token budget). Infeasible designs route back to `design_artifacts` for revision before project scoping begins. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](../HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
 
 Use `rn-build` for all new spec-driven greenfield projects.
 
@@ -1635,7 +1637,10 @@ ll-loop run p5js-sketch-generator "recursive subdivision bloom" \
 init → plan → generate → evaluate
                             ├─ CAPTURED → score
                             │              ├─ ALL_PASS → done
-                            │              ├─ ITERATE  → generate (with critique)
+                            │              ├─ ITERATE  → check_stall (diff_stall guard)
+                            │              │              ├─ new changes → generate (with critique)
+                            │              │              ├─ plateaued  → done (accept best-so-far)
+                            │              │              └─ error       → generate
                             │              └─ ERROR    → failed
                             ├─ FAILED   → generate (retry transient render)
                             └─ ERROR    → failed
@@ -1651,6 +1656,7 @@ init → plan → generate → evaluate
 | `craft` | 1× | Blend modes, sub-pixel rendering, edge handling, color harmony, stroke weights, intentional use of negative space. |
 
 **Notes:**
+- **Stall detection** (ENH-2099): A `check_stall` state (via the `diff_stall_gate` fragment) follows `score`'s ITERATE branch. If no file changes are detected for `max_stall` consecutive iterations (default 3), the loop accepts the best-so-far and exits rather than burning the remaining iteration budget.
 - p5.js is loaded from CDN (`https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js`) — the only external resource permitted. All other code (sketch, helpers, CSS) is inline so the file renders correctly under a `file://` URL without a web server.
 - The sketch uses p5.js global mode (`function setup()` / `function draw()` at the top level), which exposes `window.frameCount` — the value the screenshot harness polls when waiting for each frame.
 - Deterministic seeding is required: `randomSeed(SEED)` and `noiseSeed(SEED)` called once in `setup()`, all motion driven by `frameCount`. Without seeding, screenshots at the same `frameCount` would differ run-to-run and the critique would chase noise.
@@ -1692,7 +1698,10 @@ ll-loop run pixi-data-viz "animated bar chart showing monthly revenue by product
 init → plan → generate → evaluate
                             ├─ CAPTURED → score
                             │              ├─ ALL_PASS → done
-                            │              ├─ ITERATE  → generate (with critique)
+                            │              ├─ ITERATE  → check_stall (diff_stall guard)
+                            │              │              ├─ new changes → generate (with critique)
+                            │              │              ├─ plateaued  → done (accept best-so-far)
+                            │              │              └─ error       → generate
                             │              └─ ERROR    → failed
                             ├─ FAILED   → generate (retry transient render)
                             └─ ERROR    → failed
@@ -1714,6 +1723,7 @@ init → plan → generate → evaluate
 - The sketch exposes `window.__loopFrame` (not p5's `window.frameCount`) as the harness polling target; it must be incremented inside the PixiJS ticker. All animation is driven from `window.__loopFrame`.
 - The sketch must assign `window.__pixiApp = app` immediately after `await app.init(...)`. The harness calls `window.__pixiApp?.ticker?.stop()` before each `page.screenshot()` and `ticker?.start()` after, freezing the animation at the exact target frame. The optional-chaining access (`?.`) means sketches that omit the assignment degrade silently (PRNG seeding alone is insufficient for byte-level reproducibility), but newly-generated sketches must include it.
 - A seeded deterministic PRNG (e.g. mulberry32 with a constant integer seed) is used for any runtime jitter — never unseeded `Math.random()` inside the ticker. PRNG seeding alone is insufficient for byte-exact reproducibility; ticker pause is also required.
+- **Stall detection** (ENH-2099): A `check_stall` state (via `diff_stall_gate` fragment) follows `score`'s ITERATE branch. If no file changes are detected for `max_stall` consecutive iterations (default 3), the loop accepts the best-so-far and exits rather than burning the remaining iteration budget.
 - If Playwright is unavailable, the `evaluate` state's `on_no` route retries with fresh HTML rather than scoring without visual evidence.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - To customize scoring thresholds or criteria, install the loop locally (`ll-loop install pixi-data-viz`) and edit the `score` state's prompt and threshold logic.
@@ -1750,7 +1760,10 @@ ll-loop run pixi-generative-art "a bioluminescent deep-sea particle system with 
 init → plan → generate → evaluate
                             ├─ CAPTURED → score
                             │              ├─ ALL_PASS → done
-                            │              ├─ ITERATE  → generate (with critique)
+                            │              ├─ ITERATE  → check_stall (diff_stall guard)
+                            │              │              ├─ new changes → generate (with critique)
+                            │              │              ├─ plateaued  → done (accept best-so-far)
+                            │              │              └─ error       → generate
                             │              └─ ERROR    → failed
                             ├─ FAILED   → generate (retry transient render)
                             └─ ERROR    → failed
@@ -1771,6 +1784,7 @@ init → plan → generate → evaluate
 - The sketch must assign `window.__pixiApp = app` immediately after `await app.init(...)`. The harness calls `window.__pixiApp?.ticker?.stop()` before each `page.screenshot()` and `ticker?.start()` after, freezing the animation at the exact target frame. PRNG seeding alone is insufficient for byte-exact reproducibility — `window.__pixiApp` exposure and ticker pause are also required. The optional-chaining access (`?.`) means old sketches degrade silently; newly-generated sketches must include the assignment.
 - A seeded deterministic PRNG (e.g. mulberry32 with a constant integer seed) is required for all randomness so screenshots at the same `__loopFrame` value are reproducible across iterations.
 - The `gpu_craft` criterion explicitly reads `index.html` source code — the evaluator verifies that a PixiJS-native feature is present in the code, not just claimed in the brief.
+- **Stall detection** (ENH-2099): A `check_stall` state (via `diff_stall_gate` fragment) follows `score`'s ITERATE branch. If no file changes are detected for `max_stall` consecutive iterations (default 3), the loop accepts the best-so-far and exits.
 - If Playwright is unavailable, the `evaluate` state's `on_no` route retries with fresh HTML rather than scoring without visual evidence.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - Prefer `p5js-sketch-generator` when the p5.js ecosystem (global mode, built-in `noise()`) is the right tool; reach for `pixi-generative-art` when GPU filters, blend modes, or `ParticleContainer` density are central to the aesthetic.
@@ -1832,7 +1846,9 @@ init → resolve_data → plan → generate → validate
                                             ├─ COMPILE_OK  → capture
                                             │                  ├─ CAPTURED → score → record
                                             │                  │                        ├─ EVAL_PASS → done
-                                            │                  │                        └─ ITERATE   → generate (with critique)
+                                            │                  │                        └─ ITERATE   → check_stall (diff_stall guard)
+                                            │                  │                                          ├─ new changes → generate (with critique)
+                                            │                  │                                          └─ plateaued  → done (accept best-so-far)
                                             │                  └─ ERROR    → failed
                                             └─ COMPILE_FAIL → repair → validate (← re-checks after fix)
 ```
@@ -1852,6 +1868,7 @@ init → resolve_data → plan → generate → validate
 - The grammar decision (Vega-Lite vs full Vega) lives in `plan`, not `generate`. The brief commits to one; `generate` may escalate on stuck iterations but must justify in a code comment. Vega-Lite is the default — it has a higher first-pass success rate and the compile gate validates it equally.
 - The spec is inlined into `index.html` (`vegaEmbed` handles both grammars from the same inline object). File-URI rendering requires this — no fetch, no CORS.
 - `window.__vegaReady = true` must be set in the `vegaEmbed` `.then()` callback; the `capture` state polls it before taking screenshots.
+- **Stall detection** (ENH-2099): A `check_stall` state (via `diff_stall_gate` fragment) follows `record`'s ITERATE branch. If no file changes are detected for `max_stall` consecutive iterations (default 3), the loop accepts the best-so-far and exits.
 - `repair` fixes only the structural break reported in `compile_error.txt` — schema errors, invalid field references, wrong encoding types, malformed transforms. It does not redesign the chart.
 - `on_handoff: spawn`, `max_iterations: 20`, `timeout: 7200`.
 
@@ -1899,7 +1916,9 @@ ll-loop run canvas-sketch-generator "flow field with particle accumulation along
 init → plan → generate → evaluate
                             ├─ RENDER_OK  → score → snapshot
                             │                           ├─ min score ≥ pass_threshold → finalize → done
-                            │                           └─ min score < pass_threshold → generate (with critique)
+                            │                           └─ min score < pass_threshold → check_stall (diff_stall guard)
+                            │                                                              ├─ new changes → generate (with critique)
+                            │                                                              └─ plateaued  → finalize → done
                             ├─ RENDER_BAD → generate (critique written — self-repair loop)
                             └─ ERROR (infra) → failed
 
@@ -1921,6 +1940,7 @@ on_max_iterations: finalize → done  (best.html always published)
 - The sketch MUST signal readiness for the `evaluate` harness: `canvasSketch(sketch, settings).then(() => { window.__sketchReady = true; }).catch(e => { window.__sketchError = String(e && e.stack || e); })`. The `evaluate` state polls `window.__sketchReady === true` before screenshotting.
 - Still images only (v1): do NOT set `settings.animate: true`. Draw the full composition in the single render call.
 - `max_iterations: 40` caps **state executions**, not refine cycles. One scored cycle ≈ 4 states (`generate`, `evaluate`, `score`, `snapshot`), plus ~2 extra whenever a blank/broken render triggers the self-repair path, plus `init` + `plan` + `finalize` + `done` overhead. 40 steps ≈ 6–8 scored cycles, matching the 5–15 iterations in Anthropic's harness-design article.
+- **Stall detection** (ENH-2099): A `check_stall` state (via `diff_stall_gate` fragment) follows `snapshot`'s below-threshold branch. If no file changes are detected for `max_stall` consecutive iterations (default 3), the loop routes to `finalize` (publishing the best-so-far) instead of burning the remaining iteration budget.
 - `on_max_iterations: finalize` ensures `best.html` is always published, even when the pass threshold is never crossed. A run that exhausts its budget without ever scoring above threshold still produces the best artifact it found.
 - `finalize` reads `scores.tsv` (one `iteration<tab>min_score` row per `snapshot` call) and copies the highest-scoring iteration's `index.html` and `screenshot.png` to `best.html` and `best.png` at the run-dir root. Ties go to the latest iteration.
 - `on_handoff: spawn`, `max_iterations: 40`, `timeout: 7200`.
