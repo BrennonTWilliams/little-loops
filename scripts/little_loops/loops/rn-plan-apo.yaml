@@ -1,6 +1,5 @@
 name: rn-plan-apo
 from: lib/apo-base
-category: planning
 description: |
   Plan-quality gradient optimization for the rn-plan recursive planner. Runs
   rn-plan over a benchmark task set with the current planning prompt, scores
