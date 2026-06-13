@@ -3,9 +3,10 @@ id: ENH-2109
 title: 'll-loop run: persistent default flags via config (--clear, --show-diagrams,
   --mode)'
 type: ENH
-status: open
+status: done
 priority: P3
 captured_at: '2026-06-13T14:38:41Z'
+completed_at: '2026-06-13T15:10:52Z'
 discovered_date: '2026-06-13'
 discovered_by: capture-issue
 labels:
@@ -69,18 +70,18 @@ Users who run loops interactively nearly always want the same display settings. 
 
 2. **Runner** (`scripts/little_loops/cli/loop/__init__.py`): After `parse_args()`, load the `loops.run_defaults` config block and backfill any unset args with config values before dispatching to the run handler. Explicit CLI flags (where `argparse` sets a non-default value) take precedence.
 
-3. **Schema validation**: Add enum constraints for `show_diagrams` that mirror `_PARSE_SHOW_DIAGRAMS_VALID` in `scripts/little_loops/cli/loop/diagram_modes.py` so invalid values are caught at config-load time.
+3. **Schema validation**: Add enum constraints for `show_diagrams` derived from `TOPOLOGY_VALUES | PRESET_VALUES` in `scripts/little_loops/cli/loop/diagram_modes.py` so invalid values are caught at config-load time.
 
 ## Integration Map
 
 ### Files to Modify
 - `config-schema.json` — add `loops.run_defaults` object with `clear`, `show_diagrams`, `mode` properties and enum constraint for `show_diagrams`
 - `scripts/little_loops/cli/loop/__init__.py` — inject defaults after `parse_args()` in the `run` subcommand handler, before dispatching to the run handler
-- `scripts/little_loops/cli/loop/diagram_modes.py` — re-export the valid values list (`_PARSE_SHOW_DIAGRAMS_VALID`) for schema enum generation
-- `scripts/little_loops/config.py` (or equivalent config loader) — add `LoopRunDefaults` dataclass; expose `loops.run_defaults` as a typed config field
+- `scripts/little_loops/cli/loop/diagram_modes.py` — use the already-public `TOPOLOGY_VALUES` and `PRESET_VALUES` constants for schema enum generation (no re-export needed)
+- `scripts/little_loops/config/features.py` — add `LoopRunDefaults` dataclass to `LoopsConfig`; expose `loops.run_defaults` as a typed config field
 
 ### Dependent Files (Callers/Importers)
-- Grep `loops` config block references: `grep -r "loops" scripts/little_loops/config.py` to confirm loader location
+- Grep `loops` config block references: `grep -r "loops" scripts/little_loops/config/features.py` to confirm loader location
 - Grep `ll-loop run` invocations in automation scripts to verify no callers break with new backfill logic
 
 ### Similar Patterns
@@ -113,7 +114,7 @@ Users who run loops interactively nearly always want the same display settings. 
 - `show_diagrams` valid values: topologies (`layered`, `neighborhood`, `inline`) and presets (`detailed`, `summary`, `clean`, `local`, `slim`, `oneline`, `"default"` for bare `--show-diagrams`)
 - All fields optional; absent field = argparse default wins
 
-**New dataclass** (`scripts/little_loops/config.py`):
+**New dataclass** (`scripts/little_loops/config/features.py`):
 ```python
 @dataclass
 class LoopRunDefaults:
@@ -126,7 +127,7 @@ class LoopRunDefaults:
 
 ## Implementation Steps
 
-1. Locate where `loops` config is loaded (likely `scripts/little_loops/config.py`) and add a `LoopRunDefaults` dataclass with `clear: bool = False`, `show_diagrams: str | None = None`, `mode: str | None = None`.
+1. Add a `LoopRunDefaults` dataclass to `scripts/little_loops/config/features.py` (where `LoopsConfig` is defined) with `clear: bool = False`, `show_diagrams: str | None = None`, `mode: str | None = None`.
 2. Update `config-schema.json`: add `run_defaults` under `loops.properties` with the three fields; add `enum` for `show_diagrams` using the preset/topology names from `diagram_modes.py`.
 3. In `scripts/little_loops/cli/loop/__init__.py` run handler: after `args = parser.parse_args()`, read `config.loops.run_defaults` and for each default field, only apply it when the corresponding `args` attribute is still at its argparse-declared default (`None` for `--show-diagrams`, `False` for `--clear`).
 4. Add tests: `scripts/tests/test_loop_cli_defaults.py` — verify (a) config default is applied when flag omitted, (b) explicit CLI flag overrides config default, (c) invalid `show_diagrams` value raises config validation error.
@@ -152,12 +153,24 @@ class LoopRunDefaults:
 loops, cli, config
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-13T14:51:23 - `8e139cd2-b224-4e36-8c3b-a233df5da17d.jsonl`
 - `/ll:confidence-check` - 2026-06-13T00:00:00Z - `579b1a98-2ed2-4b4e-aa3b-ebba4a134d2b.jsonl`
 - `/ll:format-issue` - 2026-06-13T14:43:30 - `fed867ff-c49e-4716-8027-9c1986e1033e.jsonl`
 - `/ll:capture-issue` - 2026-06-13T14:38:41Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10f332cc-0aed-4ae6-b16b-d88cb5f34bdd.jsonl`
 
 ---
 
+## Resolution
+
+Implemented via:
+- `LoopRunDefaults` dataclass added to `scripts/little_loops/config/features.py` with `clear`, `show_diagrams`, and `mode` fields; validates `show_diagrams` against known topology/preset values at config-load time
+- `LoopsConfig.run_defaults` field added; parsed by `LoopsConfig.from_dict()`
+- `config-schema.json` extended with `loops.run_defaults` object and `enum` constraint on `show_diagrams`
+- Backfill logic in `scripts/little_loops/cli/loop/__init__.py` after `parse_args()` for the `run` subcommand; CLI flags always take precedence
+- 11 tests in `scripts/tests/test_loop_cli_defaults.py`
+- `docs/guides/LOOPS_GUIDE.md` updated with Project-Wide Run Defaults section
+- `LoopRunDefaults` exported from `little_loops.config`
+
 ## Status
 
-**open** — ready for refinement
+**done**

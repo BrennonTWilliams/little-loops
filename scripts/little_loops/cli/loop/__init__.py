@@ -711,6 +711,14 @@ Examples:
 
         args = parser.parse_args(argv)
 
+        # Backfill run defaults from config when CLI flags are at their argparse defaults.
+        if args.command == "run":
+            rd = config.loops.run_defaults
+            if not args.clear and rd.clear:
+                args.clear = True
+            if args.show_diagrams is None and rd.show_diagrams is not None:
+                args.show_diagrams = True if rd.show_diagrams == "default" else rd.show_diagrams
+
         logger = Logger(verbose=not getattr(args, "quiet", False))
 
         # Dispatch commands

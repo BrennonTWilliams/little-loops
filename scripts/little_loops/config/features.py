@@ -491,6 +491,38 @@ class LoopsGlyphsConfig:
         }
 
 
+_VALID_SHOW_DIAGRAMS: frozenset[str] = frozenset({
+    "layered", "neighborhood", "inline",          # topologies
+    "detailed", "summary", "clean", "local",       # presets
+    "slim", "oneline",                             # presets (continued)
+    "default",                                     # bare --show-diagrams sentinel
+})
+
+
+@dataclass
+class LoopRunDefaults:
+    """Persistent CLI defaults for ``ll-loop run``."""
+
+    clear: bool = False
+    show_diagrams: str | None = None
+    mode: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LoopRunDefaults:
+        """Create LoopRunDefaults from dictionary, validating show_diagrams."""
+        show_diagrams = data.get("show_diagrams", None)
+        if show_diagrams is not None and show_diagrams not in _VALID_SHOW_DIAGRAMS:
+            raise ValueError(
+                f"loops.run_defaults.show_diagrams: {show_diagrams!r} is not valid. "
+                f"Valid values: {sorted(_VALID_SHOW_DIAGRAMS)}"
+            )
+        return cls(
+            clear=data.get("clear", False),
+            show_diagrams=show_diagrams,
+            mode=data.get("mode", None),
+        )
+
+
 @dataclass
 class LoopsConfig:
     """FSM loop configuration."""
@@ -498,6 +530,7 @@ class LoopsConfig:
     loops_dir: str = ".loops"
     queue_wait_timeout_seconds: int = 86400
     glyphs: LoopsGlyphsConfig = field(default_factory=LoopsGlyphsConfig)
+    run_defaults: LoopRunDefaults = field(default_factory=LoopRunDefaults)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LoopsConfig:
@@ -506,6 +539,7 @@ class LoopsConfig:
             loops_dir=data.get("loops_dir", ".loops"),
             queue_wait_timeout_seconds=data.get("queue_wait_timeout_seconds", 86400),
             glyphs=LoopsGlyphsConfig.from_dict(data.get("glyphs", {})),
+            run_defaults=LoopRunDefaults.from_dict(data.get("run_defaults", {})),
         )
 
 

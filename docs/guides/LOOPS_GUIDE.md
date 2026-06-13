@@ -474,6 +474,31 @@ config:
 
 Precedence, highest first: CLI flags → loop `config:` block → global `ll-config.json` → schema defaults. Supported keys: `handoff_threshold`, `commands.confidence_gate.readiness_threshold`, `commands.confidence_gate.outcome_threshold`, `automation.max_continuations` (alias `continuation.max_continuations`). Use `ll-loop show <name>` to see which overrides are active.
 
+### Project-Wide Run Defaults
+
+The `loops.run_defaults` block in `.ll/ll-config.json` lets you declare persistent defaults for `ll-loop run` flags so you don't have to retype them every invocation:
+
+```json
+{
+  "loops": {
+    "run_defaults": {
+      "clear": true,
+      "show_diagrams": "clean",
+      "mode": null
+    }
+  }
+}
+```
+
+After adding this block, `ll-loop run my-loop` behaves identically to `ll-loop run my-loop --clear --show-diagrams clean`. Explicit CLI flags still take precedence — they are never overridden by config values.
+
+**Fields:**
+- `clear` (`boolean`, default `false`) — if `true`, inject `--clear` automatically
+- `show_diagrams` (`string | null`, default `null`) — inject `--show-diagrams <value>`. Valid values: topologies (`layered`, `neighborhood`, `inline`), presets (`detailed`, `summary`, `clean`, `local`, `slim`, `oneline`), or `"default"` for bare `--show-diagrams` (summary preset)
+- `mode` (`string | null`, default `null`) — reserved for a future `--mode` flag; no effect currently
+
+Only `ll-loop run` reads `run_defaults`. Other subcommands (`validate`, `list`, etc.) are unaffected.
+
 ### Scope-Based Concurrency
 
 The `scope:` field declares which paths a loop operates on; the engine uses file-based locking so two loops never modify the same files at once:
