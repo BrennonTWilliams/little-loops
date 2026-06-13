@@ -178,6 +178,29 @@ class TestClaudeCodeRunner:
         """ClaudeCodeRunner is recognized as a HostRunner at runtime."""
         assert isinstance(ClaudeCodeRunner(), HostRunner)
 
+    # ── BUG-2110: non-interactive signal env vars ────────────────────────────
+
+    def test_build_streaming_includes_non_interactive_env(self) -> None:
+        """build_streaming sets LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS in env (BUG-2110)."""
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_streaming(prompt="hi")
+        assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+        assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
+
+    def test_build_blocking_json_includes_non_interactive_env(self) -> None:
+        """build_blocking_json sets LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS in env (BUG-2110)."""
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_blocking_json(prompt="hi")
+        assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+        assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
+
+    def test_build_detached_includes_non_interactive_env(self) -> None:
+        """build_detached sets LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS in env (BUG-2110)."""
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_detached(prompt="hi")
+        assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+        assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
+
 
 class TestCodexRunner:
     """CodexRunner builds argv per the verified Codex headless contract.
@@ -505,6 +528,29 @@ class TestCodexRunner:
         assert caps.permission_skip is True
         assert caps.agent_select is False
         assert caps.tool_allowlist is False
+
+    # ── BUG-2110: non-interactive signal env vars ────────────────────────────
+
+    def test_build_streaming_includes_non_interactive_env(self) -> None:
+        """build_streaming sets LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS in env (BUG-2110)."""
+        runner = CodexRunner()
+        invocation = runner.build_streaming(prompt="hi")
+        assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+        assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
+
+    def test_build_blocking_json_includes_non_interactive_env(self) -> None:
+        """build_blocking_json sets LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS in env (BUG-2110)."""
+        runner = CodexRunner()
+        invocation = runner.build_blocking_json(prompt="hi")
+        assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+        assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
+
+    def test_build_detached_includes_non_interactive_env(self) -> None:
+        """build_detached sets LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS in env (BUG-2110)."""
+        runner = CodexRunner()
+        invocation = runner.build_detached(prompt="hi")
+        assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+        assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
 
 
 class TestOpenCodeRunner:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -288,6 +289,7 @@ def cmd_skill(args: argparse.Namespace) -> int:
             capture_output=True,
             text=True,
             timeout=args.timeout,
+            env={**os.environ, **inv.env},
         )
         result = RunnerResult(stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode)
     except subprocess.TimeoutExpired:

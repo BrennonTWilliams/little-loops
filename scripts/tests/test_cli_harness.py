@@ -272,6 +272,36 @@ class TestCmdSkill:
 
         assert result == 2
 
+    def test_skill_passes_non_interactive_env_to_subprocess(self) -> None:
+        """cmd_skill merges LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS into subprocess env (BUG-2110)."""
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[])
+        captured_env: dict[str, str] = {}
+
+        def fake_build_streaming(*, prompt: str, **_: object) -> HostInvocation:
+            return HostInvocation(
+                binary="claude",
+                args=[],
+                env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
+            )
+
+        fake_runner = FakeRunner()
+        fake_runner.build_streaming = fake_build_streaming  # type: ignore[method-assign]
+
+        def capture_run(cmd: Any, **kwargs: Any) -> subprocess.CompletedProcess:
+            captured_env.update(kwargs.get("env", {}))
+            return _make_completed(returncode=0)
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("subprocess.run", side_effect=capture_run),
+        ):
+            cmd_skill(args)
+
+        assert "LL_NON_INTERACTIVE" in captured_env, "LL_NON_INTERACTIVE must be in subprocess env"
+        assert captured_env["LL_NON_INTERACTIVE"] == "1"
+        assert "DANGEROUSLY_SKIP_PERMISSIONS" in captured_env
+        assert captured_env["DANGEROUSLY_SKIP_PERMISSIONS"] == "1"
+
 
 # ---------------------------------------------------------------------------
 # TestCmdCmd

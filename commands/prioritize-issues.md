@@ -40,7 +40,7 @@ This command uses project configuration from `.ll/ll-config.json`:
 FLAGS="${flags:-}"
 AUTO_MODE=false
 CHECK_MODE=false
-if [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then AUTO_MODE=true; fi
+if [[ -n "${LL_NON_INTERACTIVE:-}" ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then AUTO_MODE=true; fi
 if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
 if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 ```

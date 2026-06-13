@@ -257,7 +257,11 @@ class ClaudeCodeRunner:
         if model:
             args += ["--model", model]
 
-        env: dict[str, str] = {"CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1"}
+        env: dict[str, str] = {
+            "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
+            "LL_NON_INTERACTIVE": "1",
+            "DANGEROUSLY_SKIP_PERMISSIONS": "1",
+        }
         if working_dir is not None:
             git_path = Path(working_dir) / ".git"
             if git_path.is_file():
@@ -299,7 +303,7 @@ class ClaudeCodeRunner:
         return HostInvocation(
             binary="claude",
             args=args,
-            env={},
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
             capabilities=self.capabilities,
         )
 
@@ -320,7 +324,7 @@ class ClaudeCodeRunner:
         return HostInvocation(
             binary="claude",
             args=args,
-            env={},
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
             capabilities=self.capabilities,
         )
 
@@ -497,7 +501,10 @@ class CodexRunner:
             args += ["-C", str(working_dir)]
         args.append(prompt)
 
-        env: dict[str, str] = {}
+        env: dict[str, str] = {
+            "LL_NON_INTERACTIVE": "1",
+            "DANGEROUSLY_SKIP_PERMISSIONS": "1",
+        }
         if working_dir is not None:
             git_path = Path(working_dir) / ".git"
             if git_path.is_file():
@@ -546,7 +553,7 @@ class CodexRunner:
         return HostInvocation(
             binary="codex",
             args=args,
-            env={},
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
             capabilities=self.capabilities,
             cleanup_paths=cleanup,
         )
@@ -569,7 +576,7 @@ class CodexRunner:
         return HostInvocation(
             binary="codex",
             args=args,
-            env={},
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
             capabilities=self.capabilities,
         )
 

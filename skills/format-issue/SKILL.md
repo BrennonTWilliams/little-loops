@@ -60,7 +60,7 @@ CHECK_MODE=false
 # Check if --dangerously-skip-permissions is in effect
 # When running in automation contexts (ll-auto, ll-parallel, ll-sprint), this flag is present
 # If detected, auto-enable auto mode for non-interactive operation
-if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
+if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${LL_NON_INTERACTIVE:-}" ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
     AUTO_MODE=true
 fi
 

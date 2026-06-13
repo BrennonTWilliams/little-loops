@@ -2,8 +2,9 @@
 id: BUG-2110
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-13T15:27:51Z'
+completed_at: '2026-06-13T17:11:14Z'
 discovered_date: '2026-06-13'
 discovered_by: capture-issue
 labels:
@@ -13,7 +14,7 @@ labels:
 - automation
 - host-runner
 - captured
-confidence_score: 92
+confidence_score: 100
 outcome_confidence: 78
 score_complexity: 18
 score_test_coverage: 22
@@ -244,7 +245,19 @@ _Wiring pass (2nd pass) added by `/ll:wire-issue`:_
 - BUG-1416 (done) — `decide-issue --auto` asked interactive questions; same failure *class* (interactive stall) but that fix was skill-internal logic, not signal propagation.
 - BUG-743 (done) — `format-issue --auto` flag-flow bug.
 
+## Resolution
+
+**Fix:** Producer-side: added `LL_NON_INTERACTIVE=1` and `DANGEROUSLY_SKIP_PERMISSIONS=1` to the `env` dict in `ClaudeCodeRunner.build_streaming`, `build_blocking_json`, and `build_detached` (and the `CodexRunner` equivalents). This delivers the non-interactive signal through `subprocess_utils.py`'s env merge path to every skill subprocess spawned by an FSM prompt action.
+
+**Env-propagation gaps fixed:** `fsm/handoff_handler.py:_spawn_continuation` now passes `env={**os.environ, **invocation.env}` to Popen; `cli/harness.py:cmd_skill` now passes the same merged env to `subprocess.run`.
+
+**Consumer updates:** Added `|| [[ -n "${LL_NON_INTERACTIVE:-}" ]]` to all ~15 consumer files (skills and commands) that previously checked only `$ARGUMENTS` for the flag string or only `$DANGEROUSLY_SKIP_PERMISSIONS`. Skills using pseudocode received equivalent prose updates.
+
+**Tests:** 9 new regression tests across `test_host_runner.py`, `test_subprocess_utils.py`, `test_handoff_handler.py`, and `test_cli_harness.py` verify the signal is present in all producer and propagation paths.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-13T16:48:43 - `9286e810-de1a-4a38-b3ff-bc5c4788c0f4.jsonl`
+- `/ll:confidence-check` - 2026-06-13T18:00:00Z - `2596bd2a-a18b-4b53-a9bb-a3c5dad97f3d.jsonl`
 - `/ll:confidence-check` - 2026-06-13T17:00:00Z - `7fb59a12-9644-41c3-a147-bd8353f9ada3.jsonl`
 - `/ll:wire-issue` - 2026-06-13T16:10:35 - `fbcdf0f9-fa34-4b38-af88-e6efce67bd84.jsonl`
 - `/ll:wire-issue` - 2026-06-13T15:48:20 - `fab41d75-7c0d-4930-8162-57045cf9b2a6.jsonl`

@@ -25,7 +25,7 @@ arguments:
     description: Skip issue creation entirely and exit cleanly after presenting proposals
     required: false
   - name: auto
-    description: Non-interactive mode; suppress all AskUserQuestion calls and default to no for issue creation (implies --skip-issue-creation). Also activates when --dangerously-skip-permissions is in effect.
+    description: Non-interactive mode; suppress all AskUserQuestion calls and default to no for issue creation (implies --skip-issue-creation). Also activates when LL_NON_INTERACTIVE or DANGEROUSLY_SKIP_PERMISSIONS env vars are set, or when --dangerously-skip-permissions is in effect.
     required: false
 metadata:
   short-description: Use when asked to assess loop effectiveness, audit goal achievement, or detect p
@@ -294,7 +294,7 @@ grep -rl "<loop_name>" .issues/bugs/ .issues/enhancements/ .issues/features/ .is
 
 Mark matches as DUPLICATE. Present only NEW proposals.
 
-**Skip this step if `--skip-issue-creation` or `--auto` flag is set (or if `--dangerously-skip-permissions` is active).** Print: `ℹ️ Issue creation skipped (--skip-issue-creation / --auto)` and stop.
+**Skip this step if `--skip-issue-creation` or `--auto` flag is set (or if `LL_NON_INTERACTIVE`/`DANGEROUSLY_SKIP_PERMISSIONS` env vars are set, or `--dangerously-skip-permissions` is active).** Print: `ℹ️ Issue creation skipped (--skip-issue-creation / --auto)` and stop.
 
 Use `AskUserQuestion` to ask:
 

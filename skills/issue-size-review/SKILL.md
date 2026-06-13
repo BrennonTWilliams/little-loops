@@ -48,7 +48,7 @@ CHECK_MODE=false
 SPRINT_NAME=""
 
 # Auto-enable in automation contexts
-if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true; fi
+if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${LL_NON_INTERACTIVE:-}" ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then AUTO_MODE=true; fi
 
 # Explicit flags
 if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi

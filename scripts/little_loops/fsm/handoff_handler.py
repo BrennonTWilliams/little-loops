@@ -9,6 +9,7 @@ via the Claude CLI.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
@@ -123,4 +124,5 @@ class HandoffHandler:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
+            env={**os.environ, **invocation.env},
         )

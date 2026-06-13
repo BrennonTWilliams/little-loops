@@ -39,7 +39,7 @@ DRY_RUN = false
 CROSS_THEME = false
 
 # Auto-enable in automation contexts
-if ARGUMENTS contains "--dangerously-skip-permissions": AUTO_MODE = true
+if ARGUMENTS contains "--dangerously-skip-permissions" or env LL_NON_INTERACTIVE is set or env DANGEROUSLY_SKIP_PERMISSIONS is set: AUTO_MODE = true
 
 # Explicit flags
 if ARGUMENTS contains "--auto": AUTO_MODE = true

@@ -55,7 +55,7 @@ GAP_ANALYSIS=false
 FULL_REWRITE=false
 
 # Auto-enable auto mode in automation contexts
-if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
+if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${LL_NON_INTERACTIVE:-}" ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
     AUTO_MODE=true
 fi
 

@@ -22,7 +22,7 @@ arguments:
     description: Skip issue creation entirely and exit cleanly after presenting signals
     required: false
   - name: auto
-    description: Non-interactive mode; suppress all AskUserQuestion calls and default to no for issue creation (implies --skip-issue-creation). Also activates when --dangerously-skip-permissions is in effect.
+    description: Non-interactive mode; suppress all AskUserQuestion calls and default to no for issue creation (implies --skip-issue-creation). Also activates when LL_NON_INTERACTIVE or DANGEROUSLY_SKIP_PERMISSIONS env vars are set, or when --dangerously-skip-permissions is in effect.
     required: false
 metadata:
   short-description: Use when asked to analyze loop execution history, investigate loop failures, or 
@@ -322,7 +322,7 @@ Events analyzed: <N> events
 
 The total signal count for downstream confirmation is `N + M` (combine both buckets when prompting). If `N + M == 0` (no signals passed deduplication): output the Execution Summary and stop — do not ask for confirmation.
 
-**Skip the issue-creation prompt if `--skip-issue-creation` or `--auto` flag is set (or if `--dangerously-skip-permissions` is active).** Print: `ℹ️ Issue creation skipped (--skip-issue-creation / --auto)` and stop.
+**Skip the issue-creation prompt if `--skip-issue-creation` or `--auto` flag is set (or if `LL_NON_INTERACTIVE`/`DANGEROUSLY_SKIP_PERMISSIONS` env vars are set, or `--dangerously-skip-permissions` is active).** Print: `ℹ️ Issue creation skipped (--skip-issue-creation / --auto)` and stop.
 
 Otherwise, use `AskUserQuestion` to ask (where `<M>` is the combined `Fault + Effectiveness` count):
 

@@ -287,6 +287,23 @@ git worktree prune
 2. For manual runs, add the flag explicitly
 3. Check Claude Code permissions in your IDE settings
 
+### Skills stall on AskUserQuestion when run via a loop
+
+**Symptom**: A loop that drives a skill with `action_type: prompt` completes all iterations with `exit_code: 0`, but the skill produced no file changes — it silently ran in interactive mode.
+
+**Cause**: Skills detect automation context via the `LL_NON_INTERACTIVE` env var (or `DANGEROUSLY_SKIP_PERMISSIONS`). The FSM runner sets both in the subprocess env automatically (BUG-2110 fix). Skills that check only `$ARGUMENTS` / `$FLAGS` for the `--dangerously-skip-permissions` string miss the env-var signal — that string is passed to the *host binary*, not the skill's argument list.
+
+**Solution**:
+1. Confirm the skill uses the env-var detection idiom:
+   ```bash
+   if [[ -n "${LL_NON_INTERACTIVE:-}" ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then AUTO_MODE=true; fi
+   ```
+2. As a fallback, pass `--auto` explicitly in the loop prompt string:
+   ```bash
+   ll-loop run prompt-across-issues "/ll:format-issue {issue_id} --auto"
+   ```
+3. If the skill is argv-only (checks `$ARGUMENTS` for the flag string), add the env-var branch alongside the existing argv check.
+
 ### HostNotConfigured
 
 **Symptom**: `HostNotConfigured: <host> orchestration not yet wired` (or `No host CLI detected on PATH`) when running `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-action`, `ll-loop`, or an FSM evaluator.

@@ -16,6 +16,11 @@ description: |
     ll-loop run prompt-across-issues "/ll:normalize-issues {issue_id} --quick"
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context type=BUG
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context parent=EPIC-1773
+
+  Non-interactive skills:
+    Skills auto-detect automation context via the LL_NON_INTERACTIVE env var that
+    the FSM runner injects. For skills with only explicit --auto support, pass it:
+    ll-loop run prompt-across-issues "/ll:format-issue {issue_id} --auto"
 initial: init
 max_iterations: 500
 timeout: 28800

@@ -14,7 +14,7 @@ You are tasked with creating git commits for the changes made during this sessio
 AUTO_MODE=false
 
 # Auto-enable in automation contexts
-if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
+if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${LL_NON_INTERACTIVE:-}" ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
     AUTO_MODE=true
 fi
 

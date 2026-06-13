@@ -79,6 +79,19 @@ class TestHandoffHandler:
             assert kwargs["stderr"] == subprocess.DEVNULL
             assert kwargs["stdin"] == subprocess.DEVNULL
 
+    def test_spawn_propagates_non_interactive_env(self) -> None:
+        """_spawn_continuation passes LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS to Popen (BUG-2110)."""
+        with patch("subprocess.Popen") as mock_popen:
+            handler = HandoffHandler(HandoffBehavior.SPAWN)
+            handler.handle("test-loop", "continuation prompt")
+
+            kwargs = mock_popen.call_args[1]
+            env = kwargs.get("env", {})
+            assert "LL_NON_INTERACTIVE" in env, "LL_NON_INTERACTIVE must be in spawn env"
+            assert env["LL_NON_INTERACTIVE"] == "1"
+            assert "DANGEROUSLY_SKIP_PERMISSIONS" in env
+            assert env["DANGEROUSLY_SKIP_PERMISSIONS"] == "1"
+
     def test_spawn_with_none_continuation(self) -> None:
         """Spawn handles None continuation prompt."""
         with patch("subprocess.Popen") as mock_popen:
