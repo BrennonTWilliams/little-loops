@@ -12,17 +12,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
-## [1.123.0] - 2026-06-12
+## [1.122.0] - 2026-06-12
+
+### Added
+
+- **`ll-loop calibrate-budget` subcommand** — Analyzes whether increasing `max_iterations` will improve outcomes by checking evaluator variance (Bernoulli `p*(1-p)`) across recent runs; surfaces toothless evaluators before wasting token budget on additional iterations.
+- **`check_substrate` feasibility gate for planning loops** — Optional state that validates loop inputs against known constraints before expensive planning begins, routing to `INFEASIBLE` on hard blockers. (ENH-2085)
+- **`--cross-host` flag for `ll-loop run --baseline`** — Runs baseline evaluation across all configured host CLIs and reports per-host pass rates and CI deltas. (ENH-2086)
+- **`--json` flag for `ll-loop validate`** — Emits validation findings as structured JSON for downstream tooling and CI integration. (ENH-2090)
+- **`ll-init` TUI config-capability parity** — The interactive terminal TUI now covers all config fields reachable via `/ll:init`, including design tokens, analytics, scratch pad, and context monitor settings. (ENH-2092)
+- **DSL eval task mode in `ll-harness` and `/ll:create-eval-from-issues`** — New `dsl` task type generates native `ll-loop` DSL fixtures from issue frontmatter, enabling replay-based regression testing of loop behavior. (ENH-2081)
+- **`--model` flag for `ll-harness prompt`** — Override the inference model per `ll-harness` prompt invocation without modifying config.
+- **Wilson 95% CI reporting in `ll-loop run --baseline` and `diagnose-evaluators`** — Pass rates now report `p ± margin` alongside raw counts, surfacing statistical uncertainty on small sample sizes.
+- **Shallow-iteration failure mode detector in loop audit** — `ll-loop audit` now flags loops where the winning iteration is consistently iteration 1, indicating the loop adds no value over a single unguided call.
+
+### Fixed
+
+- **pytest OOM on `builtins.open` patch** — Test suite no longer allocates 100GB+ of memory when a test patches `builtins.open` with a bare `MagicMock`. (BUG-2108)
+- **`from:` inheritance resolution in `_load_loop_meta`** — One level of `from:` inheritance is now resolved at load time; inherited config fields (e.g., `max_iterations`, `timeout`) propagate correctly to child loops. (ENH-2101)
+- **Missing `on_partial` routes on LLM-judged states** — Added explicit `on_partial` routes to 9 built-in loops where an LLM-judged state had `on_yes` but no `on_partial`/`on_no`, causing silent dead-ends on non-yes verdicts. (ENH-2095)
+
+### Changed
+
+- **`/ll:init` skill deprecated; `ll-init` CLI is now the primary init path** — `/ll:init` now renders a redirect stub; all initialization flows route through the `ll-init` headless CLI. Closes EPIC-1978. (ENH-1982)
+- **7 built-in loops migrated from `.loops/tmp/` to `${context.run_dir}`** — Intermediate artifacts are now isolated per run, preventing cross-run corruption when multiple instances execute concurrently. (ENH-2096)
+- **`recursive-refine` / `implement-issue-chain` contract trio migrated to `${context.run_dir}`** — Shared-tmp references replaced with run-scoped paths for safe concurrent execution. (ENH-2097)
+- **`rn-remediate` `CONVERGED_STALLED` routing** — Routes through a budget-gated retry that reruns `diagnose` with a refreshed strategy rather than terminating silently. (ENH-2107)
+- **`diff_stall` guards added to generator loop refine cycles** — Prevents infinite refinement when successive iterations produce identical output diffs.
+- **`required_inputs` declared for all loops with a custom `input_key`** — Loops that require non-default inputs now declare them explicitly, enabling `ll-loop validate` to surface missing-input bugs before runtime.
+- **`ll-logs scan-failures` enhanced** — Added project scoping, CLI allowlist filtering, and noise suppression to reduce false positives in failure mining.
+- **`vega-viz` max-iterations summary handler** — Prevents silent termination when `max_iterations` is reached without a convergence verdict.
 
 ### Removed
 
-- **`greenfield-builder` loop** — Removed the deprecated `greenfield-builder.yaml` loop. `rn-build` is the replacement for all spec-driven greenfield projects. (ENH-2100)
-
-## [1.122.0] - 2026-06-11
-
-### Deprecated
-
-- **`greenfield-builder` loop** — Deprecated in favor of `rn-build`, which delivers recursive `rn-implement`-based execution with goal-cluster context propagation and value-ranked scheduling. (FEAT-1993)
+- **`greenfield-builder` loop** — Removed the deprecated `greenfield-builder.yaml` loop. `rn-build` is the drop-in replacement for all spec-driven greenfield projects. (ENH-2100, FEAT-1993)
 
 ## [1.121.0] - 2026-06-10
 
@@ -703,6 +726,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
 [Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.121.0...HEAD
+[1.122.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.121.0...v1.122.0
 [1.121.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.120.0...v1.121.0
 [1.120.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.119.0...v1.120.0
 [1.119.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.118.0...v1.119.0
