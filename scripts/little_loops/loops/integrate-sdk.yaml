@@ -195,10 +195,10 @@ states:
       INTEGRATION GOAL: ${context.goal}
 
       Available context (use whatever is non-empty):
-      - Enumeration: ${captured.enumeration.output}
-      - Targets: ${captured.targets.output}
-      - Scaffold result: ${captured.scaffold_result.output}
-      - Verify result: ${captured.verify_result.output}
+      - Enumeration: ${captured.enumeration.output:default=not-reached}
+      - Targets: ${captured.targets.output:default=not-reached}
+      - Scaffold result: ${captured.scaffold_result.output:default=not-reached}
+      - Verify result: ${captured.verify_result.output:default=not-reached}
 
       Classify the failure using the loop-specialist failure-mode taxonomy.
       Use EXACTLY one of these mode names as the primary classification:

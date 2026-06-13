@@ -602,7 +602,7 @@ states:
   check_harness_name:
     action_type: shell
     action: |
-      NAME="${captured.harness_name.output:-}"
+      NAME="${captured.harness_name.output:default=}"
       if [ -z "$NAME" ]; then
         echo "no_harness"
         exit 1

@@ -236,8 +236,8 @@ class TestChange6CheckDoneDeltaAware:
 
     def test_check_done_references_captured_work_result(self, raw_data: dict) -> None:
         action = raw_data["states"]["check_done"]["action"]
-        assert "${captured.work_result.output}" in action, (
-            "check_done.action must reference ${captured.work_result.output} for LAST_FILES delta context"
+        assert "captured.work_result.output" in action, (
+            "check_done.action must reference captured.work_result.output for LAST_FILES delta context"
         )
 
     def test_check_done_references_last_step(self, raw_data: dict) -> None:

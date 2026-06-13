@@ -273,7 +273,7 @@ states:
       ${captured.version_check.output}
 
       STALE MARKING RESULTS (from this run):
-      ${captured.stale_result.output}
+      ${captured.stale_result.output:default=not-reached}
 
       Write a markdown report to `${captured.report_path.output}` with these four sections:
 

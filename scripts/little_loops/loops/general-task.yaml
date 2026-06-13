@@ -223,12 +223,12 @@ states:
 
       Step that was selected (extract LAST_STEP from the SELECTED_STEP line):
       ---BEGIN STEP SELECTION---
-      ${captured.selected_step.output}
+      ${captured.selected_step.output:default=not-reached}
       ---END STEP SELECTION---
 
       Files created or modified (extract LAST_FILES from the LAST_FILES line):
       ---BEGIN WORK RESULT---
-      ${captured.work_result.output}
+      ${captured.work_result.output:default=not-reached}
       ---END WORK RESULT---
 
       Read both files:

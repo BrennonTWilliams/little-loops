@@ -4,9 +4,10 @@ title: FSM capture-ordering fix — add :default= to all Bucket B states and upd
   infrastructure
 type: BUG
 priority: P1
-status: open
+status: done
 parent: BUG-2094
 captured_at: '2026-06-13T00:00:00Z'
+completed_at: '2026-06-13T16:31:30Z'
 discovered_date: '2026-06-13'
 relates_to:
 - BUG-2094
@@ -189,3 +190,13 @@ All must pass.
 
 ## Session Log
 - `/ll:issue-size-review` - 2026-06-13T00:00:00Z - `d3e9937f-e366-49de-8410-e1dbe3b669f8.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Done
+- **Closed**: 2026-06-13
+- **Approach**: A — kept all Bucket B ALLOWLIST entries (validator is suffix-blind); updated comments
+- **YAML changes**: Added `:default=` to 9 states across 8 loop files (general-task, harness-optimize, rl-coding-agent, rn-build, learning-tests-audit, integrate-sdk, loop-router × 2 states, loop-composer/loop-composer-adaptive already had `:default=`)
+- **Test changes**: Updated test_general_task_loop.py:239 to substring match; added 6 bypass-path guard tests to test_fsm_interpolation.py; updated ALLOWLIST comments in test_builtin_loops.py

@@ -7008,40 +7008,65 @@ class TestValidatorWarningBudget:
 
     # (loop stem, category) -> allowed warning paths.
     # partial-route: owned by the semantic MR-4 routing issue.
-    # capture-ordering: owned by the :default= interpolation issue, except the
-    #   documented sub-loop false positives (adopt-third-party-api enumeration,
-    #   integrate-sdk targets/enumeration, examples-miner run_optimizer,
-    #   goal-cluster/rn-build plan_display) which are produced by child loops.
+    # capture-ordering: Approach A (BUG-2112) — validator is suffix-blind so :default= fixes
+    #   do not suppress warnings; all Bucket B entries remain until Approach B is adopted.
+    #   Bucket A entries are sub-loop false positives (capture injected by child loop).
     ALLOWLIST: dict[tuple[str, str], set[str]] = {
         ("adopt-third-party-api", "capture-ordering"): {
+            # Bucket A: enumeration injected by oracles/enumerate-and-prove sub-loop
             "states.build_playbook.action",
             "states.build_playbook_partial.action",
         },
-        ("examples-miner", "capture-ordering"): {"states.synthesize.action"},
-        ("general-task", "capture-ordering"): {"states.check_done.action"},
+        ("examples-miner", "capture-ordering"): {
+            # Bucket A: run_optimizer injected by sub-loop
+            "states.synthesize.action",
+        },
+        ("general-task", "capture-ordering"): {
+            # Bucket B: safe — :default=not-reached fallback in place (BUG-2112)
+            "states.check_done.action",
+        },
         ("goal-cluster", "capture-ordering"): {
+            # Bucket B: safe — :default= fallback in place (BUG-2112)
             "states.present_result.action",
             "states.propagate_context.action",
-            "states.reassess.action",
             "states.synthesize_cluster_result.action",
+            # Bucket A: plan_display injected by parent loop via fragment contract
+            "states.reassess.action",
         },
         ("harness-optimize", "capture-ordering"): {
+            # Bucket B: safe — :default= fallback in place (BUG-2112, per BUG-2111 classification)
             "states.apply.action",
             "states.propose.action",
         },
         ("integrate-sdk", "capture-ordering"): {
+            # Bucket B: safe — :default=not-reached fallback in place (BUG-2112)
             "states.diagnose_and_block.action",
+            # Bucket A: targets injected by oracles/enumerate-and-prove sub-loop on success path
             "states.scaffold_integration.action",
         },
-        ("learning-tests-audit", "capture-ordering"): {"states.build_report.action"},
-        ("loop-composer", "capture-ordering"): {"states.present_result.action"},
-        ("loop-composer-adaptive", "capture-ordering"): {"states.present_result.action"},
+        ("learning-tests-audit", "capture-ordering"): {
+            # Bucket B: safe — :default=not-reached fallback in place (BUG-2112)
+            "states.build_report.action",
+        },
+        ("loop-composer", "capture-ordering"): {
+            # Bucket B: safe — :default= fallback in place (BUG-2112)
+            "states.present_result.action",
+        },
+        ("loop-composer-adaptive", "capture-ordering"): {
+            # Bucket B: safe — :default= fallback in place (BUG-2112)
+            "states.present_result.action",
+        },
         ("loop-router", "capture-ordering"): {
+            # Bucket B: safe — :default=not-reached fallback in place (BUG-2112)
             "states.present_choices.action",
             "states.present_result.action",
         },
-        ("rl-coding-agent", "capture-ordering"): {"states.diagnose.action"},
+        ("rl-coding-agent", "capture-ordering"): {
+            # Bucket B: safe — :default=not-reached fallback in place (BUG-2112)
+            "states.diagnose.action",
+        },
         ("rn-build", "capture-ordering"): {
+            # Bucket B: safe — :default= fallback in place (BUG-2112)
             "states.check_harness_name.action",
             "states.synthesize_result.action",
         },

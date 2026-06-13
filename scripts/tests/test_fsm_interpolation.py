@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest import mock
 
 import pytest
+import yaml
 
 from little_loops.fsm.interpolation import (
     InterpolationContext,
@@ -741,3 +743,65 @@ class TestSafeInterpolation:
         obj = {"summary": "${captured.x?}"}
         result = interpolate_dict(obj, ctx)
         assert result == {"summary": ""}
+
+    # ── Real-loop bypass-path guards (BUG-2094) ──────────────────────────────
+
+    def test_loop_composer_present_result_safe_with_empty_captured(self) -> None:
+        """present_result must not raise when user_plan_decision was bypassed."""
+        loop_path = Path("scripts/little_loops/loops/loop-composer.yaml")
+        data = yaml.safe_load(loop_path.read_text())
+        action = data["states"]["present_result"]["action"]
+        ctx = InterpolationContext(captured={}, context={"run_dir": "/tmp/test-run"})
+
+    def test_general_task_check_done_safe_with_empty_captured(self) -> None:
+        """check_done must not raise when work_result/selected_step were bypassed."""
+        loop_path = Path("scripts/little_loops/loops/general-task.yaml")
+        data = yaml.safe_load(loop_path.read_text())
+        action = data["states"]["check_done"]["action"]
+        ctx = InterpolationContext(
+            captured={},
+            context={"run_dir": "/tmp/test-run"},
+        )
+        interpolate(action, ctx)
+
+    def test_loop_router_present_choices_safe_with_empty_captured(self) -> None:
+        """present_choices must not raise when project_score/builtin_score were bypassed."""
+        loop_path = Path("scripts/little_loops/loops/loop-router.yaml")
+        data = yaml.safe_load(loop_path.read_text())
+        action = data["states"]["present_choices"]["action"]
+        # select_loop is always captured before present_choices (not on bypass path)
+        ctx = InterpolationContext(
+            captured={"select_loop": {"output": "analysis output"}},
+            context={"goal": "test goal", "run_dir": "/tmp"},
+        )
+        interpolate(action, ctx)
+
+    def test_loop_router_present_result_safe_with_empty_captured(self) -> None:
+        """present_result must not raise when new_loop_proposal/review_result were bypassed."""
+        loop_path = Path("scripts/little_loops/loops/loop-router.yaml")
+        data = yaml.safe_load(loop_path.read_text())
+        action = data["states"]["present_result"]["action"]
+        ctx = InterpolationContext(captured={}, context={"run_dir": "/tmp"})
+        interpolate(action, ctx)
+
+    def test_harness_optimize_propose_safe_with_empty_captured(self) -> None:
+        """propose must not raise when benchmark_score/state_name were bypassed."""
+        loop_path = Path("scripts/little_loops/loops/harness-optimize.yaml")
+        data = yaml.safe_load(loop_path.read_text())
+        action = data["states"]["propose"]["action"]
+        ctx = InterpolationContext(
+            captured={"directive": {"output": "improve"}, "baseline": {"output": "0.5"}},
+            context={"targets": "some/file.yaml", "run_dir": "/tmp"},
+        )
+        interpolate(action, ctx)
+
+    def test_harness_optimize_apply_safe_with_empty_captured(self) -> None:
+        """apply must not raise when state_name was bypassed."""
+        loop_path = Path("scripts/little_loops/loops/harness-optimize.yaml")
+        data = yaml.safe_load(loop_path.read_text())
+        action = data["states"]["apply"]["action"]
+        ctx = InterpolationContext(
+            captured={"candidate": {"output": "new content"}},
+            context={"targets": "some/file.yaml", "run_dir": "/tmp"},
+        )
+        interpolate(action, ctx)

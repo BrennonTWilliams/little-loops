@@ -139,7 +139,7 @@ states:
 
       Diagnose what happened:
       - Report the last known observation: ${captured.observation.output}
-      - Report the last known reward: ${captured.prev_reward.output}
+      - Report the last known reward: ${captured.prev_reward.output:default=not-reached}
       - Identify the most likely failure cause (convergence evaluator error in the score state).
 
       Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the eval suite.

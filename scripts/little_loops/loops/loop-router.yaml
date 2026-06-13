@@ -287,10 +287,10 @@ states:
       ${captured.select_loop.output}
 
       TOP PROJECT CANDIDATES (if scored):
-      ${captured.project_score.output}
+      ${captured.project_score.output:default=not-reached}
 
       TOP BUILTIN CANDIDATES (if scored):
-      ${captured.builtin_score.output}
+      ${captured.builtin_score.output:default=not-reached}
 
       Type the exact name of the loop you want to run (e.g., "deep-research", "rn-plan").
       To exit without running any loop, type: CANCEL
@@ -441,8 +441,8 @@ states:
       chosen         = _read('${context.run_dir}/loop-router-chosen.txt', 'NONE')
       conf_raw       = _read('${context.run_dir}/loop-router-confidence.txt', '0')
       confidence     = float(conf_raw) if conf_raw else 0.0
-      proposal_out   = """${captured.new_loop_proposal.output}"""
-      review_out     = """${captured.review_result.output}"""
+      proposal_out   = """${captured.new_loop_proposal.output:default=}"""
+      review_out     = """${captured.review_result.output:default=}"""
       has_proposal   = 'PROPOSED_NAME:' in proposal_out
       if has_proposal:
           def _field(key):

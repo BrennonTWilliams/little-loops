@@ -116,13 +116,13 @@ states:
 
       Target files available: ${context.targets}
       Baseline score: ${captured.baseline.output}
-      Last benchmark output: ${captured.benchmark_score.output}
+      Last benchmark output: ${captured.benchmark_score.output:default=not-reached}
 
-      State-mode target: ${captured.state_name.output}
+      State-mode target: ${captured.state_name.output:default=}
 
       If state-mode target (above) is non-empty:
         Read the target loop YAML (${context.targets}) and extract the `action:` block
-        for state "${captured.state_name.output}". For additional context, read the
+        for state "${captured.state_name.output:default=}". For additional context, read the
         examples file at ${context.run_dir}/harness-optimize-examples-file.txt if it exists.
         Propose a targeted edit to that action block to raise the benchmark score.
         Output ONLY the revised action block text — no YAML keys, no fences, no preamble.
@@ -142,7 +142,7 @@ states:
     action: |
       Apply the following proposed change.
 
-      State-mode target state: ${captured.state_name.output}
+      State-mode target state: ${captured.state_name.output:default=}
       Target file: ${context.targets}
 
       Proposed change:
@@ -156,7 +156,7 @@ states:
       from little_loops.loops.yaml_state_editor import replace_action
       from pathlib import Path
       action = Path('${context.run_dir}/harness-optimize-candidate-action.txt').read_text()
-      replace_action(Path('${context.targets}'), '${captured.state_name.output}', action)
+      replace_action(Path('${context.targets}'), '${captured.state_name.output:default=}', action)
       "
 
       If state-mode target is empty:
