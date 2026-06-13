@@ -23,6 +23,19 @@ relates_to:
 
 The `re_assess` state in `rn-remediate.yaml` has the same MR-4 violation that BUG-2075 fixed for the `assess` state: it defines only `on_success: verify_re_assess_scores` with no `on_partial` or `on_no`. When the LLM evaluator returns `partial` (confidence-check completed but the persistence step was unconfirmed), the FSM has no route and terminates the subloop with `terminated_by: error` — leaving no `subloop_outcome_<ID>.txt`, so the parent `rn-implement` loop never receives a verdict.
 
+## Current Behavior
+
+When `re_assess` executes `/ll:confidence-check` and the LLM evaluator returns `partial`, the FSM finds no `on_partial` route in the state definition. The subloop terminates with `terminated_by: error` and does not write `subloop_outcome_<ID>.txt`, causing the parent `rn-implement` loop to receive no verdict and stall.
+
+## Steps to Reproduce
+
+1. Select an issue ready for implementation
+2. Run `ll-loop run rn-implement --issue <ID>`
+3. Allow the loop to proceed through `assess` and `wire` states
+4. Observe `re_assess` state executing `/ll:confidence-check <ID> --auto`
+5. When the LLM evaluator returns `partial` (core work confirmed, persistence step unconfirmed), the subloop terminates with `terminated_by: error`
+6. No `subloop_outcome_<ID>.txt` is written; parent loop receives no verdict
+
 ## Observed Instance
 
 **Run**: `rn-implement-20260613T124334`, input BUG-2011  
@@ -64,7 +77,7 @@ But `re_assess` was not updated at the same time.
 
 `re_assess` should route `partial` → `verify_re_assess_scores` (treat partial as "core work done, proceed optimistically") and `on_no` → `refine` (re-assess found low confidence, fall back to refine), mirroring the BUG-2075 fix on `assess`.
 
-## Fix
+## Proposed Solution
 
 ```yaml
 # rn-remediate.yaml — re_assess state
@@ -86,5 +99,40 @@ re_assess:
 - [ ] `ll-loop validate rn-remediate` passes with no MR-4 warnings on `re_assess`
 - [ ] A test in `scripts/tests/test_rn_remediate.py` asserts `on_partial` and `on_no` are set on `re_assess` (model after the `assess` MR-4 test added by BUG-2075)
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/rn-remediate.yaml` — `re_assess` state: add `on_partial: verify_re_assess_scores` and `on_no: refine`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/executor.py` — FSM route-table processor (no changes needed)
+
+### Similar Patterns
+- `assess` state in `rn-remediate.yaml` — same fix already applied by BUG-2075 (`on_partial: verify_scores_persisted`, `on_no: refine`)
+
+### Tests
+- `scripts/tests/test_rn_remediate.py` — add assertion that `re_assess` has `on_partial` and `on_no` (model after the `assess` MR-4 regression test added by BUG-2075)
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. Add `on_partial: verify_re_assess_scores` and `on_no: refine` to `re_assess` state in `rn-remediate.yaml`
+2. Run `ll-loop validate rn-remediate` to confirm no MR-4 warnings on `re_assess`
+3. Add regression test in `scripts/tests/test_rn_remediate.py` asserting `on_partial` and `on_no` present on `re_assess`
+4. Run test suite to verify
+
+## Impact
+
+- **Priority**: P2 — Blocks `rn-implement` from completing when confidence check returns partial; subloop silently fails with no outcome artifact
+- **Effort**: Small — Two-field YAML addition + one test assertion; mirrors BUG-2075 fix on `assess`
+- **Risk**: Low — YAML config change only, no Python logic changes; same pattern as BUG-2075
+- **Breaking Change**: No
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-13T18:32:54 - `bd2eb6a7-568d-4a00-8298-d0d06d2d9a27.jsonl`
 - `/ll:audit-loop-run` - 2026-06-13T00:00:00Z - discovered during audit of rn-implement-20260613T124334
