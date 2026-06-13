@@ -3,11 +3,11 @@ id: FEAT-1806
 title: Opponent-Aware Market Strategy Optimization Loop
 type: FEAT
 priority: P3
-status: open
+status: cancelled
 parent: EPIC-1811
 discovered_date: 2026-05-29
 discovered_by: capture-issue
-captured_at: "2026-05-30T04:44:25Z"
+captured_at: '2026-05-30T04:44:25Z'
 ---
 
 # FEAT-1806: Opponent-Aware Market Strategy Optimization Loop

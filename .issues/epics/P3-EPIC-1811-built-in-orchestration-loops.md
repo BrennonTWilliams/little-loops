@@ -3,7 +3,7 @@ id: EPIC-1811
 title: Built-in Orchestration Loops
 type: EPIC
 priority: P3
-status: open
+status: done
 discovered_date: 2026-05-30
 discovered_by: link-epics
 labels:

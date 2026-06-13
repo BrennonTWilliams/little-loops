@@ -10,7 +10,7 @@ discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 relates_to:
 - ENH-1961
-parent: EPIC-1811
+parent: null
 confidence_score: 94
 outcome_confidence: 72
 score_complexity: 14

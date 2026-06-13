@@ -4,17 +4,24 @@ title: Wire `ll-logs stats` signals into `ll-ctx-stats`
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-12T00:00:00Z"
+captured_at: '2026-06-12T00:00:00Z'
 discovered_date: 2026-06-12
 discovered_by: review-epic
 parent: EPIC-1918
-relates_to: [ENH-1921]
+relates_to:
+- ENH-1921
 labels:
-  - telemetry
-  - ll-logs
-  - ctx-stats
-  - integration
+- telemetry
+- ll-logs
+- ctx-stats
+- integration
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 91
+score_complexity: 18
+score_test_coverage: 23
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2104: Wire `ll-logs stats` signals into `ll-ctx-stats`
@@ -204,6 +211,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `fcd9eacf-8926-445e-b304-74197fc2e3fb.jsonl`
 - `/ll:wire-issue` - 2026-06-13T14:17:09 - `bb95cdb9-2fae-4775-ad2d-2ee497cc504b.jsonl`
 - `/ll:decide-issue` - 2026-06-13T14:13:57 - `9aaae9fc-d0da-4b2b-80af-8f24ea621c5f.jsonl`
 - `/ll:refine-issue` - 2026-06-13T14:07:15 - `08370739-55b2-494f-8c11-f2199b52c4f3.jsonl`
