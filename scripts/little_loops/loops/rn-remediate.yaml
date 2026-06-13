@@ -194,8 +194,13 @@ states:
         echo "DECIDE"
       elif [ "$MISSING_ARTIFACTS" = "true" ]; then
         echo "WIRE"
-      elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ]; then
+      elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ] \
+          && [ "$CHANGE_SURFACE" -eq 0 ]; then
+        # No integration map exists → wiring can fill the ambiguity gap
         echo "WIRE"
+      elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ]; then
+        # Integration map exists → residual ambiguity is decision-driven; refine to resolve
+        echo "REFINE"
       elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] || [ "$CONFIDENCE" -lt "${context.diagnose_confidence_floor}" ]; then
         echo "REFINE"
       elif [ "$CHANGE_SURFACE" -ge "${context.diagnose_change_surface_threshold}" ]; then

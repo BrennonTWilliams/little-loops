@@ -1,19 +1,27 @@
 ---
 id: ENH-2116
-title: 'rn-remediate diagnose: WIRE(ambiguity) heuristic fires on decision-driven ambiguity when integration map already exists'
+title: 'rn-remediate diagnose: WIRE(ambiguity) heuristic fires on decision-driven
+  ambiguity when integration map already exists'
 priority: P3
 type: ENH
-status: open
+status: done
 captured_at: '2026-06-13T00:00:00Z'
+completed_at: '2026-06-13T18:51:26Z'
 discovered_date: '2026-06-13'
 discovered_by: audit-loop-run
 affects: scripts/little_loops/loops/rn-remediate.yaml
 labels:
-  - rn-remediate
-  - loop-defect
-  - diagnose
+- rn-remediate
+- loop-defect
+- diagnose
 relates_to:
-  - BUG-2007
+- BUG-2007
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2116: rn-remediate diagnose — WIRE(ambiguity) heuristic fires on decision-driven ambiguity
@@ -87,5 +95,6 @@ elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ]; then
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-13T18:48:09 - `d8bee6f2-b63a-4a71-bb19-3c2f942b53df.jsonl`
 - `/ll:format-issue` - 2026-06-13T18:32:25 - `bd2eb6a7-568d-4a00-8298-d0d06d2d9a27.jsonl`
 - `/ll:audit-loop-run` - 2026-06-13T00:00:00Z - discovered during audit of rn-implement-20260613T124334

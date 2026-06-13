@@ -6,6 +6,7 @@ rn-implement.yaml monolith into sub-loops).
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -910,4 +911,95 @@ class TestOutcomeTokenChannel:
             'MISSING_ARTIFACTS" = "true"' in action.replace("'", '"')
             or "MISSING_ARTIFACTS" in action
             and "WIRE" in action
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestDiagnoseAmbiguityWireDiscrimination — ENH-2116
+# ---------------------------------------------------------------------------
+
+
+class TestDiagnoseAmbiguityWireDiscrimination:
+    """WIRE(ambiguity) branch must only fire when CHANGE_SURFACE == 0.
+
+    When an integration map already exists (CHANGE_SURFACE > 0), high ambiguity
+    is decision-driven, not a wiring gap.  The branch must fall through to REFINE
+    so a full-rewrite pass can resolve the conditional logic.
+    """
+
+    def _routing_script(self) -> str:
+        """Extract the priority-ordered routing section with context vars substituted."""
+        data = _load_loop()
+        action = data["states"]["diagnose"]["action"]
+        start = action.find("# Priority-ordered routing")
+        if start == -1:
+            raise AssertionError("Could not locate routing section in diagnose action")
+        section = action[start:]
+        # Substitute context variables with their defaults
+        section = section.replace("${context.diagnose_ambiguity_threshold}", "15")
+        section = section.replace("${context.diagnose_complexity_threshold}", "15")
+        section = section.replace("${context.diagnose_change_surface_threshold}", "15")
+        section = section.replace("${context.diagnose_confidence_floor}", "50")
+        return section
+
+    def _run(
+        self,
+        script: str,
+        *,
+        confidence: int,
+        outcome: int,
+        ambiguity: int,
+        complexity: int = 0,
+        change_surface: int = 0,
+        decision_needed: str = "false",
+        missing_artifacts: str = "false",
+    ) -> str:
+        env = "\n".join(
+            [
+                f"CONFIDENCE={confidence}",
+                f"OUTCOME={outcome}",
+                "READINESS_THRESHOLD=85",
+                "OUTCOME_THRESHOLD=75",
+                f"AMBIGUITY={ambiguity}",
+                f"COMPLEXITY={complexity}",
+                f"CHANGE_SURFACE={change_surface}",
+                f"DECISION_NEEDED={decision_needed}",
+                f"MISSING_ARTIFACTS={missing_artifacts}",
+            ]
+        )
+        result = subprocess.run(
+            ["bash", "-c", env + "\n" + script],
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    def test_ambiguity_high_change_surface_zero_routes_to_wire(self) -> None:
+        """ambiguity=18, change_surface=0 → WIRE (integration map absent)."""
+        token = self._run(
+            self._routing_script(),
+            confidence=100,
+            outcome=56,
+            ambiguity=18,
+            change_surface=0,
+        )
+        assert token == "WIRE", f"Expected WIRE, got {token!r}"
+
+    def test_ambiguity_high_change_surface_nonzero_routes_to_refine(self) -> None:
+        """ambiguity=18, change_surface=5 → REFINE (decision-driven ambiguity, ENH-2116)."""
+        token = self._run(
+            self._routing_script(),
+            confidence=100,
+            outcome=56,
+            ambiguity=18,
+            change_surface=5,
+        )
+        assert token == "REFINE", f"Expected REFINE, got {token!r}"
+
+    def test_wire_condition_has_change_surface_guard(self) -> None:
+        """diagnose action contains CHANGE_SURFACE -eq 0 guard on the ambiguity→WIRE branch."""
+        data = _load_loop()
+        action = data["states"]["diagnose"]["action"]
+        assert "CHANGE_SURFACE" in action and "-eq 0" in action, (
+            "diagnose action must guard the ambiguity→WIRE branch with CHANGE_SURFACE -eq 0"
         )
