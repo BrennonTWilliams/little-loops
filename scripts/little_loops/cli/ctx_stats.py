@@ -223,7 +223,9 @@ def _render(
     if skill_stats:
         print()
         print("Skill health:")
-        ranked_skills = sorted(skill_stats.items(), key=lambda kv: kv[1]["invocations"], reverse=True)
+        ranked_skills = sorted(
+            skill_stats.items(), key=lambda kv: kv[1]["invocations"], reverse=True
+        )
         for skill, counts in ranked_skills:
             inv = counts["invocations"]
             corr = counts["corrections"]

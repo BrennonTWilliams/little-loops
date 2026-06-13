@@ -539,7 +539,15 @@ class TestFromSequencesModeSchema:
 
     def test_from_sequences_proposal_required_fields(self) -> None:
         """Proposals from sequences mode must include base required fields (no theme field)."""
-        required_fields = {"id", "name", "loop_type", "confidence", "rationale", "yaml_config", "usage_instructions"}
+        required_fields = {
+            "id",
+            "name",
+            "loop_type",
+            "confidence",
+            "rationale",
+            "yaml_config",
+            "usage_instructions",
+        }
 
         proposal = {
             "id": "loop-001",
@@ -589,7 +597,12 @@ class TestFromSequencesModeSchema:
         assert not has_check  # sequential, no check → run_sequence paradigm
 
         # Paradigm mapping rule: fix_until_clean takes priority when a check is present
-        valid_paradigms = {"fix_until_clean", "maintain_constraints", "drive_metric", "run_sequence"}
+        valid_paradigms = {
+            "fix_until_clean",
+            "maintain_constraints",
+            "drive_metric",
+            "run_sequence",
+        }
         assert "fix_until_clean" in valid_paradigms
         assert "run_sequence" in valid_paradigms
 

@@ -491,12 +491,20 @@ class LoopsGlyphsConfig:
         }
 
 
-_VALID_SHOW_DIAGRAMS: frozenset[str] = frozenset({
-    "layered", "neighborhood", "inline",          # topologies
-    "detailed", "summary", "clean", "local",       # presets
-    "slim", "oneline",                             # presets (continued)
-    "default",                                     # bare --show-diagrams sentinel
-})
+_VALID_SHOW_DIAGRAMS: frozenset[str] = frozenset(
+    {
+        "layered",
+        "neighborhood",
+        "inline",  # topologies
+        "detailed",
+        "summary",
+        "clean",
+        "local",  # presets
+        "slim",
+        "oneline",  # presets (continued)
+        "default",  # bare --show-diagrams sentinel
+    }
+)
 
 
 @dataclass

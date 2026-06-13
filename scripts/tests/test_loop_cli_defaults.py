@@ -150,8 +150,18 @@ class TestLoopRunDefaultsDataclass:
         """Valid show_diagrams values are accepted."""
         from little_loops.config.features import LoopRunDefaults
 
-        for value in ("layered", "neighborhood", "inline", "detailed", "summary", "clean",
-                      "local", "slim", "oneline", "default"):
+        for value in (
+            "layered",
+            "neighborhood",
+            "inline",
+            "detailed",
+            "summary",
+            "clean",
+            "local",
+            "slim",
+            "oneline",
+            "default",
+        ):
             result = LoopRunDefaults.from_dict({"show_diagrams": value})
             assert result.show_diagrams == value
 

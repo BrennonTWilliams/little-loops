@@ -376,7 +376,9 @@ class TestValidatePlanFragmentExecution:
             [sys.executable, str(script)], capture_output=True, text=True
         ), run_dir
 
-    def test_fragment_does_not_interpolate_catalog_into_string_literal(self, lib_data: dict) -> None:
+    def test_fragment_does_not_interpolate_catalog_into_string_literal(
+        self, lib_data: dict
+    ) -> None:
         """Guard the anti-pattern that caused the original SyntaxError."""
         action = lib_data["fragments"]["validate_plan"]["action"]
         assert "'${captured.catalog.output}'" not in action, (
@@ -387,7 +389,9 @@ class TestValidatePlanFragmentExecution:
             "validate_plan must read the catalog from disk via composer-catalog.json"
         )
 
-    def test_valid_plan_exits_zero_and_writes_topo_order(self, lib_data: dict, tmp_path: Path) -> None:
+    def test_valid_plan_exits_zero_and_writes_topo_order(
+        self, lib_data: dict, tmp_path: Path
+    ) -> None:
         catalog = {
             "project": [{"name": "loop-a"}, {"name": "loop-b"}],
             "builtin": [{"name": "loop-router"}],
@@ -401,7 +405,9 @@ class TestValidatePlanFragmentExecution:
         assert "PLAN_VALID" in result.stdout
         assert (run_dir / "topo-order.json").exists()
 
-    def test_unknown_loop_name_is_rejected_via_disk_catalog(self, lib_data: dict, tmp_path: Path) -> None:
+    def test_unknown_loop_name_is_rejected_via_disk_catalog(
+        self, lib_data: dict, tmp_path: Path
+    ) -> None:
         """The catalog-read fix must still enforce the unknown-loop-name check."""
         catalog = {"project": [{"name": "loop-a"}], "builtin": []}
         plan = [{"step_id": "s1", "loop_name": "does-not-exist", "input": "x", "depends_on": []}]
@@ -409,11 +415,16 @@ class TestValidatePlanFragmentExecution:
         assert result.returncode == 1
         assert "not in catalog" in result.stdout
 
-    def test_catalog_with_quotes_and_newlines_does_not_crash(self, lib_data: dict, tmp_path: Path) -> None:
+    def test_catalog_with_quotes_and_newlines_does_not_crash(
+        self, lib_data: dict, tmp_path: Path
+    ) -> None:
         """The exact failure mode from the audit: descriptions with quotes/newlines."""
         catalog = {
             "project": [
-                {"name": "loop-a", "description": "has 'single' and \"double\" quotes\nand a newline"}
+                {
+                    "name": "loop-a",
+                    "description": "has 'single' and \"double\" quotes\nand a newline",
+                }
             ],
             "builtin": [],
         }

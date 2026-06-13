@@ -217,9 +217,7 @@ def cmd_simulate(
     if "input_hash" not in fsm.context and isinstance(fsm.context.get("input"), str):
         import hashlib
 
-        fsm.context["input_hash"] = hashlib.sha256(
-            fsm.context["input"].encode()
-        ).hexdigest()[:12]
+        fsm.context["input_hash"] = hashlib.sha256(fsm.context["input"].encode()).hexdigest()[:12]
 
     # Create simulation runner
     sim_runner = SimulationActionRunner(scenario=args.scenario)

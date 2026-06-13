@@ -288,11 +288,14 @@ class TestMainCtxStats:
         db = tmp_path / ".ll" / "history.db"
         db.parent.mkdir(exist_ok=True)
         _populate_tool_events(db, [("Read", 100, 900, 0)])
-        _populate_skill_events(db, [
-            ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
-            ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
-            ("2026-01-01T00:02:00Z", "s1", "run-tests", ""),
-        ])
+        _populate_skill_events(
+            db,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "manage-issue", ""),
+                ("2026-01-01T00:01:00Z", "s1", "manage-issue", ""),
+                ("2026-01-01T00:02:00Z", "s1", "run-tests", ""),
+            ],
+        )
         _insert_correction(db, "2026-01-01T00:00:30Z", "s1", "no, not that")
         lines, side_effect = _capture_print()
         with (
@@ -309,7 +312,9 @@ class TestMainCtxStats:
         assert skills["manage-issue"]["invocations"] == 2
         assert "correction_rate" in skills["manage-issue"]
 
-    def test_json_mode_skill_health_none_when_no_skill_rows(self, tmp_path: Path, monkeypatch) -> None:
+    def test_json_mode_skill_health_none_when_no_skill_rows(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         """--json has skill_health=null when no skill events recorded."""
         monkeypatch.chdir(tmp_path)
         db = tmp_path / ".ll" / "history.db"

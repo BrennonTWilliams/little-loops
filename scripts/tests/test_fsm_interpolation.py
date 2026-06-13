@@ -752,6 +752,7 @@ class TestSafeInterpolation:
         data = yaml.safe_load(loop_path.read_text())
         action = data["states"]["present_result"]["action"]
         ctx = InterpolationContext(captured={}, context={"run_dir": "/tmp/test-run"})
+        interpolate(action, ctx)
 
     def test_general_task_check_done_safe_with_empty_captured(self) -> None:
         """check_done must not raise when work_result/selected_step were bypassed."""
