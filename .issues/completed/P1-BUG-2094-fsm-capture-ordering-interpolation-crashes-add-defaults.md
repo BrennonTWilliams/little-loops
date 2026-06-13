@@ -18,6 +18,7 @@ score_test_coverage: 22
 score_ambiguity: 18
 score_change_surface: 18
 size: Very Large
+completed_at: '2026-06-13T16:07:16Z'
 ---
 
 # BUG-2094: FSM loops reference captures from states that may not have executed
@@ -233,3 +234,13 @@ _Updated by `/ll:confidence-check` on 2026-06-13 (re-run after third wiring pass
 - `/ll:wire-issue` - 2026-06-12T20:45:56 - `0d2af10e-d5a9-4677-9cf2-4695fd7f519f.jsonl`
 - `/ll:format-issue` - 2026-06-12T19:22:51 - `af5b5e51-5164-4278-b851-0c8573b39dca.jsonl`
 - `/ll:confidence-check` - 2026-06-12T00:00:00Z - `2000dfa5-31ee-445e-b574-4c20f6c98a02.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-06-13
+- **Decomposed into**: BUG-2111, BUG-2112
+
+Work for BUG-2094 is now carried by its child issues; this parent was closed by rn-decompose.
