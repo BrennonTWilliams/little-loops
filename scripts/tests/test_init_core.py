@@ -1331,9 +1331,7 @@ class TestTemplateCommandOptions:
     @pytest.mark.parametrize("filename", TYPED_TEMPLATES)
     def test_has_command_options(self, filename: str, templates_dir: Path) -> None:
         data = json.loads((templates_dir / filename).read_text())
-        assert "command_options" in data["_meta"], (
-            f"{filename} is missing _meta.command_options"
-        )
+        assert "command_options" in data["_meta"], f"{filename} is missing _meta.command_options"
 
     @pytest.mark.parametrize("filename", TYPED_TEMPLATES)
     def test_command_options_has_test_cmd(self, filename: str, templates_dir: Path) -> None:

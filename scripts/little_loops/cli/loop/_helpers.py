@@ -1505,7 +1505,7 @@ def _print_ab_summary(ab_path: Path) -> None:
 
 def _run_cross_host_validation(
     args: argparse.Namespace,
-    loop_path: "Path | None",
+    loop_path: Path | None,
     primary_run_dir: Path,
     primary_ab_path: Path,
     loop_name: str,
@@ -1519,7 +1519,7 @@ def _run_cross_host_validation(
     import os
     import shutil
 
-    from little_loops.host_runner import HostNotConfigured, _PROBE_ORDER, resolve_host
+    from little_loops.host_runner import _PROBE_ORDER, HostNotConfigured, resolve_host
 
     # Identify the current (primary) host
     try:
@@ -1574,11 +1574,7 @@ def _run_cross_host_validation(
         reverse=True,
     )
     second_ab_path = next(
-        (
-            p
-            for p in candidates
-            if p != primary_ab_path and p.stat().st_mtime >= before
-        ),
+        (p for p in candidates if p != primary_ab_path and p.stat().st_mtime >= before),
         None,
     )
 
@@ -1597,9 +1593,7 @@ def _run_cross_host_validation(
     if primary_results is None or second_results is None:
         return
 
-    _print_cross_host_table(
-        primary_host or "primary", primary_results, second_host, second_results
-    )
+    _print_cross_host_table(primary_host or "primary", primary_results, second_host, second_results)
 
 
 def _print_cross_host_table(

@@ -81,18 +81,22 @@ def detect_documents(project_root: Path) -> dict:
                     found.append(rel)
         return found
 
-    arch_files = _find([
-        "**/architecture*.md",
-        "**/design*.md",
-        "**/api*.md",
-        "docs/*.md",
-    ])
-    product_files = _find([
-        "**/goal*.md",
-        "**/roadmap*.md",
-        "**/vision*.md",
-        "**/requirements*.md",
-    ])
+    arch_files = _find(
+        [
+            "**/architecture*.md",
+            "**/design*.md",
+            "**/api*.md",
+            "docs/*.md",
+        ]
+    )
+    product_files = _find(
+        [
+            "**/goal*.md",
+            "**/roadmap*.md",
+            "**/vision*.md",
+            "**/requirements*.md",
+        ]
+    )
 
     categories: dict = {}
     if arch_files:

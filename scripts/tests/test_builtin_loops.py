@@ -555,7 +555,9 @@ class TestEvaluationQualityLoop:
     def test_evaluate_code_uses_run_dir(self, data: dict) -> None:
         """evaluate_code state must use ${context.run_dir} paths, not bare /tmp/ or .loops/tmp/."""
         action = data["states"].get("evaluate_code", {}).get("action", "")
-        assert "${context.run_dir}" in action, "evaluate_code must use ${context.run_dir} for output files"
+        assert "${context.run_dir}" in action, (
+            "evaluate_code must use ${context.run_dir} for output files"
+        )
         # Bare /tmp/... references are forbidden.
         assert not re.search(r"(?<!\.loops)/tmp/eval-", action), (
             "evaluate_code must not use bare /tmp/ paths"
@@ -5863,7 +5865,9 @@ class TestImplementIssueChainOracle:
             if "${context.caller_prefix}-impl-queue" in action:
                 found = True
                 assert "${context.run_dir}" in action
-        assert found, "No state references ${context.caller_prefix}-impl-queue in ${context.run_dir}"
+        assert found, (
+            "No state references ${context.caller_prefix}-impl-queue in ${context.run_dir}"
+        )
 
     def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
         """go_no_go must call ll-action via the invoke subcommand."""

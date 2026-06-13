@@ -4414,9 +4414,15 @@ class TestABSummaryDisplay:
         from little_loops.cli.loop._helpers import _print_ab_summary
 
         per_items = [
-            {"index": i, "harness_pass": i < 7, "baseline_pass": i < 4,
-             "harness_tokens": 1000, "baseline_tokens": 500,
-             "harness_duration_ms": 2000, "baseline_duration_ms": 1000}
+            {
+                "index": i,
+                "harness_pass": i < 7,
+                "baseline_pass": i < 4,
+                "harness_tokens": 1000,
+                "baseline_tokens": 500,
+                "harness_duration_ms": 2000,
+                "baseline_duration_ms": 1000,
+            }
             for i in range(10)
         ]
         results = ABResults(

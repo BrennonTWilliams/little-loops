@@ -613,7 +613,11 @@ class TestClassifyFailure:
             # User-cancelled tool calls
             ("<tool_use_error>Cancelled", "TRANSIENT", "cancelled"),
             # Ad-hoc Python snippet tracebacks
-            ('File "<string>", line 1\nNameError: name \'true\' is not defined', "TRANSIENT", "snippet"),
+            (
+                "File \"<string>\", line 1\nNameError: name 'true' is not defined",
+                "TRANSIENT",
+                "snippet",
+            ),
             ('File "<stdin>", line 3\nSyntaxError: invalid syntax', "TRANSIENT", "snippet"),
             # Real failure patterns
             ("SyntaxError: unexpected token at line 42", "REAL", "implementation"),

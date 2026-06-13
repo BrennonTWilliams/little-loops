@@ -2328,7 +2328,9 @@ class TestScanFailures:
 
     def test_scan_failures_capture_foreign_flag_parsed(self) -> None:
         """--capture-foreign flag is accepted."""
-        with patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--capture", "--capture-foreign"]):
+        with patch(
+            "sys.argv", ["ll-logs", "scan-failures", "--all", "--capture", "--capture-foreign"]
+        ):
             args = _parse_args()
         assert args.capture is True
         assert args.capture_foreign is True
@@ -2347,7 +2349,9 @@ class TestScanFailures:
                 home,
                 "myproject",
                 [
-                    self._assistant_bash_record("ll-issues list", tool_use_id="t1", session_id="s1"),
+                    self._assistant_bash_record(
+                        "ll-issues list", tool_use_id="t1", session_id="s1"
+                    ),
                     self._user_tool_result_record(
                         "t1", "KeyError: 'current_project_key'", is_error=True, session_id="s1"
                     ),
@@ -2358,7 +2362,9 @@ class TestScanFailures:
                 home,
                 "ll-labs",
                 [
-                    self._assistant_bash_record("ll-issues list", tool_use_id="t2", session_id="s2"),
+                    self._assistant_bash_record(
+                        "ll-issues list", tool_use_id="t2", session_id="s2"
+                    ),
                     self._user_tool_result_record(
                         "t2", "NameError: foreign_project_error", is_error=True, session_id="s2"
                     ),

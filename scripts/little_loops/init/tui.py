@@ -147,13 +147,17 @@ def run_tui(
         return 130
 
     test_cmd = _ask_command(
-        "Test command:", default=project_data.get("test_cmd") or "", options=cmd_options.get("test_cmd")
+        "Test command:",
+        default=project_data.get("test_cmd") or "",
+        options=cmd_options.get("test_cmd"),
     )
     if test_cmd is None:
         return 130
 
     lint_cmd = _ask_command(
-        "Lint command:", default=project_data.get("lint_cmd") or "", options=cmd_options.get("lint_cmd")
+        "Lint command:",
+        default=project_data.get("lint_cmd") or "",
+        options=cmd_options.get("lint_cmd"),
     )
     if lint_cmd is None:
         return 130
@@ -631,7 +635,9 @@ def _apply_config(
         extra_permissions: list[str] | None = None
         if config.get("learning_tests", {}).get("enabled"):
             extra_permissions = ["Skill(ll:explore-api)"]
-        merge_settings(project_root, settings_file=settings_file, extra_permissions=extra_permissions)
+        merge_settings(
+            project_root, settings_file=settings_file, extra_permissions=extra_permissions
+        )
 
     if claude_md_opt_in:
         write_claude_md(project_root)

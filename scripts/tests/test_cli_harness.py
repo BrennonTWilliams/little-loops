@@ -116,7 +116,9 @@ class TestParser:
         assert args.target == "What is 2+2?"
 
     def test_prompt_subparser_with_model(self) -> None:
-        args = _parse_harness_args(["prompt", "What is 2+2?", "--model", "claude-haiku-4-5-20251001"])
+        args = _parse_harness_args(
+            ["prompt", "What is 2+2?", "--model", "claude-haiku-4-5-20251001"]
+        )
         assert args.runner == "prompt"
         assert args.model == "claude-haiku-4-5-20251001"
 
@@ -498,10 +500,14 @@ class TestCmdPrompt:
 
     def test_prompt_threads_model(self) -> None:
         """Passes --model value to build_blocking_json."""
-        args = _make_namespace(runner="prompt", target="What is 2+2?", model="claude-haiku-4-5-20251001")
+        args = _make_namespace(
+            runner="prompt", target="What is 2+2?", model="claude-haiku-4-5-20251001"
+        )
         captured: dict[str, object] = {}
 
-        def fake_build_blocking_json(*, prompt: str, model: str | None = None, **_: object) -> HostInvocation:
+        def fake_build_blocking_json(
+            *, prompt: str, model: str | None = None, **_: object
+        ) -> HostInvocation:
             captured["prompt"] = prompt
             captured["model"] = model
             return HostInvocation(binary="claude", args=[])
@@ -522,7 +528,9 @@ class TestCmdPrompt:
         args = _make_namespace(runner="prompt", target="hello")
         captured: dict[str, object] = {}
 
-        def fake_build_blocking_json(*, prompt: str, model: str | None = None, **_: object) -> HostInvocation:
+        def fake_build_blocking_json(
+            *, prompt: str, model: str | None = None, **_: object
+        ) -> HostInvocation:
             captured["model"] = model
             return HostInvocation(binary="claude", args=[])
 
@@ -730,10 +738,10 @@ class TestMainHarness:
         out = capsys.readouterr().out
         assert "secret output" in out
 
-    def test_main_harness_dsl_dispatches(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_main_harness_dsl_dispatches(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
         """main_harness dispatches 'dsl' runner to cmd_dsl."""
-        from pathlib import Path as _Path
-        from unittest.mock import MagicMock
 
         task_file = tmp_path / "task.yaml"
         task_file.write_text(
@@ -756,36 +764,36 @@ class TestMainHarness:
 class TestDslSubcommandParser:
     """Tests for the 'dsl' subparser in _build_harness_parser()."""
 
-    def test_dsl_subparser_path(self, tmp_path: "Path") -> None:
+    def test_dsl_subparser_path(self, tmp_path: Path) -> None:
         args = _parse_harness_args(["dsl", str(tmp_path)])
         assert args.runner == "dsl"
         assert args.path == str(tmp_path)
 
-    def test_dsl_subparser_with_model(self, tmp_path: "Path") -> None:
+    def test_dsl_subparser_with_model(self, tmp_path: Path) -> None:
         args = _parse_harness_args(["dsl", str(tmp_path), "--model", "claude-haiku-4-5-20251001"])
         assert args.model == "claude-haiku-4-5-20251001"
 
-    def test_dsl_model_defaults_none(self, tmp_path: "Path") -> None:
+    def test_dsl_model_defaults_none(self, tmp_path: Path) -> None:
         args = _parse_harness_args(["dsl", str(tmp_path)])
         assert args.model is None
 
-    def test_dsl_subparser_exit_code_flag(self, tmp_path: "Path") -> None:
+    def test_dsl_subparser_exit_code_flag(self, tmp_path: Path) -> None:
         args = _parse_harness_args(["dsl", str(tmp_path), "--exit-code", "0"])
         assert args.exit_code == 0
 
-    def test_dsl_subparser_semantic_flag(self, tmp_path: "Path") -> None:
+    def test_dsl_subparser_semantic_flag(self, tmp_path: Path) -> None:
         args = _parse_harness_args(["dsl", str(tmp_path), "--semantic", "contains expected"])
         assert args.semantic == "contains expected"
 
-    def test_dsl_subparser_timeout_override(self, tmp_path: "Path") -> None:
+    def test_dsl_subparser_timeout_override(self, tmp_path: Path) -> None:
         args = _parse_harness_args(["dsl", str(tmp_path), "--timeout", "60"])
         assert args.timeout == 60
 
-    def test_dsl_subparser_output_json(self, tmp_path: "Path") -> None:
+    def test_dsl_subparser_output_json(self, tmp_path: Path) -> None:
         args = _parse_harness_args(["dsl", str(tmp_path), "--output", "json"])
         assert args.output == "json"
 
-    def test_dsl_subparser_verbose(self, tmp_path: "Path") -> None:
+    def test_dsl_subparser_verbose(self, tmp_path: Path) -> None:
         args = _parse_harness_args(["dsl", str(tmp_path), "--verbose"])
         assert args.verbose is True
 
@@ -798,7 +806,7 @@ class TestDslSubcommandParser:
 class TestCmdDsl:
     """Tests for cmd_dsl()."""
 
-    def _make_task_yaml(self, tmp_path: "Path", name: str = "task.yaml") -> "Path":
+    def _make_task_yaml(self, tmp_path: Path, name: str = "task.yaml") -> Path:
         p = tmp_path / name
         p.write_text(
             "prompt: Complete this FSM transition.\n"
@@ -811,7 +819,7 @@ class TestCmdDsl:
         )
         return p
 
-    def test_cmd_dsl_single_file_pass(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+    def test_cmd_dsl_single_file_pass(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Single task file with passing prompt → exits 0 and prints pass-rate."""
         task_file = self._make_task_yaml(tmp_path)
         args = _make_namespace(runner="dsl", path=str(task_file))
@@ -827,7 +835,7 @@ class TestCmdDsl:
         assert "pass-rate" in out
         assert "1/1" in out
 
-    def test_cmd_dsl_single_file_fail(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+    def test_cmd_dsl_single_file_fail(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Single task file with failing prompt → exits 1."""
         task_file = self._make_task_yaml(tmp_path)
         args = _make_namespace(runner="dsl", path=str(task_file), exit_code=0)
@@ -843,7 +851,9 @@ class TestCmdDsl:
         assert "pass-rate" in out
         assert "0/1" in out
 
-    def test_cmd_dsl_directory_scans_yaml_files(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+    def test_cmd_dsl_directory_scans_yaml_files(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
         """Directory with multiple .yaml files runs each task."""
         for i in range(3):
             self._make_task_yaml(tmp_path, f"task{i}.yaml")
@@ -865,19 +875,21 @@ class TestCmdDsl:
         result = cmd_dsl(args)
         assert result == 2
 
-    def test_cmd_dsl_empty_directory(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+    def test_cmd_dsl_empty_directory(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Directory with no .yaml files returns 2."""
         args = _make_namespace(runner="dsl", path=str(tmp_path))
         result = cmd_dsl(args)
         assert result == 2
 
-    def test_cmd_dsl_passes_model_to_prompt(self, tmp_path: "Path") -> None:
+    def test_cmd_dsl_passes_model_to_prompt(self, tmp_path: Path) -> None:
         """--model flag is forwarded to cmd_prompt."""
         task_file = self._make_task_yaml(tmp_path)
         args = _make_namespace(runner="dsl", path=str(task_file), model="claude-haiku-4-5-20251001")
         captured: dict[str, object] = {}
 
-        def fake_build_blocking_json(*, prompt: str, model: str | None = None, **_: object) -> HostInvocation:
+        def fake_build_blocking_json(
+            *, prompt: str, model: str | None = None, **_: object
+        ) -> HostInvocation:
             captured["model"] = model
             return HostInvocation(binary="claude", args=[])
 
@@ -892,7 +904,9 @@ class TestCmdDsl:
 
         assert captured["model"] == "claude-haiku-4-5-20251001"
 
-    def test_cmd_dsl_wilson_ci_in_output(self, tmp_path: "Path", capsys: pytest.CaptureFixture) -> None:
+    def test_cmd_dsl_wilson_ci_in_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
         """Output includes Wilson CI bounds."""
         task_file = self._make_task_yaml(tmp_path)
         args = _make_namespace(runner="dsl", path=str(task_file))

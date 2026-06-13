@@ -325,9 +325,7 @@ class TestEvaluatorVarianceWilsonCI:
         import json
 
         run_dir.mkdir(parents=True, exist_ok=True)
-        (run_dir / "events.jsonl").write_text(
-            "\n".join(json.dumps(e) for e in events) + "\n"
-        )
+        (run_dir / "events.jsonl").write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
     def test_evaluator_variance_has_ci_field(self) -> None:
         """EvaluatorVariance dataclass has a ci attribute."""

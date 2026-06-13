@@ -1,4 +1,5 @@
 """Tests for --cross-host flag on ll-loop run --baseline (ENH-2086)."""
+
 from __future__ import annotations
 
 import argparse
@@ -426,9 +427,7 @@ class TestRunCrossHostValidation:
 
         assert captured_env.get("LL_HOST_CLI") == "codex"
 
-    def test_comparison_table_printed(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_comparison_table_printed(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Comparison table includes per-host pass rates and CIs."""
         from little_loops.cli.loop._helpers import _run_cross_host_validation
 
@@ -463,9 +462,7 @@ class TestRunCrossHostValidation:
         # Should show confidence intervals
         assert "[" in out and "]" in out
 
-    def test_ordering_reversal_warning(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_ordering_reversal_warning(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Warns when harness/baseline quality ordering reverses between hosts."""
         from little_loops.cli.loop._helpers import _run_cross_host_validation
 
@@ -583,9 +580,7 @@ class TestRunCrossHostValidation:
         out = capsys.readouterr().out
         assert "no comparison" in out.lower() or "no ab.json" in out.lower()
 
-    def test_baseline_skill_forwarded_to_subprocess(
-        self, tmp_path: Path
-    ) -> None:
+    def test_baseline_skill_forwarded_to_subprocess(self, tmp_path: Path) -> None:
         """--baseline-skill value is forwarded to the second-host subprocess command."""
         from little_loops.cli.loop._helpers import _run_cross_host_validation
 

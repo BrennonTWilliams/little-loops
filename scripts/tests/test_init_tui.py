@@ -495,11 +495,11 @@ class TestHostSelection:
             ]
             mock_q.confirm.side_effect = [
                 _mock_ask(False),  # add_excludes
-                _mock_ask(True),   # session_digest
+                _mock_ask(True),  # session_digest
             ]
             mock_q.checkbox.side_effect = [
                 _mock_ask(["analytics"]),  # features
-                _mock_ask(None),           # hosts — Ctrl-C
+                _mock_ask(None),  # hosts — Ctrl-C
             ]
             mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
@@ -615,21 +615,29 @@ class TestDesignTokenProfilePicker:
 
             # Wire basics (no parallel → 7 text calls), then design_tokens feature selected
             # Profile select must fire before session_digest confirm and settings select
-            text_returns = ["proj", "src/", "pytest", "ruff check .", "mypy", "ruff format .", "src/"]
+            text_returns = [
+                "proj",
+                "src/",
+                "pytest",
+                "ruff check .",
+                "mypy",
+                "ruff format .",
+                "src/",
+            ]
             mock_q.text.side_effect = [_mock_ask(v) for v in text_returns]
             mock_q.checkbox.side_effect = [
                 _mock_ask(["design_tokens", "analytics"]),  # features
-                _mock_ask(["claude-code"]),                  # hosts
+                _mock_ask(["claude-code"]),  # hosts
             ]
             mock_q.select.side_effect = [
-                _mock_ask("warm-paper"),   # profile picker (screen 3)
-                _mock_ask("local"),        # settings (screen 5)
-                _mock_ask("skip"),         # CLAUDE.md (screen 6)
+                _mock_ask("warm-paper"),  # profile picker (screen 3)
+                _mock_ask("local"),  # settings (screen 5)
+                _mock_ask("skip"),  # CLAUDE.md (screen 6)
             ]
             mock_q.confirm.side_effect = [
-                _mock_ask(False),   # add_excludes
-                _mock_ask(True),    # session_digest
-                _mock_ask(True),    # apply
+                _mock_ask(False),  # add_excludes
+                _mock_ask(True),  # session_digest
+                _mock_ask(True),  # apply
             ]
             mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
@@ -758,9 +766,7 @@ class TestSessionDigest:
 
 class TestSettingsSkip:
     @patch("little_loops.init.tui.questionary")
-    def test_settings_skip_writes_no_settings_file(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_settings_skip_writes_no_settings_file(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
             _wire_q(mock_q, features=["analytics"], settings="skip")

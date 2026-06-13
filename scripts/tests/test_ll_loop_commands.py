@@ -4449,9 +4449,7 @@ class TestCmdCalibrateBudget:
         assert result == 0
         assert "Insufficient" in capsys.readouterr().out
 
-    def test_all_pass_returns_one(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_all_pass_returns_one(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """Returns 1 when a state has 100% pass rate (variance=0 < threshold)."""
         from little_loops.cli.loop.info import cmd_calibrate_budget
 
@@ -4471,9 +4469,7 @@ class TestCmdCalibrateBudget:
         out = capsys.readouterr().out
         assert "WARN" in out
 
-    def test_mixed_returns_zero(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_mixed_returns_zero(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """Returns 0 when variance is above threshold (discriminating)."""
         from little_loops.cli.loop.info import cmd_calibrate_budget
 
@@ -4494,9 +4490,7 @@ class TestCmdCalibrateBudget:
         out = capsys.readouterr().out
         assert "OK" in out
 
-    def test_json_output(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--json flag outputs parseable JSON with expected keys."""
         from little_loops.cli.loop.info import cmd_calibrate_budget
 
@@ -4523,9 +4517,7 @@ class TestCmdCalibrateBudget:
         assert data["states"][0]["state"] == "check"
         assert data["states"][0]["variance"] == 0.0
 
-    def test_custom_threshold(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_custom_threshold(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """Custom --threshold flag is respected."""
         from little_loops.cli.loop.info import cmd_calibrate_budget
 

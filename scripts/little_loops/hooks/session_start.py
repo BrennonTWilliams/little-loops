@@ -213,9 +213,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 f"[little-loops] Warning: Large config ({len(stdout_payload)} chars)"
             )
     else:
-        feedback_lines.append(
-            "[little-loops] Warning: No config found. Run ll-init to create one."
-        )
+        feedback_lines.append("[little-loops] Warning: No config found. Run ll-init to create one.")
 
     # 6. Feature-flag validation warnings.
     feedback_lines.extend(_validate_features(merged_config))

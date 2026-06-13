@@ -375,7 +375,6 @@ class TestConfigSchemaProfileFields:
 # ---------------------------------------------------------------------------
 
 
-
 class TestConfigureWiringForProfiles:
     """Configure must expose `active` + show installed profiles."""
 
