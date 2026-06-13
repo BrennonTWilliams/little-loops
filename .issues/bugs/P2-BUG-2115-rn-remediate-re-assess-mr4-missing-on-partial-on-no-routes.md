@@ -4,8 +4,9 @@ title: "rn-remediate re_assess: MR-4 violation \u2014 missing on_partial/on_no r
   \ causes subloop to terminate with error"
 priority: P2
 type: BUG
-status: open
+status: done
 captured_at: '2026-06-13T00:00:00Z'
+completed_at: '2026-06-13T18:43:20Z'
 discovered_date: '2026-06-13'
 discovered_by: audit-loop-run
 affects: scripts/little_loops/loops/rn-remediate.yaml
