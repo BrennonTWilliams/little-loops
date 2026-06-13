@@ -1,6 +1,7 @@
 ---
 id: ENH-2101
-title: Resolve one level of from: inheritance in _load_loop_meta so inherited metadata shows in ll-loop list
+title: 'Resolve one level of from: inheritance in _load_loop_meta so inherited metadata
+  shows in ll-loop list'
 type: ENH
 priority: P4
 status: open
@@ -9,6 +10,12 @@ discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 parent: EPIC-1811
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 25
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2101: Resolve `from:` inheritance in `_load_loop_meta`
@@ -82,6 +89,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-12T00:00:00Z - `96132239-0ec4-4f0d-9f0b-426c0426f913.jsonl`
 - `/ll:wire-issue` - 2026-06-13T01:25:39 - `9b9b3ddb-0e48-4bb6-9d26-28def2ae4f2f.jsonl`
 - `/ll:refine-issue` - 2026-06-13T01:19:07 - `a4efd312-c1f5-4b77-a845-be41650b1078.jsonl`
 - `/ll:format-issue` - 2026-06-13T01:13:54 - `5ecd855a-18b3-4edc-9eb8-01146e79c066.jsonl`
