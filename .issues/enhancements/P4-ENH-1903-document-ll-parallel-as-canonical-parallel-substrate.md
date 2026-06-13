@@ -79,7 +79,13 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The CLAUDE.md CLI Tools section note added by this issue and the CLAUDE.md Loop Authoring compaction by ENH-2023 target overlapping sections of `.claude/CLAUDE.md`. If ENH-2023 lands before this issue, ENH-2023's compaction pass must explicitly include the `ll-parallel` canonical substrate note, or the note will be lost in the collapse. Coordinate: either sequence this issue's CLAUDE.md commit before ENH-2023, or confirm ENH-2023's diff includes the `ll-parallel` addition in its revised § Loop Authoring table.
 
+## Verification Notes (2026-06-13)
+
+- FEAT-1902 is `done` (cancelled per codebase). The body prose still says "after FEAT-1902 and FEAT-1899 are merged" — the FEAT-1902 condition is already satisfied. Update body to remove the FEAT-1902 prerequisite and reflect only FEAT-1899 as remaining.
+- FEAT-1899 is still open (now correctly `blocked` status), so the waiting condition for FEAT-1899 is unchanged.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:confidence-check` - 2026-06-07T00:00:00Z - `2b586685-5335-49af-953f-8e65bba5e334.jsonl`

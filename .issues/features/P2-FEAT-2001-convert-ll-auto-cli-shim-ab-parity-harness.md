@@ -335,7 +335,13 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): Wiring-test anchor updates in `test_wiring_guides_and_meta.py`, `test_wiring_reference_docs.py`, and `test_wiring_skills_and_commands.py` are exclusively owned by **FEAT-2002**. Implementation step 21 in this issue (updating the `AutoManager.__init__()` anchor in ARCHITECTURE.md and its wiring-test assertion) and the corresponding `test_wiring_*.py` parametrized entries belong to FEAT-2002's documentation pass. Do not include those wiring-test anchor changes in this issue's PR — leave them for FEAT-2002.
 
+## Verification Notes (2026-06-13)
+
+- `AutoManager.run()` is at `issue_manager.py:1198` (issue says `:1165` — 33-line drift). `AutoManager` class itself is at `:1021` (matches). All 6 `manager.run()` call-sites in `test_issue_manager.py` are at exact lines listed (L2604, 2638, 2669, 2701, 2734, 2820).
+- `loops/ll-auto.yaml` prerequisite still does not exist; remains blocked on FEAT-2000.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:confidence-check` - 2026-06-07T00:00:00Z - `d64bcdbc-33e8-450c-b9ac-7d573dea9bb5.jsonl`
 - `/ll:refine-issue` - 2026-06-07T18:08:42 - `e6ecb319-ccca-422a-9cca-3bc28f898fc2.jsonl`

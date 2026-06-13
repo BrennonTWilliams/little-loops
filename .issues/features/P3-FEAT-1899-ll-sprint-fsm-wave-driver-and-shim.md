@@ -3,7 +3,7 @@ id: FEAT-1899
 title: Implement ll-sprint FSM wave driver and shim
 type: FEAT
 priority: P3
-status: open
+status: blocked
 captured_at: 2026-06-03 19:12:39+00:00
 discovered_date: 2026-06-03
 discovered_by: scope-epic
@@ -15,7 +15,8 @@ blocked_by:
 - FEAT-1901
 - FEAT-2000
 - FEAT-2001
-- ENH-2106
+blocks:
+- ENH-1903
 labels:
 - feature
 - orchestration
@@ -280,6 +281,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - Integration Map has an incorrect path: `scripts/little_loops/parallel_orchestrator.py` should be `scripts/little_loops/parallel/orchestrator.py` (flagged in Verification Notes but not yet corrected — fix before implementation).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:03 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:confidence-check` - 2026-06-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92309da-4e12-4435-9943-a5af8ba8057d.jsonl`
@@ -305,3 +307,4 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - `loops/ll-sprint.yaml` does not exist (expected).
 
 - `/ll:verify-issues` - 2026-06-05 - Feature not implemented. Body reference to `scripts/little_loops/parallel_orchestrator.py` is incorrect — `ParallelOrchestrator` lives at `scripts/little_loops/parallel/orchestrator.py`. This was flagged previously but never corrected. Fix path reference before starting.
+- `/ll:verify-issues` - 2026-06-13 - Status corrected from `open` → `blocked` (has active blocked_by items). ENH-2106 removed from `blocked_by` (now `done`). Added `blocks: [ENH-1903]` backlink. Stale path reference still present in Integration Map — must be corrected before implementing.

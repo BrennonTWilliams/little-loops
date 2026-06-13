@@ -80,7 +80,12 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 
 **Open** | Created: 2026-05-15 | Priority: P5
 
+## Verification Notes (2026-06-13)
+
+- `skills/init/SKILL.md` was collapsed to a redirect stub by ENH-1982 — it no longer contains the `--pi` integration point described in the implementation plan. The issue body's "Step 8.5 into SKILL.md" approach is no longer applicable. Re-scope to target the `ll-init` CLI (`--hosts` multi-select already exists via FEAT-1981). The scope boundary note already flags this but the implementation steps have not been updated.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:54 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:19 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`

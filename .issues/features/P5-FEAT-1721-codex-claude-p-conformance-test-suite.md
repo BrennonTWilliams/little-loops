@@ -9,7 +9,7 @@ discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
 depends_on: [FEAT-1481, ENH-1718]
-blocked_by: [FEAT-1720]
+blocked_by: [FEAT-1719]
 relates_to: [FEAT-1716]
 labels: [codex, testing, host-compat, conformance]
 ---
@@ -69,13 +69,14 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Verdict: OUTDATED** — Implementation not started; upstream dependencies unmet:
 - `scripts/tests/conformance/test_codex_claude_p_parity.py` does NOT exist
 - `docs/development/CONFORMANCE.md` does NOT exist
-- Blocked by FEAT-1720 (permission_request wiring, unstarted); ENH-1718 still open
+- Blocked by FEAT-1719 (postcompact intent, absorbed FEAT-1720 scope); ENH-1718 still open
 
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:59 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:20 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`

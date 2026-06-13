@@ -471,7 +471,13 @@ The existing `_summary_state_executed` flag at `executor.py:212` and the `TestMa
 
 **YAML alias conflict**: `from_dict()` cannot alias `on_max_iterations` YAML key → `on_max_steps` Python field because the new `on_max_iterations` Python field is the iteration-cap summary state. The 2 existing loops (`general-task.yaml:9`, `canvas-sketch-generator.yaml:32`) must be explicitly updated to `on_max_steps:` as part of this implementation — there is no non-breaking alias path.
 
+## Verification Notes (2026-06-13)
+
+- Line numbers have drifted since last wiring pass: primary increment is `executor.py:414` (issue says `:403`); cap check is `:302` (issue says `:296`); maintain-mode restart is `:366` (issue says `:355`); flush path is `:1403` (issue says `:1372`). `schema.py` field lines: 955/956/957 (issue says 951/952/953). `TestMaxIterationsSummaryHook` is at line 7357 (issue says 7184). All code paths described are still accurate — only line numbers need refreshing at implementation time.
+- Bug is unimplemented: `max_steps`/`max_iterations` dual-counter fix not yet in `executor.py` or `schema.py`. Three YAML files (`canvas-sketch-generator.yaml`, `vega-viz.yaml`, `general-task.yaml`) still use `on_max_iterations:` as described.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:confidence-check` - 2026-06-13T18:30:00Z - `b2d4feeb-e222-4a6a-8608-9774ec172c24.jsonl`
 - `/ll:wire-issue` - 2026-06-13T18:05:54Z - `ecae74c3-ea98-4133-b95f-77f464d27531.jsonl`
 - `/ll:confidence-check` - 2026-06-13T00:00:00Z - `71b001de-828d-4dd5-bf66-25c9d0924c2d.jsonl`

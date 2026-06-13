@@ -230,7 +230,13 @@ open
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The `API/Interface` section above shows `PushNotificationAdapter.send_alert(prompt, context)` but the `CommunicationAdapter` protocol in FEAT-1930 defines `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> str` (returning an `alert_id`). Align this issue's `send_alert()` signature with FEAT-1930's protocol **before** implementing — the mismatch will produce a non-conforming `CommunicationAdapter` implementation. Also add the `alert_id` return type to match the `await_response(alert_id, timeout)` correlation contract.
 
+## Verification Notes (2026-06-13)
+
+- `_interruptible_sleep` has drifted further — current location is `executor.py:1766` (previous verification note said 1735; issue body says 1647). Update before implementing.
+- `PushNotification` tool remains absent from codebase; scope boundary blocker condition unchanged.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:decide-issue` - 2026-06-12T16:31:51 - `5f156fda-1001-478e-926c-73ffddf7e4b1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:01 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:18:11 - `cb5e8fb4-eab5-4e81-938d-fe8a00b0ba87.jsonl`

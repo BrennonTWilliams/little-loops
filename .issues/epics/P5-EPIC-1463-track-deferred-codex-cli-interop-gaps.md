@@ -235,6 +235,7 @@ FEAT-992).
 **Verdict: NEEDS_UPDATE** — The 3 items previously listed as 'unfiled' (PostCompact, permission_request, conformance suite) are now captured as FEAT-1719, FEAT-1720, and FEAT-1721 respectively (filed 2026-05-26). Update the children list to reflect this — the epic body may already include them but the verification note should confirm.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-04T22:14:37 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
@@ -253,5 +254,5 @@ FEAT-992).
 
 **Update 2026-06-04 (re-verified)**:
 - 5 of 12 children are `done`: FEAT-1483 (research spike), FEAT-1486 (Codex Skills API adapt), FEAT-1487 (HOST_COMPATIBILITY.md update), FEAT-1488 (hot-path research), FEAT-1489 (post_tool_use fire-and-forget).
-- Remaining open children: ENH-1718, FEAT-1719, FEAT-1720, FEAT-1721, ENH-1722, ENH-1615, ENH-1529.
+- Remaining open children: ENH-1718, FEAT-1719, FEAT-1721, ENH-1722, ENH-1615, ENH-1529. (FEAT-1720 is `cancelled` — scope absorbed into FEAT-1719.)
 - As a P5 tracking epic, this is expected — but the body should acknowledge the 5 completed research/implementation spikes to give an accurate picture of progress.

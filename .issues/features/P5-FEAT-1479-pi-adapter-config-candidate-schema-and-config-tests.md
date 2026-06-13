@@ -217,8 +217,10 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Stale line numbers: CODEX_CONFIG_DIR is at config/core.py:41 (not 36); codex branch is at lines 92-93 (not 85-86). The future `PI_CONFIG_DIR` constant and `host=='pi'` branch are still absent from core.py. config-schema.json hooks.host.enum at line 1173 is still `["claude-code","opencode","codex"]` — no 'pi' entry yet.
 
 - `/ll:verify-issues` - 2026-06-05 - Partial progress: `config-schema.json` already has `"pi"` in the host enum (Step 1 of config candidate done). Remaining work: `config/core.py` needs `PI_CONFIG_DIR` constant, `elif host == "pi"` branch in `_config_candidates()`, and updated docstring. No tests written. Stale line numbers in body: CODEX_CONFIG_DIR is at line 40 (not 36). Update line references before starting.
+- `/ll:verify-issues` - 2026-06-13 - `"pi"` confirmed in `config-schema.json:1335` (schema step done). `config/core.py` still has no `PI_CONFIG_DIR` constant (CODEX_CONFIG_DIR is now at line 41). Test targeting schema enum assertion would pass immediately — scope down to config/core.py work only.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:32 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

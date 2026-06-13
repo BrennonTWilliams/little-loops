@@ -11,6 +11,7 @@ parent: EPIC-1867
 relates_to: []
 blocks:
 - FEAT-2000
+- FEAT-1899
 ---
 
 # FEAT-1901: Stabilize shared orchestration core and expose as ll-issues subcommands
@@ -131,8 +132,10 @@ ll-issues mark-failed <issue-id> --reason <text>
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 - `/ll:verify-issues` - 2026-06-05 - Partially implemented: `next-issue` and `next-issues` subcommands exist in `cli/issues/`. `verify-work` and `classify-failure` subcommands not yet implemented. Body references `commands/issues.py` which doesn't exist — actual dispatcher is `cli/issues/__init__.py`. Update the Implementation Plan to reflect partial completion and correct the file path.
+- `/ll:verify-issues` - 2026-06-13 - Stale path `commands/issues.py` still present in Implementation Steps. `verify-work`, `classify-failure`, `complete`, `mark-failed` subcommands not yet implemented. Added FEAT-1899 to `blocks:` (missing backlink). Correct file is `cli/issues/__init__.py`.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:34:33 - `1a4d9590-60c8-47b0-9997-b0f543664183.jsonl`

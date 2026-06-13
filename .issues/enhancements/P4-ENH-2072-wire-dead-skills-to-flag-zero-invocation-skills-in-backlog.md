@@ -92,7 +92,13 @@ Half the skill catalog being unused while carrying open issues is a backlog-hygi
 ### Configuration
 - `SKILL.md` frontmatter: `dead_skill_exempt: true` (new opt-out field for intentionally rare skills)
 
+## Verification Notes (2026-06-13)
+
+- Integration Map points to `scripts/little_loops/cli/issues.py` as the consumer/modifier — this file **does not exist**. The `dead-skills` subcommand lives in `scripts/little_loops/cli/logs.py` (at `_cmd_scan_failures` ~line 926). The new `ll-issues set-scores` subcommand would be added to `scripts/little_loops/cli/issues/__init__.py`, not `issues.py`.
+- `scripts/tests/test_issues.py` referenced in the Tests section does not exist. The correct test file for issues CLI is `scripts/tests/test_cli_issue_commands.py` or similar — verify before implementing.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:format-issue` - 2026-06-10T16:06:44 - `d19c37d7-acef-4974-bf90-d673d4b0ec70.jsonl`
 
 - `/ll:capture-issue` - 2026-06-10T15:59:33Z - surfaced via `ll-logs dead-skills` showing ~30 zero-invocation skills with no backlog connection

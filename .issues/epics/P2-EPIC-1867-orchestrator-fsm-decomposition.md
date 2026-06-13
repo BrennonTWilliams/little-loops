@@ -151,7 +151,14 @@ _Added by `/ll:verify-issues` on 2026-06-09_
 | `.claude/CLAUDE.md` § Loop Authoring (MR-1/MR-3) | Meta-loop gate the `ll-auto` loop must pass |
 | `docs/ARCHITECTURE.md` | Target for orchestration architecture updates |
 
+## Verification Notes (2026-06-13)
+
+- Child priority mismatches: FEAT-1901 and FEAT-1899 are P3 (not P2 as the epic implies); ENH-1903 is P4. Priority assignments are per-issue authoritative; the epic body should not assert their priority.
+- `loops/ll-auto.yaml` does not exist (correct — unimplemented).
+- FEAT-1902 is `cancelled` as described.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T14:24:45 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

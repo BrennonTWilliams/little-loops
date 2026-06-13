@@ -90,6 +90,8 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - `HostCapabilities` for Pi not defined
 - Depends on FEAT-1714 (also unstarted)
 
+_Updated 2026-06-13_: Line numbers have drifted significantly. `PiRunner` class now starts at `host_runner.py:698` (issue body says 478–532). `CodexRunner` class is at `:351` (issue body / Scope Boundary says 270–418). `ClauseCodeRunner` is at `:213` (issue body says 215–302). All body line numbers should be refreshed before implementing.
+
 ## Status
 
 **Open** | Created: 2026-05-15 | Priority: P5
@@ -105,6 +107,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `test_ll_hook_host_env_var_propagates_pi` test in `test_hook_intents.py` tests the **Python-side host routing** — that the intent dispatcher reads `LL_HOOK_HOST=pi` and routes correctly. FEAT-1478's sentinel-file test in `test_pi_adapter.py` verifies the **TypeScript adapter** sets `LL_HOOK_HOST=pi` before spawning Python. Both tests are needed, but their assertions must be non-overlapping to avoid redundancy: this issue asserts Python routing behavior; FEAT-1478 asserts env-var propagation from the TypeScript layer.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-13T21:13:59 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
