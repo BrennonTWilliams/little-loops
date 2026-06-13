@@ -7,7 +7,7 @@ priority: P5
 captured_at: "2026-05-15T12:15:21Z"
 discovered_date: 2026-05-15
 discovered_by: capture-issue
-relates_to: [FEAT-957, FEAT-1462, FEAT-992, ENH-1718, FEAT-1719, FEAT-1720, FEAT-1721, ENH-1722, ENH-1615, ENH-1529, FEAT-1486, FEAT-1487, FEAT-1488, FEAT-1489, FEAT-1493, BUG-1494, ENH-1495, FEAT-1496, ENH-1497, FEAT-1526, ENH-1531, ENH-2105]
+relates_to: [FEAT-957, FEAT-1462, FEAT-992, ENH-1718, FEAT-1719, FEAT-1720, FEAT-1721, ENH-1722, ENH-1615, ENH-1529, FEAT-1486, FEAT-1487, FEAT-1488, FEAT-1489, FEAT-1493, BUG-1494, ENH-1495, FEAT-1496, ENH-1497, FEAT-1526, ENH-1531, ENH-2105, ENH-2121, FEAT-2122, FEAT-2123, ENH-2124]
 labels: [epic, captured, codex, host-compat, tracking]
 ---
 
@@ -138,6 +138,22 @@ FEAT-992).
 - **ENH-1722** — Research and decide per-host state directory redirection for Codex
 - **ENH-1615** — Add `disable-model-invocation: true` to all 28 ll-* Codex bridge skills (skill budget / Codex discoverability cleanup)
 - **ENH-1529** — Expose `sandbox_mode` parameter on CodexRunner build methods (Codex execution constraint gap)
+- **ENH-2121** — Emit rich Codex subagent TOML fields (`model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, `skills.config`) in `ll-adapt-agents-for-codex`; the adapter is currently lossy (only `name`/`description`/`model`/`developer_instructions`).
+- **FEAT-2122** — Exploit Codex's native spawn model (`spawn_agents_on_csv`, `agents.max_threads`) for `ll-parallel`'s per-issue fan-out, or document why worktree-per-issue stays the default.
+- **FEAT-2123** — Surface per-invocation token usage from Codex/OpenCode runners (fixes the orphaned `[^tok]` dead-link that pointed at the unrelated, completed EPIC-1744).
+- **ENH-2124** — Research/track the unverified `permission skip` and `tool allowlist` Codex runner-capability `✗` cells; wire or document as permanent gaps.
+
+### Note (2026-06-13): Codex subagents correction
+
+A prior assessment incorrectly stated Codex lacks native custom agents. **Codex
+has first-class subagents** (`.codex/agents/*.toml`;
+<https://developers.openai.com/codex/subagents>). The real distinction is
+*spawn-based* (Codex) vs *flag-based* (Claude Code) agent invocation: Codex has
+no startup `--agent` flag for the root session (openai/codex#10067), which is a
+minor ergonomic gap covered by ll's prompt-injection workaround (ENH-1533) —
+**not** a parity ceiling. The `HOST_COMPATIBILITY.md` `[^agent]` footnote and a
+false "interactive TUI `--agent`" claim were corrected, and ENH-2121/FEAT-2122
+were filed for the genuine remaining depth gaps.
 
 ## Success Metrics
 
