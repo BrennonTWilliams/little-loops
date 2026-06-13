@@ -23,6 +23,7 @@ from little_loops.cli.loop.layout import (  # noqa: F401
 )
 from little_loops.cli.output import colorize, print_json, strip_ansi, terminal_width
 from little_loops.fsm import is_runnable_loop
+from little_loops.fsm.fragments import resolve_inheritance
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.validation import load_and_validate
 from little_loops.logger import Logger
@@ -35,6 +36,10 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
     try:
         with open(path) as f:
             spec = yaml.safe_load(f) or {}
+        try:
+            spec = resolve_inheritance(spec, path.parent)
+        except Exception:
+            pass
         desc_raw = spec.get("description", "") or ""
         if desc_raw.strip():
             raw_lines = desc_raw.splitlines()

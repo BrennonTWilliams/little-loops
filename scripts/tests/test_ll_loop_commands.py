@@ -850,6 +850,28 @@ class TestLoopListFormatting:
 
         assert meta["description"] == "Only one line."
 
+    def test_from_inheritance_resolves_category(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """_load_loop_meta() resolves from: inheritance so inherited category is visible."""
+        from little_loops.cli.loop.info import _load_loop_meta
+
+        parent_file = tmp_path / "lib" / "apo-base.yaml"
+        parent_file.parent.mkdir(parents=True)
+        parent_file.write_text(
+            "name: apo-base\ncategory: apo\nlabels:\n  - apo\ninitial: start\nstates:\n  start:\n    action_type: prompt\n    prompt: base\n"
+        )
+        child_file = tmp_path / "apo-child.yaml"
+        child_file.write_text(
+            "name: apo-child\nfrom: lib/apo-base\ndescription: A child loop.\ninitial: start\nstates:\n  start:\n    action_type: prompt\n    prompt: child\n"
+        )
+
+        meta = _load_loop_meta(child_file)
+
+        assert meta["category"] == "apo"
+        assert "apo" in meta["labels"]
+
     def test_label_badge_rendering(
         self,
         tmp_path: Path,

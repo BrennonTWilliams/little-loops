@@ -4,8 +4,9 @@ title: 'Resolve one level of from: inheritance in _load_loop_meta so inherited m
   shows in ll-loop list'
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-12T14:10:00Z'
+completed_at: '2026-06-13T02:04:58Z'
 discovered_date: '2026-06-12'
 discovered_by: fsm-loop-audit
 parent: EPIC-1811
@@ -16,6 +17,10 @@ score_complexity: 25
 score_test_coverage: 22
 score_ambiguity: 25
 score_change_surface: 25
+labels:
+- loops
+- cli
+- inheritance
 ---
 
 # ENH-2101: Resolve `from:` inheritance in `_load_loop_meta`
@@ -23,6 +28,10 @@ score_change_surface: 25
 ## Summary
 
 `_load_loop_meta` (`scripts/little_loops/cli/loop/info.py:31-50`) reads raw YAML and never resolves `from: lib/apo-base` inheritance, so metadata defined only in the parent template (e.g. `category:`) is invisible to `ll-loop list` and README tooling. The 2026-06-12 audit worked around this by adding explicit `category:` to `apo-beam`, `apo-textgrad`, and `rn-plan-apo`, but the root cause remains: any future loop relying on inherited metadata will silently show as uncategorized.
+
+## Current Behavior
+
+`_load_loop_meta` in `scripts/little_loops/cli/loop/info.py` reads raw YAML without resolving `from:` inheritance. Metadata keys (e.g., `category:`, `labels:`) declared only in a parent template are invisible to `ll-loop list` and README tooling. The FSM executor already resolves `from:` inheritance at build time; the metadata loader does not, creating a behavioral divergence that silently drops inherited metadata.
 
 ## Motivation
 
@@ -81,14 +90,27 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 - N/A
 
+## Impact
+
+- **Priority**: P4 (Low) — affects `ll-loop list` display only; no functional correctness issue; workaround available (explicit metadata duplication in child loops)
+- **Effort**: Small — one-line call to `resolve_inheritance()` inside `_load_loop_meta()`, plus a unit test; pattern already established in `validation.py:1990`
+- **Risk**: Low — change sits inside the existing `except Exception: pass` guard; any failure falls back to the raw dict with no crash; no behavioral change for loops without `from:` inheritance
+- **Breaking Change**: No
+
 ## Acceptance Criteria
 
-- [ ] A child loop with `from: lib/apo-base` and no explicit `category:` shows the parent's category in `ll-loop list`
-- [ ] Unit test covering metadata inheritance in `scripts/tests/` (cli loop info tests)
-- [ ] `python -m pytest scripts/tests/` passes
+- [x] A child loop with `from: lib/apo-base` and no explicit `category:` shows the parent's category in `ll-loop list`
+- [x] Unit test covering metadata inheritance in `scripts/tests/` (cli loop info tests)
+- [x] `python -m pytest scripts/tests/` passes
+
+## Resolution
+
+Added `resolve_inheritance` call in `_load_loop_meta()` after `yaml.safe_load`, mirroring the pattern in `validation.py:1990`. Import added at module top. Wrapped in `except Exception: pass` consistent with existing error-swallowing pattern. Added `TestLoopListFormatting.test_from_inheritance_resolves_category` unit test.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-13T02:04:58Z - implementation
+- `/ll:ready-issue` - 2026-06-13T01:58:24 - `4b61ae5b-916f-4601-a441-d1c7527b7dc7.jsonl`
 - `/ll:confidence-check` - 2026-06-12T00:00:00Z - `96132239-0ec4-4f0d-9f0b-426c0426f913.jsonl`
 - `/ll:wire-issue` - 2026-06-13T01:25:39 - `9b9b3ddb-0e48-4bb6-9d26-28def2ae4f2f.jsonl`
 - `/ll:refine-issue` - 2026-06-13T01:19:07 - `a4efd312-c1f5-4b77-a845-be41650b1078.jsonl`
