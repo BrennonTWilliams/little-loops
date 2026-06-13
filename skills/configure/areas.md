@@ -1357,3 +1357,93 @@ Based on selections, update `.ll/ll-config.json`:
 - Map `max_age_days` selection to `history.max_age_days`
 - Map `planning_skills` selection to `history.planning_skills`
 - Omit sub-object keys if matching schema defaults
+
+---
+
+## Area: loops.run_defaults
+
+### Current Values
+
+```
+Current Loop Run Defaults
+--------------------------
+  clear:         {{config.loops.run_defaults.clear}}
+  show_diagrams: {{config.loops.run_defaults.show_diagrams}}
+  mode:          {{config.loops.run_defaults.mode}}
+```
+
+### About
+
+`loops.run_defaults` sets persistent CLI defaults for `ll-loop run`. Each field maps to a `ll-loop run` flag; setting a default here saves you from typing it on every invocation.
+
+- **`clear`** (`bool`, default `false`) — clear the terminal before each loop run's output
+- **`show_diagrams`** (`string | null`, default `null` = disabled) — render FSM diagrams while the loop runs. Valid values:
+  - Topologies: `layered`, `neighborhood`, `inline`
+  - Presets: `detailed`, `summary`, `clean`, `local`, `slim`, `oneline`
+  - Bare flag sentinel: `default` (enables diagrams with the runner's built-in default style)
+- **`mode`** (`string | null`, default `null`) — default execution mode flag passed to `ll-loop run`, e.g. `--dry-run` or `--interactive`
+
+Example config block:
+
+```json
+{
+  "loops": {
+    "run_defaults": {
+      "clear": true,
+      "show_diagrams": "summary",
+      "mode": "--dry-run"
+    }
+  }
+}
+```
+
+### Round 1 (3 questions)
+
+```yaml
+questions:
+  - header: "Clear"
+    question: "Clear the terminal before each loop run? (current: {{config.loops.run_defaults.clear}})"
+    options:
+      - label: "{{current clear}} (keep)"
+        description: "Keep current setting"
+      - label: "false"
+        description: "No — preserve terminal history (default)"
+      - label: "true"
+        description: "Yes — clear screen before each run"
+    multiSelect: false
+
+  - header: "Diagrams"
+    question: "Show FSM diagrams during loop runs? (current: {{config.loops.run_defaults.show_diagrams}})"
+    options:
+      - label: "{{current show_diagrams}} (keep)"
+        description: "Keep current setting"
+      - label: "null (disabled)"
+        description: "No diagrams (default)"
+      - label: "summary"
+        description: "Summary preset — compact state overview"
+      - label: "layered"
+        description: "Layered topology — full state graph"
+    multiSelect: false
+
+  - header: "Mode"
+    question: "Default execution mode flag for ll-loop run? (current: {{config.loops.run_defaults.mode}})"
+    options:
+      - label: "{{current mode}} (keep)"
+        description: "Keep current setting"
+      - label: "null (none)"
+        description: "No default mode — run normally (default)"
+      - label: "--dry-run"
+        description: "Preview FSM transitions without executing actions"
+      - label: "--interactive"
+        description: "Pause at each state for manual confirmation"
+    multiSelect: false
+```
+
+### Configuration Result
+
+Based on selections, update `.ll/ll-config.json`:
+
+- Map "Clear" choice to `loops.run_defaults.clear` (omit if default `false`)
+- Map "Diagrams" choice to `loops.run_defaults.show_diagrams`; use `null` to remove the key
+- Map "Mode" choice to `loops.run_defaults.mode`; use `null` to remove the key
+- Write the `loops.run_defaults` sub-object only when at least one field differs from its default

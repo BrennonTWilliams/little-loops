@@ -1,13 +1,20 @@
 ---
 id: ENH-2114
-title: "Wire loops.run_defaults into /ll:configure skill"
+title: Wire loops.run_defaults into /ll:configure skill
 type: ENH
-status: open
+status: done
 priority: P3
-captured_at: "2026-06-13T18:07:59Z"
-discovered_date: "2026-06-13"
+captured_at: '2026-06-13T18:07:59Z'
+completed_at: '2026-06-13T19:12:41Z'
+discovered_date: '2026-06-13'
 discovered_by: capture-issue
 testable: false
+confidence_score: 90
+outcome_confidence: 78
+score_complexity: 25
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-2114: Wire loops.run_defaults into /ll:configure skill
@@ -101,6 +108,7 @@ Optionally, if `/ll:configure` supports interactive prompting per area, add prom
 `enhancement`, `configure`, `loops`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-13T19:09:21 - `17ca5cce-0aa7-4e88-bd9d-bb259fb05ba0.jsonl`
 - `/ll:format-issue` - 2026-06-13T18:12:09 - `4821328e-80ea-46ad-b04b-631e490d2e81.jsonl`
 
 - `/ll:capture-issue` - 2026-06-13T18:07:59Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68161d6f-aa46-4b19-8309-5c8794319dc2.jsonl`

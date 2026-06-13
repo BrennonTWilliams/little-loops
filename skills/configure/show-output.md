@@ -250,3 +250,20 @@ History Configuration
 
 Edit: /ll:configure history
 ```
+
+## loops.run_defaults --show
+
+```
+Loop Run Defaults
+-----------------
+  clear:         {{config.loops.run_defaults.clear}}         (default: false)
+  show_diagrams: {{config.loops.run_defaults.show_diagrams}} (default: null)
+  mode:          {{config.loops.run_defaults.mode}}          (default: null)
+
+Valid show_diagrams values:
+  Topologies: layered, neighborhood, inline
+  Presets:    detailed, summary, clean, local, slim, oneline
+  Sentinel:   default
+
+Edit: /ll:configure loops.run_defaults
+```
