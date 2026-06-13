@@ -723,6 +723,8 @@ Trace loop execution interactively without running commands.
 | `--scenario` | | Auto-select results: `all-pass`, `all-fail`, `first-fail`, `alternating` |
 | `--max-iterations` | `-n` | Override max iterations (default: min of loop config or 20) |
 
+Runner-injected context variables (`run_dir`, `input`, `run_timestamp`) are populated before simulation begins, matching the behaviour of `ll-loop run`. Loops that reference `${context.run_dir}` in early states can be tested with simulate without errors (BUG-2118).
+
 #### `ll-loop install <loop>`
 
 Copy a built-in loop to `.loops/` for customization.

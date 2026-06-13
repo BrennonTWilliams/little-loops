@@ -499,6 +499,8 @@ After adding this block, `ll-loop run my-loop` behaves identically to `ll-loop r
 
 Only `ll-loop run` reads `run_defaults`. Other subcommands (`validate`, `list`, etc.) are unaffected.
 
+> **Tip**: Run `/ll:configure loops.run_defaults` to set these fields interactively instead of editing the JSON directly.
+
 ### Scope-Based Concurrency
 
 The `scope:` field declares which paths a loop operates on; the engine uses file-based locking so two loops never modify the same files at once:
