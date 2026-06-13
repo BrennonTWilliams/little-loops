@@ -27,7 +27,7 @@ into `LLHookEvent` payloads.
 | `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] |
 | `stop` → `session_end` | ✓ (dispatched as `session_end`) | (deferred)    | (deferred)    |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] |
-| `permission_request` | N/A         | N/A           | (deferred)    |
+| `permission_request` | N/A         | N/A           | (deferred)[^permreq] |
 
 [^hot]: Hot-path intents (`pre_tool_use` / `post_tool_use`) fire on every
     tool invocation and require a latency budget. Research decision
@@ -57,6 +57,12 @@ into `LLHookEvent` payloads.
     `PreCompact`, but ll's existing `pre_compact` handler performs all
     compact-time cleanup *before* compaction. There is no concrete
     consumer for a post-compact intent in ll today.
+
+[^permreq]: Codex exposes a `permission_request` event when a tool requires
+    user approval. The original tracking issue (FEAT-1720) was **cancelled**
+    and its scope absorbed into **FEAT-1719**, which now wires both
+    `PostCompact` and `PermissionRequest` no-op handlers in one pass. Deferred
+    until a concrete consumer exists; the cell flips to ✓ when FEAT-1719 lands.
 
 ## Slash-command and skill discovery
 
@@ -90,41 +96,58 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | Capability       | Claude Code | OpenCode | Codex CLI                          |
 | ---------------- | ----------- | -------- | ---------------------------------- |
 | Streaming        | ✓           | ✓        | ✓                                  |
-| Permission skip  | ✓           | ✗        | ✗                                  |
-| Agent selection  | ✓           | ✗        | partial (prompt injection)[^agent] |
-| Tool allowlist   | ✓           | ✗        | ✗                                  |
+| Permission skip  | ✓           | ✗        | ✗[^runnercap]                      |
+| Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        |
+| Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      |
 | `json_schema`    | ✗           | ✗        | partial (file-mediated)[^schema]   |
 | Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            |
 
-[^tok]: OpenCode and Codex CLI do not expose per-invocation token usage in their streaming output. The `on_usage_detailed` callback in `subprocess_utils.run_claude_command()` therefore fires only for `claude`-backed runs. Adapter work to surface usage from OpenCode/Codex is deferred (see EPIC-1744). Loops run under those hosts will produce no `usage.jsonl` file and no per-state cost table in `ll-loop run` output.
+[^tok]: OpenCode and Codex CLI do not expose per-invocation token usage in their streaming output. The `on_usage_detailed` callback in `subprocess_utils.run_claude_command()` therefore fires only for `claude`-backed runs. Adapter work to surface usage from OpenCode/Codex is tracked by **FEAT-2123**. Loops run under those hosts will produce no `usage.jsonl` file and no per-state cost table in `ll-loop run` output.
+
+[^runnercap]: `permission skip` and `tool allowlist` are reported `✗` by `ll-doctor`
+    for both OpenCode and Codex. Whether these have native Codex equivalents
+    (e.g., `sandbox_mode`/approval policy for permission skip; per-agent
+    `mcp_servers`/`skills.config` scoping for tool allowlist) is unresearched —
+    the cells were never backed by a tracking issue. **ENH-2124** produces that
+    research note and either wires the capability or marks it a documented
+    permanent gap.
 
 [^schema]: `CodexRunner.build_blocking_json` serializes the schema dict to a temp file and passes `--output-schema <path>` to Codex (ENH-1530). The temp file path is returned in `HostInvocation.cleanup_paths`; callers must call `p.unlink(missing_ok=True)` for each path after the subprocess completes. `ClaudeCodeRunner` has no schema flag and silently drops `json_schema`.
 
-[^agent]: Codex agent selection works via `.codex/agents/*.toml` files generated
-    by `ll-adapt-agents-for-codex --apply` (FEAT-1527). Interactive Codex TUI
-    sessions can use `--agent <name>` (e.g., `--agent codebase-analyzer`) once
-    those TOML files are present.
+[^agent]: **Codex has first-class custom agents — "subagents".** They are
+    defined as TOML files in `~/.codex/agents/` (personal) or `.codex/agents/`
+    (project), with required fields `name`, `description`,
+    `developer_instructions` and optional `model`, `model_reasoning_effort`,
+    `sandbox_mode`, `mcp_servers`, `skills.config`, `nickname_candidates`
+    (see <https://developers.openai.com/codex/subagents>). ll generates these
+    via `ll-adapt-agents-for-codex --apply` (FEAT-1527).
 
-    **Programmatic prompt-injection workaround (ENH-1533)**: For ll's
+    **Spawn-based, not flag-based.** Codex's agent model differs from Claude
+    Code's: agents are *spawned from within a session* (in-session prompt,
+    the `spawn_agents_on_csv` batch tool, or `/agent` to switch threads),
+    governed by `[agents]` config (`max_threads`, `max_depth`). Per the docs,
+    "Codex only spawns a new agent when you explicitly ask it to do so."
+    There is **no startup CLI flag** to assign the *root* `codex exec` session
+    a named persona — `--agent`, `CODEX_AGENT`, and `CODEX_PROFILE` do not
+    exist (openai/codex#10067 requests one; a minor ergonomic ask, not a
+    parity blocker). The cell reads **partial** for this one reason only.
+
+    **Root-session persona via prompt-injection (ENH-1533)**: For ll's
     orchestration layer (`ll-auto`, `ll-parallel`, `ll-loop`),
-    `CodexRunner.build_streaming(agent=…)` reads
-    `.codex/agents/<name>.toml`, extracts `developer_instructions`, and
-    prepends `[Persona: <name>]\n<instructions>\n\n---\n\n` to the prompt
-    payload. When the TOML file (or its `developer_instructions` key) is
-    absent, `CodexRunner` falls back to emitting `CapabilityNotSupported`
-    plus a stderr notice that names the dropped agent and points users at
-    `ll-adapt-agents-for-codex --apply`. `HostCapabilities.agent_select`
-    stays `False` because there is still no native `--agent` CLI parity;
-    `describe_capabilities()` reports `agent_select.status == "partial"`.
+    `CodexRunner.build_streaming(agent=…)` reads `.codex/agents/<name>.toml`,
+    extracts `developer_instructions`, and prepends
+    `[Persona: <name>]\n<instructions>\n\n---\n\n` to the prompt payload —
+    covering the one case Codex's spawn-based model does not. When the TOML
+    file (or its `developer_instructions` key) is absent, `CodexRunner` emits
+    `CapabilityNotSupported` plus a stderr notice pointing at
+    `ll-adapt-agents-for-codex --apply`. `describe_capabilities()` reports
+    `agent_select.status == "partial"`.
 
-    **Permanent native-gap (ENH-1531)**: Research confirmed no CLI-level
-    mechanism exists to select a named agent profile at `codex exec`
-    invocation time. The `codex` CLI has no `--agent` flag; `CODEX_AGENT`
-    and `CODEX_PROFILE` env-vars do not exist; the
-    `agents.<name>.config_file` config stanza only governs `spawn_agent`
-    subagent calls, not the root session's persona. The feature request is
-    tracked at openai/codex#10067 (open, no linked PR). See
-    `thoughts/research/codex-agent-selection.md` for full findings.
+    **Follow-ups:** the adapter currently emits only `name`/`description`/
+    `model`/`developer_instructions` and drops the richer Codex fields
+    (**ENH-2121**); ll does not yet exploit the native `spawn_agents_on_csv`
+    batch model, which maps onto `ll-parallel`'s per-issue fan-out
+    (**FEAT-2122**). See `thoughts/research/codex-agent-selection.md`.
 
 ## Orchestration CLI
 
