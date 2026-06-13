@@ -7051,10 +7051,12 @@ class TestValidatorWarningBudget:
         ("loop-composer", "capture-ordering"): {
             # Bucket B: safe — :default= fallback in place (BUG-2112)
             "states.present_result.action",
+            "states.decompose_goal.action",
         },
         ("loop-composer-adaptive", "capture-ordering"): {
             # Bucket B: safe — :default= fallback in place (BUG-2112)
             "states.present_result.action",
+            "states.decompose_goal.action",
         },
         ("loop-router", "capture-ordering"): {
             # Bucket B: safe — :default=not-reached fallback in place (BUG-2112)
