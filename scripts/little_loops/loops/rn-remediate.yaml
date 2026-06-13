@@ -438,11 +438,13 @@ states:
       source: "${captured.convergence_result.output}"
       pattern: "NEEDS_MANUAL_REVIEW"
     on_yes: emit_needs_manual_review
-    # BUG-2006: convergence CONVERGED_STALLED is a true stall (scores did not
-    # move). Emit the stall-specific token so the parent can defer (not silently
-    # skip) when decomposition also declines. on_error stays on plain
-    # emit_needs_decompose — a pattern-match error is not evidence of a stall.
-    on_no: emit_stalled_needs_decompose
+    # ENH-2107: CONVERGED_STALLED routes to check_remediation_budget instead of
+    # directly to emit_stalled_needs_decompose, giving the loop a budget-gated
+    # retry (same as CONVERGED_IMPROVED). Only after passes are exhausted does
+    # check_remediation_budget escalate to emit_stalled_needs_decompose.
+    # on_error stays on plain emit_needs_decompose — a pattern-match error is
+    # not evidence of a stall.
+    on_no: check_remediation_budget
     on_error: emit_needs_decompose
 
   check_remediation_budget:

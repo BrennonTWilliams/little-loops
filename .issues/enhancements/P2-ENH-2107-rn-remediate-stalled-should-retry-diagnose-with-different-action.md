@@ -4,8 +4,9 @@ title: 'rn-remediate: CONVERGED_STALLED should retry diagnose with a different a
   before escalating'
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-12T21:57:47Z'
+completed_at: '2026-06-13T00:25:08Z'
 discovered_date: '2026-06-12'
 discovered_by: capture-issue
 parent: EPIC-1811
@@ -154,7 +155,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Recommended implementation order (minimal fix first, validate, then optionally add tried-action skip):**
 1. Change `route_conv_manual_review.on_no` → `check_remediation_budget` (one line)
-2. Update two breaking tests in `test_rn_remediate.py`: `test_convergence_router_chain_is_correct` (line 456) and `test_decompose_token_distinguishes_stall_from_too_large` (line 855) — change `"emit_stalled_needs_decompose"` to `"check_remediation_budget"` in the `route_conv_manual_review` assertions
+2. Update two breaking tests in `test_rn_remediate.py`: `test_convergence_router_chain_is_correct` (line 440) and `test_decompose_token_distinguishes_stall_from_too_large` (line 846) — change `"emit_stalled_needs_decompose"` to `"check_remediation_budget"` in the `route_conv_manual_review` assertions
 3. Add structural test asserting the new `on_no` target
 4. Validate with `ll-loop validate rn-remediate` — no new MR violations expected
 5. Run `python -m pytest scripts/tests/test_rn_remediate.py scripts/tests/test_builtin_loops.py -v`
@@ -180,8 +181,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/tests/test_rn_implement.py` — parent orchestrator tests; validates `max_remediation_passes` parameter passing to rn-remediate
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_rn_remediate.py` — `TestConvergenceRouting.test_convergence_router_chain_is_correct` (line 456): asserts `rcmr["on_no"] == "emit_stalled_needs_decompose"` — **will break**, must update to `"check_remediation_budget"` [Agent 3 finding]
-- `scripts/tests/test_rn_remediate.py` — `TestOutcomeTokenChannel.test_decompose_token_distinguishes_stall_from_too_large` (line 855): asserts `data["states"]["route_conv_manual_review"]["on_no"] == "emit_stalled_needs_decompose"` — **will break**, must update to `"check_remediation_budget"` [Agent 3 finding]
+- `scripts/tests/test_rn_remediate.py` — `TestConvergenceRouting.test_convergence_router_chain_is_correct` (line 440): asserts `rcmr["on_no"] == "emit_stalled_needs_decompose"` — **will break**, must update to `"check_remediation_budget"` [Agent 3 finding]
+- `scripts/tests/test_rn_remediate.py` — `TestOutcomeTokenChannel.test_decompose_token_distinguishes_stall_from_too_large` (line 846): asserts `data["states"]["route_conv_manual_review"]["on_no"] == "emit_stalled_needs_decompose"` — **will break**, must update to `"check_remediation_budget"` [Agent 3 finding]
 
 ### Dependent Files (Callers/Importers)
 - `ll-loop run rn-remediate` — CLI entry point that executes this loop
@@ -217,11 +218,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Effort**: Medium — convergence routing change + pass counter + optional skip logic
 - **Risk**: Low — adds a bounded retry path; existing STALLED terminal behavior preserved
 
+## Resolution
+
+**Minimal fix** implemented as decided by `/ll:decide-issue`:
+
+- Changed `route_conv_manual_review.on_no` from `emit_stalled_needs_decompose` → `check_remediation_budget` in `rn-remediate.yaml` (single line)
+- Updated two breaking assertions in `test_rn_remediate.py` (`test_convergence_router_chain_is_correct`, `test_decompose_token_distinguishes_stall_from_too_large`)
+- Updated three stale passages in `docs/guides/LOOPS_REFERENCE.md` (convergence rules sentence, stall-token description, Phase 5 FSM flow block)
+- All 915 tests pass; `ll-loop validate rn-remediate` clean
+
+`CONVERGED_STALLED` now enters the same budget-gated retry path as `CONVERGED_IMPROVED`, re-entering `diagnose` up to `max_remediation_passes` times before escalating to `STALLED_NEEDS_DECOMPOSE`.
+
 ## Status
 
-**Open** | Created: 2026-06-12 | Priority: P2
+**Done** | Created: 2026-06-12 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-13T00:21:36 - `6c003b5f-1f63-4f09-9f19-fd239ed12dee.jsonl`
 - `/ll:confidence-check` - 2026-06-12T22:00:00 - `c071609e-50a7-4b62-8251-935df44f93be.jsonl`
 - `/ll:wire-issue` - 2026-06-13T00:12:11 - `27829a52-4279-4c2e-8374-4fe6e74105ec.jsonl`
 - `/ll:decide-issue` - 2026-06-12T22:59:15 - `244f5266-6bd9-41d3-b93e-d3b4145272d1.jsonl`

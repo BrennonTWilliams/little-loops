@@ -438,7 +438,7 @@ class TestReassessAndConvergence:
         assert cc.get("capture") == "convergence_result"
 
     def test_convergence_router_chain_is_correct(self) -> None:
-        """Convergence routing: PASS → implement, IMPROVED → budget, STALLED → manual_review or decompose."""
+        """Convergence routing: PASS → implement, IMPROVED → budget, STALLED → budget (ENH-2107)."""
         data = _load_loop()
         # route_conv_pass
         rcp = data["states"]["route_conv_pass"]
@@ -449,11 +449,12 @@ class TestReassessAndConvergence:
         assert rci["on_yes"] == "check_remediation_budget"
         assert rci["on_no"] == "route_conv_manual_review"
         # route_conv_manual_review
-        # BUG-2006: convergence stall (on_no) emits the stall-specific token so the
-        # parent can defer rather than silently skip; on_error stays plain decompose.
+        # ENH-2107: convergence stall (on_no) now routes to check_remediation_budget
+        # instead of directly to emit_stalled_needs_decompose, giving a budget-gated
+        # retry. on_error stays plain decompose (pattern-match error ≠ stall).
         rcmr = data["states"]["route_conv_manual_review"]
         assert rcmr["on_yes"] == "emit_needs_manual_review"
-        assert rcmr["on_no"] == "emit_stalled_needs_decompose"
+        assert rcmr["on_no"] == "check_remediation_budget"
         assert rcmr["on_error"] == "emit_needs_decompose"
 
     def test_convergence_routers_use_output_contains_with_source(self) -> None:
@@ -845,14 +846,16 @@ class TestOutcomeTokenChannel:
 
     def test_decompose_token_distinguishes_stall_from_too_large(self) -> None:
         """BUG-2006: the diagnose-DECOMPOSE path (genuinely too large) emits plain
-        NEEDS_DECOMPOSE, while the two stall paths (convergence stall, budget
-        exhausted) emit STALLED_NEEDS_DECOMPOSE so the parent can defer them."""
+        NEEDS_DECOMPOSE, while budget-exhausted stall paths emit STALLED_NEEDS_DECOMPOSE.
+        ENH-2107: convergence STALLED now routes through check_remediation_budget first
+        (budget-gated retry) rather than emitting STALLED_NEEDS_DECOMPOSE directly."""
         data = _load_loop()
         # Genuine "too big" — unchanged plain token.
         assert data["states"]["route_d_refine"]["on_no"] == "emit_needs_decompose"
         assert data["states"]["route_conv_improved"]["on_no"] == "route_conv_manual_review"
-        # Stall paths — stall-specific token.
-        assert data["states"]["route_conv_manual_review"]["on_no"] == "emit_stalled_needs_decompose"
+        # CONVERGED_STALLED now routes to budget check first (ENH-2107).
+        assert data["states"]["route_conv_manual_review"]["on_no"] == "check_remediation_budget"
+        # Budget-exhausted terminal still emits stall-specific token.
         assert data["states"]["check_remediation_budget"]["on_no"] == "emit_stalled_needs_decompose"
 
     def test_emit_stalled_needs_decompose_writes_superstring_token(self) -> None:
