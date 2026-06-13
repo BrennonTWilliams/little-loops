@@ -79,6 +79,21 @@ the Python implementation.
    - Use `fragment: shell_exit` for `init`, `implement`, `verify_work`, `classify_failure`
    - Write all intermediate files to `${context.run_dir}/`
 
+   > **Decision (ARCHITECTURE-030, ENH-2106):** The `implement` state MUST delegate to
+   > `loop: per-issue-processor` via sub-loop composition — do NOT inline per-issue
+   > processing states. Use the `rn-implement.yaml:491` sidecar-token pattern:
+   > ```yaml
+   > implement:
+   >   loop: per-issue-processor
+   >   with:
+   >     issue_id: "${captured.input.output}"
+   >     baseline_sha: "${context.baseline_sha}"
+   >   on_success: dequeue_next
+   >   on_failure: classify_failure
+   > ```
+   > Read outcome from `${context.run_dir}/subloop_outcome_${captured.input.output}.txt`.
+   > The shared loop file will live at `loops/per-issue-processor.yaml` (NOT under `loops/lib/`).
+
 3. Run `ll-loop validate ll-auto` — fix all MR-1 and MR-3 violations until clean.
 
 4. Run `ll-loop diagnose-evaluators ll-auto` over ≥10 runs — confirm `verify_work`

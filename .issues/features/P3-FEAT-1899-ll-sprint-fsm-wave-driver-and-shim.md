@@ -93,7 +93,7 @@ This feature completes the EPIC-1867 FSM decomposition at the sprint/wave level:
 **Step 2 — Author `loops/ll-sprint.yaml`** following the meta-loop diagnosis-first shape (CLAUDE.md § Loop Authoring):
 - States: `load_plan` → `dispatch_wave` → `run_sequential` / `delegate_parallel` → `check_wave_complete` → `done`.
 - `dispatch_wave` routes on `mode` field from the wave definition.
-- `run_sequential` invokes Layer-1 per-issue FSM states from FEAT-1902.
+- `run_sequential` delegates to `loop: per-issue-processor` (the shared sub-loop from ENH-2106/ARCHITECTURE-030) via `with: {issue_id, baseline_sha}` — do NOT inline per-issue states.
 - `delegate_parallel` shells out to `ParallelOrchestrator`.
 - Every LLM-structured state paired with a non-LLM evaluator (`exit_code` or `convergence`) — MR-1.
 - All intermediate artifacts written under `${context.run_dir}/` — MR-3.
@@ -209,7 +209,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 1. Add `ll-sprint plan --json` subcommand to emit ordered wave definitions.
 2. Author `loops/ll-sprint.yaml` FSM wave driver with `load_plan`, `dispatch_wave`, `run_sequential`, `delegate_parallel`, `check_wave_complete`, `done` states.
-3. Wire Layer-1 per-issue states (FEAT-1902) into `run_sequential` state.
+3. Wire `run_sequential` state to delegate via `loop: per-issue-processor` (shared sub-loop, decision ARCHITECTURE-030 / ENH-2106) — do NOT inline per-issue states from FEAT-1902 directly.
 4. Wire `ParallelOrchestrator` (`scripts/little_loops/parallel/orchestrator.py`) into `delegate_parallel` state.
 5. Refactor `ll-sprint execute` to thin shim invoking `ll-loop run ll-sprint`.
 6. Run `ll-loop validate ll-sprint`; resolve any MR-1/MR-3 violations.
