@@ -12,6 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.123.0] - 2026-06-13
+
+### Added
+
+- **`loops.run_defaults` persistent config for `ll-loop run`** — Set persistent default flags (`--clear`, `--show-diagrams`, `--mode`) via config so they apply on every run without repeating them on the CLI. (ENH-2109)
+- **`/ll:loop-suggester --from-sequences` mode** — Wires `ll-logs sequences` output into the suggester so it can propose loops from logged command sequences rather than only message history. (ENH-2103)
+- **`ll-ctx-stats` skill-health signals from `ll-logs`** — `ll-ctx-stats` now surfaces per-skill fail rates, dead-skill candidates, and sequence anomalies mined from session logs. (ENH-2104)
+- **`/ll:configure` surfaces `loops.run_defaults`** — The configure skill now exposes the new run-defaults config section for interactive setup. (ENH-2114)
+
+### Fixed
+
+- **FSM interpolation crash on unexecuted-state captures** — Loops that reference captures from states that may not have executed no longer raise `InterpolationError` at runtime. (BUG-2094)
+- **FSM `capture-ordering` Bucket B `:default=` guards** — Added `:default=` fallbacks to all Bucket B states and classified previously-unlisted ALLOWLIST entries to prevent ordering-dependent evaluation failures. (BUG-2111, BUG-2112)
+- **`LL_NON_INTERACTIVE` signal not delivered to skill subprocesses** — FSM prompt actions now correctly deliver the non-interactive signal to skills spawned as subprocesses; auto-detect was previously dead code. (BUG-2110)
+- **`rn-remediate` `re_assess` MR-4 violation** — Added explicit `on_partial` and `on_no` routes to the `re_assess` state; missing routes caused the subloop to terminate with an error on non-yes verdicts. (BUG-2115)
+- **`rn-plan-apo` stale `category` field** — Removed stale `category` field from loop definition that caused validation noise.
+- **`loop-composer` `validate_plan` catalog read** — Catalog is now read from disk in `validate_plan` and prior errors are fed back to the planner for self-correction.
+
+### Changed
+
+- **`rn-remediate` implemented counter moved to `emit_implemented`** — Counter increment now happens in `emit_implemented` rather than an earlier state, fixing double-counting on retries. (ENH-2119)
+- **`rn-remediate` `WIRE(ambiguity)` heuristic guarded on `CHANGE_SURFACE == 0`** — Prevents the ambiguity branch from firing on decision-driven changes when the integration map already exists. (ENH-2116)
+- **Sub-loop composition architecture decision recorded** — ARCHITECTURE-030 documents the decision to use reusable sub-loop composition over inlined per-issue states for orchestrator FSM layers 1+2. (ENH-2106)
+- **`ll-loop simulate` `run_dir` parity documented** — Guides updated to note that simulate now injects `run_dir` into FSM context and how to wire `run_defaults` via configure.
+
 ## [1.122.0] - 2026-06-12
 
 ### Added
@@ -725,7 +750,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.121.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.123.0...HEAD
+[1.123.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.122.0...v1.123.0
 [1.122.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.121.0...v1.122.0
 [1.121.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.120.0...v1.121.0
 [1.120.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.119.0...v1.120.0
