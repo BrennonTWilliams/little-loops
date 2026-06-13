@@ -205,3 +205,29 @@ class TestCaptureIssueDecisionsBridge:
         assert decisions_idx < git_add_idx, (
             "capture-issue decisions add must appear before the git add step"
         )
+
+
+LOOP_SUGGESTER_CMD = PROJECT_ROOT / "commands" / "loop-suggester.md"
+LL_LOOP_SUGGESTER_STUB = PROJECT_ROOT / "skills" / "ll-loop-suggester" / "SKILL.md"
+
+
+class TestLoopSuggesterSequencesWiring:
+    """Structural wiring tests for ENH-2103: --from-sequences mode in loop-suggester."""
+
+    def test_loop_suggester_cmd_has_ll_logs_tool(self) -> None:
+        fm = _frontmatter(LOOP_SUGGESTER_CMD)
+        assert "Bash(ll-logs:*)" in fm, (
+            "commands/loop-suggester.md must include Bash(ll-logs:*) in allowed-tools (ENH-2103)"
+        )
+
+    def test_loop_suggester_cmd_has_from_sequences(self) -> None:
+        body = _body(LOOP_SUGGESTER_CMD)
+        assert "--from-sequences" in body, (
+            "commands/loop-suggester.md must contain --from-sequences mode body (ENH-2103)"
+        )
+
+    def test_ll_loop_suggester_stub_has_from_sequences(self) -> None:
+        content = LL_LOOP_SUGGESTER_STUB.read_text()
+        assert "--from-sequences" in content, (
+            "skills/ll-loop-suggester/SKILL.md must mention --from-sequences (ENH-2103)"
+        )

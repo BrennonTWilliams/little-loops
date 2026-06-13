@@ -1,17 +1,18 @@
 ---
 description: |
-  Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history.
+  Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.
 
-  Trigger keywords: "suggest loops", "loop from history", "automate workflow", "create loop from messages", "analyze messages for loops", "ll-messages loop", "suggest automation", "detect patterns for loops", "suggest loops from commands", "loop from catalog", "from-commands"
-argument-hint: "[messages.jsonl|--from-commands]"
+  Trigger keywords: "suggest loops", "loop from history", "automate workflow", "create loop from messages", "analyze messages for loops", "ll-messages loop", "suggest automation", "detect patterns for loops", "suggest loops from commands", "loop from catalog", "from-commands", "suggest loops from sequences", "from-sequences", "loop from ll-logs"
+argument-hint: "[messages.jsonl|--from-commands|--from-sequences]"
 allowed-tools:
   - Read
   - Write
   - Glob
   - Bash(ll-messages:*)
+  - Bash(ll-logs:*)
 arguments:
   - name: input
-    description: Path to JSONL file from ll-messages, or --from-commands to suggest loops from the command/skill catalog (no message history required)
+    description: Path to JSONL file from ll-messages, or --from-commands to suggest loops from the command/skill catalog (no message history required), or --from-sequences to suggest loops from ll-logs sequences n-gram output
     required: false
 ---
 
@@ -30,8 +31,13 @@ $ARGUMENTS
   - Enumerates `skills/*/SKILL.md`, `commands/*.md`, and CLI entry points from `scripts/pyproject.toml`
   - Works on fresh installations with zero message history
   - Cannot be combined with a JSONL file path
+- **--from-sequences** (optional flag): Analyze `ll-logs sequences` n-gram output instead of message history
+  - Reads repeated command invocation chains from the telemetry log store
+  - Maps each chain's tool sequence to a loop paradigm and generates FSM YAML
+  - Falls back to the message-history path with a notice if sequences output is empty or unavailable
+  - Cannot be combined with a JSONL file path or `--from-commands`
 
-**Mode Selection**: If `--from-commands` is present in `$ARGUMENTS`, skip to [From-Commands Mode](#from-commands-mode). Otherwise, proceed with message history analysis below.
+**Mode Selection**: If `--from-sequences` is present in `$ARGUMENTS`, skip to [From-Sequences Mode](#from-sequences-mode). If `--from-commands` is present in `$ARGUMENTS`, skip to [From-Commands Mode](#from-commands-mode). Otherwise, proceed with message history analysis below.
 
 ## Process
 
@@ -290,6 +296,130 @@ suggestions:
       4. Execute: ll-loop run [name]
 ```
 
+## From-Sequences Mode
+
+When `--from-sequences` is present in `$ARGUMENTS`, perform n-gram analysis on `ll-logs sequences` output instead of raw message history. This mode uses the telemetry primitive shipped in ENH-1919 as a real input source.
+
+### Step FS-1: Load Sequences Data
+
+**Input priority:**
+1. If `--from-sequences <path>` — read the JSONL file at the given path (output of a prior `ll-logs sequences --json` run)
+2. If `--from-sequences` (no path argument) — run: `ll-logs sequences --json --min-count 2`
+
+**Graceful fallback**: If the command errors, returns a non-zero exit code, or returns an empty array `[]`:
+- Log a notice: "⚠ No sequences data found. Falling back to message-history analysis."
+- Continue with the standard message-history flow (Step 1 above) instead of stopping.
+
+**Parsed schema** per entry (matches `ChainResult.to_dict()` in `scripts/little_loops/cli/logs.py`):
+```json
+{"chain": ["ll-scan-codebase", "ll-manage-issue"], "count": 5, "edges": [{"from": "ll-scan-codebase", "to": "ll-manage-issue", "freq": 0.8}]}
+```
+
+Each entry must have:
+- `chain`: ordered list of tool/command names (the n-gram)
+- `count`: number of times this chain was observed
+- `edges`: list of `{from, to, freq}` transition objects
+
+Record `chains_analyzed` = total chains examined before filtering.
+
+### Step FS-2: Filter Chains
+
+Apply these filters to keep only actionable candidates:
+- Minimum frequency: `count >= 2` (chains below this are too infrequent to warrant automation)
+- Minimum chain length: `len(chain) >= 2` (single-item chains have no sequence to model)
+
+If all chains are filtered out, apply the graceful fallback (see Step FS-1).
+
+### Step FS-3: Map Chains to Paradigms
+
+For each filtered chain, detect the paradigm using chain structure:
+
+| Chain characteristic | Paradigm | Rationale |
+|---|---|---|
+| Contains a known check command (pytest, ruff, mypy, ll-check-code, ll-run-tests) | `fix_until_clean` | Check-fix cycle — iterative until clean |
+| Sequential without checks, all steps distinct | `run_sequence` | Ordered workflow pipeline |
+| Contains both check and numeric-output commands | `drive_metric` | Numeric tracking toward target |
+| Three or more distinct tools with varied edge frequencies | `maintain_constraints` | Multiple independent constraints |
+
+**Paradigm priority**: `fix_until_clean` > `maintain_constraints` > `drive_metric` > `run_sequence` when multiple fit — prefer simpler types.
+
+**State mapping**:
+- Each item in `chain` becomes a state name (kebab-cased, with `ll-` prefix stripped if present)
+- `edges[].freq` feeds the consistency_bonus in the confidence formula
+- For `fix_until_clean`, the last check-command state gets `on_yes: done` / `on_no: fix`
+
+**Confidence calculation** (same formula as message-history mode):
+```
+confidence = base_confidence (from paradigm table in Step 4)
+           + frequency_bonus  (+0.15 if count >= 5)
+           + consistency_bonus (+0.05 if max(edges[].freq) > 0.80)
+           - variance_penalty  (-0.10 if stddev(edges[].freq) > 0.30)
+
+Clamp to [0.0, 1.0]
+```
+
+### Step FS-4: Generate FSM YAML Proposals
+
+For each mapped chain, generate a complete FSM YAML using the templates from Step 5 (Generate FSM YAML) of the message-history mode as structural blueprints.
+
+**Naming convention**: kebab-join of chain items, truncated to 5 terms maximum.
+
+**Required fields per proposal**:
+```
+id: "loop-001"  # sequential
+name: "<kebab-chain-name>"
+loop_type: "<fix_until_clean|maintain_constraints|drive_metric|run_sequence>"
+confidence: <0.0-1.0>
+rationale: "<2-3 sentences: the chain, its frequency, why the paradigm fits>"
+yaml_config: |
+  <complete valid FSM YAML>
+usage_instructions: |
+  1. Save to {{config.loops.loops_dir}}/<name>.yaml
+  2. Run: ll-loop validate <name>
+  3. Test: ll-loop test <name>
+  4. Execute: ll-loop run <name>
+```
+
+### Step FS-5: Write Output and Present
+
+Ensure the output directory exists: `mkdir -p .ll/loop-suggestions/`.
+
+Write suggestions to `.ll/loop-suggestions/suggestions-{timestamp}.yaml` using this schema (with `source: "sequences"` to distinguish from `"commands-catalog"` and message-history mode):
+
+```yaml
+analysis_metadata:
+  source: "sequences"
+  sequences_file: "[path or 'll-logs sequences --json --min-count 2']"
+  chains_analyzed: [count before filtering]
+  analysis_timestamp: "[ISO 8601]"
+  skill: loop-suggester
+  version: "1.0"
+
+summary:
+  total_suggestions: [count]
+  by_loop_type:
+    fix_until_clean: [count]
+    maintain_constraints: [count]
+    drive_metric: [count]
+    run_sequence: [count]
+
+suggestions:
+  - id: "loop-001"
+    name: "[kebab-chain-name]"
+    loop_type: "[paradigm]"
+    confidence: [0.0-1.0]
+    rationale: "[2-3 sentences]"
+    yaml_config: |
+      [Complete FSM YAML]
+    usage_instructions: |
+      1. Save to {{config.loops.loops_dir}}/[name].yaml
+      2. Run: ll-loop validate [name]
+      3. Test: ll-loop test [name]
+      4. Execute: ll-loop run [name]
+```
+
+After writing, display a summary table to the user identical in format to the From-Commands Mode Step FC-5 table. Do NOT automatically write to `.loops/` — present the suggestions and let the user decide which to activate.
+
 ## From-Commands Mode
 
 When `--from-commands` is present in `$ARGUMENTS`, perform catalog analysis instead of message history analysis. This mode works on fresh installations with zero Claude Code message history.
@@ -482,6 +612,12 @@ Use `/ll:create-loop` when you know what loop you want. Use `/ll:loop-suggester`
 # Suggest loops from command/skill catalog (no message history needed)
 /ll:loop-suggester --from-commands
 
+# Suggest loops from ll-logs sequences n-gram output (telemetry-driven)
+/ll:loop-suggester --from-sequences
+
+# Suggest loops from a saved sequences JSON file
+/ll:loop-suggester --from-sequences .ll/sequences-2026-06-13.json
+
 # Analyze existing JSONL file
 /ll:loop-suggester messages.jsonl
 
@@ -494,3 +630,5 @@ Use `/ll:create-loop` when you know what loop you want. Use `/ll:loop-suggester`
 - Create loops interactively: `/ll:create-loop`
 - Workflow analysis: `/ll:analyze-workflows`
 - Suggest loops from catalog: `/ll:loop-suggester --from-commands`
+- Suggest loops from telemetry: `/ll:loop-suggester --from-sequences`
+- Extract sequences: `ll-logs sequences --json`

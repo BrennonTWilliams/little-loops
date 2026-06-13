@@ -3,8 +3,9 @@ id: ENH-2103
 title: Wire `ll-logs sequences` output into `/ll:loop-suggester`
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-12T00:00:00Z'
+completed_at: '2026-06-13T14:43:43Z'
 discovered_date: 2026-06-12
 discovered_by: review-epic
 parent: EPIC-1918
@@ -156,6 +157,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-13T14:31:06 - `ba3df577-e2e2-4da5-96a4-86ef129cf5e9.jsonl`
 - `/ll:confidence-check` - 2026-06-13T00:00:00Z - `039b5581-6074-4235-966a-740a7054cc93.jsonl`
 - `/ll:wire-issue` - 2026-06-13T14:21:45 - `4d90a007-cbf7-4676-a9b3-c7c378d7f4c5.jsonl`
 - `/ll:refine-issue` - 2026-06-13T14:08:12 - `08370739-55b2-494f-8c11-f2199b52c4f3.jsonl`

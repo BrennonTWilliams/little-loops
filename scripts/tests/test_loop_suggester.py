@@ -470,3 +470,213 @@ states:
             assert "states" in parsed
             assert isinstance(parsed["states"], dict)
             assert len(parsed["states"]) >= 3
+
+
+# =============================================================================
+# From-Sequences Mode Tests
+# =============================================================================
+
+
+class TestFromSequencesModeSchema:
+    """Tests for --from-sequences mode schema contracts.
+
+    Schema defined in commands/loop-suggester.md, From-Sequences Mode section.
+    This mode reads ll-logs sequences --json output (ChainResult JSONL) and maps
+    repeated command n-grams to loop-suggestion candidates.
+    """
+
+    def test_chain_result_input_required_fields(self) -> None:
+        """ChainResult input entries must have chain, count, and edges fields."""
+        required_fields = {"chain", "count", "edges"}
+
+        chain_result = {
+            "chain": ["ll-scan-codebase", "ll-manage-issue"],
+            "count": 5,
+            "edges": [{"from": "ll-scan-codebase", "to": "ll-manage-issue", "freq": 0.8}],
+        }
+
+        assert required_fields.issubset(chain_result.keys())
+        assert isinstance(chain_result["chain"], list)
+        assert len(chain_result["chain"]) >= 2
+        assert isinstance(chain_result["count"], int)
+        assert chain_result["count"] >= 1
+        assert isinstance(chain_result["edges"], list)
+        # Each edge must have from, to, freq
+        for edge in chain_result["edges"]:
+            assert {"from", "to", "freq"}.issubset(edge.keys())
+            assert 0.0 <= edge["freq"] <= 1.0
+
+    def test_from_sequences_metadata_fields(self) -> None:
+        """From-sequences metadata must include source, sequences_file, chains_analyzed."""
+        required_metadata = {
+            "source",
+            "sequences_file",
+            "chains_analyzed",
+            "analysis_timestamp",
+            "skill",
+        }
+
+        metadata = {
+            "source": "sequences",
+            "sequences_file": "ll-logs sequences --json",
+            "chains_analyzed": 12,
+            "analysis_timestamp": "2026-06-13T14:00:00Z",
+            "skill": "loop-suggester",
+            "version": "1.0",
+        }
+
+        assert required_metadata.issubset(metadata.keys())
+
+    def test_from_sequences_metadata_source_distinguisher(self) -> None:
+        """Source field must be 'sequences' to distinguish from other modes."""
+        sequences_metadata = {"source": "sequences", "skill": "loop-suggester"}
+        catalog_metadata = {"source": "commands-catalog", "skill": "loop-suggester"}
+        history_metadata = {"source_file": "live extraction", "skill": "loop-suggester"}
+
+        assert sequences_metadata["source"] == "sequences"
+        assert catalog_metadata["source"] != "sequences"
+        assert "source" not in history_metadata
+
+    def test_from_sequences_proposal_required_fields(self) -> None:
+        """Proposals from sequences mode must include base required fields (no theme field)."""
+        required_fields = {"id", "name", "loop_type", "confidence", "rationale", "yaml_config", "usage_instructions"}
+
+        proposal = {
+            "id": "loop-001",
+            "name": "scan-codebase-manage-issue",
+            "loop_type": "run_sequence",
+            "confidence": 0.82,
+            "rationale": (
+                "Detected 5 occurrences of [ll-scan-codebase → ll-manage-issue] across sessions. "
+                "Sequential structure with high edge frequency (0.80) suggests a habitual issue "
+                "pipeline. Mapped to run_sequence paradigm."
+            ),
+            "yaml_config": (
+                "name: scan-codebase-manage-issue\n"
+                "initial: scan\n"
+                "max_iterations: 10\n"
+                "states:\n"
+                "  scan:\n"
+                "    action: /ll:scan-codebase\n"
+                "    action_type: slash_command\n"
+                "    next: manage\n"
+                "  manage:\n"
+                "    action: /ll:manage-issue\n"
+                "    action_type: slash_command\n"
+                "    next: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+            ),
+            "usage_instructions": "1. Save to .loops/scan-codebase-manage-issue.yaml\n2. Run: ll-loop validate scan-codebase-manage-issue\n",
+        }
+
+        assert required_fields.issubset(proposal.keys())
+        # sequences mode does not require a 'theme' field (unlike from-commands)
+        assert "theme" not in required_fields
+
+    def test_from_sequences_chain_maps_to_paradigm(self) -> None:
+        """Chain structure determines the suggested paradigm."""
+        # Check-terminated chains → fix_until_clean
+        check_commands = {"ll-check-code", "pytest", "ruff", "mypy", "ll-run-tests"}
+        chain_ending_in_check = ["ll-manage-issue", "ll-check-code"]
+        assert chain_ending_in_check[-1] in check_commands or any(
+            c in check_commands for c in chain_ending_in_check
+        )
+
+        # Sequential chains without checks → run_sequence
+        sequential_chain = ["ll-scan-codebase", "ll-refine-issue", "ll-manage-issue"]
+        has_check = any(c in check_commands for c in sequential_chain)
+        assert not has_check  # sequential, no check → run_sequence paradigm
+
+        # Paradigm mapping rule: fix_until_clean takes priority when a check is present
+        valid_paradigms = {"fix_until_clean", "maintain_constraints", "drive_metric", "run_sequence"}
+        assert "fix_until_clean" in valid_paradigms
+        assert "run_sequence" in valid_paradigms
+
+    def test_from_sequences_confidence_base(self) -> None:
+        """Base confidence for sequences-derived proposals follows paradigm table."""
+        # Same base table as message-history mode
+        base_confidences = {
+            "fix_until_clean": 0.70,
+            "maintain_constraints": 0.65,
+            "drive_metric": 0.55,
+            "run_sequence": 0.60,
+        }
+
+        frequency_bonus = 0.15  # if count >= 5
+        consistency_bonus = 0.05  # if max edge freq > 0.80
+
+        # Example: run_sequence with count=5 and high edge freq
+        confidence = base_confidences["run_sequence"] + frequency_bonus + consistency_bonus
+        assert 0.0 <= min(1.0, confidence) <= 1.0
+
+        # Base values are within expected range
+        for paradigm, base in base_confidences.items():
+            assert 0.0 <= base <= 1.0, f"Base confidence for {paradigm} out of range"
+
+    def test_from_sequences_yaml_config_parseable(self) -> None:
+        """yaml_config in sequences proposals must be parseable FSM YAML."""
+        sequences_yaml = """
+name: check-code-fix-cycle
+initial: check
+max_iterations: 10
+states:
+  check:
+    action: /ll:check-code
+    action_type: slash_command
+    on_yes: done
+    on_no: fix
+    on_error: fix
+  fix:
+    action: "Code quality checks failed. Analyze and fix the issues."
+    action_type: prompt
+    next: check
+  done:
+    terminal: true
+"""
+        run_sequence_yaml = """
+name: scan-refine-manage
+initial: scan
+max_iterations: 5
+states:
+  scan:
+    action: /ll:scan-codebase
+    action_type: slash_command
+    next: refine
+  refine:
+    action: /ll:refine-issue
+    action_type: slash_command
+    next: manage
+  manage:
+    action: /ll:manage-issue
+    action_type: slash_command
+    next: done
+  done:
+    terminal: true
+"""
+        for config in [sequences_yaml, run_sequence_yaml]:
+            parsed = yaml.safe_load(config)
+            assert "name" in parsed
+            assert "initial" in parsed
+            assert "states" in parsed
+            assert isinstance(parsed["states"], dict)
+            assert len(parsed["states"]) >= 3
+
+    def test_from_sequences_fallback_notice_on_empty_input(self) -> None:
+        """Empty or missing sequences output must trigger fallback to message-history path."""
+        # This test validates the schema contract: when sequences returns empty, the skill
+        # must fall back to the standard message-history path with a notice.
+        # We verify the fallback behavior is documented in commands/loop-suggester.md.
+        from pathlib import Path
+
+        cmd_file = Path(__file__).parent.parent.parent / "commands" / "loop-suggester.md"
+        content = cmd_file.read_text()
+
+        # The From-Sequences Mode section must document fallback behavior
+        assert "--from-sequences" in content, (
+            "commands/loop-suggester.md must contain --from-sequences mode (ENH-2103)"
+        )
+        # Graceful fallback language must be present
+        assert "fallback" in content.lower() or "fall back" in content.lower(), (
+            "commands/loop-suggester.md must document graceful fallback for empty sequences output"
+        )

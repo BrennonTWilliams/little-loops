@@ -619,6 +619,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 **Arguments:**
 - `file` (optional): Path to ll-messages JSONL file (runs extraction if omitted)
 - `--from-commands` (optional flag): Analyze the command/skill catalog instead of message history — works on fresh installations with no session history
+- `--from-sequences [path]` (optional flag): Analyze `ll-logs sequences` n-gram output instead of message history — maps repeated command chains to loop paradigms; falls back to message-history path if sequences output is empty
 
 **Features:**
 - Detects repeated tool sequences (check-fix cycles, multi-constraint patterns)
@@ -636,9 +637,15 @@ Analyze user message history to suggest FSM loop configurations automatically.
 
 # Suggest loops from available commands/skills catalog (no history required)
 /ll:loop-suggester --from-commands
+
+# Suggest loops from ll-logs sequences n-gram output (telemetry-driven)
+/ll:loop-suggester --from-sequences
+
+# Suggest loops from a saved sequences JSON file
+/ll:loop-suggester --from-sequences .ll/sequences-2026-06-13.json
 ```
 
-**Trigger keywords:** "suggest loops", "loop from history", "automate workflow", "suggest loops from commands", "loop from catalog"
+**Trigger keywords:** "suggest loops", "loop from history", "automate workflow", "suggest loops from commands", "loop from catalog", "suggest loops from sequences", "from-sequences", "loop from ll-logs"
 
 ### `/ll:review-loop`
 Review an existing FSM loop configuration for quality, correctness, consistency, and potential improvements. Analyzes all states and transitions, runs behavioral verification via `ll-loop simulate`, reports findings by severity (Error/Warning/Suggestion), proposes concrete fixes with before/after diffs, applies approved changes, and persists a review artifact to `.loops/reviews/<name>-<YYYYMMDD-HHMMSS>.md`.
