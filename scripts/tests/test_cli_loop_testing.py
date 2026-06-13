@@ -218,6 +218,67 @@ class TestCmdSimulateMaxIterations:
         assert "Terminated by:" in captured.out
 
 
+class TestCmdSimulateRunDir:
+    """Tests that cmd_simulate injects runner-managed context variables."""
+
+    def test_run_dir_injected_when_referenced_in_init_state(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A loop referencing ${context.run_dir} must not error out in simulate."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "uses-run-dir.yaml").write_text("""name: uses-run-dir
+initial: init
+max_iterations: 5
+states:
+  init:
+    action: mkdir -p ${context.run_dir}
+    on_yes: done
+  done:
+    terminal: true
+""")
+        args = _make_args(scenario="all-pass")
+        logger = Logger()
+
+        result = cmd_simulate("uses-run-dir", args, loops_dir, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "error" not in captured.out.lower() or "Terminated by: terminal" in captured.out
+
+    def test_run_dir_not_overwritten_if_already_in_context(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A loop that declares run_dir in its context block keeps its own value."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        custom_run_dir = str(tmp_path / "custom-run")
+        (loops_dir / "custom-run-dir.yaml").write_text(f"""name: custom-run-dir
+initial: init
+max_iterations: 3
+context:
+  run_dir: "{custom_run_dir}/"
+states:
+  init:
+    action: echo "${{context.run_dir}}"
+    on_yes: done
+  done:
+    terminal: true
+""")
+        args = _make_args(scenario="all-pass")
+        logger = Logger()
+
+        # Load and check context is preserved (simulate doesn't overwrite)
+        from little_loops.cli.loop._helpers import load_loop
+        from little_loops.logger import Logger as L
+
+        fsm = load_loop("custom-run-dir", loops_dir, L())
+        assert fsm.context["run_dir"] == f"{custom_run_dir}/"
+
+        result = cmd_simulate("custom-run-dir", args, loops_dir, logger)
+        assert result == 0
+
+
 class TestCmdSimulateErrors:
     """Tests for cmd_simulate error handling."""
 

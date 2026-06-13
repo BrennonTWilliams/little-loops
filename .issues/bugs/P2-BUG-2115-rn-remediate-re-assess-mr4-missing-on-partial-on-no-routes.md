@@ -1,6 +1,7 @@
 ---
 id: BUG-2115
-title: 'rn-remediate re_assess: MR-4 violation — missing on_partial/on_no routes causes subloop to terminate with error'
+title: "rn-remediate re_assess: MR-4 violation \u2014 missing on_partial/on_no routes\
+  \ causes subloop to terminate with error"
 priority: P2
 type: BUG
 status: open
@@ -9,12 +10,18 @@ discovered_date: '2026-06-13'
 discovered_by: audit-loop-run
 affects: scripts/little_loops/loops/rn-remediate.yaml
 labels:
-  - rn-remediate
-  - loop-defect
-  - mr-4
-  - evaluator
+- rn-remediate
+- loop-defect
+- mr-4
+- evaluator
 relates_to:
-  - BUG-2075
+- BUG-2075
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2115: rn-remediate re_assess MR-4 — missing on_partial/on_no terminates subloop with error
@@ -136,3 +143,4 @@ re_assess:
 ## Session Log
 - `/ll:format-issue` - 2026-06-13T18:32:54 - `bd2eb6a7-568d-4a00-8298-d0d06d2d9a27.jsonl`
 - `/ll:audit-loop-run` - 2026-06-13T00:00:00Z - discovered during audit of rn-implement-20260613T124334
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `aa68867a-a48d-436c-bfa2-c625e339801a.jsonl`
