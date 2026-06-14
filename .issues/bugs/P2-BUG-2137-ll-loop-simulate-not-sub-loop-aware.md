@@ -1,10 +1,18 @@
 ---
 id: BUG-2137
-captured_at: "2026-06-14T03:05:18Z"
-discovered_date: "2026-06-14"
+captured_at: '2026-06-14T03:05:18Z'
+discovered_date: '2026-06-14'
 discovered_by: capture-issue
 status: open
-relates_to: [ENH-1164, FEAT-1654]
+relates_to:
+- ENH-1164
+- FEAT-1654
+confidence_score: 89
+outcome_confidence: 81
+score_complexity: 21
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # BUG-2137: `ll-loop simulate` is not sub-loop-aware — runs real child loops or errors on dynamic dispatch
@@ -147,7 +155,12 @@ dynamic-dispatch loops could hit it.
 - [ ] Regression test: simulate a fixture loop with both a static and a dynamic
       `loop:` dispatch state; assert no real child execution and correct routing.
 
+## Labels
+`bug`, `fsm`, `simulate`, `loop`, `executor`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T03:19:33 - `58c8bef7-a9e2-4ed7-ae26-35578f5ac021.jsonl`
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `499b430f-0ce7-4210-8d01-bbcbfc6376a5.jsonl`
 - `/ll:format-issue` - 2026-06-14T03:08:26 - `4bd1cae0-db78-4e6f-ad33-68b306916879.jsonl`
 - `/ll:capture-issue` - 2026-06-14T03:05:18Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be36bd17-64b3-426c-82dd-0410d90c2280.jsonl`
 
