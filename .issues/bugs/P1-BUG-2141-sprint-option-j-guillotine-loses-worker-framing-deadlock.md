@@ -9,7 +9,7 @@ status: open
 relates_to:
 - BUG-1386
 - ENH-1996
-confidence_score: 97
+confidence_score: 98
 outcome_confidence: 72
 score_complexity: 18
 score_test_coverage: 15
@@ -72,10 +72,10 @@ The fresh session started from this prompt has no knowledge of:
 1. **Sprint sequential path** (`sprint/run.py` → `process_issue_inplace()` → `run_with_continuation()`): never
    passes `run_dir`, so the `guillotine-prompt.md` file-write branch in `run_with_continuation()` (gated on
    `run_dir is not None` at line 329) is never activated. Option J always falls through to
-   `assemble_guillotine_prompt()` at line 357, producing a prompt string passed directly as the next command.
+   `assemble_guillotine_prompt()` at line 359 in `issue_manager.py`, producing a prompt string passed directly as the next command.
 
 2. **Parallel worktree path** (`worker_pool._run_with_continuation()` line 729): when `run_dir is not None` (line 823),
-   it writes `guillotine-prompt.md` at lines 837–854 and uses `/ll:resume <path>` as the next command. This file also
+   it writes `guillotine-prompt.md` at lines 836–854 and uses `/ll:resume <path>` as the next command. This file also
    lacks sprint worker framing when called from parallel mode.
 
 ## Expected Behavior
@@ -96,14 +96,14 @@ Branch: main (or the worktree branch)
 - **File**: `scripts/little_loops/issue_manager.py`
 - **Anchor**: module-level `run_with_continuation()` at line 194
 - `process_issue_inplace()` (line 528) calls `run_with_continuation()` at lines 844–856 without passing `run_dir`,
-  so Option J always invokes `assemble_guillotine_prompt()` (line 357 in `issue_manager.py`; implemented at
+  so Option J always invokes `assemble_guillotine_prompt()` (line 359 in `issue_manager.py`; implemented at
   `subprocess_utils.py:153`). No sprint context is threaded through this call chain.
 
 **Parallel path** (`worker_pool.py`):
 - **File**: `scripts/little_loops/parallel/worker_pool.py`
 - **Anchor**: `WorkerPool._run_with_continuation()` at line 729
-- Guillotine file write at lines 837–854. Called from `_process_issue()` at lines 396–400 without passing
-  `run_dir`, so this path also falls through to `assemble_guillotine_prompt()` in normal parallel execution.
+- Guillotine file write at lines 836–854; `assemble_guillotine_prompt()` call at line 865 (`else` branch when `run_dir is None`). Called from `_process_issue()` at line 396 without passing
+  `run_dir`, so this path always falls through to `assemble_guillotine_prompt()` in normal parallel execution.
 
 **Root miss**: neither `process_issue_inplace()` nor `_process_issue()` passes sprint-specific metadata
 (`issue_id`, `branch`, stop-after-one constraint) into the continuation call chain.
@@ -137,10 +137,10 @@ and follows the `@dataclass` + `to_dict()` + `from_dict()` convention.
    This avoids changing `run_dir` logic or the `process_issue_inplace()` return type.
 
 3. Thread `sprint_context` through:
-   - `issue_manager.run_with_continuation()` (line 194) → forward to `assemble_guillotine_prompt()` call at line 357
+   - `issue_manager.run_with_continuation()` (line 194) → forward to `assemble_guillotine_prompt()` call at line 359
    - `issue_manager.process_issue_inplace()` (line 528) → forward to `run_with_continuation()` at lines 844–856
    - `worker_pool.WorkerPool._run_with_continuation()` (line 729) → forward to `assemble_guillotine_prompt()`
-     and also inject into the guillotine file write at lines 837–854 for the parallel `run_dir` path
+     and also inject into the guillotine file write at lines 836–854 for the parallel `run_dir` path
 
 4. Pass sprint context from both call sites in `sprint/run.py`:
    - `_run_issue_with_wall_clock_timeout()` → `process_issue_inplace()` at line 63 (primary sequential wave path)
@@ -156,13 +156,13 @@ and follows the `@dataclass` + `to_dict()` + `from_dict()` convention.
    `subprocess_utils.py` (line 153). Prepend the framing block when set.
 
 3. Add `sprint_context: SprintWorkerContext | None = None` to `issue_manager.run_with_continuation()` (line 194)
-   and thread it into the `assemble_guillotine_prompt()` call at line 357.
+   and thread it into the `assemble_guillotine_prompt()` call at line 359.
 
 4. Add `sprint_context: SprintWorkerContext | None = None` to `issue_manager.process_issue_inplace()` (line 528)
    and thread it into the `run_with_continuation()` call at lines 844–856.
 
 5. Add `sprint_context: SprintWorkerContext | None = None` to `worker_pool.WorkerPool._run_with_continuation()`
-   (line 729); inject into `assemble_guillotine_prompt()` and into the guillotine file write at lines 837–854.
+   (line 729); inject into `assemble_guillotine_prompt()` at line 865 and into the guillotine file write at lines 836–854.
 
 6. Pass `SprintWorkerContext(issue_id=issue.issue_id, branch=current_branch)` at **both** call sites in
    `scripts/little_loops/cli/sprint/run.py`:
@@ -195,7 +195,7 @@ and follows the `@dataclass` + `to_dict()` + `from_dict()` convention.
 - `scripts/little_loops/subprocess_utils.py` — `assemble_guillotine_prompt()` (line 153): add optional `sprint_context` parameter; prepend sprint framing block when set
 - `scripts/little_loops/issue_manager.py` — module-level `run_with_continuation()` (line 194): add `sprint_context` parameter; thread into `assemble_guillotine_prompt()` call at line 357
 - `scripts/little_loops/issue_manager.py` — `process_issue_inplace()` (line 528): add `sprint_context` parameter; thread into `run_with_continuation()` call at lines 844–856
-- `scripts/little_loops/parallel/worker_pool.py` — `WorkerPool._run_with_continuation()` (line 729): add `sprint_context` parameter; inject framing into guillotine file write at lines 837–854 and into `assemble_guillotine_prompt()` call
+- `scripts/little_loops/parallel/worker_pool.py` — `WorkerPool._run_with_continuation()` (line 729): add `sprint_context` parameter; inject framing into guillotine file write at lines 836–854 and into `assemble_guillotine_prompt()` call at line 865
 - `scripts/little_loops/cli/sprint/run.py` — both call sites must pass `SprintWorkerContext(issue_id=info.issue_id, branch=current_branch)`
 
 ### Dependent Files (Callers/Importers)
@@ -203,6 +203,7 @@ and follows the `@dataclass` + `to_dict()` + `from_dict()` convention.
 - `scripts/little_loops/cli/sprint/run.py:541` — sequential retry after parallel wave failure; also calls `process_issue_inplace()` without sprint context
 
 ### Tests
+- `scripts/tests/test_parallel_types.py` — existing tests for parallel types; add `SprintWorkerContext` dataclass tests here (model after `WorkerResult` assertions)
 - `scripts/tests/test_worker_pool.py:2401` — `test_guillotine_with_run_dir_writes_resume_file` in `TestRunWithContinuation` (class at line 2260): model test to mirror for sprint-context variant
 - `scripts/tests/test_worker_pool.py:2260` — `TestRunWithContinuation`: class for new `_run_with_continuation` sprint-context tests
 - `scripts/tests/test_cli_sprint.py:623` — `_run_issue_with_wall_clock_timeout` tests (lines 623–727): pattern for new sprint-context forwarding tests
@@ -244,12 +245,15 @@ _Added by `/ll:confidence-check` on 2026-06-14_
 - Test mock cascade (D: 19/25): `process_issue_inplace()` is mocked in 19 tests in `test_sprint_integration.py` and 8 in `test_sprint.py`; adding `sprint_context: SprintWorkerContext | None = None` is backward-compatible and all mocks use `**kwargs` — no cascade updates actually required.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-14T14:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/822c662f-28d6-4079-ad8d-82d73c4ff611.jsonl`
+- `/ll:refine-issue` - 2026-06-14T14:13:50 - `5c2e9b75-5a1b-4b79-9b8f-961ba49fcbd8.jsonl`
 - `/ll:refine-issue` - 2026-06-14T07:15:05 - `6f1984bf-3e4f-47b1-8f9b-80f0aecdbd84.jsonl`
 - `/ll:refine-issue` - 2026-06-14T07:04:48 - `7ec55e37-83e6-4efd-a123-30c2a162e8a3.jsonl`
 - `/ll:confidence-check` - 2026-06-14T06:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78abf4ae-7fd0-424f-af64-8d1e965a6754.jsonl`
 - `/ll:confidence-check` - 2026-06-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47013740-85c7-4722-b055-695a04f000e8.jsonl`
 - `/ll:format-issue` - 2026-06-14T05:17:38 - `cad4a66a-e81d-47ad-aff1-160b8d4f14d0.jsonl`
 - `/ll:confidence-check` - 2026-06-14T08:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3397313-7585-440e-bdb0-dd629e6d37b6.jsonl`
+- `/ll:confidence-check` - 2026-06-14T09:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c098a5dc-9790-4295-bfe5-76b6a1197d7f.jsonl`
 - `/ll:capture-issue` - 2026-06-14T03:50:03Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---

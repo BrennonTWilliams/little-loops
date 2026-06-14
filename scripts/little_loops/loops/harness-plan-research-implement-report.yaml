@@ -121,7 +121,8 @@ states:
       import json, pathlib
       p = pathlib.Path('.ll/ll-config.json')
       cfg = json.loads(p.read_text()) if p.exists() else {}
-      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      raw = cfg.get('project', {}).get('test_cmd')
+      print(raw if raw else 'pytest')
       ")
       eval "$CMD" 2>&1
     fragment: shell_exit
