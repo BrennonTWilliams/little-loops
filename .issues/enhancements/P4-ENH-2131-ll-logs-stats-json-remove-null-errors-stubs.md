@@ -7,6 +7,7 @@ title: ll-logs stats JSON always-null errors/error_rate fields should be removed
 discovered_date: 2026-06-14
 discovered_by: capture-issue
 captured_at: "2026-06-14T01:52:17Z"
+parent: EPIC-1918
 ---
 
 # ENH-2131: ll-logs stats JSON always-null errors/error_rate fields should be removed or implemented

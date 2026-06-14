@@ -7,6 +7,7 @@ title: ll-logs sequences _compute_edges rebuilds transition counter per n-gram (
 discovered_date: 2026-06-14
 discovered_by: capture-issue
 captured_at: "2026-06-14T01:52:17Z"
+parent: EPIC-1918
 ---
 
 # ENH-2133: ll-logs sequences _compute_edges rebuilds transition counter per n-gram (O(K·N²))

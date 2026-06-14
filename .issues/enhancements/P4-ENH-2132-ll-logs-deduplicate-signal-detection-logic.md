@@ -7,6 +7,7 @@ title: Deduplicate ll-logs signal detection logic (_extract_tool_name / _extract
 discovered_date: 2026-06-14
 discovered_by: capture-issue
 captured_at: "2026-06-14T01:52:17Z"
+parent: EPIC-1918
 ---
 
 # ENH-2132: Deduplicate ll-logs signal detection logic (_extract_tool_name / _extract_eval_invocation)

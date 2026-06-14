@@ -7,6 +7,7 @@ title: ll-logs --window-days anchor semantics inconsistent across subcommands
 discovered_date: 2026-06-14
 discovered_by: capture-issue
 captured_at: "2026-06-14T01:52:17Z"
+parent: EPIC-1918
 ---
 
 # ENH-2130: ll-logs --window-days anchor semantics inconsistent across subcommands

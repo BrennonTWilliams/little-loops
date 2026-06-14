@@ -7,6 +7,7 @@ title: ll-logs eval-export missing -j short flag (use add_json_arg)
 discovered_date: 2026-06-14
 discovered_by: capture-issue
 captured_at: "2026-06-14T01:52:17Z"
+parent: EPIC-1918
 ---
 
 # ENH-2129: ll-logs eval-export missing -j short flag (use add_json_arg)

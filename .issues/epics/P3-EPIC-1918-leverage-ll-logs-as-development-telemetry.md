@@ -8,7 +8,7 @@ captured_at: "2026-06-04T02:27:34Z"
 discovered_date: "2026-06-04"
 discovered_by: capture-issue
 labels: [epic, captured, ll-logs, telemetry, observability]
-relates_to: [ENH-1919, FEAT-1920, ENH-1921, ENH-1922, ENH-1923, ENH-1924, FEAT-1309, ENH-1904, FEAT-1925, ENH-2070, ENH-2071, ENH-2072, ENH-2103, ENH-2104]
+relates_to: [ENH-1919, FEAT-1920, ENH-1921, ENH-1922, ENH-1923, ENH-1924, FEAT-1309, ENH-1904, FEAT-1925, ENH-2070, ENH-2071, ENH-2072, ENH-2103, ENH-2104, ENH-2129, ENH-2130, ENH-2131, ENH-2132, ENH-2133, ENH-2134]
 ---
 
 # EPIC-1918: Leverage ll-logs as a development telemetry layer
@@ -51,6 +51,12 @@ from the corpus instead of leaving it as a passive archive.
 - **ENH-2072** — Wire `dead-skills` output to flag zero-invocation skills in backlog (AC amended 2026-06-12: also surfaces dead skills inside `/ll:find-dead-code` output, per this epic's "feeds find-dead-code" scope line)
 - **ENH-2103** — Wire `ll-logs sequences` into `/ll:loop-suggester` (added 2026-06-12: FEAT-1309 — the intended sequences consumer — is deferred, so this child carries the integration and satisfies success metric 1 without the notification UX)
 - **ENH-2104** — Wire `ll-logs stats` signals into `ll-ctx-stats` (added 2026-06-12: ll-ctx-stats was a named consumer target in scope with no owning child)
+- **ENH-2129** — ll-logs eval-export missing -j short flag (use add_json_arg)
+- **ENH-2130** — ll-logs --window-days anchor semantics inconsistent across subcommands
+- **ENH-2131** — ll-logs stats JSON always-null errors/error_rate fields should be removed or implemented
+- **ENH-2132** — Deduplicate ll-logs signal detection logic (_extract_tool_name / _extract_eval_invocation)
+- **ENH-2133** — ll-logs sequences _compute_edges rebuilds transition counter per n-gram (O(K·N²))
+- **ENH-2134** — ll-logs minor code cleanup bundle (double import, readlines vs streaming, Path wrap)
 
 ## Scope
 
