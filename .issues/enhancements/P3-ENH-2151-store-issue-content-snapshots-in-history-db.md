@@ -8,7 +8,7 @@ captured_at: '2026-06-14T19:15:05Z'
 discovered_date: '2026-06-14'
 discovered_by: capture-issue
 decision_needed: true
-confidence_score: 91
+confidence_score: 92
 outcome_confidence: 71
 score_complexity: 16
 score_test_coverage: 22
@@ -214,15 +214,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:confidence-check` on 2026-06-14_
 
-**Readiness Score**: 91/100 → PROCEED
+**Readiness Score**: 92/100 → PROCEED
 **Outcome Confidence**: 71/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Unresolved design decision — FTS5 approach**: The issue presents both a content-table FTS5 schema and an autonomous `search_index` write as alternatives without committing to one. This is an open decision (Option A or autonomous approach) that affects the migration DDL, the `record_issue_snapshot()` writer, and the `search --fts` query surface — resolve before starting.
-- **Unresolved design decision — set_status wiring**: "Option A", "Option B", "Option C" are listed in Codebase Research Findings without a chosen path; this affects whether `cmd_set_status()` needs modification and what test coverage is needed for transition capture.
-- **Moderate change breadth with test breakage**: 7 specific `SCHEMA_VERSION == 13` / `int(row[0]) == 13` assertions across `test_session_store.py` (6) and `test_assistant_messages.py` (1) will fail on the schema bump — well-enumerated but require updates before any green test run is possible.
+- **Unresolved design decision — FTS5 approach**: The issue presents both a content-table FTS5 (`content='issue_snapshots'`) and the simpler autonomous approach (write to existing `search_index` with `kind="snapshot"`) without committing to one. This is an open decision that affects migration DDL, `record_issue_snapshot()`, and the `search --fts` query extension — resolve before starting.
+- **Unresolved design decision — set_status wiring**: Option A (add EventBus emit to `cmd_set_status()`), Option B (accept gap, rely on backfill), and Option C (call `record_issue_snapshot()` directly from `set_status`) are listed without a chosen path; determines whether `set_status.py` needs modification and what transition-capture test coverage is required.
+- **Test breakage front-loading required**: 7 `SCHEMA_VERSION == 13` / `int(row[0]) == 13` assertions across `test_session_store.py` (6) and `test_assistant_messages.py` (1) will fail immediately on the schema bump — update these before the first green test run.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-14T21:45:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:decide-issue` - 2026-06-14T20:37:36 - `21049312-887c-4a50-8fa1-fe882f234969.jsonl`
+- `/ll:confidence-check` - 2026-06-14T21:00:00Z - `c4d1e658-2782-47c6-a392-7a42920ff10b.jsonl`
 - `/ll:confidence-check` - 2026-06-14T20:30:00Z - `7bb6a49b-1be9-40e2-9f6c-41ac04f4c30c.jsonl`
 - `/ll:wire-issue` - 2026-06-14T20:10:12 - `f76a9942-cc29-47cd-b1cd-b20e4d22d86a.jsonl`
 - `/ll:refine-issue` - 2026-06-14T19:55:18 - `d461489e-ec50-4afd-a938-695c20bdfd23.jsonl`
