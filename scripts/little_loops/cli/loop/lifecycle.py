@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import signal
+import subprocess as subprocess_mod
 import time
 from pathlib import Path
 
@@ -84,18 +85,54 @@ def _get_events_info(running_dir: Path, stem: str) -> tuple[str | None, str | No
         return str(events_file), f"Events: {events_file}"
 
 
+def _get_descendant_pids(pid: int) -> list[int]:
+    """Return all descendant PIDs recursively using pgrep -P.
+
+    Crosses process group boundaries, so it correctly finds subprocesses
+    launched with start_new_session=True (e.g. the claude CLI).
+    """
+    descendants: list[int] = []
+    to_visit = [pid]
+    while to_visit:
+        current = to_visit.pop()
+        try:
+            result = subprocess_mod.run(
+                ["pgrep", "-P", str(current)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            children = [int(p) for p in result.stdout.strip().split("\n") if p.strip()]
+            descendants.extend(children)
+            to_visit.extend(children)
+        except Exception:
+            continue
+    return descendants
+
+
 def _kill_with_timeout(pid: int, label: str, logger: Logger) -> None:
-    """Send SIGTERM to pid; escalate to SIGKILL after 10 s if still alive."""
-    os.kill(pid, signal.SIGTERM)
+    """Kill pid and all descendants; SIGTERM first, escalate to SIGKILL after 10 s."""
+    descendants = _get_descendant_pids(pid)
+    # Kill descendants first so the root can't spawn new children after receiving SIGTERM
+    all_pids = descendants + [pid]
+
+    for target in all_pids:
+        try:
+            os.kill(target, signal.SIGTERM)
+        except OSError:
+            pass
+
     for _ in range(10):
         time.sleep(1)
-        if not _process_alive(pid):
+        if not any(_process_alive(p) for p in all_pids):
             return
-    try:
-        os.kill(pid, signal.SIGKILL)
-        logger.warning(f"Sent SIGKILL to {label} (PID: {pid})")
-    except OSError:
-        pass
+
+    for target in all_pids:
+        try:
+            os.kill(target, signal.SIGKILL)
+        except OSError:
+            pass
+    logger.warning(f"Sent SIGKILL to {label} (PID: {pid})")
 
 
 def _status_single(
