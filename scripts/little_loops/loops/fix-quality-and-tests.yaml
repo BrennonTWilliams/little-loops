@@ -62,7 +62,12 @@ states:
       p = pathlib.Path('.ll/ll-config.json')
       cfg = json.loads(p.read_text()) if p.exists() else {}
       raw = cfg.get('project', {}).get('test_cmd')
-      print(raw if raw else 'pytest')
+      # None/null means 'no tests configured' — skip with success
+      # Missing key means 'not configured yet' — default to pytest
+      if 'project' in cfg and 'test_cmd' in cfg['project']:
+          print(raw if raw else 'true')
+      else:
+          print(raw if raw else 'pytest')
       ")
       set -o pipefail
       eval "$CMD" 2>&1 | tee ${context.run_dir}/ll-test-results.txt
