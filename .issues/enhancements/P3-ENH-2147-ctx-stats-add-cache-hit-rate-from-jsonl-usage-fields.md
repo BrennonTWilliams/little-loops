@@ -1,18 +1,26 @@
 ---
 id: ENH-2147
 type: ENH
-title: "ll-ctx-stats: compute cache hit rate from JSONL cache_read vs cache_creation tokens"
+title: 'll-ctx-stats: compute cache hit rate from JSONL cache_read vs cache_creation
+  tokens'
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-13
 discovered_by: research-review
 labels:
-  - ctx-stats
-  - cache
-  - analytics
+- ctx-stats
+- cache
+- analytics
 parent: EPIC-1626
 relates_to:
-  - FEAT-1624
+- FEAT-1624
+confidence_score: 87
+outcome_confidence: 84
+score_complexity: 21
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 23
+completed_at: 2026-06-14 06:14:01+00:00
 ---
 
 # ENH-2147: ll-ctx-stats — proper cache hit rate from JSONL usage fields
@@ -110,13 +118,13 @@ Cache hit rate: 93%  (cache_read=61,559 | cache_write=3,689 | uncached=1)
 - `scripts/little_loops/cli/ctx_stats.py` — add `_compute_cache_rate_from_jsonl()`, update `_render()` and JSON output
 
 ### Dependent Files (Callers/Importers)
-- TBD — use grep to find references: `grep -r "ctx_stats\|CtxStats" scripts/`
+- `scripts/little_loops/cli/__init__.py` — imports ctx_stats module
 
 ### Similar Patterns
-- TBD — check existing JSONL parsing utilities: `grep -r "cache_read_input_tokens\|jsonl" scripts/little_loops/`
+- `scripts/little_loops/subprocess_utils.py` — already parses `cache_read_input_tokens` and `cache_creation_input_tokens` from JSONL `message.usage` fields (lines ~416–428); follow this pattern for extraction
 
 ### Tests
-- TBD — identify or create test file for `ctx_stats.py` covering JSONL extraction and rate computation
+- `scripts/tests/test_cli_ctx_stats.py` — existing test file; add tests for `_compute_cache_rate_from_jsonl()` and updated `_render()` / JSON output
 
 ### Documentation
 - N/A
@@ -149,5 +157,12 @@ Cache hit rate: 93%  (cache_read=61,559 | cache_write=3,689 | uncached=1)
 **Open** | Created: 2026-06-13 | Priority: P3
 
 
+## Resolution
+
+Added `_compute_cache_rate_from_jsonl()` to `scripts/little_loops/cli/ctx_stats.py` that locates the most recently modified non-agent JSONL transcript, extracts and UUID-deduplicates `cache_read_input_tokens`, `cache_creation_input_tokens`, and `input_tokens` from assistant entries, and computes the session-aggregate hit rate. Updated `_render()` and `_print_json()` to surface the metric in both text and JSON output. Added 12 new tests to `scripts/tests/test_cli_ctx_stats.py` covering computation, deduplication, no-data fallback, and output format.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T06:08:15 - `afa37e4e-8f0d-4470-a55c-800f946b7da7.jsonl`
 - `/ll:format-issue` - 2026-06-14T04:14:53 - `e2e0a70e-86e6-49f1-872f-c22e27207788.jsonl`
+- `/ll:confidence-check` - 2026-06-14T00:00:00 - `85f31ece-9d5b-4871-98b3-a64b5ba13a91.jsonl`
+- `/ll:manage-issue` - 2026-06-14T06:14:01Z - `e8c9957a-66fb-4c2a-b89c-5a8554303b18.jsonl`

@@ -26,6 +26,7 @@ from little_loops.cli.output import (
 )
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+from little_loops.user_messages import get_project_folder
 
 DEFAULT_DB_RELPATH = Path(".ll") / "history.db"
 DEFAULT_STATE_RELPATH = Path(".ll") / "ll-context-state.json"
@@ -171,10 +172,77 @@ def _load_fallback_state(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _compute_cache_rate_from_jsonl(cwd: Path) -> dict[str, Any] | None:
+    """Compute session-aggregate cache hit rate from the most recent JSONL transcript.
+
+    Reads the most recently modified non-agent JSONL file in the project's
+    ~/.claude/projects/<dir>/ folder, sums ``cache_read_input_tokens``,
+    ``cache_creation_input_tokens``, and ``input_tokens`` across all unique
+    assistant entries (deduplicated by UUID to avoid double-counting), and
+    returns the aggregate hit rate.
+
+    Formula: hit_rate = cache_read / (cache_read + cache_write + uncached) * 100
+    """
+    project_folder = get_project_folder(cwd)
+    if project_folder is None:
+        return None
+
+    jsonl_files = [
+        f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")
+    ]
+    if not jsonl_files:
+        return None
+
+    latest = max(jsonl_files, key=lambda f: f.stat().st_mtime)
+
+    cache_read = 0
+    cache_write = 0
+    uncached = 0
+    seen_uuids: set[str] = set()
+
+    try:
+        with open(latest, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("type") != "assistant":
+                    continue
+                uuid = record.get("uuid")
+                if uuid:
+                    if uuid in seen_uuids:
+                        continue
+                    seen_uuids.add(uuid)
+                usage = record.get("message", {}).get("usage", {})
+                if not usage:
+                    continue
+                cache_read += int(usage.get("cache_read_input_tokens", 0))
+                cache_write += int(usage.get("cache_creation_input_tokens", 0))
+                uncached += int(usage.get("input_tokens", 0))
+    except OSError:
+        return None
+
+    total = cache_read + cache_write + uncached
+    if total == 0:
+        return None
+
+    return {
+        "cache_read": cache_read,
+        "cache_write": cache_write,
+        "uncached": uncached,
+        "hit_rate_pct": round(cache_read / total * 100),
+    }
+
+
 def _render(
     summary: dict[str, Any],
     logger: Logger,
     skill_stats: dict[str, dict[str, int]] | None = None,
+    cache_rate: dict[str, Any] | None = None,
 ) -> None:
     """Print the savings report for an aggregated SQLite ``summary`` dict."""
     total_processed = int(summary["total_in"]) + int(summary["total_out"])
@@ -220,6 +288,16 @@ def _render(
     else:
         logger.info("Cache: no hits recorded in this session")
 
+    if cache_rate is not None:
+        cr = cache_rate["cache_read"]
+        cw = cache_rate["cache_write"]
+        u = cache_rate["uncached"]
+        pct = cache_rate["hit_rate_pct"]
+        print(
+            f"Cache hit rate: {pct}%  "
+            f"(cache_read={cr:,} | cache_write={cw:,} | uncached={u:,})"
+        )
+
     if skill_stats:
         print()
         print("Skill health:")
@@ -259,6 +337,7 @@ def _print_json(
     summary: dict[str, Any] | None,
     state: dict[str, Any] | None,
     skill_stats: dict[str, dict[str, int]] | None = None,
+    cache_rate: dict[str, Any] | None = None,
 ) -> None:
     """Emit a JSON document combining SQLite + fallback data."""
     if summary is not None:
@@ -290,6 +369,10 @@ def _print_json(
             "reduction_pct": round(100 * saved / total_processed) if total_processed else 0,
             "cache_hits": int(summary["cache_hits"]),
             "cache_bytes_saved": int(summary["cache_bytes"]),
+            "cache_hit_rate_pct": cache_rate["hit_rate_pct"] if cache_rate else None,
+            "cache_read_tokens": cache_rate["cache_read"] if cache_rate else None,
+            "cache_write_tokens": cache_rate["cache_write"] if cache_rate else None,
+            "uncached_tokens": cache_rate["uncached"] if cache_rate else None,
             "per_tool": summary["per_tool"],
             "skill_health": skill_health,
         }
@@ -324,9 +407,10 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         summary = _aggregate_tool_events(db_path)
         skill_stats = _aggregate_skill_stats(db_path)
         fallback = _load_fallback_state(state_path) if summary is None else None
+        cache_rate = _compute_cache_rate_from_jsonl(cwd)
 
         if args.json_mode:
-            _print_json(summary, fallback, skill_stats)
+            _print_json(summary, fallback, skill_stats, cache_rate)
             return 0 if (summary is not None or fallback is not None) else 1
 
         if summary is not None:
@@ -339,7 +423,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
                 if fallback is None:
                     fallback = _load_fallback_state(state_path)
             else:
-                _render(summary, logger, skill_stats)
+                _render(summary, logger, skill_stats, cache_rate)
                 return 0
 
         if fallback is not None:

@@ -12,6 +12,7 @@ import pytest
 from little_loops.cli.ctx_stats import (
     _aggregate_tool_events,
     _build_parser,
+    _compute_cache_rate_from_jsonl,
     _parse_args,
     _progress_bar,
     _time_gained,
@@ -362,6 +363,223 @@ class TestToolEventsRoundtrip:
         assert row["bytes_in"] == 7
         assert row["bytes_out"] == 42
         assert row["cache_hit"] == 1
+
+
+class TestComputeCacheRateFromJsonl:
+    """Cache hit rate computation from JSONL transcript."""
+
+    def _write_jsonl(self, path: Path, entries: list[dict]) -> None:
+        with open(path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+
+    def test_returns_none_when_no_project_folder(self, tmp_path: Path) -> None:
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=None):
+            assert _compute_cache_rate_from_jsonl(tmp_path) is None
+
+    def test_returns_none_when_no_jsonl_files(self, tmp_path: Path) -> None:
+        project_folder = tmp_path / "projects"
+        project_folder.mkdir()
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+            assert _compute_cache_rate_from_jsonl(tmp_path) is None
+
+    def test_computes_hit_rate(self, tmp_path: Path) -> None:
+        project_folder = tmp_path / "projects"
+        project_folder.mkdir()
+        self._write_jsonl(
+            project_folder / "session.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 61559,
+                            "cache_creation_input_tokens": 3689,
+                            "input_tokens": 1,
+                        }
+                    },
+                }
+            ],
+        )
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+            result = _compute_cache_rate_from_jsonl(tmp_path)
+        assert result is not None
+        assert result["cache_read"] == 61559
+        assert result["cache_write"] == 3689
+        assert result["uncached"] == 1
+        expected_pct = round(61559 / (61559 + 3689 + 1) * 100)
+        assert result["hit_rate_pct"] == expected_pct
+
+    def test_aggregates_multiple_turns(self, tmp_path: Path) -> None:
+        project_folder = tmp_path / "projects"
+        project_folder.mkdir()
+        self._write_jsonl(
+            project_folder / "session.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "message": {"usage": {"cache_read_input_tokens": 100, "cache_creation_input_tokens": 10, "input_tokens": 5}},
+                },
+                {
+                    "type": "assistant",
+                    "uuid": "a2",
+                    "message": {"usage": {"cache_read_input_tokens": 200, "cache_creation_input_tokens": 20, "input_tokens": 2}},
+                },
+            ],
+        )
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+            result = _compute_cache_rate_from_jsonl(tmp_path)
+        assert result is not None
+        assert result["cache_read"] == 300
+        assert result["cache_write"] == 30
+        assert result["uncached"] == 7
+
+    def test_deduplicates_by_uuid(self, tmp_path: Path) -> None:
+        project_folder = tmp_path / "projects"
+        project_folder.mkdir()
+        self._write_jsonl(
+            project_folder / "session.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "dup",
+                    "message": {"usage": {"cache_read_input_tokens": 100, "cache_creation_input_tokens": 10, "input_tokens": 1}},
+                },
+                {
+                    "type": "assistant",
+                    "uuid": "dup",
+                    "message": {"usage": {"cache_read_input_tokens": 100, "cache_creation_input_tokens": 10, "input_tokens": 1}},
+                },
+            ],
+        )
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+            result = _compute_cache_rate_from_jsonl(tmp_path)
+        assert result is not None
+        assert result["cache_read"] == 100  # counted once only
+        assert result["cache_write"] == 10
+
+    def test_skips_agent_jsonl_files(self, tmp_path: Path) -> None:
+        project_folder = tmp_path / "projects"
+        project_folder.mkdir()
+        self._write_jsonl(
+            project_folder / "agent-worker.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "message": {"usage": {"cache_read_input_tokens": 9000, "cache_creation_input_tokens": 0, "input_tokens": 1}},
+                }
+            ],
+        )
+        (project_folder / "session.jsonl").write_text("")
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+            assert _compute_cache_rate_from_jsonl(tmp_path) is None
+
+    def test_returns_none_when_total_zero(self, tmp_path: Path) -> None:
+        project_folder = tmp_path / "projects"
+        project_folder.mkdir()
+        self._write_jsonl(
+            project_folder / "session.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "message": {"usage": {"cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "input_tokens": 0}},
+                }
+            ],
+        )
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+            assert _compute_cache_rate_from_jsonl(tmp_path) is None
+
+    def test_skips_non_assistant_entries(self, tmp_path: Path) -> None:
+        project_folder = tmp_path / "projects"
+        project_folder.mkdir()
+        self._write_jsonl(
+            project_folder / "session.jsonl",
+            [
+                {"type": "user", "message": {"content": "hello"}},
+                {
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "message": {"usage": {"cache_read_input_tokens": 50, "cache_creation_input_tokens": 5, "input_tokens": 1}},
+                },
+            ],
+        )
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+            result = _compute_cache_rate_from_jsonl(tmp_path)
+        assert result is not None
+        assert result["cache_read"] == 50
+
+
+class TestCacheHitRateInOutput:
+    """Cache hit rate appears in _render() and --json when JSONL data is available."""
+
+    def _populate_and_run(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+        extra_argv: list[str] | None = None,
+        cache_rate: dict | None = None,
+    ) -> tuple[int, str]:
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        from little_loops.session_store import ensure_db
+        import sqlite3
+
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        conn.execute(
+            "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, result_size, bytes_in, bytes_out, cache_hit) "
+            "VALUES('2026-01-01T00:00:00Z', 's1', 'Read', 'h', 100, 200, 1024, 0)"
+        )
+        conn.commit()
+        conn.close()
+
+        lines: list[str] = []
+        argv = ["ll-ctx-stats"] + (extra_argv or [])
+        with (
+            patch("sys.argv", argv),
+            patch("builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")),
+            patch("little_loops.cli.ctx_stats._compute_cache_rate_from_jsonl", return_value=cache_rate),
+        ):
+            rc = main_ctx_stats()
+        return rc, "\n".join(lines)
+
+    def test_hit_rate_line_shown_in_render(self, tmp_path: Path, monkeypatch) -> None:
+        cache_rate = {"cache_read": 61559, "cache_write": 3689, "uncached": 1, "hit_rate_pct": 94}
+        rc, output = self._populate_and_run(tmp_path, monkeypatch, cache_rate=cache_rate)
+        assert rc == 0
+        assert "Cache hit rate: 94%" in output
+        assert "cache_read=61,559" in output
+        assert "cache_write=3,689" in output
+
+    def test_hit_rate_line_absent_when_no_jsonl(self, tmp_path: Path, monkeypatch) -> None:
+        rc, output = self._populate_and_run(tmp_path, monkeypatch, cache_rate=None)
+        assert rc == 0
+        assert "Cache hit rate" not in output
+
+    def test_json_includes_cache_hit_rate(self, tmp_path: Path, monkeypatch) -> None:
+        cache_rate = {"cache_read": 500, "cache_write": 50, "uncached": 2, "hit_rate_pct": 89}
+        rc, output = self._populate_and_run(
+            tmp_path, monkeypatch, extra_argv=["--json"], cache_rate=cache_rate
+        )
+        assert rc == 0
+        data = json.loads(output)
+        assert data["cache_hit_rate_pct"] == 89
+        assert data["cache_read_tokens"] == 500
+        assert data["cache_write_tokens"] == 50
+        assert data["uncached_tokens"] == 2
+
+    def test_json_cache_hit_rate_null_when_no_jsonl(self, tmp_path: Path, monkeypatch) -> None:
+        rc, output = self._populate_and_run(
+            tmp_path, monkeypatch, extra_argv=["--json"], cache_rate=None
+        )
+        assert rc == 0
+        data = json.loads(output)
+        assert data["cache_hit_rate_pct"] is None
 
 
 @pytest.fixture(autouse=True)
