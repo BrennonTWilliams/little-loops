@@ -1,20 +1,28 @@
 ---
 id: BUG-2145
 type: BUG
-title: "context-monitor: transcript baseline read once and never refreshed across turns"
+title: 'context-monitor: transcript baseline read once and never refreshed across
+  turns'
 priority: P2
-status: open
+status: done
 discovered_date: 2026-06-13
+completed_at: 2026-06-14 05:50:18+00:00
 discovered_by: research-review
 labels:
-  - context-monitor
-  - accuracy
-  - jsonl
+- context-monitor
+- accuracy
+- jsonl
 parent: EPIC-2149
 relates_to:
-  - ENH-810
-  - ENH-1376
-  - BUG-809
+- ENH-810
+- ENH-1376
+- BUG-809
+confidence_score: 94
+outcome_confidence: 78
+score_complexity: 22
+score_test_coverage: 15
+score_ambiguity: 18
+score_change_surface: 23
 ---
 
 # BUG-2145: context-monitor transcript baseline never refreshed across turns
@@ -147,5 +155,14 @@ the extra JSONL read adds ~2ms and is within the 5s hook timeout budget.
 **Open** | Created: 2026-06-13 | Priority: P2
 
 
+## Resolution
+
+Replaced the one-shot guard (`TRANSCRIPT_BASELINE -le 0`) in `hooks/scripts/context-monitor.sh` with mtime-based change detection. The JSONL transcript is now re-read on the first `PostToolUse` call of each new turn (detected by comparing the file's mtime against a `last_baseline_mtime` value stored in state). Subsequent calls within the same turn use the cached baseline. The new `last_baseline_mtime` field is persisted alongside `transcript_baseline_tokens` in `.ll/ll-context-state.json`.
+
+Added regression test `test_transcript_baseline_refreshed_on_new_turn` in `scripts/tests/test_hooks_integration.py` that simulates a multi-turn session and verifies the baseline is cached mid-turn and refreshed when mtime advances.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-14T05:50:18Z - BUG fix implemented and tested
+- `/ll:ready-issue` - 2026-06-14T05:44:27 - `f6374f01-4a21-402b-91b9-10ec7638da4d.jsonl`
 - `/ll:format-issue` - 2026-06-14T04:14:38 - `14a1adc0-a69d-4b4c-b62c-4bcfd24495c3.jsonl`
+- `/ll:confidence-check` - 2026-06-14T00:00:00Z - `8286dbf0-96e5-4773-bc5d-91477e28b4f1.jsonl`

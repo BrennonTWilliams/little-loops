@@ -241,6 +241,7 @@ main() {
         read -r OVERHEAD_CURRENT
         read -r TOOL_CURRENT
         read -r RESULT_TOKEN_COUNT
+        read -r LAST_BASELINE_MTIME
     } <<< "$(echo "$STATE" | jq -r --arg key "$TOOL_KEY" '
         (.estimated_tokens // 0 | tostring),
         (.tool_calls // 0 | tostring),
@@ -251,7 +252,8 @@ main() {
         (.transcript_baseline_tokens // 0 | tostring),
         (.breakdown["claude_overhead"] // 0 | tostring),
         (.breakdown[$key] // 0 | tostring),
-        (.result_token_count // 0 | tostring)
+        (.result_token_count // 0 | tostring),
+        (.last_baseline_mtime // "0")
     ')"
 
     # Detect model — use cached value from state; only read transcript on first detection
@@ -276,11 +278,17 @@ main() {
         TOOL_CURRENT=0
     fi
 
-    # Get transcript baseline — use cached value from state; only read transcript when cache is 0
+    # Get transcript baseline — re-read when JSONL mtime advances (new turn written).
+    # LAST_BASELINE_MTIME = "0" on first call, triggering initial read.
+    # Subsequent calls within the same turn have an unchanged mtime → serve from cache.
     TRANSCRIPT_BASELINE="${CACHED_BASELINE:-0}"
-    if [ "${USE_TRANSCRIPT_BASELINE}" = "true" ] && [ -n "$TRANSCRIPT_PATH" ] && \
-       { [ "${TRANSCRIPT_BASELINE}" -le 0 ] 2>/dev/null || [ -z "$TRANSCRIPT_BASELINE" ]; }; then
-        TRANSCRIPT_BASELINE=$(get_transcript_baseline "$TRANSCRIPT_PATH")
+    if [ "${USE_TRANSCRIPT_BASELINE}" = "true" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+        CURRENT_MTIME=$(get_mtime "$TRANSCRIPT_PATH")
+        if [ "${LAST_BASELINE_MTIME:-0}" = "0" ] || \
+           [ "$CURRENT_MTIME" -gt "${LAST_BASELINE_MTIME:-0}" ] 2>/dev/null; then
+            TRANSCRIPT_BASELINE=$(get_transcript_baseline "$TRANSCRIPT_PATH")
+            LAST_BASELINE_MTIME="$CURRENT_MTIME"
+        fi
     fi
 
     # Auto-upgrade: if the measured transcript baseline exceeds the resolved limit but is within
@@ -322,7 +330,7 @@ main() {
     OVERHEAD_NEW=$((OVERHEAD_CURRENT + overhead))
     TOOL_NEW=$((TOOL_CURRENT + TOKENS))
 
-    # Build new state (includes detected_model cache)
+    # Build new state (includes detected_model cache and baseline mtime for turn-boundary refresh)
     NEW_STATE=$(echo "$STATE" | jq \
         --argjson tokens "$NEW_TOKENS" \
         --argjson calls "$NEW_CALLS" \
@@ -332,7 +340,8 @@ main() {
         --argjson baseline "$TRANSCRIPT_BASELINE" \
         --arg model "$DETECTED_MODEL" \
         --argjson limit "$CONTEXT_LIMIT" \
-        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead | .transcript_baseline_tokens = $baseline | .detected_model = $model | .context_limit = $limit')
+        --arg baseline_mtime "${LAST_BASELINE_MTIME:-0}" \
+        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead | .transcript_baseline_tokens = $baseline | .detected_model = $model | .context_limit = $limit | .last_baseline_mtime = $baseline_mtime')
 
     # Calculate usage percentage
     USAGE_PERCENT=$((NEW_TOKENS * 100 / CONTEXT_LIMIT))

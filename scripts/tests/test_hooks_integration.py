@@ -1077,6 +1077,93 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
+    def test_transcript_baseline_refreshed_on_new_turn(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Baseline re-reads JSONL when mtime advances (new turn); cached otherwise.
+
+        Regression test for BUG-2145: baseline was read once and cached for the entire
+        session, causing estimates to diverge by 70K+ tokens on long sessions.
+        """
+        import os
+        import time
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".ll" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            transcript_file = tmp_path / "transcript.jsonl"
+            state_file = tmp_path / "ll-context-state.json"
+
+            def write_transcript(input_tokens: int) -> None:
+                entry = {
+                    "type": "assistant",
+                    "message": {
+                        "usage": {
+                            "input_tokens": input_tokens,
+                            "cache_creation_input_tokens": 0,
+                            "cache_read_input_tokens": 0,
+                            "output_tokens": 0,
+                        }
+                    },
+                }
+                transcript_file.write_text(json.dumps(entry) + "\n")
+
+            def run_hook() -> dict:
+                input_data = {
+                    "tool_name": "Read",
+                    "tool_response": {"content": "output\n"},
+                    "transcript_path": str(transcript_file),
+                }
+                result = subprocess.run(
+                    [str(hook_script)],
+                    input=json.dumps(input_data),
+                    capture_output=True,
+                    text=True,
+                    timeout=6,
+                )
+                assert result.returncode in (0, 2), f"Unexpected exit code: {result.returncode}"
+                return json.loads(state_file.read_text())
+
+            # Turn 1: initial JSONL with 50K tokens
+            write_transcript(50000)
+            state = run_hook()
+            assert state["transcript_baseline_tokens"] == 50000, (
+                f"Expected 50000 baseline on first call, got {state['transcript_baseline_tokens']}"
+            )
+            mtime_after_turn1 = state.get("last_baseline_mtime", "0")
+            assert mtime_after_turn1 != "0", "last_baseline_mtime should be set after first read"
+
+            # Same turn: run hook again without touching the transcript (mtime unchanged)
+            # Baseline must be served from cache, not re-read
+            state2 = run_hook()
+            assert state2["transcript_baseline_tokens"] == 50000, (
+                f"Baseline should be cached mid-turn, got {state2['transcript_baseline_tokens']}"
+            )
+            assert state2.get("last_baseline_mtime") == mtime_after_turn1, (
+                "last_baseline_mtime should not change when mtime is unchanged"
+            )
+
+            # New turn: wait for mtime to advance, then update transcript with 120K tokens
+            time.sleep(1.1)
+            write_transcript(120000)
+
+            state3 = run_hook()
+            assert state3["transcript_baseline_tokens"] == 120000, (
+                f"Expected refreshed baseline 120000 on new turn, got {state3['transcript_baseline_tokens']}"
+            )
+            mtime_after_turn2 = state3.get("last_baseline_mtime", "0")
+            assert mtime_after_turn2 != mtime_after_turn1, (
+                "last_baseline_mtime should advance after new turn"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
 
 class TestUserPromptCheck:
     """Test user-prompt-check.sh special character handling."""
