@@ -3200,6 +3200,140 @@ class TestSimulationActionRunner:
         assert "run_check" in sim_runner.calls[2]
 
 
+class TestSimulationSubLoopDispatch:
+    """Tests for BUG-2137: simulate mode must stub sub-loop dispatch without real execution."""
+
+    def _parent_with_sub_loop(self, loop_ref: str) -> FSMLoop:
+        return FSMLoop(
+            name="parent",
+            initial="dispatch",
+            states={
+                "dispatch": StateConfig(loop=loop_ref, on_yes="passed", on_no="failed", on_error="errored"),
+                "passed": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+                "errored": StateConfig(terminal=True),
+            },
+        )
+
+    def test_static_sub_loop_simulates_without_real_execution(self, tmp_path: Path) -> None:
+        """Static sub-loop dispatch in simulation must NOT execute the real child FSM."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child writes a sentinel file if it actually runs — simulation must not create it
+        sentinel = tmp_path / "child_ran.txt"
+        (loops_dir / "child.yaml").write_text(
+            f"name: child\ninitial: mark\nstates:\n"
+            f"  mark:\n    action: 'touch {sentinel}'\n    next: done\n"
+            f"  done:\n    terminal: true"
+        )
+        sim_runner = SimulationActionRunner(scenario="all-pass")
+        executor = FSMExecutor(self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner)
+        result = executor.run()
+
+        assert not sentinel.exists(), "Real child FSM must not execute in simulation mode"
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "passed"
+
+    def test_static_sub_loop_sim_routes_on_yes(self, tmp_path: Path) -> None:
+        """Simulated sub-loop with all-pass scenario routes to on_yes."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        sim_runner = SimulationActionRunner(scenario="all-pass")
+        executor = FSMExecutor(self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner)
+        result = executor.run()
+        assert result.final_state == "passed"
+
+    def test_static_sub_loop_sim_routes_on_no(self, tmp_path: Path) -> None:
+        """Simulated sub-loop with all-fail scenario routes to on_no."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        sim_runner = SimulationActionRunner(scenario="all-fail")
+        executor = FSMExecutor(self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner)
+        result = executor.run()
+        assert result.final_state == "failed"
+
+    def test_static_sub_loop_sim_routes_on_error(self, tmp_path: Path) -> None:
+        """Simulated sub-loop with all-error scenario routes to on_error."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        sim_runner = SimulationActionRunner(scenario="all-error")
+        executor = FSMExecutor(self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner)
+        result = executor.run()
+        assert result.final_state == "errored"
+
+    def test_dynamic_sub_loop_simulates_without_error(self, tmp_path: Path) -> None:
+        """Dynamic sub-loop (unresolvable name in sim) must not raise — uses raw template as label."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # No child YAML exists, and context has no 'chosen' key — would normally raise InterpolationError
+        fsm = FSMLoop(
+            name="parent",
+            initial="dispatch",
+            states={
+                "dispatch": StateConfig(
+                    loop="${context.chosen}",
+                    on_yes="passed",
+                    on_no="failed",
+                    on_error="errored",
+                ),
+                "passed": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+                "errored": StateConfig(terminal=True),
+            },
+        )
+        sim_runner = SimulationActionRunner(scenario="all-pass")
+        executor = FSMExecutor(fsm, loops_dir=loops_dir, action_runner=sim_runner)
+        result = executor.run()
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "passed"
+
+    def test_dynamic_sub_loop_label_uses_raw_template(self, tmp_path: Path) -> None:
+        """When a dynamic loop name can't resolve in simulation, the raw template is used as the display label."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        fsm = FSMLoop(
+            name="parent",
+            initial="dispatch",
+            states={
+                "dispatch": StateConfig(
+                    loop="${context.chosen}",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        sim_runner = SimulationActionRunner(scenario="all-pass")
+        executor = FSMExecutor(fsm, loops_dir=loops_dir, action_runner=sim_runner)
+        executor.run()
+        # The call was recorded with the raw template, not a crash
+        assert any("${context.chosen}" in c or "sub-loop" in c for c in sim_runner.calls)
+
+    def test_interpolation_error_in_live_mode_routes_to_on_error(self, tmp_path: Path) -> None:
+        """Outside simulation, unresolvable dynamic loop name routes to on_error via dispatch guard."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        fsm = FSMLoop(
+            name="parent",
+            initial="dispatch",
+            states={
+                "dispatch": StateConfig(
+                    loop="${context.chosen}",
+                    on_yes="passed",
+                    on_no="failed",
+                    on_error="errored",
+                ),
+                "passed": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+                "errored": StateConfig(terminal=True),
+            },
+        )
+        # Use MockActionRunner (not SimulationActionRunner) — hits the live dispatch path
+        executor = FSMExecutor(fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "errored"
+
+
 class TestExecutionResultToDict:
     """Tests for ExecutionResult.to_dict edge cases."""
 

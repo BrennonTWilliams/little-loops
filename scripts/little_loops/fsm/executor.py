@@ -528,6 +528,30 @@ class FSMExecutor:
         from little_loops.fsm.validation import load_and_validate
 
         assert state.loop is not None  # guarded by caller
+
+        # Simulation mode: stub dispatch instead of loading/running the real child FSM.
+        # Mirrors the ENH-1164 treatment of parallel: states — no side effects, no real child
+        # execution. Dynamic loop names that can't resolve in simulation yield a display label
+        # from the raw template rather than aborting with InterpolationError.
+        if isinstance(self.action_runner, SimulationActionRunner):
+            try:
+                display_name = interpolate(state.loop, ctx)
+            except InterpolationError:
+                display_name = state.loop  # raw template as label when context not populated
+            sim_result = self.action_runner.run(
+                action=f"[sub-loop: {display_name}]",
+                timeout=0,
+                is_slash_command=False,
+            )
+            if sim_result.exit_code == 0:
+                return interpolate(state.on_yes, ctx) if state.on_yes else None
+            elif sim_result.exit_code == 2:
+                if state.on_error:
+                    return interpolate(state.on_error, ctx)
+                return interpolate(state.on_no, ctx) if state.on_no else None
+            else:
+                return interpolate(state.on_no, ctx) if state.on_no else None
+
         loop_name = interpolate(state.loop, ctx)
         loop_path = resolve_loop_path(loop_name, self.loops_dir or Path(".loops"))
         child_fsm, _ = load_and_validate(loop_path)
@@ -851,7 +875,7 @@ class FSMExecutor:
         if state.loop is not None:
             try:
                 return self._execute_sub_loop(state, ctx)
-            except (FileNotFoundError, ValueError):
+            except (FileNotFoundError, ValueError, InterpolationError):
                 if state.on_error:
                     return interpolate(state.on_error, ctx)
                 raise

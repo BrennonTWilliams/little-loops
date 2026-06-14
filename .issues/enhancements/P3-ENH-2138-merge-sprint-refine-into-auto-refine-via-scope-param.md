@@ -1,6 +1,7 @@
 ---
 id: ENH-2138
-title: Merge sprint-refine-and-implement into auto-refine-and-implement via optional scope param
+title: Merge sprint-refine-and-implement into auto-refine-and-implement via optional
+  scope param
 type: ENH
 priority: P3
 status: open
@@ -14,6 +15,12 @@ labels:
 relates_to:
 - ENH-2139
 - BUG-2136
+confidence_score: 95
+outcome_confidence: 89
+score_complexity: 19
+score_test_coverage: 25
+score_ambiguity: 20
+score_change_surface: 25
 ---
 
 # ENH-2138: Merge sprint-refine-and-implement into auto-refine-and-implement via optional scope param
@@ -163,3 +170,4 @@ ll-loop run sprint-refine-and-implement --input sprint_name=<name>
 
 ## Session Log
 - `/ll:format-issue` - 2026-06-14T03:19:54 - `dfacee60-40f3-4ff7-a19d-f849dc1b4549.jsonl`
+- `/ll:confidence-check` - 2026-06-13T23:03:00 - `eb0284c4-5d00-4f0b-ab8f-3fe23aed3bf1.jsonl`

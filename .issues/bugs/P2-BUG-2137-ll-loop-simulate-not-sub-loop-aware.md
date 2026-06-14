@@ -3,7 +3,7 @@ id: BUG-2137
 captured_at: '2026-06-14T03:05:18Z'
 discovered_date: '2026-06-14'
 discovered_by: capture-issue
-status: open
+status: done
 relates_to:
 - ENH-1164
 - FEAT-1654
