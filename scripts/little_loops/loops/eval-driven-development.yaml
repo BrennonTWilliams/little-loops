@@ -34,9 +34,11 @@ states:
 
   # Run the eval harness via shell (not loop: field — see executor.py:585).
   # action: strings are interpolated; loop: fields are not.
+  # --no-lock prevents self-scope-conflict: the parent loop already holds
+  # the project lock, so the child ll-loop run would fail on acquire().
   # Pattern: rl-coding-agent.yaml:37-44
   run_harness:
-    action: ll-loop run ${context.harness_name}
+    action: ll-loop run --no-lock ${context.harness_name}
     action_type: shell
     capture: run_harness
     next: capture_issues
