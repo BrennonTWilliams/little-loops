@@ -856,6 +856,12 @@
           "default": 2,
           "minimum": 1,
           "maximum": 8
+        },
+        "max_issue_wall_clock_time": {
+          "type": "integer",
+          "description": "Hard per-issue wall-clock timeout in seconds for the sequential dispatch loop. If an issue (including Option J continuations) exceeds this limit, the orchestrator kills it, records WALL_CLOCK_TIMEOUT, and proceeds to the next issue.",
+          "default": 2700,
+          "minimum": 60
         }
       },
       "additionalProperties": false

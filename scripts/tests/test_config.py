@@ -564,12 +564,14 @@ class TestSprintsConfig:
             "sprints_dir": "custom-sprints/",
             "default_timeout": 7200,
             "default_max_workers": 8,
+            "max_issue_wall_clock_time": 1800,
         }
         config = SprintsConfig.from_dict(data)
 
         assert config.sprints_dir == "custom-sprints/"
         assert config.default_timeout == 7200
         assert config.default_max_workers == 8
+        assert config.max_issue_wall_clock_time == 1800
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating SprintsConfig with default values."""
@@ -578,6 +580,7 @@ class TestSprintsConfig:
         assert config.sprints_dir == ".sprints"
         assert config.default_timeout == 3600
         assert config.default_max_workers == 2
+        assert config.max_issue_wall_clock_time == 2700
 
 
 class TestLoopsConfig:

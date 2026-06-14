@@ -3,9 +3,10 @@ id: BUG-2144
 type: BUG
 priority: P2
 captured_at: '2026-06-14T03:50:03Z'
+completed_at: '2026-06-14T05:36:51Z'
 discovered_date: '2026-06-14'
 discovered_by: capture-issue
-status: open
+status: done
 relates_to:
 - ENH-303
 - BUG-2141
@@ -73,7 +74,7 @@ orchestrator kills the subprocess, marks the issue as failed with reason
 
 - **File**: `scripts/little_loops/cli/sprint/run.py`
 - **Lines**: 369–390 (sequential issue dispatch loop, no timeout wrapper)
-- **Anchor**: in function `_run_sprint_waves` or similar sequential dispatch
+- **Anchor**: in function `_cmd_sprint_run` (sequential dispatch loop)
 
 ENH-303's idle detection operates at the `run_claude_command()` level. Option J
 spawns a new subprocess whose initial output resets the idle window. The sprint level
@@ -112,7 +113,7 @@ Also: surface the timeout in sprint state so `ll-sprint show` reports it as
 ## Files to Modify
 
 - `scripts/little_loops/cli/sprint/run.py` — sequential dispatch loop, add wall-clock timeout wrapper
-- `scripts/little_loops/config.py` — add `sprint.max_issue_wall_clock_time` config key
+- `scripts/little_loops/config/features.py` — add `sprint.max_issue_wall_clock_time` config key to `SprintsConfig`
 - `config-schema.json` — document new config key
 
 ## Impact
@@ -129,10 +130,22 @@ Also: surface the timeout in sprint state so `ll-sprint show` reports it as
 - ENH-2143: Sequential sprint worktree isolation — complementary containment
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-14T05:36:51Z - implemented wall-clock timeout via SIGALRM in sequential sprint dispatch; added `max_issue_wall_clock_time` to SprintsConfig; updated config-schema.json
+- `/ll:ready-issue` - 2026-06-14T05:23:05 - `27d4fe95-9bd8-4cf2-a0a7-b3ccc31254d8.jsonl`
 - `/ll:capture-issue` - 2026-06-14T03:50:03Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:confidence-check` - 2026-06-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cad4a66a-e81d-47ad-aff1-160b8d4f14d0.jsonl`
+
+## Resolution
+
+Added a per-issue wall-clock timeout at the sprint orchestrator level to prevent deadlocks when Option J spawns a new Claude subprocess whose idle timer resets.
+
+**Changes:**
+- `scripts/little_loops/config/features.py`: Added `max_issue_wall_clock_time: int = 2700` (45 min) to `SprintsConfig`
+- `scripts/little_loops/cli/sprint/run.py`: Added `IssueWallClockTimeout` exception and `_run_issue_with_wall_clock_timeout` helper using SIGALRM; sequential dispatch loop now calls this instead of `process_issue_inplace` directly; `failure_reason` propagates to `state.failed_issues`
+- `config-schema.json`: Documented `max_issue_wall_clock_time` in the `sprints` section
+- 6 new tests covering config defaults, exception class, timeout return value, and alarm cleanup
 
 ---
 
 ## Status
-**Open** | Priority: P2
+**Done** | Priority: P2

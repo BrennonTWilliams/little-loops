@@ -601,3 +601,127 @@ class TestMainSprintEdgeCases:
         assert result == 0
         call_args = mocks["_cmd_sprint_run"].call_args[0][0]
         assert call_args.save is True
+
+
+# ---------------------------------------------------------------------------
+# Wall-clock timeout tests
+# ---------------------------------------------------------------------------
+
+
+class TestIssueWallClockTimeout:
+    """Tests for per-issue wall-clock timeout in the sequential dispatch loop."""
+
+    def test_exception_class_attributes(self) -> None:
+        """IssueWallClockTimeout stores the issue_id and is an Exception."""
+        from little_loops.cli.sprint.run import IssueWallClockTimeout
+
+        exc = IssueWallClockTimeout("BUG-2144")
+        assert exc.issue_id == "BUG-2144"
+        assert "BUG-2144" in str(exc)
+        assert isinstance(exc, Exception)
+
+    def test_run_issue_with_wall_clock_timeout_returns_success_on_fast_completion(
+        self,
+    ) -> None:
+        """Helper returns the original result when process_issue_inplace completes in time."""
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.cli.sprint.run import _run_issue_with_wall_clock_timeout
+        from little_loops.issue_manager import IssueProcessingResult
+        from little_loops.issue_parser import IssueInfo
+        from pathlib import Path
+
+        mock_issue = MagicMock(spec=IssueInfo)
+        mock_issue.issue_id = "BUG-001"
+        mock_config = MagicMock()
+        mock_logger = MagicMock()
+        expected = IssueProcessingResult(success=True, duration=1.0, issue_id="BUG-001")
+
+        with patch("little_loops.cli.sprint.run.signal") as mock_signal:
+            mock_signal.SIGALRM = 14
+            mock_signal.signal.return_value = None
+            with patch(
+                "little_loops.cli.sprint.run.process_issue_inplace", return_value=expected
+            ):
+                result = _run_issue_with_wall_clock_timeout(
+                    issue=mock_issue,
+                    config=mock_config,
+                    logger=mock_logger,
+                    dry_run=False,
+                    max_seconds=2700,
+                )
+
+        assert result.success is True
+        assert result.issue_id == "BUG-001"
+
+    def test_run_issue_with_wall_clock_timeout_catches_timeout_and_returns_failure(
+        self,
+    ) -> None:
+        """Helper catches IssueWallClockTimeout and returns a WALL_CLOCK_TIMEOUT result."""
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.cli.sprint.run import (
+            IssueWallClockTimeout,
+            _run_issue_with_wall_clock_timeout,
+        )
+        from little_loops.issue_parser import IssueInfo
+
+        mock_issue = MagicMock(spec=IssueInfo)
+        mock_issue.issue_id = "BUG-2144"
+        mock_config = MagicMock()
+        mock_logger = MagicMock()
+
+        def _raise_timeout(*_args, **_kwargs) -> None:
+            raise IssueWallClockTimeout("BUG-2144")
+
+        with patch("little_loops.cli.sprint.run.signal") as mock_signal:
+            mock_signal.SIGALRM = 14
+            mock_signal.signal.return_value = None
+            with patch(
+                "little_loops.cli.sprint.run.process_issue_inplace", side_effect=_raise_timeout
+            ):
+                result = _run_issue_with_wall_clock_timeout(
+                    issue=mock_issue,
+                    config=mock_config,
+                    logger=mock_logger,
+                    dry_run=False,
+                    max_seconds=60,
+                )
+
+        assert result.success is False
+        assert result.issue_id == "BUG-2144"
+        assert result.failure_reason == "WALL_CLOCK_TIMEOUT"
+        mock_signal.alarm.assert_called_with(0)
+
+    def test_alarm_is_cleared_in_finally_after_timeout(self) -> None:
+        """signal.alarm(0) is always called in the finally block."""
+        from unittest.mock import MagicMock, call, patch
+
+        from little_loops.cli.sprint.run import (
+            IssueWallClockTimeout,
+            _run_issue_with_wall_clock_timeout,
+        )
+        from little_loops.issue_parser import IssueInfo
+
+        mock_issue = MagicMock(spec=IssueInfo)
+        mock_issue.issue_id = "BUG-001"
+
+        def _raise_timeout(*_args, **_kwargs) -> None:
+            raise IssueWallClockTimeout("BUG-001")
+
+        with patch("little_loops.cli.sprint.run.signal") as mock_signal:
+            mock_signal.SIGALRM = 14
+            mock_signal.signal.return_value = None
+            with patch(
+                "little_loops.cli.sprint.run.process_issue_inplace", side_effect=_raise_timeout
+            ):
+                _run_issue_with_wall_clock_timeout(
+                    issue=mock_issue,
+                    config=MagicMock(),
+                    logger=MagicMock(),
+                    dry_run=False,
+                    max_seconds=60,
+                )
+
+        alarm_calls = mock_signal.alarm.call_args_list
+        assert call(0) in alarm_calls

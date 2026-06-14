@@ -6,6 +6,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING
@@ -14,6 +15,7 @@ from little_loops.cli.output import use_color_enabled
 from little_loops.cli.sprint._helpers import _build_issue_contents, _render_dependency_analysis
 from little_loops.cli_args import _id_matches, parse_issue_ids, parse_issue_types, parse_labels
 from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
+from little_loops.issue_manager import IssueProcessingResult, process_issue_inplace
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
 from little_loops.sprint import SprintManager, SprintState
@@ -22,10 +24,63 @@ if TYPE_CHECKING:
     import argparse
 
     from little_loops.config import BRConfig
+    from little_loops.issue_parser import IssueInfo
 
 # Module-level shutdown flag for ll-sprint signal handling (ENH-183)
 _sprint_shutdown_requested: bool = False
 _sprint_logger: Logger | None = None
+
+
+class IssueWallClockTimeout(Exception):
+    """Raised when an issue exceeds its per-issue wall-clock time budget (BUG-2144)."""
+
+    def __init__(self, issue_id: str) -> None:
+        self.issue_id = issue_id
+        super().__init__(f"{issue_id}: wall-clock timeout")
+
+
+def _run_issue_with_wall_clock_timeout(
+    issue: IssueInfo,
+    config: BRConfig,
+    logger: Logger,
+    dry_run: bool,
+    max_seconds: int,
+) -> IssueProcessingResult:
+    """Wrap process_issue_inplace with a SIGALRM-based wall-clock timeout.
+
+    If the issue takes longer than max_seconds (across all subprocess spawns,
+    including Option J continuations), SIGALRM fires, IssueWallClockTimeout is
+    raised, and a failed IssueProcessingResult with failure_reason=WALL_CLOCK_TIMEOUT
+    is returned. The alarm is always cleared in the finally block.
+    """
+    def _timeout_handler(signum: int, frame: FrameType | None) -> None:
+        raise IssueWallClockTimeout(issue.issue_id)
+
+    prev_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(max_seconds)
+    issue_start = time.monotonic()
+    try:
+        return process_issue_inplace(
+            info=issue,
+            config=config,
+            logger=logger,
+            dry_run=dry_run,
+        )
+    except IssueWallClockTimeout:
+        elapsed = time.monotonic() - issue_start
+        logger.error(
+            f"  {issue.issue_id}: wall-clock timeout after {int(elapsed)}s "
+            f"(limit {max_seconds}s) — marking failed"
+        )
+        return IssueProcessingResult(
+            success=False,
+            duration=elapsed,
+            issue_id=issue.issue_id,
+            failure_reason="WALL_CLOCK_TIMEOUT",
+        )
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, prev_handler)
 
 
 def _sprint_signal_handler(signum: int, frame: FrameType | None) -> None:
@@ -370,16 +425,17 @@ def _cmd_sprint_run(
             if len(wave) == 1 or is_contention_subwave:
                 # Single issue OR contention sub-wave — process in-place sequentially
                 # (contention sub-waves are displayed as "serialized steps" so must run that way)
-                from little_loops.issue_manager import process_issue_inplace
+                max_wall_clock = config.sprints.max_issue_wall_clock_time
 
                 wave_failed = False
                 for issue in wave:
                     # TODO(ENH-1686): sprint sequential path not yet live-written
-                    issue_result = process_issue_inplace(
-                        info=issue,
+                    issue_result = _run_issue_with_wall_clock_timeout(
+                        issue=issue,
                         config=config,
                         logger=logger,
                         dry_run=args.dry_run,
+                        max_seconds=max_wall_clock,
                     )
                     total_duration += issue_result.duration
                     if issue_result.success:
@@ -394,7 +450,9 @@ def _cmd_sprint_run(
                     else:
                         wave_failed = True
                         completed.add(issue.issue_id)
-                        state.failed_issues[issue.issue_id] = "Issue processing failed"
+                        state.failed_issues[issue.issue_id] = (
+                            issue_result.failure_reason or "Issue processing failed"
+                        )
                         logger.warning(f"  {issue.issue_id}: failed")
                 if wave_failed:
                     failed_waves += 1
