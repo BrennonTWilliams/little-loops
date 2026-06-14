@@ -1778,6 +1778,19 @@ class TestSprintRefineAndImplementLoop:
         state = data["states"].get("refine_issue", {})
         assert state.get("context_passthrough") is True
 
+    def test_get_next_issue_resolves_sprint_or_epic(self, data: dict) -> None:
+        """get_next_issue must resolve via load_or_resolve so EPIC IDs and sprint names both work."""
+        action = data["states"]["get_next_issue"].get("action", "")
+        assert "load_or_resolve" in action, (
+            "get_next_issue must resolve input via SprintManager.load_or_resolve "
+            "so EPIC IDs and sprint names both work"
+        )
+        assert "EPIC" in action  # usage/error text advertises EPIC support
+
+    def test_get_next_issue_still_captures_input(self, data: dict) -> None:
+        """get_next_issue must keep capturing as 'input' for context_passthrough to work."""
+        assert data["states"]["get_next_issue"].get("capture") == "input"
+
 
 class TestAutodevLoop:
     """Structural tests for the autodev FSM loop (ENH-1127: interleaved refine+implement)."""

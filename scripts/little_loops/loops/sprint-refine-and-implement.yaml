@@ -1,12 +1,15 @@
 name: "sprint-refine-and-implement"
 category: issue-management
 description: |
-  Like auto-refine-and-implement but scoped to a named sprint's issue list.
-  Usage: ll-loop run sprint-refine-and-implement <sprint-name>
-  Reads .sprints/<sprint-name>.yaml and processes issues in sprint order:
-  recursively refine via recursive-refine (with decomposition), then implement
-  all issues that passed refinement. Skips issues that fail refinement or are
-  decomposed. Stops when the sprint is exhausted.
+  Like auto-refine-and-implement but scoped to a named sprint OR an EPIC's
+  active children.
+  Usage: ll-loop run sprint-refine-and-implement <sprint-name|EPIC-NNN>
+  Resolves the input via SprintManager.load_or_resolve: a sprint name reads
+  .sprints/<sprint-name>.yaml, an EPIC-NNN id enumerates the EPIC's active,
+  dependency-ordered children. Processes issues in order: recursively refine
+  via recursive-refine (with decomposition), then implement all issues that
+  passed refinement. Skips issues that fail refinement or are decomposed.
+  Stops when the sprint/EPIC is exhausted.
 input_key: sprint_name
 required_inputs: ["sprint_name"]
 initial: get_next_issue
@@ -16,32 +19,52 @@ on_handoff: spawn
 import:
   - lib/common.yaml
 context:
-  sprint_name: ""
+  sprint_name: ""   # sprint name (.sprints/<name>.yaml) or an EPIC-NNN id
   max_issues: 100
 
 states:
   get_next_issue:
     action: |
       mkdir -p "${context.run_dir}"
-      SKIP_FILE="${context.run_dir}/sprint-refine-and-implement-skipped.txt"
-      if [ -z "${context.sprint_name}" ]; then
-        echo "Usage: ll-loop run sprint-refine-and-implement <sprint-name>" >&2
-        exit 1
-      fi
-      SPRINT_FILE=".sprints/${context.sprint_name}.yaml"
-      if [ ! -f "$SPRINT_FILE" ]; then
-        echo "Sprint '${context.sprint_name}' not found at $SPRINT_FILE" >&2
-        exit 1
-      fi
-      while IFS= read -r ISSUE_ID; do
-        [ -z "$ISSUE_ID" ] && continue
-        if [ -f "$SKIP_FILE" ] && grep -qxF "$ISSUE_ID" "$SKIP_FILE"; then
-          continue
-        fi
-        echo "$ISSUE_ID"
-        exit 0
-      done < <(grep '^ *-' "$SPRINT_FILE" | sed 's/^ *- *//')
-      exit 1
+      python3 << 'PYEOF'
+      import os, sys
+      from pathlib import Path
+      from little_loops.config import BRConfig
+      from little_loops.sprint import SprintManager
+
+      arg = """${context.sprint_name}""".strip()
+      run_dir = "${context.run_dir}"
+      skip_file = os.path.join(run_dir, "sprint-refine-and-implement-skipped.txt")
+
+      if not arg:
+          sys.stderr.write(
+              "Usage: ll-loop run sprint-refine-and-implement <sprint-name|EPIC-NNN>\n")
+          sys.exit(1)
+
+      # load_or_resolve accepts a sprint name (.sprints/<name>.yaml) or an
+      # EPIC-NNN id. The EPIC branch requires a config, so construct one.
+      sprint = SprintManager(config=BRConfig(Path.cwd())).load_or_resolve(arg)
+      if sprint is None:
+          sys.stderr.write(
+              f"'{arg}' not found: no .sprints/{arg}.yaml and not a resolvable EPIC ID\n")
+          sys.exit(1)
+
+      issues = sprint.issues or []
+      if not issues:
+          sys.stderr.write(f"'{arg}' resolved but has no active issues to process\n")
+          sys.exit(1)
+
+      skipped = set()
+      if os.path.exists(skip_file):
+          with open(skip_file) as f:
+              skipped = {ln.strip() for ln in f if ln.strip()}
+
+      for issue_id in issues:
+          if issue_id not in skipped:
+              print(issue_id)
+              sys.exit(0)
+      sys.exit(1)
+      PYEOF
     action_type: shell
     capture: input
     on_yes: refine_issue
