@@ -2,9 +2,8 @@ name: "refine-to-ready-issue"
 description: "Drives a single issue from backlog to ready-state: refines it, wires integration points, runs confidence checks, and routes to issue-size-review if confidence thresholds cannot be met."
 category: issue-management
 # Routing summary:
-#   confidence_check → verify_scores_persisted → (on_yes) check_readiness → (on_yes) check_outcome → (on_yes) restore_best → done
-#                                              → (on_no)  retry_confidence_check → verify_scores_persisted_final
-#                                                           → (on_yes) check_readiness | (on_no) failed
+#   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) restore_best → done
+#                                                       → (on_failure) diagnose
 #                      check_readiness         → (on_no)  check_refine_limit → refine_issue
 #                      check_outcome           → (on_no)  check_decision_needed → (on_yes) done
 #                                                                               → (on_no)  breakdown_issue
@@ -128,91 +127,11 @@ states:
     on_error: confidence_check
 
   confidence_check:
-    action: "/ll:confidence-check ${captured.issue_id.output}"
-    action_type: slash_command
-    next: verify_scores_persisted
-    on_error: diagnose
-
-  verify_scores_persisted:
-    # Guard: assert that Phase 4 of confidence-check actually wrote scores to frontmatter.
-    # On miss, routes to retry_confidence_check (one re-run) rather than failed directly,
-    # so a single LLM skip of the set-scores call does not trigger spurious size-review.
-    action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-
-      r = subprocess.run(
-          ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception as e:
-          print(f"ERROR: verify_scores_persisted: failed to parse ll-issues show output: {e}", file=sys.stderr)
-          sys.exit(1)
-      confidence = d.get('confidence')
-      outcome = d.get('outcome')
-      if confidence is None or outcome is None:
-          print(
-              f"ERROR: verify_scores_persisted: scores not found in frontmatter after confidence_check "
-              f"(confidence={confidence}, outcome={outcome}). "
-              "The confidence-check skill did not write scores via ll-issues set-scores. "
-              "Retrying confidence-check once before routing to failed.",
-              file=sys.stderr
-          )
-          sys.exit(1)
-      sys.exit(0)
-      PYEOF
-    action_type: shell
-    evaluate:
-      type: exit_code
-    on_yes: check_readiness
-    on_no: retry_confidence_check
-    on_error: retry_confidence_check
-
-  retry_confidence_check:
-    # Scores were not persisted after the first confidence-check run (LLM skipped
-    # the set-scores Bash call). Re-run once; verify again. Route to failed only on
-    # a second consecutive miss so a transient skip does not trigger spurious size-review.
-    action: "/ll:confidence-check ${captured.issue_id.output}"
-    action_type: slash_command
-    next: verify_scores_persisted_final
-    on_error: diagnose
-
-  verify_scores_persisted_final:
-    # Second persistence check after retry_confidence_check. If scores are still
-    # absent, route to failed — this is a genuine infrastructure problem, not a
-    # transient skip.
-    action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-
-      r = subprocess.run(
-          ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception as e:
-          print(f"ERROR: verify_scores_persisted_final: failed to parse ll-issues show output: {e}", file=sys.stderr)
-          sys.exit(1)
-      confidence = d.get('confidence')
-      outcome = d.get('outcome')
-      if confidence is None or outcome is None:
-          print(
-              f"ERROR: verify_scores_persisted_final: scores still missing after retry "
-              f"(confidence={confidence}, outcome={outcome}). "
-              "Routing to failed — confidence-check did not persist scores on two attempts.",
-              file=sys.stderr
-          )
-          sys.exit(1)
-      sys.exit(0)
-      PYEOF
-    action_type: shell
-    evaluate:
-      type: exit_code
-    on_yes: check_readiness
-    on_no: diagnose
+    loop: verify-confidence-scores
+    with:
+      issue_id: "${captured.issue_id.output}"
+    on_success: check_readiness
+    on_failure: diagnose
     on_error: diagnose
 
   check_readiness:

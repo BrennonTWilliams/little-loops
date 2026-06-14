@@ -840,11 +840,15 @@ class TestRefineToReadyIssueSubLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_confidence_check_routes_to_verify_scores_persisted(self, data: dict) -> None:
-        """confidence_check must route to verify_scores_persisted guard before check_readiness (ENH-1033 + guard)."""
+    def test_confidence_check_delegates_to_verify_confidence_scores_oracle(self, data: dict) -> None:
+        """confidence_check must delegate score verification to the verify-confidence-scores oracle,
+        routing success to check_readiness (extraction of ENH-1033 guard into reusable child loop)."""
         confidence_check = data["states"].get("confidence_check", {})
-        assert confidence_check.get("next") == "verify_scores_persisted", (
-            f"confidence_check.next should be 'verify_scores_persisted', got {confidence_check.get('next')!r}"
+        assert confidence_check.get("loop") == "verify-confidence-scores", (
+            f"confidence_check.loop should be 'verify-confidence-scores', got {confidence_check.get('loop')!r}"
+        )
+        assert confidence_check.get("on_success") == "check_readiness", (
+            f"confidence_check.on_success should be 'check_readiness', got {confidence_check.get('on_success')!r}"
         )
 
     def test_confidence_check_has_on_error(self, data: dict) -> None:
@@ -855,18 +859,23 @@ class TestRefineToReadyIssueSubLoop:
             f"confidence_check.on_error should be 'diagnose', got {confidence_check.get('on_error')!r}"
         )
 
-    def test_verify_scores_persisted_on_yes_routes_to_check_readiness(self, data: dict) -> None:
-        """verify_scores_persisted.on_yes must route to check_readiness (scores written → proceed)."""
-        state = data["states"].get("verify_scores_persisted", {})
-        assert state.get("on_yes") == "check_readiness", (
-            f"verify_scores_persisted.on_yes should be 'check_readiness', got {state.get('on_yes')!r}"
+    def test_verify_scores_persisted_on_yes_routes_to_check_readiness(self) -> None:
+        """verify_scores_persisted.on_yes must route to done in the child oracle (maps to
+        confidence_check.on_success → check_readiness in the parent)."""
+        oracle = yaml.safe_load(
+            (BUILTIN_LOOPS_DIR / "oracles" / "verify-confidence-scores.yaml").read_text()
+        )
+        state = oracle["states"].get("verify_scores_persisted", {})
+        assert state.get("on_yes") == "done", (
+            f"verify_scores_persisted.on_yes should be 'done' in child oracle, got {state.get('on_yes')!r}"
         )
 
-    def test_verify_scores_persisted_on_no_routes_to_retry_confidence_check(
-        self, data: dict
-    ) -> None:
+    def test_verify_scores_persisted_on_no_routes_to_retry_confidence_check(self) -> None:
         """verify_scores_persisted.on_no must route to retry_confidence_check (one re-run before failing)."""
-        state = data["states"].get("verify_scores_persisted", {})
+        oracle = yaml.safe_load(
+            (BUILTIN_LOOPS_DIR / "oracles" / "verify-confidence-scores.yaml").read_text()
+        )
+        state = oracle["states"].get("verify_scores_persisted", {})
         assert state.get("on_no") == "retry_confidence_check", (
             f"verify_scores_persisted.on_no should be 'retry_confidence_check', got {state.get('on_no')!r}"
         )

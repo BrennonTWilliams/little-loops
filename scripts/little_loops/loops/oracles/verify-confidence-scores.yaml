@@ -1,0 +1,107 @@
+name: verify-confidence-scores
+description: |
+  Runs confidence-check on an issue, then verifies that scores were persisted to
+  frontmatter. Retries once if the first run fails to write scores. Extracted from
+  refine-to-ready-issue.
+initial: confidence_check
+parameters:
+  issue_id:
+    type: string
+    required: true
+context:
+  issue_id: ""
+
+states:
+  confidence_check:
+    action: "/ll:confidence-check ${context.issue_id}"
+    action_type: slash_command
+    next: verify_scores_persisted
+    on_error: failed
+
+  verify_scores_persisted:
+    # Guard: assert that confidence-check actually wrote scores to frontmatter.
+    # On miss, routes to retry_confidence_check (one re-run) rather than failed directly,
+    # so a single LLM skip of the set-scores call does not trigger spurious size-review.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+
+      r = subprocess.run(
+          ['ll-issues', 'show', '${context.issue_id}', '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception as e:
+          print(f"ERROR: verify_scores_persisted: failed to parse ll-issues show output: {e}", file=sys.stderr)
+          sys.exit(1)
+      confidence = d.get('confidence')
+      outcome = d.get('outcome')
+      if confidence is None or outcome is None:
+          print(
+              f"ERROR: verify_scores_persisted: scores not found in frontmatter after confidence_check "
+              f"(confidence={confidence}, outcome={outcome}). "
+              "The confidence-check skill did not write scores via ll-issues set-scores. "
+              "Retrying confidence-check once before routing to failed.",
+              file=sys.stderr
+          )
+          sys.exit(1)
+      sys.exit(0)
+      PYEOF
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: retry_confidence_check
+    on_error: retry_confidence_check
+
+  retry_confidence_check:
+    # Scores were not persisted after the first confidence-check run (LLM skipped
+    # the set-scores Bash call). Re-run once; verify again. Route to failed only on
+    # a second consecutive miss so a transient skip does not trigger spurious size-review.
+    action: "/ll:confidence-check ${context.issue_id}"
+    action_type: slash_command
+    next: verify_scores_persisted_final
+    on_error: failed
+
+  verify_scores_persisted_final:
+    # Second persistence check after retry_confidence_check. If scores are still
+    # absent, route to failed — this is a genuine infrastructure problem, not a
+    # transient skip.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+
+      r = subprocess.run(
+          ['ll-issues', 'show', '${context.issue_id}', '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception as e:
+          print(f"ERROR: verify_scores_persisted_final: failed to parse ll-issues show output: {e}", file=sys.stderr)
+          sys.exit(1)
+      confidence = d.get('confidence')
+      outcome = d.get('outcome')
+      if confidence is None or outcome is None:
+          print(
+              f"ERROR: verify_scores_persisted_final: scores still missing after retry "
+              f"(confidence={confidence}, outcome={outcome}). "
+              "Routing to failed — confidence-check did not persist scores on two attempts.",
+              file=sys.stderr
+          )
+          sys.exit(1)
+      sys.exit(0)
+      PYEOF
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: failed
+    on_error: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
