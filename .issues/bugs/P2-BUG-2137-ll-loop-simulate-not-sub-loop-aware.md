@@ -69,6 +69,24 @@ treatment of `parallel:` states:
   reference that can't resolve in simulation yields a simulated verdict, not a
   hard error.
 
+## Impact
+
+`simulate` is the primary safe-preview path for loop authoring and review
+(`ll-loop simulate`, `/ll:review-loop`). Today it is either unsafe or broken for
+**any** loop containing a `loop:` dispatch state:
+
+- **Static sub-loops**: simulate loads and runs the real child FSM, producing real
+  shell/prompt/MCP side effects (file writes, spawned sessions, worktrees) during a
+  run that is contractually side-effect-free. Users cannot trust simulate to be a
+  dry run.
+- **Dynamic sub-loops** (e.g. `loop-router`'s `dispatch` state): simulate aborts
+  with `Terminated by: error`, so the loop's flow past `dispatch` can never be
+  previewed or reviewed — `/ll:review-loop loop-router` is effectively blocked.
+
+Net effect: loop-router and every other dynamic-dispatch loop cannot be reviewed
+via simulate, and statically-dispatching loops leak side effects in a mode that
+promises none — eroding trust in simulate's core guarantee.
+
 ## Root Cause
 
 `scripts/little_loops/fsm/executor.py:517` — `_execute_sub_loop()` has no
@@ -77,7 +95,7 @@ contributor: `executor.py:854` dispatch guard `except (FileNotFoundError,
 ValueError)` does not include `InterpolationError`, so even the existing
 `on_error` route is unreachable for the dynamic-name failure mode.
 
-## Reproduction
+## Steps to Reproduce
 
 ```bash
 ll-loop simulate loop-router
@@ -130,6 +148,7 @@ dynamic-dispatch loops could hit it.
       `loop:` dispatch state; assert no real child execution and correct routing.
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-14T03:08:26 - `4bd1cae0-db78-4e6f-ad33-68b306916879.jsonl`
 - `/ll:capture-issue` - 2026-06-14T03:05:18Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be36bd17-64b3-426c-82dd-0410d90c2280.jsonl`
 
 ---
