@@ -548,6 +548,43 @@ class TestGenerateFromCompleted:
 
 
 # =============================================================================
+# TestIsNearDuplicate
+# =============================================================================
+
+
+class TestIsNearDuplicate:
+    """Unit tests for _is_near_duplicate() token-overlap dedup helper."""
+
+    def _fn(self, rule: str, existing: list[str]) -> bool:
+        from little_loops.cli.issues.decisions import _is_near_duplicate
+
+        return _is_near_duplicate(rule, existing)
+
+    def test_empty_existing_returns_false(self) -> None:
+        assert self._fn("Always use atomic_write for file writes", []) is False
+
+    def test_no_overlap_returns_false(self) -> None:
+        assert self._fn("Never skip linting", ["Always write unit tests first"]) is False
+
+    def test_high_overlap_returns_true(self) -> None:
+        existing = ["always use atomic write for file writes"]
+        assert self._fn("Always use atomic_write for file writes", existing) is True
+
+    def test_below_threshold_returns_false(self) -> None:
+        # 1/4 tokens overlap — below 60%
+        existing = ["dogs bark loudly outside"]
+        assert self._fn("cats always bark quietly", existing) is False
+
+    def test_exact_duplicate_returns_true(self) -> None:
+        rule = "Never mock the database in integration tests"
+        assert self._fn(rule, [rule.lower()]) is True
+
+    def test_short_tokens_ignored(self) -> None:
+        # Words < 4 chars are excluded from significant tokens
+        assert self._fn("Do it now", ["Do it now"]) is False
+
+
+# =============================================================================
 # TestCouplingEntry
 # =============================================================================
 

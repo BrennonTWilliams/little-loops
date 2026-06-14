@@ -135,6 +135,13 @@ Examples:
         default=None,
         help="Host to discover session logs for (default: auto-detect from LL_HOOK_HOST env)",
     )
+    backfill_parser.add_argument(
+        "--extract-decisions",
+        action="store_true",
+        default=False,
+        dest="extract_decisions",
+        help="After backfill, run extract-from-completed to mine completed issues for rules (ENH-2152)",
+    )
 
     grep_parser = subparsers.add_parser(
         "grep", help="Regex search over message_events with summary node context"
@@ -184,6 +191,22 @@ Examples:
 def _parse_args() -> argparse.Namespace:
     """Parse command-line arguments. Exposed for testing."""
     return _build_parser().parse_args()
+
+
+def _run_extract_decisions(since: str | None = None) -> None:
+    """Invoke ll-issues decisions extract-from-completed after a backfill."""
+    import subprocess
+    import sys
+
+    cmd = ["ll-issues", "decisions", "extract-from-completed"]
+    if since:
+        cmd += ["--since", since]
+    try:
+        result = subprocess.run(cmd, capture_output=False)
+        if result.returncode != 0:
+            print("extract-from-completed exited non-zero; decisions.yaml unchanged", file=sys.stderr)
+    except FileNotFoundError:
+        print("ll-issues not found; skipping extract-from-completed", file=sys.stderr)
 
 
 def main_session() -> int:
@@ -337,6 +360,8 @@ def main_session() -> int:
                     f"tools={inc_counts['tools']}, messages={inc_counts['messages']}, "
                     f"sessions={inc_counts['sessions']}, corrections={inc_counts.get('corrections', 0)})"
                 )
+                if getattr(args, "extract_decisions", False):
+                    _run_extract_decisions(since=since_flag)
                 return 0
             # Full backfill (no --since): discover JSONL files so non-Claude-Code
             # hosts also get message/tool/session backfill (ENH-1945).
@@ -353,6 +378,8 @@ def main_session() -> int:
                 f"sessions={counts.get('sessions', 0)}, corrections={counts.get('corrections', 0)}, "
                 f"summaries={counts.get('summaries', 0)})"
             )
+            if getattr(args, "extract_decisions", False):
+                _run_extract_decisions(since=None)
             return 0
 
         if args.command == "grep":

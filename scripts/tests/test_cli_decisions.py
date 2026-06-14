@@ -1467,3 +1467,410 @@ class TestDecisionsCLISuggestRules:
         assert "ARCH-003" in captured.out
         assert "category=architecture" in captured.out
         assert "consider promoting to a rule" in captured.out
+
+
+# =============================================================================
+# TestExtractFromCompleted
+# =============================================================================
+
+
+class TestExtractFromCompleted:
+    """Tests for ll-issues decisions extract-from-completed sub-command."""
+
+    def _make_issue_file(self, issues_dir: Path, issue_id: str, issue_type: str = "ENH") -> Path:
+        """Create a minimal done issue file on disk."""
+        cat_map = {"BUG": "bugs", "ENH": "enhancements", "FEAT": "features"}
+        cat = cat_map.get(issue_type, "enhancements")
+        cat_dir = issues_dir / cat
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        num = issue_id.split("-")[1]
+        filepath = cat_dir / f"P3-{issue_id}-test-issue.md"
+        filepath.write_text(
+            f"---\nid: {issue_id}\ntype: {issue_type}\nstatus: done\n"
+            f"priority: P3\ncaptured_at: '2026-06-01T00:00:00Z'\n"
+            f"completed_at: '2026-06-02T00:00:00Z'\n---\n\n"
+            f"# {issue_id}: Test Issue\n\n"
+            "## Summary\n\nAlways use atomic_write when writing YAML files to prevent partial state.\n"
+        )
+        return filepath
+
+    def test_dry_run_prints_candidates_without_writing(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--dry-run prints candidates but does not modify decisions.yaml."""
+        from unittest.mock import MagicMock, patch as mock_patch
+
+        from little_loops.issue_history.models import CompletedIssue
+        from pathlib import Path as _Path
+        import json
+
+        issue_file = self._make_issue_file(
+            temp_project_dir / ".issues", "ENH-001"
+        )
+
+        completed = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="ENH",
+                priority="P3",
+                issue_id="ENH-001",
+            )
+        ]
+
+        llm_response = json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {
+                "candidates": [
+                    {
+                        "rule": "Always use atomic_write for YAML files",
+                        "rationale": "Prevents partial-write state corruption",
+                        "category": "architecture",
+                        "confidence": 0.9,
+                        "scope": "global",
+                    }
+                ]
+            },
+        })
+
+        with (
+            mock_patch(
+                "little_loops.issue_history.parsing.scan_completed_issues",
+                return_value=completed,
+            ),
+            mock_patch("subprocess.run") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-issues",
+                    "decisions",
+                    "extract-from-completed",
+                    "--dry-run",
+                    "--config",
+                    str(temp_project_dir),
+                ],
+            ),
+        ):
+            mock_proc = MagicMock()
+            mock_proc.returncode = 0
+            mock_proc.stdout = llm_response
+            mock_proc.stderr = ""
+            mock_run.return_value = mock_proc
+
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "[DRY-RUN]" in captured.out
+        assert "atomic_write" in captured.out
+        # File must NOT be created
+        assert not decisions_path.exists()
+
+    def test_writes_rules_for_completed_issues(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Accepted candidates are appended to decisions.yaml."""
+        from unittest.mock import MagicMock, patch as mock_patch
+        import json
+
+        from little_loops.issue_history.models import CompletedIssue
+
+        issue_file = self._make_issue_file(
+            temp_project_dir / ".issues", "ENH-002"
+        )
+
+        completed = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="ENH",
+                priority="P3",
+                issue_id="ENH-002",
+            )
+        ]
+
+        llm_response = json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {
+                "candidates": [
+                    {
+                        "rule": "Never write to shared tmp paths in concurrent loops",
+                        "rationale": "Prevents state corruption under parallel runners",
+                        "category": "architecture",
+                        "confidence": 0.85,
+                        "scope": "global",
+                    }
+                ]
+            },
+        })
+
+        with (
+            mock_patch(
+                "little_loops.issue_history.parsing.scan_completed_issues",
+                return_value=completed,
+            ),
+            mock_patch("subprocess.run") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-issues",
+                    "decisions",
+                    "extract-from-completed",
+                    "--config",
+                    str(temp_project_dir),
+                ],
+            ),
+        ):
+            mock_proc = MagicMock()
+            mock_proc.returncode = 0
+            mock_proc.stdout = llm_response
+            mock_proc.stderr = ""
+            mock_run.return_value = mock_proc
+
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        entries = list_entries(decisions_path)
+        assert len(entries) == 1
+        assert isinstance(entries[0], RuleEntry)
+        assert "shared tmp" in entries[0].rule or "concurrent loops" in entries[0].rule
+        assert entries[0].issue == "ENH-002"
+        assert "extracted" in entries[0].labels
+        captured = capsys.readouterr()
+        assert "1 written" in captured.out
+
+    def test_skips_issue_already_in_log(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Issue already referenced in decisions.yaml is not re-extracted."""
+        from unittest.mock import MagicMock, patch as mock_patch
+        import json
+
+        from little_loops.issue_history.models import CompletedIssue
+
+        # Pre-seed with an entry referencing ENH-003
+        existing = RuleEntry(
+            id="ARCH-001",
+            category="architecture",
+            rule="Some existing rule",
+            rationale="reason",
+            issue="ENH-003",
+        )
+        save_decisions([existing], decisions_path)
+
+        issue_file = self._make_issue_file(temp_project_dir / ".issues", "ENH-003")
+        completed = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="ENH",
+                priority="P3",
+                issue_id="ENH-003",
+            )
+        ]
+
+        with (
+            mock_patch(
+                "little_loops.issue_history.parsing.scan_completed_issues",
+                return_value=completed,
+            ),
+            mock_patch("subprocess.run") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-issues",
+                    "decisions",
+                    "extract-from-completed",
+                    "--config",
+                    str(temp_project_dir),
+                ],
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        # subprocess.run should not have been called (skipped before LLM)
+        mock_run.assert_not_called()
+        assert result == 0
+        # Still only 1 entry
+        assert len(list_entries(decisions_path)) == 1
+        captured = capsys.readouterr()
+        assert "0 written" in captured.out
+
+    def test_min_confidence_filters_low_confidence_candidates(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Candidates below --min-confidence are skipped."""
+        from unittest.mock import MagicMock, patch as mock_patch
+        import json
+
+        from little_loops.issue_history.models import CompletedIssue
+
+        issue_file = self._make_issue_file(temp_project_dir / ".issues", "ENH-004")
+        completed = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="ENH",
+                priority="P3",
+                issue_id="ENH-004",
+            )
+        ]
+
+        llm_response = json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {
+                "candidates": [
+                    {
+                        "rule": "Always validate inputs at API boundaries",
+                        "rationale": "Prevents injection",
+                        "category": "security",
+                        "confidence": 0.4,  # below default 0.7
+                        "scope": "global",
+                    }
+                ]
+            },
+        })
+
+        with (
+            mock_patch(
+                "little_loops.issue_history.parsing.scan_completed_issues",
+                return_value=completed,
+            ),
+            mock_patch("subprocess.run") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-issues",
+                    "decisions",
+                    "extract-from-completed",
+                    "--config",
+                    str(temp_project_dir),
+                ],
+            ),
+        ):
+            mock_proc = MagicMock()
+            mock_proc.returncode = 0
+            mock_proc.stdout = llm_response
+            mock_proc.stderr = ""
+            mock_run.return_value = mock_proc
+
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert not decisions_path.exists()
+        captured = capsys.readouterr()
+        assert "0 written" in captured.out
+
+    def test_since_flag_filters_by_date(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--since filters out issues completed before the cutoff date."""
+        from datetime import date
+        from unittest.mock import MagicMock, patch as mock_patch
+
+        from little_loops.issue_history.models import CompletedIssue
+
+        issue_file = self._make_issue_file(temp_project_dir / ".issues", "ENH-005")
+        completed = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="ENH",
+                priority="P3",
+                issue_id="ENH-005",
+                completed_date=date(2026, 1, 1),  # before cutoff
+            )
+        ]
+
+        with (
+            mock_patch(
+                "little_loops.issue_history.parsing.scan_completed_issues",
+                return_value=completed,
+            ),
+            mock_patch("subprocess.run") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-issues",
+                    "decisions",
+                    "extract-from-completed",
+                    "--since",
+                    "2026-06-01",
+                    "--config",
+                    str(temp_project_dir),
+                ],
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        mock_run.assert_not_called()
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No completed issues" in captured.out
+
+    def test_no_completed_issues_exits_cleanly(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Empty completed set exits 0 with a message."""
+        from unittest.mock import patch as mock_patch
+
+        with (
+            mock_patch(
+                "little_loops.issue_history.parsing.scan_completed_issues",
+                return_value=[],
+            ),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-issues",
+                    "decisions",
+                    "extract-from-completed",
+                    "--config",
+                    str(temp_project_dir),
+                ],
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No completed issues" in captured.out

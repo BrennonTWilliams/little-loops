@@ -1447,6 +1447,56 @@ class TestIssueCompletionLog:
         finally:
             os.chdir(original_dir)
 
+    def test_hook_exits_zero_when_ll_issues_fails(
+        self, hook_script: Path, tmp_path: Path
+    ):
+        """Hook exits 0 even when ll-issues exits non-zero.
+
+        The extract-from-completed call added in ENH-2152 runs in a background
+        subshell and must not affect the hook exit code even when ll-issues fails.
+        """
+        import os
+        import stat
+
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = bugs_dir / "P3-BUG-999-test.md"
+        issue_file.write_text(
+            "---\nstatus: done\ndiscovered_date: 2026-01-01\n---\n# Test\n\n## Session Log\n"
+        )
+
+        transcript_dir = tmp_path / "transcripts"
+        transcript_dir.mkdir(exist_ok=True)
+        transcript_file = transcript_dir / "session.jsonl"
+        transcript_file.write_text("")
+
+        # Stub ll-issues that exits immediately with code 1 (simulates unavailability)
+        fake_bin = tmp_path / "fake_bin"
+        fake_bin.mkdir()
+        fake_ll_issues = fake_bin / "ll-issues"
+        fake_ll_issues.write_text("#!/bin/bash\nexit 1\n")
+        fake_ll_issues.chmod(fake_ll_issues.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP)
+
+        env = dict(os.environ)
+        env["PATH"] = str(fake_bin) + ":" + os.environ.get("PATH", "")
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(issue_file), str(transcript_file)),
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+            )
+            assert result.returncode == 0, (
+                f"Hook exited non-zero when ll-issues fails: {result.returncode}\n{result.stderr}"
+            )
+        finally:
+            os.chdir(original_dir)
+
 
 class TestDuplicateIssueId:
     """Test check-duplicate-issue-id.sh race condition handling."""

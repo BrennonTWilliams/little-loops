@@ -1364,6 +1364,7 @@ Manage rules, decisions, and exceptions log.
 | `sync` | Sync active rules to `.ll/ll.local.md` |
 | `suggest-rules` | Analyze decision entries and surface candidates ready for promotion to rules |
 | `promote <ID>` | Convert a `decision` entry into an enforced `rule` (rewrites entry in-place; auto-syncs when `--enforcement required`) |
+| `extract-from-completed` | Extract rules from completed issues via LLM; appends `RuleEntry` records to `decisions.yaml` with deduplication |
 
 **`list` flags:**
 
@@ -1426,6 +1427,15 @@ No additional flags. Analyzes `decision` entries and clusters them by category a
 | `<ID>` | ID of the `decision` entry to promote (positional, required) |
 | `--enforcement` | Enforcement level for the new rule: `required` (default) or `advisory`. When `required`, auto-runs `sync` to push the rule into `.ll/ll.local.md` immediately. |
 
+**`extract-from-completed` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--since YYYY-MM-DD` | Only process issues completed on or after this date |
+| `--issue ID` | Only extract from this specific issue (e.g. `ENH-2151`) |
+| `--dry-run` | Print candidates without writing to `decisions.yaml` |
+| `--min-confidence FLOAT` | Minimum LLM confidence to accept a candidate (default: `0.7`) |
+
 ```bash
 ll-issues decisions list
 ll-issues decisions list --type rule --active-only
@@ -1438,6 +1448,10 @@ ll-issues decisions sync                         # Sync active rules → .ll/ll.
 ll-issues decisions suggest-rules                # Surface decision candidates for promotion
 ll-issues decisions promote dec-007              # Promote dec-007 → required rule (auto-sync)
 ll-issues decisions promote dec-007 --enforcement advisory  # Promote as advisory rule
+ll-issues decisions extract-from-completed       # Extract rules from all completed issues via LLM
+ll-issues decisions extract-from-completed --since 2026-01-01  # Only issues completed since date
+ll-issues decisions extract-from-completed --issue ENH-2151    # Only one issue
+ll-issues decisions extract-from-completed --dry-run           # Preview candidates without writing
 ```
 
 ---
@@ -1984,7 +1998,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 |------------|-------------|
 | `search` | FTS5 full-text query with BM25-ranked results |
 | `recent` | Most recent rows for an event kind; optionally filtered by issue |
-| `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830) |
+| `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830); `--extract-decisions` runs `extract-from-completed` after backfill (ENH-2152) |
 | `related` | Issue events for a given issue ID |
 | `path` | Resolve the JSONL file path for a session ID |
 | `grep` | Regex search over `message_events` with optional summary-node scope filtering; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |

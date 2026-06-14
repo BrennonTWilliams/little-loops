@@ -803,3 +803,48 @@ class TestGrepExpandDescribe:
         out = capsys.readouterr().out
         assert result == 0
         assert "FSM" in out
+
+
+# =============================================================================
+# TestExtractDecisionsFlag
+# =============================================================================
+
+
+class TestExtractDecisionsFlag:
+    """--extract-decisions flag for ll-session backfill (ENH-2152)."""
+
+    def test_extract_decisions_flag_parses_correctly(self) -> None:
+        with patch("sys.argv", ["ll-session", "backfill", "--extract-decisions"]):
+            args = _parse_args()
+        assert args.command == "backfill"
+        assert args.extract_decisions is True
+
+    def test_extract_decisions_default_is_false(self) -> None:
+        with patch("sys.argv", ["ll-session", "backfill"]):
+            args = _parse_args()
+        assert getattr(args, "extract_decisions", False) is False
+
+    def test_extract_decisions_invokes_runner_after_backfill(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "session.db"
+        with (
+            patch(
+                "sys.argv",
+                ["ll-session", "--db", str(db), "backfill", "--extract-decisions"],
+            ),
+            patch("little_loops.cli.session.backfill") as mock_backfill,
+            patch("little_loops.cli.session._run_extract_decisions") as mock_extract,
+        ):
+            mock_backfill.return_value = {
+                "issues": 0,
+                "loops": 0,
+                "tools": 0,
+                "messages": 0,
+                "sessions": 0,
+                "corrections": 0,
+                "summaries": 0,
+            }
+            result = main_session()
+        assert result == 0
+        mock_extract.assert_called_once_with(since=None)

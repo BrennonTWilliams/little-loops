@@ -228,7 +228,7 @@ This pairs with [Session Handoff](SESSION_HANDOFF.md).
 
 **Hook:** `issue-completion-log.sh`
 
-On `Write` of an issue `.md` whose frontmatter is `status: done`, appends a session-log entry to the issue file for historical traceability. Always on; silent. Never blocks.
+On `Write` of an issue `.md` whose frontmatter is `status: done`, appends a session-log entry to the issue file for historical traceability, then fires `ll-issues decisions extract-from-completed --issue <ID> --min-confidence 0.8` in a background subshell to mine the closed issue for generalizable rules and append them to `.ll/decisions.yaml`. The extraction runs asynchronously (fire-and-forget), so the hook exits immediately regardless of LLM latency. Always on; silent. Never blocks.
 
 ### Duplicate issue-ID cleanup (TOCTOU guard, exit 2)
 

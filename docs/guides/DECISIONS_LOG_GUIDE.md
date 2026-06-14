@@ -334,6 +334,47 @@ Creates one `DecisionEntry` per completed issue that doesn't already have an ent
 
 These auto-generated entries are minimal stubs — they record that a decision happened (an issue was completed) without knowing what the decision was. They're useful as a starting point for retroactive annotation: run `ll-issues decisions outcome DEC-FEAT-1933 --result worked --notes "..."` to enrich them.
 
+### LLM Extraction: `extract-from-completed`
+
+For semantic extraction that populates actual rule text, use:
+
+```bash
+ll-issues decisions extract-from-completed [--since YYYY-MM-DD] [--issue ID] [--dry-run] [--min-confidence 0.7]
+```
+
+Unlike `generate` (which creates empty stubs), `extract-from-completed` sends each completed issue to an LLM and returns concrete, imperative rules:
+
+```bash
+ll-issues decisions extract-from-completed                      # Extract from all completed issues
+ll-issues decisions extract-from-completed --since 2026-01-01  # Only issues completed since date
+ll-issues decisions extract-from-completed --issue ENH-2151     # One issue only
+ll-issues decisions extract-from-completed --dry-run            # Preview without writing
+ll-issues decisions extract-from-completed --min-confidence 0.85  # Stricter quality gate
+```
+
+Each accepted candidate becomes a `RuleEntry` with `enforcement: advisory`, labeled `extracted`, and linked back to the source issue via the `issue:` field.
+
+**Deduplication** runs at two levels:
+1. **Issue-level**: if any existing entry references the issue ID, that issue is skipped entirely.
+2. **Content-level**: if the extracted rule shares ≥60% of significant tokens with an existing rule, it is discarded as a near-duplicate.
+
+### Automated Extraction Loop
+
+`.loops/distill-decisions.yaml` automates extraction on a recurring basis. Each run:
+
+1. Captures a baseline count of current `decisions.yaml` entries.
+2. Runs `extract-from-completed --since <last-checkpoint>` (checkpoint at `.loops/distill-decisions-checkpoint.txt`).
+3. Verifies the count increased (`output_numeric` evaluator — non-LLM).
+4. On success, writes today's date to the checkpoint so the next run skips already-processed issues.
+5. On no new entries, exits cleanly without modifying the checkpoint.
+
+Trigger manually:
+```bash
+ll-loop run distill-decisions
+```
+
+Or hook it into your automation pipeline to run automatically after issues transition to `done`. The `issue-completion-log.sh` hook fires `extract-from-completed --issue <ID>` in a background subshell after each issue closes, so extraction happens asynchronously without blocking the session (see [Built-in Hooks Guide](BUILTIN_HOOKS_GUIDE.md)).
+
 ---
 
 ## Recording Outcomes

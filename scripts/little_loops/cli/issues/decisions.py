@@ -206,6 +206,39 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
     )
     add_config_arg(suggest_p)
 
+    # -- extract-from-completed --
+    extract_p = subsubs.add_parser(
+        "extract-from-completed",
+        help="Extract decisions and rules from completed issues via LLM",
+    )
+    extract_p.add_argument(
+        "--since",
+        metavar="YYYY-MM-DD",
+        default=None,
+        help="Only process issues completed on or after this date",
+    )
+    extract_p.add_argument(
+        "--issue",
+        metavar="ID",
+        default=None,
+        help="Only extract from this specific issue ID (e.g. ENH-2151)",
+    )
+    extract_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Print candidates without writing to decisions.yaml",
+    )
+    extract_p.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.7,
+        dest="min_confidence",
+        metavar="FLOAT",
+        help="Minimum LLM confidence to accept a candidate (default: 0.7)",
+    )
+    add_config_arg(extract_p)
+
     # -- promote --
     promote_p = subsubs.add_parser(
         "promote",
@@ -279,6 +312,9 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
 
     if sub == "suggest-rules":
         return _cmd_suggest_rules(path)
+
+    if sub == "extract-from-completed":
+        return _cmd_extract_from_completed(config, args, path)
 
     if sub == "promote":
         from little_loops.decisions import DecisionEntry, RuleEntry, load_decisions, save_decisions
@@ -590,6 +626,249 @@ def _cmd_suggest_rules(path) -> int:
             print(f"    • {e.id}: {e.rule}")
         print()
 
+    return 0
+
+
+def _is_near_duplicate(rule_text: str, existing_rules: list[str]) -> bool:
+    """Return True if rule_text shares ≥60% significant tokens with any existing rule."""
+    import re
+
+    def _tokens(text: str) -> set[str]:
+        return {w.lower() for w in re.findall(r"\b[a-zA-Z]{4,}\b", text)}
+
+    new_tokens = _tokens(rule_text)
+    if not new_tokens:
+        return False
+
+    for existing in existing_rules:
+        overlap = new_tokens & _tokens(existing)
+        if overlap and len(overlap) / len(new_tokens) >= 0.6:
+            return True
+
+    return False
+
+
+_EXTRACTION_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "candidates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "rule": {"type": "string"},
+                    "rationale": {"type": "string"},
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "architecture",
+                            "testing",
+                            "style",
+                            "security",
+                            "performance",
+                            "other",
+                        ],
+                    },
+                    "confidence": {"type": "number"},
+                    "scope": {"type": "string", "enum": ["global", "issue"]},
+                },
+                "required": ["rule", "rationale", "category", "confidence", "scope"],
+            },
+        }
+    },
+    "required": ["candidates"],
+}
+
+
+def _cmd_extract_from_completed(config, args, path) -> int:
+    """Extract rules from completed issues via LLM and append to decisions.yaml."""
+    import json
+    import subprocess
+    from datetime import UTC, date, datetime
+    from pathlib import Path
+
+    from little_loops.decisions import RuleEntry, add_entry, list_entries
+    from little_loops.host_runner import resolve_host
+    from little_loops.issue_history.parsing import scan_completed_issues
+
+    project_root = Path(config.project_root)
+    issues_dir = project_root / config.issues.base_dir
+
+    since_date_str = getattr(args, "since", None)
+    issue_filter = getattr(args, "issue", None)
+    dry_run = getattr(args, "dry_run", False)
+    min_confidence = float(getattr(args, "min_confidence", 0.7))
+
+    # Filesystem scan always used (body content required for extraction)
+    completed = scan_completed_issues(issues_dir)
+
+    if issue_filter:
+        completed = [c for c in completed if c.issue_id == issue_filter]
+
+    if since_date_str:
+        try:
+            cutoff = date.fromisoformat(since_date_str)
+        except ValueError:
+            print(
+                f"Error: invalid --since date {since_date_str!r}; expected YYYY-MM-DD",
+                file=sys.stderr,
+            )
+            return 1
+        completed = [c for c in completed if c.completed_date and c.completed_date >= cutoff]
+
+    if not completed:
+        print("No completed issues found matching filters.")
+        return 0
+
+    # Load existing entries for deduplication
+    existing = list_entries(path)
+    existing_issue_ids = {e.issue for e in existing if getattr(e, "issue", None)}
+    existing_rule_texts = [
+        e.rule.lower() for e in existing if getattr(e, "rule", None) and isinstance(e.rule, str)  # type: ignore[union-attr]
+    ]
+
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    total_candidates = 0
+    total_written = 0
+    total_skipped = 0
+
+    for issue in completed:
+        # Level-1 dedup: skip if any entry already references this issue
+        if issue.issue_id in existing_issue_ids:
+            total_skipped += 1
+            continue
+
+        if not issue.path or not issue.path.exists():
+            continue
+
+        body = issue.path.read_text(encoding="utf-8")
+
+        prompt = (
+            f"Issue: {issue.issue_id}\n"
+            f"Type: {issue.issue_type}\n"
+            f"Body:\n{body[:4000]}\n\n"
+            "Extract any decisions, constraints, or rules that should guide future coding agents.\n"
+            "Only extract rules general enough to apply to future work (not one-off tactical decisions).\n"
+            "For each candidate return:\n"
+            "  - rule: imperative sentence, ≤ 120 chars\n"
+            "  - rationale: why this rule exists, drawn from the issue context\n"
+            "  - category: architecture | testing | style | security | performance | other\n"
+            "  - confidence: 0.0–1.0 (how likely this generalizes beyond this one issue)\n"
+            "  - scope: global | issue\n"
+            "Return an empty candidates array if no generalizable rules can be extracted."
+        )
+
+        invocation = resolve_host().build_blocking_json(prompt=prompt, model="sonnet")
+        llm_args = list(invocation.args) + [
+            "--json-schema",
+            json.dumps(_EXTRACTION_SCHEMA),
+            "--no-session-persistence",
+        ]
+
+        try:
+            proc = subprocess.run(
+                [invocation.binary, *llm_args],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"Warning: LLM call timed out for {issue.issue_id}", file=sys.stderr)
+            continue
+        except FileNotFoundError:
+            print(
+                f"Error: host CLI not found ({invocation.binary})", file=sys.stderr
+            )
+            return 1
+
+        if proc.returncode != 0:
+            print(
+                f"Warning: LLM call failed for {issue.issue_id}: {proc.stderr[:200]}",
+                file=sys.stderr,
+            )
+            continue
+
+        # Parse CLI JSON envelope
+        candidates: list[dict] = []
+        try:
+            stdout = proc.stdout.strip()
+            try:
+                envelope = json.loads(stdout)
+            except json.JSONDecodeError:
+                lines = [ln for ln in stdout.split("\n") if ln.strip()]
+                envelope = json.loads(lines[-1]) if lines else {}
+
+            if envelope.get("subtype") == "error_max_structured_output_retries":
+                print(
+                    f"Warning: LLM schema retries exhausted for {issue.issue_id}",
+                    file=sys.stderr,
+                )
+                continue
+
+            if isinstance(envelope.get("structured_output"), dict):
+                result = envelope["structured_output"]
+            else:
+                raw = envelope.get("result", "")
+                result = json.loads(raw) if isinstance(raw, str) and raw else {}
+
+            candidates = result.get("candidates", [])
+        except Exception as exc:
+            print(
+                f"Warning: failed to parse LLM response for {issue.issue_id}: {exc}",
+                file=sys.stderr,
+            )
+            continue
+
+        total_candidates += len(candidates)
+
+        for candidate in candidates:
+            rule_text = (candidate.get("rule") or "").strip()[:120]
+            rationale = (candidate.get("rationale") or "").strip()
+            category = candidate.get("category") or "other"
+            confidence = float(candidate.get("confidence") or 0.0)
+            scope = candidate.get("scope") or "issue"
+
+            if not rule_text:
+                continue
+
+            if confidence < min_confidence:
+                total_skipped += 1
+                continue
+
+            # Level-2 dedup: near-duplicate rule text check
+            if _is_near_duplicate(rule_text, existing_rule_texts):
+                total_skipped += 1
+                continue
+
+            existing_rules_typed = list_entries(path, type="rule")
+            cat_prefix = category[:4].upper()
+            entry_id = f"{cat_prefix}-{len(existing_rules_typed) + 1:03d}"
+
+            entry = RuleEntry(
+                id=entry_id,
+                timestamp=timestamp,
+                category=category,
+                labels=["extracted", scope],
+                rationale=rationale,
+                rule=rule_text,
+                enforcement="advisory",
+                issue=issue.issue_id,
+            )
+
+            if dry_run:
+                print(
+                    f"[DRY-RUN] {entry_id} ({category}, confidence={confidence:.2f}): {rule_text}"
+                )
+            else:
+                add_entry(entry, path)
+                existing_rule_texts.append(rule_text.lower())
+                total_written += 1
+
+    print(
+        f"Extraction complete: {total_candidates} candidates found, "
+        f"{total_written} written, {total_skipped} skipped (duplicate/low-confidence)."
+    )
     return 0
 
 

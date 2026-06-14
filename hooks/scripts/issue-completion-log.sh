@@ -70,4 +70,11 @@ if dest.exists():
     append_session_log_entry(dest, 'hook:posttooluse-status-done', session_jsonl=jsonl)
 " 2>/dev/null || true
 
+# Extract decisions and rules from the newly completed issue (fire-and-forget).
+# Runs in background subshell so the hook exits immediately regardless of LLM latency.
+ISSUE_ID=$(echo "$FILENAME" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' || true)
+if [ -n "$ISSUE_ID" ]; then
+    ( ll-issues decisions extract-from-completed --issue "$ISSUE_ID" --min-confidence 0.8 >/dev/null 2>&1 ) &
+fi
+
 exit 0

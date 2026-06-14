@@ -1,0 +1,73 @@
+name: distill-decisions
+category: knowledge-management
+description: |
+  Extract decisions and rules from completed issues into decisions.yaml.
+  Reads a cross-run checkpoint (.loops/distill-decisions-checkpoint.txt) to
+  filter to issues completed since the last successful run. Verifies that new
+  entries were written using a count delta (output_numeric non-LLM evaluator).
+  Exits cleanly when no new completed issues are found (idempotent).
+initial: count_baseline
+states:
+  count_baseline:
+    action_type: shell
+    action: |
+      COUNT=$(ll-issues decisions list --format json 2>/dev/null | python3 -c "
+      import json, sys
+      try:
+          data = json.load(sys.stdin)
+          print(len(data))
+      except Exception:
+          print(0)
+      ")
+      printf '%s' "$COUNT"
+    capture: baseline
+    next: extract
+
+  extract:
+    action_type: shell
+    # Runs extract-from-completed; uses --since from cross-run checkpoint if present.
+    # || true ensures FSM sees exit 0 even when no issues match or the CLI is absent.
+    action: |
+      CHECKPOINT=".loops/distill-decisions-checkpoint.txt"
+      if [ -f "$CHECKPOINT" ]; then
+          SINCE=$(cat "$CHECKPOINT")
+          ll-issues decisions extract-from-completed --since "$SINCE" 2>/dev/null || true
+      else
+          ll-issues decisions extract-from-completed 2>/dev/null || true
+      fi
+    timeout: 600
+    next: verify_count_delta
+
+  verify_count_delta:
+    action_type: shell
+    action: |
+      COUNT=$(ll-issues decisions list --format json 2>/dev/null | python3 -c "
+      import json, sys
+      try:
+          data = json.load(sys.stdin)
+          print(len(data))
+      except Exception:
+          print(0)
+      ")
+      printf '%s' "$COUNT"
+    evaluate:
+      type: output_numeric
+      operator: gt
+      target: ${captured.baseline.output}
+    on_yes: save_checkpoint
+    on_no: done
+    on_error: done
+
+  save_checkpoint:
+    action_type: shell
+    action: |
+      TODAY=$(date -u +"%Y-%m-%d")
+      echo "$TODAY" > ".loops/distill-decisions-checkpoint.txt"
+      printf 'Checkpoint saved: %s\n' "$TODAY"
+    next: done
+
+  done:
+    terminal: true
+
+max_iterations: 1
+timeout: 900

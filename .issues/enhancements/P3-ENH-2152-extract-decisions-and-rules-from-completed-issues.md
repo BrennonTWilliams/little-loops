@@ -2,9 +2,10 @@
 id: ENH-2152
 type: ENH
 priority: P3
-status: open
+status: done
 title: Extract decisions and rules from completed issues into decisions.yaml
 captured_at: '2026-06-14T19:15:05Z'
+completed_at: '2026-06-14T21:12:57Z'
 discovered_date: '2026-06-14'
 discovered_by: capture-issue
 relates_to:
@@ -242,7 +243,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-06-14 | Priority: P3
+**Done** | Created: 2026-06-14 | Priority: P3
+
+## Resolution
+
+**Action**: improve
+**Completed**: 2026-06-14
+
+- Added `ll-issues decisions extract-from-completed` CLI sub-command with `--since`, `--issue`, `--dry-run`, `--min-confidence` flags
+- Implemented two-level deduplication: issue-ID match + significant-token intersection (≥60% = duplicate)
+- Created `.loops/distill-decisions.yaml` FSM loop with `output_numeric` non-LLM evaluator; passes `ll-loop validate`
+- Extended `hooks/scripts/issue-completion-log.sh` to fire extraction in background subshell (fire-and-forget; never blocks hook)
+- Added `--extract-decisions` flag to `ll-session backfill`
+- Updated docs: `CLI.md`, `DECISIONS_LOG_GUIDE.md`, `BUILTIN_HOOKS_GUIDE.md`, `commands/help.md`
+- Tests: 15 new tests across 4 test files; all pass
 
 ## Related Key Documentation
 
@@ -253,6 +267,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | Loop shape guidance |
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T20:48:32 - `68945e7d-9281-4844-a3f7-db5232d2aac7.jsonl`
+- `/ll:confidence-check` - 2026-06-14T21:00:00Z - `c62af95a-4f05-44fb-afaf-3e060dfebcff.jsonl`
 - `/ll:confidence-check` - 2026-06-14T20:15:34Z - `413bf450-1c8b-4a6f-9ca4-b824ce9038c6.jsonl`
 - `/ll:wire-issue` - 2026-06-14T20:09:39 - `f76a9942-cc29-47cd-b1cd-b20e4d22d86a.jsonl`
 - `/ll:refine-issue` - 2026-06-14T20:01:30 - `17e3b819-a92e-48b7-886a-f4c624acc236.jsonl`
