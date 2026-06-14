@@ -199,6 +199,20 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
     sync_p = subsubs.add_parser("sync", help="Sync active rules to .ll/ll.local.md")
     add_config_arg(sync_p)
 
+    # -- promote --
+    promote_p = subsubs.add_parser(
+        "promote",
+        help="Convert a decision entry to a rule",
+    )
+    promote_p.add_argument("entry_id", help="ID of the decision entry to promote")
+    promote_p.add_argument(
+        "--enforcement",
+        choices=["required", "advisory"],
+        default="required",
+        help="Enforcement level for the resulting rule (default: required)",
+    )
+    add_config_arg(promote_p)
+
     return p
 
 
@@ -255,6 +269,11 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
 
     if sub == "sync":
         return _cmd_sync(path)
+
+    if sub == "promote":
+        from little_loops.decisions import DecisionEntry, RuleEntry, load_decisions, save_decisions
+
+        return _cmd_promote(args, path, load_decisions, save_decisions, RuleEntry, DecisionEntry)
 
     print(f"Unknown subcommand: {sub!r}", file=sys.stderr)
     return 1
@@ -457,4 +476,51 @@ def _cmd_sync(path) -> int:
     except ImportError:
         print("sync not yet available (requires FEAT-1895)", file=sys.stderr)
         return 1
+    return 0
+
+
+def _cmd_promote(args, path, load_decisions, save_decisions, RuleEntry, DecisionEntry) -> int:
+    entry_id = args.entry_id
+    enforcement = getattr(args, "enforcement", "required")
+
+    entries = load_decisions(path)
+
+    target = None
+    idx = None
+    for i, e in enumerate(entries):
+        if e.id == entry_id:
+            target = e
+            idx = i
+            break
+
+    if target is None:
+        print(f"Error: entry {entry_id!r} not found", file=sys.stderr)
+        return 1
+
+    if not isinstance(target, DecisionEntry):
+        print(
+            f"Error: entry {entry_id!r} is type {target.type!r}, not 'decision'; cannot promote",
+            file=sys.stderr,
+        )
+        return 1
+
+    rule = RuleEntry(
+        id=target.id,
+        timestamp=target.timestamp,
+        category=target.category,
+        labels=list(target.labels),
+        rationale=target.rationale,
+        rule=target.rule,
+        enforcement=enforcement,
+        supersedes=None,
+        issue=target.issue,
+    )
+
+    entries[idx] = rule
+    save_decisions(entries, path)
+
+    if enforcement == "required":
+        _cmd_sync(path)
+
+    print(f"Promoted {entry_id} → rule (enforcement: {enforcement})")
     return 0

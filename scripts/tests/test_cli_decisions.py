@@ -954,3 +954,280 @@ class TestDecisionsCLINoSubcommand:
             os.chdir(original_cwd)
 
         assert result == 1
+
+
+# =============================================================================
+# TestDecisionsCLIPromote
+# =============================================================================
+
+
+class TestDecisionsCLIPromote:
+    """Tests for ll-issues decisions promote subcommand."""
+
+    def test_promote_decision_to_rule(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_decision: DecisionEntry,
+    ) -> None:
+        """Promote a decision entry to a rule; entry type changes to 'rule'."""
+        save_decisions([sample_decision], decisions_path)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "promote",
+                "WORKFLOW-001",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+        assert result == 0
+        entries = load_decisions(decisions_path)
+        assert len(entries) == 1
+        rule = entries[0]
+        assert isinstance(rule, RuleEntry)
+        assert rule.id == "WORKFLOW-001"
+        assert rule.type == "rule"
+        assert rule.enforcement == "required"
+        assert rule.rule == sample_decision.rule
+        assert rule.rationale == sample_decision.rationale
+        assert rule.category == sample_decision.category
+        assert rule.labels == sample_decision.labels
+
+    def test_promote_drops_decision_only_fields(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+    ) -> None:
+        """Promoted rule does not carry decision-only fields (scope, alternatives_rejected, outcome)."""
+        decision_with_extras = DecisionEntry(
+            id="WORKFLOW-002",
+            type="decision",
+            timestamp="2026-06-03T00:00:00Z",
+            category="workflow",
+            labels=[],
+            rationale="some rationale",
+            rule="Use YAML",
+            scope="project",
+            alternatives_rejected="SQLite was considered",
+        )
+        save_decisions([decision_with_extras], decisions_path)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "promote",
+                "WORKFLOW-002",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+        assert result == 0
+        raw_yaml = decisions_path.read_text(encoding="utf-8")
+        assert "alternatives_rejected" not in raw_yaml
+        assert "scope:" not in raw_yaml
+        assert "outcome:" not in raw_yaml
+
+    def test_promote_advisory_enforcement(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_decision: DecisionEntry,
+    ) -> None:
+        """--enforcement advisory produces a rule with enforcement=advisory."""
+        save_decisions([sample_decision], decisions_path)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "promote",
+                "WORKFLOW-001",
+                "--enforcement",
+                "advisory",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+        assert result == 0
+        entries = load_decisions(decisions_path)
+        assert entries[0].enforcement == "advisory"  # type: ignore[union-attr]
+
+    def test_promote_required_syncs_to_ll_local(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_decision: DecisionEntry,
+    ) -> None:
+        """--enforcement required (default) triggers sync: rule appears in ll.local.md."""
+        save_decisions([sample_decision], decisions_path)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "promote",
+                "WORKFLOW-001",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+        assert result == 0
+        ll_local = decisions_path.parent / "ll.local.md"
+        assert ll_local.exists()
+        content = ll_local.read_text(encoding="utf-8")
+        assert "## Active Rules" in content
+        assert sample_decision.rule in content
+
+    def test_promote_advisory_does_not_sync(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_decision: DecisionEntry,
+    ) -> None:
+        """--enforcement advisory does NOT write the rule into ## Active Rules."""
+        save_decisions([sample_decision], decisions_path)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "promote",
+                "WORKFLOW-001",
+                "--enforcement",
+                "advisory",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+        assert result == 0
+        ll_local = decisions_path.parent / "ll.local.md"
+        # advisory rules are not in Active Rules; file may not exist at all
+        if ll_local.exists():
+            content = ll_local.read_text(encoding="utf-8")
+            assert sample_decision.rule not in content
+
+    def test_promote_not_found_exits_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+    ) -> None:
+        """Promoting a nonexistent entry ID exits 1."""
+        save_decisions([], decisions_path)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "promote",
+                "NONEXISTENT-001",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+        assert result == 1
+
+    def test_promote_already_rule_exits_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+    ) -> None:
+        """Promoting an entry that is already a rule exits 1 with descriptive error."""
+        save_decisions([sample_rule], decisions_path)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "promote",
+                "NAMING-001",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+        assert result == 1
+
+    def test_promote_appears_in_list_type_rule(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_decision: DecisionEntry,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """After promotion, ll-issues decisions list --type rule includes the entry."""
+        save_decisions([sample_decision], decisions_path)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "promote",
+                "WORKFLOW-001",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            main_issues()
+
+        capsys.readouterr()  # discard promote output
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "list",
+                "--type",
+                "rule",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            result = main_issues()
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "WORKFLOW-001" in captured.out

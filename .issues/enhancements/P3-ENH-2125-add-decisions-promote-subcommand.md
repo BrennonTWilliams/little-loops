@@ -1,12 +1,19 @@
 ---
 id: ENH-2125
-title: "Add `ll-issues decisions promote` subcommand to convert decisions to rules"
-status: open
+title: Add `ll-issues decisions promote` subcommand to convert decisions to rules
+status: done
 priority: P3
 type: ENH
-captured_at: "2026-06-14T00:09:45Z"
-discovered_date: "2026-06-14"
+captured_at: '2026-06-14T00:09:45Z'
+completed_at: '2026-06-14T00:31:34Z'
+discovered_date: '2026-06-14'
 discovered_by: capture-issue
+confidence_score: 90
+outcome_confidence: 87
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 23
 ---
 
 # ENH-2125: Add `ll-issues decisions promote` subcommand to convert decisions to rules
@@ -14,6 +21,14 @@ discovered_by: capture-issue
 ## Summary
 
 Add a `promote` subcommand to `ll-issues decisions` that converts an existing `type: decision` entry in `.ll/decisions.yaml` into a `type: rule` with configurable enforcement level. Currently there is no tooling to do this; it requires hand-editing the YAML file, which is friction-laden and error-prone.
+
+## Current Behavior
+
+`ll-issues decisions` has no `promote` subcommand. Converting a `type: decision` entry to `type: rule` requires hand-editing `.ll/decisions.yaml`: changing the `type:` field, adding `enforcement:`, and then running `ll-issues decisions sync` manually. This makes rule creation rare in practice and leaves the `DECISIONS_VIOLATION` check in `verify-issues` effectively inert.
+
+## Expected Behavior
+
+`ll-issues decisions promote <entry_id> [--enforcement {required,advisory}]` converts the target decision entry to a rule in-place, optionally calls `sync_to_local_md()` when `--enforcement required`, and exits 0 with a confirmation message. Invalid or non-decision entry IDs exit 1 with a descriptive error.
 
 ## Motivation
 
@@ -77,13 +92,15 @@ ll-issues decisions promote <entry_id> [--enforcement {required,advisory}]
 - `scripts/little_loops/decisions.py` (or equivalent module) — `save_decisions()` and `sync_to_local_md()` callers
 
 ### Dependent Files (Callers/Importers)
-- TBD — `grep -r "decisions" scripts/little_loops/cli/issues/` to find related subcommand handlers
+- `scripts/little_loops/cli/issues/__init__.py` — routes `decisions` command to `cmd_decisions()`
+- `scripts/little_loops/cli/issues/decisions.py` — dispatcher; add `promote` branch alongside `list`, `add`, `outcome`, `sync`
 
 ### Similar Patterns
 - Existing `ll-issues decisions add` / `ll-issues decisions outcome` subcommands for consistent argument and output patterns
 
 ### Tests
-- TBD — likely `scripts/tests/test_decisions*.py` or `scripts/tests/test_cli_decisions.py`
+- `scripts/tests/test_cli_decisions.py` — add `promote` CLI integration tests (success, already-rule error, missing-id error)
+- `scripts/tests/test_decisions.py` — unit tests for entry mutation and sync behavior
 
 ### Documentation
 - `docs/reference/API.md` — decisions module API docs
@@ -92,6 +109,17 @@ ll-issues decisions promote <entry_id> [--enforcement {required,advisory}]
 ### Configuration
 - N/A
 
+## Impact
+
+- **Priority**: P3 — Low-friction improvement; not blocking, but makes the `DECISIONS_VIOLATION` enforcement usable in practice
+- **Effort**: Small — New subparser + in-place entry mutation; reuses existing `save_decisions()` and `sync_to_local_md()` paths
+- **Risk**: Low — Isolated to `.ll/decisions.yaml` mutation; no changes to data schema or existing subcommands
+- **Breaking Change**: No
+
+## Labels
+
+`enhancements`, `cli`, `decisions`, `captured`
+
 ## Related Key Documentation
 
 | Document | Relevance |
@@ -99,7 +127,13 @@ ll-issues decisions promote <entry_id> [--enforcement {required,advisory}]
 | `docs/reference/API.md` | decisions module API |
 | `.ll/decisions.yaml` | live data file |
 
+## Status
+
+**Open** | Created: 2026-06-14 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T00:25:39 - `083489f6-80df-4500-b050-a382f24c738b.jsonl`
 - `/ll:format-issue` - 2026-06-14T00:13:26 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
+- `/ll:confidence-check` - 2026-06-13T00:00:00Z - `12c77dec-6395-4f03-95da-6a7382ae2f0a.jsonl`
 
 - `/ll:capture-issue` - 2026-06-14T00:09:45Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
