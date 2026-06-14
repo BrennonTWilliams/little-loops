@@ -7,12 +7,12 @@ title: Store issue content snapshots in history.db at lifecycle transitions
 captured_at: '2026-06-14T19:15:05Z'
 discovered_date: '2026-06-14'
 discovered_by: capture-issue
-decision_needed: true
+decision_needed: false
 confidence_score: 92
-outcome_confidence: 71
+outcome_confidence: 76
 score_complexity: 16
 score_test_coverage: 22
-score_ambiguity: 15
+score_ambiguity: 20
 score_change_surface: 18
 ---
 
@@ -178,6 +178,52 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 - N/A
 
+## Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-14.
+
+### Decision 1: FTS5 Approach
+
+> **Selected:** Option B — Autonomous `search_index` with `kind="snapshot"` (12/12)
+
+**Reasoning**: The codebase has exactly one FTS5 table (`search_index`, autonomous), used by every existing event kind via the shared `_index()` helper (`session_store.py:563–576`). A content-table FTS5 (`content='issue_snapshots'`) is a zero-precedent pattern requiring explicit sync after every insert — no existing code does this. Writing `kind="snapshot"` rows via `_index()` directly reuses the established pattern; `_backfill_issues()` at `session_store.py:989–996` is the exact template for `_backfill_snapshots()`. The `search --fts` unfiltered path already surfaces all kinds automatically; only `--kind` choices list and `_VALID_KINDS` need extending with `"snapshot"`.
+
+**Schema impact**: The `issue_snapshots_fts` content-table from the Proposed Schema is **dropped**. The migration adds only `issue_snapshots` (for `ll-history-context` fallback queries by `issue_id`) plus `_index()` calls with `kind="snapshot"` for FTS. Implementation Step 2 should write to `search_index` via `_index()` instead of `issue_snapshots_fts`.
+
+#### Scoring
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A: content-table FTS5 (`issue_snapshots_fts`) | 0/3 | 0/3 | 1/3 | 1/3 | 2/12 |
+| **B: autonomous `search_index` `kind="snapshot"`** | **3/3** | **3/3** | **3/3** | **3/3** | **12/12** |
+
+**Key evidence**:
+- Option A: Zero `content=` FTS5 precedent; manual sync required; no test fixture pattern matches
+- Option B: `_index()` called 10+ times across all existing kinds (`session_store.py:563–576`); `search --fts` unfiltered already surfaces all kinds (`cli/session.py:243–252`); four identical test fixtures use autonomous FTS5
+
+---
+
+### Decision 2: `set_status` Wiring
+
+> **Selected:** Option C — Call `record_issue_snapshot()` directly in `set_status.py` (10/12)
+
+**Reasoning**: Direct precedent exists in `hooks/user_prompt_submit.py:76–86`, which calls `record_correction()` and `record_skill_event()` directly without any EventBus. `record_issue_snapshot()` will have the same `(db_path, ...)` signature and is importable from `session_store`. Since `ll-issues set-status` is the canonical closure path in the `manage-issue` skill (`SKILL.md:454–457`) and automation loops (`rn-implement.yaml:686`) — with 48+ usage sites — real-time capture at this path is a functional requirement. `backfill --snapshots` remains essential for historical hydration of existing issues but is no longer the sole capture path for `set-status` transitions.
+
+#### Scoring
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A: EventBus emit in `cmd_set_status()` | 1/3 | 1/3 | 2/3 | 2/3 | 6/12 |
+| B: accept gap, rely on backfill | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+| **C: direct `record_issue_snapshot()` call** | **2/3** | **2/3** | **3/3** | **3/3** | **10/12** |
+
+**Tiebreaker (B vs C)**: Option B scores higher on Consistency/Simplicity, but Option C is selected because `set-status` is the canonical production closure path — a gap there means most real `done` snapshots would never be captured in real-time. The direct-call pattern has established precedent from `user_prompt_submit.py`.
+
+**Key evidence**:
+- Option A: No EventBus construction precedent inside thin CLI command handlers; would require inline `EventBus + SQLiteTransport` construction not matching any existing pattern
+- Option B: `_backfill_issues()` well-established (`session_store.py:938`); but `set-status` is used in 48+ locations including the primary `manage-issue` skill — real-time gap is significant
+- Option C: `record_correction()` called directly from `user_prompt_submit.py:76–86` without EventBus; same `(db_path, ...)` signature; `DEFAULT_DB_PATH` importable from `session_store`
+
 ## Acceptance Criteria
 
 - [ ] `issue_snapshots` table exists in `history.db` after migration.
@@ -218,11 +264,15 @@ _Added by `/ll:confidence-check` on 2026-06-14_
 **Outcome Confidence**: 71/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Unresolved design decision — FTS5 approach**: The issue presents both a content-table FTS5 (`content='issue_snapshots'`) and the simpler autonomous approach (write to existing `search_index` with `kind="snapshot"`) without committing to one. This is an open decision that affects migration DDL, `record_issue_snapshot()`, and the `search --fts` query extension — resolve before starting.
-- **Unresolved design decision — set_status wiring**: Option A (add EventBus emit to `cmd_set_status()`), Option B (accept gap, rely on backfill), and Option C (call `record_issue_snapshot()` directly from `set_status`) are listed without a chosen path; determines whether `set_status.py` needs modification and what transition-capture test coverage is required.
-- **Test breakage front-loading required**: 7 `SCHEMA_VERSION == 13` / `int(row[0]) == 13` assertions across `test_session_store.py` (6) and `test_assistant_messages.py` (1) will fail immediately on the schema bump — update these before the first green test run.
+- ✅ **RESOLVED — FTS5 approach**: Autonomous `search_index` with `kind="snapshot"` selected (drop `issue_snapshots_fts`). See `## Decision Rationale`.
+- ✅ **RESOLVED — `set_status` wiring**: Option C selected — call `record_issue_snapshot()` directly in `set_status.py` (same pattern as `user_prompt_submit.py:76–86`). See `## Decision Rationale`.
+- **Test breakage front-loading required**: 8 `SCHEMA_VERSION == 13` / `int(row[0]) == 13` assertions across `test_session_store.py` (7 sites) and `test_assistant_messages.py` (1 site) will fail immediately on the schema bump — update these before the first green test run.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T23:02:52 - `ed58008d-84ad-4a79-8c91-d971b51097f4.jsonl`
+- `/ll:confidence-check` - 2026-06-14T23:30:00Z - `42cd4ffb-169a-417a-b11f-e72e5261bc89.jsonl`
+- `/ll:decide-issue` - 2026-06-14T22:55:19 - `34bb1a05-8a1f-4d94-8066-40252f7a0d05.jsonl`
+- `/ll:confidence-check` - 2026-06-14T22:00:00Z - `457f1681-c7b3-4167-b30a-45436796c5cc.jsonl`
 - `/ll:confidence-check` - 2026-06-14T21:45:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:decide-issue` - 2026-06-14T20:37:36 - `21049312-887c-4a50-8fa1-fe882f234969.jsonl`
 - `/ll:confidence-check` - 2026-06-14T21:00:00Z - `c4d1e658-2782-47c6-a392-7a42920ff10b.jsonl`

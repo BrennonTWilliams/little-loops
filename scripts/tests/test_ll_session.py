@@ -193,6 +193,7 @@ class TestMainSession:
                     "messages": 5,
                     "sessions": 2,
                     "corrections": 0,
+                    "snapshots": 0,
                 }
                 assert main_session() == 0
         out = capsys.readouterr().out
@@ -848,3 +849,40 @@ class TestExtractDecisionsFlag:
             result = main_session()
         assert result == 0
         mock_extract.assert_called_once_with(since=None)
+
+
+class TestBackfillSnapshotsFlag:
+    """--snapshots flag for ll-session backfill (ENH-2151)."""
+
+    def test_snapshots_flag_parsed_from_argv(self) -> None:
+        from little_loops.cli.session import _parse_args
+
+        with patch("sys.argv", ["ll-session", "backfill", "--snapshots"]):
+            args = _parse_args()
+        assert args.command == "backfill"
+        assert args.snapshots is True
+
+    def test_snapshots_flag_default_is_false(self) -> None:
+        from little_loops.cli.session import _parse_args
+
+        with patch("sys.argv", ["ll-session", "backfill"]):
+            args = _parse_args()
+        assert getattr(args, "snapshots", False) is False
+
+    def test_snapshots_flag_calls_backfill_snapshots(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.cli.session import main_session
+
+        db = tmp_path / "history.db"
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "backfill", "--snapshots"]
+        ):
+            with patch("little_loops.cli.session.backfill_snapshots") as mock_snap:
+                mock_snap.return_value = 3
+                result = main_session()
+        assert result == 0
+        assert mock_snap.called
+        out = capsys.readouterr().out
+        assert "3" in out
+        assert "snapshot" in out.lower()

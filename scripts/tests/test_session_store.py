@@ -71,6 +71,7 @@ class TestEnsureDb:
             "user_corrections",
             "skill_events",
             "cli_events",
+            "issue_snapshots",
         ):
             assert table in names
 
@@ -365,6 +366,7 @@ class TestBackfill:
             "sessions": 0,
             "corrections": 0,
             "summaries": 0,
+            "snapshots": 0,
         }
 
     def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
@@ -1183,7 +1185,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 13
+        assert SCHEMA_VERSION == 14
 
 
 class TestBackfillIncremental:
@@ -1593,8 +1595,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 13
-        assert int(row[0]) == 13
+        assert SCHEMA_VERSION == 14
+        assert int(row[0]) == 14
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1708,8 +1710,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 13
-        assert int(row[0]) == 13
+        assert SCHEMA_VERSION == 14
+        assert int(row[0]) == 14
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1760,8 +1762,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 13
-        assert int(row[0]) == 13
+        assert SCHEMA_VERSION == 14
+        assert int(row[0]) == 14
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1839,7 +1841,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 13
+        assert int(version[0]) == 14
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -1856,8 +1858,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 13
-        assert int(row[0]) == 13
+        assert SCHEMA_VERSION == 14
+        assert int(row[0]) == 14
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2744,8 +2746,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 13
-        assert int(row[0]) == 13
+        assert SCHEMA_VERSION == 14
+        assert int(row[0]) == 14
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2772,3 +2774,209 @@ class TestSchemaV13:
         finally:
             conn.close()
         assert result is not None, "idx_retirements_fingerprint index must exist after ensure_db()"
+
+
+class TestSchemaV14:
+    """Verify that the v14 migration creates issue_snapshots table (ENH-2151)."""
+
+    def test_schema_version_is_fourteen(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert SCHEMA_VERSION == 14
+        assert int(row[0]) == 14
+
+    def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            result = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+                " AND name='issue_snapshots'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert result is not None, "issue_snapshots table must exist after ensure_db()"
+
+    def test_issue_snapshots_dedup_index_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            result = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+                " AND name='idx_issue_snapshots_dedup'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert result is not None, "idx_issue_snapshots_dedup index must exist after ensure_db()"
+
+    def test_v13_to_v14_migration(self, tmp_path: Path) -> None:
+        """Bootstrapping a v13 DB then calling ensure_db() applies the v14 migration."""
+        db = tmp_path / "history.db"
+        from little_loops.session_store import _MIGRATIONS
+
+        conn = sqlite3.connect(str(db))
+        try:
+            for stmt in _MIGRATIONS[:13]:
+                for s in stmt.split(";"):
+                    s = s.strip()
+                    if s:
+                        conn.execute(s)
+            conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '13')")
+            conn.commit()
+        finally:
+            conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        finally:
+            conn.close()
+        assert int(version[0]) == 14
+        assert "issue_snapshots" in names
+
+
+class TestRecordIssueSnapshot:
+    """ENH-2151: record_issue_snapshot() DB write round-trip."""
+
+    def _make_issue_file(self, directory: Path, issue_id: str, title: str, status: str) -> Path:
+        path = directory / f"P2-{issue_id}-test.md"
+        path.write_text(
+            f"---\nid: {issue_id}\ntype: ENH\npriority: P2\nstatus: {status}\n"
+            f"title: {title}\n---\n\n# {title}\n\nBody text for {issue_id}.",
+            encoding="utf-8",
+        )
+        return path
+
+    def test_record_issue_snapshot_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_issue_snapshot
+
+        db = tmp_path / "history.db"
+        issue_file = self._make_issue_file(tmp_path, "ENH-2151", "Store snapshots", "done")
+
+        record_issue_snapshot(db, "ENH-2151", "done", str(issue_file))
+
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT * FROM issue_snapshots WHERE issue_id='ENH-2151'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["issue_id"] == "ENH-2151"
+        assert row["transition"] == "done"
+        assert row["title"] == "Store snapshots"
+        assert "Body text for ENH-2151" in (row["body"] or "")
+
+    def test_record_issue_snapshot_fts_indexed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_issue_snapshot, search
+
+        db = tmp_path / "history.db"
+        issue_file = self._make_issue_file(tmp_path, "ENH-2151", "Store snapshots", "done")
+        record_issue_snapshot(db, "ENH-2151", "done", str(issue_file))
+
+        results = search(db, query="snapshots")
+        assert any(r["kind"] == "snapshot" for r in results)
+
+    def test_record_issue_snapshot_idempotent(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_issue_snapshot
+
+        db = tmp_path / "history.db"
+        issue_file = self._make_issue_file(tmp_path, "ENH-2151", "Store snapshots", "done")
+
+        record_issue_snapshot(db, "ENH-2151", "done", str(issue_file))
+        record_issue_snapshot(db, "ENH-2151", "done", str(issue_file))  # duplicate
+
+        conn = connect(db)
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM issue_snapshots WHERE issue_id='ENH-2151' AND transition='done'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 1, "INSERT OR IGNORE must deduplicate on (issue_id, transition)"
+
+    def test_record_issue_snapshot_missing_file_is_noop(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_issue_snapshot
+
+        db = tmp_path / "history.db"
+        record_issue_snapshot(db, "ENH-9999", "done", str(tmp_path / "nonexistent.md"))
+
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM issue_snapshots").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 0, "Missing file should produce no rows"
+
+
+class TestBackfillSnapshots:
+    """ENH-2151: _backfill_snapshots() hydrates issue_snapshots from .issues/."""
+
+    def _make_issues_dir(self, root: Path) -> Path:
+        issues = root / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-ENH-2151-store-snapshots.md").write_text(
+            "---\nid: ENH-2151\ntype: ENH\npriority: P2\nstatus: done\n"
+            "title: Store snapshots\n---\n\n# Store snapshots\n\nBody content here.",
+            encoding="utf-8",
+        )
+        (issues / "P3-ENH-2200-another.md").write_text(
+            "---\nid: ENH-2200\ntype: ENH\npriority: P3\nstatus: open\n"
+            "title: Another issue\n---\n\n# Another issue\n\nMore content.",
+            encoding="utf-8",
+        )
+        return root / ".issues"
+
+    def test_backfill_snapshots_hydrates_table(self, tmp_path: Path) -> None:
+        issues_dir = self._make_issues_dir(tmp_path)
+        db = tmp_path / "history.db"
+        counts = backfill(db, issues_dir=issues_dir, loops_dir=tmp_path / "no")
+        assert counts["snapshots"] == 2
+
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM issue_snapshots").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 2
+
+    def test_backfill_snapshots_idempotent(self, tmp_path: Path) -> None:
+        issues_dir = self._make_issues_dir(tmp_path)
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=issues_dir, loops_dir=tmp_path / "no")
+        backfill(db, issues_dir=issues_dir, loops_dir=tmp_path / "no")
+
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM issue_snapshots").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 2, "Double backfill must not duplicate rows"
+
+    def test_backfill_snapshots_stores_body(self, tmp_path: Path) -> None:
+        issues_dir = self._make_issues_dir(tmp_path)
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=issues_dir, loops_dir=tmp_path / "no")
+
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT body FROM issue_snapshots WHERE issue_id='ENH-2151'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert "Body content here" in (row[0] or "")

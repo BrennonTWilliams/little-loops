@@ -60,6 +60,7 @@ __all__ = [
     "connect",
     "SQLiteTransport",
     "backfill",
+    "backfill_snapshots",
     "backfill_incremental",
     "mine_corrections_from_messages",
     "compact_session",
@@ -69,6 +70,7 @@ __all__ = [
     "is_correction",
     "record_correction",
     "record_skill_event",
+    "record_issue_snapshot",
     "cli_event_context",
     "resolve_history_db",
     "record_retirement",
@@ -88,9 +90,11 @@ def resolve_history_db(path: Path | str | None = None) -> Path:
     return Path(path) if path is not None else DEFAULT_DB_PATH
 
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
-_VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill", "cli"})
+_VALID_KINDS = frozenset(
+    {"tool", "file", "issue", "loop", "correction", "message", "skill", "cli", "snapshot"}
+)
 _KIND_TABLE = {
     "tool": "tool_events",
     "file": "file_events",
@@ -400,6 +404,26 @@ _MIGRATIONS: list[str] = [
     CREATE UNIQUE INDEX IF NOT EXISTS idx_retirements_fingerprint
         ON correction_retirements(topic_fingerprint);
     """,
+    # v14 (ENH-2151): issue_snapshots — stores full issue content at key lifecycle
+    # transitions (captured, done, cancelled) so completed issue context is queryable
+    # from the DB even after the source .md file is moved or deleted.
+    # FTS via the existing autonomous search_index with kind="snapshot" (Decision 1).
+    # Dedup index mirrors v3's idx_issue_events_dedup pattern.
+    """
+    CREATE TABLE IF NOT EXISTS issue_snapshots (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts          TEXT NOT NULL,
+        issue_id    TEXT NOT NULL,
+        transition  TEXT NOT NULL,
+        title       TEXT,
+        priority    TEXT,
+        issue_type  TEXT,
+        body        TEXT,
+        frontmatter TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_snapshots_dedup
+        ON issue_snapshots(issue_id, transition);
+    """,
 ]
 
 
@@ -671,6 +695,61 @@ def record_skill_event(
         conn.close()
 
 
+def record_issue_snapshot(
+    db_path: Path | str,
+    issue_id: str,
+    transition: str,
+    file_path: str,
+) -> None:
+    """Write one row to ``issue_snapshots`` and index it in ``search_index``.
+
+    Reads the issue file at *file_path*, extracts frontmatter metadata and
+    markdown body, then inserts into ``issue_snapshots`` using ``INSERT OR IGNORE``
+    so repeated calls for the same ``(issue_id, transition)`` are idempotent.
+    Also calls ``_index()`` with ``kind="snapshot"`` so FTS5 searches surface it.
+
+    Silently returns if *file_path* does not exist or cannot be read.
+    """
+    from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
+
+    try:
+        content = Path(file_path).read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    fm = parse_frontmatter(content)
+    body = strip_frontmatter(content)
+    title = fm.get("title") or fm.get("id") or issue_id
+    priority = fm.get("priority")
+    issue_type = fm.get("type")
+
+    # Serialise frontmatter as JSON for storage.
+    fm_json = json.dumps(
+        {k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True
+    )
+
+    conn = connect(db_path)
+    ts = _now()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO issue_snapshots"
+            "(ts, issue_id, transition, title, priority, issue_type, body, frontmatter)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            (ts, issue_id, transition, str(title), priority, issue_type, body, fm_json),
+        )
+        _index(
+            conn,
+            content=f"{issue_id} {title} {body or ''}".strip(),
+            kind="snapshot",
+            ref=issue_id,
+            anchor=file_path,
+            ts=ts,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @contextmanager
 def cli_event_context(
     db_path: Path | str = DEFAULT_DB_PATH,
@@ -878,6 +957,15 @@ class SQLiteTransport:
                         anchor=event.get("issue_file", ""),
                         ts=ts,
                     )
+                    # Side-effect: write content snapshot when the event carries a file path.
+                    file_path = event.get("file_path")
+                    if file_path and issue_id and transition in ("done", "open", "cancelled"):
+                        try:
+                            conn.commit()  # flush issue_events before spawning new conn
+                        except sqlite3.Error:
+                            pass
+                        record_issue_snapshot(self._path, str(issue_id), transition, str(file_path))
+                        return  # skip second commit below; record_issue_snapshot committed
                 else:
                     return
                 conn.commit()
@@ -990,6 +1078,56 @@ def _backfill_issues(conn: sqlite3.Connection, issues_dir: Path) -> int:
             conn,
             content=f"{issue_id} {status} {issue_type or ''}",
             kind="issue",
+            ref=str(issue_id),
+            anchor=str(issue_file),
+            ts=ts,
+        )
+        count += 1
+    return count
+
+
+def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
+    """Seed ``issue_snapshots`` and ``search_index`` from issue files under *issues_dir*.
+
+    Follows the ``_backfill_issues()`` pattern: iterates ``*.md`` files, reads
+    frontmatter + body, inserts with ``INSERT OR IGNORE`` for idempotency.
+    Uses the issue's current ``status`` as the ``transition`` value.
+    """
+    from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
+
+    count = 0
+    ts = _now()
+    for issue_file in sorted(issues_dir.rglob("*.md")):
+        try:
+            content = issue_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fm = parse_frontmatter(content)
+        issue_id = fm.get("id")
+        if not issue_id:
+            m = _FILENAME_TYPE_RE.search(issue_file.name)
+            if m:
+                issue_id = f"{m.group(1)}-{m.group(2)}"
+        if not issue_id:
+            continue
+        transition = str(fm.get("status", "open"))
+        title = fm.get("title") or fm.get("id") or issue_id
+        priority = fm.get("priority")
+        issue_type = fm.get("type")
+        body = strip_frontmatter(content)
+        fm_json = json.dumps(
+            {k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO issue_snapshots"
+            "(ts, issue_id, transition, title, priority, issue_type, body, frontmatter)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            (ts, str(issue_id), transition, str(title), priority, issue_type, body, fm_json),
+        )
+        _index(
+            conn,
+            content=f"{issue_id} {title} {body or ''}".strip(),
+            kind="snapshot",
             ref=str(issue_id),
             anchor=str(issue_file),
             ts=ts,
@@ -1752,6 +1890,29 @@ def _mtime(path: Path) -> float:
         return 0.0
 
 
+def backfill_snapshots(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    issues_dir: Path | None = None,
+) -> int:
+    """Hydrate ``issue_snapshots`` from all ``.md`` files under *issues_dir*.
+
+    Idempotent via ``INSERT OR IGNORE`` on the ``(issue_id, transition)`` dedup
+    index.  Also indexes each snapshot in ``search_index`` with ``kind="snapshot"``.
+    Returns the number of rows inserted (0 when *issues_dir* is absent or empty).
+    """
+    issues_dir = issues_dir if issues_dir is not None else Path(".issues")
+    if not issues_dir.is_dir():
+        return 0
+    conn = connect(db)
+    try:
+        count = _backfill_snapshots(conn, issues_dir)
+        conn.commit()
+    finally:
+        conn.close()
+    return count
+
+
 def backfill(
     db: Path | str = DEFAULT_DB_PATH,
     *,
@@ -1778,10 +1939,12 @@ def backfill(
         "sessions": 0,
         "corrections": 0,
         "summaries": 0,
+        "snapshots": 0,
     }
     try:
         if issues_dir.is_dir():
             counts["issues"] = _backfill_issues(conn, issues_dir)
+            counts["snapshots"] = _backfill_snapshots(conn, issues_dir)
         if loops_dir.is_dir():
             counts["loops"] = _backfill_loops(conn, loops_dir)
         if jsonl_files:

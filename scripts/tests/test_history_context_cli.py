@@ -324,6 +324,47 @@ class TestForSkillFlag:
         assert result == 0
         assert out.strip() == ""
 
+
+class TestHistoryContextSnapshot:
+    """ENH-2151: ll-history-context falls back to issue_snapshots when source .md is missing."""
+
+    def _seed_snapshot(self, db: Path, issue_id: str, body: str) -> None:
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_snapshots(ts, issue_id, transition, title, body) "
+                "VALUES(?, ?, ?, ?, ?)",
+                ("2026-01-01T00:00:00Z", issue_id, "done", f"Title for {issue_id}", body),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_snapshot_body_shown_when_no_other_rows(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed_snapshot(db, "ENH-2151", "Snapshot body text for ENH-2151.")
+
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-2151"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "Snapshot body text for ENH-2151" in out
+
+    def test_snapshot_not_shown_when_corrections_exist(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        record_correction(db, "sess-1", "Fix ENH-2151 correction content", "user")
+        self._seed_snapshot(db, "ENH-2151", "Snapshot body text for ENH-2151.")
+
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-2151"]):
+            main_history_context()
+        out = capsys.readouterr().out
+        assert "Fix ENH-2151 correction content" in out
+
     def test_empty_planning_skills_list_returns_zero_empty_output(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
