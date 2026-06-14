@@ -4,7 +4,7 @@ type: ENH
 title: 'context-monitor: use Status hook used_percentage as zero-cost authoritative
   source'
 priority: P2
-status: open
+status: deferred
 discovered_date: 2026-06-13
 discovered_by: research-review
 labels:

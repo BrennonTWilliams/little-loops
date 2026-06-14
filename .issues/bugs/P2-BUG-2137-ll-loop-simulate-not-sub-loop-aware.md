@@ -7,7 +7,7 @@ status: done
 relates_to:
 - ENH-1164
 - FEAT-1654
-confidence_score: 89
+confidence_score: 98
 outcome_confidence: 81
 score_complexity: 21
 score_test_coverage: 20

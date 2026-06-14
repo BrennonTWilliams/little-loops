@@ -177,7 +177,7 @@ and follows the `@dataclass` + `to_dict()` + `from_dict()` convention.
      assert framing block is prepended and non-sprint calls are unaffected
    - New test in `test_cli_sprint.py` mirroring `_run_issue_with_wall_clock_timeout` pattern (lines 623–727) —
      assert `sprint_context` is forwarded to `process_issue_inplace()`
-   - All 19 existing `process_issue_inplace` mocks in `test_sprint_integration.py` and all 8 in `test_sprint.py`
+   - All 19 existing `process_issue_inplace` mocks in `test_sprint_integration.py` and all 10 in `test_sprint.py`
      use `**kwargs` — no mock cascade updates required
 
 ## Files to Modify
@@ -207,9 +207,25 @@ and follows the `@dataclass` + `to_dict()` + `from_dict()` convention.
 - `scripts/tests/test_worker_pool.py:2401` — `test_guillotine_with_run_dir_writes_resume_file` in `TestRunWithContinuation` (class at line 2260): model test to mirror for sprint-context variant
 - `scripts/tests/test_worker_pool.py:2260` — `TestRunWithContinuation`: class for new `_run_with_continuation` sprint-context tests
 - `scripts/tests/test_cli_sprint.py:623` — `_run_issue_with_wall_clock_timeout` tests (lines 623–727): pattern for new sprint-context forwarding tests
-- `scripts/tests/test_subprocess_utils.py` — existing `assemble_guillotine_prompt()` unit tests; add sprint-context variant alongside
+- `scripts/tests/test_subprocess_utils.py` — class `TestAssembleGuillatinePrompt` (line 1986, note: double-l typo in class name); 4 existing tests at lines 1989–2048 cover original_command, stdout tail, empty stdout, and token_stats; add sprint-context variant alongside
 - `scripts/tests/test_sprint_integration.py` — 19 `process_issue_inplace` mock sites; all use `**kwargs` — no updates needed
-- `scripts/tests/test_sprint.py` — 8 `process_issue_inplace` mock sites; all use `**kwargs` — no updates needed
+- `scripts/tests/test_sprint.py` — 10 `process_issue_inplace` mock sites; all use `**kwargs` — no updates needed
+
+### J-Path Test Pattern (two-patch stack)
+
+_Added by `/ll:refine-issue` — verified against `test_worker_pool.py:TestRunWithContinuation`:_
+
+J-path tests in `TestRunWithContinuation` use a closure-based call counter (`call_count = [0]`, `commands_received: list[str] = []`) to track which invocation fires the usage callback. The standard two-patch stack:
+
+```python
+with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
+    with patch("little_loops.parallel.worker_pool.detect_context_handoff", return_value=False):
+        worker_pool._run_with_continuation("test", temp_repo_with_config, ...)
+```
+
+The `on_usage(185_000, 10_000)` call (195K > 90% of 200K = guillotine_threshold trigger) is injected inside `mock_run_claude` on the first invocation only. Assert `"Sprint Worker Context" in commands_received[1]` for the new sprint-context framing test.
+
+`process_issue_inplace` is always mocked at module path `"little_loops.issue_manager.process_issue_inplace"`, never at the call site.
 
 ### Documentation
 - `docs/guides/SPRINT_GUIDE.md` — may need note on Option J behavior in sprint context
@@ -245,6 +261,7 @@ _Added by `/ll:confidence-check` on 2026-06-14_
 - Test mock cascade (D: 19/25): `process_issue_inplace()` is mocked in 19 tests in `test_sprint_integration.py` and 8 in `test_sprint.py`; adding `sprint_context: SprintWorkerContext | None = None` is backward-compatible and all mocks use `**kwargs` — no cascade updates actually required.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-14T14:23:42 - `44b6af33-4270-4a3c-b93f-5ce3f689b2e8.jsonl`
 - `/ll:confidence-check` - 2026-06-14T14:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/822c662f-28d6-4079-ad8d-82d73c4ff611.jsonl`
 - `/ll:refine-issue` - 2026-06-14T14:13:50 - `5c2e9b75-5a1b-4b79-9b8f-961ba49fcbd8.jsonl`
 - `/ll:refine-issue` - 2026-06-14T07:15:05 - `6f1984bf-3e4f-47b1-8f9b-80f0aecdbd84.jsonl`
