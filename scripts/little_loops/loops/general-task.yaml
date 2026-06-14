@@ -11,6 +11,8 @@ on_max_iterations: summarize_partial
 context:
   min_pass_rate: 0.95
   hard_criteria_tags: "hard"
+  test_cmd: ""            # verify_step command; empty = read project.test_cmd from .ll/ll-config.json
+  max_step_attempts: 3    # max verify attempts per step before abandoning it (Fix #2)
 
 circuit:
   repeated_failure:
@@ -139,6 +141,25 @@ states:
         echo "NO_UNCHECKED_STEPS"
         exit 0
       fi
+      # Per-step attempt cap (Fix #2): a step whose verify keeps failing is never
+      # marked [x], so it would be re-selected forever, spinning the loop to
+      # max_iterations (do_work succeeds and verify_step's on_no is a verdict,
+      # not a state failure, so the repeated_failure circuit never trips). Count
+      # attempts per exact step line; once a step exhausts its budget, mark it
+      # [x] with an abandonment note and fall through to check_done so the DoD
+      # machinery — not an unbounded retry — decides whether the underlying
+      # criterion is satisfied.
+      ATTEMPTS="${context.run_dir}/step-attempts.txt"
+      PRIOR=$(grep -Fx -- "$STEP" "$ATTEMPTS" 2>/dev/null | wc -l | tr -d ' ')
+      if [ "$PRIOR" -ge "${context.max_step_attempts}" ]; then
+        awk -v target="$STEP" -v n="${context.max_step_attempts}" \
+          'found==0 && $0==target && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); $0=$0 "  (abandoned: verify failed after " n " attempts)"; found=1 } 1' \
+          "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
+        rm -f "${context.run_dir}/current-step.txt" "${context.run_dir}/checkpoint.json"
+        echo "STEP_ABANDONED: $STEP"
+        exit 0
+      fi
+      echo "$STEP" >> "$ATTEMPTS"
       echo "$STEP" > "${context.run_dir}/current-step.txt"
       CHECKPOINT="${context.run_dir}/checkpoint.json"
       printf '{"in_flight_step":"%s","timestamp":"%s","task_hash":"%s"}\n' \
@@ -182,7 +203,23 @@ states:
         echo "VERIFY_PASS"
         exit 0
       fi
-      if python -m pytest $FILES --tb=short -q 2>&1 | tail -1 | grep -qE "passed|no tests ran"; then
+      # Resolve the test command (Fix #1): explicit ${context.test_cmd} override,
+      # else project.test_cmd from .ll/ll-config.json, else a bare "pytest"
+      # fallback. Gating on the configured command's EXIT CODE keeps this step
+      # language-agnostic — the old hardcoded `python -m pytest $FILES` was a
+      # silent no-op for any non-Python task (pytest collected nothing → matched
+      # "no tests ran" → false VERIFY_PASS).
+      if [ -n "${context.test_cmd}" ]; then
+        CMD="${context.test_cmd}"
+      else
+        CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.ll/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      fi
+      if eval "$CMD" > "${context.run_dir}/verify-output.txt" 2>&1; then
         echo "VERIFY_PASS"
       else
         echo "VERIFY_FAIL"
