@@ -187,9 +187,7 @@ def _compute_cache_rate_from_jsonl(cwd: Path) -> dict[str, Any] | None:
     if project_folder is None:
         return None
 
-    jsonl_files = [
-        f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")
-    ]
+    jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
     if not jsonl_files:
         return None
 
@@ -293,10 +291,7 @@ def _render(
         cw = cache_rate["cache_write"]
         u = cache_rate["uncached"]
         pct = cache_rate["hit_rate_pct"]
-        print(
-            f"Cache hit rate: {pct}%  "
-            f"(cache_read={cr:,} | cache_write={cw:,} | uncached={u:,})"
-        )
+        print(f"Cache hit rate: {pct}%  (cache_read={cr:,} | cache_write={cw:,} | uncached={u:,})")
 
     if skill_stats:
         print()

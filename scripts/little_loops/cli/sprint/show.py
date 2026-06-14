@@ -143,9 +143,7 @@ def _render_health_summary(
             logical_count += 1
             prev_parent = None
 
-    has_unknown_hints = any(
-        n is not None and getattr(n, "has_unknown_hints", False) for n in notes
-    )
+    has_unknown_hints = any(n is not None and getattr(n, "has_unknown_hints", False) for n in notes)
 
     wave_word = "wave" if logical_count == 1 else "waves"
     if has_unknown_hints and has_contention:

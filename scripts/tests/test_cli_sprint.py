@@ -629,7 +629,6 @@ class TestIssueWallClockTimeout:
         from little_loops.cli.sprint.run import _run_issue_with_wall_clock_timeout
         from little_loops.issue_manager import IssueProcessingResult
         from little_loops.issue_parser import IssueInfo
-        from pathlib import Path
 
         mock_issue = MagicMock(spec=IssueInfo)
         mock_issue.issue_id = "BUG-001"
@@ -640,9 +639,7 @@ class TestIssueWallClockTimeout:
         with patch("little_loops.cli.sprint.run.signal") as mock_signal:
             mock_signal.SIGALRM = 14
             mock_signal.signal.return_value = None
-            with patch(
-                "little_loops.cli.sprint.run.process_issue_inplace", return_value=expected
-            ):
+            with patch("little_loops.cli.sprint.run.process_issue_inplace", return_value=expected):
                 result = _run_issue_with_wall_clock_timeout(
                     issue=mock_issue,
                     config=mock_config,

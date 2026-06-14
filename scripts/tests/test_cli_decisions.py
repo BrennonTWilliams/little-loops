@@ -1415,7 +1415,9 @@ class TestDecisionsCLISuggestRules:
                 rationale="Using resolve_host prevents hardcoded binary references in host_runner",
             ),
             # Third entry to meet minimum-3 threshold
-            self._make_decision("ARCH-001", "architecture", "Use sub-loop composition for FSM loops"),
+            self._make_decision(
+                "ARCH-001", "architecture", "Use sub-loop composition for FSM loops"
+            ),
         ]
         save_decisions(decisions, decisions_path)
 

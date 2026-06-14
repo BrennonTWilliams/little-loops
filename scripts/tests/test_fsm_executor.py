@@ -3208,7 +3208,9 @@ class TestSimulationSubLoopDispatch:
             name="parent",
             initial="dispatch",
             states={
-                "dispatch": StateConfig(loop=loop_ref, on_yes="passed", on_no="failed", on_error="errored"),
+                "dispatch": StateConfig(
+                    loop=loop_ref, on_yes="passed", on_no="failed", on_error="errored"
+                ),
                 "passed": StateConfig(terminal=True),
                 "failed": StateConfig(terminal=True),
                 "errored": StateConfig(terminal=True),
@@ -3227,7 +3229,9 @@ class TestSimulationSubLoopDispatch:
             f"  done:\n    terminal: true"
         )
         sim_runner = SimulationActionRunner(scenario="all-pass")
-        executor = FSMExecutor(self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner)
+        executor = FSMExecutor(
+            self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner
+        )
         result = executor.run()
 
         assert not sentinel.exists(), "Real child FSM must not execute in simulation mode"
@@ -3239,7 +3243,9 @@ class TestSimulationSubLoopDispatch:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         sim_runner = SimulationActionRunner(scenario="all-pass")
-        executor = FSMExecutor(self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner)
+        executor = FSMExecutor(
+            self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner
+        )
         result = executor.run()
         assert result.final_state == "passed"
 
@@ -3248,7 +3254,9 @@ class TestSimulationSubLoopDispatch:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         sim_runner = SimulationActionRunner(scenario="all-fail")
-        executor = FSMExecutor(self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner)
+        executor = FSMExecutor(
+            self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner
+        )
         result = executor.run()
         assert result.final_state == "failed"
 
@@ -3257,7 +3265,9 @@ class TestSimulationSubLoopDispatch:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         sim_runner = SimulationActionRunner(scenario="all-error")
-        executor = FSMExecutor(self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner)
+        executor = FSMExecutor(
+            self._parent_with_sub_loop("child"), loops_dir=loops_dir, action_runner=sim_runner
+        )
         result = executor.run()
         assert result.final_state == "errored"
 

@@ -420,12 +420,24 @@ class TestComputeCacheRateFromJsonl:
                 {
                     "type": "assistant",
                     "uuid": "a1",
-                    "message": {"usage": {"cache_read_input_tokens": 100, "cache_creation_input_tokens": 10, "input_tokens": 5}},
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 100,
+                            "cache_creation_input_tokens": 10,
+                            "input_tokens": 5,
+                        }
+                    },
                 },
                 {
                     "type": "assistant",
                     "uuid": "a2",
-                    "message": {"usage": {"cache_read_input_tokens": 200, "cache_creation_input_tokens": 20, "input_tokens": 2}},
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 200,
+                            "cache_creation_input_tokens": 20,
+                            "input_tokens": 2,
+                        }
+                    },
                 },
             ],
         )
@@ -445,12 +457,24 @@ class TestComputeCacheRateFromJsonl:
                 {
                     "type": "assistant",
                     "uuid": "dup",
-                    "message": {"usage": {"cache_read_input_tokens": 100, "cache_creation_input_tokens": 10, "input_tokens": 1}},
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 100,
+                            "cache_creation_input_tokens": 10,
+                            "input_tokens": 1,
+                        }
+                    },
                 },
                 {
                     "type": "assistant",
                     "uuid": "dup",
-                    "message": {"usage": {"cache_read_input_tokens": 100, "cache_creation_input_tokens": 10, "input_tokens": 1}},
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 100,
+                            "cache_creation_input_tokens": 10,
+                            "input_tokens": 1,
+                        }
+                    },
                 },
             ],
         )
@@ -469,7 +493,13 @@ class TestComputeCacheRateFromJsonl:
                 {
                     "type": "assistant",
                     "uuid": "a1",
-                    "message": {"usage": {"cache_read_input_tokens": 9000, "cache_creation_input_tokens": 0, "input_tokens": 1}},
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 9000,
+                            "cache_creation_input_tokens": 0,
+                            "input_tokens": 1,
+                        }
+                    },
                 }
             ],
         )
@@ -486,7 +516,13 @@ class TestComputeCacheRateFromJsonl:
                 {
                     "type": "assistant",
                     "uuid": "a1",
-                    "message": {"usage": {"cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "input_tokens": 0}},
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 0,
+                            "cache_creation_input_tokens": 0,
+                            "input_tokens": 0,
+                        }
+                    },
                 }
             ],
         )
@@ -503,7 +539,13 @@ class TestComputeCacheRateFromJsonl:
                 {
                     "type": "assistant",
                     "uuid": "a1",
-                    "message": {"usage": {"cache_read_input_tokens": 50, "cache_creation_input_tokens": 5, "input_tokens": 1}},
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 50,
+                            "cache_creation_input_tokens": 5,
+                            "input_tokens": 1,
+                        }
+                    },
                 },
             ],
         )
@@ -526,8 +568,9 @@ class TestCacheHitRateInOutput:
         monkeypatch.chdir(tmp_path)
         db = tmp_path / ".ll" / "history.db"
         db.parent.mkdir(exist_ok=True)
-        from little_loops.session_store import ensure_db
         import sqlite3
+
+        from little_loops.session_store import ensure_db
 
         ensure_db(db)
         conn = sqlite3.connect(str(db))
@@ -542,8 +585,12 @@ class TestCacheHitRateInOutput:
         argv = ["ll-ctx-stats"] + (extra_argv or [])
         with (
             patch("sys.argv", argv),
-            patch("builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")),
-            patch("little_loops.cli.ctx_stats._compute_cache_rate_from_jsonl", return_value=cache_rate),
+            patch(
+                "builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")
+            ),
+            patch(
+                "little_loops.cli.ctx_stats._compute_cache_rate_from_jsonl", return_value=cache_rate
+            ),
         ):
             rc = main_ctx_stats()
         return rc, "\n".join(lines)

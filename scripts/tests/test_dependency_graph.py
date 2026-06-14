@@ -7,7 +7,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from little_loops.dependency_graph import DependencyGraph, WaveContentionNote, refine_waves_for_contention
+from little_loops.dependency_graph import (
+    DependencyGraph,
+    WaveContentionNote,
+    refine_waves_for_contention,
+)
 from little_loops.issue_parser import IssueInfo
 
 

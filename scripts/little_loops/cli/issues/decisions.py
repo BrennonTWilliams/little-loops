@@ -502,16 +502,11 @@ def _cmd_suggest_rules(path) -> int:
     if len(decisions) < 3:
         count = len(decisions)
         noun = "entry" if count == 1 else "entries"
-        print(
-            f"(only {count} decision {noun} found;"
-            " need at least 3 to suggest rule candidates)"
-        )
+        print(f"(only {count} decision {noun} found; need at least 3 to suggest rule candidates)")
         return 1
 
     # Heuristic: rule texts that are one-off choices rather than general constraints
-    _one_off_re = re.compile(
-        r"^(Option [A-C]\b|NO-GO\b|Captured:\s*)", re.IGNORECASE
-    )
+    _one_off_re = re.compile(r"^(Option [A-C]\b|NO-GO\b|Captured:\s*)", re.IGNORECASE)
 
     def _is_general_constraint(e: DecisionEntry) -> bool:
         return not _one_off_re.match(e.rule or "")
@@ -559,15 +554,14 @@ def _cmd_suggest_rules(path) -> int:
         else:
             # Low-signal category: only pair entries that share common tokens
             tok: dict[str, set[str]] = {
-                e.id: _extract_tokens((e.rationale or "") + " " + (e.rule or ""))
-                for e in general
+                e.id: _extract_tokens((e.rationale or "") + " " + (e.rule or "")) for e in general
             }
             used: set[str] = set()
             for i, e1 in enumerate(general):
                 if e1.id in used:
                     continue
                 group = [e1]
-                for e2 in general[i + 1:]:
+                for e2 in general[i + 1 :]:
                     if e2.id in used:
                         continue
                     if tok[e1.id] & tok[e2.id]:

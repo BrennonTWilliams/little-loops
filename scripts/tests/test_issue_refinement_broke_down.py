@@ -14,9 +14,7 @@ from pathlib import Path
 
 import yaml
 
-BUILTIN_LOOPS_DIR = (
-    Path(__file__).parent.parent / "little_loops" / "loops"
-)
+BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 
 
 class TestIssueRefinementAlias:

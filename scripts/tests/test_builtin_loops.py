@@ -820,7 +820,9 @@ class TestRefineToReadyIssueSubLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_confidence_check_delegates_to_verify_confidence_scores_oracle(self, data: dict) -> None:
+    def test_confidence_check_delegates_to_verify_confidence_scores_oracle(
+        self, data: dict
+    ) -> None:
         """confidence_check must delegate score verification to the verify-confidence-scores oracle,
         routing success to check_readiness (extraction of ENH-1033 guard into reusable child loop)."""
         confidence_check = data["states"].get("confidence_check", {})
@@ -1722,7 +1724,9 @@ class TestAutoRefineAndImplementLoop:
         """scope must be in context with empty default (optional sprint/EPIC scoping)."""
         ctx = data.get("context", {})
         assert "scope" in ctx, "context must have a 'scope' field for sprint/EPIC scoping"
-        assert ctx["scope"] == "", "context.scope must default to empty string (backlog poll when unset)"
+        assert ctx["scope"] == "", (
+            "context.scope must default to empty string (backlog poll when unset)"
+        )
 
     def test_get_next_issue_supports_scope_branching(self, data: dict) -> None:
         """get_next_issue must branch on scope: scoped path uses load_or_resolve, backlog path uses ll-issues next-issue."""

@@ -325,13 +325,17 @@ class TestAdversarialLoopStructure:
     def test_probe_states_are_prompt_type(self, loop: dict) -> None:
         states = loop["states"]
         for name in ("probe-boundary", "probe-malformed-hostile", "probe-failure-mode"):
-            assert states[name].get("action_type") == "prompt", f"{name} must be action_type: prompt"
+            assert states[name].get("action_type") == "prompt", (
+                f"{name} must be action_type: prompt"
+            )
 
     def test_probe_states_have_llm_structured_evaluator(self, loop: dict) -> None:
         states = loop["states"]
         for name in ("probe-boundary", "probe-malformed-hostile", "probe-failure-mode"):
             evaluate = states[name].get("evaluate", {})
-            assert evaluate.get("type") == "llm_structured", f"{name} must use llm_structured evaluator"
+            assert evaluate.get("type") == "llm_structured", (
+                f"{name} must use llm_structured evaluator"
+            )
 
     def test_probe_state_evaluator_prompts_are_substantive(self, loop: dict) -> None:
         states = loop["states"]
