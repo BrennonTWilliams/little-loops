@@ -2171,6 +2171,37 @@ class TestMainDefaultInput:
                     f"argparse raised SystemExit({exc.code}) — --input is still required=True"
                 )
 
+    def test_intent_flag_accepted_by_analyze(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--intent/--intent-limit are accepted by ll-workflows analyze (ENH-1114 no-op pass-through)."""
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-workflows",
+                "analyze",
+                "--patterns",
+                "p.yaml",
+                "--intent",
+                "rate limit",
+                "--intent-limit",
+                "25",
+            ],
+        ):
+            try:
+                result = main()
+            except SystemExit as exc:
+                pytest.fail(
+                    f"argparse raised SystemExit({exc.code}) — --intent/--intent-limit not wired"
+                )
+        # Should exit 1 (missing input file), not argparse SystemExit(2)
+        assert result == 1
+
 
 class TestMainProposeSubcommand:
     """Tests for main() propose subcommand (FEAT-1755)."""

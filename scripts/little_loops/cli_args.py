@@ -150,6 +150,34 @@ def add_handoff_threshold_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_intent_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --intent <query> flag for output filtering.
+
+    Args:
+        parser: The argument parser to add the argument to
+    """
+    parser.add_argument(
+        "--intent",
+        type=str,
+        default=None,
+        help="Intent query for output filtering (no-op until FTS5 ranking lands)",
+    )
+
+
+def add_intent_limit_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --intent-limit <N> flag for capping intent-filtered output lines.
+
+    Args:
+        parser: The argument parser to add the argument to
+    """
+    parser.add_argument(
+        "--intent-limit",
+        type=int,
+        default=50,
+        help="Max lines for intent-filtered output (default: 50)",
+    )
+
+
 def add_context_limit_arg(parser: argparse.ArgumentParser) -> None:
     """Add --context-limit argument for per-run context window size override.
 
@@ -448,6 +476,8 @@ __all__ = [
     "add_idle_timeout_arg",
     "add_handoff_threshold_arg",
     "add_context_limit_arg",
+    "add_intent_arg",
+    "add_intent_limit_arg",
     "add_quiet_arg",
     "add_skip_analysis_arg",
     "add_max_issues_arg",

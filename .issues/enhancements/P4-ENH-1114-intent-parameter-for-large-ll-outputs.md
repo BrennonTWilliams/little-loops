@@ -3,15 +3,16 @@ id: ENH-1114
 title: Intent Parameter for Large ll-* CLI Outputs
 type: ENH
 priority: P4
-status: open
+status: done
 discovered_date: 2026-04-15
+completed_at: 2026-06-14 14:05:23+00:00
 discovered_by: capture-issue
 blocked_by: []
 relates_to:
 - FEAT-1112
 - ENH-1111
 - FEAT-1160
-confidence_score: 88
+confidence_score: 94
 outcome_confidence: 79
 score_complexity: 18
 score_test_coverage: 25
@@ -181,7 +182,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Labels
 
-`enhancement`, `cli`, `context-management`, `blocked-by-FEAT-1112`
+`enhancement`, `cli`, `context-management`
 
 ## Verification Notes
 
@@ -204,6 +205,8 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - FEAT-1112 is `done` — the `ll-session` CLI and SQLiteTransport have landed. Both Step 1 and Step 2 are now unblocked.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T13:56:33 - `9304600e-4768-49a5-9623-900288160649.jsonl`
+- `/ll:confidence-check` - 2026-06-14T00:00:00 - `ad54f88c-5ca1-4909-9b5c-dfa5e3078af8.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:47 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
@@ -257,8 +260,22 @@ Update first — This issue is explicitly blocked by FEAT-1112 (SQLite + FTS5 st
 
 ## Status
 
-**Open** | Created: 2026-04-15 | Priority: P4
+**Done** | Created: 2026-04-15 | Priority: P4
 
 ## Scope Note
 
 **Detached from its former parent epic on 2026-06-12 (epic audit)**: this issue was tangential/off-theme for the epic's stated scope and now stands alone in the backlog.
+
+## Resolution
+
+Implemented Step 1 (flag wire-up) as specified. Added `add_intent_arg()` and `add_intent_limit_arg()` helpers to `cli_args.py` and wired `--intent`/`--intent-limit` into three CLIs:
+- `ll-history` (top-level parser)
+- `ll-deps` (top-level parser)
+- `ll-workflows analyze` subparser
+
+All flags are no-op pass-throughs. No `ranking.py` or BM25 module created. Documentation updated in `docs/reference/CLI.md`, `docs/reference/API.md`, and `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md`. Tests added to `test_cli_args.py`, `test_issue_history_cli.py`, and `test_workflow_sequence_analyzer.py`.
+
+Step 2 (FTS5 ranking against FEAT-1112's store) is a separate future implementation.
+
+## Session Log
+- `/ll:manage-issue` - 2026-06-14T14:05:23Z - current-session.jsonl

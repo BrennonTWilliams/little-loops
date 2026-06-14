@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
-from little_loops.cli_args import add_json_arg
+from little_loops.cli_args import add_intent_arg, add_intent_limit_arg, add_json_arg
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
@@ -236,6 +236,9 @@ Examples:
             default="text",
             help="Output format (default: text)",
         )
+
+        add_intent_arg(parser)
+        add_intent_limit_arg(parser)
 
         args = parser.parse_args()
 

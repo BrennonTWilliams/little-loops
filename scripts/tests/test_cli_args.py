@@ -804,3 +804,65 @@ class TestParsePrioritiesEdgeCases:
         with pytest.raises(SystemExit) as exc_info:
             parse_priorities("   ")
         assert exc_info.value.code == 2
+
+
+class TestAddIntentArg:
+    """Tests for add_intent_arg() function."""
+
+    def test_default_is_none(self) -> None:
+        """Defaults to None when flag not provided."""
+        from little_loops.cli_args import add_intent_arg
+
+        parser = argparse.ArgumentParser()
+        add_intent_arg(parser)
+        args = parser.parse_args([])
+        assert args.intent is None
+
+    def test_accepts_string(self) -> None:
+        """Accepts a string query value."""
+        from little_loops.cli_args import add_intent_arg
+
+        parser = argparse.ArgumentParser()
+        add_intent_arg(parser)
+        args = parser.parse_args(["--intent", "rate limit"])
+        assert args.intent == "rate limit"
+
+    def test_accepts_empty_string(self) -> None:
+        """Accepts an empty string (no-op)."""
+        from little_loops.cli_args import add_intent_arg
+
+        parser = argparse.ArgumentParser()
+        add_intent_arg(parser)
+        args = parser.parse_args(["--intent", ""])
+        assert args.intent == ""
+
+
+class TestAddIntentLimitArg:
+    """Tests for add_intent_limit_arg() function."""
+
+    def test_default_is_50(self) -> None:
+        """Defaults to 50 when flag not provided."""
+        from little_loops.cli_args import add_intent_limit_arg
+
+        parser = argparse.ArgumentParser()
+        add_intent_limit_arg(parser)
+        args = parser.parse_args([])
+        assert args.intent_limit == 50
+
+    def test_accepts_integer(self) -> None:
+        """Accepts an integer value."""
+        from little_loops.cli_args import add_intent_limit_arg
+
+        parser = argparse.ArgumentParser()
+        add_intent_limit_arg(parser)
+        args = parser.parse_args(["--intent-limit", "100"])
+        assert args.intent_limit == 100
+
+    def test_rejects_non_integer(self) -> None:
+        """Rejects a non-integer value."""
+        from little_loops.cli_args import add_intent_limit_arg
+
+        parser = argparse.ArgumentParser()
+        add_intent_limit_arg(parser)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--intent-limit", "abc"])

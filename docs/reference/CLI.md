@@ -1435,6 +1435,8 @@ Cross-issue dependency discovery and validation.
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--issues-dir` | `-d` | Path to issues directory (default: `.issues`) |
+| `--intent QUERY` | | Intent query for output filtering (no-op until FTS5 ranking lands) |
+| `--intent-limit N` | | Max lines for intent-filtered output (default: `50`) |
 
 **Subcommands:**
 
@@ -1519,6 +1521,13 @@ ll-deps tree --epic EPIC-1773 -f json  # Structured JSON (root, nodes, edges)
 Display summary statistics and analysis for completed issues.
 
 When present in issue frontmatter, `captured_at` and `completed_at` are preferred over the legacy `discovered_date` field and Resolution body regex / git-log fallbacks; the JSON serialization of `CompletedIssue` includes both fields at sub-day ISO 8601 resolution.
+
+**Global flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--intent QUERY` | | Intent query for output filtering (no-op until FTS5 ranking lands) |
+| `--intent-limit N` | | Max lines for intent-filtered output (default: `50`) |
 
 **Subcommands:**
 

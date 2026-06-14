@@ -3393,6 +3393,10 @@ Entry point for `ll-history` command. Display summary statistics, analysis, and 
 | `analyze` | Full analysis with trends, subsystems, and debt metrics |
 | `export` | Export topic-filtered excerpts from completed issue history |
 
+**Global options (all sub-commands):**
+- `--intent QUERY` - Intent query for output filtering (no-op until FTS5 ranking lands; ENH-1114)
+- `--intent-limit N` - Max lines for intent-filtered output (default: `50`)
+
 #### export
 
 ```
@@ -3501,6 +3505,10 @@ def main_deps() -> int
 Entry point for `ll-deps` command. Cross-issue dependency analysis and validation.
 
 **Returns:** Exit code
+
+**Global options:**
+- `--intent QUERY` - Intent query for output filtering (no-op until FTS5 ranking lands; ENH-1114)
+- `--intent-limit N` - Max lines for intent-filtered output (default: `50`)
 
 **Sub-commands:** `analyze`, `validate`, `fix`, `apply`, `tree`
 

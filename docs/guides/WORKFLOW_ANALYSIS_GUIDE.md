@@ -242,6 +242,8 @@ ll-workflows analyze \
 | `--format` | `-f` | No | Output format: `yaml` or `json` (default: `yaml`) |
 | `--overlap-threshold` | | No | Minimum entity overlap to cluster messages (default: `0.3`) |
 | `--boundary-threshold` | | No | Minimum boundary score to split workflow segments (default: `0.6`) |
+| `--intent QUERY` | | No | Intent query for output filtering (no-op pass-through, pending FTS5 ranking) |
+| `--intent-limit N` | | No | Max lines for intent-filtered output (default: `50`) |
 
 ### How the Analysis Works
 

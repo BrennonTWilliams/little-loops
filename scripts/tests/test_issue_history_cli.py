@@ -145,6 +145,69 @@ class TestMainHistoryIntegration:
         assert "ENH" in captured.out
 
 
+class TestIntentFlagPassThrough:
+    """ENH-1114: --intent/--intent-limit flags on ll-history are a no-op pass-through."""
+
+    def test_intent_flag_does_not_break_summary(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--intent flag (before subcommand) is accepted by ll-history and does not alter output."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        # --intent is on the top-level parser, so it comes before the subcommand name
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-history",
+                    "--intent",
+                    "rate limit",
+                    "summary",
+                    "-d",
+                    str(tmp_path / ".issues"),
+                ],
+            ),
+            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+
+    def test_intent_limit_flag_does_not_break_summary(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--intent-limit flag (before subcommand) is accepted by ll-history and does not alter output."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-history",
+                    "--intent",
+                    "FSM",
+                    "--intent-limit",
+                    "25",
+                    "summary",
+                    "-d",
+                    str(tmp_path / ".issues"),
+                ],
+            ),
+            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+
+
 class TestSummaryDbSource:
     """ENH-1621: ll-history summary prefers the unified session DB."""
 

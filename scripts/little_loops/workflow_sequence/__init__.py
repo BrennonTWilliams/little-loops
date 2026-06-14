@@ -74,6 +74,8 @@ def main() -> int:
     """
     import argparse
 
+    from little_loops.cli_args import add_intent_arg, add_intent_limit_arg
+
     parser = argparse.ArgumentParser(
         description="Identify multi-step workflow patterns from user message history",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -152,6 +154,8 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
         metavar="FLOAT",
         help="Minimum boundary score to split workflow segments (default: 0.6)",
     )
+    add_intent_arg(analyze_parser)
+    add_intent_limit_arg(analyze_parser)
 
     # propose subcommand
     propose_parser = subparsers.add_parser(
