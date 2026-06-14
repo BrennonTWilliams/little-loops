@@ -88,13 +88,29 @@ def _render_execution_plan(
 
         if is_contention:
             # Multiple sub-waves from overlap splitting
-            threshold_suffix = (
-                f" [min_files={config.overlap_min_files}, ratio={config.overlap_min_ratio}]"
-                if config
-                else ""
-            )
+            first_note = notes[group[0]]
+            has_unknown = first_note is not None and getattr(first_note, "has_unknown_hints", False)
+            has_file_overlap = first_note is not None and bool(first_note.contended_paths)
+
+            if has_unknown and not has_file_overlap:
+                split_label = "unknown file hints"
+            elif has_unknown:
+                threshold_suffix = (
+                    f" [min_files={config.overlap_min_files}, ratio={config.overlap_min_ratio}]"
+                    if config
+                    else ""
+                )
+                split_label = f"file overlap + unknown hints{threshold_suffix}"
+            else:
+                threshold_suffix = (
+                    f" [min_files={config.overlap_min_files}, ratio={config.overlap_min_ratio}]"
+                    if config
+                    else ""
+                )
+                split_label = f"file overlap{threshold_suffix}"
+
             lines.append(
-                f"Wave {logical_num} ({group_count} issues, serialized \u2014 file overlap{threshold_suffix}):"
+                f"Wave {logical_num} ({group_count} issues, serialized \u2014 {split_label}):"
             )
             step = 0
             for widx in group:
@@ -125,9 +141,8 @@ def _render_execution_plan(
                         blockers_str = ", ".join(sorted(blockers))
                         lines.append(f"        blocked by: {blockers_str}")
 
-            # Show contended files once at the end of the group
-            first_note = notes[group[0]]
-            if first_note:
+            # Show contended files or actionable hint at the end of the group
+            if first_note and first_note.contended_paths:
                 paths_str = ", ".join(first_note.contended_paths[:2])
                 extra = len(first_note.contended_paths) - 2
                 if extra > 0:
@@ -137,6 +152,10 @@ def _render_execution_plan(
                     lines.append(
                         "  Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json"
                     )
+            if has_unknown:
+                lines.append(
+                    "  Tip: add '### Files to Modify' sections to enable precise overlap detection"
+                )
         else:
             # Single wave (no overlap splitting)
             widx = group[0]

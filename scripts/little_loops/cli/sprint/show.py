@@ -143,8 +143,19 @@ def _render_health_summary(
             logical_count += 1
             prev_parent = None
 
+    has_unknown_hints = any(
+        n is not None and getattr(n, "has_unknown_hints", False) for n in notes
+    )
+
     wave_word = "wave" if logical_count == 1 else "waves"
-    suffix = ", overlap serialized" if has_contention else ", all parallelizable"
+    if has_unknown_hints and has_contention:
+        suffix = ", serialized (overlap + missing file hints)"
+    elif has_unknown_hints:
+        suffix = ", serialized (missing file hints)"
+    elif has_contention:
+        suffix = ", overlap serialized"
+    else:
+        suffix = ", all parallelizable"
     if logical_count == 1 and total_issues == 1:
         suffix = ""
 

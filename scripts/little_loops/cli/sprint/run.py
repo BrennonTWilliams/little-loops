@@ -276,6 +276,15 @@ def _cmd_sprint_run(
         else:
             logger.info(f"  Wave {i}: {issue_ids}")
 
+    # Warn when issues were serialized conservatively due to missing file hints (BUG-2142)
+    if any(
+        n is not None and getattr(n, "has_unknown_hints", False) for n in contention_notes
+    ):
+        logger.warning(
+            "Some issues lack '### Files to Modify' sections — serialized conservatively."
+            " Add file hints for more accurate wave scheduling."
+        )
+
     if args.dry_run:
         logger.info("\nDry run mode - no changes will be made")
         return 0

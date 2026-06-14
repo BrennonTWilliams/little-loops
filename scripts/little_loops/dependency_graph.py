@@ -26,6 +26,7 @@ class WaveContentionNote:
     sub_wave_index: int
     total_sub_waves: int
     parent_wave_index: int = 0
+    has_unknown_hints: bool = False  # True when split includes issues with no file/directory hints
 
 
 @dataclass
@@ -434,6 +435,21 @@ def refine_waves_for_contention(
                     conflicts[b.issue_id].add(a.issue_id)
                     contended |= paths
 
+        # Conservative serialization: issues with no file OR directory hints cannot prove
+        # they are safe to run in parallel with other hint-less issues.  Add synthetic
+        # conflict edges so the greedy coloring places each such issue in its own sub-wave.
+        hintless_ids = [
+            issue.issue_id
+            for issue in wave
+            if not hints[issue.issue_id].files and not hints[issue.issue_id].directories
+        ]
+        has_unknown = len(hintless_ids) > 1
+        if has_unknown:
+            for i, a_id in enumerate(hintless_ids):
+                for b_id in hintless_ids[i + 1 :]:
+                    conflicts[a_id].add(b_id)
+                    conflicts[b_id].add(a_id)
+
         # If no conflicts, keep wave as-is
         if not any(conflicts.values()):
             refined.append(wave)
@@ -465,9 +481,16 @@ def refine_waves_for_contention(
                         sub_wave_index=c,
                         total_sub_waves=total_sub_waves,
                         parent_wave_index=orig_idx,
+                        has_unknown_hints=has_unknown,
                     )
                 )
 
-        logger.info(f"  Wave split into {total_sub_waves} sub-waves due to file overlap")
+        reason_parts = []
+        if contended_paths:
+            reason_parts.append("file overlap")
+        if has_unknown:
+            reason_parts.append("unknown file hints")
+        reason = " + ".join(reason_parts) if reason_parts else "unknown"
+        logger.info(f"  Wave split into {total_sub_waves} sub-waves due to {reason}")
 
     return refined, annotations

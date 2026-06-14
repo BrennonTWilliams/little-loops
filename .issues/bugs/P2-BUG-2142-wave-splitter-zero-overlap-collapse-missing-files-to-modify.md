@@ -3,9 +3,10 @@ id: BUG-2142
 type: BUG
 priority: P2
 captured_at: '2026-06-14T03:50:03Z'
+completed_at: '2026-06-14T05:13:36Z'
 discovered_date: '2026-06-14'
 discovered_by: capture-issue
-status: open
+status: done
 relates_to:
 - BUG-511
 - ENH-1061
@@ -96,6 +97,15 @@ Two complementary fixes:
 - `scripts/little_loops/dependency_graph.py` — `refine_waves_for_contention()` (conservative no-hint case)
 - `scripts/little_loops/cli/sprint/run.py` — `ll-sprint show` warning for hint-less issues
 
+## Steps to Reproduce
+
+1. Create a sprint with issues that lack `### Files to Modify` sections (use prose descriptions or `## Technical Details` instead)
+2. Run `ll-sprint show` to view the wave plan — observe all hint-less issues land in wave 1
+3. Run `ll-sprint run` with 2+ parallel workers (`--workers 2`)
+4. Observe rebase conflicts as workers collide on the same files that the wave scheduler thought were non-overlapping
+
+**Repro shortcut (field-confirmed):** Run any sprint where 10+ issues have no `### Files to Modify` section — the wave splitter will place them all in wave 1, and 3+ workers will hit rebase conflicts immediately.
+
 ## Impact
 
 - **Severity**: High — causes silent parallel collapse and rebase conflicts on every sprint with issues missing `### Files to Modify`
@@ -109,10 +119,29 @@ Two complementary fixes:
 - ENH-1061 (done): Scope directory hints to `### Files to Modify` section only
 - ENH-301 (done): Integrate dependency mapper into sprint — but full-text scan still not wired to scheduling
 
+## Labels
+
+`sprint`, `wave-splitter`, `parallel`, `file-hints`, `scheduling`
+
+## Resolution
+
+**Fixed** (2026-06-14)
+
+Implemented two complementary fixes per the proposed solution:
+
+1. **Conservative serialization** (`dependency_graph.py`): Added `has_unknown_hints: bool = False` field to `WaveContentionNote`. In `refine_waves_for_contention()`, after the pairwise file-overlap loop, a new block identifies all issues with no file OR directory hints (`not hints.files and not hints.directories`) and adds synthetic conflict edges between every pair of such issues. The greedy graph coloring then naturally places each hintless issue in its own sub-wave, preventing parallel collision.
+
+2. **Warning at plan time** (`cli/sprint/_helpers.py`, `show.py`, `run.py`):
+   - `_render_execution_plan()` now shows `"serialized — unknown file hints"` (instead of `"file overlap"`) when the split was caused entirely by missing hints, and appends `"Tip: add '### Files to Modify' sections to enable precise overlap detection"`.
+   - `_render_health_summary()` reflects unknown-hint serialization in the suffix: `"serialized (missing file hints)"` or `"serialized (overlap + missing file hints)"`.
+   - `ll-sprint run` emits a logger warning when any sub-wave was produced by conservative serialization.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-14T05:13:36Z
+- `/ll:ready-issue` - 2026-06-14T04:57:56 - `97c87f48-a008-4f09-b42a-29ebade6da2e.jsonl`
 - `/ll:capture-issue` - 2026-06-14T03:50:03Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---
 
 ## Status
-**Open** | Priority: P2
+**Done** | Priority: P2

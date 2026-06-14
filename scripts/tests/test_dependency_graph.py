@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
+from little_loops.dependency_graph import DependencyGraph, WaveContentionNote, refine_waves_for_contention
 from little_loops.issue_parser import IssueInfo
 
 
@@ -871,17 +871,93 @@ class TestRefineWavesForContention:
         assert result[1][0].issue_id == "FEAT-002"
         assert result[2][0].issue_id == "FEAT-003"
 
-    def test_empty_hints_no_split(self) -> None:
-        """Issues with no file hints (empty content) don't trigger splitting."""
+    def test_empty_hints_serialized_conservatively(self) -> None:
+        """Two issues with no file hints are serialized into separate sub-waves (BUG-2142)."""
         a = _make_issue_with_content("FEAT-001", "")
         b = _make_issue_with_content("FEAT-002", "")
         waves: list[list[IssueInfo]] = [[a, b]]
 
         result, notes = refine_waves_for_contention(waves)
 
+        assert len(result) == 2
+        assert result[0][0].issue_id == "FEAT-001"
+        assert result[1][0].issue_id == "FEAT-002"
+        assert isinstance(notes[0], WaveContentionNote)
+        assert notes[0].has_unknown_hints is True
+        assert isinstance(notes[1], WaveContentionNote)
+        assert notes[1].has_unknown_hints is True
+
+    def test_three_empty_hint_issues_each_serialized(self) -> None:
+        """Three hintless issues each land in their own sub-wave (BUG-2142)."""
+        a = _make_issue_with_content("FEAT-001", "")
+        b = _make_issue_with_content("FEAT-002", "")
+        c = _make_issue_with_content("FEAT-003", "")
+        waves: list[list[IssueInfo]] = [[a, b, c]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        assert len(result) == 3
+        for note in notes:
+            assert isinstance(note, WaveContentionNote)
+            assert note.has_unknown_hints is True
+            assert note.contended_paths == []
+
+    def test_single_hintless_issue_with_hinted_not_split(self) -> None:
+        """A single hintless issue alongside a hinted issue doesn't trigger serialization."""
+        a = _make_issue_with_content("FEAT-001", "")  # hintless
+        b = _make_issue_with_content("FEAT-002", "modifies src/api.py\nmodifies src/config.py")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        # Only one hintless issue — no pair to conflict → wave unchanged
         assert len(result) == 1
-        assert len(result[0]) == 2
         assert notes[0] is None
+
+    def test_two_hintless_issues_among_hinted_serialized(self) -> None:
+        """Two hintless issues in a wave are serialized with each other; hinted issue joins first sub-wave."""
+        a = _make_issue_with_content("FEAT-001", "", priority="P0")  # hintless
+        b = _make_issue_with_content("FEAT-002", "", priority="P1")  # hintless
+        c = _make_issue_with_content(
+            "FEAT-003", "modifies src/api.py\nmodifies src/config.py", priority="P2"
+        )  # hinted, no conflict with a or b
+        waves: list[list[IssueInfo]] = [[a, b, c]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        # a(P0) gets color 0, b(P1) gets color 1, c(P2) gets color 0 (no conflict with a or b)
+        assert len(result) == 2
+        sub1_ids = {i.issue_id for i in result[0]}
+        sub2_ids = {i.issue_id for i in result[1]}
+        assert "FEAT-001" in sub1_ids
+        assert "FEAT-003" in sub1_ids
+        assert sub2_ids == {"FEAT-002"}
+        assert notes[0].has_unknown_hints is True
+        assert notes[1].has_unknown_hints is True
+
+    def test_hintless_note_empty_contended_paths(self) -> None:
+        """Conservative serialization produces notes with empty contended_paths."""
+        a = _make_issue_with_content("FEAT-001", "")
+        b = _make_issue_with_content("FEAT-002", "")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        assert notes[0] is not None
+        assert notes[0].contended_paths == []
+
+    def test_file_overlap_note_has_unknown_hints_false(self) -> None:
+        """Real file overlap splits keep has_unknown_hints=False when no hintless issues."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/cli.py\nmodifies src/config.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/cli.py\nmodifies src/config.py")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        assert len(result) == 2
+        assert notes[0] is not None
+        assert notes[0].has_unknown_hints is False
+        assert len(notes[0].contended_paths) > 0
 
     def test_mixed_waves_only_multi_refined(self) -> None:
         """Multiple waves: only multi-issue waves with real (2+ file) overlaps get refined."""
