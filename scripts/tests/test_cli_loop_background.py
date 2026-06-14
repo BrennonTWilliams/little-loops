@@ -574,11 +574,12 @@ class TestRunBackground:
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
-            mock_popen.return_value.pid = 42
-            from little_loops.cli.loop._helpers import run_background
+        with patch.object(LockManager, "_get_ancestry", return_value=set()):
+            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+                mock_popen.return_value.pid = 42
+                from little_loops.cli.loop._helpers import run_background
 
-            result = run_background("my-loop", args, loops_dir)
+                result = run_background("my-loop", args, loops_dir)
 
         assert result == 1
         mock_popen.assert_not_called()
@@ -603,11 +604,12 @@ class TestRunBackground:
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=True
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
-            mock_popen.return_value.pid = 42
-            from little_loops.cli.loop._helpers import run_background
+        with patch.object(LockManager, "_get_ancestry", return_value=set()):
+            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+                mock_popen.return_value.pid = 42
+                from little_loops.cli.loop._helpers import run_background
 
-            result = run_background("my-loop", args, loops_dir)
+                result = run_background("my-loop", args, loops_dir)
 
         assert result == 0
         mock_popen.assert_called_once()
@@ -634,11 +636,12 @@ class TestRunBackground:
             input=None,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
-            mock_popen.return_value.pid = 42
-            from little_loops.cli.loop._helpers import run_background
+        with patch.object(LockManager, "_get_ancestry", return_value=set()):
+            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+                mock_popen.return_value.pid = 42
+                from little_loops.cli.loop._helpers import run_background
 
-            result = run_background("my-loop", args, loops_dir)
+                result = run_background("my-loop", args, loops_dir)
 
         assert result == 0
         mock_popen.assert_called_once()
@@ -780,11 +783,12 @@ class TestRunBackground:
         )
 
         with patch("little_loops.cli.loop._helpers.load_loop", return_value=mock_fsm):
-            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
-                mock_popen.return_value.pid = 42
-                from little_loops.cli.loop._helpers import run_background
+            with patch.object(LockManager, "_get_ancestry", return_value=set()):
+                with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+                    mock_popen.return_value.pid = 42
+                    from little_loops.cli.loop._helpers import run_background
 
-                result = run_background("rn-refine", args, loops_dir)
+                    result = run_background("rn-refine", args, loops_dir)
 
         # Conflict because both resolve to the same plan.md
         assert result == 1
