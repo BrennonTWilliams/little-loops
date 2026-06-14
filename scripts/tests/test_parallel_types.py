@@ -24,6 +24,7 @@ from little_loops.parallel.types import (
     ParallelConfig,
     PendingWorktreeInfo,
     QueuedIssue,
+    SprintWorkerContext,
     WorkerResult,
     WorkerStage,
 )
@@ -1051,3 +1052,34 @@ class TestParallelConfig:
         assert restored.ignore_pending == original.ignore_pending
         assert restored.base_branch == original.base_branch
         assert restored.remote_name == original.remote_name
+
+
+# =============================================================================
+# SprintWorkerContext Tests (BUG-2141)
+# =============================================================================
+
+
+class TestSprintWorkerContext:
+    """Tests for SprintWorkerContext dataclass (BUG-2141)."""
+
+    def test_creation_with_required_fields(self) -> None:
+        """SprintWorkerContext can be created with issue_id and branch."""
+        ctx = SprintWorkerContext(issue_id="FEAT-025", branch="main")
+
+        assert ctx.issue_id == "FEAT-025"
+        assert ctx.branch == "main"
+
+    def test_to_dict(self) -> None:
+        """to_dict() serializes both fields."""
+        ctx = SprintWorkerContext(issue_id="BUG-123", branch="parallel/bug-123-ts")
+        d = ctx.to_dict()
+
+        assert d == {"issue_id": "BUG-123", "branch": "parallel/bug-123-ts"}
+
+    def test_to_dict_roundtrip_values(self) -> None:
+        """to_dict() produces a plain dict with string values (JSON-serializable)."""
+        ctx = SprintWorkerContext(issue_id="ENH-999", branch="main")
+        d = ctx.to_dict()
+
+        assert isinstance(d["issue_id"], str)
+        assert isinstance(d["branch"], str)

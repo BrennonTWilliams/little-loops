@@ -17,8 +17,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from little_loops.host_runner import resolve_host
+
+if TYPE_CHECKING:
+    from little_loops.parallel.types import SprintWorkerContext
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +158,7 @@ def assemble_guillotine_prompt(
     original_command: str,
     captured_stdout: str,
     token_stats: dict,
+    sprint_context: SprintWorkerContext | None = None,
 ) -> str:
     """Assemble a fresh-session continuation prompt for Option J (parent-side guillotine).
 
@@ -186,7 +191,7 @@ def assemble_guillotine_prompt(
 
     scratch_listing = _list_scratch_files()
 
-    return f"""\
+    body = f"""\
 ⚠ CONTEXT LIMIT REACHED — FRESH SESSION CONTINUATION
 
 The previous automation session exhausted its context window before completing.
@@ -213,6 +218,18 @@ that interrupted session.
 4. Continue implementation from the interruption point
 5. Complete normally: test, commit, close the issue as usual
 """
+
+    if sprint_context is not None:
+        framing = (
+            f"## Sprint Worker Context\n"
+            f"You are a sprint worker. Process exactly ONE issue: {sprint_context.issue_id}\n"
+            f"After completing this issue, exit immediately — do NOT process other issues.\n"
+            f"Do NOT ask for further instructions. Exit with code 0.\n"
+            f"Branch: {sprint_context.branch}\n\n"
+        )
+        return framing + body
+
+    return body
 
 
 def _list_scratch_files() -> str:

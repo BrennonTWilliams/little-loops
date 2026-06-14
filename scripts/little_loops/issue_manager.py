@@ -16,6 +16,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import FrameType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from little_loops.parallel.types import SprintWorkerContext
 
 from little_loops.cli_args import _id_matches
 from little_loops.config import BRConfig
@@ -207,6 +211,7 @@ def run_with_continuation(
     guillotine_threshold: float = 0.90,
     issue_path: Path | None = None,
     run_dir: str | None = None,
+    sprint_context: SprintWorkerContext | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -331,8 +336,20 @@ def run_with_continuation(
                     guillotine_file = Path(run_dir) / "guillotine-prompt.md"
                     guillotine_file.parent.mkdir(parents=True, exist_ok=True)
                     task_first_line = (initial_command.strip().splitlines() or [""])[0]
+                    sprint_framing = ""
+                    if sprint_context is not None:
+                        sprint_framing = (
+                            f"## Sprint Worker Context\n"
+                            f"You are a sprint worker. Process exactly ONE issue: "
+                            f"{sprint_context.issue_id}\n"
+                            f"After completing this issue, exit immediately — "
+                            f"do NOT process other issues.\n"
+                            f"Do NOT ask for further instructions. Exit with code 0.\n"
+                            f"Branch: {sprint_context.branch}\n\n"
+                        )
                     guillotine_file.write_text(
-                        f"## Intent\n"
+                        sprint_framing
+                        + f"## Intent\n"
                         f"Resume an interrupted automation session that hit the context limit.\n"
                         f"Original task: {task_first_line}\n"
                         f"Trigger reason: {trigger_reason} "
@@ -365,6 +382,7 @@ def run_with_continuation(
                             "context_limit": context_limit,
                             "trigger_reason": trigger_reason,
                         },
+                        sprint_context=sprint_context,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -534,6 +552,7 @@ def process_issue_inplace(
     on_usage: Callable[[int, int], None] | None = None,
     preview_full: bool = False,
     event_bus: EventBus | None = None,
+    sprint_context: SprintWorkerContext | None = None,
 ) -> IssueProcessingResult:
     """Process a single issue through the 3-phase workflow in the current working tree.
 
@@ -853,6 +872,7 @@ def process_issue_inplace(
                 on_usage=_on_usage_writer,
                 preview_full=preview_full,
                 issue_path=info.path,
+                sprint_context=sprint_context,
             )
         else:
             logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")

@@ -135,6 +135,27 @@ class WorkerResult:
         )
 
 
+@dataclass
+class SprintWorkerContext:
+    """Sprint worker identity injected into guillotine continuation prompts.
+
+    Tells a fresh Option J session which single issue it must complete
+    and that it must exit immediately after — preventing the deadlock where
+    a fresh session processes multiple visible issues and blocks on "What next?".
+
+    Attributes:
+        issue_id: The single issue this worker is responsible for (e.g. "FEAT-025")
+        branch: Git branch for this worker (main or worktree branch)
+    """
+
+    issue_id: str
+    branch: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {"issue_id": self.issue_id, "branch": self.branch}
+
+
 class MergeStatus(Enum):
     """Status of a merge operation."""
 

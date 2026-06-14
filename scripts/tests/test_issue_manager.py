@@ -1636,6 +1636,104 @@ class TestRunWithContinuation:
         # Sentinel was consumed (file should be gone after read_sentinel)
         assert not sentinel_file.exists(), "Sentinel should have been consumed by read_sentinel"
 
+    def test_guillotine_with_sprint_context_injects_framing(
+        self, temp_project_dir: Path
+    ) -> None:
+        """BUG-2141: Option J with sprint_context prepends sprint framing to fresh session prompt."""
+        from little_loops.issue_manager import run_with_continuation
+        from little_loops.parallel.types import SprintWorkerContext
+
+        mock_logger = MagicMock()
+        sprint_ctx = SprintWorkerContext(issue_id="FEAT-025", branch="main")
+
+        overflow_result = MagicMock()
+        overflow_result.returncode = 1
+        overflow_result.stdout = "Partial work..."
+        overflow_result.stderr = ""
+        overflow_result.args = ["claude"]
+
+        fresh_result = MagicMock()
+        fresh_result.returncode = 0
+        fresh_result.stdout = "Done from fresh session"
+        fresh_result.stderr = ""
+        fresh_result.args = ["claude"]
+
+        call_count = [0]
+        commands_received: list[str] = []
+
+        def mock_run(command: str, *args, **kwargs):
+            call_count[0] += 1
+            commands_received.append(command)
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)  # 195K > 90% of 200K
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "/ll:manage-issue feature implement FEAT-025",
+                    mock_logger,
+                    repo_path=temp_project_dir,
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                    sprint_context=sprint_ctx,
+                )
+
+        assert call_count[0] == 2
+        fresh_cmd = commands_received[1]
+        assert "Sprint Worker Context" in fresh_cmd
+        assert "FEAT-025" in fresh_cmd
+        assert "exit immediately" in fresh_cmd
+        assert "Branch: main" in fresh_cmd
+
+    def test_guillotine_without_sprint_context_unaffected(
+        self, temp_project_dir: Path
+    ) -> None:
+        """BUG-2141: Option J without sprint_context produces no sprint framing (no regression)."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        overflow_result = MagicMock()
+        overflow_result.returncode = 1
+        overflow_result.stdout = "Partial work..."
+        overflow_result.stderr = ""
+        overflow_result.args = ["claude"]
+
+        fresh_result = MagicMock()
+        fresh_result.returncode = 0
+        fresh_result.stdout = "Done"
+        fresh_result.stderr = ""
+        fresh_result.args = ["claude"]
+
+        call_count = [0]
+        commands_received: list[str] = []
+
+        def mock_run(command: str, *args, **kwargs):
+            call_count[0] += 1
+            commands_received.append(command)
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "/ll:manage-issue bug fix BUG-001",
+                    mock_logger,
+                    repo_path=temp_project_dir,
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                    # no sprint_context
+                )
+
+        assert call_count[0] == 2
+        assert "Sprint Worker Context" not in commands_received[1]
+
 
 class TestReadyIssueErrorHandling:
     """Tests for error handling during ready-issue phase (ENH-207)."""

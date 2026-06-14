@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from little_loops.config import BRConfig
     from little_loops.issue_parser import IssueInfo
     from little_loops.logger import Logger
+    from little_loops.parallel.types import SprintWorkerContext
 
 
 class WorkerPool:
@@ -736,6 +737,7 @@ class WorkerPool:
         sentinel_threshold: float = 0.60,
         guillotine_threshold: float = 0.90,
         run_dir: str | None = None,
+        sprint_context: SprintWorkerContext | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """Run a Claude command with automatic continuation on context handoff.
 
@@ -837,8 +839,20 @@ class WorkerPool:
                         guillotine_file = Path(run_dir) / "guillotine-prompt.md"
                         guillotine_file.parent.mkdir(parents=True, exist_ok=True)
                         task_first_line = (command.strip().splitlines() or [""])[0]
+                        sprint_framing = ""
+                        if sprint_context is not None:
+                            sprint_framing = (
+                                f"## Sprint Worker Context\n"
+                                f"You are a sprint worker. Process exactly ONE issue: "
+                                f"{sprint_context.issue_id}\n"
+                                f"After completing this issue, exit immediately — "
+                                f"do NOT process other issues.\n"
+                                f"Do NOT ask for further instructions. Exit with code 0.\n"
+                                f"Branch: {sprint_context.branch}\n\n"
+                            )
                         guillotine_file.write_text(
-                            f"## Intent\n"
+                            sprint_framing
+                            + f"## Intent\n"
                             f"Resume an interrupted automation session that hit the context limit.\n"
                             f"Original task: {task_first_line}\n"
                             f"Trigger reason: {trigger_reason} "
@@ -871,6 +885,7 @@ class WorkerPool:
                                 "context_limit": context_limit,
                                 "trigger_reason": trigger_reason,
                             },
+                            sprint_context=sprint_context,
                         )
                     except Exception as exc:
                         self.logger.warning(

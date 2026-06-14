@@ -2047,6 +2047,39 @@ class TestAssembleGuillatinePrompt:
         assert "200,000" in prompt or "200000" in prompt  # context limit
         assert "usage 95%" in prompt
 
+    def test_sprint_context_prepends_framing_block(self) -> None:
+        """When sprint_context is set, sprint framing appears before the standard body (BUG-2141)."""
+        from little_loops.parallel.types import SprintWorkerContext
+        from little_loops.subprocess_utils import assemble_guillotine_prompt
+
+        ctx = SprintWorkerContext(issue_id="FEAT-025", branch="main")
+        prompt = assemble_guillotine_prompt(
+            original_command="/ll:manage-issue feature implement FEAT-025",
+            captured_stdout="Partial work...",
+            token_stats={"input_tokens": 185_000, "output_tokens": 10_000, "context_limit": 200_000},
+            sprint_context=ctx,
+        )
+
+        assert "Sprint Worker Context" in prompt
+        assert "FEAT-025" in prompt
+        assert "exit immediately" in prompt
+        assert "Branch: main" in prompt
+        # Framing must come before the standard body
+        assert prompt.index("Sprint Worker Context") < prompt.index("CONTEXT LIMIT REACHED")
+
+    def test_no_sprint_context_unaffected(self) -> None:
+        """Without sprint_context, output is identical to the original (no framing added)."""
+        from little_loops.subprocess_utils import assemble_guillotine_prompt
+
+        prompt = assemble_guillotine_prompt(
+            original_command="task",
+            captured_stdout="output",
+            token_stats={"input_tokens": 0, "output_tokens": 0, "context_limit": 200_000},
+        )
+
+        assert "Sprint Worker Context" not in prompt
+        assert prompt.startswith("⚠ CONTEXT LIMIT REACHED")
+
 
 class TestSentinelHelpers:
     """Tests for write_sentinel() and read_sentinel() (BUG-1377 Option G)."""

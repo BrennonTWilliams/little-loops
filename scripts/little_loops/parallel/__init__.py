@@ -25,6 +25,7 @@ from little_loops.parallel.types import (
     OrchestratorState,
     ParallelConfig,
     QueuedIssue,
+    SprintWorkerContext,
     WorkerResult,
     WorkerStage,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "ParallelConfig",
     "ParallelOrchestrator",
     "QueuedIssue",
+    "SprintWorkerContext",
     "WorkerPool",
     "WorkerResult",
     "WorkerStage",

@@ -2455,6 +2455,125 @@ class TestRunWithContinuation:
         assert "## Intent" in content
         assert "## Next Steps" in content
 
+    def test_guillotine_with_sprint_context_injects_framing_in_blob(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """BUG-2141: sprint_context injects framing into guillotine prompt blob (no run_dir)."""
+        from little_loops.parallel.types import SprintWorkerContext
+
+        sprint_ctx = SprintWorkerContext(issue_id="FEAT-025", branch="main")
+
+        overflow_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "test"],
+            returncode=1,
+            stdout="Partial work...",
+            stderr="",
+        )
+        fresh_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "fresh"],
+            returncode=0,
+            stdout="Done from fresh session",
+            stderr="",
+        )
+
+        call_count = [0]
+        commands_received: list[str] = []
+
+        def mock_run_claude(command, working_dir, **kwargs):
+            call_count[0] += 1
+            commands_received.append(command)
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)  # 195K total > 90% of 200K
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
+            with patch(
+                "little_loops.parallel.worker_pool.detect_context_handoff", return_value=False
+            ):
+                worker_pool._run_with_continuation(
+                    "test",
+                    temp_repo_with_config,
+                    issue_id="FEAT-025",
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                    sprint_context=sprint_ctx,
+                )
+
+        assert call_count[0] == 2
+        fresh_cmd = commands_received[1]
+        assert "Sprint Worker Context" in fresh_cmd
+        assert "FEAT-025" in fresh_cmd
+        assert "exit immediately" in fresh_cmd
+        assert "Branch: main" in fresh_cmd
+
+    def test_guillotine_with_sprint_context_and_run_dir_writes_framing_to_file(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+        tmp_path: Path,
+    ) -> None:
+        """BUG-2141: sprint_context injects framing into guillotine file when run_dir is set."""
+        from little_loops.parallel.types import SprintWorkerContext
+
+        sprint_ctx = SprintWorkerContext(issue_id="FEAT-025", branch="parallel/feat-025-ts")
+        run_dir = tmp_path / "runs" / "sprint-loop-20260614"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        overflow_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "test"],
+            returncode=1,
+            stdout="Partial work...",
+            stderr="",
+        )
+        fresh_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "fresh"],
+            returncode=0,
+            stdout="Done from resume",
+            stderr="",
+        )
+
+        call_count = [0]
+        commands_received: list[str] = []
+
+        def mock_run_claude(command, working_dir, **kwargs):
+            call_count[0] += 1
+            commands_received.append(command)
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
+            with patch(
+                "little_loops.parallel.worker_pool.detect_context_handoff", return_value=False
+            ):
+                worker_pool._run_with_continuation(
+                    "test",
+                    temp_repo_with_config,
+                    issue_id="FEAT-025",
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                    run_dir=str(run_dir),
+                    sprint_context=sprint_ctx,
+                )
+
+        assert call_count[0] == 2
+        assert commands_received[1].startswith("/ll:resume")
+        guillotine_file = run_dir / "guillotine-prompt.md"
+        assert guillotine_file.exists()
+        content = guillotine_file.read_text()
+        assert "Sprint Worker Context" in content
+        assert "FEAT-025" in content
+        assert "exit immediately" in content
+        assert "Branch: parallel/feat-025-ts" in content
+        # Sprint framing comes before the Intent section
+        assert content.index("Sprint Worker Context") < content.index("## Intent")
+
 
 class TestWorkerPoolDecisionNeededGate:
     """Tests for conditional decide-issue invocation when decision_needed=True."""
