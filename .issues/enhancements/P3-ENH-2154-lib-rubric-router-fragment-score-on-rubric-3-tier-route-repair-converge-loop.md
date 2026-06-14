@@ -15,6 +15,16 @@ testable: true
 
 Add `scripts/little_loops/loops/lib/rubric-router.yaml` — a reusable fragment library that implements the "score an artifact on a multi-dimension rubric, route to tier-specific repair, re-score until quality passes" converge loop pattern. Callers import the fragment and supply a subject, rubric dimensions, thresholds, and repair actions; the fragment handles the score → parse → tier-route → re-enter cycle.
 
+## Current Behavior
+
+The converge-loop quality-gate pattern (score → repair → re-score until threshold met) is implemented ad-hoc in each loop that needs it. Today's built-in loops each wire their own version from scratch:
+
+- `rn-plan-apo.yaml` defines `score_plans → route_convergence → apply_gradient → run_planner` independently (2-tier: converged / not)
+- `lib/score-plan-quality.yaml` provides scoring only — no routing, no re-entry edge
+- `loop-router.yaml` implements 1-dimensional threshold dispatch (`score_* → parse_*_score → select_loop`) with no repair cycle
+
+Every loop author who wants score-and-improve behavior must write their own `parse` shell state (regex-extract the score), tier-routing states (`exit_code` evaluators), and re-entry edge from scratch. There is no shared abstraction.
+
 ## Motivation
 
 The converge-loop quality-gate pattern (score → repair → re-score until high enough) is reimplemented ad-hoc across several built-in loops today:
@@ -113,6 +123,11 @@ The fragment library provides the scoring scaffold, parse shell state, and tier-
 
 8. **Verify `test_builtin_loops.py` passes** after the new file is added.
 
+## Scope Boundaries
+
+- **In scope**: `lib/rubric-router.yaml` with the four named fragments (`rubric_score`, `rubric_parse_scores`, `rubric_route_high`, `rubric_route_medium`); one runnable example loop (`loops/rubric-refine.yaml`); `loops/README.md` update to list the new library
+- **Out of scope**: Migrating existing loops (`rn-plan-apo.yaml`, `loop-router.yaml`) to import the new fragment — that is a separate follow-on; changes to FSM executor or YAML schema; defining built-in rubric dimensions or domain-specific scoring prompts; adding more than two routing tiers (high / medium / low) in v1
+
 ## Impact
 
 - **Priority**: P3 — Reduces loop authoring boilerplate for the common converge-quality-gate pattern; no blocking dependency
@@ -137,6 +152,30 @@ Fragment names exported:
 - `rubric_route_high`
 - `rubric_route_medium`
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/lib/rubric-router.yaml` (new — fragment library)
+- `scripts/little_loops/loops/rubric-refine.yaml` (new — runnable example loop)
+- `scripts/little_loops/loops/README.md` (update — add rubric-router to the `lib/` listing alongside `common.yaml`)
+
+### Dependent Files (Callers/Importers)
+- `scripts/tests/test_builtin_loops.py` — existing schema/validation tests; must pass after new files are added
+
+### Similar Patterns
+- `scripts/little_loops/loops/lib/common.yaml` — existing fragment library; follow same `fragments:` block authoring conventions
+- `scripts/little_loops/loops/loop-router.yaml` — reference for `parse_*_score` regex pattern and `route_branch_*` `exit_code` evaluator pattern
+
+### Tests
+- `scripts/tests/test_builtin_loops.py` — verify new YAML files pass existing loop schema and validate checks
+
+### Documentation
+- `scripts/little_loops/loops/README.md` — list `lib/rubric-router.yaml` and its four exported fragment names
+- `docs/guides/LOOPS_GUIDE.md` — candidate for a new "Quality Gate" pattern section once this ships (separate follow-on)
+
+### Configuration
+- N/A — no config changes; fragments consume context variables injected by the importing loop
+
 ## Related Key Documentation
 
 - [`scripts/little_loops/loops/lib/common.yaml`](../../scripts/little_loops/loops/lib/common.yaml) — existing fragment library (`shell_exit`, `retry_counter`); rubric-router follows the same authoring conventions
@@ -154,4 +193,5 @@ Fragment names exported:
 **Open** | Created: 2026-06-14 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-14T23:32:01 - `6e7f0496-f1ae-4122-93b0-98f03ca9b145.jsonl`
 - `/ll:capture-issue` - 2026-06-14T23:28:19Z - `73467968-0364-48c2-83d2-1f061bc4e059.jsonl`
