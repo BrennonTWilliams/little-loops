@@ -3,13 +3,19 @@ id: ENH-2072
 title: Wire dead-skills to flag zero-invocation skills in backlog
 type: ENH
 priority: P4
-status: open
-discovered_date: "2026-06-10"
+status: deferred
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
-captured_at: "2026-06-10T15:59:33Z"
-labels: [ll-logs, dead-skills, backlog, prioritize-issues, telemetry]
+captured_at: '2026-06-10T15:59:33Z'
+labels:
+- ll-logs
+- dead-skills
+- backlog
+- prioritize-issues
+- telemetry
 parent: EPIC-1918
-relates_to: [EPIC-1918]
+relates_to:
+- EPIC-1918
 ---
 
 # ENH-2072: Wire dead-skills to flag zero-invocation skills in backlog

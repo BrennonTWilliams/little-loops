@@ -8,6 +8,7 @@ discovered_date: 2026-06-14
 discovered_by: capture-issue
 captured_at: "2026-06-14T01:52:17Z"
 parent: EPIC-1918
+depends_on: [ENH-2134]
 ---
 
 # ENH-2130: ll-logs --window-days anchor semantics inconsistent across subcommands
@@ -96,5 +97,6 @@ Predictable UX: `--window-days N` should mean the same thing across all subcomma
 **Open** | Created: 2026-06-14 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-14T02:30:10 - `1f6a8dcb-a399-44be-a092-c05f684e7ce2.jsonl`
 - `/ll:format-issue` - 2026-06-14T01:58:32 - `2a5cb136-c2a6-4327-b4ad-e6deaff58e4f.jsonl`
 - `/ll:capture-issue` - 2026-06-14T01:52:17Z - `audit-session`

@@ -3,13 +3,19 @@ id: ENH-2071
 title: Inject ll-logs stats into session_start hook context
 type: ENH
 priority: P3
-status: open
-discovered_date: "2026-06-10"
+status: deferred
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
-captured_at: "2026-06-10T15:59:33Z"
-labels: [ll-logs, session-start, telemetry, hooks, correction-rate]
+captured_at: '2026-06-10T15:59:33Z'
+labels:
+- ll-logs
+- session-start
+- telemetry
+- hooks
+- correction-rate
 parent: EPIC-1918
-relates_to: [EPIC-1918]
+relates_to:
+- EPIC-1918
 ---
 
 # ENH-2071: Inject ll-logs stats into session_start hook context

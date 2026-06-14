@@ -3,13 +3,21 @@ id: ENH-2070
 title: Wire scan-failures --capture as automated bug intake
 type: ENH
 priority: P3
-status: open
-discovered_date: "2026-06-10"
+status: deferred
+discovered_date: '2026-06-10'
 discovered_by: capture-issue
-captured_at: "2026-06-10T15:59:33Z"
-labels: [ll-logs, automation, scan-failures, bug-intake, telemetry]
+captured_at: '2026-06-10T15:59:33Z'
+labels:
+- ll-logs
+- automation
+- scan-failures
+- bug-intake
+- telemetry
 parent: EPIC-1918
-relates_to: [EPIC-1918]
+relates_to:
+- EPIC-1918
+depends_on:
+- ENH-2130
 ---
 
 # ENH-2070: Wire scan-failures --capture as automated bug intake
@@ -86,6 +94,7 @@ fi
 2026-06-13: Integration Map path corrected. `hooks/prompts/session_start.md` does not exist; correct targets are `scripts/little_loops/hooks/session_start.py` and `hooks/adapters/claude-code/session-start.sh`. `ll-logs scan-failures` confirmed present in logs.py.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-14T02:30:10 - `1f6a8dcb-a399-44be-a092-c05f684e7ce2.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:40 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:format-issue` - 2026-06-10T16:05:08 - `6facc3ad-9141-4c37-9e24-3adbe7fc2e43.jsonl`
