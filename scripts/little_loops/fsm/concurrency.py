@@ -14,13 +14,17 @@ from __future__ import annotations
 import errno
 import fcntl
 import json
+import logging
 import os
 import re
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 RUNNING_DIR = ".running"
 
@@ -211,6 +215,16 @@ class LockManager:
                 # absolute, but normalize defensively in case of legacy files)
                 lock_scope = [self._normalize_path(p) for p in lock.scope]
                 if self._scopes_overlap(normalized_scope, lock_scope):
+                    # If the lock holder is an ancestor of this process, it's a
+                    # self-reference: a parent loop spawned this child via shell.
+                    # Treat as non-conflict so nested ll-loop invocations work.
+                    if lock.pid in self._get_ancestry():
+                        logger.debug(
+                            "Ignoring ancestor lock: pid=%d loop=%s",
+                            lock.pid,
+                            lock.loop_name,
+                        )
+                        continue
                     return lock
 
             except (json.JSONDecodeError, KeyError, FileNotFoundError):
@@ -265,6 +279,44 @@ class LockManager:
             time.sleep(1)
 
         return False
+
+    def _get_ancestry(self) -> set[int]:
+        """Walk the process tree to collect ancestor PIDs.
+
+        Uses ps(1) to walk up from the current process to PID 1.
+        Returns the set of ancestor PIDs (empty on any error — the
+        ancestry check degrades gracefully so unrelated processes are
+        never incorrectly treated as self).
+
+        The ancestry set is cached on the instance for the lifetime of
+        a single acquire()/release() cycle — it won't change between
+        find_conflict and lock-file creation.
+        """
+        if hasattr(self, "_cached_ancestry"):
+            return self._cached_ancestry
+
+        ancestors: set[int] = set()
+        try:
+            current = os.getpid()
+            while current > 1:
+                result = subprocess.check_output(
+                    ["ps", "-o", "ppid=", "-p", str(current)],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                ).strip()
+                ppid = int(result)
+                if ppid <= 1 or ppid in ancestors:
+                    break
+                ancestors.add(ppid)
+                current = ppid
+        except (subprocess.CalledProcessError, ValueError, FileNotFoundError, OSError):
+            logger.debug(
+                "Could not walk process ancestry; falling back to no-ancestor-check",
+                exc_info=True,
+            )
+
+        self._cached_ancestry = ancestors
+        return ancestors
 
     def _scopes_overlap(self, scope1: list[str], scope2: list[str]) -> bool:
         """Check if two scopes have any overlapping paths."""
