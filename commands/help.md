@@ -190,6 +190,11 @@ AUTOMATION & LOOPS
     Synthesizes one verify-criterion-N state per criterion with llm_structured pass/fail
     Output: .loops/verify-<ISSUE-ID>-<slug>.yaml (validated before writing)
 
+/ll:adversarial-verify-loop <issue-id>
+    Generate an FSM adversarial verification loop YAML that tries to break a feature
+    Probes boundary values, malformed/hostile inputs, and failure modes; FAIL if fewer than 3 probe classes attempted
+    Output: .loops/adversarial-<ISSUE-ID>-<slug>.yaml (validated before writing)
+
 /ll:loop-suggester [file]
     Suggest FSM loops from user message history
 
@@ -321,7 +326,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Scanning & Analysis**: `find-dead-code`, `explore-api`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
-**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `simplify-loop`, `audit-loop-run`, `verify-issue-loop`
+**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `simplify-loop`, `audit-loop-run`, `verify-issue-loop`, `adversarial-verify-loop`
 **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`, `improve-claude-md`
 **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`, `publish` *(maintainers only — project-local)*
 

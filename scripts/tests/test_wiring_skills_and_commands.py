@@ -238,6 +238,8 @@ DOC_FILES_MUST_EXIST: list[tuple[str, str]] = [
     ("skills/ll-capture-issue/SKILL.md", "ENH-1888"),
     ("skills/explore-api/SKILL.md", "FEAT-1287"),
     ("skills/verify-issue-loop/SKILL.md", "FEAT-1447"),
+    ("skills/adversarial-verify-loop/SKILL.md", "ENH-2047"),
+    ("skills/adversarial-verify-loop/agents/openai.yaml", "ENH-2047"),
     ("docs/claude-code/write-a-hook.md", "FEAT-1457"),
     ("thoughts/research/codex-command-discovery.md", "FEAT-1483"),
     ("agents/loop-specialist.md", "FEAT-1532"),

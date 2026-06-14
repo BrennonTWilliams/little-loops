@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.124.0] - 2026-06-14
+
+### Added
+
+- **`/ll:adversarial-verify-loop`** — New skill that generates an FSM adversarial verification loop from a single issue ID. Probes boundary values, malformed/hostile inputs, and failure modes; treats "fewer than 3 probe classes attempted" as a FAIL via a non-LLM `output_numeric` filesystem gate. Adversarial counterpart to `/ll:verify-issue-loop`. (ENH-2047)
+
 ## [1.123.0] - 2026-06-13
 
 ### Added

@@ -120,7 +120,7 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
 ├── loops/                # Built-in FSM loop definitions (94 YAML files) + yaml_state_editor Python module
-├── skills/               # 37 skill definitions (user-invocable workflows)
+├── skills/               # 38 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history
 │   ├── audit-loop-run/               # Audit loop goal achievement

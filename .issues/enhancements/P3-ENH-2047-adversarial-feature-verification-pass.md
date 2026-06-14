@@ -4,8 +4,9 @@ title: Adversarial feature-verification pass (try-to-break, distinct from confir
   verify)
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-09T00:00:00Z'
+completed_at: '2026-06-14T13:47:00Z'
 discovered_date: '2026-06-09'
 discovered_by: capture-issue
 relates_to:
@@ -18,7 +19,7 @@ labels:
 - harness
 - eval
 decision_needed: false
-confidence_score: 94
+confidence_score: 97
 outcome_confidence: 80
 score_complexity: 16
 score_test_coverage: 20
@@ -247,6 +248,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 9. **Update CLAUDE.md and CHANGELOG**: Add `adversarial-verify-loop`^ to `.claude/CLAUDE.md` Automation & Loops list; add ENH-2047 entry to `CHANGELOG.md`
 10. **Update wiring test guards**: Add `("skills/adversarial-verify-loop/SKILL.md", "ENH-2047")` to `DOC_FILES_MUST_EXIST` in `test_wiring_skills_and_commands.py`; add `/ll:adversarial-verify-loop` registry assertion to `test_wiring_cli_registry.py`; update skill count in `test_doc_counts.py` if hardcoded
 
+## Impact
+
+- **Priority**: P3 — Improves verification quality but no existing workflow is blocked; confirmatory paths remain fully functional
+- **Effort**: Medium — One new `SKILL.md` (mirroring `verify-issue-loop`), one new test file, plus wiring updates across docs/counts; zero Python runtime changes
+- **Risk**: Low — Purely additive; hard constraint on not touching `execute` state enforced by AC #3 regression test
+- **Breaking Change**: No
+
 ## Labels
 
 verification, testing, adversarial, harness, eval
@@ -270,9 +278,11 @@ The "too few break-paths attempted" gate (AC #2) has no implementable FSM mechan
 
 ## Status
 
-open
+done
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T13:29:50 - `ff169e6c-e84f-47ae-8571-1012ec3c1ff5.jsonl`
+- `/ll:confidence-check` - 2026-06-14T00:00:00Z - `a2394929-9a83-4ab1-97fc-e5243bc0c311.jsonl`
 - `/ll:confidence-check` - 2026-06-10T00:00:00Z - `ef92cf80-1078-41c4-8aca-bc4d37e1afbb.jsonl`
 - `/ll:wire-issue` - 2026-06-10T18:33:07 - `9de33298-3da0-44eb-8a7b-15b8da33a768.jsonl`
 - `/ll:decide-issue` - 2026-06-10T18:24:32 - `66e20ece-f72d-4f7b-9576-1d8885b4263b.jsonl`

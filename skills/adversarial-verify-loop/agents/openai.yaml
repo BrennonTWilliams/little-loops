@@ -1,0 +1,3 @@
+interface:
+  display_name: "Adversarial Verify Loop"
+  short_description: "Generate an FSM adversarial loop that tries to break a feature via probes"
