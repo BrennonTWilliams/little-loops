@@ -348,8 +348,7 @@ def run_with_continuation(
                             f"Branch: {sprint_context.branch}\n\n"
                         )
                     guillotine_file.write_text(
-                        sprint_framing
-                        + f"## Intent\n"
+                        sprint_framing + f"## Intent\n"
                         f"Resume an interrupted automation session that hit the context limit.\n"
                         f"Original task: {task_first_line}\n"
                         f"Trigger reason: {trigger_reason} "

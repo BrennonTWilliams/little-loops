@@ -55,6 +55,7 @@ def _run_issue_with_wall_clock_timeout(
     raised, and a failed IssueProcessingResult with failure_reason=WALL_CLOCK_TIMEOUT
     is returned. The alarm is always cleared in the finally block.
     """
+
     def _timeout_handler(signum: int, frame: FrameType | None) -> None:
         raise IssueWallClockTimeout(issue.issue_id)
 
@@ -345,9 +346,7 @@ def _cmd_sprint_run(
             logger.info(f"  Wave {i}: {issue_ids}")
 
     # Warn when issues were serialized conservatively due to missing file hints (BUG-2142)
-    if any(
-        n is not None and getattr(n, "has_unknown_hints", False) for n in contention_notes
-    ):
+    if any(n is not None and getattr(n, "has_unknown_hints", False) for n in contention_notes):
         logger.warning(
             "Some issues lack '### Files to Modify' sections — serialized conservatively."
             " Add file hints for more accurate wave scheduling."

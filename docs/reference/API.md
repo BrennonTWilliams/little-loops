@@ -3018,6 +3018,22 @@ queue.mark_failed(issue_id)
 
 Located at `little_loops.parallel.types`:
 
+#### SprintWorkerContext
+
+Sprint worker identity injected into guillotine continuation prompts (BUG-2141).
+Tells a fresh Option J session which single issue it must complete and that it
+must exit immediately after — preventing deadlock where a fresh session processes
+multiple visible issues and blocks on "What next?".
+
+```python
+@dataclass
+class SprintWorkerContext:
+    issue_id: str   # e.g. "FEAT-025"
+    branch: str     # Git branch for this worker (main or worktree branch)
+
+    def to_dict(self) -> dict[str, Any]: ...
+```
+
 #### QueuedIssue
 
 ```python

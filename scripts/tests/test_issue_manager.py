@@ -1636,9 +1636,7 @@ class TestRunWithContinuation:
         # Sentinel was consumed (file should be gone after read_sentinel)
         assert not sentinel_file.exists(), "Sentinel should have been consumed by read_sentinel"
 
-    def test_guillotine_with_sprint_context_injects_framing(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_guillotine_with_sprint_context_injects_framing(self, temp_project_dir: Path) -> None:
         """BUG-2141: Option J with sprint_context prepends sprint framing to fresh session prompt."""
         from little_loops.issue_manager import run_with_continuation
         from little_loops.parallel.types import SprintWorkerContext
@@ -1688,9 +1686,7 @@ class TestRunWithContinuation:
         assert "exit immediately" in fresh_cmd
         assert "Branch: main" in fresh_cmd
 
-    def test_guillotine_without_sprint_context_unaffected(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_guillotine_without_sprint_context_unaffected(self, temp_project_dir: Path) -> None:
         """BUG-2141: Option J without sprint_context produces no sprint framing (no regression)."""
         from little_loops.issue_manager import run_with_continuation
 

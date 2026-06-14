@@ -2056,7 +2056,11 @@ class TestAssembleGuillatinePrompt:
         prompt = assemble_guillotine_prompt(
             original_command="/ll:manage-issue feature implement FEAT-025",
             captured_stdout="Partial work...",
-            token_stats={"input_tokens": 185_000, "output_tokens": 10_000, "context_limit": 200_000},
+            token_stats={
+                "input_tokens": 185_000,
+                "output_tokens": 10_000,
+                "context_limit": 200_000,
+            },
             sprint_context=ctx,
         )
 

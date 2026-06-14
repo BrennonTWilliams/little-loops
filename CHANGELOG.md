@@ -14,7 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.124.0] - 2026-06-14
 
+### Fixed
+
+- **Sprint Option J guillotine no longer deadlocks the orchestrator** — When a sprint worker session hits the context limit and Option J fires, the fresh continuation session now receives a `## Sprint Worker Context` framing block that tells it which single issue to complete and to exit immediately after. Previously the fresh session would process multiple visible issues and block asking "What next?", deadlocking `process_issue_inplace()` indefinitely. Fix threads `SprintWorkerContext(issue_id, branch)` through `process_issue_inplace()` → `run_with_continuation()` → `assemble_guillotine_prompt()` and through `WorkerPool._run_with_continuation()`, covering both the summary-blob path and the `run_dir` file-write path. Both sequential wave and sequential retry call sites in `sprint/run.py` now pass the context. (BUG-2141)
+
 ### Added
+
+- **`SprintWorkerContext` dataclass** — New type in `little_loops.parallel.types` (alongside `WorkerResult`) that carries `issue_id` and `branch` for sprint worker identity injection into guillotine continuation prompts. (BUG-2141)
 
 - **`/ll:adversarial-verify-loop`** — New skill that generates an FSM adversarial verification loop from a single issue ID. Probes boundary values, malformed/hostile inputs, and failure modes; treats "fewer than 3 probe classes attempted" as a FAIL via a non-LLM `output_numeric` filesystem gate. Adversarial counterpart to `/ll:verify-issue-loop`. (ENH-2047)
 

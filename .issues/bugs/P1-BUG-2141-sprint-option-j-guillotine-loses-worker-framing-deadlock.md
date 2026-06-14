@@ -3,9 +3,10 @@ id: BUG-2141
 type: BUG
 priority: P1
 captured_at: '2026-06-14T03:50:03Z'
+completed_at: '2026-06-14T15:39:08Z'
 discovered_date: '2026-06-14'
 discovered_by: capture-issue
-status: open
+status: done
 relates_to:
 - BUG-1386
 - ENH-1996
