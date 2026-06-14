@@ -2,9 +2,10 @@
 id: ENH-2151
 type: ENH
 priority: P3
-status: open
+status: done
 title: Store issue content snapshots in history.db at lifecycle transitions
 captured_at: '2026-06-14T19:15:05Z'
+completed_at: '2026-06-14T23:26:22Z'
 discovered_date: '2026-06-14'
 discovered_by: capture-issue
 decision_needed: false
@@ -267,6 +268,22 @@ _Added by `/ll:confidence-check` on 2026-06-14_
 - ✅ **RESOLVED — FTS5 approach**: Autonomous `search_index` with `kind="snapshot"` selected (drop `issue_snapshots_fts`). See `## Decision Rationale`.
 - ✅ **RESOLVED — `set_status` wiring**: Option C selected — call `record_issue_snapshot()` directly in `set_status.py` (same pattern as `user_prompt_submit.py:76–86`). See `## Decision Rationale`.
 - **Test breakage front-loading required**: 8 `SCHEMA_VERSION == 13` / `int(row[0]) == 13` assertions across `test_session_store.py` (7 sites) and `test_assistant_messages.py` (1 site) will fail immediately on the schema bump — update these before the first green test run.
+
+## Resolution
+
+Implemented in `session_store.py` (v14 schema migration), `cli/session.py`, `cli/history_context.py`, and `cli/issues/set_status.py`.
+
+**Decision 1 implemented**: Autonomous `search_index` with `kind="snapshot"` — no separate `issue_snapshots_fts` table. FTS works via the existing `_index()` helper.
+
+**Decision 2 implemented**: `record_issue_snapshot()` called directly in `cmd_set_status()` and as a side-effect in `SQLiteTransport.send()` for issue events with `file_path`.
+
+Key changes:
+- `session_store.py`: SCHEMA_VERSION 13→14, `issue_snapshots` table, `record_issue_snapshot()`, `_backfill_snapshots()`, `backfill_snapshots()`, updated `backfill()` return dict
+- `cli/session.py`: `--snapshots` flag, updated success format string
+- `cli/history_context.py`: snapshot fallback when `rows` is empty
+- `cli/issues/set_status.py`: direct `record_issue_snapshot()` call on status transitions
+- `__init__.py`: exported `record_issue_snapshot`
+- Tests: 17 new tests, 8 schema-version assertions updated
 
 ## Session Log
 - `/ll:ready-issue` - 2026-06-14T23:02:52 - `ed58008d-84ad-4a79-8c91-d971b51097f4.jsonl`

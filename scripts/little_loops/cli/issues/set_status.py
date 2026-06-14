@@ -53,6 +53,16 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
     path.write_text(new_content)
     print(f"{args.issue_id}: {old_status} → {args.status}")
 
+    # Capture content snapshot on status transition (Decision 2: Option C — direct call,
+    # same pattern as user_prompt_submit.py calling record_correction() without EventBus).
+    try:
+        from little_loops.session_store import record_issue_snapshot, resolve_history_db
+
+        db_path = resolve_history_db()
+        record_issue_snapshot(db_path, args.issue_id, args.status, str(path))
+    except Exception:
+        pass
+
     # Cascade to children
     if getattr(args, "cascade", False):
         fm = parse_frontmatter(content)

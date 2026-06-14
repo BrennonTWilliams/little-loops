@@ -38,6 +38,7 @@ from little_loops.session_store import (
     DEFAULT_DB_PATH,
     backfill,
     backfill_incremental,
+    backfill_snapshots,
     cli_event_context,
     connect,
     prune,
@@ -141,6 +142,12 @@ Examples:
         default=False,
         dest="extract_decisions",
         help="After backfill, run extract-from-completed to mine completed issues for rules (ENH-2152)",
+    )
+    backfill_parser.add_argument(
+        "--snapshots",
+        action="store_true",
+        default=False,
+        help="Hydrate issue_snapshots table from existing .issues/ files (ENH-2151)",
     )
 
     grep_parser = subparsers.add_parser(
@@ -333,6 +340,10 @@ def main_session() -> int:
             return 0
 
         if args.command == "backfill":
+            if getattr(args, "snapshots", False):
+                count = backfill_snapshots(args.db)
+                logger.success(f"Backfilled {count} issue snapshots.")
+                return 0
             since_flag = getattr(args, "since", None)
             if since_flag is not None:
                 from datetime import datetime
@@ -376,7 +387,7 @@ def main_session() -> int:
                 f"(issues={counts['issues']}, loops={counts['loops']}, "
                 f"tools={counts['tools']}, messages={counts.get('messages', 0)}, "
                 f"sessions={counts.get('sessions', 0)}, corrections={counts.get('corrections', 0)}, "
-                f"summaries={counts.get('summaries', 0)})"
+                f"summaries={counts.get('summaries', 0)}, snapshots={counts.get('snapshots', 0)})"
             )
             if getattr(args, "extract_decisions", False):
                 _run_extract_decisions(since=None)

@@ -37,7 +37,7 @@ from little_loops.history_reader import (
     search,
 )
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, connect
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +218,25 @@ def main_history_context() -> int:
                 rows.append(fc)
 
         rows = rows[:_MAX_ROWS]
+
+        if not rows:
+            # Fallback: query issue_snapshots when no corrections/search rows found.
+            try:
+                conn = connect(args.db)
+                try:
+                    snap = conn.execute(
+                        "SELECT title, body FROM issue_snapshots"
+                        " WHERE issue_id = ? ORDER BY ts DESC LIMIT 1",
+                        (args.issue_id,),
+                    ).fetchone()
+                finally:
+                    conn.close()
+                if snap is not None:
+                    body_text = (snap["body"] or "").strip()
+                    if body_text:
+                        rows.append(body_text[:512])
+            except Exception:
+                pass
 
         if not rows:
             return 0

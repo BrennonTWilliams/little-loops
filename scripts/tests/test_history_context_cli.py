@@ -324,6 +324,31 @@ class TestForSkillFlag:
         assert result == 0
         assert out.strip() == ""
 
+    def test_empty_planning_skills_list_returns_zero_empty_output(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, [])
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._setup_issue_session(db, "ENH-1909", "sess-003", "2026-01-10T10:00:00Z")
+        with patch(
+            "sys.argv",
+            [
+                "ll-history-context",
+                "--for-skill",
+                "create-sprint",
+                "--effort",
+                "--db",
+                str(db),
+                "ENH-1909",
+            ],
+        ):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert out.strip() == ""
+
 
 class TestHistoryContextSnapshot:
     """ENH-2151: ll-history-context falls back to issue_snapshots when source .md is missing."""
@@ -364,28 +389,3 @@ class TestHistoryContextSnapshot:
             main_history_context()
         out = capsys.readouterr().out
         assert "Fix ENH-2151 correction content" in out
-
-    def test_empty_planning_skills_list_returns_zero_empty_output(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        monkeypatch.chdir(tmp_path)
-        self._write_config(tmp_path, [])
-        db = tmp_path / "history.db"
-        ensure_db(db)
-        self._setup_issue_session(db, "ENH-1909", "sess-003", "2026-01-10T10:00:00Z")
-        with patch(
-            "sys.argv",
-            [
-                "ll-history-context",
-                "--for-skill",
-                "create-sprint",
-                "--effort",
-                "--db",
-                str(db),
-                "ENH-1909",
-            ],
-        ):
-            result = main_history_context()
-        out = capsys.readouterr().out
-        assert result == 0
-        assert out.strip() == ""
