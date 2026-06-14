@@ -5,7 +5,7 @@ priority: P2
 captured_at: '2026-06-14T03:50:03Z'
 discovered_date: '2026-06-14'
 discovered_by: capture-issue
-status: open
+status: deferred
 relates_to:
 - BUG-585
 - BUG-2141
