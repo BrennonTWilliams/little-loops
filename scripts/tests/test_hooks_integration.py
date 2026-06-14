@@ -1164,6 +1164,73 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
+    def test_system_prompt_baseline_not_added_when_transcript_available(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Regression test for BUG-2146: SYSTEM_PROMPT_BASELINE must not be added when
+        TRANSCRIPT_BASELINE > 0.
+
+        The transcript already includes the system prompt via cache_read_input_tokens;
+        adding SYSTEM_PROMPT_BASELINE (10000) on top double-counts it on the first call.
+        """
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".ll" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            transcript_baseline = 50000
+            transcript_file = tmp_path / "transcript.jsonl"
+            assistant_entry = {
+                "type": "assistant",
+                "message": {
+                    "usage": {
+                        "input_tokens": transcript_baseline,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 0,
+                    }
+                },
+            }
+            transcript_file.write_text(json.dumps(assistant_entry) + "\n")
+
+            # First tool call of the session (CURRENT_CALLS == 0)
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x"},
+                "transcript_path": str(transcript_file),
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+            assert result.returncode == 0
+
+            state_file = tmp_path / "ll-context-state.json"
+            state = json.loads(state_file.read_text())
+
+            assert state["transcript_baseline_tokens"] == transcript_baseline
+
+            # SYSTEM_PROMPT_BASELINE is 10000. When transcript is present, it must NOT be
+            # added. The estimate should be baseline + small per-turn amounts, not +10K.
+            # A threshold of 5000 above baseline safely excludes the 10K overcounting.
+            assert state["estimated_tokens"] < transcript_baseline + 5000, (
+                f"SYSTEM_PROMPT_BASELINE (10000) was incorrectly added on first call "
+                f"when transcript baseline was already available. "
+                f"Got estimated_tokens={state['estimated_tokens']}, "
+                f"expected < {transcript_baseline + 5000}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
 
 class TestUserPromptCheck:
     """Test user-prompt-check.sh special character handling."""

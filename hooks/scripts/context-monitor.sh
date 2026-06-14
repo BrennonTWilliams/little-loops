@@ -313,8 +313,10 @@ main() {
 
     # Add per-turn overhead for Claude output + user message tokens
     local overhead=$PER_TURN_OVERHEAD
-    # Add system prompt baseline on first tool call of session
-    if [ "$CURRENT_CALLS" -eq 0 ]; then
+    # Add system prompt baseline on first tool call only when no transcript baseline is available.
+    # When TRANSCRIPT_BASELINE > 0, the system prompt is already captured via cache_read_input_tokens;
+    # adding SYSTEM_PROMPT_BASELINE on top would double-count it (BUG-2146).
+    if [ "$CURRENT_CALLS" -eq 0 ] && [ "${TRANSCRIPT_BASELINE:-0}" -le 0 ]; then
         overhead=$((overhead + SYSTEM_PROMPT_BASELINE))
     fi
     NEW_TOKENS=$((NEW_TOKENS + overhead))

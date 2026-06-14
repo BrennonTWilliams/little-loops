@@ -1,19 +1,27 @@
 ---
 id: BUG-2146
 type: BUG
-title: "context-monitor: SYSTEM_PROMPT_BASELINE added even when transcript already includes it"
+title: 'context-monitor: SYSTEM_PROMPT_BASELINE added even when transcript already
+  includes it'
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-13
+completed_at: 2026-06-14 06:01:30+00:00
 discovered_by: research-review
 labels:
-  - context-monitor
-  - accuracy
-  - jsonl
+- context-monitor
+- accuracy
+- jsonl
 parent: EPIC-2149
 relates_to:
-  - BUG-2145
-  - ENH-810
+- BUG-2145
+- ENH-810
+confidence_score: 100
+outcome_confidence: 92
+score_complexity: 25
+score_test_coverage: 17
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2146: context-monitor SYSTEM_PROMPT_BASELINE double-counts with transcript baseline
@@ -52,7 +60,7 @@ baseline should be applied.
 
 ## Root Cause
 
-`hooks/scripts/context-monitor.sh` lines 307–312:
+`hooks/scripts/context-monitor.sh` lines 315–320:
 
 ```bash
 local overhead=$PER_TURN_OVERHEAD
@@ -128,4 +136,6 @@ The "gap" only affects implementations that read only `input_tokens`.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T05:57:33 - `21dffe9a-4a15-4c00-a2b0-ce91c88a8695.jsonl`
 - `/ll:format-issue` - 2026-06-14T04:14:30 - `a6f36260-94d2-4cab-bbd5-31dc8ac6ad40.jsonl`
+- `/ll:confidence-check` - 2026-06-14T00:00:00 - `79ac775a-8bae-4055-ac17-b31da304e0d6.jsonl`
