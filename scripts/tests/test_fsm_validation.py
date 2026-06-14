@@ -2353,6 +2353,72 @@ class TestCaptureReachabilityValidation:
         errors = _validate_capture_reachability(fsm)
         assert errors == []
 
+    def test_bypassed_capture_with_default_guard_no_warning(self) -> None:
+        """No bypass WARNING when every reference is guarded by `:default=`.
+
+        The interpolation engine substitutes the default when the capture is
+        missing, so a guarded reference is safe even on paths that bypass the
+        capturing state. Mirrors general-task's check_done references.
+        """
+        fsm = self._fsm_with_capture_and_ref(
+            extra_states={
+                "shortcut": make_state(action="echo bypass", next="check"),
+            },
+        )
+        # Fork 'start' so 'check' is reachable via a path that bypasses 'select'.
+        fsm.states["start"] = make_state(
+            action="echo begin", on_yes="select", on_no="shortcut"
+        )
+        # check references the captured var but GUARDS it with :default=.
+        fsm.states["check"] = make_state(
+            action="echo ${captured.selected.output:default=not-reached}",
+            on_yes="done",
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Guarded reference should not warn, got: {errors}"
+
+    def test_missing_capture_with_default_guard_no_error(self) -> None:
+        """A never-captured var referenced only with `:default=` is not an error.
+
+        `:default=` is the author explicitly opting into 'missing is OK'.
+        """
+        fsm = FSMLoop(
+            name="test-guarded-missing",
+            initial="work",
+            states={
+                "work": make_state(
+                    action="echo ${captured.nonexistent.output:default=fallback}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Guarded missing-capture should not error, got: {errors}"
+
+    def test_mixed_guarded_and_unguarded_still_warns(self) -> None:
+        """If ANY reference to a var is unguarded, the bypass WARNING still fires."""
+        fsm = self._fsm_with_capture_and_ref(
+            extra_states={
+                "shortcut": make_state(action="echo bypass", next="check"),
+            },
+        )
+        fsm.states["start"] = make_state(
+            action="echo begin", on_yes="select", on_no="shortcut"
+        )
+        # One guarded reference AND one unguarded reference to the same var.
+        fsm.states["check"] = make_state(
+            action=(
+                "echo ${captured.selected.output:default=x} "
+                "and ${captured.selected.output}"
+            ),
+            on_yes="done",
+        )
+        errors = _validate_capture_reachability(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert len(warnings) >= 1, f"Unguarded reference should still warn, got: {errors}"
+        assert any("selected" in e.message for e in warnings)
+
     # --- Bypassed capture → WARNING ---
 
     def test_capture_bypassed_on_one_path_emits_warning(self) -> None:

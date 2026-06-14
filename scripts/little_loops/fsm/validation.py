@@ -107,6 +107,27 @@ _SHARED_TMP_PATH_RE = re.compile(r"\.loops/tmp/[\w./-]+")
 # ENH-1961: Regex for extracting captured variable names from ${captured.<var>.*} references
 _CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")
 
+# Full-reference form, capturing the var name and the remainder up to the closing
+# brace so we can detect a `:default=` guard. A reference written as
+# `${captured.x.output:default=...}` is provably safe even on paths that bypass
+# the capturing state — the interpolation engine (interpolation.py) substitutes
+# the default when the path is missing — so it must NOT be flagged by the
+# capture-reachability check. _CAPTURED_REF_RE alone can't see the guard.
+_CAPTURED_REF_FULL_RE = re.compile(r"\$\{captured\.(\w+)([^}]*)\}")
+
+
+def _unguarded_captured_refs(text: str) -> set[str]:
+    """Return captured var names that have at least one reference WITHOUT a
+    `:default=` guard. Vars referenced only via `${captured.x...:default=...}`
+    are omitted: the default makes a missing value safe, so they should not
+    trigger missing-capture or bypass-path diagnostics.
+    """
+    refs: set[str] = set()
+    for var_name, remainder in _CAPTURED_REF_FULL_RE.findall(text):
+        if ":default=" not in remainder:
+            refs.add(var_name)
+    return refs
+
 # ENH-1819: Regex patterns for detecting multimodal evaluation in prompt actions
 _MULTIMODAL_EVAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"Read the screenshot", re.IGNORECASE),
@@ -1810,11 +1831,13 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
         if state.loop is not None:
             continue
 
+        # Only collect references NOT guarded by `:default=` — a guarded
+        # reference is safe even when the capture is missing on some path.
         refs: set[str] = set()
         if state.action:
-            refs.update(_CAPTURED_REF_RE.findall(state.action))
+            refs.update(_unguarded_captured_refs(state.action))
         if state.evaluate is not None and state.evaluate.source:
-            refs.update(_CAPTURED_REF_RE.findall(state.evaluate.source))
+            refs.update(_unguarded_captured_refs(state.evaluate.source))
         if refs:
             reference_map[state_name] = refs
 
