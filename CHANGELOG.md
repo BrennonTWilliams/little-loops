@@ -14,15 +14,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.124.0] - 2026-06-14
 
-### Fixed
-
-- **Sprint Option J guillotine no longer deadlocks the orchestrator** — When a sprint worker session hits the context limit and Option J fires, the fresh continuation session now receives a `## Sprint Worker Context` framing block that tells it which single issue to complete and to exit immediately after. Previously the fresh session would process multiple visible issues and block asking "What next?", deadlocking `process_issue_inplace()` indefinitely. Fix threads `SprintWorkerContext(issue_id, branch)` through `process_issue_inplace()` → `run_with_continuation()` → `assemble_guillotine_prompt()` and through `WorkerPool._run_with_continuation()`, covering both the summary-blob path and the `run_dir` file-write path. Both sequential wave and sequential retry call sites in `sprint/run.py` now pass the context. (BUG-2141)
-
 ### Added
 
 - **`SprintWorkerContext` dataclass** — New type in `little_loops.parallel.types` (alongside `WorkerResult`) that carries `issue_id` and `branch` for sprint worker identity injection into guillotine continuation prompts. (BUG-2141)
-
 - **`/ll:adversarial-verify-loop`** — New skill that generates an FSM adversarial verification loop from a single issue ID. Probes boundary values, malformed/hostile inputs, and failure modes; treats "fewer than 3 probe classes attempted" as a FAIL via a non-LLM `output_numeric` filesystem gate. Adversarial counterpart to `/ll:verify-issue-loop`. (ENH-2047)
+- **`--intent` / `--intent-limit` flags** — `ll-history`, `ll-deps`, and `ll-workflows` now accept `--intent` to filter output to a specific intent and `--intent-limit` to cap results per-intent bucket.
+- **JSONL-based cache hit rate in `ll-ctx-stats`** — `ll-ctx-stats` reports the session-level JSONL cache hit rate alongside the existing per-tool context savings.
+- **Visibility tier in `ll-loop list`** — Loops are now classified as `public`, `internal`, or `example`; `ll-loop list` surfaces this tier to make the harness catalog easier to navigate.
+- **`ll-issues decisions suggest-rules`** — Surfaces decision history entries that are strong candidates for promotion to active rules based on recurrence and outcome patterns.
+- **`ll-issues decisions promote`** — Converts a selected decision into a standing rule written to `.ll/decisions.yaml` and synced into `ll.local.md`.
+- **`cua-agent-desktop` built-in FSM loop** — New loop for computer-use agent desktop automation tasks, available out of the box.
+
+### Fixed
+
+- **Sprint Option J guillotine no longer deadlocks the orchestrator** — When a sprint worker session hits the context limit and Option J fires, the fresh continuation session now receives a `## Sprint Worker Context` framing block that tells it which single issue to complete and to exit immediately after. Previously the fresh session would process multiple visible issues and block asking "What next?", deadlocking `process_issue_inplace()` indefinitely. Fix threads `SprintWorkerContext(issue_id, branch)` through `process_issue_inplace()` → `run_with_continuation()` → `assemble_guillotine_prompt()` and through `WorkerPool._run_with_continuation()`, covering both the summary-blob path and the `run_dir` file-write path. Both sequential wave and sequential retry call sites in `sprint/run.py` now pass the context. (BUG-2141)
+- **`general-task` loop `verify_step` false-pass on non-Python tasks** — The verification step no longer claims success on tasks where the result is not testable as Python; unbounded per-step retry spin is also resolved. (BUG-2127)
+- **`sprint-refine-and-implement` accepts EPIC IDs** — Previously dead-ended when given an EPIC id rather than a sprint file; now resolves the EPIC's sub-issues and processes them correctly. (BUG-2136)
+- **`ll-loop simulate` sub-loop awareness** — Simulated runs now correctly model loops that delegate to sub-loops, preventing false results when testing composite loop definitions. (BUG-2137)
+- **Sprint hintless-wave serialization and stale monkeypatch targets** — Fixed conservative serialization of hintless issues in the wave splitter and repaired stale monkeypatch targets in the sprint test suite. (BUG-2150)
+- **FSM validator recognizes `:default=` guard in capture-reachability check** — The validator no longer flags states that provide a `:default=` fallback as unreachable-capture violations. (ENH-2128)
+- **`loop-composer` error-routing hardened** — Added `re_decompose` on error in `loop-composer` and `loop-composer-adaptive`; `check_auto_plan` now routes errors to the HITL gate rather than terminating. (ENH-2135)
+- **`test_cmd` null-coercion guard in FSM shell state** — Loops that reference `test_cmd` when it is null no longer raise a coercion error; the shell state skips the step cleanly.
+- **Context monitor skips `SYSTEM_PROMPT_BASELINE` when transcript baseline is available** — Prevents inflated context estimates when a real transcript baseline exists.
+- **Context monitor refreshes transcript baseline per turn via mtime detection** — Baseline is reloaded whenever the transcript file mtime advances, keeping usage estimates accurate across long sessions.
+- **Sprint per-issue wall-clock timeout** — A wall-clock deadline is now enforced per issue in `ll-sprint`, preventing Option J from holding the orchestrator indefinitely when a worker stalls.
+
+### Changed
+
+- **`recursive-refine` folds issue-refinement deltas and gains alias** — Issue-refinement delta logic from a standalone loop is now folded into `recursive-refine`; the standalone path is aliased for backwards compatibility.
+- **`auto-refine-and-implement` gains `scope` param and sprint-loop alias** — The `scope` parameter limits which issues are processed; a sprint-loop alias provides a convenient entry point from sprint workflows.
+- **`loops.run_defaults` wired into `ll-init` generated config** — `ll-init` now writes the `loops.run_defaults` block into the generated `.ll/ll-config.json` so persistent run flags are available from first use.
+- **Confidence-check score verification extracted into oracle sub-loop** — The score verification step in the confidence-check flow is now a reusable oracle sub-loop, improving composability.
 
 ## [1.123.0] - 2026-06-13
 
@@ -762,7 +784,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.123.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.124.0...HEAD
+[1.124.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.123.0...v1.124.0
 [1.123.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.122.0...v1.123.0
 [1.122.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.121.0...v1.122.0
 [1.121.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.120.0...v1.121.0
