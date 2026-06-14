@@ -93,4 +93,13 @@ def build_config(
         }
     }
 
+    # --- loops.run_defaults (always written; exposes the feature at init time) ---
+    config["loops"] = {
+        "run_defaults": {
+            "clear": False,
+            "show_diagrams": None,
+            "mode": None,
+        }
+    }
+
     return config

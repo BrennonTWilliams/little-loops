@@ -440,6 +440,22 @@ class TestBuildConfig:
         config = build_config(match, {"session_digest_enabled": False})
         assert config["history"]["session_digest"]["enabled"] is False
 
+    def test_loops_run_defaults_present(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)
+        assert "loops" in config
+        assert "run_defaults" in config["loops"]
+
+    def test_loops_run_defaults_keys(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)
+        rd = config["loops"]["run_defaults"]
+        assert rd["clear"] is False
+        assert rd["show_diagrams"] is None
+        assert rd["mode"] is None
+
 
 # ===========================================================================
 # TestWriteConfig

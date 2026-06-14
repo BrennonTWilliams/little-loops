@@ -1,12 +1,19 @@
 ---
 id: ENH-2113
-title: "Wire loops.run_defaults into ll-init project templates"
+title: Wire loops.run_defaults into ll-init project templates
 type: ENH
-status: open
+status: done
 priority: P3
-captured_at: "2026-06-13T18:07:59Z"
-discovered_date: "2026-06-13"
+captured_at: '2026-06-13T18:07:59Z'
+completed_at: '2026-06-14T01:11:13Z'
+discovered_date: '2026-06-13'
 discovered_by: capture-issue
+confidence_score: 96
+outcome_confidence: 82
+score_complexity: 23
+score_test_coverage: 15
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2113: Wire loops.run_defaults into ll-init project templates
@@ -47,7 +54,7 @@ Also check project-type templates in `templates/` (e.g. `python-generic.json`, `
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/init/core.py` — calls writers; no change likely needed
-- `scripts/little_loops/cli/init.py` — entry point; no change needed
+- `scripts/little_loops/init/cli.py` — entry point; no change needed
 
 ### Similar Patterns
 - `scripts/little_loops/config/features.py:LoopsConfig.from_dict()` — already handles `run_defaults` absence gracefully; no change needed
@@ -104,7 +111,14 @@ Also check project-type templates in `templates/` (e.g. `python-generic.json`, `
 
 2026-06-13: Verified. `scripts/little_loops/init/writers.py` exists but has zero references to `run_defaults` or `LoopsConfig` — gap confirmed. Implementation steps are accurate. Ready to implement.
 
+## Resolution
+
+Added `loops.run_defaults` block to `build_config()` in `scripts/little_loops/init/core.py`. The block is always written with explicit defaults (`clear: false`, `show_diagrams: null`, `mode: null`). Added two tests to `scripts/tests/test_init_core.py` asserting the section is present and has all three keys at correct defaults. `ll-init --dry-run` output now includes the section. No regressions (132 tests pass).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-14T01:11:13Z - manage-issue
+- `/ll:ready-issue` - 2026-06-14T01:02:47 - `fdf75506-1e12-4a3c-955c-51f9c585e9ee.jsonl`
+- `/ll:confidence-check` - 2026-06-14T00:00:00 - `c2df8e34-b4d9-42b0-948e-bae8a4d6c745.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:44 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:format-issue` - 2026-06-13T18:12:01 - `c9085d04-ffdf-4c69-980f-055827eceb22.jsonl`
 
