@@ -113,9 +113,30 @@ states:
       ll-issues check-readiness "$ID" \
         --readiness "${context.readiness_threshold}" \
         --outcome "${context.outcome_threshold}"
-    on_yes: implement
+    on_yes: check_complexity_pre_implement
     on_no: check_outcome
     on_error: check_outcome
+
+  check_complexity_pre_implement:
+    fragment: shell_exit
+    action: |
+      PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"
+      COMPLEXITY=$(jq -r '.score_complexity // 0' "$PRE" 2>/dev/null || echo 0)
+      THRESHOLD="${context.diagnose_complexity_threshold}"
+      [ "$COMPLEXITY" -ge "$THRESHOLD" ] && exit 0 || exit 1
+    on_yes: refine
+    on_no: check_wire_pre_implement
+    on_error: check_wire_pre_implement
+
+  check_wire_pre_implement:
+    fragment: shell_exit
+    action: |
+      PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"
+      CHANGE_SURFACE=$(jq -r '.score_change_surface // 0' "$PRE" 2>/dev/null || echo 0)
+      [ "$CHANGE_SURFACE" -eq 0 ] && exit 0 || exit 1
+    on_yes: wire
+    on_no: implement
+    on_error: implement
 
   check_outcome:
     fragment: shell_exit
@@ -140,10 +161,21 @@ states:
     # the deficiency is confidence_score. diagnose's first rule (IMPLEMENT) needs
     # both thresholds — already found false by check_readiness — so the
     # diagnose → route_d_implement branch is dead from here. refine targets the
-    # confidence gap directly.
-    on_yes: refine
+    # confidence gap directly. check_wire_needed_outcome gates wire first when the
+    # integration map is absent (score_change_surface == 0).
+    on_yes: check_wire_needed_outcome
     on_no: check_decision_needed
     on_error: check_decision_needed
+
+  check_wire_needed_outcome:
+    fragment: shell_exit
+    action: |
+      PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"
+      CHANGE_SURFACE=$(jq -r '.score_change_surface // 0' "$PRE" 2>/dev/null || echo 0)
+      [ "$CHANGE_SURFACE" -eq 0 ] && exit 0 || exit 1
+    on_yes: wire
+    on_no: refine
+    on_error: refine
 
   check_decision_needed:
     fragment: shell_exit
@@ -202,6 +234,10 @@ states:
       elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ]; then
         # Integration map exists → residual ambiguity is decision-driven; refine to resolve
         echo "REFINE"
+      elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] \
+          && [ "$CHANGE_SURFACE" -eq 0 ]; then
+        # High complexity + no integration map → wire before refining
+        echo "WIRE"
       elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] || [ "$CONFIDENCE" -lt "${context.diagnose_confidence_floor}" ]; then
         echo "REFINE"
       elif [ "$CHANGE_SURFACE" -ge "${context.diagnose_change_surface_threshold}" ]; then
