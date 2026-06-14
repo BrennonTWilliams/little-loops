@@ -180,6 +180,15 @@ and follows the `@dataclass` + `to_dict()` + `from_dict()` convention.
    - All 19 existing `process_issue_inplace` mocks in `test_sprint_integration.py` and all 10 in `test_sprint.py`
      use `**kwargs` — no mock cascade updates required
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Audit `scripts/tests/test_issue_manager.py` — `TestRunWithContinuation` (line 1131): add sprint-context guillotine variant (mirrors the new test in `test_worker_pool.py:TestRunWithContinuation`); confirm all 5 existing guillotine tests still pass with `sprint_context` defaulting to `None`
+9. Audit `scripts/tests/test_issue_manager.py` — `TestProcessIssueInplace` direct call sites (lines 1676, 1702, 1734, 1762, 1804): verify each uses keyword args or `**kwargs` and absorbs `sprint_context=None` without breaking
+10. Update `docs/reference/API.md` — add `SprintWorkerContext` dataclass entry in the parallel types section alongside `WorkerResult`
+11. Add CHANGELOG entry for BUG-2141 fix under the next release section
+
 ## Files to Modify
 
 - `scripts/little_loops/parallel/types.py` — add `SprintWorkerContext` dataclass
@@ -197,6 +206,7 @@ and follows the `@dataclass` + `to_dict()` + `from_dict()` convention.
 - `scripts/little_loops/issue_manager.py` — `process_issue_inplace()` (line 528): add `sprint_context` parameter; thread into `run_with_continuation()` call at lines 844–856
 - `scripts/little_loops/parallel/worker_pool.py` — `WorkerPool._run_with_continuation()` (line 729): add `sprint_context` parameter; inject framing into guillotine file write at lines 836–854 and into `assemble_guillotine_prompt()` call at line 865
 - `scripts/little_loops/cli/sprint/run.py` — both call sites must pass `SprintWorkerContext(issue_id=info.issue_id, branch=current_branch)`
+- `scripts/little_loops/parallel/__init__.py` — re-exports `WorkerPool`, `QueuedIssue`, `WorkerResult` via `__all__`; add `SprintWorkerContext` if public API exposure is desired (advisory; not required for core fix) [Wiring pass]
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/sprint/run.py:63` — `_run_issue_with_wall_clock_timeout()` (lines 42–83) calls `process_issue_inplace()` without sprint context (primary sequential wave path)
@@ -210,6 +220,10 @@ and follows the `@dataclass` + `to_dict()` + `from_dict()` convention.
 - `scripts/tests/test_subprocess_utils.py` — class `TestAssembleGuillatinePrompt` (line 1986, note: double-l typo in class name); 4 existing tests at lines 1989–2048 cover original_command, stdout tail, empty stdout, and token_stats; add sprint-context variant alongside
 - `scripts/tests/test_sprint_integration.py` — 19 `process_issue_inplace` mock sites; all use `**kwargs` — no updates needed
 - `scripts/tests/test_sprint.py` — 10 `process_issue_inplace` mock sites; all use `**kwargs` — no updates needed
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_manager.py` — `TestRunWithContinuation` (line 1131): directly tests `run_with_continuation` guillotine path (5 tests: `test_guillotine_path_on_context_overflow`, `test_guillotine_path_on_prompt_too_long`, `test_guillotine_with_run_dir_writes_resume_file`, `test_guillotine_without_run_dir_uses_summary_blob`, `test_option_j_fresh_session_skips_option_e`); add sprint-context variant alongside; assert non-sprint calls unaffected [Agent 1+2+3 finding]
+- `scripts/tests/test_issue_manager.py` — `TestProcessIssueInplace` (direct call sites at lines 1676, 1702, 1734, 1762, 1804): audit each to confirm keyword args or `**kwargs` will absorb `sprint_context=None` without breaking [Agent 2+3 finding]
 
 ### J-Path Test Pattern (two-patch stack)
 
@@ -230,6 +244,10 @@ The `on_usage(185_000, 10_000)` call (195K > 90% of 200K = guillotine_threshold 
 ### Documentation
 - `docs/guides/SPRINT_GUIDE.md` — may need note on Option J behavior in sprint context
 - `hooks/prompts/continuation-prompt-template.md` — continuation prompt template used by guillotine
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `### WorkerPool` constructor signature and `### WorkerResult` fields documented; add `### SprintWorkerContext` dataclass entry alongside `WorkerResult` [Agent 2 finding]
+- `CHANGELOG.md` — new entry for BUG-2141 fix; consistent with ENH-1996 and BUG-1386 entries that name `run_with_continuation` and `WorkerPool._run_with_continuation` [Agent 2 finding]
 
 ## Impact
 
@@ -261,6 +279,7 @@ _Added by `/ll:confidence-check` on 2026-06-14_
 - Test mock cascade (D: 19/25): `process_issue_inplace()` is mocked in 19 tests in `test_sprint_integration.py` and 8 in `test_sprint.py`; adding `sprint_context: SprintWorkerContext | None = None` is backward-compatible and all mocks use `**kwargs` — no cascade updates actually required.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-14T15:04:36 - `fa6737f4-ef9c-4c30-92bb-854a478da37c.jsonl`
 - `/ll:refine-issue` - 2026-06-14T14:23:42 - `44b6af33-4270-4a3c-b93f-5ce3f689b2e8.jsonl`
 - `/ll:confidence-check` - 2026-06-14T14:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/822c662f-28d6-4079-ad8d-82d73c4ff611.jsonl`
 - `/ll:refine-issue` - 2026-06-14T14:13:50 - `5c2e9b75-5a1b-4b79-9b8f-961ba49fcbd8.jsonl`
