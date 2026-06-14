@@ -198,15 +198,17 @@ class TestMultiWaveExecution:
             "# BUG-001: Base Bug\n\n## Summary\nFirst issue, no dependencies."
         )
 
-        # BUG-002: Blocked by BUG-001 (Wave 2)
+        # BUG-002: Blocked by BUG-001 (Wave 2) — distinct file hint keeps it parallel with FEAT-001
         (issues_dir / "bugs" / "P1-BUG-002-dependent-bug.md").write_text(
             "# BUG-002: Dependent Bug\n\n## Summary\nDepends on BUG-001.\n\n"
-            "## Blocked By\n- BUG-001"
+            "## Blocked By\n- BUG-001\n\n"
+            "## Implementation Plan\n\n### Files to Modify\n- src/bug002.py\n"
         )
 
-        # FEAT-001: Blocked by BUG-001 (Wave 2)
+        # FEAT-001: Blocked by BUG-001 (Wave 2) — distinct file hint keeps it parallel with BUG-002
         (issues_dir / "features" / "P2-FEAT-001-feature-one.md").write_text(
-            "# FEAT-001: Feature One\n\n## Summary\nDepends on BUG-001.\n\n## Blocked By\n- BUG-001"
+            "# FEAT-001: Feature One\n\n## Summary\nDepends on BUG-001.\n\n## Blocked By\n- BUG-001\n\n"
+            "## Implementation Plan\n\n### Files to Modify\n- src/feat001.py\n"
         )
 
         # FEAT-002: Blocked by BUG-002 and FEAT-001 (Wave 3)
@@ -283,7 +285,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
 
@@ -364,7 +366,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
 
@@ -435,7 +437,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
 
@@ -503,7 +505,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
 
@@ -589,15 +591,19 @@ class TestErrorRecovery:
         with open(config_dir / "ll-config.json", "w") as f:
             json.dump(config_data, f)
 
-        # Create 3 independent issues (all in Wave 1)
+        # Create 3 independent issues (all in Wave 1) with distinct file hints so
+        # the wave splitter keeps them parallel instead of serializing sub-waves.
         (issues_dir / "bugs" / "P1-BUG-001-first.md").write_text(
-            "# BUG-001: First\n\n## Summary\nFirst issue."
+            "# BUG-001: First\n\n## Summary\nFirst issue.\n\n"
+            "## Implementation Plan\n\n### Files to Modify\n- src/bug001.py\n"
         )
         (issues_dir / "bugs" / "P1-BUG-002-second.md").write_text(
-            "# BUG-002: Second\n\n## Summary\nSecond issue."
+            "# BUG-002: Second\n\n## Summary\nSecond issue.\n\n"
+            "## Implementation Plan\n\n### Files to Modify\n- src/bug002.py\n"
         )
         (issues_dir / "bugs" / "P1-BUG-003-third.md").write_text(
-            "# BUG-003: Third\n\n## Summary\nThird issue."
+            "# BUG-003: Third\n\n## Summary\nThird issue.\n\n"
+            "## Implementation Plan\n\n### Files to Modify\n- src/bug003.py\n"
         )
 
         sprints_dir = tmp_path / ".sprints"
@@ -654,7 +660,7 @@ issues:
             return IssueProcessingResult(success=False, duration=0.1, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_retry_fail,
         )
 
@@ -696,7 +702,7 @@ issues:
             return IssueProcessingResult(success=False, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_fail,
         )
 
@@ -752,7 +758,7 @@ issues:
             )
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_blocked,
         )
         # Prevent state cleanup so we can inspect the saved state
@@ -866,7 +872,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
 
@@ -925,7 +931,7 @@ issues:
             return IssueProcessingResult(success=False, duration=0.1, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_retry_fail,
         )
 
@@ -994,7 +1000,7 @@ issues:
 
         monkeypatch.setattr("little_loops.cli.sprint.run.ParallelOrchestrator", MockOrchestrator)
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_fails,
         )
         monkeypatch.chdir(tmp_path)
@@ -1061,7 +1067,7 @@ issues:
 
         monkeypatch.setattr("little_loops.cli.sprint.run.ParallelOrchestrator", MockOrchestrator)
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
         monkeypatch.chdir(tmp_path)
@@ -1126,7 +1132,7 @@ issues:
 
         monkeypatch.setattr("little_loops.cli.sprint.run.ParallelOrchestrator", MockOrchestrator)
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
         monkeypatch.chdir(tmp_path)
@@ -1370,7 +1376,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
 
@@ -1529,7 +1535,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
 
@@ -1649,7 +1655,7 @@ issues:
             return IssueProcessingResult(success=False, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_fail,
         )
         monkeypatch.chdir(tmp_path)
@@ -1682,7 +1688,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_success,
         )
         cli._sprint_shutdown_requested = False
@@ -1768,7 +1774,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
         monkeypatch.chdir(tmp_path)
@@ -1851,7 +1857,7 @@ issues:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             mock_process_inplace,
         )
         monkeypatch.chdir(tmp_path)

@@ -18,6 +18,7 @@ from little_loops.dependency_graph import DependencyGraph, refine_waves_for_cont
 from little_loops.issue_manager import IssueProcessingResult, process_issue_inplace
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
+from little_loops.parallel.types import SprintWorkerContext
 from little_loops.sprint import SprintManager, SprintState
 
 if TYPE_CHECKING:
@@ -45,6 +46,7 @@ def _run_issue_with_wall_clock_timeout(
     logger: Logger,
     dry_run: bool,
     max_seconds: int,
+    sprint_context: SprintWorkerContext | None = None,
 ) -> IssueProcessingResult:
     """Wrap process_issue_inplace with a SIGALRM-based wall-clock timeout.
 
@@ -65,6 +67,7 @@ def _run_issue_with_wall_clock_timeout(
             config=config,
             logger=logger,
             dry_run=dry_run,
+            sprint_context=sprint_context,
         )
     except IssueWallClockTimeout:
         elapsed = time.monotonic() - issue_start
@@ -81,6 +84,16 @@ def _run_issue_with_wall_clock_timeout(
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, prev_handler)
+
+
+def _detect_current_branch() -> str:
+    """Return the current git branch name, defaulting to 'main' on failure."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else "main"
 
 
 def _sprint_signal_handler(signum: int, frame: FrameType | None) -> None:
@@ -428,6 +441,7 @@ def _cmd_sprint_run(
                 max_wall_clock = config.sprints.max_issue_wall_clock_time
 
                 wave_failed = False
+                _current_branch = _detect_current_branch()
                 for issue in wave:
                     # TODO(ENH-1686): sprint sequential path not yet live-written
                     issue_result = _run_issue_with_wall_clock_timeout(
@@ -436,6 +450,10 @@ def _cmd_sprint_run(
                         logger=logger,
                         dry_run=args.dry_run,
                         max_seconds=max_wall_clock,
+                        sprint_context=SprintWorkerContext(
+                            issue_id=issue.issue_id,
+                            branch=_current_branch,
+                        ),
                     )
                     total_duration += issue_result.duration
                     if issue_result.success:
@@ -530,8 +548,6 @@ def _cmd_sprint_run(
                 # Sequential retry for failed issues (ENH-308)
                 if actually_failed:
                     logger.info(f"Retrying {len(actually_failed)} failed issue(s) sequentially...")
-                    from little_loops.issue_manager import process_issue_inplace
-
                     retried_ok = 0
                     for issue in wave:
                         if issue.issue_id not in actually_failed:
@@ -543,6 +559,10 @@ def _cmd_sprint_run(
                             config=config,
                             logger=logger,
                             dry_run=args.dry_run,
+                            sprint_context=SprintWorkerContext(
+                                issue_id=issue.issue_id,
+                                branch=_detect_current_branch(),
+                            ),
                         )
                         total_duration += retry_result.duration
                         if retry_result.success:

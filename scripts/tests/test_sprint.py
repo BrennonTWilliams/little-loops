@@ -735,7 +735,7 @@ issues:
             raise KeyboardInterrupt()
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             raise_keyboard_interrupt,
         )
 
@@ -771,7 +771,7 @@ issues:
             raise RuntimeError("Unexpected test error")
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             raise_runtime_error,
         )
 
@@ -807,7 +807,7 @@ issues:
             raise RuntimeError("Test error for state save")
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace",
+            "little_loops.cli.sprint.run.process_issue_inplace",
             raise_runtime_error,
         )
 
@@ -918,7 +918,7 @@ class TestSprintDependencyAnalysis:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
+            "little_loops.cli.sprint.run.process_issue_inplace", mock_process_inplace
         )
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
@@ -954,7 +954,7 @@ class TestSprintDependencyAnalysis:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
+            "little_loops.cli.sprint.run.process_issue_inplace", mock_process_inplace
         )
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
@@ -2122,7 +2122,7 @@ class TestSprintOnlyFlag:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
+            "little_loops.cli.sprint.run.process_issue_inplace", mock_process_inplace
         )
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
@@ -2192,7 +2192,7 @@ class TestSprintOnlyFlag:
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
-            "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
+            "little_loops.cli.sprint.run.process_issue_inplace", mock_process_inplace
         )
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
@@ -2252,11 +2252,14 @@ class TestSprintWaveCleanStart:
         issues_dir = tmp_path / ".issues"
         (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
         (issues_dir / "features").mkdir(parents=True, exist_ok=True)
+        # Non-overlapping file hints so the wave splitter keeps both issues parallel.
         (issues_dir / "bugs" / "P1-BUG-001-first-bug.md").write_text(
-            "# BUG-001: First Bug\n\n## Summary\nFix this."
+            "# BUG-001: First Bug\n\n## Summary\nFix this.\n\n"
+            "## Implementation Plan\n\n### Files to Modify\n- src/bug001.py\n"
         )
         (issues_dir / "features" / "P2-FEAT-002-new-feature.md").write_text(
-            "# FEAT-002: New Feature\n\n## Summary\nImplement this."
+            "# FEAT-002: New Feature\n\n## Summary\nImplement this.\n\n"
+            "## Implementation Plan\n\n### Files to Modify\n- src/feat002.py\n"
         )
 
         sprints_dir = tmp_path / "sprints"
