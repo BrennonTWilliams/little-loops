@@ -322,7 +322,10 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 **Verdict: UPDATED (2026-06-12, epic audit)** — Integration Map line references refreshed to current `executor.py` anchors: `_execute_state` :838, `_run_action` :1053, `_action_mode` :1421, `_emit` :1642, `_interruptible_sleep` :1766 (with the learning-state dispatch at :863). These drift quickly; prefer the function-name anchors over raw numbers when implementing.
 
+2026-06-13: Line number drift detected in executor.py. `_interruptible_sleep` is now at :1766 (was :1647/1735). `_emit` at :1642, `_execute_state` at :838, `_action_mode` at :1421 are accurate. Core architectural assumptions remain sound. Issue correctly blocked on FEAT-1930.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:44 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 

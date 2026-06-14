@@ -66,7 +66,7 @@ FSM loops and automation scripts can use these as non-LLM evaluators and dispatc
 
 ## Proposed Solution
 
-Wrap each function in a thin `ll-issues` subcommand handler in `scripts/little_loops/commands/issues.py` (or the equivalent dispatcher):
+Wrap each function in a thin `ll-issues` subcommand handler in `scripts/little_loops/cli/issues/__init__.py` (or the equivalent dispatcher):
 
 1. **`next` subcommand**: Call `DependencyGraph(issues).get_ready_issues()`, apply `--priority` filter and `--skip` exclusions, serialize to JSON, and print. No new logic — pure delegation.
 2. **`verify-work` subcommand**: Call `verify_work_was_done(issue_id, baseline_sha)` and map its boolean result to `sys.exit(0)` / `sys.exit(1)`. If `verify_issue_completed()` is a better fit for the check, delegate to it instead.
@@ -98,7 +98,7 @@ ll-issues mark-failed <issue-id> --reason <text>
 
 ## Implementation Steps
 
-1. Locate the `ll-issues` subcommand dispatcher (`scripts/little_loops/commands/issues.py` or equivalent) and add argument parser entries for `next`, `verify-work`, and `classify-failure`
+1. Locate the `ll-issues` subcommand dispatcher (`scripts/little_loops/cli/issues/__init__.py`) and add argument parser entries for `next`, `verify-work`, and `classify-failure`
 2. Implement `next` handler: delegate to `DependencyGraph.get_ready_issues()` with filter/skip options and JSON serialization
 3. Implement `verify-work` handler: delegate to `verify_work_was_done()`/`verify_issue_completed()` and map bool → exit code
 4. Implement `classify-failure` handler: read stdin, delegate to `classify_failure`/`create_issue_from_failure`
@@ -133,8 +133,10 @@ ll-issues mark-failed <issue-id> --reason <text>
 
 - `/ll:verify-issues` - 2026-06-05 - Partially implemented: `next-issue` and `next-issues` subcommands exist in `cli/issues/`. `verify-work` and `classify-failure` subcommands not yet implemented. Body references `commands/issues.py` which doesn't exist — actual dispatcher is `cli/issues/__init__.py`. Update the Implementation Plan to reflect partial completion and correct the file path.
 - `/ll:verify-issues` - 2026-06-13 - Stale path `commands/issues.py` still present in Implementation Steps. `verify-work`, `classify-failure`, `complete`, `mark-failed` subcommands not yet implemented. Added FEAT-1899 to `blocks:` (missing backlink). Correct file is `cli/issues/__init__.py`.
+- 2026-06-13: Corrected path: `commands/issues.py` → `cli/issues/__init__.py`. Subcommands `verify-work`, `classify-failure`, `complete`, `mark-failed` are not yet implemented. Underlying functions in work_verification.py and issue_lifecycle.py confirmed present.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:14:03 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`

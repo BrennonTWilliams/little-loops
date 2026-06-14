@@ -170,19 +170,14 @@ For each ll intent, classify Pi coverage as:
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-06-01_
-
-**Verdict: OUTDATED** — Research not yet performed:
-- `thoughts/research/pi-hook-event-parity.md` does NOT exist
-- `hooks/adapters/pi/README.md` does not exist (depends on FEAT-1478, unstarted)
-- `hooks/adapters/pi/` directory does not exist
-- Blocked by FEAT-1719 (PostCompact wiring, also unstarted)
+2026-06-13 (OUTDATED): Hook-event parity audit not performed. `thoughts/research/pi-hook-event-parity.md` does not exist. `hooks/adapters/pi/` directory does not exist (depends on FEAT-1478). Cannot start until FEAT-1719 (PostCompact wiring) and FEAT-1478 complete.
 
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:58 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:19 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`

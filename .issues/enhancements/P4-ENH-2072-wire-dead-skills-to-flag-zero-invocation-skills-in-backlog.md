@@ -70,7 +70,7 @@ Half the skill catalog being unused while carrying open issues is a backlog-hygi
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/issues.py` — add `set-scores --from-dead-skills` subcommand (primary entry point)
+- `scripts/little_loops/cli/issues/__init__.py` — add `set-scores --from-dead-skills` subcommand (primary entry point)
 - `scripts/little_loops/issue_manager.py` — add priority-bump and `dead_skill_flag` frontmatter mutation logic
 
 ### Dependent Files (Callers/Importers)
@@ -82,7 +82,7 @@ Half the skill catalog being unused while carrying open issues is a backlog-hygi
 - `ll-issues refine-status` — existing batch-update traversal pattern
 
 ### Tests
-- `scripts/tests/test_issues.py` — add tests for new `set-scores` subcommand
+- `scripts/tests/test_issues_cli.py` and/or `scripts/tests/test_cli_issue_commands.py` — add tests for new `set-scores` subcommand
 - Mock `ll-logs dead-skills --json` output for deterministic unit tests
 
 ### Documentation
@@ -94,10 +94,10 @@ Half the skill catalog being unused while carrying open issues is a backlog-hygi
 
 ## Verification Notes (2026-06-13)
 
-- Integration Map points to `scripts/little_loops/cli/issues.py` as the consumer/modifier — this file **does not exist**. The `dead-skills` subcommand lives in `scripts/little_loops/cli/logs.py` (at `_cmd_scan_failures` ~line 926). The new `ll-issues set-scores` subcommand would be added to `scripts/little_loops/cli/issues/__init__.py`, not `issues.py`.
-- `scripts/tests/test_issues.py` referenced in the Tests section does not exist. The correct test file for issues CLI is `scripts/tests/test_cli_issue_commands.py` or similar — verify before implementing.
+2026-06-13: Integration Map corrected. `scripts/little_loops/cli/issues.py` does not exist; correct path is `scripts/little_loops/cli/issues/__init__.py`. Test file references updated to `test_issues_cli.py` / `test_cli_issue_commands.py`.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:54 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:format-issue` - 2026-06-10T16:06:44 - `d19c37d7-acef-4974-bf90-d673d4b0ec70.jsonl`
 

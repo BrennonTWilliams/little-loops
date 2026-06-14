@@ -204,7 +204,12 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - **Hard blocker unresolved**: FEAT-2001 ("Convert ll-auto CLI to thin shim over ll-loop") is still open, and FEAT-2000 (FSM YAML definition, which blocks FEAT-2001) is also open. This issue explicitly requires FEAT-2001 to be merged first — the documentation must reflect the final implementation, not a hypothetical one.
 - **Replacement text is undetermined**: The new descriptions for `AutoManager` soft-deprecation and FSM delegation in 5 doc files and `config-schema.json` can only be finalized after FEAT-2001's implementation is settled.
 
+## Verification Notes (2026-06-13)
+
+2026-06-13: Wiring-test file references are accurate. Doc file line numbers cannot be pinned until FEAT-2001 merges — verify exact line numbers in ARCHITECTURE.md, API.md, CONFIGURATION.md, CLI.md, E2E_TESTING.md, TESTING.md before finalizing replacement text. Issue correctly blocked on FEAT-2001.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:13:12 - `a3378f94-e4e2-4f51-9e6c-9fff5f286332.jsonl`
 - `/ll:refine-issue` - 2026-06-07T18:28:24 - `50077b98-472a-456e-9164-a749267bb4f6.jsonl`
 - `/ll:wire-issue` - 2026-06-07T18:22:57 - `7b81aa2e-d394-4723-837f-0505a69e6a12.jsonl`
 - `/ll:issue-size-review` - 2026-06-07T00:00:00Z - `5db94c28-db76-4bed-885c-95a49da744cb.jsonl`

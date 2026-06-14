@@ -161,18 +161,14 @@ fallback strategies (e.g. tool allowlist via temp config file like
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-06-01_
-
-**Verdict: OUTDATED** — Research not yet performed:
-- `thoughts/research/pi-headless-cli.md` does NOT exist (only 4 Codex research notes present in `thoughts/research/`)
-- No Pi capability audit has been performed
-- No `PiRunner` `HostCapabilities` defined
+2026-06-13 (OUTDATED): Research audit not yet performed. `thoughts/research/pi-headless-cli.md` does not exist. No PiRunner HostCapabilities defined. This is a prerequisite for FEAT-1480 — must be completed first.
 
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:55 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`

@@ -83,14 +83,7 @@ In `scripts/little_loops/host_runner.py` at `PiRunner` class (lines ~478–532):
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-06-01_
-
-**Verdict: OUTDATED** — Implementation not started:
-- All 4 `PiRunner.build_*` methods still raise `HostNotConfigured` at `host_runner.py:671–707`
-- `HostCapabilities` for Pi not defined
-- Depends on FEAT-1714 (also unstarted)
-
-_Updated 2026-06-13_: Line numbers have drifted significantly. `PiRunner` class now starts at `host_runner.py:698` (issue body says 478–532). `CodexRunner` class is at `:351` (issue body / Scope Boundary says 270–418). `ClauseCodeRunner` is at `:213` (issue body says 215–302). All body line numbers should be refreshed before implementing.
+2026-06-13 (OUTDATED): Major line number drift — PiRunner is now at :698 in host_runner.py (issue estimates :478-532). CodexRunner/ClaudeCodeRunner locations also differ from body estimates. All 4 PiRunner.build_* methods still raise HostNotConfigured — implementation not yet started. Refresh all line number references before implementing. Blocked on FEAT-1714 (Pi CLI audit not yet done).
 
 ## Status
 
@@ -107,6 +100,7 @@ _Updated 2026-06-13_: Line numbers have drifted significantly. `PiRunner` class 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `test_ll_hook_host_env_var_propagates_pi` test in `test_hook_intents.py` tests the **Python-side host routing** — that the intent dispatcher reads `LL_HOOK_HOST=pi` and routes correctly. FEAT-1478's sentinel-file test in `test_pi_adapter.py` verifies the **TypeScript adapter** sets `LL_HOOK_HOST=pi` before spawning Python. Both tests are needed, but their assertions must be non-overlapping to avoid redundancy: this issue asserts Python routing behavior; FEAT-1478 asserts env-var propagation from the TypeScript layer.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:51 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:59 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 

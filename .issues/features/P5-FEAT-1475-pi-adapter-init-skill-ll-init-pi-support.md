@@ -83,8 +83,10 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 ## Verification Notes (2026-06-13)
 
 - `skills/init/SKILL.md` was collapsed to a redirect stub by ENH-1982 — it no longer contains the `--pi` integration point described in the implementation plan. The issue body's "Step 8.5 into SKILL.md" approach is no longer applicable. Re-scope to target the `ll-init` CLI (`--hosts` multi-select already exists via FEAT-1981). The scope boundary note already flags this but the implementation steps have not been updated.
+- 2026-06-13 (OUTDATED): `skills/init/SKILL.md` was collapsed to a redirect stub by ENH-1982 (2026-06-12) and is no longer the correct implementation target. Implementation steps referencing this file need re-scoping to the ll-init CLI surface (scripts/little_loops/init/). Recommend updating implementation plan before starting.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:14:10 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:54 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`

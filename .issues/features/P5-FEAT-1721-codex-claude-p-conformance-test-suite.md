@@ -64,18 +64,14 @@ No test exercises `ll-auto`, `ll-sprint`, `ll-loop`, or `ll-action` end-to-end a
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-06-01_
-
-**Verdict: OUTDATED** — Implementation not started; upstream dependencies unmet:
-- `scripts/tests/conformance/test_codex_claude_p_parity.py` does NOT exist
-- `docs/development/CONFORMANCE.md` does NOT exist
-- Blocked by FEAT-1719 (postcompact intent, absorbed FEAT-1720 scope); ENH-1718 still open
+2026-06-13 (OUTDATED): Conformance test suite not created. `scripts/tests/conformance/` directory does not exist. `docs/development/CONFORMANCE.md` does not exist. Mirrors FEAT-1716 structure for Codex. Blocked on FEAT-1719 (PostCompact/PermissionRequest) and ENH-1718.
 
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:13:09 - `73a52bd5-de57-4d68-aad8-5e7719814689.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:59 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`

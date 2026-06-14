@@ -69,12 +69,14 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - `docs/reference/HOST_COMPATIBILITY.md` has no Pi rows — only claude-code, opencode, and codex hosts are present
 - No Pi sections added to ARCHITECTURE.md, TROUBLESHOOTING.md, API.md, or CONFIGURATION.md
 - Issue is blocked on FEAT-1478 (Pi adapter itself) which is also unstarted
+- 2026-06-13 (OUTDATED): Documentation updates cannot start until FEAT-1478 creates `hooks/adapters/pi/` and related files. HOST_COMPATIBILITY.md has no Pi rows; ARCHITECTURE.md, TROUBLESHOOTING.md, API.md, CONFIGURATION.md lack Pi sections — all confirmed missing as expected. No changes needed until FEAT-1478 merges.
 
 ## Status
 
 **Open** | Created: 2026-05-15 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:14:14 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T21:54:23 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:54 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`

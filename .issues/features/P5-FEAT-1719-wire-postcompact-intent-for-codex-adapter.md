@@ -66,18 +66,14 @@ A `PostCompact` entry exists in `hooks/adapters/codex/hooks.json` pointing to a 
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-06-01_
-
-**Verdict: OUTDATED** — Implementation not started:
-- `scripts/little_loops/hooks/post_compact.py` does NOT exist
-- `_dispatch_table()` has no `post_compact` entry (6 handlers present; post_compact not among them)
-- No `PostCompact` entry in `hooks/adapters/codex/hooks.json`
+2026-06-13 (OUTDATED): Implementation not started. `scripts/little_loops/hooks/post_compact.py` does not exist. `_dispatch_table()` in hooks/__init__.py has no post_compact entry. PostCompact is absent from `hooks/adapters/codex/hooks.json`. Scope includes PermissionRequest handling (absorbed from cancelled FEAT-1720). Create handler, register in dispatch table, add to hooks.json, create post-compact-after.sh shim.
 
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:13:05 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:01 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`

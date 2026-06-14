@@ -202,6 +202,10 @@ open
 - Created recently; line number from parent EPIC-1929/related FEAT-1794 needs updating.
 - **2026-06-13**: `_interruptible_sleep` has drifted further — current location is `executor.py:1766` (verification note said 1735; issue body says 1647). Update the line reference before implementing.
 
+## Verification Notes (2026-06-13)
+
+2026-06-13: Line number drift in executor.py: `_interruptible_sleep` now at :1766 (issue references :1647). Critical pre-implementation fix required: `send_alert()` signature in this issue shows `(prompt, context, timeout)` but FEAT-1930 protocol specifies `(loop_name, state_name, prompt, captured_context, timeout) -> str` — must align before implementation.
+
 
 ---
 
@@ -210,6 +214,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The `API/Interface` section above shows `TerminalAdapter.send_alert(prompt, context, timeout)` but the `CommunicationAdapter` protocol in FEAT-1930 defines `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> None`. Align this issue's `send_alert()` signature with FEAT-1930's protocol **before** implementing — add `loop_name: str` and `state_name: str` as the first two parameters to match the base protocol. This allows the terminal adapter to display the state name in the formatted prompt output without requiring the caller to pre-interpolate it.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:51 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:19:19 - `4c87a3f2-1298-4938-ae70-4c5f78013645.jsonl`

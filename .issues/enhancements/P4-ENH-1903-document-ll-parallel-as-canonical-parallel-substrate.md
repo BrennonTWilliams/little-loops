@@ -39,7 +39,7 @@ Deliverables:
 - Reference `docs/research/ll-orchestrator-decomposition-plan-v0.2.md` from
   `docs/ARCHITECTURE.md` for the full decomposition rationale.
 
-Should be written last, after FEAT-1902 and FEAT-1899 are merged, so the docs
+Should be written last, after FEAT-1899 is merged, so the docs
 reflect the final implementation.
 
 ## Impact
@@ -81,10 +81,10 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 
 ## Verification Notes (2026-06-13)
 
-- FEAT-1902 is `done` (cancelled per codebase). The body prose still says "after FEAT-1902 and FEAT-1899 are merged" — the FEAT-1902 condition is already satisfied. Update body to remove the FEAT-1902 prerequisite and reflect only FEAT-1899 as remaining.
-- FEAT-1899 is still open (now correctly `blocked` status), so the waiting condition for FEAT-1899 is unchanged.
+2026-06-13: FEAT-1902 is now done/cancelled — prerequisite satisfied. Removed FEAT-1902 from prerequisite language. Only FEAT-1899 completion remains required before doc updates can land.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:51 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`

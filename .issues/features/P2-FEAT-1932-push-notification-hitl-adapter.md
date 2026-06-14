@@ -235,7 +235,10 @@ open
 - `_interruptible_sleep` has drifted further — current location is `executor.py:1766` (previous verification note said 1735; issue body says 1647). Update before implementing.
 - `PushNotification` tool remains absent from codebase; scope boundary blocker condition unchanged.
 
+2026-06-13: Line number drift: `_interruptible_sleep` now at :1766 (was :1647). Signature mismatch with FEAT-1930 protocol (missing `loop_name`, `state_name` params, missing `alert_id` return). Hard blocker: `PushNotification` tool does not exist in the codebase — a concrete push transport must be identified or created before this issue can proceed.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:58 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:decide-issue` - 2026-06-12T16:31:51 - `5f156fda-1001-478e-926c-73ffddf7e4b1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:01 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`

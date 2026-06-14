@@ -100,7 +100,12 @@ Also check project-type templates in `templates/` (e.g. `python-generic.json`, `
 
 `enhancement`, `ll-init`, `loops`, `captured`
 
+## Verification Notes
+
+2026-06-13: Verified. `scripts/little_loops/init/writers.py` exists but has zero references to `run_defaults` or `LoopsConfig` — gap confirmed. Implementation steps are accurate. Ready to implement.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:44 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:format-issue` - 2026-06-13T18:12:01 - `c9085d04-ffdf-4c69-980f-055827eceb22.jsonl`
 
 - `/ll:capture-issue` - 2026-06-13T18:07:59Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68161d6f-aa46-4b19-8309-5c8794319dc2.jsonl`

@@ -63,7 +63,7 @@ fi
 ## Integration Map
 
 ### Files to Modify
-- `hooks/prompts/session_start.md` — add sentinel-guarded `ll-logs scan-failures --capture` call
+- `hooks/adapters/claude-code/session-start.sh` — add sentinel-guarded `ll-logs scan-failures --capture` call
 - `scripts/little_loops/hooks/session_start.py` — wire scan count into `project_context` output
 
 ### Dependent Files (Callers/Importers)
@@ -81,12 +81,12 @@ fi
 ### Configuration
 - `.ll/.scan-failures-last-run` sentinel file (created at runtime, gitignored)
 
-## Verification Notes (2026-06-13)
+## Verification Notes
 
-- Integration Map references `hooks/prompts/session_start.md` which does **not** exist. The `hooks/prompts/` directory only contains `continuation-prompt-template.md` and `optimize-prompt-hook.md`. Correct file targets are: `hooks/adapters/claude-code/session-start.sh` (shell adapter) and `scripts/little_loops/hooks/session_start.py` (Python handler where the scan-failures call should be added).
-- `ll-logs scan-failures --capture` flag confirmed present in `scripts/little_loops/cli/logs.py:1832`.
+2026-06-13: Integration Map path corrected. `hooks/prompts/session_start.md` does not exist; correct targets are `scripts/little_loops/hooks/session_start.py` and `hooks/adapters/claude-code/session-start.sh`. `ll-logs scan-failures` confirmed present in logs.py.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-14T00:12:40 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:format-issue` - 2026-06-10T16:05:08 - `6facc3ad-9141-4c37-9e24-3adbe7fc2e43.jsonl`
 
