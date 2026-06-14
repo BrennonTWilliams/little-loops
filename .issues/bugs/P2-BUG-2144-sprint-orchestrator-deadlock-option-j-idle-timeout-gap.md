@@ -9,12 +9,12 @@ status: open
 relates_to:
 - ENH-303
 - BUG-2141
-confidence_score: 87
+confidence_score: 92
 outcome_confidence: 78
-score_complexity: 19
-score_test_coverage: 16
-score_ambiguity: 19
-score_change_surface: 18
+score_complexity: 21
+score_test_coverage: 20
+score_ambiguity: 17
+score_change_surface: 20
 ---
 
 # BUG-2144: Sprint orchestrator deadlock — ENH-303 idle detection doesn't cover Option J sub-session
@@ -130,6 +130,7 @@ Also: surface the timeout in sprint state so `ll-sprint show` reports it as
 
 ## Session Log
 - `/ll:capture-issue` - 2026-06-14T03:50:03Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-06-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cad4a66a-e81d-47ad-aff1-160b8d4f14d0.jsonl`
 
 ---
 
