@@ -104,7 +104,7 @@ fragments:
 
       if not errors:
           # Build known loop names from the catalog file written by discover_loops.
-          # Read from disk rather than interpolating ${captured.catalog.output} into a
+          # Read from disk rather than interpolating $${captured.catalog.output} into a
           # string literal: the catalog JSON is multi-line and contains embedded quotes,
           # which would produce a SyntaxError on every invocation (BUG: composer audit 2026-06-13).
           try:
