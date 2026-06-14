@@ -1,4 +1,5 @@
 name: "rlhf-svg-evaluate"
+visibility: internal
 category: lib
 description: |
   Standalone evaluation sub-loop for rlhf-animated-svg (ENH-2048).

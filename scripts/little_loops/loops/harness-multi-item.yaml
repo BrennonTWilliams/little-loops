@@ -13,6 +13,7 @@
 # Validate: ll-loop test harness-multi-item
 
 name: harness-multi-item
+visibility: example
 category: harness
 artifact_versioning_ok: true  # example loop; flat write per iteration is intentional for simplicity
 description: |

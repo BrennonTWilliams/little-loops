@@ -1,4 +1,5 @@
 name: implement-issue-chain
+visibility: internal
 description: |
   Oracle sub-loop that drains a recursive-refine passed-issues queue: reads
   recursive-refine-passed.txt, populates a caller-prefixed impl-queue, pops

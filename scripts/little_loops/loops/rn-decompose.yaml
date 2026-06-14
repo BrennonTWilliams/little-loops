@@ -1,4 +1,5 @@
 name: rn-decompose
+visibility: internal
 category: planning
 description: |
   Sub-loop for the issue decomposition pipeline (size review → child detection →

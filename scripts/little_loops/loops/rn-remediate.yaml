@@ -1,4 +1,5 @@
 name: rn-remediate
+visibility: internal
 category: planning
 description: |
   Sub-loop for the iterative deepening remediation cycle (diagnose → remediate →

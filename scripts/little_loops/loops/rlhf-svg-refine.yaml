@@ -1,4 +1,5 @@
 name: "rlhf-svg-refine"
+visibility: internal
 category: lib
 description: |
   Standalone refinement sub-loop for rlhf-animated-svg (ENH-2049).

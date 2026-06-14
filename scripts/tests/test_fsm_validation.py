@@ -824,6 +824,60 @@ class TestCircuitValidation:
         assert unknown_warnings == []
 
 
+class TestVisibilityValidation:
+    """Visibility tier field: recognized top-level key + value validation."""
+
+    def _write_yaml(self, tmp_path: Path, body: str) -> Path:
+        p = tmp_path / "loop.yaml"
+        p.write_text(body)
+        return p
+
+    _BASE = (
+        "name: vis-loop\n"
+        "description: t\n"
+        "initial: work\n"
+        "states:\n"
+        "  work:\n"
+        "    action: run.sh\n"
+        "    on_yes: done\n"
+        "  done:\n"
+        "    terminal: true\n"
+    )
+
+    @pytest.mark.parametrize("vis", ["public", "internal", "example"])
+    def test_valid_visibility_no_warning(self, tmp_path: Path, vis: str) -> None:
+        """A recognized visibility value produces no unknown-key or value warning."""
+        loop_yaml = self._write_yaml(tmp_path, self._BASE + f"visibility: {vis}\n")
+        fsm, warnings = load_and_validate(loop_yaml)
+        assert fsm.visibility == vis
+        assert not any(
+            "Unknown top-level" in w.message or "Invalid visibility" in w.message for w in warnings
+        )
+
+    def test_invalid_visibility_warns(self, tmp_path: Path) -> None:
+        """An out-of-range visibility value yields a WARNING, not an error."""
+        loop_yaml = self._write_yaml(tmp_path, self._BASE + "visibility: secret\n")
+        _, warnings = load_and_validate(loop_yaml)
+        vis_warnings = [w for w in warnings if "Invalid visibility" in w.message]
+        assert len(vis_warnings) == 1
+        assert vis_warnings[0].severity == ValidationSeverity.WARNING
+        assert vis_warnings[0].path == "visibility"
+
+    def test_visibility_roundtrips_through_serialization(self) -> None:
+        """visibility survives to_dict/from_dict; default 'public' is omitted."""
+        fsm = FSMLoop(
+            name="t",
+            initial="check",
+            description="d",
+            states={"check": make_state(terminal=True)},
+            visibility="internal",
+        )
+        assert FSMLoop.from_dict(fsm.to_dict()).visibility == "internal"
+        # Default value is not serialized.
+        default = FSMLoop(name="t", initial="check", states={"check": make_state(terminal=True)})
+        assert "visibility" not in default.to_dict()
+
+
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 
 
@@ -2366,9 +2420,7 @@ class TestCaptureReachabilityValidation:
             },
         )
         # Fork 'start' so 'check' is reachable via a path that bypasses 'select'.
-        fsm.states["start"] = make_state(
-            action="echo begin", on_yes="select", on_no="shortcut"
-        )
+        fsm.states["start"] = make_state(action="echo begin", on_yes="select", on_no="shortcut")
         # check references the captured var but GUARDS it with :default=.
         fsm.states["check"] = make_state(
             action="echo ${captured.selected.output:default=not-reached}",
@@ -2403,15 +2455,10 @@ class TestCaptureReachabilityValidation:
                 "shortcut": make_state(action="echo bypass", next="check"),
             },
         )
-        fsm.states["start"] = make_state(
-            action="echo begin", on_yes="select", on_no="shortcut"
-        )
+        fsm.states["start"] = make_state(action="echo begin", on_yes="select", on_no="shortcut")
         # One guarded reference AND one unguarded reference to the same var.
         fsm.states["check"] = make_state(
-            action=(
-                "echo ${captured.selected.output:default=x} "
-                "and ${captured.selected.output}"
-            ),
+            action=("echo ${captured.selected.output:default=x} and ${captured.selected.output}"),
             on_yes="done",
         )
         errors = _validate_capture_reachability(fsm)

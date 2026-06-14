@@ -1,4 +1,5 @@
 name: adversarial-redesign
+visibility: example
 category: example
 input_key: concept
 required_inputs: ["concept"]

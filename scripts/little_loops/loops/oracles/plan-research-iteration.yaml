@@ -1,4 +1,5 @@
 name: plan-research-iteration
+visibility: internal
 description: |
   Reusable research-and-synthesize chain shared by rn-plan and rn-refine.
   Runs one iteration: classify what research is needed → route to file or web

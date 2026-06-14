@@ -1,4 +1,5 @@
 name: enumerate-and-prove
+visibility: internal
 description: |
   Oracle sub-loop that parses a tagged ENUMERATE_JSON line from LLM output, extracts and
   validates the targets list, flattens to a comma-joined string, and proves each target via

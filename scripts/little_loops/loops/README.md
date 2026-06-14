@@ -4,6 +4,13 @@ Built-in FSM loops shipped with `little-loops`. Run any loop with `ll-loop run <
 
 Install a loop into your project for customization: `ll-loop install <name>`
 
+> **Finding the right loop.** `ll-loop list` shows only **public** (user-facing) loops by
+> default — delegated-only sub-loops (`visibility: internal`, e.g. `oracles/*`) and
+> demo/templates (`visibility: example`, e.g. the `harness-*` EXAMPLE loops) are hidden.
+> Use `--all`, `--internal`, or `--examples` to see them. Not sure which loop you want?
+> Describe the goal and let the router pick:
+> `ll-loop run loop-router --input goal="<what you want done>"`.
+
 ---
 
 ## Routing

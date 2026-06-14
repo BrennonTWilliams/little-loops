@@ -294,6 +294,22 @@ Examples:
             metavar="LABEL",
             help="Filter by label tag (repeatable)",
         )
+        list_parser.add_argument(
+            "-a",
+            "--all",
+            action="store_true",
+            help="Include internal sub-loops and examples (hidden by default)",
+        )
+        list_parser.add_argument(
+            "--internal",
+            action="store_true",
+            help="Show only internal (delegated-only) sub-loops",
+        )
+        list_parser.add_argument(
+            "--examples",
+            action="store_true",
+            help="Show only example/template loops",
+        )
 
         # Status subcommand
         status_parser = subparsers.add_parser("status", aliases=["st"], help="Show loop status")

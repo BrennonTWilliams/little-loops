@@ -965,6 +965,11 @@ class FSMLoop:
     config: LoopConfigOverrides | None = None
     category: str = ""
     labels: list[str] = field(default_factory=list)
+    # Audience axis for `ll-loop list` filtering (orthogonal to `category`, which
+    # is topical). "public" = user-facing (default); "internal" = delegated-only
+    # sub-loop, never run directly; "example" = demo/template. See ENH (loop-list
+    # visibility tiers).
+    visibility: str = "public"
     required_inputs: list[str] = field(default_factory=list)
     commands: list[CommandEntry] = field(default_factory=list)
     targets: list[TargetFileSpec] = field(default_factory=list)
@@ -1026,6 +1031,8 @@ class FSMLoop:
             result["category"] = self.category
         if self.labels:
             result["labels"] = self.labels
+        if self.visibility and self.visibility != "public":
+            result["visibility"] = self.visibility
         if self.required_inputs:
             result["required_inputs"] = self.required_inputs
         if self.commands:
@@ -1098,6 +1105,7 @@ class FSMLoop:
             config=loop_config,
             category=data.get("category", ""),
             labels=data.get("labels", []),
+            visibility=data.get("visibility", "public"),
             required_inputs=data.get("required_inputs", []),
             commands=[CommandEntry(**e) for e in data.get("commands", [])],
             targets=[TargetFileSpec.from_dict(t) for t in (data.get("targets") or [])],

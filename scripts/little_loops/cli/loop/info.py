@@ -50,9 +50,17 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
             desc = ""
         category = spec.get("category", "") or ""
         labels: list[str] = spec.get("labels", []) or []
-        return {"description": desc, "category": category, "labels": labels}
+        visibility = spec.get("visibility", "public") or "public"
+        if visibility not in ("public", "internal", "example"):
+            visibility = "public"
+        return {
+            "description": desc,
+            "category": category,
+            "labels": labels,
+            "visibility": visibility,
+        }
     except Exception:
-        return {"description": "", "category": "", "labels": []}
+        return {"description": "", "category": "", "labels": [], "visibility": "public"}
 
 
 def cmd_list(
@@ -177,6 +185,28 @@ def cmd_list(
             if any(lf.lower() in [lb.lower() for lb in lp["labels"]] for lf in label_filters)
         ]
 
+    # Apply visibility filter. Default view shows only "public" loops, hiding
+    # delegated-only sub-loops ("internal") and demos/templates ("example").
+    # --all shows everything; --internal / --examples narrow to those tiers.
+    show_all = getattr(args, "all", False)
+    show_internal = getattr(args, "internal", False)
+    show_examples = getattr(args, "examples", False)
+    hidden_counts: dict[str, int] = {"internal": 0, "example": 0}
+    if not show_all:
+        if show_internal or show_examples:
+            wanted = set()
+            if show_internal:
+                wanted.add("internal")
+            if show_examples:
+                wanted.add("example")
+            all_loops = [lp for lp in all_loops if lp.get("visibility", "public") in wanted]
+        else:
+            for lp in all_loops:
+                vis = lp.get("visibility", "public")
+                if vis in hidden_counts:
+                    hidden_counts[vis] += 1
+            all_loops = [lp for lp in all_loops if lp.get("visibility", "public") == "public"]
+
     if not all_loops:
         if getattr(args, "json", False):
             print_json([])
@@ -192,6 +222,7 @@ def cmd_list(
                 "path": str(lp["path"]),
                 "category": lp["category"],
                 "labels": lp["labels"],
+                "visibility": lp.get("visibility", "public"),
                 "description": lp["description"],
             }
             if lp["builtin"]:
@@ -253,6 +284,23 @@ def cmd_list(
             desc_str = f"  {colorize(desc_text, '2')}" if desc_text else ""
 
             print(f"  {name_str}{desc_str}{suffix_raw}")
+
+    # Footer: surface hidden tiers and point users at the natural-language router
+    # rather than asking them to scan dozens of loops.
+    hidden_bits: list[str] = []
+    if hidden_counts.get("internal"):
+        hidden_bits.append(f"{hidden_counts['internal']} internal (--internal)")
+    if hidden_counts.get("example"):
+        hidden_bits.append(f"{hidden_counts['example']} example (--examples)")
+    if hidden_bits:
+        print()
+        print(colorize(f"Hidden: {', '.join(hidden_bits)} · all with --all", "2"))
+    print(
+        colorize(
+            'Not sure which loop? `ll-loop run loop-router --input goal="<what you want>"`',
+            "2",
+        )
+    )
     return 0
 
 

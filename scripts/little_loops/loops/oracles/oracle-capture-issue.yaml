@@ -1,4 +1,5 @@
 name: oracle-capture-issue
+visibility: internal
 description: |
   Two-phase rubric scoring oracle for capture-issue ExampleRecord pairs.
 

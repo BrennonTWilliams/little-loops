@@ -128,6 +128,7 @@ def _unguarded_captured_refs(text: str) -> set[str]:
             refs.add(var_name)
     return refs
 
+
 # ENH-1819: Regex patterns for detecting multimodal evaluation in prompt actions
 _MULTIMODAL_EVAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"Read the screenshot", re.IGNORECASE),
@@ -138,6 +139,10 @@ _MULTIMODAL_EVAL_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 # Valid comparison operators
 VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
+
+# Valid values for the top-level `visibility:` field (audience axis for
+# `ll-loop list` filtering). "public" is the default when the field is absent.
+VALID_VISIBILITY: frozenset[str] = frozenset({"public", "internal", "example"})
 
 # All top-level keys recognized by FSMLoop.from_dict()
 KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
@@ -163,6 +168,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "config",
         "category",
         "labels",
+        "visibility",
         "commands",
         "targets",
         "circuit",
@@ -2034,6 +2040,20 @@ def load_and_validate(
             ValidationError(
                 path="<root>",
                 message=f"Unknown top-level keys: {', '.join(sorted(unknown))}",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
+    visibility_val = data.get("visibility")
+    if visibility_val is not None and visibility_val not in VALID_VISIBILITY:
+        unknown_key_warnings.append(
+            ValidationError(
+                path="visibility",
+                message=(
+                    f"Invalid visibility: {visibility_val!r}. "
+                    f"Must be one of: {', '.join(sorted(VALID_VISIBILITY))}. "
+                    "Loop will be treated as 'public'."
+                ),
                 severity=ValidationSeverity.WARNING,
             )
         )

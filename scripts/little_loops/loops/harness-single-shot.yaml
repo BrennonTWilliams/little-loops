@@ -12,6 +12,7 @@
 # Validate: ll-loop test harness-single-shot
 
 name: harness-single-shot
+visibility: example
 category: harness
 description: |
   EXAMPLE: Single-shot harness demonstrating all evaluation phases in sequence.

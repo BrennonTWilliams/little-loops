@@ -1,4 +1,5 @@
 name: "rlhf-svg-generate"
+visibility: internal
 category: lib
 description: |
   Standalone generation sub-loop for rlhf-animated-svg — handles the

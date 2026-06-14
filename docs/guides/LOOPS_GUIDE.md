@@ -638,7 +638,7 @@ check_stall:
 | `ll-loop show <name>` | Display states, transitions, and ASCII diagram (`--resolved` expands sub-loops) |
 | `ll-loop test <name>` | Run a single iteration to verify configuration |
 | `ll-loop simulate <name>` | Trace execution interactively without running actions (`--scenario all-pass\|all-fail\|all-error\|first-fail\|alternating`) |
-| `ll-loop list` | List loops; `--running`, `--builtin`, `--category <cat>`, `--label <tag>` |
+| `ll-loop list` | List loops (public tier only by default); `--all`, `--internal`, `--examples`, `--running`, `--builtin`, `--category <cat>`, `--label <tag>` |
 | `ll-loop status <name>` | Current state and iteration count (`--json` for paths and PIDs) |
 | `ll-loop stop <name>` | Stop a running loop |
 | `ll-loop resume <name>` | Resume an interrupted loop from saved state |
@@ -752,7 +752,7 @@ When `--show-diagrams` is active, parent and child FSM diagrams render together,
 
 For full sub-loop schema details see the [FSM Loop System Design](../generalized-fsm-loop.md#6-sub-loop-composition).
 
-## Loop Discovery: category and labels
+## Loop Discovery: category, labels, and visibility
 
 Every loop YAML can declare a `category` string (grouping header in `ll-loop list`) and a `labels` list (arbitrary tags). Both are optional and have no effect on execution:
 
@@ -760,6 +760,28 @@ Every loop YAML can declare a `category` string (grouping header in `ll-loop lis
 ll-loop list --category code-quality          # loops in one category
 ll-loop list --label tests --label lint       # OR-match on labels
 ll-loop list --builtin --category evaluation  # built-ins only
+```
+
+A loop can also declare a `visibility` tier — the *audience* axis, orthogonal to the topical `category`:
+
+| `visibility` | Meaning | Shown in default `ll-loop list`? |
+|---|---|---|
+| `public` (default) | User-facing entry point | ✅ Yes |
+| `internal` | Delegated-only sub-loop, never run directly (e.g. `oracles/*`) | ❌ No — `--internal` or `--all` |
+| `example` | Demo or copy-me template (e.g. the `harness-*` EXAMPLE loops) | ❌ No — `--examples` or `--all` |
+
+`ll-loop list` shows only `public` loops by default and prints a footer summarizing the hidden count plus a pointer to `loop-router` (the natural-language "which loop?" entry point). Resolution by name is unaffected — `ll-loop run <name>` still finds internal/example loops regardless of tier. Set the tier in frontmatter:
+
+```yaml
+name: my-sub-loop
+visibility: internal   # public | internal | example
+```
+
+```bash
+ll-loop list             # public only (the default, scannable view)
+ll-loop list --all       # every tier
+ll-loop list --internal  # only delegated-only sub-loops
+ll-loop list --examples  # only demo/template loops
 ```
 
 ## Reusable State Fragments

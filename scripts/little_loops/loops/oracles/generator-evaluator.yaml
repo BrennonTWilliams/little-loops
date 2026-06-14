@@ -1,4 +1,5 @@
 name: generator-evaluator
+visibility: internal
 description: |
   Oracle sub-loop for iterative artifact generation with visual evaluation. Loops
   generate → evaluate (Playwright screenshot) → snapshot (per-iteration artifact

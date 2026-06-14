@@ -1,4 +1,5 @@
 name: verify-confidence-scores
+visibility: internal
 description: |
   Runs confidence-check on an issue, then verifies that scores were persisted to
   frontmatter. Retries once if the first run fails to write scores. Extracted from

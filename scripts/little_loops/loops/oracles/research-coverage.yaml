@@ -1,4 +1,5 @@
 name: research-coverage
+visibility: internal
 description: |
   Oracle sub-loop for iterative web research synthesis. Accepts a topic, run_dir for
   artifact storage, and mode parameters; runs generate_queries → search_web →
