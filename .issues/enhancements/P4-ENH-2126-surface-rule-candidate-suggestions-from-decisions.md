@@ -1,13 +1,21 @@
 ---
 id: ENH-2126
-title: "Surface rule-candidate suggestions when listing or reviewing decisions"
-status: open
+title: Surface rule-candidate suggestions when listing or reviewing decisions
+status: done
 priority: P4
 type: ENH
-captured_at: "2026-06-14T00:09:45Z"
-discovered_date: "2026-06-14"
+captured_at: '2026-06-14T00:09:45Z'
+completed_at: '2026-06-14T00:52:53Z'
+discovered_date: '2026-06-14'
 discovered_by: capture-issue
-relates_to: [ENH-2125]
+relates_to:
+- ENH-2125
+confidence_score: 96
+outcome_confidence: 81
+score_complexity: 20
+score_test_coverage: 18
+score_ambiguity: 20
+score_change_surface: 23
 ---
 
 # ENH-2126: Surface rule-candidate suggestions when listing or reviewing decisions
@@ -106,10 +114,15 @@ Rules are durable cross-issue constraints that prevent `/ll:verify-issues` DECIS
 `enhancement`, `decisions`, `tooling`, `cli`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T00:37:44 - `58b06549-cebf-4795-8ac4-2d9309d5a26f.jsonl`
 - `/ll:format-issue` - 2026-06-14T00:13:58 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 
 - `/ll:capture-issue` - 2026-06-14T00:09:45Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
+## Resolution
+
+Added `suggest-rules` subcommand to `ll-issues decisions`. Analyzes `type: decision` entries, filters one-off choices ("Option A/B/C", "NO-GO", "Captured:"), groups by category, and emits `[SUGGEST]` blocks. High-signal categories (3+ decisions) surface all general-constraint entries as a cluster. Low-signal categories pair entries sharing common snake_case/kebab-case token references. Exits 0 if candidates found, 1 if none.
+
 ## Status
 
-**Open** | Created: 2026-06-14 | Priority: P4
+**Done** | Created: 2026-06-14 | Priority: P4

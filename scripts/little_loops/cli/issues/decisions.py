@@ -199,6 +199,13 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
     sync_p = subsubs.add_parser("sync", help="Sync active rules to .ll/ll.local.md")
     add_config_arg(sync_p)
 
+    # -- suggest-rules --
+    suggest_p = subsubs.add_parser(
+        "suggest-rules",
+        help="Suggest decision entries that are candidates for promotion to rules",
+    )
+    add_config_arg(suggest_p)
+
     # -- promote --
     promote_p = subsubs.add_parser(
         "promote",
@@ -269,6 +276,9 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
 
     if sub == "sync":
         return _cmd_sync(path)
+
+    if sub == "suggest-rules":
+        return _cmd_suggest_rules(path)
 
     if sub == "promote":
         from little_loops.decisions import DecisionEntry, RuleEntry, load_decisions, save_decisions
@@ -476,6 +486,116 @@ def _cmd_sync(path) -> int:
     except ImportError:
         print("sync not yet available (requires FEAT-1895)", file=sys.stderr)
         return 1
+    return 0
+
+
+def _cmd_suggest_rules(path) -> int:
+    """Analyze decision entries and suggest candidates for promotion to rules."""
+    import re
+    from collections import defaultdict
+
+    from little_loops.decisions import DecisionEntry, list_entries
+
+    all_entries = list_entries(path=path)
+    decisions = [e for e in all_entries if isinstance(e, DecisionEntry)]
+
+    if len(decisions) < 3:
+        count = len(decisions)
+        noun = "entry" if count == 1 else "entries"
+        print(
+            f"(only {count} decision {noun} found;"
+            " need at least 3 to suggest rule candidates)"
+        )
+        return 1
+
+    # Heuristic: rule texts that are one-off choices rather than general constraints
+    _one_off_re = re.compile(
+        r"^(Option [A-C]\b|NO-GO\b|Captured:\s*)", re.IGNORECASE
+    )
+
+    def _is_general_constraint(e: DecisionEntry) -> bool:
+        return not _one_off_re.match(e.rule or "")
+
+    def _extract_tokens(text: str) -> set[str]:
+        """Extract snake_case and kebab-case identifiers (min 5 chars) and file paths."""
+        tokens: set[str] = set()
+        for m in re.finditer(r"\b([a-z][a-z0-9]*(?:[_-][a-z0-9]+)+)\b", text):
+            t = m.group(1).replace("-", "_")
+            if len(t) >= 5:
+                tokens.add(t)
+        for m in re.finditer(r"([a-z][a-z0-9_/.-]+\.(?:py|yaml|md|json))", text):
+            tokens.add(m.group(1))
+        return tokens
+
+    by_category: dict[str, list[DecisionEntry]] = defaultdict(list)
+    for d in decisions:
+        by_category[d.category].append(d)
+
+    clusters: list[tuple[list[DecisionEntry], str, list[str], bool]] = []
+
+    for category in sorted(by_category):
+        cat_entries = by_category[category]
+        high_signal = len(cat_entries) >= 3
+        general = [e for e in cat_entries if _is_general_constraint(e)]
+
+        if not general:
+            continue
+
+        if high_signal:
+            if len(general) >= 2:
+                # Find tokens shared by at least 2 entries in this high-signal category
+                tok_freq: dict[str, int] = {}
+                for e in general:
+                    seen_in_entry: set[str] = set()
+                    for t in _extract_tokens((e.rationale or "") + " " + (e.rule or "")):
+                        if t not in seen_in_entry:
+                            tok_freq[t] = tok_freq.get(t, 0) + 1
+                            seen_in_entry.add(t)
+                shared = sorted(t for t, c in tok_freq.items() if c >= 2)[:3]
+                clusters.append((general, category, shared, True))
+            else:
+                # Single general constraint in a high-signal category — still worth surfacing
+                clusters.append((general, category, [], True))
+        else:
+            # Low-signal category: only pair entries that share common tokens
+            tok: dict[str, set[str]] = {
+                e.id: _extract_tokens((e.rationale or "") + " " + (e.rule or ""))
+                for e in general
+            }
+            used: set[str] = set()
+            for i, e1 in enumerate(general):
+                if e1.id in used:
+                    continue
+                group = [e1]
+                for e2 in general[i + 1:]:
+                    if e2.id in used:
+                        continue
+                    if tok[e1.id] & tok[e2.id]:
+                        group.append(e2)
+                        used.add(e2.id)
+                if len(group) >= 2:
+                    used.add(e1.id)
+                    shared_tokens = tok[e1.id].copy()
+                    for e in group[1:]:
+                        shared_tokens &= tok[e.id]
+                    clusters.append((group, category, sorted(shared_tokens)[:3], False))
+
+    if not clusters:
+        print("(no rule candidates found in current decisions log)")
+        return 1
+
+    for group, category, shared, high_signal in clusters:
+        ids = ", ".join(e.id for e in group)
+        ref_str = " and reference " + ", ".join(shared) if shared else ""
+        signal_str = " [high-signal]" if high_signal else ""
+        best = max(group, key=lambda e: len(e.rule or ""))
+
+        print(f"[SUGGEST]{signal_str} {ids} share category={category}{ref_str}")
+        print(f'  — consider promoting to a rule: "{best.rule}"')
+        for e in group:
+            print(f"    • {e.id}: {e.rule}")
+        print()
+
     return 0
 
 

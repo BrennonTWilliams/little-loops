@@ -1231,3 +1231,237 @@ class TestDecisionsCLIPromote:
         assert result == 0
         captured = capsys.readouterr()
         assert "WORKFLOW-001" in captured.out
+
+
+# =============================================================================
+# TestDecisionsCLISuggestRules
+# =============================================================================
+
+
+class TestDecisionsCLISuggestRules:
+    """Tests for ll-issues decisions suggest-rules sub-sub-command."""
+
+    def _make_decision(
+        self, id: str, category: str, rule: str, rationale: str = "some rationale"
+    ) -> DecisionEntry:
+        return DecisionEntry(
+            id=id,
+            type="decision",
+            timestamp="2026-06-14T00:00:00Z",
+            category=category,
+            labels=[],
+            rationale=rationale,
+            rule=rule,
+            scope="issue",
+        )
+
+    def test_suggest_rules_fewer_than_3_exits_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """suggest-rules exits 1 with graceful message when fewer than 3 decisions exist."""
+        decisions = [self._make_decision("ARCH-001", "architecture", "Use module X")]
+        save_decisions(decisions, decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "decisions", "suggest-rules", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "1" in captured.out
+        assert "need at least 3" in captured.out
+
+    def test_suggest_rules_empty_file_exits_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """suggest-rules exits 1 when decisions.yaml has no entries."""
+        save_decisions([], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "decisions", "suggest-rules", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "need at least 3" in captured.out
+
+    def test_suggest_rules_high_signal_category_exits_0(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """suggest-rules exits 0 and emits SUGGEST block when category has 3+ decisions with general constraints."""
+        decisions = [
+            self._make_decision("ARCH-001", "architecture", "Use sub-loop composition always"),
+            self._make_decision("ARCH-002", "architecture", "Register adapters via Protocol"),
+            self._make_decision("ARCH-003", "architecture", "Prefer file-poller for callbacks"),
+        ]
+        save_decisions(decisions, decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "decisions", "suggest-rules", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "[SUGGEST]" in captured.out
+        assert "architecture" in captured.out
+        assert "consider promoting" in captured.out
+
+    def test_suggest_rules_all_one_off_choices_exits_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """suggest-rules exits 1 when all decision rules are one-off choices."""
+        decisions = [
+            self._make_decision("ARCH-001", "architecture", "Option A: use X"),
+            self._make_decision("ARCH-002", "architecture", "Option B: use Y"),
+            self._make_decision("ARCH-003", "architecture", "NO-GO: not worth implementing"),
+            self._make_decision("ARCH-004", "architecture", "Captured: Do something"),
+        ]
+        save_decisions(decisions, decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "decisions", "suggest-rules", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "[SUGGEST]" not in captured.out
+
+    def test_suggest_rules_excludes_rule_and_exception_types(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+        sample_exception: ExceptionEntry,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """suggest-rules only analyzes type=decision entries; rule/exception types are excluded."""
+        decisions = [
+            self._make_decision("ARCH-001", "architecture", "Use sub-loop composition"),
+            self._make_decision("ARCH-002", "architecture", "Register via Protocol"),
+            self._make_decision("ARCH-003", "architecture", "Prefer file-poller"),
+        ]
+        save_decisions([sample_rule, sample_exception, *decisions], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "decisions", "suggest-rules", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "NAMING-001" not in captured.out
+        assert "NAMING-EX-001" not in captured.out
+
+    def test_suggest_rules_low_signal_category_token_overlap(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """suggest-rules clusters low-signal category entries that share common tokens."""
+        decisions = [
+            self._make_decision(
+                "WF-001",
+                "workflow",
+                "Always use resolve_host() for host CLI invocations",
+                rationale="resolve_host is the standard abstraction for host_runner calls",
+            ),
+            self._make_decision(
+                "WF-002",
+                "workflow",
+                "Never hardcode 'claude'; call resolve_host() instead",
+                rationale="Using resolve_host prevents hardcoded binary references in host_runner",
+            ),
+            # Third entry to meet minimum-3 threshold
+            self._make_decision("ARCH-001", "architecture", "Use sub-loop composition for FSM loops"),
+        ]
+        save_decisions(decisions, decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "decisions", "suggest-rules", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "[SUGGEST]" in captured.out
+        assert "WF-001" in captured.out
+        assert "WF-002" in captured.out
+
+    def test_suggest_rules_output_format(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """suggest-rules output includes entry IDs, category, and suggested rule text."""
+        decisions = [
+            self._make_decision("ARCH-001", "architecture", "Use sub-loop composition always"),
+            self._make_decision("ARCH-002", "architecture", "Register adapters via Protocol"),
+            self._make_decision("ARCH-003", "architecture", "Prefer file-poller for callbacks"),
+        ]
+        save_decisions(decisions, decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "decisions", "suggest-rules", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "ARCH-001" in captured.out
+        assert "ARCH-002" in captured.out
+        assert "ARCH-003" in captured.out
+        assert "category=architecture" in captured.out
+        assert "consider promoting to a rule" in captured.out
