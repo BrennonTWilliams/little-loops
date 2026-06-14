@@ -1,10 +1,12 @@
 name: "auto-refine-and-implement"
 category: issue-management
 description: |
-  For each backlog issue (priority order): recursively refine via recursive-refine
+  For each issue (priority order): recursively refine via recursive-refine
   (which handles decomposition into child issues), then implement all issues that
-  passed refinement. Skips issues that fail refinement or are decomposed, tracking
-  them to avoid retrying. Loops until backlog is exhausted.
+  passed refinement. Skips issues that fail refinement or are decomposed.
+  When scope is empty (default), polls the full backlog; when scope is a sprint
+  name or EPIC-NNN, scopes to that set via SprintManager.load_or_resolve.
+  Loops until the issue set is exhausted.
 initial: init
 max_iterations: 500
 timeout: 28800
@@ -13,6 +15,7 @@ import:
   - lib/common.yaml
 context:
   max_issues: 100
+  scope: ""   # optional: sprint name (.sprints/<name>.yaml) or EPIC-NNN; empty → poll backlog
 
 states:
   init:
@@ -23,14 +26,49 @@ states:
   get_next_issue:
     action: |
       mkdir -p "${context.run_dir}"
-      SKIPPED=""
-      if [ -f ${context.run_dir}/auto-refine-and-implement-skipped.txt ]; then
-        SKIPPED=$(paste -sd ',' ${context.run_dir}/auto-refine-and-implement-skipped.txt)
-      fi
-      if [ -n "$SKIPPED" ]; then
-        ll-issues next-issue --skip "$SKIPPED"
+      if [ -n "${context.scope}" ]; then
+        python3 << 'PYEOF'
+      import os, sys
+      from pathlib import Path
+      from little_loops.config import BRConfig
+      from little_loops.sprint import SprintManager
+
+      arg = """${context.scope}""".strip()
+      run_dir = "${context.run_dir}"
+      skip_file = os.path.join(run_dir, "auto-refine-and-implement-skipped.txt")
+
+      sprint = SprintManager(config=BRConfig(Path.cwd())).load_or_resolve(arg)
+      if sprint is None:
+          sys.stderr.write(
+              f"'{arg}' not found: no .sprints/{arg}.yaml and not a resolvable EPIC ID\n")
+          sys.exit(1)
+
+      issues = sprint.issues or []
+      if not issues:
+          sys.stderr.write(f"'{arg}' resolved but has no active issues to process\n")
+          sys.exit(1)
+
+      skipped = set()
+      if os.path.exists(skip_file):
+          with open(skip_file) as f:
+              skipped = {ln.strip() for ln in f if ln.strip()}
+
+      for issue_id in issues:
+          if issue_id not in skipped:
+              print(issue_id)
+              sys.exit(0)
+      sys.exit(1)
+      PYEOF
       else
-        ll-issues next-issue
+        SKIPPED=""
+        if [ -f ${context.run_dir}/auto-refine-and-implement-skipped.txt ]; then
+          SKIPPED=$(paste -sd ',' ${context.run_dir}/auto-refine-and-implement-skipped.txt)
+        fi
+        if [ -n "$SKIPPED" ]; then
+          ll-issues next-issue --skip "$SKIPPED"
+        else
+          ll-issues next-issue
+        fi
       fi
     action_type: shell
     capture: input

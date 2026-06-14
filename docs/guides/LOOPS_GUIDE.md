@@ -257,7 +257,7 @@ Dozens of loops ship with little-loops, grouped by purpose:
 | General-purpose | `general-task`, `rn-build`, `dataset-curation` |
 | API adoption | `adopt-third-party-api`, `assumption-firewall`, `integrate-sdk` |
 | Research & knowledge | `deep-research`, `apply-research`, `rn-plan` |
-| Issue management | `rn-implement`, `recursive-refine`, `autodev`, `sprint-refine-and-implement` |
+| Issue management | `rn-implement`, `recursive-refine`, `autodev`, `auto-refine-and-implement` |
 | Code quality | `dead-code-cleanup`, `docs-sync`, `test-coverage-improvement` |
 | Evaluation & RL | `outer-loop-eval`, `agent-eval-improve`, `rl-rlhf` |
 | Prompt optimization (APO) | `apo-textgrad`, `apo-beam`, `examples-miner` |

@@ -1738,9 +1738,28 @@ class TestAutoRefineAndImplementLoop:
                 assert "${context.run_dir}" in action
         assert found, f"No state references {skipped_ref!r}"
 
+    def test_has_optional_scope_parameter(self, data: dict) -> None:
+        """scope must be in context with empty default (optional sprint/EPIC scoping)."""
+        ctx = data.get("context", {})
+        assert "scope" in ctx, "context must have a 'scope' field for sprint/EPIC scoping"
+        assert ctx["scope"] == "", "context.scope must default to empty string (backlog poll when unset)"
+
+    def test_get_next_issue_supports_scope_branching(self, data: dict) -> None:
+        """get_next_issue must branch on scope: scoped path uses load_or_resolve, backlog path uses ll-issues next-issue."""
+        action = data["states"]["get_next_issue"].get("action", "")
+        assert "load_or_resolve" in action, (
+            "get_next_issue scoped path must use SprintManager.load_or_resolve"
+        )
+        assert "ll-issues next-issue" in action, (
+            "get_next_issue must still use ll-issues next-issue for the default backlog path"
+        )
+        assert "EPIC" in action, (
+            "get_next_issue scoped path must support EPIC IDs (BUG-2136 preservation)"
+        )
+
 
 class TestSprintRefineAndImplementLoop:
-    """Structural tests for the sprint-refine-and-implement FSM loop."""
+    """Structural tests for the sprint-refine-and-implement alias loop (ENH-2138)."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "sprint-refine-and-implement.yaml"
 
@@ -1749,47 +1768,32 @@ class TestSprintRefineAndImplementLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present."""
-        required = {
-            "get_next_issue",
-            "refine_issue",
-            "implement_chain",
-            "skip_and_continue",
-            "done",
-        }
-        actual = set(data["states"].keys())
-        missing = required - actual
-        assert not missing, f"Missing states: {missing}"
-
-    def test_implement_chain_delegates_to_oracle(self, data: dict) -> None:
-        """implement_chain must delegate to the implement-issue-chain oracle with caller_prefix."""
-        state = data["states"].get("implement_chain", {})
-        assert state.get("loop") == "oracles/implement-issue-chain", (
-            f"implement_chain.loop should be 'oracles/implement-issue-chain', got {state.get('loop')!r}"
-        )
-        with_ = state.get("with", {})
-        assert with_.get("caller_prefix") == "sprint-refine-and-implement", (
-            f"implement_chain.with.caller_prefix should be 'sprint-refine-and-implement', got {with_.get('caller_prefix')!r}"
+    def test_is_alias_loop(self, data: dict) -> None:
+        """sprint-refine-and-implement is a thin alias that delegates to auto-refine-and-implement."""
+        delegate = data.get("states", {}).get("delegate", {})
+        assert delegate.get("loop") == "auto-refine-and-implement", (
+            "delegate state must call auto-refine-and-implement"
         )
 
-    def test_refine_issue_uses_context_passthrough(self, data: dict) -> None:
-        """refine_issue must use context_passthrough: true (sprint passes context implicitly)."""
-        state = data["states"].get("refine_issue", {})
-        assert state.get("context_passthrough") is True
-
-    def test_get_next_issue_resolves_sprint_or_epic(self, data: dict) -> None:
-        """get_next_issue must resolve via load_or_resolve so EPIC IDs and sprint names both work."""
-        action = data["states"]["get_next_issue"].get("action", "")
-        assert "load_or_resolve" in action, (
-            "get_next_issue must resolve input via SprintManager.load_or_resolve "
-            "so EPIC IDs and sprint names both work"
+    def test_delegate_maps_sprint_name_to_scope(self, data: dict) -> None:
+        """delegate state must pass sprint_name as scope to auto-refine-and-implement."""
+        delegate = data.get("states", {}).get("delegate", {})
+        with_ = delegate.get("with", {})
+        assert "scope" in with_, "delegate must pass 'scope' to auto-refine-and-implement"
+        assert "sprint_name" in with_["scope"], (
+            "delegate.with.scope must reference context.sprint_name"
         )
-        assert "EPIC" in action  # usage/error text advertises EPIC support
 
-    def test_get_next_issue_still_captures_input(self, data: dict) -> None:
-        """get_next_issue must keep capturing as 'input' for context_passthrough to work."""
-        assert data["states"]["get_next_issue"].get("capture") == "input"
+    def test_sprint_name_is_required_input(self, data: dict) -> None:
+        """sprint_name must remain a required input for backward compatibility."""
+        assert "sprint_name" in data.get("required_inputs", []), (
+            "sprint_name must be in required_inputs for backward compat"
+        )
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done = data.get("states", {}).get("done", {})
+        assert done.get("terminal") is True
 
 
 class TestAutodevLoop:

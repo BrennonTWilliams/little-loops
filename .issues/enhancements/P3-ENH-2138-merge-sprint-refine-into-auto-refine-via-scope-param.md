@@ -4,10 +4,11 @@ title: Merge sprint-refine-and-implement into auto-refine-and-implement via opti
   scope param
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: '2026-06-13'
 discovered_by: refine-implement-loop-audit
 captured_at: '2026-06-14T03:14:28Z'
+completed_at: '2026-06-14T04:15:57Z'
 labels:
 - loops
 - consolidation
@@ -169,5 +170,7 @@ ll-loop run sprint-refine-and-implement --input sprint_name=<name>
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-14T04:15:57 - `05284a07-45f6-49f4-a9fe-ebd28e52751d.jsonl`
+- `/ll:ready-issue` - 2026-06-14T04:07:18 - `5eb7f853-4de0-4e52-8d0a-af0369166394.jsonl`
 - `/ll:format-issue` - 2026-06-14T03:19:54 - `dfacee60-40f3-4ff7-a19d-f849dc1b4549.jsonl`
 - `/ll:confidence-check` - 2026-06-13T23:03:00 - `eb0284c4-5d00-4f0b-ab8f-3fe23aed3bf1.jsonl`

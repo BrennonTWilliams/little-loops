@@ -494,7 +494,7 @@ Imports `lib/common.yaml`. No Playwright or harness fragments required.
 
 Reusable issue-implementation oracle. Drains the `recursive-refine-passed.txt` queue written by a calling loop's `recursive-refine` delegation: seeds a caller-prefixed impl-queue, pops each issue ID, gates it through `go-no-go`, and runs `ll-auto --only` to implement it. Skips issues already in `.issues/completed/`.
 
-Used by `auto-refine-and-implement` and `sprint-refine-and-implement` as a `loop:` delegation state named `implement_chain` (ENH-1874).
+Used by `auto-refine-and-implement` (and its `sprint-refine-and-implement` alias) as a `loop:` delegation state named `implement_chain` (ENH-1874).
 
 ### Parameters
 

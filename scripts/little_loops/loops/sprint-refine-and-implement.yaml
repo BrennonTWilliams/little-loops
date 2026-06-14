@@ -1,97 +1,25 @@
 name: "sprint-refine-and-implement"
 category: issue-management
 description: |
-  Like auto-refine-and-implement but scoped to a named sprint OR an EPIC's
-  active children.
-  Usage: ll-loop run sprint-refine-and-implement <sprint-name|EPIC-NNN>
-  Resolves the input via SprintManager.load_or_resolve: a sprint name reads
-  .sprints/<sprint-name>.yaml, an EPIC-NNN id enumerates the EPIC's active,
-  dependency-ordered children. Processes issues in order: recursively refine
-  via recursive-refine (with decomposition), then implement all issues that
-  passed refinement. Skips issues that fail refinement or are decomposed.
-  Stops when the sprint/EPIC is exhausted.
+  Alias for auto-refine-and-implement scoped to a named sprint or EPIC.
+  Delegates to auto-refine-and-implement with scope=<sprint-name|EPIC-NNN>.
+  Preserved for backward compatibility; prefer the scope param directly:
+    ll-loop run auto-refine-and-implement --input scope=<sprint-name|EPIC-NNN>
 input_key: sprint_name
 required_inputs: ["sprint_name"]
-initial: get_next_issue
-max_iterations: 500
-timeout: 28800
+initial: delegate
 on_handoff: spawn
-import:
-  - lib/common.yaml
 context:
   sprint_name: ""   # sprint name (.sprints/<name>.yaml) or an EPIC-NNN id
-  max_issues: 100
 
 states:
-  get_next_issue:
-    action: |
-      mkdir -p "${context.run_dir}"
-      python3 << 'PYEOF'
-      import os, sys
-      from pathlib import Path
-      from little_loops.config import BRConfig
-      from little_loops.sprint import SprintManager
-
-      arg = """${context.sprint_name}""".strip()
-      run_dir = "${context.run_dir}"
-      skip_file = os.path.join(run_dir, "sprint-refine-and-implement-skipped.txt")
-
-      if not arg:
-          sys.stderr.write(
-              "Usage: ll-loop run sprint-refine-and-implement <sprint-name|EPIC-NNN>\n")
-          sys.exit(1)
-
-      # load_or_resolve accepts a sprint name (.sprints/<name>.yaml) or an
-      # EPIC-NNN id. The EPIC branch requires a config, so construct one.
-      sprint = SprintManager(config=BRConfig(Path.cwd())).load_or_resolve(arg)
-      if sprint is None:
-          sys.stderr.write(
-              f"'{arg}' not found: no .sprints/{arg}.yaml and not a resolvable EPIC ID\n")
-          sys.exit(1)
-
-      issues = sprint.issues or []
-      if not issues:
-          sys.stderr.write(f"'{arg}' resolved but has no active issues to process\n")
-          sys.exit(1)
-
-      skipped = set()
-      if os.path.exists(skip_file):
-          with open(skip_file) as f:
-              skipped = {ln.strip() for ln in f if ln.strip()}
-
-      for issue_id in issues:
-          if issue_id not in skipped:
-              print(issue_id)
-              sys.exit(0)
-      sys.exit(1)
-      PYEOF
-    action_type: shell
-    capture: input
-    on_yes: refine_issue
-    on_no: done
-    on_error: done
-
-  refine_issue:
-    loop: recursive-refine
-    context_passthrough: true
-    on_success: implement_chain
-    on_failure: skip_and_continue
-    on_error: skip_and_continue
-
-  implement_chain:
-    loop: oracles/implement-issue-chain
+  delegate:
+    loop: auto-refine-and-implement
     with:
-      caller_prefix: "sprint-refine-and-implement"
-    on_success: get_next_issue
+      scope: "${context.sprint_name}"
+    on_success: done
     on_failure: done
     on_error: done
-
-  skip_and_continue:
-    action: |
-      echo "Skipping ${captured.input.output} after refinement failure"
-      echo "${captured.input.output}" >> ${context.run_dir}/sprint-refine-and-implement-skipped.txt
-    fragment: queue_track
-    next: get_next_issue
 
   done:
     terminal: true
