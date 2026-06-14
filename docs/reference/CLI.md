@@ -1362,6 +1362,8 @@ Manage rules, decisions, and exceptions log.
 | `outcome <ID>` | Record the outcome of a decision entry |
 | `generate` | Generate entries from completed issues |
 | `sync` | Sync active rules to `.ll/ll.local.md` |
+| `suggest-rules` | Analyze decision entries and surface candidates ready for promotion to rules |
+| `promote <ID>` | Convert a `decision` entry into an enforced `rule` (rewrites entry in-place; auto-syncs when `--enforcement required`) |
 
 **`list` flags:**
 
@@ -1413,6 +1415,17 @@ Manage rules, decisions, and exceptions log.
 
 No additional flags. Reads active required rules from `.ll/decisions.yaml` and writes them to the `## Active Rules` section in `.ll/ll.local.md`. Creates `.ll/ll.local.md` if absent. Silently skips when `.ll/decisions.yaml` does not exist.
 
+**`suggest-rules` flags:**
+
+No additional flags. Analyzes `decision` entries and clusters them by category and shared token overlap to surface candidates with recurring patterns. Requires at least 3 decision entries to produce output (exits 1 with a message if fewer).
+
+**`promote` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `<ID>` | ID of the `decision` entry to promote (positional, required) |
+| `--enforcement` | Enforcement level for the new rule: `required` (default) or `advisory`. When `required`, auto-runs `sync` to push the rule into `.ll/ll.local.md` immediately. |
+
 ```bash
 ll-issues decisions list
 ll-issues decisions list --type rule --active-only
@@ -1422,6 +1435,9 @@ ll-issues decisions outcome dec-001 --result=worked --notes="No incidents in 30 
 ll-issues decisions generate                     # Generate from completed issues (default)
 ll-issues decisions generate --from completed    # Explicit source
 ll-issues decisions sync                         # Sync active rules → .ll/ll.local.md
+ll-issues decisions suggest-rules                # Surface decision candidates for promotion
+ll-issues decisions promote dec-007              # Promote dec-007 → required rule (auto-sync)
+ll-issues decisions promote dec-007 --enforcement advisory  # Promote as advisory rule
 ```
 
 ---

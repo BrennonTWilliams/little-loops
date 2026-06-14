@@ -204,7 +204,7 @@ Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
 ## CLI Tools
 
 The `scripts/` directory contains Python CLI tools:
-- `ll-init` - Initialize little-loops for a project (headless core; `--yes`, `--dry-run`, `--plan`/`apply`, `--hosts` multi-select)
+- `ll-init` - Initialize little-loops for a project (headless core; `--yes`, `--dry-run`, `--plan`/`apply`, `--hosts` multi-select; always writes `loops.run_defaults` into generated config)
 - `ll-auto` - Process all backlog issues sequentially in priority order
 - `ll-parallel` - Process issues concurrently using isolated git worktrees
 - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
@@ -224,7 +224,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines (exit 1 if any violations)
 - `ll-verify-triggers` - Validate skill description trigger accuracy against should-fire/should-not-fire phrasings (exit 1 if below threshold or collisions)
 - `ll-check-links` - Check markdown documentation for broken links
-- `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint, epic-progress, decisions (list, add, outcome, generate, sync))
+- `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint, epic-progress, decisions (list, add, outcome, generate, sync, suggest-rules, promote))
 - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale); record creation is owned by `/ll:explore-api`
 - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
 - `ll-migrate` - One-time migration of completed/deferred issues to type-based directories (ENH-1390)
@@ -237,7 +237,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter (`name:`, `metadata.short-description:`, `agents/openai.yaml`) to all `skills/*/SKILL.md` files, and bridge every `commands/*.md` into a `skills/ll-<name>/` Codex-discoverable entry
 - `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` so Codex CLI can use ll agents via `--agent <name>`
 - `ll-doctor` - Check host CLI capability support for little-loops features
-- `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings from `.ll/history.db`; skill-health signals)
+- `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings from `.ll/history.db`; JSONL-based session cache hit rate; skill-health signals)
 
 Install: `pip install -e "./scripts[dev]"`
 
