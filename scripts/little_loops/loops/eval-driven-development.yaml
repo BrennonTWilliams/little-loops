@@ -41,7 +41,10 @@ states:
     action: ll-loop run --no-lock ${context.harness_name}
     action_type: shell
     capture: run_harness
-    next: capture_issues
+    evaluate:
+      type: exit_code
+    on_yes: capture_issues
+    on_no: diagnose
 
   # Analyze harness results and create issues from failures/gaps.
   capture_issues:
@@ -108,15 +111,16 @@ states:
     action_type: prompt
     timeout: 600
     action: |
-      The eval-driven-development loop is terminating: the route_eval gate hit
-      an evaluation error while judging the harness results.
+      The eval-driven-development loop is terminating due to a harness
+      infrastructure failure or evaluation error.
 
       Diagnose what happened:
       - Summarize the captured harness output (${captured.run_harness.output}).
       - Check whether `ll-loop run ${context.harness_name}` actually executed
-        (harness_name may be empty or the harness loop missing).
+        (harness_name may be empty, the harness loop missing, or a scope
+        conflict blocked execution).
       - Report the most likely failure cause in one paragraph the operator can
-        use to fix the harness configuration and re-run.
+        use to fix the configuration and re-run.
     next: failed
 
   failed:
