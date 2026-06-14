@@ -5,70 +5,23 @@ description: |
   the refine-to-ready-issue sub-loop (format → refine → wire → confidence-check).
   Uses ll-issues next-action to pick the highest-value action each cycle. Commits
   every 5 actions and continues until all issues pass quality thresholds or are exhausted.
-initial: init
-import:
-  - lib/common.yaml
-  - lib/prompt-fragments.yaml
-states:
-  init:
-    next: evaluate
-  evaluate:
-    action: ll-issues next-action --skip "$(cat ${context.run_dir}/skip-list 2>/dev/null)"
-    fragment: shell_exit
-    capture: "classify"
-    on_yes: done
-    on_no: parse_id
-    on_error: done
-  parse_id:
-    action: echo "${captured.classify.output}" | awk 'NR==1{printf $2}'
-    fragment: shell_exit
-    capture: "input"
-    on_yes: run_refine_to_ready
-    on_error: evaluate
-  run_refine_to_ready:
-    loop: refine-to-ready-issue
-    context_passthrough: true
-    on_yes: check_broke_down
-    on_no: handle_failure
-  check_broke_down:
-    action: |
-      BROKE="${context.run_dir}/refine-broke-down"
-      if [ -f "$BROKE" ] && grep -q '1' "$BROKE" 2>/dev/null; then exit 0; fi
-      exit 1
-    action_type: shell
-    evaluate:
-      type: exit_code
-    on_yes: handle_failure
-    on_no: check_commit
-  handle_failure:
-    action: |
-      ID="${captured.input.output}"
-      FILE="${context.run_dir}/skip-list"
-      CURRENT=$(cat "$FILE" 2>/dev/null || echo "")
-      if [ -z "$CURRENT" ]; then printf '%s' "$ID" > "$FILE"
-      else printf ',%s' "$ID" >> "$FILE"; fi
-    action_type: shell
-    next: check_commit
-  check_commit:
-    action: |
-      FILE="${context.run_dir}/commit-count"
-      N=$(cat "$FILE" 2>/dev/null || echo 0)
-      N=$((N + 1))
-      printf '%s' "$N" > "$FILE"
-      if [ $((N % 5)) -eq 0 ]; then echo "COMMIT"; else echo "SKIP"; fi
-    action_type: shell
-    evaluate:
-      type: output_contains
-      pattern: "COMMIT"
-    on_yes: commit
-    on_no: evaluate
-    on_error: evaluate
-  commit:
-    fragment: ll_commit
-    action: /ll:commit
-    next: evaluate
-  done:
-    terminal: true
-max_iterations: 200
+
+  Alias for: recursive-refine with order=next-action, commit_every=5, no_recursion=true
+initial: run_all
+max_iterations: 10
 timeout: 86400
 on_handoff: spawn
+import:
+  - lib/common.yaml
+states:
+  run_all:
+    loop: recursive-refine
+    with_:
+      order: next-action
+      commit_every: 5
+      no_recursion: true
+    on_success: done
+    on_failure: done
+    on_error: done
+  done:
+    terminal: true

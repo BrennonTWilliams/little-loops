@@ -9,9 +9,15 @@ description: |
   to the queue (depth-first) and refined before the next sibling. Continues
   until every issue in the full tree passes thresholds or is skipped.
 
+  When order=next-action the loop drives the whole active backlog using
+  ll-issues next-action value-ranking instead of a seeded queue. When
+  no_recursion=true child detection and size-review are skipped (flat
+  one-pass-per-issue mode, used by the issue-refinement alias).
+
   Usage:
     ll-loop run recursive-refine "ISSUE_ID"
     ll-loop run recursive-refine "ID1,ID2,ID3"
+    ll-loop run recursive-refine --context order=next-action commit_every=5 no_recursion=true
 initial: parse_input
 max_iterations: 500
 timeout: 28800
@@ -20,86 +26,123 @@ artifact_versioning: true
 parameters:
   input:
     type: string
-    required: true
-    description: Issue ID(s) to refine (comma-separated list accepted)
+    required: false
+    default: ""
+    description: Issue ID(s) to refine (comma-separated). Required when order=queue.
 context:
   readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
   outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
   max_refine_count: 5       # canonical: commands.max_refine_count in ll-config.json
   max_depth: 3              # canonical: commands.recursive_refine.max_depth in ll-config.json
   tree_summary: true        # set to false to suppress the decomposition tree in the done summary
+  order: queue              # 'queue' (seeded input) or 'next-action' (value-ranked backlog)
+  commit_every: 0           # commit every N completed refinements; 0 = disabled
+  no_recursion: false       # true = skip child detection / size-review (flat one-pass alias mode)
 import:
   - lib/common.yaml
 
 states:
   parse_input:
-    # Validate that input is provided, split comma-separated IDs into a
+    # Validate that input is provided (queue mode), split comma-separated IDs into a
     # newline-delimited queue file, and initialise per-run tracking files.
+    # In order=next-action mode input is not required; skip queue setup entirely.
     action: |
-      if [ -z "${context.input}" ]; then
-        echo "ERROR: input is required. Usage: ll-loop run recursive-refine \"ID1,ID2\""
-        exit 1
-      fi
+      ORDER="${context.order:-queue}"
       mkdir -p "${context.run_dir}"
-      printf '' > ${context.run_dir}/recursive-refine-passed.txt
-      printf '' > ${context.run_dir}/recursive-refine-skipped.txt
-      printf '' > ${context.run_dir}/recursive-refine-visited.txt
-      echo "${context.input}" | tr ',' '\n' \
-        | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-        | grep -v '^[[:space:]]*$' \
-        | sort -u \
-        > ${context.run_dir}/recursive-refine-queue.txt
-      cp ${context.run_dir}/recursive-refine-queue.txt \
-        ${context.run_dir}/recursive-refine-original-queue.txt
-      while IFS= read -r id; do echo "$id 0"; done \
-        < ${context.run_dir}/recursive-refine-queue.txt \
-        > ${context.run_dir}/recursive-refine-depth-map.txt
-      > ${context.run_dir}/recursive-refine-skipped-depth.txt
-      printf '' > ${context.run_dir}/recursive-refine-attempts.txt
-      printf '' > ${context.run_dir}/recursive-refine-skipped-budget.txt
-      printf '' > ${context.run_dir}/recursive-refine-skipped-decomposed.txt
-      printf '' > ${context.run_dir}/recursive-refine-skipped-deadend.txt
-      printf '' > ${context.run_dir}/recursive-refine-skipped-decision.txt
-      printf '' > ${context.run_dir}/recursive-refine-skipped-missing-artifacts.txt
-      printf '' > ${context.run_dir}/recursive-refine-wire-attempts.txt
-      printf '' > ${context.run_dir}/recursive-refine-decomposition.tsv
-      printf '0' > ${context.run_dir}/recursive-refine-dequeued-count.txt
-      COUNT=$(wc -l < ${context.run_dir}/recursive-refine-queue.txt | tr -d ' ')
-      printf '%s' "$COUNT" > ${context.run_dir}/recursive-refine-total-enqueued.txt
-      echo "Queued $COUNT issue(s) for recursive refinement"
+      _init_common() {
+        printf '' > ${context.run_dir}/recursive-refine-passed.txt
+        printf '' > ${context.run_dir}/recursive-refine-skipped.txt
+        printf '' > ${context.run_dir}/recursive-refine-visited.txt
+        printf '' > ${context.run_dir}/recursive-refine-attempts.txt
+        printf '' > ${context.run_dir}/recursive-refine-skipped-budget.txt
+        printf '' > ${context.run_dir}/recursive-refine-skipped-decomposed.txt
+        printf '' > ${context.run_dir}/recursive-refine-skipped-deadend.txt
+        printf '' > ${context.run_dir}/recursive-refine-skipped-decision.txt
+        printf '' > ${context.run_dir}/recursive-refine-skipped-missing-artifacts.txt
+        printf '' > ${context.run_dir}/recursive-refine-wire-attempts.txt
+        printf '' > ${context.run_dir}/recursive-refine-decomposition.tsv
+        printf '0' > ${context.run_dir}/recursive-refine-dequeued-count.txt
+        printf '0' > ${context.run_dir}/recursive-refine-commit-count.txt
+      }
+      if [ "$ORDER" = "next-action" ]; then
+        _init_common
+        > ${context.run_dir}/recursive-refine-skipped-depth.txt
+        COMMIT_EVERY="${context.commit_every:-0}"
+        NO_RECURSION="${context.no_recursion:-false}"
+        echo "Starting next-action mode: commit_every=${COMMIT_EVERY}, no_recursion=${NO_RECURSION}"
+      else
+        if [ -z "${context.input}" ]; then
+          echo "ERROR: input is required when order=queue. Usage: ll-loop run recursive-refine \"ID1,ID2\""
+          exit 1
+        fi
+        _init_common
+        echo "${context.input}" | tr ',' '\n' \
+          | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+          | grep -v '^[[:space:]]*$' \
+          | sort -u \
+          > ${context.run_dir}/recursive-refine-queue.txt
+        cp ${context.run_dir}/recursive-refine-queue.txt \
+          ${context.run_dir}/recursive-refine-original-queue.txt
+        while IFS= read -r id; do echo "$id 0"; done \
+          < ${context.run_dir}/recursive-refine-queue.txt \
+          > ${context.run_dir}/recursive-refine-depth-map.txt
+        > ${context.run_dir}/recursive-refine-skipped-depth.txt
+        COUNT=$(wc -l < ${context.run_dir}/recursive-refine-queue.txt | tr -d ' ')
+        printf '%s' "$COUNT" > ${context.run_dir}/recursive-refine-total-enqueued.txt
+        echo "Queued $COUNT issue(s) for recursive refinement"
+      fi
     fragment: shell_exit
     on_yes: dequeue_next
     on_no: diagnose
     on_error: diagnose
 
   dequeue_next:
-    # Pop the head of the queue and advance the file.
+    # Pop the head of the queue and advance the file (order=queue), or call
+    # ll-issues next-action to get the highest-value backlog issue (order=next-action).
     # Captures the issue ID as 'input' so context_passthrough forwards it to
     # the refine-to-ready-issue sub-loop as context.input.
-    # Exits 1 (→ done) when the queue is empty.
+    # Exits 1 (→ aggregate_decomposition) when the queue/backlog is empty.
     action: |
-      if [ ! -s ${context.run_dir}/recursive-refine-queue.txt ]; then
-        exit 1
-      fi
-      CURRENT=$(head -1 ${context.run_dir}/recursive-refine-queue.txt)
-      tail -n +2 ${context.run_dir}/recursive-refine-queue.txt \
-        > ${context.run_dir}/recursive-refine-queue.tmp
-      mv ${context.run_dir}/recursive-refine-queue.tmp \
-        ${context.run_dir}/recursive-refine-queue.txt
-      echo "$CURRENT" >> ${context.run_dir}/recursive-refine-visited.txt
-      DEPTH=$(grep "^$CURRENT " ${context.run_dir}/recursive-refine-depth-map.txt 2>/dev/null | awk '{print $2}')
-      printf '%s' "$${DEPTH:-0}" > ${context.run_dir}/recursive-refine-current-depth.txt
+      ORDER="${context.order:-queue}"
       DEQUEUED=$(cat ${context.run_dir}/recursive-refine-dequeued-count.txt 2>/dev/null || echo 0)
-      DEQUEUED=$((DEQUEUED + 1))
-      printf '%s' "$DEQUEUED" > ${context.run_dir}/recursive-refine-dequeued-count.txt
-      TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo '?')
       PASSED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-passed.txt 2>/dev/null || echo 0)
-      QUEUED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || echo 0)
       SKIPPED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-skipped.txt 2>/dev/null || echo 0)
-      DEPTH_STR=$${DEPTH:+" (depth: $DEPTH)"}
-      printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
-        "$DEQUEUED" "$TOTAL" "$CURRENT" "$DEPTH_STR" "$PASSED" "$QUEUED" "$SKIPPED" >&2
-      echo "$CURRENT"
+      if [ "$ORDER" = "next-action" ]; then
+        SKIP=$(cat ${context.run_dir}/recursive-refine-visited.txt 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+        RESULT=$(ll-issues next-action --skip "$SKIP" 2>/dev/null)
+        NEXT_EXIT=$?
+        CURRENT=$(echo "$RESULT" | awk 'NR==1{printf $2}')
+        if [ $NEXT_EXIT -eq 0 ] || [ -z "$CURRENT" ]; then
+          exit 1  # ALL_DONE → aggregate_decomposition
+        fi
+        echo "$CURRENT" >> ${context.run_dir}/recursive-refine-visited.txt
+        printf '0' > ${context.run_dir}/recursive-refine-current-depth.txt
+        DEQUEUED=$((DEQUEUED + 1))
+        printf '%s' "$DEQUEUED" > ${context.run_dir}/recursive-refine-dequeued-count.txt
+        printf '[next-action #%s] → %s | passed: %d | skipped: %d\n' \
+          "$DEQUEUED" "$CURRENT" "$PASSED" "$SKIPPED" >&2
+        echo "$CURRENT"
+      else
+        if [ ! -s ${context.run_dir}/recursive-refine-queue.txt ]; then
+          exit 1
+        fi
+        CURRENT=$(head -1 ${context.run_dir}/recursive-refine-queue.txt)
+        tail -n +2 ${context.run_dir}/recursive-refine-queue.txt \
+          > ${context.run_dir}/recursive-refine-queue.tmp
+        mv ${context.run_dir}/recursive-refine-queue.tmp \
+          ${context.run_dir}/recursive-refine-queue.txt
+        echo "$CURRENT" >> ${context.run_dir}/recursive-refine-visited.txt
+        DEPTH=$(grep "^$CURRENT " ${context.run_dir}/recursive-refine-depth-map.txt 2>/dev/null | awk '{print $2}')
+        printf '%s' "$${DEPTH:-0}" > ${context.run_dir}/recursive-refine-current-depth.txt
+        DEQUEUED=$((DEQUEUED + 1))
+        printf '%s' "$DEQUEUED" > ${context.run_dir}/recursive-refine-dequeued-count.txt
+        TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo '?')
+        QUEUED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || echo 0)
+        DEPTH_STR=$${DEPTH:+" (depth: $DEPTH)"}
+        printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
+          "$DEQUEUED" "$TOTAL" "$CURRENT" "$DEPTH_STR" "$PASSED" "$QUEUED" "$SKIPPED" >&2
+        echo "$CURRENT"
+      fi
     fragment: shell_exit  # queue_pop fragment not used — see ENH-1875 for exception rationale
     capture: input
     on_yes: check_attempt_budget
@@ -169,12 +212,13 @@ states:
     # context_passthrough passes captured.input as context.input to the sub-loop.
     # on_success = sub-loop reached 'done' (confidence pass OR breakdown_issue path).
     # on_failure = sub-loop reached 'failed' (true error condition; breakdown now occurs in sub-loop).
+    # Failure/error routes to gate_recursion so no_recursion=true can short-circuit child detection.
     fragment: with_rate_limit_handling
     loop: refine-to-ready-issue
     context_passthrough: true
     on_success: check_passed
-    on_failure: detect_children
-    on_error: detect_children
+    on_failure: gate_recursion
+    on_error: gate_recursion
     on_rate_limit_exhausted: dequeue_next
 
   check_passed:
@@ -182,6 +226,8 @@ states:
     # Even on sub-loop success the issue may not have met thresholds —
     # refine-to-ready-issue can exit via breakdown_issue → done rather than a
     # genuine confidence pass. Records the issue in passed.txt when thresholds met.
+    # Routes to maybe_commit on pass, gate_recursion on fail (gate_recursion decides
+    # whether to skip directly or proceed to child detection based on no_recursion).
     action: |
       python3 << 'PYEOF'
       import json, sys, subprocess
@@ -216,9 +262,56 @@ states:
       sys.exit(0 if passed else 1)
       PYEOF
     fragment: shell_exit
-    on_yes: dequeue_next
+    on_yes: maybe_commit
+    on_no: gate_recursion
+    on_error: gate_recursion
+
+  gate_recursion:
+    # Short-circuit child detection when no_recursion=true (flat alias mode).
+    # In no_recursion mode the issue is added to the skip list and routed to
+    # maybe_commit (preserving commit cadence). Otherwise routes to detect_children
+    # for the normal recursive decomposition path.
+    action: |
+      NO_RECURSION="${context.no_recursion:-false}"
+      if [ "$NO_RECURSION" = "true" ]; then
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
+        exit 0
+      fi
+      exit 1
+    fragment: shell_exit
+    on_yes: maybe_commit
     on_no: detect_children
     on_error: detect_children
+
+  maybe_commit:
+    # Increment the completion counter and run /ll:commit every commit_every
+    # completions (both pass and no-recursion-skip paths converge here).
+    # When commit_every=0 (default) this is a no-op pass-through to dequeue_next.
+    action: |
+      COMMIT_EVERY="${context.commit_every:-0}"
+      if [ "$COMMIT_EVERY" = "0" ]; then
+        echo "SKIP"
+        exit 0
+      fi
+      FILE="${context.run_dir}/recursive-refine-commit-count.txt"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      if [ $((N % COMMIT_EVERY)) -eq 0 ]; then echo "COMMIT"; else echo "SKIP"; fi
+    action_type: shell
+    evaluate:
+      type: output_contains
+      pattern: "COMMIT"
+    on_yes: commit_periodic
+    on_no: dequeue_next
+    on_error: dequeue_next
+
+  commit_periodic:
+    # Periodic commit triggered by maybe_commit when the commit_every threshold is hit.
+    action: /ll:commit
+    action_type: slash_command
+    next: dequeue_next
+    on_error: dequeue_next
 
   detect_children:
     # Diff current issue IDs against the pre-refinement baseline to find any

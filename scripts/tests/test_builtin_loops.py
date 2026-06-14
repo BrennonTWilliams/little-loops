@@ -722,10 +722,21 @@ class TestLearningTestsAuditLoop:
 
 
 class TestIssueRefinementSubLoop:
-    """Tests that issue-refinement.yaml delegates refinement to the refine-to-ready-issue sub-loop."""
+    """Tests that issue-refinement.yaml is an alias for recursive-refine (ENH-2139).
+
+    issue-refinement delegates all logic to recursive-refine with
+    order=next-action, commit_every=5, no_recursion=true via a with: binding.
+    """
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "issue-refinement.yaml"
-    REMOVED_STATES = [
+    REMOVED_INLINE_STATES = [
+        "evaluate",
+        "parse_id",
+        "run_refine_to_ready",
+        "check_broke_down",
+        "handle_failure",
+        "check_commit",
+        "commit",
         "route_format",
         "route_verify",
         "route_score",
@@ -740,93 +751,62 @@ class TestIssueRefinementSubLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_parse_id_capture_is_input(self, data: dict) -> None:
-        """parse_id must capture as 'input' so context_passthrough injects it into child loop."""
-        parse_id = data["states"].get("parse_id", {})
-        assert parse_id.get("capture") == "input", (
-            f"parse_id.capture should be 'input', got {parse_id.get('capture')!r} — "
-            f"child loop reads context.input via context_passthrough"
+    def test_name_is_issue_refinement(self, data: dict) -> None:
+        """Loop name must stay 'issue-refinement' so callers (eval-driven-development) resolve it."""
+        assert data.get("name") == "issue-refinement", (
+            f"name should be 'issue-refinement', got {data.get('name')!r}"
         )
 
-    def test_parse_id_routes_to_sub_loop(self, data: dict) -> None:
-        """parse_id.on_yes must route to run_refine_to_ready, not route_format."""
-        parse_id = data["states"].get("parse_id", {})
-        assert parse_id.get("on_yes") == "run_refine_to_ready", (
-            f"parse_id.on_yes should be 'run_refine_to_ready', got {parse_id.get('on_yes')!r}"
+    def test_run_all_delegates_to_recursive_refine(self, data: dict) -> None:
+        """run_all state must call recursive-refine as a sub-loop."""
+        state = data["states"].get("run_all", {})
+        assert state.get("loop") == "recursive-refine", (
+            f"run_all.loop should be 'recursive-refine', got {state.get('loop')!r}"
         )
 
-    def test_run_refine_to_ready_state_exists(self, data: dict) -> None:
-        """run_refine_to_ready sub-loop state must exist."""
-        assert "run_refine_to_ready" in data["states"], (
-            "State 'run_refine_to_ready' not found in issue-refinement.yaml"
+    def test_with_bindings_set_order_next_action(self, data: dict) -> None:
+        """with: must pass order=next-action so recursive-refine uses value-ranked backlog ordering."""
+        state = data["states"].get("run_all", {})
+        with_ = state.get("with_", {})
+        assert with_.get("order") == "next-action", (
+            f"run_all.with_.order should be 'next-action', got {with_.get('order')!r}"
         )
 
-    def test_run_refine_to_ready_uses_sub_loop(self, data: dict) -> None:
-        """run_refine_to_ready must use 'loop:' field to invoke refine-to-ready-issue."""
-        state = data["states"].get("run_refine_to_ready", {})
-        assert state.get("loop") == "refine-to-ready-issue", (
-            f"run_refine_to_ready.loop should be 'refine-to-ready-issue', got {state.get('loop')!r}"
+    def test_with_bindings_set_commit_every_5(self, data: dict) -> None:
+        """with: must pass commit_every=5 to preserve the periodic commit cadence."""
+        state = data["states"].get("run_all", {})
+        with_ = state.get("with_", {})
+        assert with_.get("commit_every") == 5, (
+            f"run_all.with_.commit_every should be 5, got {with_.get('commit_every')!r}"
         )
 
-    def test_run_refine_to_ready_has_context_passthrough(self, data: dict) -> None:
-        """run_refine_to_ready must set context_passthrough: true to inject captured input."""
-        state = data["states"].get("run_refine_to_ready", {})
-        assert state.get("context_passthrough") is True, (
-            f"run_refine_to_ready.context_passthrough should be true, got {state.get('context_passthrough')!r}"
+    def test_with_bindings_set_no_recursion_true(self, data: dict) -> None:
+        """with: must pass no_recursion=true to keep flat one-pass behavior matching old issue-refinement."""
+        state = data["states"].get("run_all", {})
+        with_ = state.get("with_", {})
+        assert with_.get("no_recursion") is True, (
+            f"run_all.with_.no_recursion should be true, got {with_.get('no_recursion')!r}"
         )
 
-    def test_run_refine_to_ready_routes_to_check_broke_down(self, data: dict) -> None:
-        """run_refine_to_ready on_yes routes to check_broke_down (which then routes to check_commit)."""
-        state = data["states"].get("run_refine_to_ready", {})
-        assert state.get("on_yes") == "check_broke_down", (
-            f"run_refine_to_ready.on_yes should be 'check_broke_down', got {state.get('on_yes')!r}"
-        )
-        check_broke_down = data["states"].get("check_broke_down", {})
-        assert check_broke_down.get("on_no") == "check_commit", (
-            f"check_broke_down.on_no should be 'check_commit', got {check_broke_down.get('on_no')!r}"
+    def test_run_all_routes_all_outcomes_to_done(self, data: dict) -> None:
+        """run_all must route on_success, on_failure, and on_error to done (alias has no fallback logic)."""
+        state = data["states"].get("run_all", {})
+        for field in ("on_success", "on_failure", "on_error"):
+            assert state.get(field) == "done", (
+                f"run_all.{field} should be 'done', got {state.get(field)!r}"
+            )
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        """done state must be terminal."""
+        assert data["states"].get("done", {}).get("terminal") is True, (
+            "done state should be terminal: true"
         )
 
-    def test_run_refine_to_ready_on_no_routes_to_handle_failure(self, data: dict) -> None:
-        """run_refine_to_ready on_no must route to handle_failure for skip-list tracking."""
-        state = data["states"].get("run_refine_to_ready", {})
-        assert state.get("on_no") == "handle_failure", (
-            f"run_refine_to_ready.on_no should be 'handle_failure', got {state.get('on_no')!r}"
-        )
-
-    def test_handle_failure_state_exists(self, data: dict) -> None:
-        """handle_failure state must exist to track failed issues in skip list."""
-        assert "handle_failure" in data["states"], (
-            "State 'handle_failure' not found in issue-refinement.yaml"
-        )
-
-    def test_handle_failure_next_is_check_commit(self, data: dict) -> None:
-        """handle_failure must route next to check_commit after appending to skip list."""
-        state = data["states"].get("handle_failure", {})
-        assert state.get("next") == "check_commit", (
-            f"handle_failure.next should be 'check_commit', got {state.get('next')!r}"
-        )
-
-    def test_evaluate_action_includes_skip_list(self, data: dict) -> None:
-        """evaluate action must pass run_dir-scoped skip list to ll-issues next-action."""
-        evaluate = data["states"].get("evaluate", {})
-        action = evaluate.get("action", "")
-        assert "${context.run_dir}/skip-list" in action, (
-            f"evaluate.action should reference ${{context.run_dir}}/skip-list, got: {action!r}"
-        )
-
-    def test_skip_list_is_run_dir_scoped(self, data: dict) -> None:
-        """Skip list must live under run_dir so it is fresh each run (MR-3 compliance)."""
-        evaluate = data["states"].get("evaluate", {})
-        action = evaluate.get("action", "")
-        assert "${context.run_dir}" in action, (
-            "evaluate.action must use run_dir-scoped skip list path for MR-3 compliance"
-        )
-
-    @pytest.mark.parametrize("state_name", REMOVED_STATES)
-    def test_removed_states_absent(self, data: dict, state_name: str) -> None:
-        """Inline routing and prompt states must be removed — logic lives in refine-to-ready-issue."""
+    @pytest.mark.parametrize("state_name", REMOVED_INLINE_STATES)
+    def test_inline_refinement_states_absent(self, data: dict, state_name: str) -> None:
+        """Inline refinement states must be absent — all logic delegated to recursive-refine."""
         assert state_name not in data["states"], (
-            f"State '{state_name}' should have been removed; logic delegated to refine-to-ready-issue sub-loop"
+            f"State '{state_name}' should be absent; issue-refinement is now an alias for recursive-refine"
         )
 
 

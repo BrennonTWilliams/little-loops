@@ -3,16 +3,23 @@ id: ENH-2139
 title: Fold issue-refinement deltas into recursive-refine and alias it
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: '2026-06-13'
 discovered_by: refine-implement-loop-audit
 captured_at: '2026-06-14T03:14:28Z'
+completed_at: '2026-06-14T04:46:55Z'
 labels:
 - loops
 - consolidation
 - maintainability
 relates_to:
 - ENH-2138
+confidence_score: 93
+outcome_confidence: 77
+score_complexity: 17
+score_test_coverage: 20
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # ENH-2139: Fold issue-refinement deltas into recursive-refine and alias it
@@ -104,19 +111,19 @@ real risk of being lost in a naive merge — this issue preserves it explicitly.
 ## Integration Map
 
 ### Files to Modify
-- `loops/recursive-refine.yaml` — add `order` and `commit_every` parameters and their wiring
-- `loops/issue-refinement.yaml` — convert to alias delegating to `recursive-refine`
+- `scripts/little_loops/loops/recursive-refine.yaml` — add `order` and `commit_every` parameters and their wiring
+- `scripts/little_loops/loops/issue-refinement.yaml` — convert to alias delegating to `recursive-refine`
 
 ### Dependent Files (Callers/Importers)
-- `loops/eval-driven-development.yaml` — references `loop: issue-refinement`; must keep resolving
-- `loops/evaluation-quality.yaml` — mentions `issue-refinement` in prompt text; update if alias is removed
+- `scripts/little_loops/loops/eval-driven-development.yaml` — references `loop: issue-refinement`; must keep resolving
+- `scripts/little_loops/loops/evaluation-quality.yaml` — mentions `issue-refinement` in prompt text; update if alias is removed
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — update `test_issue_refinement_broke_down`, `test_ll_loop_display`
 
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md`
-- `docs/reference/LOOPS_REFERENCE.md` (if present)
+- `docs/guides/LOOPS_REFERENCE.md`
 - `README.md`
 
 ### Configuration
@@ -135,4 +142,5 @@ real risk of being lost in a naive merge — this issue preserves it explicitly.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-14T04:23:11 - `af739a20-8f29-47f0-bba6-0dc5fe9272e3.jsonl`
 - `/ll:format-issue` - 2026-06-14T03:19:16 - `0f71fcba-2862-49f5-8ce5-e928230ea993.jsonl`

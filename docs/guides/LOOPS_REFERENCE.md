@@ -654,8 +654,8 @@ Pass `--context max_eval_retries=0` to skip the `eval_gate` retry cycle and redu
 | `issue-discovery-triage` | Automated issue discovery and triage cycle |
 | `scan-and-implement` | Full discovery → triage → implement pipeline. Snapshots active issue IDs, runs `issue-discovery-triage` as a sub-loop, then delegates to `autodev` scoped to **only** the net-new IDs that survived triage (issues that were created during scan but closed by tradeoff-review are excluded automatically via the pre/post snapshot diff) |
 | `auto-refine-and-implement` | For each backlog issue in priority order: recursively refine via `recursive-refine` (which handles decomposition into child issues), run an adversarial go/no-go gate, then implement all passed issues; issues that fail the gate are skipped; loops until backlog is exhausted |
-| `issue-refinement` | Progressively refine all active issues — delegates per-issue refinement to the `refine-to-ready-issue` sub-loop with commit cadence |
-| `recursive-refine` | Refine one or more issues to readiness recursively; when size-review decomposes an issue into children, each child is enqueued and refined before the next sibling; accepts a single ID or comma-separated list |
+| `issue-refinement` | Alias for `recursive-refine` with `order=next-action`, `commit_every=5`, `no_recursion=true` — progressively refines the whole active backlog in value-ranked order with periodic commits |
+| `recursive-refine` | Refine one or more issues to readiness; optional `order=next-action` drives the whole backlog in value-ranked order; `no_recursion=true` keeps flat one-pass mode; `commit_every=N` adds periodic commits; default mode accepts a seeded ID list and enqueues children depth-first when size-review decomposes an issue |
 | `autodev` | Targeted refine-and-implement for a specific set of issues; accepts a single ID or comma-separated list and interleaves refinement and implementation — as soon as a leaf passes refinement it is implemented via `ll-auto --only` before the next leaf is refined; decomposed children are prepended depth-first; terminates when the input queue drains |
 | `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder in your prompt to inject each issue's ID. Optionally constrain to a single issue type via `--context type=BUG` (one of `BUG`, `FEAT`, `ENH`, `EPIC`). Optionally scope to children of an epic via `--context parent=EPIC-NNN`. Both filters may be combined. |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
@@ -881,20 +881,26 @@ snapshot_pre → discover (sub-loop: issue-discovery-triage)
 
 ### `recursive-refine` — Depth-First Issue Refinement with Decomposition
 
-**Technique**: Accepts a single issue ID or a comma-separated list. For each issue, delegates `refine → wire → confidence-check` to the `refine-to-ready-issue` sub-loop. If the sub-loop exits without meeting thresholds, the loop checks whether `breakdown_issue` already ran inside the sub-loop (via the `recursive-refine-broke-down` flag). If so, `/ll:issue-size-review` is skipped and the loop proceeds directly to `enqueue_or_skip`; otherwise it runs `/ll:issue-size-review` explicitly. When child issues are detected, they are prepended to the queue depth-first and refined before the next sibling. Issues that cannot be decomposed further are recorded as skipped.
+**Technique**: Accepts a single issue ID or a comma-separated list (default `order=queue` mode). For each issue, delegates `refine → wire → confidence-check` to the `refine-to-ready-issue` sub-loop. If the sub-loop exits without meeting thresholds, the loop checks whether `breakdown_issue` already ran inside the sub-loop (via the `recursive-refine-broke-down` flag). If so, `/ll:issue-size-review` is skipped and the loop proceeds directly to `enqueue_or_skip`; otherwise it runs `/ll:issue-size-review` explicitly. When child issues are detected, they are prepended to the queue depth-first and refined before the next sibling. Issues that cannot be decomposed further are recorded as skipped.
+
+With `order=next-action` the loop drives the entire active backlog using `ll-issues next-action` value-ranking instead of a seeded input list. With `no_recursion=true` child detection and size-review are skipped, making each issue a flat one-pass refine. With `commit_every=N` the loop runs `/ll:commit` after every N completed refinements. `issue-refinement` is a named alias that passes all three flags: `order=next-action commit_every=5 no_recursion=true`.
 
 **Child detection**: Uses a two-step parent-verification filter to avoid picking up unrelated issues created concurrently. First, `comm -13` of the pre- and post-refinement ID snapshots is written to `recursive-refine-diff-ids.txt`. Each candidate ID is then checked: its issue file must contain `Decomposed from <PARENT_ID>` (the line written by `/ll:issue-size-review` when it creates child issues) before it is accepted into `recursive-refine-new-children.txt`. Issues that appear in the diff but lack this parent reference are silently ignored.
 
-**When to use**: When you have one or more issues you want refined to ready status, including any children that get split off along the way. Prefer `issue-refinement` for full-backlog refinement; use `recursive-refine` when you want targeted, tree-aware refinement of a specific set of issues.
+**When to use**: When you have one or more specific issues you want refined to ready status, including any children that get split off along the way. Use `issue-refinement` (or pass `order=next-action no_recursion=true`) for whole-backlog refinement; use `recursive-refine` directly when you want targeted, tree-aware refinement of a specific set of issues.
 
 **Breakdown guard**: After `detect_children` finds no children from the sub-loop, a `check_broke_down` state reads the `.loops/tmp/recursive-refine-broke-down` flag **AND** checks that `.loops/tmp/recursive-refine-new-children.txt` is non-empty. If the flag is set **and** the children file is non-empty (meaning `breakdown_issue` ran and actually produced child issues), the loop skips `recheck_scores` and `run_size_review` and goes directly to `enqueue_or_skip`, preventing a duplicate size-review call. If the flag is set but no children were created (sub-loop's `/ll:issue-size-review --auto` returned analysis only), the loop falls through to `recheck_scores` / `run_size_review` so the outer loop gets its own chance to decompose — avoiding the silent-skip regression from BUG-1183.
 
 **Score gate**: When `check_broke_down` passes (flag not set), a `recheck_scores` state checks whether the issue's current `confidence` and `outcome` scores already meet project thresholds. If both pass, the issue is recorded as passed and size-review is skipped entirely — avoiding unnecessary LLM cycles on already-ready issues.
 
-**Required context variables**:
+**Context variables**:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `input` | `""` | Issue ID(s) to refine (comma-separated). Required when `order=queue`. |
+| `order` | `queue` | Queue strategy: `queue` (seeded input list) or `next-action` (drives whole backlog in value-ranked order via `ll-issues next-action`) |
+| `commit_every` | `0` | Run `/ll:commit` after every N completed refinements; `0` disables periodic commits |
+| `no_recursion` | `false` | Skip child detection and size-review (flat one-pass-per-issue mode); used by the `issue-refinement` alias |
 | `readiness_threshold` | `90` | Minimum confidence score for an issue to be considered ready (override via `commands.confidence_gate.readiness_threshold` in `ll-config.json`) |
 | `outcome_threshold` | `75` | Minimum outcome confidence score (override via `commands.confidence_gate.outcome_threshold` in `ll-config.json`) |
 | `max_refine_count` | `5` | Maximum `/ll:refine-issue` calls per issue lifetime; enforced directly by `check_attempt_budget` before each sub-loop entry — issues that reach this cap are skipped with reason `budget` (override via `commands.max_refine_count` in `ll-config.json`) |
@@ -909,6 +915,9 @@ ll-loop run recursive-refine "FEAT-42"
 # Refine multiple issues (depth-first: children of FEAT-42 resolved before FEAT-43)
 ll-loop run recursive-refine "FEAT-42,FEAT-43,BUG-17"
 
+# Drive the whole backlog in value-ranked order (equivalent to running issue-refinement)
+ll-loop run recursive-refine --context order=next-action commit_every=5 no_recursion=true
+
 # JSON shorthand: pass as a JSON object — keys auto-unpacked into context variables
 ll-loop run recursive-refine '{"input": "FEAT-42,FEAT-43"}'
 
@@ -918,25 +927,27 @@ ll-loop run recursive-refine --context input="FEAT-42"
 
 **FSM flow**:
 ```
-parse_input → dequeue_next → [queue empty?]
+parse_input → dequeue_next → [queue/backlog empty?]
   ├─ YES → aggregate_decomposition → done (prints summary)
   └─ NO  → check_attempt_budget → [budget ok?]
               ├─ NO  (budget exceeded) → dequeue_next (skip)
               └─ YES → capture_baseline → run_refine (sub-loop: refine-to-ready-issue)
               ├─ on_success → check_passed → [thresholds met?]
-              │                ├─ YES → dequeue_next (loop)
-              │                └─ NO  → detect_children
-              └─ on_failure/on_error → detect_children → [children found from sub-loop?]
-                                        ├─ YES → enqueue_children → dequeue_next (depth-first)
-                                        └─ NO  → size_review_snap → check_broke_down → [broke_down AND children exist?]
-                                                                                        ├─ YES (flag=1 AND children) → enqueue_or_skip → dequeue_next
-                                                                                        └─ NO  (flag=0 OR no children) → recheck_scores → [scores pass?]
-                                                                                                                            ├─ YES → dequeue_next
-                                                                                                                            └─ NO  → check_depth → [depth >= max_depth?]
-                                                                                                                                        ├─ YES (depth-cap) → dequeue_next
-                                                                                                                                        └─ NO  → check_decision_needed → [decision_needed?]
-                                                                                                                                                      ├─ YES → dequeue_next (skipped: decision-needed)
-                                                                                                                                                      └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
+              │                ├─ YES → maybe_commit → [commit_every threshold hit?]
+              │                │          ├─ YES → commit_periodic → dequeue_next
+              │                │          └─ NO  → dequeue_next
+              │                └─ NO  → gate_recursion → [no_recursion=true?]
+              └─ on_failure/on_error → gate_recursion → [no_recursion=true?]
+                                        ├─ YES (flat mode) → skip issue → maybe_commit → dequeue_next
+                                        └─ NO  (recursive mode) → detect_children → [children found from sub-loop?]
+                                                        ├─ YES → enqueue_children → dequeue_next (depth-first)
+                                                        └─ NO  → size_review_snap → check_broke_down → [broke_down AND children exist?]
+                                                                                        ├─ YES → enqueue_or_skip → dequeue_next
+                                                                                        └─ NO  → recheck_scores → [scores pass?]
+                                                                                                    ├─ YES → dequeue_next
+                                                                                                    └─ NO  → check_depth → [depth >= max_depth?]
+                                                                                                                ├─ YES → dequeue_next (depth-cap)
+                                                                                                                └─ NO  → check_decision_needed → check_missing_artifacts → run_size_review → enqueue_or_skip → dequeue_next
 ```
 
 **Summary output**: When the queue is exhausted, `aggregate_decomposition` emits the parent→children rollup (if any decompositions occurred), then `done` emits a structured summary followed (by default) by an indented decomposition tree:

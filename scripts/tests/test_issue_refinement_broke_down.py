@@ -1,58 +1,63 @@
-"""Regression tests for BUG-2034: issue-refinement check_broke_down gate.
+"""Structural tests for the issue-refinement alias (ENH-2139).
 
-Verifies that after run_refine_to_ready completes, the check_broke_down state
-routes to handle_failure (skip-list) when the child wrote refine-broke-down=1,
-and routes to check_commit when the signal is absent or zero.
+issue-refinement.yaml was converted from a standalone loop to an alias that
+delegates to recursive-refine with order=next-action, commit_every=5,
+no_recursion=true (ENH-2139).
+
+The check_broke_down gate previously in issue-refinement.yaml has moved to
+recursive-refine.yaml, where it was already present with equivalent logic.
 """
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
+import yaml
 
-def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
-
-
-def _check_broke_down_script(run_dir: str) -> str:
-    """Shell body of check_broke_down with context.run_dir substituted."""
-    return f"""
-    BROKE="{run_dir}/refine-broke-down"
-    if [ -f "$BROKE" ] && grep -q '1' "$BROKE" 2>/dev/null; then exit 0; fi
-    exit 1
-    """
+BUILTIN_LOOPS_DIR = (
+    Path(__file__).parent.parent / "little_loops" / "loops"
+)
 
 
-class TestCheckBrokeDown:
-    """check_broke_down gate routes correctly based on refine-broke-down signal."""
+class TestIssueRefinementAlias:
+    """issue-refinement.yaml is an alias for recursive-refine (ENH-2139)."""
 
-    def test_broke_down_signal_exits_zero(self, tmp_path: Path) -> None:
-        """exit 0 (→ handle_failure) when refine-broke-down contains 1."""
-        run_dir = tmp_path / ".loops" / "runs" / "issue-refinement-20260608T000000"
-        run_dir.mkdir(parents=True)
-        (run_dir / "refine-broke-down").write_text("1")
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "issue-refinement.yaml"
 
-        result = _bash(_check_broke_down_script(str(run_dir)), tmp_path)
+    def test_alias_file_exists(self) -> None:
+        """issue-refinement.yaml must still exist so eval-driven-development can resolve it."""
+        assert self.LOOP_FILE.exists(), (
+            "issue-refinement.yaml not found; callers (eval-driven-development.yaml) depend on it"
+        )
 
-        assert result.returncode == 0, "broke-down=1 should exit 0 → route to handle_failure"
+    def test_alias_delegates_to_recursive_refine(self) -> None:
+        """run_all state must call recursive-refine as sub-loop, not inline refinement logic."""
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        state = data.get("states", {}).get("run_all", {})
+        assert state.get("loop") == "recursive-refine", (
+            f"run_all.loop should be 'recursive-refine', got {state.get('loop')!r}"
+        )
 
-    def test_no_signal_file_exits_nonzero(self, tmp_path: Path) -> None:
-        """exit 1 (→ check_commit) when refine-broke-down is absent."""
-        run_dir = tmp_path / ".loops" / "runs" / "issue-refinement-20260608T000000"
-        run_dir.mkdir(parents=True)
-        # no refine-broke-down file written
+    def test_alias_passes_next_action_ordering(self) -> None:
+        """Alias must pass order=next-action so ll-issues next-action drives the backlog."""
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        with_ = data.get("states", {}).get("run_all", {}).get("with_", {})
+        assert with_.get("order") == "next-action", (
+            f"with_.order should be 'next-action', got {with_.get('order')!r}"
+        )
 
-        result = _bash(_check_broke_down_script(str(run_dir)), tmp_path)
+    def test_alias_preserves_commit_cadence(self) -> None:
+        """Alias must pass commit_every=5 to preserve the periodic commit behavior."""
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        with_ = data.get("states", {}).get("run_all", {}).get("with_", {})
+        assert with_.get("commit_every") == 5, (
+            f"with_.commit_every should be 5, got {with_.get('commit_every')!r}"
+        )
 
-        assert result.returncode != 0, "absent signal should exit 1 → route to check_commit"
-
-    def test_zero_signal_exits_nonzero(self, tmp_path: Path) -> None:
-        """exit 1 (→ check_commit) when refine-broke-down contains 0 (genuine success)."""
-        run_dir = tmp_path / ".loops" / "runs" / "issue-refinement-20260608T000000"
-        run_dir.mkdir(parents=True)
-        (run_dir / "refine-broke-down").write_text("0")
-
-        result = _bash(_check_broke_down_script(str(run_dir)), tmp_path)
-
-        assert result.returncode != 0, "broke-down=0 should exit 1 → route to check_commit"
+    def test_alias_disables_recursion(self) -> None:
+        """Alias must pass no_recursion=true to match old flat one-pass-per-issue behavior."""
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        with_ = data.get("states", {}).get("run_all", {}).get("with_", {})
+        assert with_.get("no_recursion") is True, (
+            f"with_.no_recursion should be true, got {with_.get('no_recursion')!r}"
+        )
