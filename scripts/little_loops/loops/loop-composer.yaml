@@ -157,6 +157,7 @@ states:
       target: "3"
     on_yes: decompose_goal
     on_no: failed
+    on_error: failed
 
   # ─── Phase 5: Auto-Approve Gate ───────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ states:
       type: exit_code
     on_yes: execute_plan
     on_no: present_plan
-    on_error: execute_plan
+    on_error: present_plan
 
   # ─── Phase 6: HITL Plan Approval ──────────────────────────────────────────────
 
