@@ -129,15 +129,15 @@ New events with no current ll intent: `AfterAgent`, `BeforeModel`, `AfterModel`,
 
 ### Recommended child issues for EPIC-2178
 
-1. `GeminiRunner` stub in `host_runner.py` (raises `HostNotConfigured`)
-2. `GeminiRunner` full implementation (flag translation complete in research doc)
-3. Hook adapter — `.gemini/settings.json` injection OR extension `hooks/hooks.json` (decision needed)
-4. Config probe — `.gemini/ll-config.json` in `config/core.py _config_candidates()`
-5. Skills adaptation — `ll-adapt-skills-for-gemini` (add `name:` where missing)
-6. Commands adaptation — `ll-adapt-commands-for-gemini` (`.md` → `.toml`)
-7. `GEMINI.md` project context file (created by `ll:init --gemini`)
-8. `HOST_COMPATIBILITY.md` Gemini column — flip cells from `(deferred)` to ✓ as children land
-9. Conformance test suite (`ll-auto`/`ll-sprint`/`ll-loop` golden paths)
+1. **ENH-2184** — `GeminiRunner` stub in `host_runner.py` (raises `HostNotConfigured`)
+2. **ENH-2185** — `GeminiRunner` full implementation (flag translation complete in research doc)
+3. **FEAT-2186** — Hook adapter — `.gemini/settings.json` injection OR extension `hooks/hooks.json` (decision needed)
+4. **ENH-2187** — Config probe — `.gemini/ll-config.json` in `config/core.py _config_candidates()`
+5. **FEAT-2188** — Skills adaptation — `ll-adapt-skills-for-gemini` (add `name:` where missing)
+6. **FEAT-2189** — Commands adaptation — `ll-adapt-commands-for-gemini` (`.md` → `.toml`)
+7. **FEAT-2190** — `GEMINI.md` project context file (created by `ll:init --gemini`)
+8. **ENH-2191** — `HOST_COMPATIBILITY.md` Gemini column — flip cells from `(deferred)` to ✓ as children land
+9. **FEAT-2192** — Conformance test suite (`ll-auto`/`ll-sprint`/`ll-loop` golden paths)
 
 ## Session Log
 - `/ll:capture-issue` - 2026-06-15T17:09:51Z - `63a402ce-7d2e-45a1-befc-4392e24ffc82.jsonl`

@@ -74,7 +74,16 @@ every cell is ✓, ✗ (with a tracking issue), or N/A.
 
 ## Children
 
-- **FEAT-2179** — Research spike: gemini-cli binary surface, hook events, and plugin discovery
+- **FEAT-2179** — Research spike: gemini-cli binary surface, hook events, and plugin discovery ✓
+- **ENH-2184** — GeminiRunner stub in host_runner.py
+- **ENH-2185** — GeminiRunner full implementation (build_streaming, build_blocking_json, build_detached, build_version_check)
+- **FEAT-2186** — Hook adapter — hooks/adapters/gemini/ (decision needed: settings.json injection vs extension)
+- **ENH-2187** — Config probe — .gemini/ll-config.json in _config_candidates()
+- **FEAT-2188** — Skills adaptation — ll-adapt-skills-for-gemini
+- **FEAT-2189** — Commands adaptation — ll-adapt-commands-for-gemini (.md → .toml)
+- **FEAT-2190** — GEMINI.md project context file (ll:init --gemini)
+- **ENH-2191** — HOST_COMPATIBILITY.md Gemini column — populate cells as children land
+- **FEAT-2192** — Conformance test suite (ll-auto/ll-sprint/ll-loop golden paths)
 
 ## Implementation Steps
 
