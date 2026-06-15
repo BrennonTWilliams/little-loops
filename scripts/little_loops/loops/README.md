@@ -198,6 +198,7 @@ Built-in fragment libraries are in `lib/`:
 | `lib/prompt-fragments.yaml` | Reusable prompt-construction fragments for building structured LLM inputs |
 | `lib/harness.yaml` | Harness evaluation fragments (`playwright_screenshot`, `ll_rubric_score`) — Playwright screenshot capture and LLM rubric scoring; used by `oracles/generator-evaluator` |
 | `lib/composer.yaml` | Orchestration fragments for loop-composer and loop-composer-adaptive (`discover_loops`, `validate_plan`, `present_plan`, `reassess`) — shared by loop-composer (FEAT-1808) and loop-composer-adaptive (FEAT-1983) |
+| `lib/rubric-router.yaml` | Score-on-rubric → 3-tier route → repair converge-loop fragments (`rubric_score`, `rubric_parse_scores`, `rubric_route_high`, `rubric_route_medium`) — implements the quality-gate pattern: score → parse aggregate → route high/medium/low → repair → re-score until threshold met |
 
 Import a library in any loop:
 

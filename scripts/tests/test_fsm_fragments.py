@@ -2168,3 +2168,126 @@ class TestSubloopRateLimitDiagnosticFragment:
         assert state["action_type"] == "shell"
         assert state["fragment_bindings"] == {"operation": "remediation"}
         assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
+# lib/rubric-router.yaml: verify all four fragments are present and correct
+# ---------------------------------------------------------------------------
+
+
+class TestRubricRouterLib:
+    """Tests that all four rubric-router fragments exist in lib/rubric-router.yaml."""
+
+    @staticmethod
+    def _load_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "lib"
+            / "rubric-router.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_rubric_score_defined(self) -> None:
+        data = self._load_yaml()
+        assert "rubric_score" in data["fragments"]
+
+    def test_rubric_parse_scores_defined(self) -> None:
+        data = self._load_yaml()
+        assert "rubric_parse_scores" in data["fragments"]
+
+    def test_rubric_route_high_defined(self) -> None:
+        data = self._load_yaml()
+        assert "rubric_route_high" in data["fragments"]
+
+    def test_rubric_route_medium_defined(self) -> None:
+        data = self._load_yaml()
+        assert "rubric_route_medium" in data["fragments"]
+
+    def test_rubric_score_has_prompt_action_type(self) -> None:
+        data = self._load_yaml()
+        assert data["fragments"]["rubric_score"]["action_type"] == "prompt"
+
+    def test_rubric_parse_scores_has_shell_action_type(self) -> None:
+        data = self._load_yaml()
+        assert data["fragments"]["rubric_parse_scores"]["action_type"] == "shell"
+
+    def test_rubric_route_high_has_shell_action_type(self) -> None:
+        data = self._load_yaml()
+        assert data["fragments"]["rubric_route_high"]["action_type"] == "shell"
+
+    def test_rubric_route_high_has_exit_code_evaluator(self) -> None:
+        data = self._load_yaml()
+        evaluate = data["fragments"]["rubric_route_high"].get("evaluate", {})
+        assert evaluate.get("type") == "exit_code"
+
+    def test_rubric_route_medium_has_shell_action_type(self) -> None:
+        data = self._load_yaml()
+        assert data["fragments"]["rubric_route_medium"]["action_type"] == "shell"
+
+    def test_rubric_route_medium_has_exit_code_evaluator(self) -> None:
+        data = self._load_yaml()
+        evaluate = data["fragments"]["rubric_route_medium"].get("evaluate", {})
+        assert evaluate.get("type") == "exit_code"
+
+    def test_all_fragments_have_description(self) -> None:
+        data = self._load_yaml()
+        for name, frag in data["fragments"].items():
+            assert isinstance(frag, dict), f"Fragment '{name}' should be a dict"
+            assert "description" in frag, f"Fragment '{name}' is missing a description"
+            assert frag["description"].strip(), f"Fragment '{name}' has an empty description"
+
+    def test_rubric_parse_scores_uses_run_dir_for_artifacts(self) -> None:
+        data = self._load_yaml()
+        action = data["fragments"]["rubric_parse_scores"]["action"]
+        assert "${context.run_dir}" in action
+
+    def test_rubric_route_high_reads_from_run_dir(self) -> None:
+        data = self._load_yaml()
+        action = data["fragments"]["rubric_route_high"]["action"]
+        assert "${context.run_dir}" in action
+
+    def test_rubric_route_medium_reads_from_run_dir(self) -> None:
+        data = self._load_yaml()
+        action = data["fragments"]["rubric_route_medium"]["action"]
+        assert "${context.run_dir}" in action
+
+    def test_rubric_score_resolves_in_loop(self) -> None:
+        """Full resolve_fragments integration against lib/rubric-router.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "score",
+            "import": ["lib/rubric-router.yaml"],
+            "states": {
+                "score": {
+                    "fragment": "rubric_score",
+                    "action": "Evaluate clarity. Final line: AGGREGATE: <int 0-100>",
+                    "capture": "scores",
+                    "next": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["score"]
+        assert state["action_type"] == "prompt"
+        assert "fragment" not in state
+
+    def test_rubric_refine_loop_validates(self) -> None:
+        """rubric-refine.yaml passes load_and_validate with no ERROR-severity items."""
+        from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        loop_path = loops_dir / "rubric-refine.yaml"
+        assert loop_path.exists(), "rubric-refine.yaml must exist"
+        fsm, _ = load_and_validate(loop_path)
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, (
+            f"rubric-refine.yaml validation errors: {[str(e) for e in error_list]}"
+        )

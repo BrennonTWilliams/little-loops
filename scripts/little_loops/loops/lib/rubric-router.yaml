@@ -1,0 +1,128 @@
+# Rubric-router fragment library for little-loops.
+#
+# Implements the "score an artifact on a multi-dimension rubric, route to
+# tier-specific repair, re-score until quality passes" converge-loop pattern.
+#
+# Expected context variables (provided by the importing loop):
+#   context.subject           — what is being evaluated (path, ID, description, etc.)
+#   context.rubric_dimensions — pipe-separated dimension names, e.g. "clarity|completeness|feasibility"
+#   context.threshold_high    — aggregate score >= this routes to tier "high" (default: 85)
+#   context.threshold_medium  — aggregate score >= this routes to tier "medium" (default: 65)
+#   context.run_dir           — injected by the runner; used for rubric-aggregate.txt / rubric-tier.txt
+#
+# Import in any loop with:
+#   import:
+#     - lib/rubric-router.yaml
+#
+# Minimal example (5 states):
+#
+#   states:
+#     score:
+#       fragment: rubric_score
+#       action: |
+#         Evaluate ${context.subject} on: ${context.rubric_dimensions}.
+#         For each: DIMENSION: <name>: <score 0-100> — <rationale>
+#         Final line: AGGREGATE: <int 0-100>
+#       capture: scores
+#       next: parse_scores
+#
+#     parse_scores:
+#       fragment: rubric_parse_scores
+#       next: route_high
+#
+#     route_high:
+#       fragment: rubric_route_high
+#       on_yes: done
+#       on_no: route_medium
+#
+#     route_medium:
+#       fragment: rubric_route_medium
+#       on_yes: light_repair
+#       on_no: deep_repair
+#
+#     light_repair:  # caller-supplied
+#       ...
+#       next: score   # re-score after repair
+
+fragments:
+  rubric_score:
+    description: |
+      Prompt scaffold for multi-dimension rubric scoring. Caller must supply:
+        action  — the scoring prompt body; MUST end with the AGGREGATE output
+                  instruction: "Final line: AGGREGATE: <int 0-100>"
+        capture — variable name for the score output (consumed by rubric_parse_scores)
+      Caller may supply: next, timeout.
+      Default action scores ${context.subject} on ${context.rubric_dimensions}
+      and asks for AGGREGATE on the final line; override for domain-specific scoring.
+    action_type: prompt
+    action: |
+      Evaluate ${context.subject} on these dimensions: ${context.rubric_dimensions}.
+      For each dimension output: DIMENSION: <name>: <score 0-100> — <one-sentence rationale>
+      Final line: AGGREGATE: <int 0-100>
+
+  rubric_parse_scores:
+    description: |
+      Shell state that reads captured score output, extracts the AGGREGATE integer,
+      computes tier (high / medium / low) against context.threshold_high and
+      context.threshold_medium, and writes rubric-aggregate.txt and rubric-tier.txt
+      to ${context.run_dir}/ for the routing states to consume.
+      Prints: aggregate=<N> tier=<tier>
+      Defaults: threshold_high=85, threshold_medium=65 (override via context:).
+      State must supply: next (unconditional forward after parsing).
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import re, sys
+      output = """${captured.scores.output}"""
+      agg_m = re.search(r'AGGREGATE:\s*(\d+)', output)
+      if not agg_m:
+          print("aggregate=0 tier=low")
+          with open('${context.run_dir}/rubric-aggregate.txt', 'w') as f:
+              f.write('0')
+          with open('${context.run_dir}/rubric-tier.txt', 'w') as f:
+              f.write('low')
+          sys.exit(0)
+      agg = int(agg_m.group(1))
+      thresh_high = int("${context.threshold_high}" or "85")
+      thresh_med  = int("${context.threshold_medium}" or "65")
+      tier = "high" if agg >= thresh_high else ("medium" if agg >= thresh_med else "low")
+      with open('${context.run_dir}/rubric-aggregate.txt', 'w') as f:
+          f.write(str(agg))
+      with open('${context.run_dir}/rubric-tier.txt', 'w') as f:
+          f.write(tier)
+      print(f"aggregate={agg} tier={tier}")
+      PYEOF
+
+  rubric_route_high:
+    description: |
+      Shell gate that exits 0 (on_yes) when the rubric tier is "high" (aggregate
+      >= context.threshold_high), else exits 1 (on_no). Reads rubric-tier.txt from
+      ${context.run_dir}/ written by rubric_parse_scores.
+      State must supply: on_yes (pass — artifact quality sufficient).
+      Convention default: on_no routes to rubric_route_medium; override if needed.
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import sys
+      tier = open('${context.run_dir}/rubric-tier.txt').read().strip()
+      sys.exit(0 if tier == 'high' else 1)
+      PYEOF
+    evaluate:
+      type: exit_code
+    on_no: rubric_route_medium
+
+  rubric_route_medium:
+    description: |
+      Shell gate that exits 0 (on_yes) when the rubric tier is "medium" (aggregate
+      >= context.threshold_medium but < context.threshold_high), else exits 1 (on_no).
+      Reads rubric-tier.txt from ${context.run_dir}/ written by rubric_parse_scores.
+      State must supply: on_yes (route to light repair), on_no (route to deep repair).
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import sys
+      tier = open('${context.run_dir}/rubric-tier.txt').read().strip()
+      sys.exit(0 if tier == 'medium' else 1)
+      PYEOF
+    evaluate:
+      type: exit_code

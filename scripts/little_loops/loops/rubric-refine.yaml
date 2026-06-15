@@ -1,0 +1,76 @@
+name: rubric-refine
+description: |
+  Converge loop that scores an artifact on a multi-dimension rubric, routes to
+  tier-specific repair (light or deep), and re-scores until the aggregate meets
+  threshold_high. Supply subject (path or description) and rubric_dimensions
+  (pipe-separated). Demonstrates lib/rubric-router.yaml fragment usage.
+category: quality
+input_key: subject
+required_inputs: ["subject"]
+initial: score
+max_iterations: 10
+import:
+  - lib/rubric-router.yaml
+
+context:
+  subject: ""                                          # path or description of artifact to evaluate
+  rubric_dimensions: "clarity|completeness|feasibility"  # pipe-separated dimension names
+  threshold_high: "85"    # aggregate >= this → done (tier: high)
+  threshold_medium: "65"  # aggregate >= this → light_repair (tier: medium); else deep_repair
+
+states:
+  # ─── Phase 1: Score ──────────────────────────────────────────────────────────
+
+  score:
+    fragment: rubric_score
+    action: |
+      Evaluate ${context.subject} on these dimensions: ${context.rubric_dimensions}.
+      For each dimension output: DIMENSION: <name>: <score 0-100> — <one-sentence rationale>
+      Final line: AGGREGATE: <int 0-100>
+    capture: scores
+    next: parse_scores
+
+  # ─── Phase 2: Parse & Route ──────────────────────────────────────────────────
+
+  parse_scores:
+    fragment: rubric_parse_scores
+    next: route_high
+
+  route_high:
+    fragment: rubric_route_high
+    on_yes: done
+    on_no: route_medium
+
+  route_medium:
+    fragment: rubric_route_medium
+    on_yes: light_repair
+    on_no: deep_repair
+
+  # ─── Phase 3: Repair ─────────────────────────────────────────────────────────
+
+  light_repair:
+    action_type: prompt
+    action: |
+      Apply light refinements to ${context.subject}.
+      Focus on the lowest-scoring dimensions based on the scores below,
+      making targeted improvements to push the aggregate above ${context.threshold_high}.
+
+      Scores:
+      ${captured.scores.output}
+    next: score
+
+  deep_repair:
+    action_type: prompt
+    action: |
+      Apply comprehensive repairs to ${context.subject}.
+      The aggregate score is below ${context.threshold_medium}, indicating significant
+      quality gaps. Rewrite or substantially revise the weakest sections.
+
+      Scores:
+      ${captured.scores.output}
+    next: score
+
+  # ─── Terminal States ──────────────────────────────────────────────────────────
+
+  done:
+    terminal: true
