@@ -20,35 +20,6 @@ interop gaps) and EPIC-1713 (Pi parity gap tracking). No implementation should
 land before the research spike establishes the gemini-cli hook/lifecycle model,
 binary surface, and plugin discovery mechanism.
 
-In scope for this epic:
-
-- **Research spike** — audit `gemini` CLI binary surface: headless/streaming
-  flags, JSON output mode, lifecycle hook events (payload shape, available
-  events), plugin/skill/command discovery surface. Analogous to FEAT-1483
-  (Codex research spike).
-- **`GeminiRunner` stub** in `scripts/little_loops/host_runner.py` — raises
-  `HostNotConfigured` on all `build_*` calls; added to `_HOST_RUNNER_REGISTRY`
-  and `_PROBE_ORDER` as `("gemini", "gemini")`. Analogous to `PiRunner`.
-- **Hook adapter** `hooks/adapters/gemini/` — adapter scripts translating
-  gemini-cli lifecycle events → `LLHookEvent`. Shape depends on research spike.
-- **Config probe** — `.gemini/ll-config.json` probe path added to
-  `config/core.py _config_candidates()`.
-- **`HOST_COMPATIBILITY.md` Gemini column** — new column tracking parity cells
-  (hook intents, skill/command discovery, orchestration CLI flags).
-- **Skill/command adaptation** — whatever Gemini's plugin surface turns out to
-  be (analogous to FEAT-1486 for Codex Skills API).
-- **`GeminiRunner` full implementation** — real `build_streaming`,
-  `build_blocking_json`, `build_detached`, `build_version_check` once CLI
-  surface is audited.
-- **Conformance test suite** — `ll-auto` / `ll-sprint` / `ll-loop` golden paths
-  against `gemini -p` (analogous to FEAT-1721 for Codex).
-
-Out of scope:
-
-- Gemini API direct integration (this is about the `gemini-cli` coding-agent
-  host, not the Gemini REST API)
-- Changes to existing Claude Code, Codex, OpenCode, or Pi adapters
-
 ## Motivation
 
 `gemini-cli` is a major AI coding-agent CLI from Google with significant and
@@ -71,6 +42,37 @@ with `LL_HOST_CLI=gemini`, with hook lifecycle events (`session_start`,
 End-state acceptance: a Gemini column exists in
 `docs/reference/HOST_COMPATIBILITY.md` with no unknown or untracked cells —
 every cell is ✓, ✗ (with a tracking issue), or N/A.
+
+## Scope
+
+**In scope:**
+
+- **Research spike** — audit `gemini` CLI binary surface: headless/streaming
+  flags, JSON output mode, lifecycle hook events (payload shape, available
+  events), plugin/skill/command discovery surface. Analogous to FEAT-1483
+  (Codex research spike).
+- **`GeminiRunner` stub** in `scripts/little_loops/host_runner.py` — raises
+  `HostNotConfigured` on all `build_*` calls; added to `_HOST_RUNNER_REGISTRY`
+  and `_PROBE_ORDER` as `("gemini", "gemini")`. Analogous to `PiRunner`.
+- **Hook adapter** `hooks/adapters/gemini/` — adapter scripts translating
+  gemini-cli lifecycle events → `LLHookEvent`. Shape depends on research spike.
+- **Config probe** — `.gemini/ll-config.json` probe path added to
+  `config/core.py _config_candidates()`.
+- **`HOST_COMPATIBILITY.md` Gemini column** — new column tracking parity cells
+  (hook intents, skill/command discovery, orchestration CLI flags).
+- **Skill/command adaptation** — whatever Gemini's plugin surface turns out to
+  be (analogous to FEAT-1486 for Codex Skills API).
+- **`GeminiRunner` full implementation** — real `build_streaming`,
+  `build_blocking_json`, `build_detached`, `build_version_check` once CLI
+  surface is audited.
+- **Conformance test suite** — `ll-auto` / `ll-sprint` / `ll-loop` golden paths
+  against `gemini -p` (analogous to FEAT-1721 for Codex).
+
+**Out of scope:**
+
+- Gemini API direct integration (this is about the `gemini-cli` coding-agent
+  host, not the Gemini REST API)
+- Changes to existing Claude Code, Codex, OpenCode, or Pi adapters
 
 ## Children
 
@@ -149,6 +151,7 @@ every cell is ✓, ✗ (with a tracking issue), or N/A.
 | `hooks/adapters/codex/README.md` | Adapter contract template to follow |
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-15T20:17:24 - `7addc9bb-4a3e-4aad-bbbd-6f11fcae2b61.jsonl`
 - `/ll:capture-issue` - 2026-06-15T17:09:51Z - `63a402ce-7d2e-45a1-befc-4392e24ffc82.jsonl`
 
 ---

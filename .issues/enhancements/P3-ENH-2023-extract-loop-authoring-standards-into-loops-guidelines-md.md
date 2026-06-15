@@ -1,7 +1,7 @@
 ---
 id: ENH-2023
 title: Extract loop-authoring standards into .ll/standards.md
-status: open
+status: cancelled
 priority: P3
 type: ENH
 created: '2026-06-08'
