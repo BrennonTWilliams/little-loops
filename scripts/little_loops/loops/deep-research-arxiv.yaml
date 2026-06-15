@@ -1,57 +1,16 @@
 name: deep-research-arxiv
+from: deep-research
 category: research
+visibility: internal
 input_key: topic
 required_inputs: ["topic"]
 description: |
-  Iterative arxiv-only research synthesis loop. Sibling of deep-research (FEAT-1540)
-  specialized for academic literature search: constrains web search to site:arxiv.org,
-  scores sources on relevance + recency (derived from arxiv submission date) instead
-  of relevance + credibility, and emits a citation-ready report.md with an
-  arxiv-ID-keyed sources table and a BibTeX section. Delegates the inner research FSM
-  chain to the oracles/research-coverage oracle with academic_mode=true (ENH-1876). Run as:
+  Arxiv-constrained variant of deep-research (FEAT-1540/FEAT-1673). Inherits the
+  full research FSM from deep-research and overrides context.source_filter and
+  context.academic_mode to constrain all queries to site:arxiv.org, enable
+  recency scoring, arxiv ID dedup, and BibTeX output. Invoke directly:
   ll-loop run deep-research-arxiv "your research topic"
-initial: init
-max_iterations: 30
-timeout: 3600
 
 context:
-  topic: ""            # populated from positional CLI arg via input_key: topic
-  depth: 3             # minimum search rounds before accepting convergence
-  coverage_threshold_pct: 85  # target coverage percentage (used in score_coverage prompt)
-
-states:
-
-  init:
-    # Setup phase — create per-run artifact files in the runner-injected run_dir.
-    # Captures the absolute path so all subsequent states can write to it.
-    action_type: shell
-    action: |
-      DIR="${context.run_dir}"
-      mkdir -p "$DIR"
-      : > "$DIR/report.md"
-      : > "$DIR/knowledge-base.md"
-      : > "$DIR/coverage.md"
-      : > "$DIR/query-log.md"
-      echo "$(pwd)/$DIR"
-    capture: run_dir
-    next: run_research
-
-  run_research:
-    # Delegates the full research FSM chain to the research-coverage oracle with
-    # arxiv-specific parameters: source_filter constrains all queries to site:arxiv.org,
-    # academic_mode enables recency scoring, arxiv ID dedup, and BibTeX output.
-    loop: oracles/research-coverage
-    with:
-      run_dir: "${captured.run_dir.output}"
-      topic: "${context.topic}"
-      source_filter: "site:arxiv.org"
-      academic_mode: true
-    on_success: done
-    on_failure: failed
-    on_error: failed
-
-  done:
-    terminal: true
-
-  failed:
-    terminal: true
+  source_filter: "site:arxiv.org"
+  academic_mode: true

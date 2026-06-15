@@ -1,0 +1,13 @@
+name: apo-shape-a
+from: lib/apo-base
+category: apo
+description: |
+  Non-runnable base for Shape-A APO loops: generate → evaluate → route_convergence
+  → apply. Both apo-contrastive and apo-feedback-refinement inherit from this
+  fragment to share common context defaults (eval_criteria, quality_threshold),
+  category, and the full apo-base scaffold (max_iterations, timeout, on_handoff,
+  prompt_file, done terminal). Not runnable directly — kept under lib/ so it is
+  excluded from non-recursive loop discovery. (ENH-2161)
+context:
+  eval_criteria: "clarity, specificity, and effectiveness"
+  quality_threshold: 90

@@ -1,14 +1,13 @@
 name: apo-feedback-refinement
-category: apo
+from: lib/apo-shape-a
 description: |
   Feedback-driven prompt refinement (APO technique): reads the target prompt,
   generates an improved candidate, evaluates it against criteria, applies feedback
   to the file, and repeats until the evaluator reports convergence or max_iterations
   is reached. The prompt file is updated in-place at each refinement step.
+  Inherits common APO context defaults from lib/apo-shape-a (ENH-2161).
 initial: generate_candidate
 context:
-  prompt_file: system.md
-  eval_criteria: "clarity, specificity, and effectiveness"
   quality_threshold: 85
 states:
   generate_candidate:
@@ -74,8 +73,3 @@ states:
       Apply the feedback directly — do not narrate, just edit the file.
       Confirm the file has been updated.
     next: generate_candidate
-  done:
-    terminal: true
-max_iterations: 20
-timeout: 3600
-on_handoff: spawn

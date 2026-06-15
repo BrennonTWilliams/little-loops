@@ -2,10 +2,11 @@
 id: ENH-2161
 priority: P3
 type: ENH
-status: open
+status: done
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 captured_at: '2026-06-15T05:06:56Z'
+completed_at: '2026-06-15T20:55:12Z'
 confidence_score: 100
 outcome_confidence: 63
 score_complexity: 9

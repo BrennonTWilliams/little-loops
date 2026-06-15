@@ -67,8 +67,8 @@ Install a loop into your project for customization: `ll-loop install <name>`
 
 | Loop | Description | Primary Inputs |
 |---|---|---|
-| `deep-research` | Iterative web research synthesis loop — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured cited Markdown report | `topic` (research question), `depth` (min rounds, default 3), `coverage_threshold_pct` (default 85) |
-| `deep-research-arxiv` | Arxiv-only sibling of `deep-research` — constrains web search to `site:arxiv.org`, scores sources on relevance + recency (from arxiv submission date), and emits an arxiv-ID-keyed sources table plus a `## BibTeX` section in `report.md` | `topic` (research question), `depth` (min rounds, default 3), `coverage_threshold_pct` (default 85) |
+| `deep-research` | Iterative web research synthesis loop — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured cited Markdown report. Pass `context.source_filter="site:arxiv.org"` and `context.academic_mode=true` for arxiv-only research (or use the `deep-research-arxiv` alias) | `topic` (research question), `depth` (min rounds, default 3), `coverage_threshold_pct` (default 85), `source_filter` (search constraint, default: web-wide), `academic_mode` (BibTeX + recency scoring, default: false) |
+| `deep-research-arxiv` | Alias for `deep-research` with `source_filter=site:arxiv.org` and `academic_mode=true` — hidden from `ll-loop list` (visibility: internal); delegates entirely to deep-research (ENH-2161) | same as deep-research |
 | `apply-research` | Document ingestion pipeline for local research files — reads text, Markdown, or PDF files, extracts and scores ideas by relevance to the project, filters below threshold, synthesizes actionable issue descriptions, and captures Issues via `/ll:capture-issue`; produces a summary report of captured IDs and filtered counts | `files` (space-separated file paths), `relevance_threshold` (default 0.5), `max_issues_per_file` (default 10) |
 
 ## API Adoption
@@ -115,8 +115,8 @@ Install a loop into your project for customization: `ll-loop install <name>`
 
 | Loop | Description |
 |---|---|
-| `apo-feedback-refinement` | Feedback-driven prompt refinement — read target prompt, test, collect failures, refine |
-| `apo-contrastive` | Contrastive prompt optimization — generate variants, compare pairs, advance the winner |
+| `apo-feedback-refinement` | Feedback-driven prompt refinement — read target prompt, test, collect failures, refine. Inherits common APO context defaults from lib/apo-shape-a (ENH-2161). |
+| `apo-contrastive` | Contrastive prompt optimization — generate variants, compare pairs, advance the winner. Inherits common APO context defaults from lib/apo-shape-a (ENH-2161). |
 | `apo-opro` | OPRO-style — history-guided proposal loop until convergence |
 | `apo-beam` | Beam search — generate N variants, score all, advance the winner |
 | `apo-textgrad` | TextGrad-style — test on examples, compute failure gradient, apply refinement |
@@ -153,8 +153,9 @@ Install a loop into your project for customization: `ll-loop install <name>`
 
 | Loop | Description |
 |---|---|
-| `p5js-sketch-generator` | Generator-evaluator harness for p5.js generative sketches — multi-frame screenshots at deterministic `frameCount` values evaluate motion, not just composition; harness calls `noLoop()`/`loop()` around each capture for frame-exact byte-identical screenshots. |
-| `pixi-generative-art` | Generator-evaluator harness for GPU-accelerated PixiJS generative art — rewards Pixi-distinctive idioms (filters, blend modes, container hierarchies, `ParticleContainer`); harness calls `ticker.stop()`/`ticker.start()` around each capture via `window.__pixiApp` for frame-exact byte-identical screenshots. |
+| `generative-art` | Consolidated base for generative art harnesses — iteratively generates and refines a self-contained HTML sketch via multi-frame screenshots; p5.js by default (`context.framework: p5js`). Use `p5js-sketch-generator` or `pixi-generative-art` aliases, or invoke directly with `context.framework` override (ENH-2161). |
+| `p5js-sketch-generator` | p5.js alias for `generative-art` — inherits the full p5.js sketch harness (noLoop/loop frame-exact screenshots, CDN load, randomSeed/noiseSeed seeding). Delegates to generative-art base (ENH-2161). |
+| `pixi-generative-art` | PixiJS alias for `generative-art` — overrides plan/generate/evaluate/score states with GPU-specific logic (filters, blend modes, ParticleContainer; ticker.stop/start frame-exact screenshots via window.__pixiApp). Delegates to generative-art base (ENH-2161). |
 | `pixi-data-viz` | Generator-evaluator harness for animated PixiJS data visualizations — embeds synthetic dataset as JSON literal; hard-gates `encoding_clarity` at threshold 7; evaluates whether motion aids comprehension; same `window.__pixiApp` ticker-pause contract as `pixi-generative-art`. |
 | `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. Requires: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --input concept="how a transformer attends"` |
 | `svg-textgrad` | TextGrad-style SVG harness; optimizes the brief via structured gradient updates across iterations, with gradient history accumulation for repeated-failure escalation. |

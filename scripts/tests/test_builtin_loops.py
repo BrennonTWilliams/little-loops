@@ -110,6 +110,7 @@ class TestBuiltinLoopFiles:
             "test-coverage-improvement",
             "eval-driven-development",
             "outer-loop-eval",
+            "generative-art",
             "p5js-sketch-generator",
             "pixi-data-viz",
             "pixi-generative-art",
@@ -3506,146 +3507,185 @@ class TestSvgImageGeneratorLoop:
 
 
 class TestP5jsSketchGeneratorLoop:
-    """Structural tests for the p5js-sketch-generator FSM loop."""
+    """Structural tests for the p5js-sketch-generator FSM loop.
+
+    After ENH-2161, p5js-sketch-generator.yaml is a from: generative-art stub.
+    State-based tests use resolved_data (inheritance-resolved); stub fields use data.
+    """
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "p5js-sketch-generator.yaml"
 
     @pytest.fixture
     def data(self) -> dict:
+        """Raw stub YAML — tests name, from, input_key."""
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_required_top_level_fields(self, data: dict) -> None:
+    @pytest.fixture
+    def resolved_data(self) -> dict:
+        """Inheritance-resolved YAML — tests inherited states and scalars."""
+        from little_loops.fsm.fragments import resolve_fragments, resolve_inheritance
+
+        raw = yaml.safe_load(self.LOOP_FILE.read_text())
+        raw = resolve_inheritance(raw, BUILTIN_LOOPS_DIR)
+        raw = resolve_fragments(raw, BUILTIN_LOOPS_DIR)
+        return raw
+
+    def test_required_top_level_fields(self, data: dict, resolved_data: dict) -> None:
         """Loop must have name, initial, input_key, and states fields."""
         assert data.get("name") == "p5js-sketch-generator"
-        assert data.get("initial") == "init"
         assert data.get("input_key") == "description"
-        assert isinstance(data.get("states"), dict)
+        assert resolved_data.get("initial") == "init"
+        assert isinstance(resolved_data.get("states"), dict)
 
-    def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present."""
+    def test_stub_inherits_from_generative_art(self, data: dict) -> None:
+        """After ENH-2161, stub must declare from: generative-art."""
+        assert data.get("from") == "generative-art"
+
+    def test_required_states_exist(self, resolved_data: dict) -> None:
+        """All required states must be present (via inheritance from generative-art)."""
         required = {"init", "plan", "generate", "evaluate", "score", "done", "failed"}
-        actual = set(data["states"].keys())
+        actual = set(resolved_data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
 
-    def test_done_state_is_terminal(self, data: dict) -> None:
+    def test_done_state_is_terminal(self, resolved_data: dict) -> None:
         """done state must have terminal: true."""
-        done_state = data["states"].get("done", {})
+        done_state = resolved_data["states"].get("done", {})
         assert done_state.get("terminal") is True
 
-    def test_evaluate_state_is_shell(self, data: dict) -> None:
+    def test_evaluate_state_is_shell(self, resolved_data: dict) -> None:
         """evaluate state must use action_type: shell for the Playwright call."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         assert state.get("action_type") == "shell"
 
-    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
+    def test_evaluate_state_has_output_contains_evaluator(self, resolved_data: dict) -> None:
         """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         evaluator = state.get("evaluate", {})
         assert evaluator.get("type") == "output_contains"
         assert evaluator.get("pattern") == "CAPTURED"
 
-    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
+    def test_evaluate_routes_to_score_on_yes(self, resolved_data: dict) -> None:
         """evaluate state must route to score when screenshot succeeds."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         assert state.get("on_yes") == "score"
 
-    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
+    def test_evaluate_routes_to_generate_on_no(self, resolved_data: dict) -> None:
         """evaluate state must route back to generate when screenshot fails."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         assert state.get("on_no") == "generate"
 
-    def test_evaluate_action_has_noloop_pause(self, data: dict) -> None:
+    def test_evaluate_action_has_noloop_pause(self, resolved_data: dict) -> None:
         """evaluate action must call noLoop() before page.screenshot() for frame-exact capture."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         action = state.get("action", "")
         assert "noLoop()" in action, f"evaluate.action must contain noLoop() call, got: {action!r}"
 
-    def test_evaluate_action_has_loop_resume(self, data: dict) -> None:
+    def test_evaluate_action_has_loop_resume(self, resolved_data: dict) -> None:
         """evaluate action must call loop() after page.screenshot() to resume animation."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         action = state.get("action", "")
         assert "loop()" in action, f"evaluate.action must contain loop() call, got: {action!r}"
 
-    def test_evaluate_action_pause_before_screenshot(self, data: dict) -> None:
+    def test_evaluate_action_pause_before_screenshot(self, resolved_data: dict) -> None:
         """noLoop() must appear before page.screenshot() in the evaluate action."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         action = state.get("action", "")
         noloop_pos = action.find("noLoop()")
         screenshot_pos = action.find("page.screenshot(")
         assert noloop_pos != -1 and screenshot_pos != -1
         assert noloop_pos < screenshot_pos, "noLoop() must come before page.screenshot()"
 
-    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
+    def test_score_state_routes_to_done_on_pass(self, resolved_data: dict) -> None:
         """score state must route to done when all criteria pass."""
-        state = data["states"].get("score", {})
+        state = resolved_data["states"].get("score", {})
         assert state.get("on_yes") == "done"
 
-    def test_context_has_sample_frames(self, data: dict) -> None:
+    def test_context_has_sample_frames(self, resolved_data: dict) -> None:
         """context block must define sample_frames for multi-frame capture."""
-        ctx = data.get("context", {})
+        ctx = resolved_data.get("context", {})
         assert "sample_frames" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
+    def test_max_iterations_and_timeout_defined(self, resolved_data: dict) -> None:
         """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
-        assert data.get("timeout", 0) > 0
+        assert resolved_data.get("max_iterations", 0) > 0
+        assert resolved_data.get("timeout", 0) > 0
 
 
 class TestPixiGenerativeArtLoop:
-    """Structural tests for the pixi-generative-art FSM loop."""
+    """Structural tests for the pixi-generative-art FSM loop.
+
+    After ENH-2161, pixi-generative-art.yaml is a from: generative-art stub that
+    overrides plan/generate/evaluate/score states with PixiJS-specific logic.
+    State-based tests use resolved_data; stub-specific tests use data.
+    """
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "pixi-generative-art.yaml"
 
     @pytest.fixture
     def data(self) -> dict:
+        """Raw stub YAML — tests name, from, pixi-specific state overrides."""
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_required_top_level_fields(self, data: dict) -> None:
+    @pytest.fixture
+    def resolved_data(self) -> dict:
+        """Inheritance-resolved YAML — tests inherited and overridden states."""
+        from little_loops.fsm.fragments import resolve_fragments, resolve_inheritance
+
+        raw = yaml.safe_load(self.LOOP_FILE.read_text())
+        raw = resolve_inheritance(raw, BUILTIN_LOOPS_DIR)
+        raw = resolve_fragments(raw, BUILTIN_LOOPS_DIR)
+        return raw
+
+    def test_required_top_level_fields(self, data: dict, resolved_data: dict) -> None:
         """Loop must have name, initial, input_key, and states fields."""
         assert data.get("name") == "pixi-generative-art"
-        assert data.get("initial") == "init"
         assert data.get("input_key") == "description"
-        assert isinstance(data.get("states"), dict)
+        assert resolved_data.get("initial") == "init"
+        assert isinstance(resolved_data.get("states"), dict)
 
-    def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present."""
+    def test_stub_inherits_from_generative_art(self, data: dict) -> None:
+        """After ENH-2161, stub must declare from: generative-art."""
+        assert data.get("from") == "generative-art"
+
+    def test_required_states_exist(self, resolved_data: dict) -> None:
+        """All required states must be present (mix of inherited and overridden)."""
         required = {"init", "plan", "generate", "evaluate", "score", "done", "failed"}
-        actual = set(data["states"].keys())
+        actual = set(resolved_data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
 
-    def test_done_state_is_terminal(self, data: dict) -> None:
+    def test_done_state_is_terminal(self, resolved_data: dict) -> None:
         """done state must have terminal: true."""
-        done_state = data["states"].get("done", {})
+        done_state = resolved_data["states"].get("done", {})
         assert done_state.get("terminal") is True
 
-    def test_evaluate_state_is_shell(self, data: dict) -> None:
+    def test_evaluate_state_is_shell(self, resolved_data: dict) -> None:
         """evaluate state must use action_type: shell for the Playwright call."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         assert state.get("action_type") == "shell"
 
-    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
+    def test_evaluate_state_has_output_contains_evaluator(self, resolved_data: dict) -> None:
         """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         evaluator = state.get("evaluate", {})
         assert evaluator.get("type") == "output_contains"
         assert evaluator.get("pattern") == "CAPTURED"
 
-    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
+    def test_evaluate_routes_to_score_on_yes(self, resolved_data: dict) -> None:
         """evaluate state must route to score when screenshot succeeds."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         assert state.get("on_yes") == "score"
 
-    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
+    def test_evaluate_routes_to_generate_on_no(self, resolved_data: dict) -> None:
         """evaluate state must route back to generate when screenshot fails."""
-        state = data["states"].get("evaluate", {})
+        state = resolved_data["states"].get("evaluate", {})
         assert state.get("on_no") == "generate"
 
     def test_evaluate_action_has_ticker_stop(self, data: dict) -> None:
-        """evaluate action must call ticker.stop() before page.screenshot() for frame-exact capture."""
+        """evaluate override must call ticker.stop() for frame-exact capture."""
         state = data["states"].get("evaluate", {})
         action = state.get("action", "")
         assert "ticker?.stop()" in action, (
@@ -3653,7 +3693,7 @@ class TestPixiGenerativeArtLoop:
         )
 
     def test_evaluate_action_has_ticker_start(self, data: dict) -> None:
-        """evaluate action must call ticker.start() after page.screenshot() to resume animation."""
+        """evaluate override must call ticker.start() to resume animation after screenshot."""
         state = data["states"].get("evaluate", {})
         action = state.get("action", "")
         assert "ticker?.start()" in action, (
@@ -3661,7 +3701,7 @@ class TestPixiGenerativeArtLoop:
         )
 
     def test_evaluate_action_pause_before_screenshot(self, data: dict) -> None:
-        """ticker.stop() must appear before page.screenshot() in the evaluate action."""
+        """ticker.stop() must appear before page.screenshot() in the evaluate override."""
         state = data["states"].get("evaluate", {})
         action = state.get("action", "")
         stop_pos = action.find("ticker?.stop()")
@@ -3670,27 +3710,27 @@ class TestPixiGenerativeArtLoop:
         assert stop_pos < screenshot_pos, "ticker?.stop() must come before page.screenshot()"
 
     def test_generate_action_requires_pixiapp_exposure(self, data: dict) -> None:
-        """generate action must instruct sketch to assign window.__pixiApp = app."""
+        """generate override must instruct sketch to assign window.__pixiApp = app."""
         state = data["states"].get("generate", {})
         action = state.get("action", "")
         assert "window.__pixiApp = app" in action, (
             f"generate.action must require window.__pixiApp = app assignment, got: {action!r}"
         )
 
-    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
+    def test_score_state_routes_to_done_on_pass(self, resolved_data: dict) -> None:
         """score state must route to done when all criteria pass."""
-        state = data["states"].get("score", {})
+        state = resolved_data["states"].get("score", {})
         assert state.get("on_yes") == "done"
 
-    def test_context_has_sample_frames(self, data: dict) -> None:
+    def test_context_has_sample_frames(self, resolved_data: dict) -> None:
         """context block must define sample_frames for multi-frame capture."""
-        ctx = data.get("context", {})
+        ctx = resolved_data.get("context", {})
         assert "sample_frames" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
+    def test_max_iterations_and_timeout_defined(self, resolved_data: dict) -> None:
         """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
-        assert data.get("timeout", 0) > 0
+        assert resolved_data.get("max_iterations", 0) > 0
+        assert resolved_data.get("timeout", 0) > 0
 
 
 class TestPixiDataVizLoop:

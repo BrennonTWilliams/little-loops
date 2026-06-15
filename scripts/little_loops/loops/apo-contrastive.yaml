@@ -1,16 +1,15 @@
 name: apo-contrastive
-category: apo
+from: lib/apo-shape-a
 description: |
   Contrastive prompt optimization (APO technique): generates multiple prompt variants
   per iteration, scores them comparatively, selects and writes back the best-performing
   variant, and repeats until quality converges or max_iterations is reached.
   Each iteration replaces the prompt file with the current best candidate.
+  Inherits common APO context defaults from lib/apo-shape-a (ENH-2161).
 initial: generate_variants
+max_iterations: 15
 context:
-  prompt_file: system.md
-  eval_criteria: "clarity, specificity, and effectiveness"
   num_variants: 3
-  quality_threshold: 90
 states:
   generate_variants:
     action_type: prompt
@@ -65,8 +64,3 @@ states:
     on_yes: done
     on_no: generate_variants
     on_error: generate_variants
-  done:
-    terminal: true
-max_iterations: 15
-timeout: 3600
-on_handoff: spawn

@@ -1,45 +1,27 @@
 name: pixi-generative-art
+from: generative-art
 category: harness
 input_key: description
 required_inputs: ["description"]
-# The art file is the single deliverable; latest-wins overwrite is intentional.
 artifact_versioning_ok: true
+initial: init
 description: |
   Generator-evaluator harness for PixiJS generative art sketches.
   Iteratively generates a single self-contained HTML file embedding a
   deterministic, GPU-accelerated PixiJS sketch and judges it across
   multi-frame screenshots so motion is evaluated, not just composition.
   Mirrors the p5.js sketch generator but rewards Pixi-distinctive idioms —
-  filters, blend modes, container hierarchies, particle systems.
-initial: init
-max_iterations: 20
-on_handoff: spawn
-timeout: 7200
+  filters, blend modes, container hierarchies, particle systems. Delegates to
+  generative-art base loop and overrides plan/generate/evaluate/score states
+  for PixiJS-specific logic (ENH-2161).
 
 # HARNESS: Context variables control quality threshold and frame sampling.
 # Mirrors p5js-sketch-generator but targets Pixi-specific GPU features.
 context:
-  description: ""             # populated from loop_input via input_key: description
-  pass_threshold: 6           # minimum score per criterion (1-10) to pass
+  framework: pixi
   sample_frames: "0,90,240"   # comma-separated __loopFrame values to screenshot
-  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
-
-import:
-  - lib/common.yaml
 
 states:
-
-  init:
-    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute
-    # path so all subsequent states write to the same isolated per-run directory.
-    # Using $(pwd) ensures the captured path is valid for file:// URIs.
-    action_type: shell
-    action: |
-      DIR="${context.run_dir}"
-      mkdir -p "$DIR"
-      echo "$(pwd)/$DIR"
-    capture: run_dir
-    next: plan
 
   plan:
     # HARNESS: Planner phase — expands the one-line description into a sketch
@@ -286,21 +268,6 @@ states:
     on_no: check_stall
     on_error: failed
 
-  check_stall:
-    # HARNESS: Diff-stall guard — if the model has produced no file changes for
-    # max_stall consecutive refine cycles, the plateau is detected early and the
-    # loop routes to done (accept best-so-far) rather than burning the remaining
-    # iteration budget. on_yes = new changes observed; on_no = plateaued.
-    # on_error = git unavailable — don't block the loop, continue generating.
-    fragment: diff_stall_gate
-    action: echo "stall check"
-    action_type: shell
-    evaluate:
-      max_stall: 3
-    on_yes: generate
-    on_no: done
-    on_error: generate
-
   done:
     # HARNESS: Success terminal — reached when all criteria pass or
     # max_iterations exhausted. The final sketch is at
@@ -318,14 +285,4 @@ states:
       - ${captured.run_dir.output}/frame_*.png  — the last captured frame strip
 
       Report these paths to the user and confirm the sketch is ready.
-    terminal: true
-
-  failed:
-    # HARNESS: Failure terminal — reached when the screenshot tool or LLM
-    # judge errors out. Signals an explicit failure (vs. silent
-    # max_iterations exhaustion) so the outer loop / log reader can
-    # distinguish "loop bailed cleanly" from "loop is still iterating". The
-    # last artifacts (brief.md, any partial index.html, the last critique.md
-    # if one was written, and any frame_*.png already captured) remain in
-    # ${captured.run_dir.output} for inspection.
     terminal: true

@@ -1,4 +1,10 @@
-"""Tests for the deep-research-arxiv built-in FSM loop (FEAT-1673)."""
+"""Tests for the deep-research-arxiv built-in FSM loop (FEAT-1673).
+
+After ENH-2161, deep-research-arxiv.yaml became a from: deep-research stub that
+overrides context.source_filter and context.academic_mode.  Tests use two fixtures:
+  data         — raw YAML (stub-level: name, from, visibility, context overrides)
+  resolved_data — inheritance-resolved YAML (inherited states, scalars, and context)
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from little_loops.fsm.fragments import resolve_fragments, resolve_inheritance
 from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
@@ -23,8 +30,17 @@ class TestDeepResearchArxivYaml:
 
     @pytest.fixture
     def data(self) -> dict:
+        """Raw stub YAML — tests stub-specific fields (from, visibility, context overrides)."""
         assert LOOP_FILE.exists(), f"Loop file not found: {LOOP_FILE}"
         return yaml.safe_load(LOOP_FILE.read_text())
+
+    @pytest.fixture
+    def resolved_data(self) -> dict:
+        """Inheritance-resolved YAML — tests fields inherited from deep-research."""
+        raw = yaml.safe_load(LOOP_FILE.read_text())
+        raw = resolve_inheritance(raw, BUILTIN_LOOPS_DIR)
+        raw = resolve_fragments(raw, BUILTIN_LOOPS_DIR)
+        return raw
 
     def test_file_exists(self) -> None:
         assert LOOP_FILE.exists()
@@ -41,87 +57,95 @@ class TestDeepResearchArxivYaml:
     def test_description_is_present(self, data: dict) -> None:
         assert data.get("description"), "deep-research-arxiv must have a non-empty description"
 
+    def test_stub_inherits_from_deep_research(self, data: dict) -> None:
+        """After ENH-2161, arxiv stub must declare from: deep-research."""
+        assert data.get("from") == "deep-research", (
+            f"deep-research-arxiv must inherit from 'deep-research', got {data.get('from')!r}"
+        )
+
+    def test_stub_is_internal_visibility(self, data: dict) -> None:
+        """Stub must be hidden from ll-loop list; canonical entry is deep-research."""
+        assert data.get("visibility") == "internal", (
+            f"deep-research-arxiv must have visibility: internal, got {data.get('visibility')!r}"
+        )
+
     def test_required_top_level_fields(self, data: dict) -> None:
         assert data.get("name") == "deep-research-arxiv"
-        assert data.get("initial") == "init"
         assert data.get("input_key") == "topic"
-        assert isinstance(data.get("states"), dict)
 
-    def test_required_states_exist(self, data: dict) -> None:
+    def test_required_states_exist(self, resolved_data: dict) -> None:
         required = {"init", "run_research", "done", "failed"}
-        actual = set(data["states"].keys())
+        actual = set(resolved_data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing required states: {missing}"
 
-    def test_init_state_is_shell_with_capture(self, data: dict) -> None:
-        state = data["states"]["init"]
+    def test_init_state_is_shell_with_capture(self, resolved_data: dict) -> None:
+        state = resolved_data["states"]["init"]
         assert state.get("action_type") == "shell"
         assert state.get("capture") == "run_dir"
         assert state.get("next") == "run_research"
 
-    def test_init_action_uses_absolute_path(self, data: dict) -> None:
-        action = data["states"]["init"].get("action", "")
+    def test_init_action_uses_absolute_path(self, resolved_data: dict) -> None:
+        action = resolved_data["states"]["init"].get("action", "")
         assert "$(pwd)" in action, "init.action must use $(pwd) for an absolute path"
 
-    def test_init_touches_all_artifact_files(self, data: dict) -> None:
-        action = data["states"]["init"].get("action", "")
+    def test_init_touches_all_artifact_files(self, resolved_data: dict) -> None:
+        action = resolved_data["states"]["init"].get("action", "")
         for artifact in ("report.md", "knowledge-base.md", "coverage.md", "query-log.md"):
             assert artifact in action, f"init.action must touch {artifact}"
 
-    def test_terminal_done_state(self, data: dict) -> None:
-        assert data["states"]["done"].get("terminal") is True
+    def test_terminal_done_state(self, resolved_data: dict) -> None:
+        assert resolved_data["states"]["done"].get("terminal") is True
 
-    def test_context_has_topic(self, data: dict) -> None:
-        ctx = data.get("context", {})
+    def test_context_has_topic(self, resolved_data: dict) -> None:
+        ctx = resolved_data.get("context", {})
         assert "topic" in ctx
         assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
-    def test_context_has_depth_and_coverage_threshold(self, data: dict) -> None:
-        ctx = data.get("context", {})
+    def test_context_has_depth_and_coverage_threshold(self, resolved_data: dict) -> None:
+        ctx = resolved_data.get("context", {})
         assert "depth" in ctx
         assert "coverage_threshold_pct" in ctx
 
-    def test_max_iterations_is_30(self, data: dict) -> None:
-        assert data.get("max_iterations") == 30
+    def test_max_iterations_is_30(self, resolved_data: dict) -> None:
+        assert resolved_data.get("max_iterations") == 30
 
-    def test_timeout_is_3600(self, data: dict) -> None:
-        assert data.get("timeout") == 3600
+    def test_timeout_is_3600(self, resolved_data: dict) -> None:
+        assert resolved_data.get("timeout") == 3600
 
-    def test_category_is_research(self, data: dict) -> None:
-        assert data.get("category") == "research"
+    def test_category_is_research(self, resolved_data: dict) -> None:
+        assert resolved_data.get("category") == "research"
 
     def test_run_research_source_filter_is_arxiv(self, data: dict) -> None:
-        """run_research.with must pass source_filter=site:arxiv.org to the oracle."""
-        state = data["states"].get("run_research", {})
-        with_ = state.get("with", {})
-        assert with_.get("source_filter") == "site:arxiv.org", (
-            f"run_research.with.source_filter must be 'site:arxiv.org', got {with_.get('source_filter')!r}"
+        """Stub must override context.source_filter to constrain queries to arxiv."""
+        ctx = data.get("context", {})
+        assert ctx.get("source_filter") == "site:arxiv.org", (
+            f"context.source_filter must be 'site:arxiv.org', got {ctx.get('source_filter')!r}"
         )
 
     def test_run_research_academic_mode_is_true(self, data: dict) -> None:
-        """run_research.with must pass academic_mode=true to enable recency scoring and BibTeX."""
-        state = data["states"].get("run_research", {})
-        with_ = state.get("with", {})
-        assert with_.get("academic_mode") is True, (
-            f"run_research.with.academic_mode must be True, got {with_.get('academic_mode')!r}"
+        """Stub must override context.academic_mode to enable recency scoring and BibTeX."""
+        ctx = data.get("context", {})
+        assert ctx.get("academic_mode") is True, (
+            f"context.academic_mode must be True, got {ctx.get('academic_mode')!r}"
         )
 
-    def test_run_research_delegates_to_oracle(self, data: dict) -> None:
-        state = data["states"].get("run_research", {})
+    def test_run_research_delegates_to_oracle(self, resolved_data: dict) -> None:
+        state = resolved_data["states"].get("run_research", {})
         assert state.get("loop") == "oracles/research-coverage", (
             f"run_research.loop should be 'oracles/research-coverage', got {state.get('loop')!r}"
         )
 
-    def test_run_research_with_bindings_present(self, data: dict) -> None:
-        state = data["states"].get("run_research", {})
+    def test_run_research_with_bindings_present(self, resolved_data: dict) -> None:
+        state = resolved_data["states"].get("run_research", {})
         with_ = state.get("with", {})
         assert "run_dir" in with_
         assert "topic" in with_
         assert "source_filter" in with_
         assert "academic_mode" in with_
 
-    def test_run_research_routes_to_done_on_success(self, data: dict) -> None:
-        state = data["states"].get("run_research", {})
+    def test_run_research_routes_to_done_on_success(self, resolved_data: dict) -> None:
+        state = resolved_data["states"].get("run_research", {})
         assert state.get("on_success") == "done"
         assert state.get("on_failure") == "failed"
         assert state.get("on_error") == "failed"
@@ -185,6 +209,12 @@ class TestDeepResearchArxivResolution:
         assert fsm.input_key == "topic"
         assert "topic" in fsm.context
         assert fsm.initial == "init"
+
+    def test_resolved_context_has_arxiv_overrides(self) -> None:
+        """After inheritance resolution, context must contain arxiv-specific values."""
+        fsm, _ = load_and_validate(LOOP_FILE)
+        assert fsm.context.get("source_filter") == "site:arxiv.org"
+        assert fsm.context.get("academic_mode") is True
 
 
 class TestDeepResearchArxivDryRun:

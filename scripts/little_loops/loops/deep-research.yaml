@@ -17,6 +17,8 @@ context:
   topic: ""            # populated from positional CLI arg via input_key: topic
   depth: 3             # minimum search rounds before accepting convergence
   coverage_threshold_pct: 85  # target coverage percentage (used in score_coverage prompt)
+  source_filter: ""    # constrain searches (e.g. "site:arxiv.org"); empty = web-wide
+  academic_mode: false # enable recency scoring, arxiv dedup, and BibTeX output
 
 states:
 
@@ -43,8 +45,8 @@ states:
     with:
       run_dir: "${captured.run_dir.output}"
       topic: "${context.topic}"
-      source_filter: ""
-      academic_mode: false
+      source_filter: "${context.source_filter}"
+      academic_mode: "${context.academic_mode}"
     on_success: done
     on_failure: failed
     on_error: failed

@@ -101,6 +101,25 @@ class TestDeepResearchYaml:
         assert "depth" in ctx
         assert "coverage_threshold_pct" in ctx
 
+    def test_context_has_source_filter_and_academic_mode(self, data: dict) -> None:
+        """ENH-2161: context must expose source_filter and academic_mode so arxiv stub can override."""
+        ctx = data.get("context", {})
+        assert "source_filter" in ctx, "context must have source_filter key"
+        assert "academic_mode" in ctx, "context must have academic_mode key"
+        assert ctx["source_filter"] == "", "default source_filter must be empty string (web-wide)"
+        assert ctx["academic_mode"] is False, "default academic_mode must be False"
+
+    def test_run_research_with_uses_context_interpolation(self, data: dict) -> None:
+        """ENH-2161: run_research.with must use ${context.*} tokens so stubs can vary the params."""
+        state = data["states"].get("run_research", {})
+        with_ = state.get("with", {})
+        assert with_.get("source_filter") == "${context.source_filter}", (
+            f"run_research.with.source_filter must be '${{context.source_filter}}', got {with_.get('source_filter')!r}"
+        )
+        assert with_.get("academic_mode") == "${context.academic_mode}", (
+            f"run_research.with.academic_mode must be '${{context.academic_mode}}', got {with_.get('academic_mode')!r}"
+        )
+
     def test_max_iterations_is_30(self, data: dict) -> None:
         assert data.get("max_iterations") == 30
 
