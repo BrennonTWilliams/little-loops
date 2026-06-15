@@ -724,9 +724,7 @@ def record_issue_snapshot(
     issue_type = fm.get("type")
 
     # Serialise frontmatter as JSON for storage.
-    fm_json = json.dumps(
-        {k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True
-    )
+    fm_json = json.dumps({k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True)
 
     conn = connect(db_path)
     ts = _now()
@@ -1115,9 +1113,7 @@ def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
         priority = fm.get("priority")
         issue_type = fm.get("type")
         body = strip_frontmatter(content)
-        fm_json = json.dumps(
-            {k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True
-        )
+        fm_json = json.dumps({k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True)
         conn.execute(
             "INSERT OR IGNORE INTO issue_snapshots"
             "(ts, issue_id, transition, title, priority, issue_type, body, frontmatter)"

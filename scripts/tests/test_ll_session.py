@@ -875,9 +875,7 @@ class TestBackfillSnapshotsFlag:
         from little_loops.cli.session import main_session
 
         db = tmp_path / "history.db"
-        with patch(
-            "sys.argv", ["ll-session", "--db", str(db), "backfill", "--snapshots"]
-        ):
+        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill", "--snapshots"]):
             with patch("little_loops.cli.session.backfill_snapshots") as mock_snap:
                 mock_snap.return_value = 3
                 result = main_session()

@@ -724,7 +724,9 @@ def _cmd_extract_from_completed(config, args, path) -> int:
     existing = list_entries(path)
     existing_issue_ids = {e.issue for e in existing if getattr(e, "issue", None)}
     existing_rule_texts = [
-        e.rule.lower() for e in existing if getattr(e, "rule", None) and isinstance(e.rule, str)  # type: ignore[union-attr]
+        e.rule.lower()
+        for e in existing
+        if getattr(e, "rule", None) and isinstance(e.rule, str)  # type: ignore[union-attr]
     ]
 
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -777,9 +779,7 @@ def _cmd_extract_from_completed(config, args, path) -> int:
             print(f"Warning: LLM call timed out for {issue.issue_id}", file=sys.stderr)
             continue
         except FileNotFoundError:
-            print(
-                f"Error: host CLI not found ({invocation.binary})", file=sys.stderr
-            )
+            print(f"Error: host CLI not found ({invocation.binary})", file=sys.stderr)
             return 1
 
         if proc.returncode != 0:

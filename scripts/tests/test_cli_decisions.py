@@ -1483,7 +1483,6 @@ class TestExtractFromCompleted:
         cat = cat_map.get(issue_type, "enhancements")
         cat_dir = issues_dir / cat
         cat_dir.mkdir(parents=True, exist_ok=True)
-        num = issue_id.split("-")[1]
         filepath = cat_dir / f"P3-{issue_id}-test-issue.md"
         filepath.write_text(
             f"---\nid: {issue_id}\ntype: {issue_type}\nstatus: done\n"
@@ -1502,15 +1501,13 @@ class TestExtractFromCompleted:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """--dry-run prints candidates but does not modify decisions.yaml."""
-        from unittest.mock import MagicMock, patch as mock_patch
+        import json
+        from unittest.mock import MagicMock
+        from unittest.mock import patch as mock_patch
 
         from little_loops.issue_history.models import CompletedIssue
-        from pathlib import Path as _Path
-        import json
 
-        issue_file = self._make_issue_file(
-            temp_project_dir / ".issues", "ENH-001"
-        )
+        issue_file = self._make_issue_file(temp_project_dir / ".issues", "ENH-001")
 
         completed = [
             CompletedIssue(
@@ -1521,21 +1518,23 @@ class TestExtractFromCompleted:
             )
         ]
 
-        llm_response = json.dumps({
-            "type": "result",
-            "subtype": "success",
-            "structured_output": {
-                "candidates": [
-                    {
-                        "rule": "Always use atomic_write for YAML files",
-                        "rationale": "Prevents partial-write state corruption",
-                        "category": "architecture",
-                        "confidence": 0.9,
-                        "scope": "global",
-                    }
-                ]
-            },
-        })
+        llm_response = json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {
+                    "candidates": [
+                        {
+                            "rule": "Always use atomic_write for YAML files",
+                            "rationale": "Prevents partial-write state corruption",
+                            "category": "architecture",
+                            "confidence": 0.9,
+                            "scope": "global",
+                        }
+                    ]
+                },
+            }
+        )
 
         with (
             mock_patch(
@@ -1581,14 +1580,13 @@ class TestExtractFromCompleted:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Accepted candidates are appended to decisions.yaml."""
-        from unittest.mock import MagicMock, patch as mock_patch
         import json
+        from unittest.mock import MagicMock
+        from unittest.mock import patch as mock_patch
 
         from little_loops.issue_history.models import CompletedIssue
 
-        issue_file = self._make_issue_file(
-            temp_project_dir / ".issues", "ENH-002"
-        )
+        issue_file = self._make_issue_file(temp_project_dir / ".issues", "ENH-002")
 
         completed = [
             CompletedIssue(
@@ -1599,21 +1597,23 @@ class TestExtractFromCompleted:
             )
         ]
 
-        llm_response = json.dumps({
-            "type": "result",
-            "subtype": "success",
-            "structured_output": {
-                "candidates": [
-                    {
-                        "rule": "Never write to shared tmp paths in concurrent loops",
-                        "rationale": "Prevents state corruption under parallel runners",
-                        "category": "architecture",
-                        "confidence": 0.85,
-                        "scope": "global",
-                    }
-                ]
-            },
-        })
+        llm_response = json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {
+                    "candidates": [
+                        {
+                            "rule": "Never write to shared tmp paths in concurrent loops",
+                            "rationale": "Prevents state corruption under parallel runners",
+                            "category": "architecture",
+                            "confidence": 0.85,
+                            "scope": "global",
+                        }
+                    ]
+                },
+            }
+        )
 
         with (
             mock_patch(
@@ -1661,8 +1661,7 @@ class TestExtractFromCompleted:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Issue already referenced in decisions.yaml is not re-extracted."""
-        from unittest.mock import MagicMock, patch as mock_patch
-        import json
+        from unittest.mock import patch as mock_patch
 
         from little_loops.issue_history.models import CompletedIssue
 
@@ -1724,8 +1723,9 @@ class TestExtractFromCompleted:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Candidates below --min-confidence are skipped."""
-        from unittest.mock import MagicMock, patch as mock_patch
         import json
+        from unittest.mock import MagicMock
+        from unittest.mock import patch as mock_patch
 
         from little_loops.issue_history.models import CompletedIssue
 
@@ -1739,21 +1739,23 @@ class TestExtractFromCompleted:
             )
         ]
 
-        llm_response = json.dumps({
-            "type": "result",
-            "subtype": "success",
-            "structured_output": {
-                "candidates": [
-                    {
-                        "rule": "Always validate inputs at API boundaries",
-                        "rationale": "Prevents injection",
-                        "category": "security",
-                        "confidence": 0.4,  # below default 0.7
-                        "scope": "global",
-                    }
-                ]
-            },
-        })
+        llm_response = json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {
+                    "candidates": [
+                        {
+                            "rule": "Always validate inputs at API boundaries",
+                            "rationale": "Prevents injection",
+                            "category": "security",
+                            "confidence": 0.4,  # below default 0.7
+                            "scope": "global",
+                        }
+                    ]
+                },
+            }
+        )
 
         with (
             mock_patch(
@@ -1797,7 +1799,7 @@ class TestExtractFromCompleted:
     ) -> None:
         """--since filters out issues completed before the cutoff date."""
         from datetime import date
-        from unittest.mock import MagicMock, patch as mock_patch
+        from unittest.mock import patch as mock_patch
 
         from little_loops.issue_history.models import CompletedIssue
 

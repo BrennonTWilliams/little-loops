@@ -211,7 +211,9 @@ def _run_extract_decisions(since: str | None = None) -> None:
     try:
         result = subprocess.run(cmd, capture_output=False)
         if result.returncode != 0:
-            print("extract-from-completed exited non-zero; decisions.yaml unchanged", file=sys.stderr)
+            print(
+                "extract-from-completed exited non-zero; decisions.yaml unchanged", file=sys.stderr
+            )
     except FileNotFoundError:
         print("ll-issues not found; skipping extract-from-completed", file=sys.stderr)
 

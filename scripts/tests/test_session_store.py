@@ -2796,8 +2796,7 @@ class TestSchemaV14:
         conn = sqlite3.connect(str(db))
         try:
             result = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-                " AND name='issue_snapshots'"
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='issue_snapshots'"
             ).fetchone()
         finally:
             conn.close()
@@ -2869,9 +2868,7 @@ class TestRecordIssueSnapshot:
 
         conn = connect(db)
         try:
-            row = conn.execute(
-                "SELECT * FROM issue_snapshots WHERE issue_id='ENH-2151'"
-            ).fetchone()
+            row = conn.execute("SELECT * FROM issue_snapshots WHERE issue_id='ENH-2151'").fetchone()
         finally:
             conn.close()
         assert row is not None

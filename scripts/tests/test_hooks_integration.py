@@ -1447,9 +1447,7 @@ class TestIssueCompletionLog:
         finally:
             os.chdir(original_dir)
 
-    def test_hook_exits_zero_when_ll_issues_fails(
-        self, hook_script: Path, tmp_path: Path
-    ):
+    def test_hook_exits_zero_when_ll_issues_fails(self, hook_script: Path, tmp_path: Path):
         """Hook exits 0 even when ll-issues exits non-zero.
 
         The extract-from-completed call added in ENH-2152 runs in a background

@@ -2183,11 +2183,7 @@ class TestRubricRouterLib:
         import yaml
 
         lib_path = (
-            Path(__file__).parent.parent
-            / "little_loops"
-            / "loops"
-            / "lib"
-            / "rubric-router.yaml"
+            Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "rubric-router.yaml"
         )
         with open(lib_path) as f:
             return yaml.safe_load(f)
