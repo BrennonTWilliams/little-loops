@@ -628,7 +628,10 @@ For nested loops, the displayed identifier is the **relative path** without the 
 | `--builtin` | | Only show built-in loops (exclude project `.loops/`) |
 | `--category <cat>` | `-c` | Filter to loops with the given category (e.g. `apo`, `issue-management`, `code-quality`) |
 | `--label <tag>` | `-l` | Filter to loops that carry the given label tag; repeat for multiple tags (OR match) |
-| `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name` (relative-path identifier — e.g. `oracles/oracle-capture-issue` for nested loops, `fix-quality-and-tests` for top-level), `path`, `category`, `labels`, `description`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
+| `--all` / `-a` | `-a` | Show all loops including internal sub-loops and examples (hidden by default) |
+| `--internal` | | Show only internal (delegated-only) sub-loops |
+| `--examples` | | Show only example/template loops |
+| `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name` (relative-path identifier — e.g. `oracles/oracle-capture-issue` for nested loops, `fix-quality-and-tests` for top-level), `path`, `category`, `labels`, `visibility` (`"public"` \| `"internal"` \| `"example"`), `description`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
 
 #### `ll-loop status <loop>` / `ll-loop st <loop>`
 
