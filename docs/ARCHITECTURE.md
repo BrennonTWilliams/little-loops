@@ -245,7 +245,7 @@ little-loops/
         │   │   ├── __init__.py      # Entry point (main_loop) + argparse
         │   │   ├── _helpers.py      # Shared utilities
         │   │   ├── run.py           # run subcommand
-        │   │   ├── config_cmds.py   # compile, validate, install
+        │   │   ├── config_cmds.py   # validate, install
         │   │   ├── lifecycle.py     # status, stop, resume
         │   │   ├── info.py          # list, history, show
         │   │   └── testing.py       # ll-loop test/simulate subcommand utilities
@@ -276,7 +276,7 @@ little-loops/
         ├── text_utils.py        # Text processing utilities
         ├── pii.py               # PII detection and redaction utilities
         ├── subprocess_utils.py  # Subprocess handling
-        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner)
+        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner + OpenCodeRunner + PiRunner)
         ├── sprint.py            # Sprint definition and management
         ├── sync.py              # GitHub Issues sync
         ├── goals_parser.py      # Goals file parsing

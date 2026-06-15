@@ -23,7 +23,7 @@ This guide covers all testing patterns, conventions, and examples for contributo
 
 The little-loops project uses **pytest** as its test framework with comprehensive test coverage across:
 
-- **Unit Tests** - Individual component testing (~50 test modules)
+- **Unit Tests** - Individual component testing (~226 test modules)
 - **Integration Tests** - Component interaction testing (marked with `@pytest.mark.integration`)
 - **E2E Tests** - Complete CLI workflow testing (see [E2E_TESTING.md](E2E_TESTING.md))
 - **Property-Based Tests** - Hypothesis tests for invariants

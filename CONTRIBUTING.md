@@ -366,7 +366,7 @@ Issues are tracked in `.issues/` with structured Markdown files following the v2
 
 ### Issue Template (v2.0)
 
-The issue template has been optimized for AI implementation with **20 sections** across BUG, FEAT, ENH, and EPIC types.
+The issue template has been optimized for AI implementation with **17 sections** across BUG, FEAT, ENH, and EPIC types.
 
 **Key Features**:
 - Anchor-based code references (function/class names, not line numbers)
@@ -578,9 +578,7 @@ Add a terminal `## Additional Resources` section listing the companion files whe
 a skill has several. Companion files have no line limit — only `SKILL.md` is
 capped at 500 lines.
 
-> The `ll-verify-skills` CLI lint command that mechanically enforces this limit
-> is tracked separately (ENH-977). Until it lands, check manually with
-> `wc -l skills/*/SKILL.md | sort -rn`.
+Run `ll-verify-skills` to check that no SKILL.md exceeds 500 lines (exits 1 on any violation).
 
 ### New Skill Checklist
 

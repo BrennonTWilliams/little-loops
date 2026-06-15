@@ -6420,11 +6420,11 @@ Render a `<project_context>` block from *digest*, capped at *char_cap* chars. Re
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **13**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **14**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 13
+    SCHEMA_VERSION,        # 14
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
     record_correction,     # write a user_corrections row
