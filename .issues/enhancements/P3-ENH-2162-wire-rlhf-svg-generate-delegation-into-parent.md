@@ -5,7 +5,9 @@ type: ENH
 priority: P3
 status: open
 parent: ENH-2044
-relates_to: [ENH-2050, ENH-2051]
+relates_to:
+- ENH-2050
+- ENH-2051
 captured_at: '2026-06-15T05:15:58Z'
 discovered_date: 2026-06-15
 discovered_by: capture-issue
@@ -13,6 +15,12 @@ labels:
 - loops
 - fsm
 - refactoring
+confidence_score: 96
+outcome_confidence: 84
+score_complexity: 20
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2162: Wire rlhf-svg-generate delegation into rlhf-animated-svg parent
@@ -104,3 +112,4 @@ States that currently reference `${captured.animation_plan}` (e.g., `run_refine`
 
 ## Session Log
 - `/ll:format-issue` - 2026-06-15T05:19:04 - `1f4581dd-da15-407d-9ef1-ad44bc9999d6.jsonl`
+- `/ll:confidence-check` - 2026-06-15T00:00:00Z - `706fe6dd-4d96-4068-8ab4-6c70801cc3e1.jsonl`
