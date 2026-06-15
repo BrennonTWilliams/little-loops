@@ -413,6 +413,55 @@ def evaluate_convergence(
     )
 
 
+def evaluate_classify(
+    output: str,
+    line: str | int | None = None,
+) -> EvaluationResult:
+    """Read a token from stdout and return it as the verdict.
+
+    Intended for single-state multi-way routing: the action prints exactly one
+    token to stdout and the route: table maps that token to the next state.
+
+    Args:
+        output: The action stdout to read the token from
+        line: Which line to select. 'last' (default) picks the last non-empty
+              line; 'first' picks the first non-empty line; an integer index
+              selects that line (0-based, negative indices supported).
+
+    Returns:
+        EvaluationResult with verdict = trimmed token, or "" when output is
+        empty (which _route() maps to the route.default fallback).
+    """
+    lines = [ln for ln in output.splitlines() if ln.strip()]
+    if not lines:
+        return EvaluationResult(
+            verdict="",
+            details={"token": "", "line": line, "source_lines": 0},
+        )
+
+    selector = line if line is not None else "last"
+    if selector == "last":
+        selected = lines[-1]
+    elif selector == "first":
+        selected = lines[0]
+    elif isinstance(selector, int):
+        try:
+            selected = lines[selector]
+        except IndexError:
+            return EvaluationResult(
+                verdict="",
+                details={"token": "", "line": line, "source_lines": len(lines), "error": "index out of range"},
+            )
+    else:
+        selected = lines[-1]
+
+    token = selected.strip()
+    return EvaluationResult(
+        verdict=token,
+        details={"token": token, "line": line},
+    )
+
+
 def evaluate_diff_stall(
     scope: list[str] | None = None,
     max_stall: int = 1,
@@ -1610,6 +1659,9 @@ def evaluate(
 
     elif eval_type == "contract":
         return evaluate_contract(config=config, context=context)
+
+    elif eval_type == "classify":
+        return evaluate_classify(output=output, line=config.line)
 
     else:
         raise ValueError(f"Unknown evaluator type: {eval_type}")

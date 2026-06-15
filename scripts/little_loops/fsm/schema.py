@@ -52,6 +52,7 @@ class EvaluateConfig:
         scope: Paths to limit git diff to for diff_stall evaluator
         max_stall: Consecutive no-change iterations before failure (diff_stall)
         pairs: List of producer/consumer pair dicts for contract evaluator
+        line: Line selector for classify evaluator (last/first/<int index>)
     """
 
     type: Literal[
@@ -67,6 +68,7 @@ class EvaluateConfig:
         "harbor_scorer",
         "comparator",
         "contract",
+        "classify",
     ]
     operator: str | None = None
     target: int | float | str | None = None
@@ -89,6 +91,7 @@ class EvaluateConfig:
     auto_promote: bool = False  # for comparator: write output to baseline on yes verdict
     min_pairs: int = 1  # for comparator: number of blind A/B comparisons to run
     pairs: list[dict] | None = None  # for contract: list of producer/consumer pair dicts
+    line: str | int | None = None  # for classify: which line to read (last/first/<int index>)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -137,6 +140,8 @@ class EvaluateConfig:
             result["min_pairs"] = self.min_pairs
         if self.pairs is not None:
             result["pairs"] = self.pairs
+        if self.line is not None:
+            result["line"] = self.line
 
         return result
 
@@ -166,6 +171,7 @@ class EvaluateConfig:
             auto_promote=data.get("auto_promote", False),
             min_pairs=data.get("min_pairs", 1),
             pairs=data.get("pairs"),
+            line=data.get("line"),
         )
 
 

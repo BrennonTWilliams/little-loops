@@ -286,6 +286,7 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `mcp_result` | `success` / `tool_error` / `not_found` / `timeout` | `mcp_tool` actions | Evaluate MCP server tool call results |
 | `comparator` | `yes` / `no` / `tie` / `no_baseline` | — | Blind A/B comparison against a stored baseline via LLM judge; requires `baseline_path` |
 | `contract` | `yes` / `no` / `error` | — | Assert producer/consumer file pairs align via LLM judge; requires `pairs` |
+| `classify` | *(token from stdout)* | — | Returns the last non-empty line of stdout as the verdict; pair with a `route:` table for single-state multi-way routing |
 
 Override the default by adding an `evaluate:` block to a state:
 
@@ -295,9 +296,38 @@ evaluate:
   pattern: "All checks passed"
 ```
 
-**Exit-code short-circuit**: When an action exits non-zero, evaluators that don't intrinsically handle exit codes (`output_numeric`, `output_json`, `output_contains`, `convergence`, `comparator`) immediately return `error` without running their normal logic.
+**Exit-code short-circuit**: When an action exits non-zero, evaluators that don't intrinsically handle exit codes (`output_numeric`, `output_json`, `output_contains`, `convergence`, `comparator`, `classify`) immediately return `error` without running their normal logic. For `classify`, this means a crashing classifier routes via `route.error`/`route.default` rather than emitting a potentially mis-read token.
 
 **Action timeouts (`exit_code=124`)**: When an action is killed at its `timeout:` budget, evaluators short-circuit to `verdict="error"` — so use `on_error:` as the canonical recovery branch for timeouts. This prevents truncated output from being misread as a deliberate `no`.
+
+#### `classify` — Single-State Multi-Way Routing
+
+The `classify` evaluator collapses verbose `output_contains` routing cascades into a single state. The action prints exactly one token to stdout; `classify` lifts that token to the verdict; a `route:` table dispatches to the matching state in one hop.
+
+```yaml
+diagnose:
+  action_type: shell
+  action: |
+    # ... compute scores, print exactly one token on the final line ...
+    echo "WIRE"
+  evaluate:
+    type: classify
+    # optional: line: last (default) | first | <int index>
+    source: "${captured.diagnosis.output}"   # optional; defaults to this action's stdout
+  route:
+    IMPLEMENT: gate_implement
+    DECIDE:    decide
+    WIRE:      wire
+    REFINE:    refine
+    DECOMPOSE: emit_needs_decompose
+    _:         emit_implement_failed    # unknown/empty token → default
+    _error:    emit_implement_failed    # non-zero exit → error
+```
+
+- **Verdict** = trimmed last non-empty line of stdout (configurable via `line: first | last | <int>`).
+- **Empty stdout** → empty token → resolves to `_` (default) route.
+- **Non-zero exit** → `error` verdict (routes via `_error` / `_` — token is ignored, same as all non-exit-code-aware evaluators).
+- **Validation**: `ll-loop validate` warns when a `classify` state has a `route:` table with no `_:` default entry — unknown tokens would dead-end the loop. Suppressed by `partial_route_ok: true` when intentional.
 
 ### Variable Interpolation
 

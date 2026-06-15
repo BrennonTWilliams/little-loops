@@ -1466,6 +1466,86 @@ class TestRouting:
         assert result.terminated_by == "error"
         assert result.error == "No valid transition"
 
+    def test_classify_route_dispatches_to_correct_state(self) -> None:
+        """classify evaluator + route: table dispatches to the matching target state."""
+        for token, expected in [("IMPLEMENT", "gate_implement"), ("WIRE", "wire"), ("REFINE", "refine")]:
+            fsm = FSMLoop(
+                name="test",
+                initial="classify",
+                states={
+                    "classify": StateConfig(
+                        action="echo.sh",
+                        evaluate=EvaluateConfig(type="classify"),
+                        route=RouteConfig(
+                            routes={
+                                "IMPLEMENT": "gate_implement",
+                                "WIRE": "wire",
+                                "REFINE": "refine",
+                            },
+                            default="fallback",
+                        ),
+                    ),
+                    "gate_implement": StateConfig(terminal=True),
+                    "wire": StateConfig(terminal=True),
+                    "refine": StateConfig(terminal=True),
+                    "fallback": StateConfig(terminal=True),
+                },
+            )
+            mock_runner = MockActionRunner()
+            mock_runner.set_result("echo.sh", output=token, exit_code=0)
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+            assert result.final_state == expected, f"token={token!r} routed to {result.final_state!r}, expected {expected!r}"
+
+    def test_classify_route_default_catches_unknown_token(self) -> None:
+        """classify route: table default: catches any unlisted token."""
+        fsm = FSMLoop(
+            name="test",
+            initial="classify",
+            states={
+                "classify": StateConfig(
+                    action="echo.sh",
+                    evaluate=EvaluateConfig(type="classify"),
+                    route=RouteConfig(
+                        routes={"IMPLEMENT": "gate_implement"},
+                        default="fallback",
+                    ),
+                ),
+                "gate_implement": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("echo.sh", output="UNKNOWN_TOKEN", exit_code=0)
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+        assert result.final_state == "fallback"
+
+    def test_classify_nonzero_exit_routes_error(self) -> None:
+        """classify with non-zero exit short-circuits to error verdict, routes via _error."""
+        # No default: so _error is tried when verdict=="error"
+        fsm = FSMLoop(
+            name="test",
+            initial="classify",
+            states={
+                "classify": StateConfig(
+                    action="echo.sh",
+                    evaluate=EvaluateConfig(type="classify"),
+                    route=RouteConfig(
+                        routes={"IMPLEMENT": "gate_implement"},
+                        error="error_state",
+                    ),
+                ),
+                "gate_implement": StateConfig(terminal=True),
+                "error_state": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("echo.sh", output="IMPLEMENT", exit_code=1)
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+        assert result.final_state == "error_state"
+
 
 class TestEvents:
     """Tests for event emission."""

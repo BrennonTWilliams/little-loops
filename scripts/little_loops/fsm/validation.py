@@ -74,6 +74,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "harbor_scorer": [],
     "comparator": ["baseline_path"],
     "contract": ["pairs"],
+    "classify": [],
 }
 
 # Non-LLM evaluator types: all evaluator types except llm_structured
@@ -1042,6 +1043,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_generator_fix_discipline(fsm))
 
+    errors.extend(_validate_classify_route_default(fsm))
+
     errors.extend(_validate_zero_retry_counter(fsm))
 
     errors.extend(_validate_on_max_iterations(fsm, defined_states))
@@ -1555,6 +1558,38 @@ def _validate_generator_fix_discipline(fsm: FSMLoop) -> list[ValidationError]:
                     )
                 )
 
+    return errors
+
+
+def _validate_classify_route_default(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate that classify states with a route: table include a default: fallback.
+
+    A ``classify`` state whose ``route:`` table has no ``default:`` will dead-end
+    whenever the action emits a token not listed in the table. This rule flags
+    that gap as a WARNING so loop authors add a catch-all branch.
+
+    Suppressed by ``partial_route_ok: true`` at the loop top-level when a
+    dead-end on an unlisted token is intentional.
+    """
+    if fsm.partial_route_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if state.evaluate is None or state.evaluate.type != "classify":
+            continue
+        if state.route is None or state.route.default is not None:
+            continue
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] classify route: table has no default: — "
+                    "unknown tokens will dead-end the loop. Add a default: catch-all, "
+                    "or set `partial_route_ok: true` at the loop top-level to suppress."
+                ),
+                path=f"states.{state_name}",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
     return errors
 
 

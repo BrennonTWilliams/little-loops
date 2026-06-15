@@ -26,6 +26,7 @@ from little_loops.fsm.validation import (
     _validate_artifact_isolation,
     _validate_artifact_overwrite,
     _validate_capture_reachability,
+    _validate_classify_route_default,
     _validate_evaluator,
     _validate_generator_fix_discipline,
     _validate_harness_multimodal_evaluator_blind_spot,
@@ -3015,3 +3016,94 @@ class TestGeneratorFixDiscipline:
             if e.severity == ValidationSeverity.WARNING and "ENH-2079" in e.message
         ]
         assert len(mr6) == 1
+
+
+class TestClassifyRouteDefault:
+    """Classify-route-default WARNING check (ENH-2165)."""
+
+    def _classify_fsm(
+        self,
+        *,
+        with_default: bool = False,
+        partial_route_ok: bool = False,
+        with_route: bool = True,
+    ) -> FSMLoop:
+        from little_loops.fsm.schema import RouteConfig
+
+        route: RouteConfig | None = None
+        if with_route:
+            route = RouteConfig(
+                routes={"IMPLEMENT": "done", "WIRE": "done"},
+                default="fallback" if with_default else None,
+            )
+        state_kwargs: dict = {
+            "action": "classify.sh",
+            "evaluate": EvaluateConfig(type="classify"),
+        }
+        if route is not None:
+            state_kwargs["route"] = route
+        return FSMLoop(
+            name="test-loop",
+            initial="classify",
+            states={
+                "classify": make_state(**state_kwargs),
+                "done": make_state(terminal=True),
+                "fallback": make_state(terminal=True),
+            },
+            partial_route_ok=partial_route_ok,
+        )
+
+    def test_warning_fires_when_default_absent(self) -> None:
+        """WARNING fires for a classify state with a route: table and no default:."""
+        fsm = self._classify_fsm(with_default=False)
+        errors = _validate_classify_route_default(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "default" in errors[0].message
+
+    def test_no_warning_when_default_present(self) -> None:
+        """No warning when route: table has a default: entry."""
+        fsm = self._classify_fsm(with_default=True)
+        errors = _validate_classify_route_default(fsm)
+        assert errors == []
+
+    def test_no_warning_without_route_table(self) -> None:
+        """No warning when classify state has no route: table at all."""
+        fsm = self._classify_fsm(with_route=False)
+        errors = _validate_classify_route_default(fsm)
+        assert errors == []
+
+    def test_suppressed_by_partial_route_ok(self) -> None:
+        """partial_route_ok: true suppresses the classify-route-default warning."""
+        fsm = self._classify_fsm(with_default=False, partial_route_ok=True)
+        errors = _validate_classify_route_default(fsm)
+        assert errors == []
+
+    def test_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes the classify-route-default warning."""
+        fsm = self._classify_fsm(with_default=False)
+        errors = validate_fsm(fsm)
+        classify_warnings = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING and "classify route" in e.message
+        ]
+        assert len(classify_warnings) == 1
+
+    def test_non_classify_state_not_flagged(self) -> None:
+        """States with other evaluator types are not flagged by this check."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="check",
+            states={
+                "check": make_state(
+                    action="check.sh",
+                    evaluate=EvaluateConfig(type="output_contains", pattern="OK"),
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_classify_route_default(fsm)
+        assert errors == []

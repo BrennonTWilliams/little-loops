@@ -504,7 +504,8 @@
             "mcp_result",
             "harbor_scorer",
             "comparator",
-            "contract"
+            "contract",
+            "classify"
           ]
         },
         "operator": {

@@ -18,6 +18,7 @@ from little_loops.fsm.evaluators import (
     evaluate,
     evaluate_action_stall,
     evaluate_blind_comparator,
+    evaluate_classify,
     evaluate_contract,
     evaluate_convergence,
     evaluate_diff_stall,
@@ -406,6 +407,67 @@ class TestConvergenceEvaluator:
         assert result.details["direction"] == "minimize"
 
 
+class TestClassifyEvaluator:
+    """Tests for classify evaluator."""
+
+    def test_last_line_default(self) -> None:
+        """Last non-empty line is returned as verdict by default."""
+        result = evaluate_classify("first\nsecond\nWIRE")
+        assert result.verdict == "WIRE"
+        assert result.details["token"] == "WIRE"
+
+    def test_explicit_last(self) -> None:
+        """line='last' selects the last non-empty line."""
+        result = evaluate_classify("IMPLEMENT\nWIRE", line="last")
+        assert result.verdict == "WIRE"
+
+    def test_first_line(self) -> None:
+        """line='first' selects the first non-empty line."""
+        result = evaluate_classify("IMPLEMENT\nWIRE", line="first")
+        assert result.verdict == "IMPLEMENT"
+
+    def test_integer_index(self) -> None:
+        """Integer line index selects that line (0-based)."""
+        result = evaluate_classify("A\nB\nC", line=1)
+        assert result.verdict == "B"
+
+    def test_negative_integer_index(self) -> None:
+        """Negative integer index is supported (Python-style)."""
+        result = evaluate_classify("A\nB\nC", line=-1)
+        assert result.verdict == "C"
+
+    def test_integer_index_out_of_range(self) -> None:
+        """Out-of-range integer index returns empty verdict."""
+        result = evaluate_classify("A\nB", line=10)
+        assert result.verdict == ""
+        assert "error" in result.details
+
+    def test_whitespace_stripped(self) -> None:
+        """Leading/trailing whitespace is stripped from the token."""
+        result = evaluate_classify("  REFINE  \n")
+        assert result.verdict == "REFINE"
+
+    def test_empty_stdout(self) -> None:
+        """Empty stdout returns empty verdict (routes to default)."""
+        result = evaluate_classify("")
+        assert result.verdict == ""
+
+    def test_whitespace_only_stdout(self) -> None:
+        """Whitespace-only stdout returns empty verdict."""
+        result = evaluate_classify("   \n  \n")
+        assert result.verdict == ""
+
+    def test_single_line(self) -> None:
+        """Single-line output returns that line as verdict."""
+        result = evaluate_classify("DECIDE")
+        assert result.verdict == "DECIDE"
+
+    def test_trailing_newline_ignored(self) -> None:
+        """Trailing empty lines are ignored when picking last line."""
+        result = evaluate_classify("IMPLEMENT\n\n")
+        assert result.verdict == "IMPLEMENT"
+
+
 class TestEvaluateDispatcher:
     """Tests for the main evaluate() dispatcher function."""
 
@@ -655,6 +717,38 @@ class TestEvaluateDispatcher:
         result = evaluate(config, "", 0, ctx)
         assert result.verdict == "error"
         assert "pairs" in result.details.get("error", "").lower()
+
+    def test_dispatch_classify(self) -> None:
+        """classify type returns trimmed last-line token as verdict."""
+        config = EvaluateConfig(type="classify")
+        ctx = InterpolationContext()
+        result = evaluate(config, "line1\nWIRE", 0, ctx)
+        assert result.verdict == "WIRE"
+
+    def test_dispatch_classify_with_line_selector(self) -> None:
+        """classify type respects the line: selector."""
+        config = EvaluateConfig(type="classify", line="first")
+        ctx = InterpolationContext()
+        result = evaluate(config, "IMPLEMENT\nWIRE", 0, ctx)
+        assert result.verdict == "IMPLEMENT"
+
+    def test_dispatch_classify_nonzero_exit_short_circuits_to_error(self) -> None:
+        """classify is NOT exit-code-aware: non-zero exit → error verdict, token ignored."""
+        config = EvaluateConfig(type="classify")
+        ctx = InterpolationContext()
+        result = evaluate(config, "WIRE", 1, ctx)
+        assert result.verdict == "error"
+        assert result.details.get("exit_code") == 1
+
+    def test_dispatch_classify_not_in_exit_code_aware_set(self) -> None:
+        """classify must not appear in _EXIT_CODE_AWARE_EVALUATORS."""
+        import little_loops.fsm.evaluators as ev_module
+        import inspect
+        src = inspect.getsource(ev_module.evaluate)
+        # _EXIT_CODE_AWARE_EVALUATORS must not include classify
+        # (checked by verifying nonzero exit short-circuits above, but also
+        # confirm the literal set does not contain "classify")
+        assert '"classify"' not in src.split("_EXIT_CODE_AWARE_EVALUATORS")[1].split("}")[0]
 
 
 class TestLLMStructuredEvaluator:
