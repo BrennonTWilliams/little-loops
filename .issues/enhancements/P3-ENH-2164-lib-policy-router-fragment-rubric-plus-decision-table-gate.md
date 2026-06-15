@@ -6,18 +6,31 @@ status: open
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 captured_at: '2026-06-15T05:30:52Z'
-parent: ENH-2154
+parent: EPIC-2167
 blocked_by:
 - ENH-2165
+blocks:
+- ENH-2166
 relates_to:
 - ENH-2165
+- ENH-2166
+- ENH-2154
 ---
 
 # ENH-2164: lib/policy-router Fragment — Rubric + Decision Table Gate
 
 ## Summary
 
-Add `scripts/little_loops/loops/lib/policy-router.yaml` — a reusable fragment library that extends `lib/rubric-router.yaml` with a **Decision Table** gate: after a rubric scores an artifact, a declarative rule table maps (dimension, tier) → action, enabling multi-axis routing without hand-coding per-dimension branches. Callers supply the rubric dimensions, thresholds, and the decision table; the fragment handles score → parse → table-lookup → dispatch.
+Add `scripts/little_loops/loops/lib/policy-router.yaml` — a reusable fragment library implementing a **general decision-table router**: a declarative, priority-ordered rule table maps per-dimension scores → action state, enabling multi-axis routing without hand-coding per-dimension branches. Callers supply the dimensions, thresholds, and the decision table; the fragment handles parse → table-lookup → dispatch.
+
+Per the resolved 2-layer design (see "Layering" below), this fragment is the
+**general engine**, not merely a rubric extension: its rule grammar supports
+**conjunctive (`&`-joined) predicates** and it accepts per-dimension scores from
+**any scorer** (not only `lib/rubric-router`'s LLM `rubric_score`). `lib/rubric-router.yaml`
+(ENH-2154) remains the thin single-aggregate preset. Routing handoff is done via
+ENH-2165's `classify` evaluator + a `route:` table (the dispatch fragment emits the
+winning action-state token; `classify` lifts it to the verdict; `route:` dispatches),
+so this issue is **`blocked_by` ENH-2165**.
 
 ## Current Behavior
 
@@ -79,18 +92,25 @@ Two requirements it surfaces that the current v1 grammar does **not** yet cover:
    pre-written per-dimension score files from **any** scorer (rubric, shell, or
    external) rather than only the rubric path.
 
-### Suggested layering (L0/L1/L2)
+### Layering: resolved to 2-layer (this issue IS the engine)
 
-To avoid two near-identical decision-table fragments, treat the family as a stack:
-- **L0** — ENH-2165 `classify` evaluator (executor primitive; blocks this issue).
-- **L1** — an optional general `lib/decision-router.yaml`: source-agnostic,
-  conjunctive rule table, emits a token, routes via L0. Motivated by `rn-remediate`.
-- **L2** — presets: `lib/rubric-router` (ENH-2154, single aggregate) and this
-  `lib/policy-router` (ENH-2164, rubric + per-dim table) as thin layers over L1.
+The layering fork was resolved in favor of a **2-layer stack** — no separate
+`lib/decision-router` fragment is created. This issue **absorbs the general engine
+role directly** (conjunctive rules + score-source-agnosticism, see below), and
+`lib/rubric-router.yaml` (ENH-2154) remains the thin single-aggregate preset:
 
-If the L1 split is adopted, this issue narrows to "the rubric-coupled preset over
-`decision-router`"; if not, this issue should absorb conjunctions +
-source-agnosticism directly. Resolve during refinement.
+- **L0** — ENH-2165 `classify` evaluator (executor primitive; **blocks** this issue).
+- **L1 (this issue)** — `lib/policy-router.yaml` as the general decision-table
+  engine: source-agnostic per-dimension input, conjunctive (`&`-joined) rules,
+  emits a token, routes via L0's `classify` + `route:`.
+- **Preset** — `lib/rubric-router.yaml` (ENH-2154) = the degenerate single-aggregate
+  / fixed-tier case; left unchanged.
+
+Rationale: only one strong concrete driver (`rn-remediate`) plus this fragment
+itself need the general grammar today, so extracting a separate L1 fragment would
+be speculative (YAGNI). Collapsing the engine into `policy-router` keeps the stack
+to two layers and one decision-table implementation. The `rn-remediate` migration
+that exercises this engine is tracked separately (ENH-2166).
 
 ## Expected Behavior
 
@@ -166,10 +186,12 @@ The fragment reads `context.policy_rules`, parses the rule table, evaluates each
 
 - [ ] `scripts/little_loops/loops/lib/policy-router.yaml` exists and defines these named fragments:
   - `policy_table_dispatch` — `action_type: shell`; reads `${context.run_dir}/rubric-aggregate.txt` and per-dimension score files written by `rubric_parse_scores`; parses `${context.policy_rules}` rule table (top-to-bottom, first-match); writes the winning action state name to `${context.run_dir}/policy-action.txt`; prints `policy_action=<state>`; exits 0
-  - `policy_route` — `action_type: shell` + `evaluate: exit_code`; reads `${context.run_dir}/policy-action.txt`; FSM caller uses `on_yes`/`on_no` or a `route:` table — fragment exports `policy_action.txt` content to allow caller state-based routing via a shell `case` dispatch or via individual `policy_route_<name>` fragments
+  - `policy_table_dispatch` emits the winning action-state token on its final stdout line; the consuming state uses `evaluate: {type: classify}` (ENH-2165) + a `route:` table to dispatch to that state in one hop. No `policy_route_<name>` cascade and no `dynamic_next` executor convention (see "Layering" / ENH-2165). A `default:` route covers an unmatched/empty token.
 - [ ] Rule table syntax supports at minimum:
   - `<dim>:<op><value> -> <state>` where `<op>` ∈ `{>=, <=, ==, !=, <, >}` and `<dim>` is any dimension name from `rubric_dimensions` or the special token `aggregate`
+  - **Conjunctive predicates** — multiple conditions joined with `&` in one rule, all of which must hold for the rule to match, e.g. `confidence:>=85 & outcome:>=75 -> implement`. This is required to express `rn-remediate`'s `diagnose` rules (ENH-2166) and is **in scope for v1**.
   - `* -> <state>` as a catch-all (must appear last)
+- [ ] **Score-source-agnostic input** — `policy_table_dispatch` reads per-dimension score files (`rubric-dim-<name>.txt`) and `rubric-aggregate.txt` from `${context.run_dir}/` regardless of which scorer wrote them. The rubric path (`policy_parse_scores` over `rubric_score` output) is one supported source; a caller may instead write those files from a shell/deterministic scorer (e.g. `rn-remediate`'s `ll-issues show --json`). The dispatch fragment MUST NOT hard-depend on `lib/rubric-router`'s LLM scoring path.
 - [ ] `rubric_parse_scores` (from `lib/rubric-router.yaml`) is extended **or** a parallel `policy_parse_scores` fragment is added that writes per-dimension score files (`rubric-dim-<name>.txt`) to `${context.run_dir}/` in addition to `rubric-aggregate.txt` and `rubric-tier.txt` — required for per-dimension rule evaluation
 - [ ] Fragment context variables (`policy_rules`) are documented with defaults and override behavior
 - [ ] `ll-loop validate` passes on `lib/policy-router.yaml` with no errors or warnings (MR-1, MR-3, MR-4)
@@ -197,8 +219,8 @@ The fragment reads `context.policy_rules`, parses the rule table, evaluates each
 
 ## Scope Boundaries
 
-- **In scope**: `lib/policy-router.yaml` with `policy_parse_scores` and `policy_table_dispatch` fragments; `policy_route` helper; one runnable example loop (`policy-refine.yaml`); `loops/README.md` update; `TestPolicyRouterLib` in `test_fsm_fragments.py`
-- **Out of scope**: Migrating existing loops to use the policy router; changes to the FSM executor schema or core; defining domain-specific decision tables; more than two-level rule nesting in v1; probabilistic or weighted rules
+- **In scope**: `lib/policy-router.yaml` as the general decision-table engine — `policy_parse_scores` and `policy_table_dispatch` fragments; **conjunctive (`&`) rules**; **score-source-agnostic** per-dimension input; `classify`-based routing handoff (consumes ENH-2165); one runnable example loop (`policy-refine.yaml`); `loops/README.md` update; `TestPolicyRouterLib` in `test_fsm_fragments.py`
+- **Out of scope**: the `classify` evaluator itself (ENH-2165 — a dependency, not part of this issue); migrating existing loops onto the engine (`rn-remediate` migration is ENH-2166; other loops are separate follow-ons); a separate `lib/decision-router` fragment (the 2-layer decision folds the engine into this issue); changes to the FSM executor schema or core beyond what ENH-2165 provides; defining domain-specific decision tables; nested/parenthesized boolean rules or `|`-disjunction within a single rule (use multiple rows for OR) in v1; probabilistic or weighted rules
 
 ## Impact
 

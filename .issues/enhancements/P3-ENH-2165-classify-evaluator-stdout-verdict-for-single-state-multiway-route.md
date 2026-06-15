@@ -6,9 +6,13 @@ status: open
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 captured_at: '2026-06-15T05:45:00Z'
-parent: ENH-2154
+parent: EPIC-2167
+blocks:
+- ENH-2164
+- ENH-2166
 relates_to:
 - ENH-2164
+- ENH-2166
 - ENH-2154
 ---
 
