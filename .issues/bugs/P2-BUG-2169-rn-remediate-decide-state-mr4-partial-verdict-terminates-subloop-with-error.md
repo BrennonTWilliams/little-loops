@@ -1,10 +1,12 @@
 ---
 id: BUG-2169
-title: "rn-remediate decide state MR-4 violation — partial verdict terminates sub-loop with error"
+title: "rn-remediate decide state MR-4 violation \u2014 partial verdict terminates\
+  \ sub-loop with error"
 priority: P2
 type: BUG
-status: open
+status: done
 captured_at: '2026-06-15T15:41:00Z'
+completed_at: '2026-06-15T16:30:03Z'
 discovered_date: '2026-06-15'
 discovered_by: audit-loop-run
 source_loop: rn-implement
@@ -18,6 +20,12 @@ labels:
 relates_to:
 - BUG-2075
 - BUG-2115
+confidence_score: 98
+outcome_confidence: 88
+score_complexity: 25
+score_test_coverage: 20
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-2169: rn-remediate decide state MR-4 — partial verdict terminates sub-loop with error
@@ -86,6 +94,75 @@ decide:
 
 Check `wire` and `refine` for the same `on_success` pattern (BUG-2075 noted them as siblings). If all sibling states are fixed, consider dropping `partial_route_ok: true` from the loop-level so MR-4 validation catches future regressions.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — confirmed sibling defects and fix patterns:_
+
+**`wire` state** (line 375) — current defect matches `decide`; comment explains success routes through `mark_wired` to preserve BUG-2007 marker-gate behavior:
+```yaml
+wire:
+  fragment: with_rate_limit_handling
+  action: "/ll:wire-issue ${context.issue_id} --auto"
+  action_type: slash_command
+  # BUG-2007 marker-gate: success → mark_wired → re_assess; error → refine (rewrite warranted)
+  on_yes: mark_wired
+  on_no: refine
+  on_partial: mark_wired
+  on_rate_limit_exhausted: rate_limit_diagnostic
+```
+`on_partial: mark_wired` — partial wire still marks and lets `re_assess → check_convergence` decide if a full refine pass is needed, preserving the BUG-2007 intent without forcing an unconditional rewrite.
+
+**`refine` state** (line 392) — same defect; success routes through `mark_refined` for the marker-gate:
+```yaml
+refine:
+  fragment: with_rate_limit_handling
+  action: "/ll:refine-issue ${context.issue_id} --auto --full-rewrite"
+  action_type: slash_command
+  # Marker-gate: success → mark_refined → re_assess; failure → terminal
+  on_yes: mark_refined
+  on_no: emit_implement_failed
+  on_partial: mark_refined
+  on_rate_limit_exhausted: rate_limit_diagnostic
+```
+
+**`partial_route_ok: true` removal** — this flag is on line 30 of `rn-remediate.yaml` and suppresses MR-4 validation globally for the entire loop. Once `decide`, `wire`, and `refine` are all fixed, remove the flag so `ll-loop validate` re-enables per-state MR-4 enforcement as a regression guard.
+
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/rn-remediate.yaml` — primary file; `decide` (line 367), `wire` (line 375), and `refine` (line 392) states need routing key replacement; top-level `partial_route_ok: true` (line 30) should be removed once all three states are fixed
+
+### Dependent Files (Context Only — No Code Changes)
+- `scripts/little_loops/fsm/executor.py` — `_route()` handles verdict dispatch; `StateConfig.from_dict()` in `schema.py` aliases `on_success` → `on_yes` at parse time, so `on_success` correctly reaches `on_yes` but `partial` finds no handler and returns `None` → `_finish("error")`
+- `scripts/little_loops/fsm/validation.py` — `_validate_partial_route_dead_end()` / `_is_llm_judged()` implement MR-4; currently short-circuits on `partial_route_ok: true` before checking any per-state routing
+- `scripts/little_loops/fsm/schema.py` — `StateConfig` dataclass defines `on_yes`, `on_no`, `on_partial`, `on_success`, `on_error` fields and aliasing logic
+- `scripts/little_loops/loops/lib/common.yaml` — `with_rate_limit_handling` fragment (line 61); adds retry/backoff config only, contributes no routing keys
+
+### Similar Patterns (Fixed Reference)
+- `rn-remediate.yaml` state `re_assess` (line 422) — gold-standard pattern from BUG-2115: uses `on_success`, `on_partial`, `on_no`, `on_error` together; `on_success` and `on_partial` both route to `verify_re_assess_scores`, `on_no` → `refine`
+
+### Tests
+- `scripts/tests/test_builtin_loops.py` — `TestRnRemediateAssessRouting` (line 6832): assertion pattern for `assess` state routing; add parallel tests for `decide`, `wire`, `refine` in this class
+- `scripts/tests/test_builtin_loops.py` — `TestValidatorWarningBudget`: ratchet test that will catch regression if `partial-route` warnings reappear for `rn-remediate` after `partial_route_ok` is removed
+- `scripts/tests/test_fsm_validation.py` — `TestPartialRouteDeadEnd` (line 1245): unit tests for `_validate_partial_route_dead_end()`; validates that `slash_command` states without `on_partial` fire MR-4
+
+### Documentation
+- No documentation changes required; MR-4 rule is already documented in `.claude/CLAUDE.md`
+
+## Implementation Steps
+
+1. **Fix `decide` state** — replace `on_success`/`on_error` with `on_yes`/`on_no`/`on_partial` in `rn-remediate.yaml` (see Implementation Notes)
+2. **Fix `wire` state** — replace `on_success`/`on_error` with verdict routing; `on_yes: mark_wired`, `on_no: refine`, `on_partial: mark_wired` (partial wire still marks and lets `re_assess` evaluate sufficiency)
+3. **Fix `refine` state** — replace `on_success`/`on_error` with verdict routing; `on_yes: mark_refined`, `on_no: emit_implement_failed`, `on_partial: mark_refined` (partial refine still marks and lets `re_assess` evaluate)
+4. **Remove `partial_route_ok: true`** from loop top-level (line 30) — only safe after all three sibling states are fixed; removing it re-enables MR-4 validation as a regression guard
+5. **Add regression tests** in `test_builtin_loops.py::TestRnRemediateAssessRouting` for `decide`, `wire`, and `refine` states following the `assess` pattern (lines 6842–6854)
+6. **Run validation**: `ll-loop validate rn-remediate` — should pass with no MR-4 errors after removal of `partial_route_ok: true`
+7. **Run tests**: `python -m pytest scripts/tests/test_builtin_loops.py::TestRnRemediateAssessRouting -v`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-15T16:24:25 - `7fb5de02-80e2-4951-a337-e824c62c01a2.jsonl`
+- `/ll:refine-issue` - 2026-06-15T16:17:35 - `b312a960-ff84-4b0f-9adc-3c7c888753c3.jsonl`
 - `/ll:format-issue` - 2026-06-15T16:00:19 - `6af8e5ab-bf71-4158-bd83-ace02f8dce6e.jsonl`
+- `/ll:confidence-check` - 2026-06-15T17:08:00Z - `a79cce22-176e-48d5-b717-e7488b24376a.jsonl`
+- `/ll:confidence-check` - 2026-06-15T18:00:00Z - `9e2d5060-ec4b-4c25-9374-f87e60cf3f88.jsonl`

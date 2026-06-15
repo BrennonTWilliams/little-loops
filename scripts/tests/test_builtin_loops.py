@@ -6853,6 +6853,82 @@ class TestRnRemediateAssessRouting:
             f"assess.on_no should be 'refine', got {state.get('on_no')!r}"
         )
 
+    # decide state tests (BUG-2169)
+
+    def test_decide_on_yes_routes_to_re_assess(self, data: dict) -> None:
+        """decide.on_yes must route to re_assess (successful decision → re-evaluate scores)."""
+        state = data["states"].get("decide", {})
+        assert state.get("on_yes") == "re_assess", (
+            f"decide.on_yes should be 're_assess', got {state.get('on_yes')!r}"
+        )
+
+    def test_decide_on_no_routes_to_re_assess(self, data: dict) -> None:
+        """decide.on_no must route to re_assess (no clear decision → re-evaluate rather than crash)."""
+        state = data["states"].get("decide", {})
+        assert state.get("on_no") == "re_assess", (
+            f"decide.on_no should be 're_assess', got {state.get('on_no')!r}"
+        )
+
+    def test_decide_on_partial_routes_to_re_assess(self, data: dict) -> None:
+        """decide.on_partial must route to re_assess (partial decision → re-evaluate, don't crash)."""
+        state = data["states"].get("decide", {})
+        assert state.get("on_partial") == "re_assess", (
+            f"decide.on_partial should be 're_assess', got {state.get('on_partial')!r}"
+        )
+
+    # wire state tests (BUG-2169)
+
+    def test_wire_on_yes_routes_to_mark_wired(self, data: dict) -> None:
+        """wire.on_yes must route to mark_wired (successful wire → set marker then re_assess)."""
+        state = data["states"].get("wire", {})
+        assert state.get("on_yes") == "mark_wired", (
+            f"wire.on_yes should be 'mark_wired', got {state.get('on_yes')!r}"
+        )
+
+    def test_wire_on_no_routes_to_refine(self, data: dict) -> None:
+        """wire.on_no must route to refine (wire failure → rewrite warranted)."""
+        state = data["states"].get("wire", {})
+        assert state.get("on_no") == "refine", (
+            f"wire.on_no should be 'refine', got {state.get('on_no')!r}"
+        )
+
+    def test_wire_on_partial_routes_to_mark_wired(self, data: dict) -> None:
+        """wire.on_partial must route to mark_wired (partial wire still marks; re_assess evaluates sufficiency)."""
+        state = data["states"].get("wire", {})
+        assert state.get("on_partial") == "mark_wired", (
+            f"wire.on_partial should be 'mark_wired', got {state.get('on_partial')!r}"
+        )
+
+    # refine state tests (BUG-2169)
+
+    def test_refine_on_yes_routes_to_mark_refined(self, data: dict) -> None:
+        """refine.on_yes must route to mark_refined (successful refine → set marker then re_assess)."""
+        state = data["states"].get("refine", {})
+        assert state.get("on_yes") == "mark_refined", (
+            f"refine.on_yes should be 'mark_refined', got {state.get('on_yes')!r}"
+        )
+
+    def test_refine_on_no_routes_to_emit_implement_failed(self, data: dict) -> None:
+        """refine.on_no must route to emit_implement_failed (refine failure → terminal escalation)."""
+        state = data["states"].get("refine", {})
+        assert state.get("on_no") == "emit_implement_failed", (
+            f"refine.on_no should be 'emit_implement_failed', got {state.get('on_no')!r}"
+        )
+
+    def test_refine_on_partial_routes_to_mark_refined(self, data: dict) -> None:
+        """refine.on_partial must route to mark_refined (partial refine still marks; re_assess evaluates sufficiency)."""
+        state = data["states"].get("refine", {})
+        assert state.get("on_partial") == "mark_refined", (
+            f"refine.on_partial should be 'mark_refined', got {state.get('on_partial')!r}"
+        )
+
+    def test_partial_route_ok_not_set(self, data: dict) -> None:
+        """partial_route_ok must not be set once all MR-4 sibling states are fixed (BUG-2169)."""
+        assert not data.get("partial_route_ok"), (
+            "partial_route_ok should be absent or false now that decide/wire/refine all "
+            "define on_yes/on_no/on_partial; remove it so MR-4 validation catches regressions"
+        )
+
 
 class TestCheckSubstrateOptionalState:
     """Tests that check_substrate optional state is documented in planning loop templates (ENH-2085)."""

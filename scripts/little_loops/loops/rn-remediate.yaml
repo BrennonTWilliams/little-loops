@@ -27,7 +27,6 @@ import:
   - lib/common.yaml
 meta_self_eval_ok: false
 shared_state_ok: false
-partial_route_ok: true
 
 parameters:
   issue_id:
@@ -368,8 +367,9 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:decide-issue ${context.issue_id} --auto"
     action_type: slash_command
-    on_success: re_assess
-    on_error: re_assess
+    on_yes: re_assess
+    on_no: re_assess
+    on_partial: re_assess
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   wire:
@@ -385,8 +385,10 @@ states:
     # then continues to re_assess) so the pre-implement gate can confirm a wire
     # ran. BUG-2007 intent is preserved — success still reaches re_assess, never
     # unconditionally bounces back to refine.
-    on_success: mark_wired
-    on_error: refine
+    # on_partial: mark_wired — partial wire still marks; re_assess → check_convergence decides sufficiency.
+    on_yes: mark_wired
+    on_no: refine
+    on_partial: mark_wired
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   refine:
@@ -395,8 +397,10 @@ states:
     action_type: slash_command
     # Marker-gate: route success through mark_refined (sets the refined marker
     # then continues to re_assess). BUG-2007 intent preserved — still re_assess.
-    on_success: mark_refined
-    on_error: emit_implement_failed
+    # on_partial: mark_refined — partial refine still marks; re_assess evaluates sufficiency.
+    on_yes: mark_refined
+    on_no: emit_implement_failed
+    on_partial: mark_refined
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   mark_refined:
