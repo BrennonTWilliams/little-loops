@@ -522,7 +522,14 @@ states:
 
       # Convergence rules (first match wins)
       if [ "$POST_CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$POST_OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
-        echo "CONVERGED_PASS"
+        # BUG-2193: guard the pass path; a decision blocks implementation even when
+        # scores meet thresholds — mirror the stall-branch check from BUG-1985.
+        POST_DECISION=$(jq -r '.decision_needed // "false"' "$POST" 2>/dev/null)
+        if [ "$POST_DECISION" = "true" ]; then
+          echo "NEEDS_MANUAL_REVIEW"
+        else
+          echo "CONVERGED_PASS"
+        fi
       elif [ "$TOTAL_DELTA" -le 0 ]; then
         # Distinguish: stalled because unresolvable decision vs genuinely too large
         POST_DECISION=$(jq -r '.decision_needed // "false"' "$POST" 2>/dev/null)

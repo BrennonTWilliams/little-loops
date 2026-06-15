@@ -983,6 +983,27 @@ class TestOutcomeTokenChannel:
         assert "NEEDS_MANUAL_REVIEW" in action
         assert "decision_needed" in action
 
+    def test_check_convergence_pass_branch_guards_decision_needed(self) -> None:
+        """BUG-2193: CONVERGED_PASS branch must check decision_needed before emitting.
+
+        The POST_DECISION guard must appear inside the pass-threshold block (before the
+        CONVERGED_PASS echo), not only in the stall branch that follows it. Without this,
+        a refine run that raises scores above thresholds AND sets decision_needed: true
+        would emit CONVERGED_PASS and route to implement, which then fails.
+        """
+        data = _load_loop()
+        action = data["states"]["check_convergence"]["action"]
+        section_start = action.find("# Convergence rules")
+        assert section_start != -1, "Convergence rules section not found in check_convergence action"
+        section = action[section_start:]
+        first_post_decision = section.find("POST_DECISION")
+        first_converged_pass_echo = section.find('echo "CONVERGED_PASS"')
+        assert first_post_decision != -1, "POST_DECISION guard missing from convergence section"
+        assert first_converged_pass_echo != -1, 'echo "CONVERGED_PASS" missing from convergence section'
+        assert first_post_decision < first_converged_pass_echo, (
+            "BUG-2193: POST_DECISION guard must appear before echo CONVERGED_PASS in pass branch"
+        )
+
     def test_rate_limit_diagnostic_writes_token_and_fails(self) -> None:
         data = _load_loop()
         rld = data["states"]["rate_limit_diagnostic"]
