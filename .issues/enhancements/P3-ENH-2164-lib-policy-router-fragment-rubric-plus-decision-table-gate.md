@@ -7,6 +7,10 @@ discovered_date: 2026-06-15
 discovered_by: capture-issue
 captured_at: '2026-06-15T05:30:52Z'
 parent: ENH-2154
+blocked_by:
+- ENH-2165
+relates_to:
+- ENH-2165
 ---
 
 # ENH-2164: lib/policy-router Fragment — Rubric + Decision Table Gate
@@ -14,6 +18,15 @@ parent: ENH-2154
 ## Summary
 
 Add `scripts/little_loops/loops/lib/policy-router.yaml` — a reusable fragment library that extends `lib/rubric-router.yaml` with a **Decision Table** gate: after a rubric scores an artifact, a declarative rule table maps (dimension, tier) → action, enabling multi-axis routing without hand-coding per-dimension branches. Callers supply the rubric dimensions, thresholds, and the decision table; the fragment handles score → parse → table-lookup → dispatch.
+
+## Current Behavior
+
+There is no shared primitive for multi-axis conditional routing in FSM-based automation loops. When a quality gate needs to route on **combinations** of dimension scores rather than a single aggregate, loops must choose between two inadequate options:
+
+- Fan out into a cascade of single-dimension `exit_code` evaluator states per dimension — verbose and hard to maintain as the number of dimensions grows.
+- Embed the routing logic in an LLM prompt — untestable and non-deterministic (the LLM may interpret the same scores differently across runs).
+
+`lib/rubric-router.yaml` (ENH-2154) provides a 3-tier aggregate-score path (`high`/`medium`/`low`) but has no mechanism for routing on individual dimension combinations.
 
 ## Motivation
 
@@ -24,6 +37,60 @@ Add `scripts/little_loops/loops/lib/policy-router.yaml` — a reusable fragment 
 - A code review with critical *security* findings needs an escalation path regardless of aggregate score.
 
 Today there is no shared primitive for multi-axis conditional routing. Every loop that needs it either (a) fans out into a cascade of single-dimension `exit_code` evaluator states (verbose, hard to maintain) or (b) embeds the logic in an LLM prompt (untestable, non-deterministic). A declarative Decision Table fragment makes multi-axis routing a first-class, auditable, and testable pattern.
+
+## Relationship to ENH-2165, rn-remediate, and Conjunctive Rules
+
+This issue's routing handoff (Implementation Step 4) is **blocked on ENH-2165**
+(the `classify` evaluator). ENH-2165 adds a non-LLM evaluator whose verdict is the
+action's trimmed stdout token, which — paired with the existing `route:` table
+(`_route()` in `fsm/executor.py`) — lets `policy_table_dispatch` emit a winning
+state name and dispatch to it in a single state. This is the clean third option
+beyond Step 4's two alternatives:
+- **(a) per-dimension `policy_route_<name>` exit-code fragments** — the verbose
+  cascade; generates one routing state per action and is order-fragile.
+- **(b) a `dynamic_next` executor convention** — underspecified; would require a
+  bespoke executor change.
+- **(c) `classify` + `route:` (ENH-2165)** — chosen direction; reuses machinery
+  that already exists and keeps dispatch in one auditable state.
+
+Adopt option (c) once ENH-2165 lands. Until then, this issue should not be
+implemented with option (a)/(b), to avoid shipping a routing mechanism we intend
+to replace.
+
+### Grounding the rule grammar in a real router
+
+`rn-remediate.yaml`'s `diagnose` state is a **shipping, battle-tested instance** of
+exactly this decision-table pattern (priority-ordered, first-match-wins, multi-axis
+routing over `confidence`/`outcome`/`complexity`/`ambiguity`/`change_surface`). It
+should drive the v1 rule grammar so the abstraction is validated against a real
+caller rather than the hypothetical security/clarity/feasibility examples above.
+Two requirements it surfaces that the current v1 grammar does **not** yet cover:
+
+1. **Conjunctive predicates.** Several `diagnose` rules AND multiple conditions —
+   e.g. `confidence>=85 & outcome>=75 -> IMPLEMENT`, or
+   `ambiguity>=15 & change_surface==0 -> WIRE`. The v1 `dim:op:value -> state`
+   grammar is single-predicate. v1 must either support an `&`-joined conjunction
+   per rule, or this issue must explicitly defer conjunctions and accept that
+   `rn-remediate` cannot be migrated onto it yet.
+2. **Score-source-agnosticism.** `diagnose` routes on **deterministic** scores read
+   from `ll-issues show --json` (issue frontmatter), not an LLM-emitted `AGGREGATE`
+   line. The policy-router as scoped is welded to `lib/rubric-router`'s LLM
+   `rubric_score`. Consider whether `policy_table_dispatch` should accept
+   pre-written per-dimension score files from **any** scorer (rubric, shell, or
+   external) rather than only the rubric path.
+
+### Suggested layering (L0/L1/L2)
+
+To avoid two near-identical decision-table fragments, treat the family as a stack:
+- **L0** — ENH-2165 `classify` evaluator (executor primitive; blocks this issue).
+- **L1** — an optional general `lib/decision-router.yaml`: source-agnostic,
+  conjunctive rule table, emits a token, routes via L0. Motivated by `rn-remediate`.
+- **L2** — presets: `lib/rubric-router` (ENH-2154, single aggregate) and this
+  `lib/policy-router` (ENH-2164, rubric + per-dim table) as thin layers over L1.
+
+If the L1 split is adopted, this issue narrows to "the rubric-coupled preset over
+`decision-router`"; if not, this issue should absorb conjunctions +
+source-agnosticism directly. Resolve during refinement.
 
 ## Expected Behavior
 
@@ -170,6 +237,9 @@ Per-run artifact files written:
 ### Dependencies
 - `scripts/little_loops/loops/lib/rubric-router.yaml` (ENH-2154) — must be imported alongside; `policy_parse_scores` consumes `captured.scores.output` written by `rubric_score`
 
+### Dependent Files (Callers/Importers)
+- N/A — all files are new; no existing callers at time of creation
+
 ### Similar Patterns
 - `scripts/little_loops/loops/lib/rubric-router.yaml` — direct predecessor; follow same `fragments:` block conventions
 - `scripts/little_loops/loops/loop-router.yaml` — reference for `route_branch_*` exit-code evaluator pattern
@@ -182,6 +252,9 @@ Per-run artifact files written:
 ### Documentation
 - `scripts/little_loops/loops/README.md` — list `lib/policy-router.yaml` and its exported fragment names
 - `docs/guides/LOOPS_GUIDE.md` — candidate for a "Policy-Based Routing" pattern section once shipped (follow-on)
+
+### Configuration
+- N/A — no config files changed; fragment context variables are caller-supplied
 
 ## Related Key Documentation
 
@@ -199,4 +272,5 @@ Per-run artifact files written:
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-15T05:36:08 - `812e5bd7-abf8-4165-8311-64bd345e60ff.jsonl`
 - `/ll:capture-issue` - 2026-06-15T05:30:52Z - `bcc19f01-efdb-45bc-a50b-ec443da22f83.jsonl`

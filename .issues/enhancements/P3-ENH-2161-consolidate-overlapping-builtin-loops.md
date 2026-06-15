@@ -14,6 +14,16 @@ captured_at: "2026-06-15T05:06:56Z"
 
 Three groups of built-in loops share near-identical FSM shapes with only one or two variables differing between siblings. Consolidating each group into a single parameterized loop reduces maintenance surface, eliminates divergence risk, and makes the loop library easier to navigate.
 
+## Current Behavior
+
+The loop library contains 10 separate files across three structural duplicate groups:
+
+- **APO family (5 files)**: `apo-beam.yaml`, `apo-contrastive.yaml`, `apo-feedback-refinement.yaml`, `apo-opro.yaml`, `apo-textgrad.yaml` — all share a generate-variants → score → route-convergence → apply FSM shape; the only variable is how each technique generates and scores candidates.
+- **Deep research pair (2 files)**: `deep-research.yaml` and `deep-research-arxiv.yaml` — identical oracle delegation to `oracles/research-coverage`; differ only by `academic_mode` flag and recency-weighted scoring.
+- **Generative art trio (3 files)**: `canvas-sketch-generator.yaml`, `p5js-sketch-generator.yaml`, `pixi-generative-art.yaml` — identical init → plan → generate → evaluate → score → snapshot FSM; framework name is the only variable.
+
+Every shared bug fix or improvement requires the same change to be applied across multiple files, creating divergence risk over time.
+
 ## Motivation
 
 The loop library has grown three clusters of structural duplicates:
@@ -69,6 +79,29 @@ Backward compatibility: existing `ll-loop run apo-contrastive ...` invocations m
 - [ ] Loop README and LOOPS_GUIDE updated to reflect consolidated names
 - [ ] No divergence between the former siblings: a fix applied to the consolidated loop covers all old variants
 
+## Scope Boundaries
+
+Out of scope:
+- `pixi-data-viz.yaml` — targets data visualization, not generative art; belongs in a separate lineage and must not be merged into `generative-art.yaml`
+- FSM runner/executor changes — consolidation relies on the existing `context.*` parameter mechanism; no changes to `ll-loop` core or the FSM evaluator
+- Loops outside the three identified groups — no other loop families are candidates for this consolidation pass
+- Behavioral changes — each consolidated loop must produce functionally identical output to its former siblings for a given input
+
+## Impact
+
+- **Priority**: P3 — Maintenance improvement; reduces long-term divergence risk across 10 files but no immediate user-facing feature gap
+- **Effort**: Medium — Three sequential merges of increasing complexity (deep-research pair first, then generative art trio, then APO family); alias stubs add surface area; requires `ll-loop validate` + smoke-test cycles for each group
+- **Risk**: Low — Backward-compat stubs preserve all existing `ll-loop run <name>` invocations; changes are additive (new consolidated file + alias stubs replacing originals with no executor changes)
+- **Breaking Change**: No — All 10 original loop names continue to work via alias stubs
+
+## Labels
+
+`loop-library`, `maintenance`, `consolidation`, `enhancement`
+
+## Status
+
+**Open** | Created: 2026-06-15 | Priority: P3
+
 ## Related Key Documentation
 
 - `scripts/little_loops/loops/README.md` — loop library overview
@@ -76,4 +109,5 @@ Backward compatibility: existing `ll-loop run apo-contrastive ...` invocations m
 - `scripts/little_loops/loops/oracles/research-coverage` — shared oracle for deep-research family
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-15T05:13:51 - `668f19ad-7b6d-4dfd-96b4-ef7487916a9b.jsonl`
 - `/ll:capture-issue` - 2026-06-15T05:06:56Z

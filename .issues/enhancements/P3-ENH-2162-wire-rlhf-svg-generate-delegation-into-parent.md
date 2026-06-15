@@ -21,6 +21,13 @@ labels:
 
 ENH-2050 explicitly deferred wiring the generate phase into the parent pending ENH-2051 (line 78: "the delegation state for generate follows the same pattern once that prerequisite is merged"). ENH-2051 is now done — `rlhf-svg-generate.yaml` exists — but the parent loop still handles `plan_animation`, `render_animation`, and `verify_render` inline. This duplicates ~200 lines of prompt content between the parent and the sub-loop, creating a maintenance liability when either copy is updated.
 
+## Motivation
+
+This enhancement would:
+- Eliminate ~200 lines of duplicated prompt content between `rlhf-animated-svg.yaml` and `rlhf-svg-generate.yaml`, reducing maintenance liability
+- Ensure updates to the generate phase propagate consistently to both standalone and parent-coordinated execution paths
+- Complete the delegation pattern deferred in ENH-2050, now unblocked by ENH-2051 delivering `rlhf-svg-generate.yaml`
+
 ## Current Behavior
 
 `rlhf-animated-svg.yaml` contains inline `plan_animation`, `render_animation`, and `verify_render` states (~200 lines of prompt content) that duplicate the same states in `rlhf-svg-generate.yaml`. The parent delegates to `rlhf-svg-evaluate` and `rlhf-svg-refine` but not to `rlhf-svg-generate`.
@@ -46,6 +53,11 @@ run_generate:
 ```
 
 The inline `plan_animation`, `render_animation`, and `verify_render` states are removed from the parent.
+
+## Scope Boundaries
+
+- **In scope**: Replacing `plan_animation`, `render_animation`, `verify_render` inline states in `rlhf-animated-svg.yaml` with a `run_generate` delegation state; updating downstream `${captured.animation_plan}` references; adding `TestRlhfAnimatedSvgDelegatesGenerate` test class
+- **Out of scope**: Changes to `rlhf-svg-generate.yaml` logic; modifications to existing `run_evaluate` or `run_refine` delegation states; any functional changes to the animation generation algorithm
 
 ## Integration Map
 
@@ -77,3 +89,18 @@ States that currently reference `${captured.animation_plan}` (e.g., `run_refine`
 3. Update any downstream `${captured.animation_plan}` references in `run_refine` / `check_score_streak` to use the correct capture path
 4. Run `ll-loop validate rlhf-animated-svg` to confirm no MR-rule violations
 5. Add `TestRlhfAnimatedSvgDelegatesGenerate` test class
+
+## Impact
+
+- **Priority**: P3 - Deferred wiring now unblocked by ENH-2051 completion; reduces ~200-line duplication maintenance liability
+- **Effort**: Small - Delegation pattern well-established (`run_evaluate` at line 401 serves as direct template); structural edit only
+- **Risk**: Low - No functional change; delegates to existing tested sub-loop; test coverage added
+- **Breaking Change**: No - Internal refactor; all external behavior preserved
+
+## Status
+
+**Open** | Created: 2026-06-15 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-15T05:19:04 - `1f4581dd-da15-407d-9ef1-ad44bc9999d6.jsonl`
