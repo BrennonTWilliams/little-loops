@@ -98,10 +98,10 @@ class TestReadinessAndDecisionGates:
         assert cr.get("fragment") == "shell_exit"
 
     def test_check_readiness_routes_yes_to_implement(self) -> None:
-        """check_readiness routes to implement when readiness passes."""
+        """check_readiness routes to check_complexity_pre_implement when readiness passes."""
         data = _load_loop()
         cr = data["states"]["check_readiness"]
-        assert cr["on_yes"] == "implement"
+        assert cr["on_yes"] == "check_complexity_pre_implement"
 
     def test_check_readiness_routes_no_to_check_outcome(self) -> None:
         """check_readiness routes to check_outcome when readiness fails."""
@@ -122,16 +122,17 @@ class TestReadinessAndDecisionGates:
         assert "${context.outcome_threshold}" in co["action"]
 
     def test_check_outcome_routes_yes_to_refine(self) -> None:
-        """check_outcome routes to refine when outcome passes (BUG-2007 Defect 4).
+        """check_outcome routes to check_wire_needed_outcome when outcome passes (BUG-2007 Defect 4).
 
         When check_readiness fails the joint gate but check_outcome passes the
         outcome-only test, the deficiency is in confidence_score. Routing to
         diagnose was a dead path — its IMPLEMENT branch requires both thresholds,
-        which check_readiness already found false. Route directly to refine.
+        which check_readiness already found false. check_wire_needed_outcome gates
+        wiring before routing to refine so the confidence gap is addressed correctly.
         """
         data = _load_loop()
         co = data["states"]["check_outcome"]
-        assert co["on_yes"] == "refine"
+        assert co["on_yes"] == "check_wire_needed_outcome"
 
     def test_check_outcome_routes_no_to_check_decision_needed(self) -> None:
         """check_outcome routes to check_decision_needed when outcome fails."""
