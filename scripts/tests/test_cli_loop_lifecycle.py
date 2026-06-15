@@ -136,7 +136,7 @@ class TestCmdStop:
         mock_persistence.save_state.assert_called_once_with(mock_state)
 
     def test_stop_with_pid_sends_sigterm_and_waits(self, tmp_path: Path) -> None:
-        """Sends SIGTERM and polls for exit when PID file exists (BUG-592)."""
+        """Sends SIGTERM via killpg and polls for exit when PID file exists."""
         logger = MagicMock()
         mock_state = MagicMock()
         mock_state.status = "running"
@@ -154,20 +154,21 @@ class TestCmdStop:
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
             patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
-            patch("little_loops.fsm.persistence._process_alive", side_effect=alive_seq),
-            patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=99),
+            patch("little_loops.cli.loop.lifecycle.os.killpg") as mock_killpg,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0
-        mock_kill.assert_any_call(12345, signal.SIGTERM)
+        mock_killpg.assert_any_call(99, signal.SIGTERM)
         assert mock_state.status == "interrupted"
         mock_cls.return_value.save_state.assert_called_once_with(mock_state)
         assert not pid_file.exists(), "PID file should be removed after SIGTERM stop"
 
     def test_stop_sends_sigkill_if_process_does_not_exit(self, tmp_path: Path) -> None:
-        """Escalates to SIGKILL after grace period if process does not exit (BUG-592)."""
+        """Escalates to SIGKILL after grace period if process does not exit."""
         logger = MagicMock()
         mock_state = MagicMock()
         mock_state.status = "running"
@@ -185,15 +186,16 @@ class TestCmdStop:
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
             patch("little_loops.fsm.persistence.StatePersistence"),
-            patch("little_loops.fsm.persistence._process_alive", side_effect=alive_seq),
-            patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=99),
+            patch("little_loops.cli.loop.lifecycle.os.killpg") as mock_killpg,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0
-        mock_kill.assert_any_call(12345, signal.SIGTERM)
-        mock_kill.assert_any_call(12345, signal.SIGKILL)
+        mock_killpg.assert_any_call(99, signal.SIGTERM)
+        mock_killpg.assert_any_call(99, signal.SIGKILL)
         logger.warning.assert_called_once()
         assert mock_state.status == "interrupted"
         assert not pid_file.exists(), "PID file should be removed after SIGKILL stop"
@@ -201,7 +203,7 @@ class TestCmdStop:
     def test_stop_sigkill_handles_race_if_process_exits_between_poll_and_kill(
         self, tmp_path: Path
     ) -> None:
-        """OSError on SIGKILL is swallowed when process exits just before the kill (BUG-592)."""
+        """PermissionError on killpg SIGKILL is swallowed when process group is gone."""
         logger = MagicMock()
         mock_state = MagicMock()
         mock_state.status = "running"
@@ -213,29 +215,32 @@ class TestCmdStop:
 
         alive_seq = [True] + [True] * 10
 
-        def kill_side_effect(pid: int, sig: int) -> None:
+        def killpg_side_effect(pgid: int, sig: int) -> None:
             if sig == signal.SIGKILL:
-                raise OSError("No such process")
+                raise ProcessLookupError("No such process")
 
         with (
             patch(
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
             patch("little_loops.fsm.persistence.StatePersistence"),
-            patch("little_loops.fsm.persistence._process_alive", side_effect=alive_seq),
-            patch("little_loops.cli.loop.lifecycle.os.kill", side_effect=kill_side_effect),
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=99),
+            patch(
+                "little_loops.cli.loop.lifecycle.os.killpg", side_effect=killpg_side_effect
+            ),
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0  # No exception propagated
         assert mock_state.status == "interrupted"
-        assert not pid_file.exists(), "PID file should be removed even when SIGKILL raises OSError"
+        assert not pid_file.exists(), "PID file should be removed even when SIGKILL raises ProcessLookupError"
 
     def test_stop_interrupted_with_live_lock_pid_kills_process_and_removes_lock(
         self, tmp_path: Path
     ) -> None:
-        """Kills orphaned lock holder and returns 0 when interrupted state has live lock PID (BUG-1353)."""
+        """Kills orphaned lock holder via killpg and returns 0."""
         import json as _json
 
         logger = MagicMock()
@@ -264,13 +269,14 @@ class TestCmdStop:
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
-            patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=77),
+            patch("little_loops.cli.loop.lifecycle.os.killpg") as mock_killpg,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0
-        mock_kill.assert_called_once_with(58522, signal.SIGTERM)
+        mock_killpg.assert_called_once_with(77, signal.SIGTERM)
         assert not lock_file.exists(), "Lock file should be removed after killing orphaned holder"
         logger.warning.assert_called_once()
         logger.success.assert_called_once()
@@ -303,7 +309,7 @@ class TestCmdStop:
             patch(
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
-            patch("little_loops.fsm.persistence._process_alive", return_value=False),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
         ):
             result = cmd_stop("test-loop", tmp_path, logger)
 
@@ -327,6 +333,178 @@ class TestCmdStop:
 
         assert result == 1
         logger.error.assert_called_once()
+
+    # --- New tests for os.killpg-based _kill_with_timeout ---
+
+    def test_killpg_called_with_correct_pgid(self, tmp_path: Path) -> None:
+        """os.killpg is called with the PGID returned by os.getpgid."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")
+
+        alive_seq = [True, True, False]
+
+        mock_getpgid = MagicMock(return_value=42)
+        mock_killpg = MagicMock()
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence"),
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", mock_getpgid),
+            patch("little_loops.cli.loop.lifecycle.os.killpg", mock_killpg),
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            cmd_stop("test-loop", tmp_path, logger)
+
+        mock_getpgid.assert_called_once_with(12345)
+        mock_killpg.assert_any_call(42, signal.SIGTERM)
+
+    def test_process_lookup_error_on_getpgid_returns_early(self, tmp_path: Path) -> None:
+        """When the PID's process group is gone, _kill_with_timeout returns without signalling."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")
+
+        mock_killpg = MagicMock()
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            # PID alive in cmd_stop check → enters _kill_with_timeout
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch(
+                "little_loops.cli.loop.lifecycle.os.getpgid",
+                side_effect=ProcessLookupError("no such process"),
+            ),
+            patch("little_loops.cli.loop.lifecycle.os.killpg", mock_killpg),
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        mock_killpg.assert_not_called()
+        assert mock_state.status == "interrupted"
+        mock_cls.return_value.save_state.assert_called_once_with(mock_state)
+
+    def test_attribute_error_on_killpg_falls_back_to_os_kill(self, tmp_path: Path) -> None:
+        """On platforms without os.killpg (Windows), falls back to os.kill."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")
+
+        alive_seq = [True, True, False]
+
+        mock_kill = MagicMock()
+
+        def killpg_side_effect(pgid: int, sig: int) -> None:
+            raise AttributeError("os.killpg not available")
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence"),
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=42),
+            patch("little_loops.cli.loop.lifecycle.os.killpg", side_effect=killpg_side_effect),
+            patch("little_loops.cli.loop.lifecycle.os.kill", mock_kill),
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        mock_kill.assert_any_call(12345, signal.SIGTERM)
+
+    def test_process_dies_during_wait_no_sigkill_sent(self, tmp_path: Path) -> None:
+        """When the process exits during the SIGTERM grace period, SIGKILL is never sent."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")
+
+        # Alive for initial check, then dies after first sleep
+        alive_seq = [True, False]
+
+        mock_killpg = MagicMock()
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence"),
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=42),
+            patch("little_loops.cli.loop.lifecycle.os.killpg", mock_killpg),
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        # Only SIGTERM call, no SIGKILL
+        sigterm_calls = [c for c in mock_killpg.call_args_list if c[0][1] == signal.SIGTERM]
+        sigkill_calls = [c for c in mock_killpg.call_args_list if c[0][1] == signal.SIGKILL]
+        assert len(sigterm_calls) >= 1
+        assert len(sigkill_calls) == 0
+        assert mock_state.status == "interrupted"
+
+    def test_permission_error_on_killpg_falls_through_to_wait(self, tmp_path: Path) -> None:
+        """PermissionError on killpg is caught, and the function proceeds to the wait loop."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")
+
+        # First killpg(SIGTERM) raises PermissionError, process dies during wait
+        alive_seq = [True, True, False]
+
+        def killpg_side_effect(pgid: int, sig: int) -> None:
+            if sig == signal.SIGTERM:
+                raise PermissionError("permission denied")
+            # SIGKILL should not be reached (process dies during wait)
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence"),
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=42),
+            patch("little_loops.cli.loop.lifecycle.os.killpg", side_effect=killpg_side_effect),
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        # SIGTERM was attempted (and PermissionError caught)
+        assert mock_state.status == "interrupted"
 
 
 class TestCmdResume:
@@ -2425,7 +2603,7 @@ class TestCmdMonitor:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("little_loops.fsm.persistence._process_alive", return_value=False),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_monitor(args, tmp_path)
@@ -2495,7 +2673,7 @@ class TestCmdMonitor:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.fsm.persistence._process_alive", return_value=True),
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
             patch(
                 "little_loops.cli.loop._helpers.StateFeedRenderer",
@@ -2531,7 +2709,7 @@ class TestCmdMonitor:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.fsm.persistence._process_alive", return_value=True),
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
             patch(
                 "little_loops.cli.loop._helpers.StateFeedRenderer",
@@ -2560,7 +2738,7 @@ class TestCmdMonitor:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.fsm.persistence._process_alive", return_value=True),
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
             patch("little_loops.cli.loop._helpers.StateFeedRenderer"),
             patch("builtins.print") as mock_print,

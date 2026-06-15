@@ -8,7 +8,6 @@ import hashlib
 import json
 import os
 import signal
-import subprocess as subprocess_mod
 import time
 from pathlib import Path
 
@@ -85,54 +84,47 @@ def _get_events_info(running_dir: Path, stem: str) -> tuple[str | None, str | No
         return str(events_file), f"Events: {events_file}"
 
 
-def _get_descendant_pids(pid: int) -> list[int]:
-    """Return all descendant PIDs recursively using pgrep -P.
-
-    Crosses process group boundaries, so it correctly finds subprocesses
-    launched with start_new_session=True (e.g. the claude CLI).
-    """
-    descendants: list[int] = []
-    to_visit = [pid]
-    while to_visit:
-        current = to_visit.pop()
-        try:
-            result = subprocess_mod.run(
-                ["pgrep", "-P", str(current)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            children = [int(p) for p in result.stdout.strip().split("\n") if p.strip()]
-            descendants.extend(children)
-            to_visit.extend(children)
-        except Exception:
-            continue
-    return descendants
-
-
 def _kill_with_timeout(pid: int, label: str, logger: Logger) -> None:
-    """Kill pid and all descendants; SIGTERM first, escalate to SIGKILL after 10 s."""
-    descendants = _get_descendant_pids(pid)
-    # Kill descendants first so the root can't spawn new children after receiving SIGTERM
-    all_pids = descendants + [pid]
+    """Kill pid and all descendants via process group; SIGTERM first, escalate to SIGKILL.
 
-    for target in all_pids:
-        try:
-            os.kill(target, signal.SIGTERM)
-        except OSError:
-            pass
+    Uses os.killpg to atomically signal the entire process group, closing the
+    race window inherent in the old _get_descendant_pids() snapshot approach.
+    Since run_background and run_claude_command both launch with
+    start_new_session=True, the PID is a session leader with PGID == PID.
+    All children inherit this PGID unless they explicitly call setsid().
+
+    Falls back to os.kill on the root PID when os.killpg is unavailable (Windows).
+    """
+    try:
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        return  # Already dead — nothing to do
+
+    # Atomically signal the entire process group
+    _signal_process_group(pgid, pid, signal.SIGTERM, label)
 
     for _ in range(10):
         time.sleep(1)
-        if not any(_process_alive(p) for p in all_pids):
+        if not _process_alive(pid):
             return
 
-    for target in all_pids:
+    # Escalate to SIGKILL on the process group
+    _signal_process_group(pgid, pid, signal.SIGKILL, label)
+    logger.warning(f"Sent SIGKILL to {label} (PID: {pid})")
+
+
+def _signal_process_group(pgid: int, pid: int, sig: int, label: str) -> None:
+    """Send a signal to the process group, falling back to single-PID kill."""
+    try:
+        os.killpg(pgid, sig)
+    except AttributeError:
+        # os.killpg not available (Windows) — fall back to single-PID kill
         try:
-            os.kill(target, signal.SIGKILL)
+            os.kill(pid, sig)
         except OSError:
             pass
-    logger.warning(f"Sent SIGKILL to {label} (PID: {pid})")
+    except (ProcessLookupError, PermissionError):
+        pass  # Group already gone or no permission — not actionable
 
 
 def _status_single(
