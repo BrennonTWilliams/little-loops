@@ -10,6 +10,7 @@ discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [parallel, feature-branches, cleanup, worktrees, lifecycle, dx]
 relates_to: [BUG-2172, ENH-2175]
+blocked_by: [ENH-2183]
 ---
 
 # ENH-2181: Prune merged local feature branches (feature-branch lifecycle/cleanup)
@@ -78,6 +79,15 @@ development loop, the missing cleanup half makes the local branch list unusable.
 - New prune surface (exact spelling decided during impl): a `ll-parallel`
   flag or a `/ll:cleanup-worktrees` mode, plus `--dry-run`.
 
+## Implementation Steps
+
+1. Add opt-in prune surface — a `--prune-merged-branches` flag on `ll-parallel` or a `--branches` mode on `/ll:cleanup-worktrees`; pick the surface that fits the existing CLI shape
+2. Implement `git branch --merged <base_branch>` filtered to the `feature/` prefix as the primary merged-branch detector; guard against deleting the current branch or base branch
+3. Add optional `gh pr view <branch> --json state` cross-check when `gh` is available to handle squash/rebase merges that `--merged` misses; document as a known limitation when `gh` is absent
+4. Add `--dry-run` mode that prints candidates without deleting
+5. Write tests: merged feature branch pruned; unmerged branch retained; `parallel/*` branches unaffected; dry-run deletes nothing
+6. Document feature-branch lifecycle and prune instructions in `docs/guides/SPRINT_GUIDE.md` and the ENH-2174 toggle description
+
 ## Acceptance Criteria
 
 1. The prune deletes local `feature/<id>-<slug>` branches that are merged into
@@ -124,6 +134,12 @@ development loop, the missing cleanup half makes the local branch list unusable.
 - `scripts/tests/test_worker_pool.py` / cleanup tests — merged vs unmerged
   feature-branch handling, `parallel/*` untouched, dry-run is a no-op
 
+### Dependent Files (Callers/Importers)
+- N/A — new opt-in prune surface; nothing currently calls it
+
+### Configuration
+- `.ll/ll-config.json` `parallel.base_branch` key (from BUG-2172) — merge target the prune checks against
+
 ### Documentation
 - `docs/guides/SPRINT_GUIDE.md` — feature-branch lifecycle/cleanup section
 - ENH-2174 toggle description — note that feature branches are retained and how to prune
@@ -142,4 +158,18 @@ development loop, the missing cleanup half makes the local branch list unusable.
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
+- `/ll:format-issue` - 2026-06-15T20:17:38 - `c323cac1-9bc1-4447-9eba-2b6d36af7dfc.jsonl`
 - `/ll:capture-issue` - 2026-06-15 - added to EPIC-2171 (feature-branch lifecycle/cleanup gap identified during EPIC review)
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): [ENH-2177] owns the top-level "Feature-branch / PR-based workflow" end-to-end section in `docs/guides/SPRINT_GUIDE.md`. This issue should append a clearly delimited `### Cleaning up merged feature branches` subsection within that section rather than authoring the section independently. Sequence ENH-2181's `SPRINT_GUIDE.md` edits after ENH-2177's section is committed to avoid duplicate or conflicting prose.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Both this issue and [ENH-2182] independently implement `gh pr view --json state` calls to determine whether a feature branch's PR is merged — ENH-2181 for pruning, ENH-2182 for status promotion to `done`. Consider extracting a shared `is_pr_merged(branch)` utility (e.g., `parallel/github_utils.py`) to avoid logic duplication. Additionally, ENH-2182's `ll-sync` reconciliation (which marks issues `done` on PR merge) can serve as a higher-confidence merged signal: an issue with `status: done` and a recorded `pr_url:` is safe to prune without an independent `gh` call.

@@ -9,6 +9,7 @@ captured_at: '2026-06-15T16:51:50Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [parallel, configure, init, feature-branches, dx, discoverability]
+depends_on: [ENH-2175]
 ---
 
 # ENH-2174: Surface use_feature_branches in /ll:configure and init templates
@@ -99,5 +100,12 @@ development workflow (branch-per-issue / PR-based), discoverability matters.
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T16:57:30 - `bbf7e27c-ea9f-4af6-b201-de02c8065217.jsonl`
 - `/ll:capture-issue` - 2026-06-15T16:51:50Z - `5b1dd63b-714f-41e9-b9c2-f55f8ebd0e98.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): [ENH-2176] is the canonical source for the coverage-boundary prose explaining that `use_feature_branches` does not apply to single-issue / contention sub-waves. The toggle description this issue adds to `/ll:configure` and config templates should reference or quote ENH-2176's `docs/guides/SPRINT_GUIDE.md` coverage-boundary paragraph rather than authoring independent text. Sequence ENH-2174's description wording after ENH-2176's SPRINT_GUIDE paragraph is finalized to keep the two surfaces consistent.

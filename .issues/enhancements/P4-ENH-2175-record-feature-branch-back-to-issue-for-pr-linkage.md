@@ -9,6 +9,7 @@ captured_at: '2026-06-15T16:51:50Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [parallel, feature-branches, issues, traceability, open-pr]
+blocked_by: [BUG-2172]
 ---
 
 # ENH-2175: Record the feature branch (and PR URL) back to the issue for PR linkage
@@ -121,5 +122,6 @@ branch implements ENH-123?" requires guessing the slug or grepping git refs.
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:33:22 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T16:58:05 - `bffefeb0-fbda-400c-89f6-f9e3c1696323.jsonl`
 - `/ll:capture-issue` - 2026-06-15T16:51:50Z - `5b1dd63b-714f-41e9-b9c2-f55f8ebd0e98.jsonl`

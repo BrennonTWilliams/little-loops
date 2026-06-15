@@ -9,6 +9,7 @@ captured_at: '2026-06-15T16:51:50Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [parallel, sprint, cli, feature-branches, dx]
+depends_on: [BUG-2172]
 ---
 
 # ENH-2173: Add --feature-branches CLI override to ll-parallel / ll-sprint
@@ -120,5 +121,6 @@ Mirror the existing override pattern used for `stream_output` / `show_model`
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T16:57:39 - `c31adb30-3c6b-4940-9ce0-5ccae335bee1.jsonl`
 - `/ll:capture-issue` - 2026-06-15T16:51:50Z - `5b1dd63b-714f-41e9-b9c2-f55f8ebd0e98.jsonl`

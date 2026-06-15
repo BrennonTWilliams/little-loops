@@ -29,6 +29,13 @@ This was noted as "Out of Scope" in EPIC-2171's initial capture; it is promoted
 here to a tracked child because it is the single biggest gap between the flag's
 advertised behavior and what users observe.
 
+## Motivation
+
+This enhancement would:
+- Make `use_feature_branches` a first-class toggle: users who set it expect all sprint issues to land on feature branches, but dependency chains routinely produce single-issue waves that silently bypass the orchestrator — yielding inconsistent branch coverage with no diagnostic signal.
+- Remove the silent no-op surprise: a flag whose effect depends on accidental wave-packing is not trustworthy; Option B delivers honest minimum behavior without touching the hot in-place path.
+- Close the gap between advertised and actual behavior identified in EPIC-2171 without blocking the EPIC.
+
 ## Current Behavior
 
 - `cli/sprint/run.py:437` — `if len(wave) == 1 or is_contention_subwave:` runs
@@ -84,6 +91,26 @@ documented at the toggle surfaces. No silent no-op.
 4. Tests cover Option B: a warning is emitted when `use_feature_branches` is set
    and a wave runs in-place; no warning when the flag is unset.
 
+## Scope Boundaries
+
+- **In scope**: Warning emission (once per sprint run) when `use_feature_branches`
+  is set and a wave runs in-place — covers both single-issue waves and contention
+  sub-waves, which share the same path. Documentation of the limitation at toggle
+  surfaces in `docs/guides/SPRINT_GUIDE.md` (coordinate with ENH-2174).
+- **Out of scope**: Routing single-issue waves through a feature-branch-aware
+  worktree path (Option A — deferred as a follow-up enhancement). `ll-auto`
+  (sequential, in-place by design) is explicitly excluded per EPIC-2171.
+
+## Success Metrics
+
+- Warning fires exactly once per in-place sprint run (deduplicated; not per-wave)
+  when `use_feature_branches` is set.
+- No warning fires when `use_feature_branches` is unset or absent.
+- `docs/guides/SPRINT_GUIDE.md` contains a documented coverage-boundary paragraph
+  (coordinate with ENH-2174 description text).
+- All new tests pass; no regression on the multi-issue `else` branch
+  (`cli/sprint/run.py:489`).
+
 ## Integration Map
 
 ### Files to Modify
@@ -104,6 +131,30 @@ documented at the toggle surfaces. No silent no-op.
 ### Tests
 - `scripts/tests/` sprint run tests — single-issue wave behavior under the flag
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/sprint/run.py` is invoked by `ll-sprint run`; the
+  warning change is self-contained within this file and does not affect callers.
+- `scripts/little_loops/cli/sprint/config.py` (or equivalent) — provides
+  `config.parallel.use_feature_branches`; read-only, no changes needed.
+
+### Documentation
+- `docs/guides/SPRINT_GUIDE.md` — add coverage-boundary paragraph (also listed in
+  Files to Modify; ENH-2174 must coordinate toggle-surface wording).
+
+### Configuration
+- N/A — no new config keys; `parallel.use_feature_branches` already exists.
+
+## Implementation Steps
+
+1. Add a guarded one-time warning in `scripts/little_loops/cli/sprint/run.py` at the single-issue / contention sub-wave branch (~line 437): when `config.parallel.use_feature_branches` is set and the wave runs in-place, emit a warning naming the current branch (use a flag to suppress repeats within the same sprint run).
+2. Update `docs/guides/SPRINT_GUIDE.md` to document the coverage boundary at the toggle surface; coordinate wording with ENH-2174's description text.
+3. Add tests in `scripts/tests/` covering both Option B cases: warning emitted when flag is set + in-place wave; no warning when flag is unset.
+4. Verify no regression on the multi-issue `else` branch (`cli/sprint/run.py:489`) — flag must still honor `use_feature_branches` normally there.
+
+## API/Interface
+
+N/A — No public API changes. The warning is emitted to the existing sprint logger only; no new CLI flags, config keys, or Python API surface are introduced.
+
 ## Impact
 
 - **Priority**: P3 — directly undermines the EPIC's "first-class toggle" goal;
@@ -117,5 +168,14 @@ documented at the toggle surfaces. No silent no-op.
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
+- `/ll:format-issue` - 2026-06-15T20:12:41 - `50c8117c-6f1e-4df2-8979-885c3ae158c7.jsonl`
+- `/ll:format-issue` - 2026-06-15T20:10:07 - `50c8117c-6f1e-4df2-8979-885c3ae158c7.jsonl`
 - decision - 2026-06-15 - Option B (warn + document) selected; Option A (extend coverage to single-issue waves) deferred as a follow-up.
 - `/ll:capture-issue` - 2026-06-15T17:30:00Z - promoted from EPIC-2171 Out of Scope
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2173's `--feature-branches` CLI flag flows into `create_parallel_config()` on the multi-issue orchestrator path (~line 489) but does **not** update `config.parallel.use_feature_branches` as read by the single-issue / contention sub-wave path (~line 437). This issue's warning check must resolve `use_feature_branches` from the CLI-merged value — not the raw sprint config — to avoid silently not firing when the flag is set via CLI rather than config. Either read the resolved value from the `ParallelConfig` produced by `create_parallel_config()`, or share a `resolve_feature_branches_flag(args, config)` helper introduced in [ENH-2173].

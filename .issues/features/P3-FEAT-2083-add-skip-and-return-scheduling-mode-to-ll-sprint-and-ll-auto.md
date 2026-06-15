@@ -3,7 +3,7 @@ id: FEAT-2083
 title: Add skip-and-return scheduling mode to ll-sprint and ll-auto
 type: FEAT
 priority: P3
-status: open
+status: cancelled
 captured_at: '2026-06-10T18:12:09Z'
 discovered_date: '2026-06-10'
 discovered_by: capture-issue
@@ -90,7 +90,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - [ ] `ll-sprint --skip-on-block` defers blocked issues and continues with unblocked ones
 - [ ] `ll-auto --skip-on-block` applies the same deferral behavior
-- [ ] Deferred queue persists to `${run_dir}/deferred.json`
+- [ ] Deferred queue persists via existing state files (sprint: `.sprint-state.json` via `SprintState.skipped_blocked_issues`; auto: `.ll/ll-state.json` via new `ProcessingState.deferred_issues` field)
 - [ ] Deferred issues are retried after initial pass completes
 - [ ] Sprint summary includes skip/return event log
 
@@ -103,7 +103,7 @@ ll-sprint [OPTIONS] [--skip-on-block]
 ll-auto [OPTIONS] [--skip-on-block]
 ```
 
-- `--skip-on-block`: Enable runtime deferral of blocked/ceiling-exceeded issues; deferred queue is persisted to `${run_dir}/deferred.json`
+- `--skip-on-block`: Enable runtime deferral of blocked/ceiling-exceeded issues; deferred queue is persisted via existing state files (`.sprint-state.json` for sprint, `.ll/ll-state.json` for auto)
 
 ## Integration Map
 
@@ -169,7 +169,26 @@ _Added by `/ll:confidence-check` on 2026-06-15_
 - The `${run_dir}/deferred.json` persistence target uses a `run_dir` convention that exists for loops but is not currently established for `ll-sprint` — sprint currently uses `.sprint-state.json` at the project root; alignment between these two persistence approaches needs a decision.
 - `Dependent Files` and `Similar Patterns` both have TBD entries; caller enumeration and existing queue patterns are unresearched.
 
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on 2026-06-15_ — **NO-GO (SKIP)**
+
+**Deciding Factor**: Active P2 deprecation of `AutoManager` (FEAT-2001/FEAT-2002, both open and unblocked) makes implementing the ll-auto side strategically throwaway; the correct sequencing is to wait until the FSM migration lands and implement skip-and-return natively in the loop DSL, where defer-and-requeue is already first-class.
+
+### Key Arguments For
+- Blocked-issue signal pipeline is already 80% complete: `output_parsing.py` emits `is_blocked=True`, `issue_manager.py` returns `IssueProcessingResult(was_blocked=True)`, `SprintState.skipped_blocked_issues` captures it — only the retry loop is missing
+- The parallel orchestrator already proves the pattern in production via `ParallelOrchestrator._deferred_issues` + `_requeue_deferred_issues()` (`parallel/orchestrator.py` lines 127–128, 1001–1019)
+
+### Key Arguments Against
+- FEAT-2001 (P2, open) adds a `DeprecationWarning` to `AutoManager.run()`; FEAT-2002 (P2, open) removes it from docs entirely — every line added to `AutoManager` under this issue is on a countdown timer
+- `AutoManager._process_issue()` line 1333 calls `mark_attempted()` *before* processing, permanently excluding blocked issues from re-entering the queue; fixing this requires rewriting the infinite-loop guard against ~3,448 lines of `test_issue_manager.py`
+- FEAT-1899 (ll-sprint FSM wave driver) will substantially rewrite `_cmd_sprint_run()` — any retry pass bolted onto the current imperative loop must be re-ported
+
+### Rationale
+The detection infrastructure is largely in place, but FEAT-2001/FEAT-2002 (both P2, open, unblocked) explicitly target `AutoManager.run()` for deprecation — making the ll-auto half of this feature immediately throwaway. The sprint side faces the same timing risk from FEAT-1899. The correct sequencing is to implement skip-and-return after the FSM migration lands, where the defer-and-requeue pattern is already natively supported.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-15T18:19:58 - `ee86154c-9df4-437c-81ee-4e4135663db8.jsonl`
 - `/ll:refine-issue` - 2026-06-15T18:11:11 - `90d21ee2-6a15-4d41-85b3-bed641ff48d8.jsonl`
 - `/ll:format-issue` - 2026-06-15T17:55:05 - `cce508de-9bd4-4547-8344-cb7414b4c24f.jsonl`
 - `/ll:confidence-check` - 2026-06-15T00:00:00Z - `f2f9e529-e125-467e-97c0-8cd3031b1b3e.jsonl`
