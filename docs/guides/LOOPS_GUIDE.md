@@ -646,6 +646,8 @@ check_stall:
 | `ll-loop install <name>` | Copy a built-in loop to `.loops/` for customization |
 | `ll-loop monitor <name>` | Attach to a running loop and render FSM state live |
 | `ll-loop next-loop` | Suggest next loop(s) from execution history |
+| `ll-loop diagnose-evaluators <name>` | Scan evaluator history for non-discriminating states (Bernoulli variance `p*(1-p)` below 0.05); exits 1 if any flagged |
+| `ll-loop calibrate-budget <name>` | Check whether raising `max_iterations` will earn its token cost; reports `⚠ WARN` when evaluator variance is too low |
 
 Common run flags: `--dry-run` (plan only), `-n <N>` (override `max_iterations`), `--queue` (wait on scope conflicts), `-b` (background), `-f` (stream transitions), `--show-diagrams` (live FSM diagram; add `--clear` for a pinned dashboard), `--delay <s>` (sleep between iterations), `--context KEY=VALUE` (override context, repeatable), `--no-llm` (deterministic evaluators only), `--program-md PATH` (load a steering directive; see [program.md convention](../reference/program-md.md)). Run `ll-loop run --help` for the full list.
 
@@ -930,6 +932,25 @@ Branch with ternary syntax — `check_ready?run_impl:done` gives `check_ready` a
 **"No state found" on resume.** The loop already completed or was never started — completed loops have no resumable state. Check `ll-loop status <name>`.
 
 **Inspecting a run after the fact.** Every run archives state, events, and telemetry to `.loops/.history/<timestamp>-<loop-name>/`. Use `ll-loop history <name>` to list runs, `ll-loop history <name> <run_id> --verbose` for LLM call details, and `ll-loop status <name> --json` for live log/event file paths.
+
+### Evaluator Health
+
+Passing `ll-loop validate` (MR-1) confirms a non-LLM evaluator is _present_ — it does not confirm the evaluator is _discriminating_. An evaluator that always returns the same verdict (e.g., always `yes`) satisfies MR-1 but provides no useful signal.
+
+**`ll-loop diagnose-evaluators <name>`** — run this after MR-1 passes to validate that each evaluator actually discriminates across run history. The command computes Bernoulli variance `p*(1-p)` over ≥10 runs per evaluator state. Variance below 0.05 flags the evaluator as toothless — it is not measuring anything useful, and the per-state output includes a recommendation for how to fix it (broaden the judge prompt, tighten the exit-code command, etc.). See the [CLI reference](../reference/CLI.md) for full flag and exit-code documentation.
+
+**`ll-loop calibrate-budget <name>`** — run this before raising `max_iterations` to check whether additional iterations will actually earn their token cost. The command reports `⚠ WARN` for evaluators with low variance and `✓ OK` for healthy ones:
+
+```
+Evaluator: check_quality (llm_structured)
+  Variance p*(1-p): 0.02   ⚠ WARN: below 0.05 threshold — fix evaluator before increasing max_iterations
+Evaluator: check_exit (exit_code)
+  Variance p*(1-p): 0.23   ✓ OK
+```
+
+`check_quality` nearly always returns the same verdict, so the loop cannot learn from its signal regardless of iteration count. `check_exit` discriminates well — more iterations here earn their cost. See the [CLI reference](../reference/CLI.md) for full output format documentation.
+
+Fix toothless evaluators _before_ raising `max_iterations`, or the extra budget is wasted.
 
 ## Further Reading
 
