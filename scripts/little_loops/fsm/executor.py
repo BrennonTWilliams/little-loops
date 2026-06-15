@@ -11,9 +11,11 @@ This module provides the execution engine that runs FSM loops:
 from __future__ import annotations
 
 import json
+import os
 import random
+import selectors
+import signal
 import subprocess
-import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -51,6 +53,7 @@ from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.session_log import get_current_session_jsonl
 from little_loops.subprocess_utils import (
     UsageCallback,
+    _kill_process_group,
     run_claude_command,
 )
 
@@ -1197,15 +1200,8 @@ class FSMExecutor:
     ) -> ActionResult:
         """Run a subprocess directly and return ActionResult.
 
-        Follows the same Popen + stderr-drain-thread pattern as DefaultActionRunner.
-
-        Args:
-            cmd: Command and arguments to execute
-            timeout: Timeout in seconds
-            on_output_line: Optional callback for each stdout line
-
-        Returns:
-            ActionResult with output, stderr, exit_code, duration_ms
+        Uses selector-based I/O with wall-clock timeout enforcement so the
+        timeout is honoured even when the process hangs before producing output.
         """
         start = _now_ms()
         process = subprocess.Popen(
@@ -1215,36 +1211,58 @@ class FSMExecutor:
             text=True,
         )
         self._current_process = process
+        deadline = time.time() + timeout
+
         output_chunks: list[str] = []
         stderr_chunks: list[str] = []
 
-        def _drain_stderr() -> None:
-            assert process.stderr is not None
-            for line in process.stderr:
-                stderr_chunks.append(line)
+        sel = selectors.DefaultSelector()
+        if process.stdout is not None:
+            sel.register(process.stdout, selectors.EVENT_READ, data="stdout")
+        if process.stderr is not None:
+            sel.register(process.stderr, selectors.EVENT_READ, data="stderr")
 
-        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-        stderr_thread.start()
-
+        timed_out = False
         try:
-            for line in process.stdout:  # type: ignore[union-attr]
-                output_chunks.append(line)
-                if on_output_line:
-                    on_output_line(line.rstrip())
-            process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-            stderr_thread.join(timeout=5)
+            while sel.get_map():
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                poll_timeout = min(1.0, remaining)
+                ready = sel.select(timeout=poll_timeout)
+                if not ready:
+                    continue
+                for key, _mask in ready:
+                    line = key.fileobj.readline()  # type: ignore[union-attr]
+                    if line:
+                        if key.data == "stdout":
+                            output_chunks.append(line)
+                            if on_output_line:
+                                on_output_line(line.rstrip())
+                        else:
+                            stderr_chunks.append(line)
+                    else:
+                        sel.unregister(key.fileobj)
+        finally:
+            sel.close()
+            self._current_process = None
+
+        if timed_out:
+            _kill_process_group(process)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
             return ActionResult(
                 output="".join(output_chunks),
                 stderr="".join(stderr_chunks) or "MCP call timed out",
                 exit_code=124,
                 duration_ms=timeout * 1000,
             )
-        finally:
-            self._current_process = None
-        stderr_thread.join(timeout=5)
+
+        process.wait(timeout=5)
         return ActionResult(
             output="".join(output_chunks),
             stderr="".join(stderr_chunks),

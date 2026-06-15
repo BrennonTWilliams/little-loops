@@ -3853,37 +3853,71 @@ class TestBackoff:
 class TestDefaultActionRunnerProcessTracking:
     """Tests for DefaultActionRunner._current_process tracking (BUG-592)."""
 
-    def _make_mock_process(self, output_lines: list[str], exit_code: int = 0) -> MagicMock:
-        """Build a mock Popen process with the given stdout lines."""
-        mock_process = MagicMock()
-        mock_process.stdout = iter(output_lines)
-        mock_process.returncode = exit_code
-        mock_process.stderr.read.return_value = ""
-        return mock_process
+    @staticmethod
+    def _make_fileobj(lines: list[str] | None = None) -> MagicMock:
+        """Create a file-like mock supporting fileno() and readline() for selectors."""
+        fobj = MagicMock()
+        fobj.fileno.return_value = 42
+        if lines:
+            _iter = iter(lines)
+
+            def _readline() -> str:
+                try:
+                    return next(_iter)
+                except StopIteration:
+                    return ""
+            fobj.readline.side_effect = _readline
+        else:
+            fobj.readline.return_value = ""
+        return fobj
 
     def test_current_process_cleared_after_successful_run(self) -> None:
         """_current_process is None after run() completes normally."""
         runner = DefaultActionRunner()
-        mock_process = self._make_mock_process(["output\n"])
+        mock_process = MagicMock()
+        mock_process.stdout = self._make_fileobj(["output\n"])
+        mock_process.stderr = self._make_fileobj([])
+        mock_process.returncode = 0
+        mock_process.pid = 1
+        mock_process.wait.return_value = None
 
-        with patch("subprocess.Popen", return_value=mock_process):
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector") as mock_sel_cls,
+        ):
+            mock_sel = MagicMock()
+            # First select returns stdout as ready; second returns empty (EOF)
+            ready_key = MagicMock()
+            ready_key.fileobj = mock_process.stdout
+            ready_key.data = "stdout"
+            ready_key.events = 1
+            mock_sel.select.side_effect = [[(ready_key, 1)], []]
+            mock_sel.get_map.side_effect = [{"k": "v"}, {}]
+            mock_sel_cls.return_value = mock_sel
             runner.run("echo hello", timeout=10, is_slash_command=False)
 
         assert runner._current_process is None
 
     def test_current_process_cleared_after_timeout(self) -> None:
         """_current_process is None even when action times out."""
-        import subprocess as sp
-
         runner = DefaultActionRunner()
         mock_process = MagicMock()
-        mock_process.stdout = iter([])
+        mock_process.stdout = self._make_fileobj([])
+        mock_process.stderr = self._make_fileobj([])
         mock_process.returncode = -9
-        # First wait (with timeout) raises TimeoutExpired; second wait (bare) succeeds
-        mock_process.wait.side_effect = [sp.TimeoutExpired("cmd", 1), None]
+        mock_process.pid = 1
+        mock_process.wait.return_value = None
 
-        with patch("subprocess.Popen", return_value=mock_process):
-            result = runner.run("slow-cmd", timeout=1, is_slash_command=False)
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector") as mock_sel_cls,
+            patch("little_loops.fsm.runners._kill_process_group"),
+        ):
+            mock_sel = MagicMock()
+            mock_sel.get_map.return_value = {"k": "v"}  # non-empty → loop runs
+            mock_sel.select.return_value = []  # no data → timeout on deadline check
+            mock_sel_cls.return_value = mock_sel
+            result = runner.run("slow-cmd", timeout=0, is_slash_command=False)
 
         assert runner._current_process is None
         assert result.exit_code == 124
@@ -3952,6 +3986,24 @@ class TestFSMExecutorProcessTracking:
         )
         return FSMExecutor(fsm)
 
+    @staticmethod
+    def _make_fileobj(lines: list[str] | None = None) -> MagicMock:
+        """Create a file-like mock supporting fileno() and readline() for selectors."""
+        fobj = MagicMock()
+        fobj.fileno.return_value = 42
+        if lines:
+            _iter = iter(lines)
+
+            def _readline() -> str:
+                try:
+                    return next(_iter)
+                except StopIteration:
+                    return ""
+            fobj.readline.side_effect = _readline
+        else:
+            fobj.readline.return_value = ""
+        return fobj
+
     def test_current_process_initially_none(self) -> None:
         """_current_process is None before any subprocess is run."""
         executor = self._make_executor()
@@ -3961,26 +4013,48 @@ class TestFSMExecutorProcessTracking:
         """_current_process is None after _run_subprocess completes normally."""
         executor = self._make_executor()
         mock_process = MagicMock()
-        mock_process.stdout = iter(["output\n"])
+        mock_process.stdout = self._make_fileobj(["output\n"])
+        mock_process.stderr = self._make_fileobj([])
         mock_process.returncode = 0
+        mock_process.pid = 1
+        mock_process.wait.return_value = None
 
-        with patch("subprocess.Popen", return_value=mock_process):
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch("little_loops.fsm.executor.selectors.DefaultSelector") as mock_sel_cls,
+        ):
+            mock_sel = MagicMock()
+            ready_key = MagicMock()
+            ready_key.fileobj = mock_process.stdout
+            ready_key.data = "stdout"
+            ready_key.events = 1
+            mock_sel.select.side_effect = [[(ready_key, 1)], []]
+            mock_sel.get_map.side_effect = [{"k": "v"}, {}]
+            mock_sel_cls.return_value = mock_sel
             executor._run_subprocess(["echo", "hello"], timeout=10)
 
         assert executor._current_process is None
 
     def test_current_process_cleared_after_timeout(self) -> None:
         """_current_process is None even when _run_subprocess times out."""
-        import subprocess as sp
-
         executor = self._make_executor()
         mock_process = MagicMock()
-        mock_process.stdout = iter([])
+        mock_process.stdout = self._make_fileobj([])
+        mock_process.stderr = self._make_fileobj([])
         mock_process.returncode = -9
-        mock_process.wait.side_effect = [sp.TimeoutExpired("cmd", 1), None]
+        mock_process.pid = 1
+        mock_process.wait.return_value = None
 
-        with patch("subprocess.Popen", return_value=mock_process):
-            result = executor._run_subprocess(["slow-cmd"], timeout=1)
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch("little_loops.fsm.executor.selectors.DefaultSelector") as mock_sel_cls,
+            patch("little_loops.fsm.executor._kill_process_group"),
+        ):
+            mock_sel = MagicMock()
+            mock_sel.get_map.return_value = {"k": "v"}  # non-empty → loop runs
+            mock_sel.select.return_value = []  # no data → timeout
+            mock_sel_cls.return_value = mock_sel
+            result = executor._run_subprocess(["slow-cmd"], timeout=0)
 
         assert executor._current_process is None
         assert result.exit_code == 124

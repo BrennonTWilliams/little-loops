@@ -8,9 +8,11 @@ Provides the protocol and concrete implementations for action execution:
 
 from __future__ import annotations
 
+import os
+import selectors
+import signal
 import subprocess
 import sys
-import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -21,6 +23,7 @@ from little_loops.subprocess_utils import (
     DetailedUsageCallback,
     TokenUsage,
     UsageCallback,
+    _kill_process_group,
     run_claude_command,
 )
 
@@ -149,7 +152,12 @@ class DefaultActionRunner:
                 usage_events=collected_usage,
             )
 
-        # Shell command
+        # Shell command — selector-based I/O with wall-clock timeout enforcement.
+        # Uses selectors.DefaultSelector to read stdout and stderr concurrently
+        # with bounded polling (sel.select(timeout=1.0)), checking the wall-clock
+        # deadline before each read. This closes the timeout dead-zone in the old
+        # `for line in process.stdout` pattern which blocked indefinitely when a
+        # shell process hung before producing any output.
         cmd = ["bash", "-c", action]
         process = subprocess.Popen(
             cmd,
@@ -158,40 +166,65 @@ class DefaultActionRunner:
             text=True,
         )
         self._current_process = process
+        deadline = time.time() + timeout
+
         output_chunks: list[str] = []
         stderr_chunks: list[str] = []
 
-        def _drain_stderr() -> None:
-            assert process.stderr is not None
-            for line in process.stderr:
-                stderr_chunks.append(line)
+        sel = selectors.DefaultSelector()
+        if process.stdout is not None:
+            sel.register(process.stdout, selectors.EVENT_READ, data="stdout")
+        if process.stderr is not None:
+            sel.register(process.stderr, selectors.EVENT_READ, data="stderr")
 
-        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-        stderr_thread.start()
-
+        timed_out = False
         try:
-            for line in process.stdout:  # type: ignore[union-attr]
-                output_chunks.append(line)
-                if on_output_line:
-                    on_output_line(line.rstrip())
-            process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-            stderr_thread.join(timeout=5)
+            while sel.get_map():
+                # Bounded poll — never block longer than 1 second
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                poll_timeout = min(1.0, remaining)
+                ready = sel.select(timeout=poll_timeout)
+                if not ready:
+                    # No pipes ready within poll window — loop re-checks deadline
+                    continue
+                for key, _mask in ready:
+                    line = key.fileobj.readline()  # type: ignore[union-attr]
+                    if line:
+                        if key.data == "stdout":
+                            output_chunks.append(line)
+                            if on_output_line:
+                                on_output_line(line.rstrip())
+                        else:
+                            stderr_chunks.append(line)
+                    else:
+                        # EOF on this pipe — unregister it
+                        sel.unregister(key.fileobj)
+        finally:
+            sel.close()
+            self._current_process = None
+
+        if timed_out:
+            _kill_process_group(process)
+            # Drain any remaining output after the kill
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
             return ActionResult(
                 output="".join(output_chunks),
                 stderr="".join(stderr_chunks) or "Action timed out",
                 exit_code=124,
                 duration_ms=timeout * 1000,
             )
-        finally:
-            self._current_process = None
-        stderr_thread.join(timeout=5)
-        stderr = "".join(stderr_chunks)
+
+        process.wait(timeout=5)
         return ActionResult(
             output="".join(output_chunks),
-            stderr=stderr,
+            stderr="".join(stderr_chunks),
             exit_code=process.returncode,
             duration_ms=_now_ms() - start,
         )

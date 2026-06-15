@@ -14,6 +14,88 @@ from unittest.mock import MagicMock, patch
 from little_loops.fsm.executor import ActionResult, DefaultActionRunner, SimulationActionRunner
 
 
+class _MockFileObj:
+    """File-like object supporting fileno() and readline() for selector tests."""
+
+    def __init__(self, lines: list[str] | None = None):
+        self._lines = list(lines) if lines else []
+        self._pos = 0
+        self._closed = False
+
+    def fileno(self) -> int:
+        return id(self) % 65536
+
+    def readline(self) -> str:
+        if self._closed:
+            return ""
+        if self._pos < len(self._lines):
+            line = self._lines[self._pos]
+            self._pos += 1
+            return line
+        return ""  # EOF
+
+    def close(self) -> None:
+        self._closed = True
+
+
+def _make_selector_mock_process(
+    stdout_lines: list[str] | None = None,
+    stderr_lines: list[str] | None = None,
+    returncode: int = 0,
+) -> MagicMock:
+    """Create a mock Popen process compatible with the selector-based runner.
+
+    Returns a MagicMock whose stdout/stderr are _MockFileObj instances
+    that support fileno() and readline().
+    """
+    proc = MagicMock()
+    proc.stdout = _MockFileObj(stdout_lines or [])
+    proc.stderr = _MockFileObj(stderr_lines or [])
+    proc.returncode = returncode
+    proc.pid = 12345
+    proc.wait.return_value = None
+    proc.kill.return_value = None
+    return proc
+
+
+def _make_ready_selector(fileobj_map: dict) -> MagicMock:
+    """Create a mock DefaultSelector that simulates real selector behavior.
+
+    Returns all registered keys as EVENT_READ on every select() call.
+    The caller reads lines via key.fileobj.readline() and unregisters
+    pipes when they return EOF (empty string). This mirrors how the
+    real selector loop works.
+    """
+    sel = MagicMock()
+    _registered: dict = {}
+
+    def _register(fobj, events, data=None):
+        _registered[fobj] = (events, data)
+
+    def _unregister(fobj):
+        _registered.pop(fobj, None)
+
+    def _get_map():
+        return dict(_registered)
+
+    def _select(timeout=None):
+        result = []
+        for fobj, (events, data) in list(_registered.items()):
+            key = MagicMock()
+            key.fileobj = fobj
+            key.data = data
+            key.events = events
+            result.append((key, events))
+        return result
+
+    sel.register.side_effect = _register
+    sel.unregister.side_effect = _unregister
+    sel.get_map.side_effect = _get_map
+    sel.select.side_effect = _select
+    sel.close.return_value = None
+    return sel
+
+
 class TestSimulationActionRunnerScenarios:
     """Test all five predefined scenario patterns."""
 
@@ -129,89 +211,162 @@ class TestSimulationActionRunnerPromptResult:
 
 
 class TestDefaultActionRunnerShellPath:
-    """Test DefaultActionRunner executing shell commands via subprocess.Popen."""
+    """Test DefaultActionRunner executing shell commands via subprocess.Popen.
 
-    def _make_mock_process(
-        self,
-        stdout_lines: list[str],
-        stderr_lines: list[str],
-        returncode: int = 0,
-    ) -> MagicMock:
-        proc = MagicMock()
-        proc.stdout = iter(stdout_lines)
-        proc.stderr = iter(stderr_lines)
-        proc.returncode = returncode
-        proc.wait.return_value = None
-        proc.kill.return_value = None
-        return proc
+    Uses selector-based I/O (mirrors the production code after the
+    timeout dead-zone fix). Tests patch both subprocess.Popen and
+    selectors.DefaultSelector to control pipe I/O and timeout behavior.
+    """
 
     def test_on_output_line_called_for_each_line(self) -> None:
         lines_received: list[str] = []
-        proc = self._make_mock_process(["line1\n", "line2\n"], [])
-        runner = DefaultActionRunner()
+        proc = _make_selector_mock_process(
+            stdout_lines=["line1\n", "line2\n"],
+        )
+        sel = _make_ready_selector({})
 
-        with patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+        ):
+            runner = DefaultActionRunner()
             runner.run("echo hi", 30, False, on_output_line=lines_received.append)
 
         assert "line1" in lines_received
         assert "line2" in lines_received
 
     def test_exit_code_propagated(self) -> None:
-        proc = self._make_mock_process([], [], returncode=42)
-        runner = DefaultActionRunner()
+        proc = _make_selector_mock_process(returncode=42)
+        sel = _make_ready_selector({})
 
-        with patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+        ):
+            runner = DefaultActionRunner()
             result = runner.run("exit 42", 30, False)
 
         assert result.exit_code == 42
 
     def test_stdout_captured(self) -> None:
-        proc = self._make_mock_process(["hello\n", "world\n"], [])
-        runner = DefaultActionRunner()
+        proc = _make_selector_mock_process(
+            stdout_lines=["hello\n", "world\n"],
+        )
+        sel = _make_ready_selector({})
 
-        with patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+        ):
+            runner = DefaultActionRunner()
             result = runner.run("echo", 30, False)
 
         assert "hello\n" in result.output
         assert "world\n" in result.output
 
     def test_stderr_captured(self) -> None:
-        proc = self._make_mock_process([], ["err line\n"], returncode=1)
-        runner = DefaultActionRunner()
+        proc = _make_selector_mock_process(
+            stderr_lines=["err line\n"],
+            returncode=1,
+        )
+        sel = _make_ready_selector({})
 
-        with patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+        ):
+            runner = DefaultActionRunner()
             result = runner.run("cmd", 30, False)
 
         assert "err line" in result.stderr
 
     def test_timeout_returns_exit_code_124(self) -> None:
-        proc = MagicMock()
-        proc.stdout = iter([])
-        proc.stderr = iter([])
-        proc.returncode = -9
-        # First wait() (with timeout) raises; second wait() (in except) succeeds
-        proc.wait.side_effect = [subprocess.TimeoutExpired("cmd", 5), None]
-        proc.kill.return_value = None
+        """Timeout fires when wall-clock deadline passes before any data is read."""
+        proc = _make_selector_mock_process()
+        sel = MagicMock()
+        sel.get_map.return_value = {"fake_key": "fake_val"}  # never empty → loop continues
+        sel.select.return_value = []  # no data ever ready
+        sel.close.return_value = None
+        sel.register.return_value = None
+
         runner = DefaultActionRunner()
 
-        with patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc):
-            result = runner.run("sleep 100", 5, False)
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.fsm.runners._kill_process_group") as mock_killpg,
+        ):
+            result = runner.run("sleep 100", 0, False)  # timeout=0 → immediate deadline
 
         assert result.exit_code == 124
+        assert "timed out" in result.stderr.lower()
+        mock_killpg.assert_called_once_with(proc)
 
     def test_timeout_stderr_contains_message(self) -> None:
-        proc = MagicMock()
-        proc.stdout = iter([])
-        proc.stderr = iter([])
-        # First wait() raises; second wait() in except block succeeds
-        proc.wait.side_effect = [subprocess.TimeoutExpired("cmd", 5), None]
-        proc.kill.return_value = None
+        """Timeout path produces a meaningful stderr message."""
+        proc = _make_selector_mock_process()
+        sel = MagicMock()
+        sel.get_map.return_value = {"k": "v"}
+        sel.select.return_value = []
+        sel.close.return_value = None
+        sel.register.return_value = None
+
         runner = DefaultActionRunner()
 
-        with patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc):
-            result = runner.run("sleep 100", 5, False)
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.fsm.runners._kill_process_group"),
+        ):
+            result = runner.run("sleep 100", 0, False)
 
-        assert "timed out" in result.stderr.lower() or result.exit_code == 124
+        assert result.exit_code == 124
+        assert "timed out" in result.stderr.lower()
+
+    def test_hanging_process_timeout_fires_during_read(self) -> None:
+        """Timeout fires even when selector returns no ready pipes.
+
+        Simulates a process that registers pipes but never produces output.
+        The wall-clock deadline passes and the timeout path is taken.
+        """
+        proc = _make_selector_mock_process()
+        sel = MagicMock()
+        # get_map() non-empty → loop body runs; select() empty → no data
+        sel.get_map.return_value = {"pipe": "data"}
+        sel.select.return_value = []
+        sel.close.return_value = None
+        sel.register.return_value = None
+
+        runner = DefaultActionRunner()
+
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.fsm.runners._kill_process_group") as mock_killpg,
+        ):
+            result = runner.run("hang forever", 0, False)
+
+        assert result.exit_code == 124
+        mock_killpg.assert_called_once_with(proc)
+
+    def test_stderr_captured_when_stdout_empty(self) -> None:
+        """Stderr output is captured correctly when stdout produces nothing."""
+        proc = _make_selector_mock_process(
+            stderr_lines=["error1\n", "error2\n"],
+            returncode=1,
+        )
+        sel = _make_ready_selector({})
+
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+        ):
+            runner = DefaultActionRunner()
+            result = runner.run("failing-cmd", 30, False)
+
+        assert "error1" in result.stderr
+        assert "error2" in result.stderr
+        assert result.exit_code == 1
 
 
 class TestDefaultActionRunnerSlashPath:
