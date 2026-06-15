@@ -6,8 +6,15 @@ status: open
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 captured_at: '2026-06-15T21:55:27Z'
-relates_to: [ENH-2161]
+relates_to:
+- ENH-2161
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # ENH-2194: `from:` Stubs Without `initial`/`states` Hidden from `ll-loop list --internal`
@@ -92,6 +99,9 @@ Decided by `/ll:decide-issue` on 2026-06-15.
 - [ ] `is_runnable_loop()` returns `True` for a `from:` stub that resolves to a valid FSM after inheritance, `False` if the stub's `from:` chain is broken
 - [ ] `test_fsm_validation.py` covers the new behavior: a `from:` stub without own `initial`/`states` returns `True` from `is_runnable_loop()` when the parent provides them
 - [ ] `test_ll_loop_commands.py` `TestLoopListVisibilityFilter` verifies that a pure context-override stub with `visibility: internal` appears under `--internal` and is absent from default listing
+- [ ] `test_doc_counts.py` `TestIsRunnableLoop` gains 2 new test methods for the `from:` stub shape (bare stub and stub-with-extras)
+- [ ] `README.md` loop count updated from 89 to 90 (confirmed via `ll-verify-docs` after fix)
+- [ ] `test_builtin_loops.py` `TestBuiltinLoopFiles` suite still passes with `deep-research-arxiv` entering the `builtin_loops` fixture set
 
 ## Success Metrics
 
@@ -127,8 +137,16 @@ N/A — No public API changes. The fix modifies `is_runnable_loop()` in `scripts
 - `scripts/tests/test_fsm_validation.py` — add test: `from:` stub without own `initial`/`states` returns `True` from `is_runnable_loop()` when parent provides them
 - `scripts/tests/test_ll_loop_commands.py` — add to `TestLoopListVisibilityFilter`: pure context-override stub with `visibility: internal` appears under `--internal` and is absent from default listing
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_doc_counts.py` — existing `TestIsRunnableLoop` class (line 79): add 2 new methods for `from:` stub shape; follow inline `tmp_path` pattern from `test_missing_initial_returns_false` (line 100); stub without own `initial`/`states` returns True; stub with extra fields (`description`/`context`) but no `initial`/`states` also returns True
+- `scripts/tests/test_builtin_loops.py` — `TestBuiltinLoopFiles.builtin_loops` fixture (line 30) calls `is_runnable_loop()` over `BUILTIN_LOOPS_DIR.rglob("*.yaml")`; after fix `deep-research-arxiv.yaml` enters the fixture set and is exercised by `test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`, and `test_all_have_description_field`; verify these pass (agent analysis: `load_and_validate` already handles stubs via `resolve_inheritance`; stub has `description:` present; safe but must be confirmed)
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `README.md` (line 163) — `"89 FSM loops"` count increments to 90 when `deep-research-arxiv.yaml` transitions to `is_runnable_loop() = True`; `ll-verify-docs` will report a mismatch after the fix; update the count as part of implementation
+- `docs/guides/LOOPS_GUIDE.md` (line 888, `## Loop Template Inheritance via from:`) — states "hidden from `ll-loop list` (they omit `initial:`, so they aren't runnable)"; after fix this only applies to `lib/` files — non-`lib/` stubs with `visibility: internal` are runnable and visible under `--internal`; update to distinguish `lib/` hiding (directory-based, no `initial` even post-inheritance) from `visibility: internal` hiding (metadata-based)
+- `docs/generalized-fsm-loop.md` (line 440, Constraints block) — states "`is_runnable_loop()` checks `name`, `initial`, and `flow` are all present"; after fix this also covers inherited `initial`/`states` from `from:` chain; update to reflect that `from:` stubs whose parent chain supplies `initial`/`states` also qualify as runnable
 
 ### Configuration
 - N/A
@@ -152,7 +170,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Effort**: Small — Option A is a ~10-line change in one function plus two test additions.
 - **Risk**: Low — `is_runnable_loop()` is called only during listing and doc-count verification; the inheritance resolution path it would add is already well-tested.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+4. Update `scripts/tests/test_doc_counts.py` — add 2 new test methods to `TestIsRunnableLoop`: one for a bare `from:` stub (`name + from:`, no `initial`, no `states`), one for a stub with `description`/`context` but still no `initial`/`states`; use inline `tmp_path` pattern (see `test_missing_initial_returns_false` at line 100)
+5. Update `README.md` line 163 — increment `"89 FSM loops"` to `"90 FSM loops"` (confirm exact count with `ll-verify-docs` after the fix; may differ if other stubs exist)
+6. Update `docs/guides/LOOPS_GUIDE.md` line 888 — clarify that `lib/` files are hidden by directory-based inheritance (parent chain still lacks `initial`), while non-`lib/` context-override stubs with `visibility: internal` are now runnable and appear under `--internal`; the two hiding mechanisms are distinct post-fix
+7. Update `docs/generalized-fsm-loop.md` line 440 — extend the runnability rule: "`from:` stubs are checked post-inheritance; a stub whose parent chain supplies `initial`/`states`/`flow` also qualifies as runnable"
+8. Run `test_builtin_loops.py` and confirm `TestBuiltinLoopFiles` suite passes with `deep-research-arxiv` in the fixture set
+
 ## Session Log
+- `/ll:wire-issue` - 2026-06-15T22:34:22 - `402fe244-4ba0-4578-8a76-dbe81c63f5c4.jsonl`
 - `/ll:decide-issue` - 2026-06-15T22:15:12 - `b1d17ad8-dc9f-4eae-9b2e-e90be9fcd350.jsonl`
 - `/ll:refine-issue` - 2026-06-15T22:11:41 - `10a24057-b22d-4d1f-8907-08b18272ac1e.jsonl`
 - `/ll:format-issue` - 2026-06-15T22:01:05 - `03c14e80-681d-442d-8c26-164fa44dd1da.jsonl`
