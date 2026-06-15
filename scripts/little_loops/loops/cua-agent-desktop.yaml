@@ -55,14 +55,24 @@ states:
 
   validate_input:
     # Pre-flight gate: rejects empty description before any tool invocation.
+    # Uses a heredoc (single-quoted delimiter) to write the description to a
+    # temp file rather than embedding it in a [ -z "..." ] double-quoted string.
+    # Direct embedding causes bash to interpret markdown backtick code spans
+    # (e.g. `npm run dev`) as command substitutions, spawning processes that
+    # block the shell indefinitely until the sub-loop timeout fires.
     action_type: shell
     action: |
-      if [ -z "${context.description}" ]; then
+      cat > /tmp/_cua_input_check.txt << '__END_CUA_DESCRIPTION__'
+      ${context.description}
+      __END_CUA_DESCRIPTION__
+      if [ ! -s /tmp/_cua_input_check.txt ]; then
         echo "EMPTY_DESCRIPTION_ERROR"
+        rm -f /tmp/_cua_input_check.txt
         exit 1
       fi
+      rm -f /tmp/_cua_input_check.txt
       echo "INPUT_VALID"
-    timeout: 10
+    timeout: 5
     evaluate:
       type: output_contains
       pattern: "INPUT_VALID"
