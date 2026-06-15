@@ -41,6 +41,14 @@ unused in feature-branch mode.
 - End-of-run report (`orchestrator.py:1138`) lists branches as "PR-ready" even
   though they are local-only.
 
+## Steps to Reproduce
+
+1. Configure a project with `parallel.use_feature_branches: true` in `.ll/ll-config.json`
+2. Run `ll-parallel` against one or more issues
+3. After completion, read the end-of-run report — branches are listed as "PR-ready"
+4. Run `git branch -v` in the main repo — branches exist locally only; no remote push occurred
+5. Observe: `parallel.remote_name` is silently ignored; no PR was created
+
 ## Expected Behavior
 
 Enabling `use_feature_branches` should produce a branch that is genuinely
@@ -56,6 +64,15 @@ PR-ready. Choose one of:
 Recommended: Option A gated by new sub-options (e.g. `push_feature_branches`,
 `open_pr_for_feature_branches`) defaulting to off, so existing behavior is
 preserved while the advertised workflow becomes achievable.
+
+## Proposed Solution
+
+Implement Option A with opt-in sub-flags to preserve existing behavior:
+
+- Add `parallel.push_feature_branches` (bool, default `false`): when true, `_handle_worker_result()` in `orchestrator.py` calls `git push <remote_name> <branch>` after a successful feature-branch result
+- Add `parallel.open_pr_for_feature_branches` (bool, default `false`): when true and branch was pushed, shells out to `gh pr create` and captures the PR URL
+- Update the end-of-run report (`_print_pr_ready_report()` or equivalent in `orchestrator.py`) to report actual state: "pushed + PR opened", "pushed (local PR skipped)", or "local-only branch retained"
+- Update `config-schema.json` description for `use_feature_branches` to accurately describe local-branch retention; wire `remote_name` into the push path or remove it with a deprecation note
 
 ## Root Cause
 
@@ -79,6 +96,17 @@ preserved while the advertised workflow becomes achievable.
    from the parallel schema with a note.
 4. Tests cover the chosen path (push invoked with correct remote/branch, or
    report wording assertion).
+5. **`gh` precondition (Option A)**: if `open_pr_for_feature_branches` is set but
+   the `gh` CLI is missing or unauthenticated, the run degrades gracefully to
+   push-only (branch pushed, PR skipped) with a clear warning — it does not fail
+   the issue's implementation result.
+6. **PR target (Option A)**: `gh pr create` targets `parallel.base_branch` (not a
+   hardcoded `main`); PR title/body are derived from the issue (title + link),
+   and the PR may be opened as a draft (acceptable default — decide during impl).
+7. **Idempotency (Option A)**: re-running an issue whose `feature/<id>-<slug>`
+   branch already exists and/or is already pushed does not error — push uses
+   `--force-with-lease` (or a no-op when up to date), and an existing open PR is
+   detected and reused rather than duplicated.
 
 ## Implementation Steps
 
@@ -92,6 +120,32 @@ preserved while the advertised workflow becomes achievable.
    PR'd / local-only).
 5. Update config-schema.json description text to match behavior.
 6. Add tests.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/parallel/orchestrator.py` — `_handle_worker_result()` feature-branch branch (add push/PR step); end-of-run report method (~line 1138)
+- `scripts/little_loops/parallel/config.py` — `ParallelConfig` / `create_parallel_config` for new `push_feature_branches` and `open_pr_for_feature_branches` sub-flags
+- `config-schema.json` — `use_feature_branches` description (~line 377); add new sub-flag entries; wire or remove `remote_name` (~line 382)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/ll_parallel.py` — entry-point that constructs and runs the orchestrator; may surface new sub-flags
+- `scripts/little_loops/parallel/__init__.py` — re-exports `ParallelConfig`; update if new fields added
+
+### Similar Patterns
+- Auto-merge path in `_handle_worker_result()` (the `else` branch of the feature-branch check) — complementary pattern for completing worker results
+
+### Tests
+- `scripts/tests/test_parallel_orchestrator.py` (or equivalent) — add: push invoked with correct `remote_name`/branch args; PR creation shelled out when `open_pr_for_feature_branches=true`; report wording reflects actual state (local-only vs pushed vs PR'd)
+
+### Documentation
+- `config-schema.json` — `use_feature_branches` and `remote_name` description fields
+- End-of-run console report in `orchestrator.py`
+
+### Configuration
+- `parallel.push_feature_branches` (new, default `false`)
+- `parallel.open_pr_for_feature_branches` (new, default `false`)
+- `parallel.remote_name` — wire into push path or remove
 
 ## Impact
 
@@ -107,4 +161,5 @@ preserved while the advertised workflow becomes achievable.
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-15T16:57:14 - `c5ee10aa-e3ea-47f9-afcb-d5efd2450ef6.jsonl`
 - `/ll:capture-issue` - 2026-06-15T16:51:50Z - `5b1dd63b-714f-41e9-b9c2-f55f8ebd0e98.jsonl`

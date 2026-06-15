@@ -8,7 +8,7 @@ captured_at: '2026-06-15T16:51:50Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [epic, parallel, sprint, feature-branches, workflow, dx]
-relates_to: [BUG-2172, ENH-2173, ENH-2174, ENH-2175]
+relates_to: [BUG-2172, ENH-2173, ENH-2174, ENH-2175, ENH-2176, ENH-2177]
 ---
 
 # EPIC-2171: Complete the branch-based development workflow (use_feature_branches)
@@ -41,10 +41,17 @@ But the wiring is incomplete in ways that defeat the flag's stated purpose
 4. **No issue ↔ branch/PR linkage** — the branch name is a title slug, nothing
    is written back to the issue file, and there is no handoff to
    `/ll:open-pr`. (ENH-2175)
+5. **Inconsistent coverage** — in `ll-sprint`, single-issue waves and contention
+   sub-waves run in-place and never consult the flag, so toggling it silently
+   no-ops for those issues. (ENH-2176)
+6. **Docs/tests don't tie it together** — only the JSON schema text is assigned;
+   the prose workflow guides and an end-to-end integration test are unowned.
+   (ENH-2177)
 
 The goal of this EPIC is that turning on `use_feature_branches` produces a
 branch that is genuinely "PR-ready" — pushed (optionally PR'd), discoverable
-via config, selectable per-run, and traceable back to its originating issue.
+via config, selectable per-run, traceable back to its originating issue, with
+predictable coverage and behavior documented end-to-end.
 
 ## Goal / Definition of Done
 
@@ -53,7 +60,10 @@ via config, selectable per-run, and traceable back to its originating issue.
 - The flag is selectable per-run without editing config.
 - The flag is surfaced in `/ll:configure` and init.
 - Each issue records the branch (and PR URL if created) that implemented it.
-- Schema/docs describe the actual behavior — no overstated "PR-ready" claims.
+- The toggle behaves predictably wherever it is in scope, or its coverage
+  boundary is explicitly documented at the toggle surface (no silent no-ops).
+- Schema **and** prose docs describe the actual behavior — no overstated
+  "PR-ready" claims — and an end-to-end test guards the composed workflow.
 
 ## Children
 
@@ -61,24 +71,31 @@ via config, selectable per-run, and traceable back to its originating issue.
 - **ENH-2173** — Add `--feature-branches` CLI override to `ll-parallel` / `ll-sprint`.
 - **ENH-2174** — Surface `use_feature_branches` in `/ll:configure` and init templates.
 - **ENH-2175** — Record the feature branch (and PR URL) back to the issue file for PR linkage.
+- **ENH-2176** — Honor `use_feature_branches` in single-issue sprint waves (today the flag silently no-ops there).
+- **ENH-2177** — Document the feature-branch workflow end-to-end and add an integration test.
 
 ## Sequencing
 
 1. **BUG-2172** first — it establishes the real end-state behavior (push +
    optional PR) that the rest depend on. Either finish the loop or rescope docs.
+   Now also owns the `gh` precondition, PR-base target, and push/PR idempotency.
 2. **ENH-2173** in parallel/after — makes the (now-real) workflow selectable per run.
 3. **ENH-2175** after 2172 — branch/PR linkage only has something to record once
    2172 produces a pushed branch / PR URL.
-4. **ENH-2174** last — capstone discoverability once the behavior is settled.
+4. **ENH-2176** in parallel — closes the single-issue-wave coverage gap (or, at
+   minimum, warns + documents it) so the toggle behaves predictably across sprints.
+5. **ENH-2174** + **ENH-2177** last — capstone discoverability, prose docs, and
+   the end-to-end test once the behavior is settled.
 
 ## Out of Scope
 
 - Changing `ll-auto` (sequential, in-place) to adopt branch-per-issue. The flag
   lives under `parallel` by design; sequential branch-per-issue is a separate
-  initiative if desired.
-- The single-issue-sprint-wave bypass (single-issue waves run in-place via
-  subprocess, not `ParallelOrchestrator`) — noted during analysis but not
-  selected for this EPIC; capture separately if it proves painful.
+  initiative if desired. (The coverage boundary is now *documented* at the toggle
+  surface — see ENH-2174 AC#4 — rather than left implicit.)
+- Note: the single-issue-sprint-wave bypass, previously deferred here, is now
+  promoted to a tracked child (**ENH-2176**) because it directly undermines the
+  "first-class toggle" goal.
 
 ## Status
 

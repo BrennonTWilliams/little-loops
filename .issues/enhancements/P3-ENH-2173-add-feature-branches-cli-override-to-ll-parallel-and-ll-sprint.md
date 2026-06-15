@@ -13,6 +13,10 @@ labels: [parallel, sprint, cli, feature-branches, dx]
 
 # ENH-2173: Add --feature-branches CLI override to ll-parallel / ll-sprint
 
+## Summary
+
+Add `--feature-branches` CLI override flag to `ll-parallel` and `ll-sprint run` so users can opt into the feature-branch/PR-based workflow for a single run without editing `.ll/ll-config.json`.
+
 ## Motivation
 
 `parallel.use_feature_branches` is the only major parallel setting with no CLI
@@ -32,6 +36,13 @@ config and revert it afterward.
   `self._parallel.use_feature_branches` (line 487).
 - `cli/sprint/run.py:503` calls `create_parallel_config()` for multi-issue
   waves and likewise cannot override the flag per run.
+
+## Expected Behavior
+
+- `ll-parallel --feature-branches` enables feature-branch mode for that run regardless of the config value.
+- Omitting the flag falls back to the config value (no behavior change for existing users).
+- `ll-sprint run --feature-branches` applies the same override to multi-issue sprint waves.
+- `create_parallel_config()` accepts and correctly resolves the new `use_feature_branches: bool | None` parameter.
 
 ## Proposed Solution
 
@@ -65,6 +76,13 @@ Mirror the existing override pattern used for `stream_output` / `show_model`
 5. Tests cover: flag set → True, flag unset + config True → True, flag unset +
    config False → False.
 
+## Scope Boundaries
+
+- Adding push/PR sub-flags (depends on BUG-2172) is explicitly optional and excluded from this issue's scope.
+- No changes to `.ll/ll-config.json` schema or default values — the flag only overrides, never replaces, the config setting.
+- A `--no-feature-branches` negation flag is out of scope; omitting the flag already preserves config-off behavior.
+- No behavior changes to feature-branch mode itself — only the activation mechanism.
+
 ## Integration Map
 
 ### Files to Modify
@@ -80,6 +98,16 @@ Mirror the existing override pattern used for `stream_output` / `show_model`
 - `scripts/tests/test_config.py` — add cases for `create_parallel_config(use_feature_branches=...)` resolution
 - `scripts/tests/test_parallel_types.py` — existing `use_feature_branches` coverage
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/parallel.py` — primary caller of `create_parallel_config()`; already in Files to Modify
+- `scripts/little_loops/cli/sprint/run.py` — secondary caller of `create_parallel_config()` for multi-issue waves; already in Files to Modify
+
+### Documentation
+- N/A — no documentation files reference `create_parallel_config` or `use_feature_branches` directly; CLI `--help` output updates automatically from argparse.
+
+### Configuration
+- `.ll/ll-config.json` → `parallel.use_feature_branches` — read-only by this change; no schema changes required; the new CLI flag overrides this value per-run.
+
 ## Impact
 
 - **Priority**: P3 — DX gap; removes the hand-edit-config requirement to use the flag.
@@ -92,4 +120,5 @@ Mirror the existing override pattern used for `stream_output` / `show_model`
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-15T16:57:39 - `c31adb30-3c6b-4940-9ce0-5ccae335bee1.jsonl`
 - `/ll:capture-issue` - 2026-06-15T16:51:50Z - `5b1dd63b-714f-41e9-b9c2-f55f8ebd0e98.jsonl`
