@@ -15,6 +15,7 @@ Record implementation choices, enforce team rules, and prevent automation from p
 - [Creating Entries via CLI](#creating-entries-via-cli)
 - [Rules & Active Rules Sync](#rules--active-rules-sync)
 - [Auto-generating from History](#auto-generating-from-history)
+- [Promoting Decisions to Rules](#promoting-decisions-to-rules)
 - [Recording Outcomes](#recording-outcomes)
 - [Superseding Old Entries](#superseding-old-entries)
 - [Configuration](#configuration)
@@ -374,6 +375,53 @@ ll-loop run distill-decisions
 ```
 
 Or hook it into your automation pipeline to run automatically after issues transition to `done`. The `issue-completion-log.sh` hook fires `extract-from-completed --issue <ID>` in a background subshell after each issue closes, so extraction happens asynchronously without blocking the session (see [Built-in Hooks Guide](BUILTIN_HOOKS_GUIDE.md)).
+
+---
+
+## Promoting Decisions to Rules
+
+After recording several decisions, patterns emerge — the same guidance recurs across multiple issues, which is a signal that it belongs as a standing rule rather than a one-off record. Two subcommands manage this lifecycle.
+
+### Finding Candidates: `suggest-rules`
+
+`suggest-rules` scans all `DecisionEntry` records in `.ll/decisions.yaml`, groups them by category and shared terminology, and surfaces entries that appear to encode recurring guidance:
+
+```bash
+ll-issues decisions suggest-rules
+```
+
+**Sample output:**
+
+```
+[SUGGEST][high-signal] ARCH-001, ARCH-002, ARCH-003 share category=architecture and reference sub_loop
+  — consider promoting to a rule: "Use sub-loop composition always"
+    • ARCH-001: Use sub-loop composition always
+    • ARCH-002: Register adapters via Protocol
+    • ARCH-003: Prefer file-poller for callbacks
+```
+
+The `[high-signal]` tag appears when a category has 3+ decisions sharing common tokens. Without the tag, the cluster was detected via pairwise token overlap in a smaller group.
+
+> `suggest-rules` requires at least 3 `DecisionEntry` records to run. It exits 1 with no output if fewer exist, or if all decisions are one-off choices (entries whose `rule` text starts with `Option A`, `Option B`, `NO-GO`, or `Captured:`). It operates only on `DecisionEntry` records — existing `RuleEntry` records are not considered for promotion.
+
+### Promoting to a Standing Rule: `promote`
+
+Once you've identified a good candidate, promote it:
+
+```bash
+ll-issues decisions promote ARCH-001                          # Promote as required rule (auto-syncs)
+ll-issues decisions promote ARCH-001 --enforcement advisory   # Promote as advisory rule (no auto-sync)
+```
+
+`promote` replaces the `DecisionEntry` in-place with a `RuleEntry`, preserving the same `id`, `category`, `rationale`, and `rule` text. The `type` field changes from `"decision"` to `"rule"`, and an `enforcement` field is added.
+
+```
+Promoted ARCH-001 → rule (enforcement: required)
+```
+
+> When `--enforcement required` is used (the default), `promote` automatically runs `sync` — see [Rules & Active Rules Sync](#rules--active-rules-sync) for what that writes to `.ll/ll.local.md`. Using `--enforcement advisory` skips the auto-sync; advisory rules appear in `ll-issues decisions list --type rule` but are not propagated to `.ll/ll.local.md`.
+
+There is no `demote` subcommand — promotion is one-way via CLI. To revert, edit `.ll/decisions.yaml` directly and change the `type:` field back to `"decision"`.
 
 ---
 
