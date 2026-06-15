@@ -8,7 +8,7 @@ captured_at: '2026-06-15T16:51:50Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [epic, parallel, sprint, feature-branches, workflow, dx]
-relates_to: [BUG-2172, ENH-2173, ENH-2174, ENH-2175, ENH-2176, ENH-2177]
+relates_to: [BUG-2172, ENH-2173, ENH-2174, ENH-2175, ENH-2176, ENH-2177, ENH-2180, ENH-2181, ENH-2182, ENH-2183]
 ---
 
 # EPIC-2171: Complete the branch-based development workflow (use_feature_branches)
@@ -64,6 +64,14 @@ predictable coverage and behavior documented end-to-end.
   boundary is explicitly documented at the toggle surface (no silent no-ops).
 - Schema **and** prose docs describe the actual behavior — no overstated
   "PR-ready" claims — and an end-to-end test guards the composed workflow.
+- An issue is marked `done` only when its work actually lands on the base branch
+  (auto-merge) or its PR merges (feature-branch) — never prematurely on local
+  branch creation. (ENH-2182)
+- The feature branch is cut from `parallel.base_branch`, so the fork point, the
+  PR target, and the prune merge-check all reference the same base. (ENH-2183)
+- The config **default** for `use_feature_branches` is an explicit decision, not
+  an accident: it remains `false` (opt-in) unless a deliberate default-flip +
+  migration note is captured separately. No child flips it implicitly.
 
 ## Children
 
@@ -73,6 +81,10 @@ predictable coverage and behavior documented end-to-end.
 - **ENH-2175** — Record the feature branch (and PR URL) back to the issue file for PR linkage.
 - **ENH-2176** — Honor `use_feature_branches` in single-issue sprint waves (today the flag silently no-ops there).
 - **ENH-2177** — Document the feature-branch workflow end-to-end and add an integration test.
+- **ENH-2180** — Add a per-run disable (`--no-feature-branches`) so the toggle is symmetric once the config default is on.
+- **ENH-2181** — Prune merged local feature branches (the missing back-end of the feature-branch lifecycle).
+- **ENH-2182** — Reconcile issue status with PR merge: stop writing `done` before the work is merged; promote to `done` on PR merge.
+- **ENH-2183** — Cut the feature branch from `parallel.base_branch` (not the current HEAD) so all three uses of `base_branch` agree.
 
 ## Sequencing
 
@@ -84,7 +96,17 @@ predictable coverage and behavior documented end-to-end.
    2172 produces a pushed branch / PR URL.
 4. **ENH-2176** in parallel — closes the single-issue-wave coverage gap (or, at
    minimum, warns + documents it) so the toggle behaves predictably across sprints.
-5. **ENH-2174** + **ENH-2177** last — capstone discoverability, prose docs, and
+5. **ENH-2180** alongside/after 2173 — upgrades the `--feature-branches` flag to a
+   symmetric on/off pair (fold into 2173 if it hasn't landed yet).
+6. **ENH-2183** with/after 2172 — once `base_branch` lands in schema, make branch
+   creation fork from it so the PR target and prune check are consistent.
+7. **ENH-2181** after 2172 + 2183 — needs `parallel.base_branch` (the merge
+   target, now the actual fork point) to prune merged feature branches; closes the
+   lifecycle's cleanup half.
+8. **ENH-2182** after 2172 + 2175 — holds the issue short of `done` until merge and
+   reconciles on PR merge (reads ENH-2175's recorded `branch:`/`pr_url:`); closes
+   the issue-lifecycle half so the backlog isn't marked done before merge.
+9. **ENH-2174** + **ENH-2177** last — capstone discoverability, prose docs, and
    the end-to-end test once the behavior is settled.
 
 ## Out of Scope

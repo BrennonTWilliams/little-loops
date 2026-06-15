@@ -49,49 +49,53 @@ advertised behavior and what users observe.
 4. Observe: no `feature/<id>-<slug>` branches are created; work lands on the
    current branch. The flag was silently ignored for every wave.
 
+## Decision
+
+**Option B (warn + document) — DECIDED.** Keep the in-place path as-is, but when
+`use_feature_branches` is set and a wave runs in-place (single-issue wave or
+contention sub-wave), emit a clear one-time warning
+("feature-branch mode does not apply to single-issue / contention sub-waves;
+these run in-place on `<branch>`") and document the limitation at the toggle
+surfaces (coordinate with ENH-2174's description text). This is the minimum to
+make the toggle honest without regressing the hot in-place path.
+
+Option A (extend coverage — route single-issue waves through a feature-branch-aware
+worktree/in-place path) is **deferred as a follow-up**: it is materially larger
+(the in-place path is deliberately worktree-free for speed), touches the hot
+sprint path, and should not block the EPIC. If branch-per-issue for single-issue
+waves proves valuable, capture it as a separate enhancement.
+
 ## Expected Behavior
 
-Toggling `use_feature_branches` should produce consistent, predictable behavior
-across a sprint. Choose one:
-
-- **Option A (extend coverage)**: when `use_feature_branches` is set, route
-  single-issue waves and contention sub-waves through a feature-branch-aware
-  path (worktree or in-place branch creation) so they also produce a
-  `feature/<id>-<slug>` branch eligible for push/PR (per BUG-2172). This is real
-  new behavior — the in-place path currently creates no branch at all.
-- **Option B (warn + document)**: keep the in-place path as-is, but when
-  `use_feature_branches` is set and a wave runs in-place, emit a clear one-time
-  warning ("feature-branch mode does not apply to single-issue / contention
-  sub-waves; these run in-place on <branch>") and document the limitation at the
-  toggle surfaces (coordinate with ENH-2174's description text).
-
-Recommended: **Option B** as the minimum to make the toggle honest, with Option A
-as a follow-up if branch-per-issue for single-issue waves proves valuable. Option
-A is materially larger (the in-place path is deliberately worktree-free for
-speed) and should not block the EPIC.
+Toggling `use_feature_branches` produces honest, predictable behavior across a
+sprint: when the flag is set and a wave runs in-place, the user is warned once
+that those issues are not getting feature branches, and the coverage boundary is
+documented at the toggle surfaces. No silent no-op.
 
 ## Acceptance Criteria
 
 1. With `use_feature_branches` set, a sprint composed entirely of single-issue
-   waves no longer silently ignores the flag — either feature branches are
-   produced for those issues (Option A) or a clear warning is emitted and the
-   limitation is documented (Option B).
+   waves no longer silently ignores the flag — a clear (one-time) warning is
+   emitted naming the branch the work lands on, and the limitation is documented
+   at the toggle surfaces (coordinate with ENH-2174).
 2. The behavior is the same for contention sub-waves (they share the in-place
-   path).
+   path) — they trigger the same warning.
 3. `ll-auto` remains explicitly out of scope (documented, not silently divergent).
-4. Tests cover the chosen path: (A) single-issue wave produces a feature branch
-   when the flag is set; or (B) a warning is emitted when the flag is set and a
-   wave runs in-place.
+4. Tests cover Option B: a warning is emitted when `use_feature_branches` is set
+   and a wave runs in-place; no warning when the flag is unset.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/cli/sprint/run.py` — single-issue / contention sub-wave
-  branch (~line 437); for Option A, a feature-branch-aware in-place/worktree path;
-  for Option B, a guarded warning when `config.parallel.use_feature_branches` is set
-- (Option A) `scripts/little_loops/parallel/worker_pool.py` — reuse branch-naming
-  (`feature/<id>-<slug>`, ~line 245) for the single-issue path
+  branch (~line 437): add a guarded one-time warning when
+  `config.parallel.use_feature_branches` is set and the wave runs in-place
 - `docs/guides/SPRINT_GUIDE.md` — document the coverage boundary
+
+### Deferred (Option A follow-up, not this issue)
+- `scripts/little_loops/parallel/worker_pool.py` — would reuse branch-naming
+  (`feature/<id>-<slug>`, ~line 245) to give the single-issue path a real feature
+  branch; out of scope here.
 
 ### Similar Patterns
 - The multi-issue `else` branch (`cli/sprint/run.py:489`) — the
@@ -103,9 +107,9 @@ speed) and should not block the EPIC.
 ## Impact
 
 - **Priority**: P3 — directly undermines the EPIC's "first-class toggle" goal;
-  Option B is small and removes the silent-no-op surprise.
-- **Effort**: Small (Option B) / Medium–Large (Option A).
-- **Risk**: Low (B) / Medium (A — touches the hot in-place sprint path).
+  Option B (decided) is small and removes the silent-no-op surprise.
+- **Effort**: Small — a guarded warning + a docs paragraph.
+- **Risk**: Low — does not alter the in-place execution path, only adds a warning.
 - **Breaking Change**: No.
 
 ## Status
@@ -113,4 +117,5 @@ speed) and should not block the EPIC.
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- decision - 2026-06-15 - Option B (warn + document) selected; Option A (extend coverage to single-issue waves) deferred as a follow-up.
 - `/ll:capture-issue` - 2026-06-15T17:30:00Z - promoted from EPIC-2171 Out of Scope
