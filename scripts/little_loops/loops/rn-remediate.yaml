@@ -62,6 +62,10 @@ context:
   diagnose_complexity_threshold: 15
   diagnose_change_surface_threshold: 15
   diagnose_confidence_floor: 50
+  # Marker-gate enforcement: require an above-minimal-complexity issue to be
+  # refined AND wired at least once before implement. Set false to restore the
+  # single-dimension short-circuit behavior. Overridable by the parent via with:.
+  require_refine_and_wire: true
 
 states:
   # =========================================================================
@@ -97,6 +101,16 @@ states:
       fi
       # Write pre-scores
       ll-issues show "$ID" --json > "${context.run_dir}/pre_scores_$${ID}.json" 2>/dev/null
+      # Marker-gate: snapshot a STABLE complexity band ONCE. pre_scores_<ID>.json
+      # is overwritten every pass by check_convergence (cp POST PRE), so the band
+      # must be captured here — the only point with the genuine pre-remediation
+      # score — into a file the gate can read without it mutating mid-run.
+      COMPLEXITY=$(jq -r '.score_complexity // 0' "${context.run_dir}/pre_scores_$${ID}.json" 2>/dev/null || echo 0)
+      if [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ]; then
+        echo "ABOVE_MINIMAL" > "${context.run_dir}/complexity_band_$${ID}.txt"
+      else
+        echo "MINIMAL" > "${context.run_dir}/complexity_band_$${ID}.txt"
+      fi
       echo "Scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
     evaluate:
       type: exit_code
@@ -254,7 +268,9 @@ states:
       type: output_contains
       source: "${captured.diagnosis.output}"
       pattern: "IMPLEMENT"
-    on_yes: implement
+    # Marker-gate: diagnose can emit IMPLEMENT on the first visit with zero
+    # refine/wire, so route through gate_implement (not directly to implement).
+    on_yes: gate_implement
     on_no: route_d_decide
     on_error: emit_implement_failed
 
@@ -289,6 +305,53 @@ states:
   # Phase 3: Remediation Actions
   # =========================================================================
 
+  gate_implement:
+    # Marker-gate choke point in front of implement. Before ll-auto runs, ensure
+    # an above-minimal-complexity issue has been BOTH refined and wired at least
+    # once. Minimal issues — and any caller that set require_refine_and_wire
+    # false — pass straight through. Markers are write-once, so this adds at most
+    # one refine + one wire detour, then IMPLEMENT (bounded, no unbounded loop).
+    # Fail-open: any gate error implements rather than blocking processing.
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      if [ "${context.require_refine_and_wire}" != "true" ]; then
+        echo "IMPLEMENT"
+      else
+        BAND=$(cat "$RUN_DIR/complexity_band_$${ID}.txt" 2>/dev/null || echo "MINIMAL")
+        if [ "$BAND" != "ABOVE_MINIMAL" ]; then
+          echo "IMPLEMENT"
+        elif [ ! -f "$RUN_DIR/refined_$${ID}.txt" ]; then
+          echo "NEED_REFINE"
+        elif [ ! -f "$RUN_DIR/wired_$${ID}.txt" ]; then
+          echo "NEED_WIRE"
+        else
+          echo "IMPLEMENT"
+        fi
+      fi
+    capture: gate_decision
+    next: route_gate_refine
+    on_error: implement
+
+  route_gate_refine:
+    evaluate:
+      type: output_contains
+      source: "${captured.gate_decision.output}"
+      pattern: "NEED_REFINE"
+    on_yes: refine
+    on_no: route_gate_wire
+    on_error: implement
+
+  route_gate_wire:
+    evaluate:
+      type: output_contains
+      source: "${captured.gate_decision.output}"
+      pattern: "NEED_WIRE"
+    on_yes: wire
+    on_no: implement
+    on_error: implement
+
   implement:
     action_type: shell
     action: |
@@ -318,7 +381,11 @@ states:
     # routes back to refine/diagnose only if ambiguity/artifacts remain — avoiding
     # a wasted --full-rewrite pass that could overwrite valid wiring changes.
     # on_error still falls back to refine: a wiring failure warrants a rewrite.
-    on_success: re_assess
+    # Marker-gate: route success through mark_wired (which sets the wired marker
+    # then continues to re_assess) so the pre-implement gate can confirm a wire
+    # ran. BUG-2007 intent is preserved — success still reaches re_assess, never
+    # unconditionally bounces back to refine.
+    on_success: mark_wired
     on_error: refine
     on_rate_limit_exhausted: rate_limit_diagnostic
 
@@ -326,9 +393,27 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:refine-issue ${context.issue_id} --auto --full-rewrite"
     action_type: slash_command
-    on_success: re_assess
+    # Marker-gate: route success through mark_refined (sets the refined marker
+    # then continues to re_assess). BUG-2007 intent preserved — still re_assess.
+    on_success: mark_refined
     on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
+
+  mark_refined:
+    # Marker-gate: record that >=1 refine pass ran for this issue. Write-once
+    # (monotonic) so the pre-implement gate requires at most one refine detour.
+    action_type: shell
+    action: |
+      echo "1" > "${context.run_dir}/refined_${context.issue_id}.txt"
+    next: re_assess
+
+  mark_wired:
+    # Marker-gate: record that >=1 wire pass ran for this issue. Write-once
+    # (monotonic) so the pre-implement gate requires at most one wire detour.
+    action_type: shell
+    action: |
+      echo "1" > "${context.run_dir}/wired_${context.issue_id}.txt"
+    next: re_assess
 
   # =========================================================================
   # Phase 4: Re-Assessment & Convergence
@@ -454,7 +539,9 @@ states:
       type: output_contains
       source: "${captured.convergence_result.output}"
       pattern: "CONVERGED_PASS"
-    on_yes: implement
+    # Marker-gate: a PASS can follow a single refine OR wire OR decide, so route
+    # through gate_implement to force the missing one for above-minimal issues.
+    on_yes: gate_implement
     on_no: route_conv_improved
     on_error: emit_implement_failed
 

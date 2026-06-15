@@ -226,8 +226,9 @@ class TestDiagnoseRouting:
     def test_router_chain_covers_all_five_tokens(self) -> None:
         """The 4 routers cover IMPLEMENT, DECIDE, WIRE, REFINE with DECOMPOSE fallthrough."""
         data = _load_loop()
-        # route_d_implement → implement or route_d_decide
-        assert data["states"]["route_d_implement"]["on_yes"] == "implement"
+        # route_d_implement → gate_implement (marker-gate; diagnose can emit
+        # IMPLEMENT on the first visit with zero refine/wire) or route_d_decide
+        assert data["states"]["route_d_implement"]["on_yes"] == "gate_implement"
         assert data["states"]["route_d_implement"]["on_no"] == "route_d_decide"
         # route_d_decide → decide or route_d_wire
         assert data["states"]["route_d_decide"]["on_yes"] == "decide"
@@ -314,17 +315,18 @@ class TestRemediationActions:
         assert "--auto" in wire["action"]
 
     def test_wire_routes_to_re_assess_on_success(self) -> None:
-        """wire routes to re_assess on success (BUG-2007 Defect 1).
+        """wire routes through mark_wired to re_assess on success (BUG-2007 Defect 1).
 
-        If wiring alone resolves the ambiguity/missing-artifacts condition, a full
-        --full-rewrite refine pass should NOT run unconditionally. wire routes to
-        re_assess; the re_assess → check_convergence path routes back to refine or
-        diagnose only if ambiguity/artifacts remain. on_error still falls back to
-        refine (a wiring failure still warrants a rewrite).
+        Marker-gate: success now hops through mark_wired (which sets the wired
+        marker, then continues to re_assess) so the pre-implement gate can confirm
+        a wire ran. BUG-2007 intent is preserved — success still reaches re_assess,
+        not an unconditional --full-rewrite refine pass. on_error still falls back
+        to refine (a wiring failure still warrants a rewrite).
         """
         data = _load_loop()
         wire = data["states"]["wire"]
-        assert wire["on_success"] == "re_assess"
+        assert wire["on_success"] == "mark_wired"
+        assert data["states"]["mark_wired"]["next"] == "re_assess"
         assert wire["on_error"] == "refine"
 
     def test_refine_uses_full_rewrite_flag(self) -> None:
@@ -334,16 +336,107 @@ class TestRemediationActions:
         assert "--full-rewrite" in ref["action"]
 
     def test_refine_routes_to_re_assess(self) -> None:
-        """refine routes to re_assess on success."""
+        """refine routes through mark_refined to re_assess on success (marker-gate)."""
         data = _load_loop()
         ref = data["states"]["refine"]
-        assert ref["on_success"] == "re_assess"
+        assert ref["on_success"] == "mark_refined"
+        assert data["states"]["mark_refined"]["next"] == "re_assess"
 
     def test_refine_failure_routes_to_failed(self) -> None:
         """refine routes to failed (terminal) on error — issue skipping stays in parent."""
         data = _load_loop()
         ref = data["states"]["refine"]
         assert ref["on_error"] == "emit_implement_failed"
+
+
+# ---------------------------------------------------------------------------
+# TestMarkerGate — States: gate_implement, route_gate_refine, route_gate_wire,
+#   mark_refined, mark_wired (require_refine_and_wire enforcement)
+# ---------------------------------------------------------------------------
+
+
+class TestMarkerGate:
+    """An above-minimal-complexity issue must be refined AND wired at least once
+    before implement. The gate is a marker-driven choke point in front of
+    implement, fed by monotonic refined_/wired_ markers and a stable
+    complexity_band snapshot."""
+
+    def test_require_refine_and_wire_default_true(self) -> None:
+        """The enforcement toggle defaults to true."""
+        data = _load_loop()
+        assert data["context"]["require_refine_and_wire"] is True
+
+    def test_complexity_band_snapshotted_in_verify_scores_persisted(self) -> None:
+        """verify_scores_persisted writes a stable complexity_band file (once)."""
+        data = _load_loop()
+        action = data["states"]["verify_scores_persisted"]["action"]
+        assert "complexity_band_" in action
+        assert "ABOVE_MINIMAL" in action
+        assert "diagnose_complexity_threshold" in action
+
+    def test_marker_writers_are_monotonic_and_route_to_re_assess(self) -> None:
+        """mark_refined/mark_wired write a marker file and continue to re_assess."""
+        data = _load_loop()
+        mr = data["states"]["mark_refined"]
+        mw = data["states"]["mark_wired"]
+        assert "refined_" in mr["action"]
+        assert mr["next"] == "re_assess"
+        assert "wired_" in mw["action"]
+        assert mw["next"] == "re_assess"
+
+    def test_gate_emits_three_disjoint_tokens(self) -> None:
+        """gate_implement emits IMPLEMENT / NEED_REFINE / NEED_WIRE and captures it."""
+        data = _load_loop()
+        gate = data["states"]["gate_implement"]
+        assert gate["action_type"] == "shell"
+        action = gate["action"]
+        assert "NEED_REFINE" in action
+        assert "NEED_WIRE" in action
+        assert "IMPLEMENT" in action
+        assert gate.get("capture") == "gate_decision"
+        # Fail-open: a gate error implements rather than blocking.
+        assert gate["on_error"] == "implement"
+
+    def test_gate_honors_band_and_flag_short_circuits(self) -> None:
+        """gate reads the require flag and the complexity band before requiring markers."""
+        data = _load_loop()
+        action = data["states"]["gate_implement"]["action"]
+        assert "require_refine_and_wire" in action
+        assert "ABOVE_MINIMAL" in action
+        assert "refined_" in action
+        assert "wired_" in action
+
+    def test_gate_router_cascade_forces_refine_then_wire_then_implement(self) -> None:
+        """route_gate_refine → refine; else route_gate_wire → wire; else implement."""
+        data = _load_loop()
+        gate = data["states"]["gate_implement"]
+        assert gate["next"] == "route_gate_refine"
+        rgr = data["states"]["route_gate_refine"]
+        assert rgr["evaluate"]["type"] == "output_contains"
+        assert "${captured.gate_decision.output}" in rgr["evaluate"]["source"]
+        assert rgr["evaluate"]["pattern"] == "NEED_REFINE"
+        assert rgr["on_yes"] == "refine"
+        assert rgr["on_no"] == "route_gate_wire"
+        assert rgr["on_error"] == "implement"
+        rgw = data["states"]["route_gate_wire"]
+        assert rgw["evaluate"]["pattern"] == "NEED_WIRE"
+        assert rgw["on_yes"] == "wire"
+        assert rgw["on_no"] == "implement"
+        assert rgw["on_error"] == "implement"
+
+    def test_above_minimal_entry_points_route_through_gate(self) -> None:
+        """Both above-minimal routes to implement go through gate_implement first."""
+        data = _load_loop()
+        assert data["states"]["route_d_implement"]["on_yes"] == "gate_implement"
+        assert data["states"]["route_conv_pass"]["on_yes"] == "gate_implement"
+
+    def test_minimal_ready_path_does_not_require_gate(self) -> None:
+        """check_wire_pre_implement (only reachable when complexity < threshold) still
+        routes straight to implement — minimal issues are exempt from enforcement."""
+        data = _load_loop()
+        cwpi = data["states"]["check_wire_pre_implement"]
+        assert cwpi["on_no"] == "implement"
+        assert cwpi["on_error"] == "implement"
 
 
 # ---------------------------------------------------------------------------
@@ -452,11 +545,12 @@ class TestReassessAndConvergence:
         assert cc.get("capture") == "convergence_result"
 
     def test_convergence_router_chain_is_correct(self) -> None:
-        """Convergence routing: PASS → implement, IMPROVED → budget, STALLED → budget (ENH-2107)."""
+        """Convergence routing: PASS → gate_implement, IMPROVED → budget, STALLED → budget."""
         data = _load_loop()
-        # route_conv_pass
+        # route_conv_pass — marker-gate: a PASS can follow a single refine OR wire
+        # OR decide, so route through gate_implement (ENH-2107 budget chain below).
         rcp = data["states"]["route_conv_pass"]
-        assert rcp["on_yes"] == "implement"
+        assert rcp["on_yes"] == "gate_implement"
         assert rcp["on_no"] == "route_conv_improved"
         # route_conv_improved
         rci = data["states"]["route_conv_improved"]

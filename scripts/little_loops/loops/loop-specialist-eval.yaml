@@ -1,5 +1,5 @@
 name: loop-specialist-eval
-category: harness
+category: evaluation
 description: |
   Behavioral eval harness for the loop-specialist agent (FEAT-1543/FEAT-1544).
   Drives the agent against a seeded broken-verify-loop fixture and verifies the
