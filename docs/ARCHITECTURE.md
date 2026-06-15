@@ -23,7 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>28 slash commands]
         AGT[Agents<br/>9 specialized agents]
-        SKL[Skills<br/>37 composable skills]
+        SKL[Skills<br/>38 composable skills]
     end
 
     subgraph "Configuration"
@@ -110,7 +110,6 @@ little-loops/
 │       ├── user-prompt-check.sh
 │       └── lib/
 │           └── common.sh    # Shared shell functions
-├── loops/                   # Built-in FSM loop definitions (YAML); composable as sub-loops
 ├── skills/                  # 38 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md

@@ -28,7 +28,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/ARCHITECTURE.md", "list", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "mark-stale", "FEAT-1287"),
     ("CONTRIBUTING.md", "verify-issue-loop/", "FEAT-1447"),
-    ("docs/ARCHITECTURE.md", "37 composable skills", "FEAT-1447"),
+    ("docs/ARCHITECTURE.md", "38 composable skills", "FEAT-1447"),
     ("docs/ARCHITECTURE.md", "# 38 skill definitions", "FEAT-1447"),
     ("CONTRIBUTING.md", "LLHookIntentExtension", "FEAT-1457"),
     ("CONTRIBUTING.md", "LLHookEvent", "FEAT-1457"),

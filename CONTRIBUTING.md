@@ -119,8 +119,8 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── loops/                # Built-in FSM loop definitions (94 YAML files) + yaml_state_editor Python module
 ├── skills/               # 38 skill definitions (user-invocable workflows)
+│   ├── adversarial-verify-loop/      # Generate adversarial FSM verification loop
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history
 │   ├── audit-loop-run/               # Audit loop goal achievement
@@ -131,6 +131,7 @@ little-loops/
 │   ├── cleanup-loops/                # Find and clean stuck loop processes
 │   ├── confidence-check/             # Pre-implementation confidence check
 │   ├── decide-issue/                 # Resolve competing implementation options
+│   ├── distill-traces/               # Extract reusable loop patterns from execution history
 │   ├── explore-api/                  # Guided 4-phase external-API exploration with LearnTestRecord output
 │   ├── go-no-go/                     # Adversarial GO/NO-GO issue assessment
 │   ├── configure/                    # Configure ll-config.json
@@ -141,15 +142,19 @@ little-loops/
 │   ├── init/                         # Initialize project configuration
 │   ├── issue-size-review/            # Evaluate issue complexity
 │   ├── issue-workflow/               # Issue lifecycle quick reference
+│   ├── link-epics/                   # Discover orphaned issues and propose EPIC assignments
 │   ├── manage-issue/                 # Manage issue lifecycle
 │   ├── map-dependencies/             # Discover and map issue dependencies
 │   ├── product-analyzer/             # Analyze codebase against product goals
 │   ├── review-epic/                  # Audit EPIC health: stalled children, scope drift, missing coverage
 │   ├── scope-epic/                   # Decompose a theme into an EPIC with 3–8 pre-wired child issue stubs
 │   ├── review-loop/                  # Review and improve FSM loop configurations
+│   ├── rename-loop/                  # Rename a loop and update all references
+│   ├── simplify-loop/                # Simplify or decompose FSM loop configurations
 │   ├── update/                       # Update little-loops components
 │   ├── update-docs/                  # Identify stale or missing documentation
 │   ├── verify-issue-loop/            # Generate FSM verification loop from issue acceptance criteria
+│   ├── wire-issue/                   # Add integration wiring to implementation plans
 │   └── workflow-automation-proposer/ # Propose automations from patterns
 ├── templates/            # Project-type config templates
 ├── docs/                 # Documentation

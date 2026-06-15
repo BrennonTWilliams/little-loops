@@ -3,8 +3,9 @@ id: ENH-2156
 title: Fix stale skills count and phantom top-level loops/ directory in doc trees
 type: ENH
 priority: P3
-status: open
+status: done
 created: 2026-06-14
+completed_at: 2026-06-15 19:37:01+00:00
 affects:
 - CONTRIBUTING.md
 - docs/ARCHITECTURE.md
@@ -15,7 +16,7 @@ score_complexity: 23
 score_test_coverage: 20
 score_ambiguity: 9
 score_change_surface: 18
-decision_needed: true
+decision_needed: false
 ---
 
 ## Problem
@@ -41,12 +42,13 @@ The mermaid diagram (line 26) also shows `SKL[Skills<br/>37 composable skills]`.
 
 ## Acceptance Criteria
 
-- [ ] Remove the phantom top-level `├── loops/` line from CONTRIBUTING.md tree
-- [ ] Update CONTRIBUTING.md skills count to 36 and add the 6 missing skill entries to the tree
-- [ ] Remove the phantom `├── loops/` from ARCHITECTURE.md tree; update `├── skills/ # 38` → `# 36`
-- [ ] Update ARCHITECTURE.md mermaid diagram: `37 composable skills` → `36 composable skills`
-- [ ] Update README.md: `38 skills` → `36 skills` (native) or decide on canonical count and document the distinction
-- [ ] `ll-verify-docs` passes after changes (if it checks counts)
+- [ ] Remove the phantom top-level `├── loops/` line from CONTRIBUTING.md:122 (loop YAMLs live at `scripts/little_loops/loops/`, not project root)
+- [ ] Add the 6 missing native skill entries to the CONTRIBUTING.md tree listing: `adversarial-verify-loop`, `distill-traces`, `link-epics`, `rename-loop`, `simplify-loop`, `wire-issue` (the "38 skill definitions" comment is already correct — do NOT change the count)
+- [ ] Remove the phantom `├── loops/` from ARCHITECTURE.md:113 (skills count comment on line 114 is already "38" — do NOT change it)
+- [ ] Update ARCHITECTURE.md mermaid diagram (line 26): `37 composable skills` → `38 composable skills`
+- [ ] Update `scripts/tests/test_wiring_guides_and_meta.py` line 31: `"37 composable skills"` → `"38 composable skills"` (ARCHITECTURE.md mermaid assertion)
+- [ ] README.md already says "38 skills" — no change needed
+- [ ] `ll-verify-docs` passes after changes (currently fails with `skills: documented=37, actual=38` at ARCHITECTURE.md:26)
 
 ## Notes
 
@@ -75,6 +77,29 @@ _Added by `/ll:confidence-check` on 2026-06-15_
 - **Unmentioned test surface**: `test_wiring_guides_and_meta.py` pins the exact strings being changed; implementation will break 5 test assertions unless that file is included in scope.
 - **Incomplete verification chain**: `ll-verify-docs` is cited for post-change verification, but it won't catch the test regressions introduced by the count change.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-15_
+
+**Verdict: NEEDS_UPDATE**
+
+The issue's proposed canonical count of "36 native skills" is incorrect. `ll-verify-docs` counts native skills by excluding dirs whose SKILL.md contains `BRIDGE_MARKER = "Bridged from \`commands/"`. Two `ll-`-prefixed skills (`ll-capture-issue`, `ll-go-no-go`) do NOT contain this marker and are counted as native. Actual: 66 total − 28 bridge = **38 native**.
+
+Current doc state:
+- CONTRIBUTING.md:123 already says "38 skill definitions" ✓ (no change needed for count)
+- ARCHITECTURE.md:114 already says "38 skill definitions" ✓ (no change needed for count)
+- README.md:161 already says "38 skills" ✓ (no change needed)
+- ARCHITECTURE.md:26 mermaid says "37 composable skills" ✗ → should be 38 (flagged by `ll-verify-docs`)
+
+The acceptance criteria need correction before implementation:
+- Change "36" targets to "38" (or remove count updates for files already at 38)
+- The only count that needs updating is the mermaid diagram (37→38) and the loop YAML count (94→98)
+- `test_wiring_guides_and_meta.py` line 31 (`"37 composable skills"`) must be updated to "38"
+
+The phantom `loops/` removal claims are fully valid.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-15T19:32:46 - `9be4b636-be51-4ee9-a664-b8fba9b1881a.jsonl`
+- `/ll:verify-issues` - 2026-06-15T19:13:05 - `9a727a9a-d457-40db-9593-7701a39aa48a.jsonl`
 - `/ll:decide-issue` - 2026-06-15T14:38:40 - `9e9ec43e-4d7b-4807-bd3e-1b18b513a1f0.jsonl`
 - `/ll:confidence-check` - 2026-06-15T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8884ba61-fa43-4473-b387-251b7e41b2d9.jsonl`
