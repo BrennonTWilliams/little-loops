@@ -724,7 +724,7 @@ def _cmd_extract_from_completed(config, args, path) -> int:
     existing = list_entries(path)
     existing_issue_ids = {e.issue for e in existing if getattr(e, "issue", None)}
     existing_rule_texts = [
-        e.rule.lower()
+        e.rule.lower()  # type: ignore[union-attr]
         for e in existing
         if getattr(e, "rule", None) and isinstance(e.rule, str)  # type: ignore[union-attr]
     ]

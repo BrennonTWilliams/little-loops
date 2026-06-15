@@ -116,6 +116,8 @@ class LockManager:
     and contain JSON with ScopeLock data.
     """
 
+    _cached_ancestry: set[int]
+
     def __init__(self, loops_dir: Path | None = None) -> None:
         """Initialize the lock manager.
 
