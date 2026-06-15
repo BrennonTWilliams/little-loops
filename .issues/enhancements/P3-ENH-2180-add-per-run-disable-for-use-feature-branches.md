@@ -2,7 +2,7 @@
 id: ENH-2180
 title: Add per-run disable for use_feature_branches (--no-feature-branches)
 type: ENH
-status: open
+status: done
 priority: P3
 parent: EPIC-2171
 captured_at: '2026-06-15T00:00:00Z'
@@ -73,6 +73,14 @@ flag surface. If ENH-2173 has already landed with `store_true`, this issue is th
 follow-up that upgrades it; if not yet landed, fold this into ENH-2173's flag
 definition.
 
+## Implementation Steps
+
+1. In `cli/parallel.py`, change `--feature-branches` from `store_true` to `action=argparse.BooleanOptionalAction, default=None`
+2. Remove `or None` coercion when passing to `create_parallel_config()` so explicit `False` survives
+3. Apply same flag swap in `cli/sprint/run.py`
+4. Verify `create_parallel_config()` in `config/core.py` resolves explicit `False` → force off (no code change expected)
+5. Add tests covering the full truth table: `--feature-branches`→True, `--no-feature-branches`→False, neither+config True→True, neither+config False→False
+
 ## API/Interface
 
 - CLI: `ll-parallel --feature-branches` / `--no-feature-branches`;
@@ -119,6 +127,17 @@ definition.
   forces off when config is `True`
 - CLI argument-parsing tests for `ll-parallel` / `ll-sprint run` — both flag forms
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/parallel/worker_pool.py` — consumes `use_feature_branches` from config
+- `scripts/little_loops/parallel/orchestrator.py` — consumes `use_feature_branches` from config
+- `scripts/little_loops/config/automation.py` — references `use_feature_branches` in automation config
+
+### Documentation
+- N/A — CLI flag changes are self-documenting via `--help`; no separate docs reference `--feature-branches`
+
+### Configuration
+- N/A — no config schema changes; `parallel.use_feature_branches` key is unchanged
+
 ### Dependencies
 - **ENH-2173** — defines the override parameter and the enable flag this issue
   makes symmetric. Sequence after ENH-2173 (or fold the negation into it).
@@ -133,7 +152,17 @@ definition.
 
 ## Status
 
-**Open** | Created: 2026-06-15 | Priority: P3
+**Done** | Created: 2026-06-15 | Priority: P3
+
+## Resolution
+
+- **Status**: Closed - Superseded
+- **Completed**: 2026-06-15
+- **Reason**: Superseded by ENH-2173 via conflict resolution audit
+- **Proposed change**: ENH-2180's `BooleanOptionalAction` design merged into ENH-2173's implementation steps; ENH-2173 will implement `--feature-branches` / `--no-feature-branches` as a single `BooleanOptionalAction` from the start, making this follow-up unnecessary.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:48:03 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-15 - closed as merged into ENH-2173
+- `/ll:format-issue` - 2026-06-15T20:17:43 - `22f89f5b-27ef-43d1-8e94-5a0b515d58b6.jsonl`
 - `/ll:capture-issue` - 2026-06-15 - added to EPIC-2171 (symmetric-toggle gap identified during EPIC review)

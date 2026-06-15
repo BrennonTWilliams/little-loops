@@ -9,7 +9,8 @@ captured_at: '2026-06-15T16:51:50Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [parallel, configure, init, feature-branches, dx, discoverability]
-depends_on: [ENH-2175]
+depends_on: [ENH-2176]
+relates_to: [ENH-2175]
 ---
 
 # ENH-2174: Surface use_feature_branches in /ll:configure and init templates
@@ -100,6 +101,7 @@ development workflow (branch-per-issue / PR-based), discoverability matters.
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:47:56 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T16:57:30 - `bbf7e27c-ea9f-4af6-b201-de02c8065217.jsonl`
 - `/ll:capture-issue` - 2026-06-15T16:51:50Z - `5b1dd63b-714f-41e9-b9c2-f55f8ebd0e98.jsonl`

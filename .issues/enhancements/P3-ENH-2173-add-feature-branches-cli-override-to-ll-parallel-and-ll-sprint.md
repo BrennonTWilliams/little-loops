@@ -50,12 +50,16 @@ config and revert it afterward.
 Mirror the existing override pattern used for `stream_output` / `show_model`
 (`arg if arg else None` → fall back to config):
 
-1. Add `--feature-branches` (store_true, default `None`) to `cli/parallel.py`.
+1. Add `--feature-branches` / `--no-feature-branches` to `cli/parallel.py` using
+   `action=argparse.BooleanOptionalAction, default=None` (Python 3.9+) so both
+   the enable and negate forms are available from the first release.
 2. Add a `use_feature_branches: bool | None = None` parameter to
    `create_parallel_config()`; resolve as
    `use_feature_branches if use_feature_branches is not None else self._parallel.use_feature_branches`.
-3. Pass `args.feature_branches or None` from `cli/parallel.py`.
-4. Add the same `--feature-branches` flag to `cli/sprint/run.py` and thread it
+3. Pass `args.feature_branches` straight through (it is already `True` / `False` /
+   `None` with `BooleanOptionalAction`); do **not** apply `or None` coercion so an
+   explicit `False` survives and forces the flag off.
+4. Add the same `BooleanOptionalAction` flag to `cli/sprint/run.py` and thread it
    into its `create_parallel_config()` call.
 5. (Optional, depends on BUG-2172) if push/PR sub-flags are added, expose
    matching CLI flags here too.
@@ -64,7 +68,7 @@ Mirror the existing override pattern used for `stream_output` / `show_model`
 
 - `create_parallel_config(..., use_feature_branches: bool | None = None)` —
   new keyword-only parameter; `None` preserves config-driven default.
-- New CLI flags: `ll-parallel --feature-branches`, `ll-sprint run --feature-branches`.
+- New CLI flags: `ll-parallel --feature-branches` / `--no-feature-branches`, `ll-sprint run --feature-branches` / `--no-feature-branches`.
 
 ## Acceptance Criteria
 
@@ -74,14 +78,15 @@ Mirror the existing override pattern used for `stream_output` / `show_model`
    existing users).
 3. `ll-sprint run --feature-branches` applies the same override to multi-issue waves.
 4. `create_parallel_config()` accepts and correctly resolves the new parameter.
-5. Tests cover: flag set → True, flag unset + config True → True, flag unset +
-   config False → False.
+5. Tests cover the full truth table: `--feature-branches` → True;
+   `--no-feature-branches` → False; neither + config True → True;
+   neither + config False → False.
 
 ## Scope Boundaries
 
 - Adding push/PR sub-flags (depends on BUG-2172) is explicitly optional and excluded from this issue's scope.
 - No changes to `.ll/ll-config.json` schema or default values — the flag only overrides, never replaces, the config setting.
-- A `--no-feature-branches` negation flag is out of scope; omitting the flag already preserves config-off behavior.
+- Scope absorbed from ENH-2180: `--no-feature-branches` (the negation form) is in scope and implemented via `BooleanOptionalAction` alongside `--feature-branches`. ENH-2180 is closed as merged into this issue.
 - No behavior changes to feature-branch mode itself — only the activation mechanism.
 
 ## Integration Map
@@ -121,6 +126,7 @@ Mirror the existing override pattern used for `stream_output` / `show_model`
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:47:59 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T16:57:39 - `c31adb30-3c6b-4940-9ce0-5ccae335bee1.jsonl`
 - `/ll:capture-issue` - 2026-06-15T16:51:50Z - `5b1dd63b-714f-41e9-b9c2-f55f8ebd0e98.jsonl`

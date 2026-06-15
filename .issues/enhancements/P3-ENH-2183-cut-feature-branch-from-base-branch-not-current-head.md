@@ -9,7 +9,8 @@ captured_at: '2026-06-15T00:00:00Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [parallel, feature-branches, worktrees, base-branch, correctness]
-relates_to: [BUG-2172, ENH-2181]
+blocked_by: [BUG-2172]
+relates_to: [ENH-2181]
 ---
 
 # ENH-2183: Cut feature branch from parallel.base_branch, not the current HEAD
@@ -24,6 +25,17 @@ two downstream consumers while the branch's actual fork point is unmanaged. If
 the user isn't sitting on `base_branch` when they launch (e.g. on a release or
 stacked branch), the PR base and the true merge-base disagree — producing noisy
 PR diffs and incorrect prune results.
+
+## Motivation
+
+`base_branch` is referenced by three consumers — fork point, PR target (BUG-2172),
+and prune merge-check (ENH-2181) — but only the latter two actually honor it.
+Users who launch `ll-parallel` from a release branch, hotfix branch, or stacked
+branch (all common workflows) silently get a worktree forked from the wrong
+commit. The fallout is PR diffs polluted with upstream commits and prune decisions
+that misidentify merged branches. This enhancement closes the last gap so
+`base_branch` governs all three consumers consistently, completing the contract
+established by BUG-2172 and ENH-2181.
 
 ## Current Behavior
 
@@ -67,6 +79,14 @@ PR diffs and incorrect prune results.
    BUG-2172's push/remote handling).
 4. Pass `self.parallel_config.base_branch` from `worker_pool` in feature-branch
    mode.
+
+## Implementation Steps
+
+1. Add `base_branch: str | None = None` parameter to `setup_worktree()` signature in `worktree_utils.py`
+2. Pass `base_branch` as commit-ish to `git worktree add` when provided; no-op (fork from HEAD) when `None`
+3. Add `git rev-parse --verify <base_branch>` validation before worktree creation; fail fast with a clear message on resolution failure
+4. Thread `self.parallel_config.base_branch` into `worker_pool._setup_worktree()` call in feature-branch mode only
+5. Add tests: fork-point from `base_branch` when HEAD ≠ base; unresolvable-base error path; non-feature-branch `parallel/*` path unchanged
 
 ## API/Interface
 
@@ -117,6 +137,17 @@ PR diffs and incorrect prune results.
 - `scripts/tests/test_worktree_utils.py` / `test_worker_pool.py` — fork-point
   assertions under a non-base HEAD; unresolvable-base error path.
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/parallel/worker_pool.py` — `_setup_worktree()` is the
+  primary caller of `setup_worktree()`; receives the new parameter.
+- Run `grep -r "setup_worktree" scripts/` to confirm no other callers exist.
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A — `base_branch` schema is owned by BUG-2172; this ENH adds no new config keys.
+
 ## Impact
 
 - **Priority**: P3 — correctness: without it, `base_branch` is honored
@@ -131,4 +162,6 @@ PR diffs and incorrect prune results.
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:51:38 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
+- `/ll:format-issue` - 2026-06-15T20:18:15 - `243f0ddc-3093-4f69-bc1f-a6a8bcf7d3fd.jsonl`
 - `/ll:capture-issue` - 2026-06-15 - added to EPIC-2171 (base_branch fork-point inconsistency identified during EPIC review)

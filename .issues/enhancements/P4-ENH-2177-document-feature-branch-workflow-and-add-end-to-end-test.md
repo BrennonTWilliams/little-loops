@@ -10,7 +10,7 @@ discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [parallel, feature-branches, docs, testing, workflow]
 relates_to: [BUG-2172, ENH-2173, ENH-2175]
-blocked_by: [ENH-2182]
+blocked_by: [BUG-2172, ENH-2173, ENH-2175, ENH-2176, ENH-2182]
 ---
 
 # ENH-2177: Document the feature-branch workflow end-to-end and add an integration test
@@ -158,6 +158,7 @@ ENH-2175 is guarded against regressions.
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:51:38 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:33:22 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T20:17:30 - `6bcffe20-05d5-4d4e-9464-920433a7db90.jsonl`
 - `/ll:capture-issue` - 2026-06-15T17:30:00Z - added to EPIC-2171 for docs + e2e coverage

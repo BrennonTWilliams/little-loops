@@ -10,7 +10,7 @@ discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [parallel, feature-branches, cleanup, worktrees, lifecycle, dx]
 relates_to: [BUG-2172, ENH-2175]
-blocked_by: [ENH-2183]
+blocked_by: [ENH-2177, ENH-2182, ENH-2183]
 ---
 
 # ENH-2181: Prune merged local feature branches (feature-branch lifecycle/cleanup)
@@ -158,6 +158,7 @@ development loop, the missing cleanup half makes the local branch list unusable.
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:51:38 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T20:17:38 - `c323cac1-9bc1-4447-9eba-2b6d36af7dfc.jsonl`
 - `/ll:capture-issue` - 2026-06-15 - added to EPIC-2171 (feature-branch lifecycle/cleanup gap identified during EPIC review)
@@ -172,4 +173,4 @@ development loop, the missing cleanup half makes the local branch list unusable.
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): Both this issue and [ENH-2182] independently implement `gh pr view --json state` calls to determine whether a feature branch's PR is merged — ENH-2181 for pruning, ENH-2182 for status promotion to `done`. Consider extracting a shared `is_pr_merged(branch)` utility (e.g., `parallel/github_utils.py`) to avoid logic duplication. Additionally, ENH-2182's `ll-sync` reconciliation (which marks issues `done` on PR merge) can serve as a higher-confidence merged signal: an issue with `status: done` and a recorded `pr_url:` is safe to prune without an independent `gh` call.
+**Note** (updated by `/ll:audit-issue-conflicts`): [ENH-2182] owns the `is_pr_merged(branch: str, pr_url: str | None = None) -> bool` utility in `scripts/little_loops/parallel/github_utils.py`. This issue's Implementation Step 3 (optional `gh pr view` cross-check) must consume `is_pr_merged()` from that module rather than duplicating the `gh` call. Add `parallel/github_utils.py` to this issue's Integration Map as a dependent import and sequence this issue after ENH-2182. Additionally, an issue with `status: done` and a recorded `pr_url:` (written by ENH-2182's `ll-sync` reconciliation) is a safe-to-prune sentinel without an independent `gh` call.

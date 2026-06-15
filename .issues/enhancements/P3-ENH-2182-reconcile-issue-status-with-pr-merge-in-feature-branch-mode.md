@@ -9,7 +9,8 @@ captured_at: '2026-06-15T00:00:00Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels: [parallel, feature-branches, issues, lifecycle, status, sync, workflow]
-relates_to: [BUG-2172, ENH-2175, ENH-2181]
+blocked_by: [ENH-2175]
+relates_to: [BUG-2172, ENH-2181]
 ---
 
 # ENH-2182: Reconcile issue status with PR merge in feature-branch mode (done is premature)
@@ -28,6 +29,13 @@ This is the same class of overstatement BUG-2172 fixes for the end-of-run report
 ("PR-ready"), but one layer deeper — at the issue-lifecycle level. No existing
 EPIC-2171 child addresses issue *status* semantics (ENH-2175 records
 `branch:`/`pr_url:` but leaves status at `done`).
+
+## Motivation
+
+This enhancement would:
+- Eliminate misleading backlog state: issues are marked `done` the moment a worker finishes — even when the PR is unopened, unreviewed, or pending merge, giving a false picture of delivery progress.
+- Align `done` with "code merged to base branch": the only semantically correct promotion point in a PR-based workflow.
+- Complete EPIC-2171's "genuinely PR-based" goal at the lifecycle layer: BUG-2172 corrects the end-of-run *report*; this corrects the issue *record* — the same class of overstatement one level deeper.
 
 ## Current Behavior
 
@@ -51,31 +59,19 @@ EPIC-2171 child addresses issue *status* semantics (ENH-2175 records
    PR is unopened or open-but-unmerged.
 4. The work is not on the base branch, yet the backlog reports the issue closed.
 
-## Decision Needed
+## Decision
 
-Two coupled questions:
+**`in_progress` hold + `ll-sync` reconciliation — DECIDED** (selected via
+`/ll:audit-issue-conflicts` conflict resolution; avoids adding `in_review` to the
+canonical status enum, which would require schema + coercion changes).
 
-1. **Hold state**: in feature-branch mode, should a successful worker leave the
-   issue at `in_progress`, or should a new `in_review` status be introduced
-   (the project's canonical status set today is
-   `open / in_progress / blocked / deferred / done / cancelled` — see
-   `.claude/CLAUDE.md` § Issue File Format; adding `in_review` is a schema change
-   with coercion implications)?
-2. **Promotion to done**: what authoritative signal flips the issue to `done`?
-   Options: (a) a `ll-sync`-driven reconciliation that reads PR state from GitHub
-   (`gh pr view <branch> --json state,mergedAt`) and promotes merged PRs'
-   issues to `done`; (b) a manual `/ll:open-pr`-adjacent step; (c) leave
-   promotion to the user. Option (a) closes the loop automatically and composes
-   with ENH-2175's recorded `branch:`/`pr_url:`.
-
-Recommended: **`in_progress` hold + `ll-sync` reconciliation** (avoids a new
-status value and reuses the existing GitHub-sync surface), but confirm during
-implementation.
+1. **Hold state**: successful feature-branch workers leave the issue at `in_progress` — no new `in_review` status is introduced. The existing status enum (`open / in_progress / blocked / deferred / done / cancelled`) is unchanged.
+2. **Promotion to done**: `ll-sync`-driven reconciliation (option a) reads `gh pr view <branch> --json state,mergedAt` and promotes to `done` when `state == "MERGED"`. Composes with ENH-2175's recorded `branch:`/`pr_url:`.
 
 ## Expected Behavior
 
 - In feature-branch mode, a successful worker does **not** prematurely write
-  `status: done`; the issue is held at `in_progress` (or `in_review`) with the
+  `status: done`; the issue is held at `in_progress` with the
   branch/PR recorded (ENH-2175).
 - A reconciliation step promotes the issue to `done` once its PR is merged into
   the base branch (e.g. `ll-sync` reading PR state), and only then.
@@ -85,7 +81,7 @@ implementation.
 ## Acceptance Criteria
 
 1. In feature-branch mode, a successful worker no longer writes `status: done`;
-   the issue is left in the agreed hold state with `branch:` (and `pr_url:` when
+   the issue is left at `in_progress` with `branch:` (and `pr_url:` when
    available) recorded.
 2. There is a documented, runnable path that promotes a feature-branch issue to
    `done` when (and only when) its PR is merged into the base branch.
@@ -98,6 +94,16 @@ implementation.
    leaves an unmerged-PR issue in the hold state; auto-merge success still writes
    `done`.
 
+## Implementation Steps
+
+1. Hold-state is decided: `in_progress`. No schema change needed.
+2. Parameterize `_complete_issue_lifecycle_if_needed()` (`orchestrator.py:~1198`) to write `in_progress` (not `done`) in feature-branch mode; guard the auto-merge path so it remains unchanged.
+3. Update the feature-branch success branch (`orchestrator.py:~955`) to call the parameterized helper with `"in_progress"` after ENH-2175 records `branch:`/`pr_url:`.
+4. Extract `is_pr_merged(branch: str, pr_url: str | None = None) -> bool` into `scripts/little_loops/parallel/github_utils.py` (new file) using `gh pr view --json state,mergedAt`; use this utility in the `ll-sync` reconciliation step. ENH-2181 (prune) consumes the same utility from this module.
+5. Extend `ll-sync` / `sync-issues` with a PR-merge reconciliation step: for each issue in `in_progress` with a `pr_url:`, call `is_pr_merged()` and promote `status: done` when merged.
+6. Update toggle documentation (ENH-2174) and workflow guide (ENH-2177) to describe the hold state, the promotion path, and how `ll-sync` reconciliation is triggered.
+7. Add tests: feature-branch success → hold state (not `done`); `ll-sync` reconciliation promotes merged-PR issue → `done`, leaves unmerged PR in hold state; auto-merge path unchanged.
+
 ## Integration Map
 
 ### Files to Modify
@@ -108,8 +114,7 @@ implementation.
   (~line 1198): parameterize the terminal status it writes
 - `scripts/little_loops/ll_sync.py` (or the `sync-issues` surface) — add a
   reconciliation that promotes feature-branch issues to `done` on PR merge
-- `config-schema.json` / `.claude/CLAUDE.md` § Issue File Format — only if
-  `in_review` is added to the canonical status set
+- `scripts/little_loops/parallel/github_utils.py` — new file; contains `is_pr_merged()` utility
 
 ### Dependencies
 - **ENH-2175** — supplies the recorded `branch:` / `pr_url:` the reconciliation
@@ -143,4 +148,6 @@ implementation.
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-15T20:51:38 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
+- `/ll:format-issue` - 2026-06-15T20:17:49 - `80f4c8dd-8652-4bca-bbbc-08ee87084746.jsonl`
 - `/ll:capture-issue` - 2026-06-15 - added to EPIC-2171 (premature-`done` / merge-reconciliation gap identified during EPIC review)
