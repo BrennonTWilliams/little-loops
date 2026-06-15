@@ -50,8 +50,10 @@ class TestLoopSpecialistEvalFile:
     def test_initial_state(self, loop_data: dict) -> None:
         assert loop_data.get("initial") == "execute"
 
-    def test_category_is_harness(self, loop_data: dict) -> None:
-        assert loop_data.get("category") == "harness"
+    def test_category_is_evaluation(self, loop_data: dict) -> None:
+        # Category changed from "harness" to "evaluation" in commit 90425f27
+        # (loop-specialist-eval is an evaluation loop, not a generic harness).
+        assert loop_data.get("category") == "evaluation"
 
     def test_description_is_non_empty(self, loop_data: dict) -> None:
         desc = loop_data.get("description", "")

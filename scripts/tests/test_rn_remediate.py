@@ -300,11 +300,16 @@ class TestRemediationActions:
         assert dec.get("fragment") == "with_rate_limit_handling"
 
     def test_decide_routes_to_re_assess(self) -> None:
-        """decide routes to re_assess on success (must re-check)."""
+        """decide routes to re_assess on all verdicts (slash_command: on_yes/on_no/on_partial).
+
+        BUG-2169: decide/wire/refine use on_yes/on_no/on_partial (slash_command routing),
+        not on_success/on_error (sub-loop delegation routing).
+        """
         data = _load_loop()
         dec = data["states"]["decide"]
-        assert dec["on_success"] == "re_assess"
-        assert dec["on_error"] == "re_assess"
+        assert dec["on_yes"] == "re_assess"
+        assert dec["on_no"] == "re_assess"
+        assert dec["on_partial"] == "re_assess"
 
     def test_wire_is_slash_command_with_auto(self) -> None:
         """wire invokes /ll:wire-issue --auto as a slash_command."""
@@ -315,19 +320,23 @@ class TestRemediationActions:
         assert "--auto" in wire["action"]
 
     def test_wire_routes_to_re_assess_on_success(self) -> None:
-        """wire routes through mark_wired to re_assess on success (BUG-2007 Defect 1).
+        """wire routes through mark_wired to re_assess on yes/partial (BUG-2007 Defect 1).
 
-        Marker-gate: success now hops through mark_wired (which sets the wired
+        Marker-gate: on_yes/on_partial hop through mark_wired (which sets the wired
         marker, then continues to re_assess) so the pre-implement gate can confirm
         a wire ran. BUG-2007 intent is preserved — success still reaches re_assess,
-        not an unconditional --full-rewrite refine pass. on_error still falls back
-        to refine (a wiring failure still warrants a rewrite).
+        not an unconditional --full-rewrite refine pass. on_no routes to refine
+        (a wiring decline still warrants a rewrite).
+
+        BUG-2169: uses slash_command routing (on_yes/on_no/on_partial), not
+        sub-loop delegation keys (on_success/on_error).
         """
         data = _load_loop()
         wire = data["states"]["wire"]
-        assert wire["on_success"] == "mark_wired"
+        assert wire["on_yes"] == "mark_wired"
+        assert wire["on_partial"] == "mark_wired"
         assert data["states"]["mark_wired"]["next"] == "re_assess"
-        assert wire["on_error"] == "refine"
+        assert wire["on_no"] == "refine"
 
     def test_refine_uses_full_rewrite_flag(self) -> None:
         """refine uses --full-rewrite flag."""
@@ -336,17 +345,25 @@ class TestRemediationActions:
         assert "--full-rewrite" in ref["action"]
 
     def test_refine_routes_to_re_assess(self) -> None:
-        """refine routes through mark_refined to re_assess on success (marker-gate)."""
+        """refine routes through mark_refined to re_assess on yes/partial (marker-gate).
+
+        BUG-2169: uses slash_command routing (on_yes/on_partial), not on_success.
+        """
         data = _load_loop()
         ref = data["states"]["refine"]
-        assert ref["on_success"] == "mark_refined"
+        assert ref["on_yes"] == "mark_refined"
+        assert ref["on_partial"] == "mark_refined"
         assert data["states"]["mark_refined"]["next"] == "re_assess"
 
     def test_refine_failure_routes_to_failed(self) -> None:
-        """refine routes to failed (terminal) on error — issue skipping stays in parent."""
+        """refine routes to emit_implement_failed on no (slash_command on_no = LLM decline).
+
+        BUG-2169: refine uses slash_command routing, so the failure path is on_no
+        (the LLM refused/declined to refine), not on_error (infrastructure error).
+        """
         data = _load_loop()
         ref = data["states"]["refine"]
-        assert ref["on_error"] == "emit_implement_failed"
+        assert ref["on_no"] == "emit_implement_failed"
 
 
 # ---------------------------------------------------------------------------
