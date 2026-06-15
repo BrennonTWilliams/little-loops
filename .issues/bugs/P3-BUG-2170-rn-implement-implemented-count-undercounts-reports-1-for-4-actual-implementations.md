@@ -3,8 +3,9 @@ id: BUG-2170
 title: rn-implement implemented_count.txt reports 1 for 4 actual implementations
 priority: P3
 type: BUG
-status: open
+status: done
 captured_at: '2026-06-15T15:41:00Z'
+completed_at: '2026-06-15T17:25:51Z'
 discovered_date: '2026-06-15'
 discovered_by: audit-loop-run
 source_loop: rn-implement
@@ -14,12 +15,12 @@ labels:
 - rn-implement
 - rn-remediate
 - telemetry
-confidence_score: 83
-outcome_confidence: 79
+confidence_score: 98
+outcome_confidence: 87
 decision_needed: false
-score_complexity: 21
-score_test_coverage: 18
-score_ambiguity: 18
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 23
 score_change_surface: 22
 ---
 
@@ -155,6 +156,7 @@ Decided by `/ll:decide-issue` on 2026-06-15.
 
 ### Documentation
 - `docs/guides/LOOPS_REFERENCE.md` — documents `rn-implement`, `rn-remediate`, `rn-decompose` architectures and counter patterns
+- `CHANGELOG.md` — add BUG-2170 entry in current release section alongside ENH-2119 (line 69) when the fix ships [Wiring pass finding]
 
 ## Implementation Steps
 
@@ -196,6 +198,9 @@ _Added by `/ll:confidence-check` on 2026-06-15_
 - AC1 (root cause identification) is satisfied. Proceed directly to applying the fix in Implementation Step 1.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-15T17:22:31 - `b76774e2-b37b-4d64-b148-b49d87fab7eb.jsonl`
+- `/ll:confidence-check` - 2026-06-15T18:00:00Z - `de94fc36-1693-43a9-988b-5b9e5787441a.jsonl`
+- `/ll:wire-issue` - 2026-06-15T17:14:36 - `63a402ce-7d2e-45a1-befc-4392e24ffc82.jsonl`
 - `/ll:refine-issue` - 2026-06-15T17:02:53 - `bffefeb0-fbda-400c-89f6-f9e3c1696323.jsonl`
 - `/ll:decide-issue` - 2026-06-15T16:57:22 - `c31adb30-3c6b-4940-9ce0-5ccae335bee1.jsonl`
 - `/ll:refine-issue` - 2026-06-15T16:43:28 - `3b3e7dff-d0aa-440f-841c-9a9413d063e2.jsonl`

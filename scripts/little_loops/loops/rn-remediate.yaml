@@ -606,8 +606,7 @@ states:
     action: |
       ID="${context.issue_id}"
       echo "IMPLEMENTED" > "${context.run_dir}/subloop_outcome_$ID.txt"
-      ALREADY_COUNTED=$(grep -cxF "$ID" "${context.run_dir}/counted.txt" 2>/dev/null || echo 0)
-      if [ "$ALREADY_COUNTED" -eq 0 ]; then
+      if ! grep -qxF "$ID" "${context.run_dir}/counted.txt" 2>/dev/null; then
         COUNT=$(cat "${context.run_dir}/implemented_count.txt" 2>/dev/null || echo 0)
         echo $((COUNT + 1)) > "${context.run_dir}/implemented_count.txt"
         echo "$ID" >> "${context.run_dir}/counted.txt"

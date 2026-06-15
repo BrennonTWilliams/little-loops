@@ -1149,6 +1149,23 @@ class TestCounterIncrementInEmitImplemented:
         assert "${context.run_dir}/implemented_count.txt" in action
         assert "${context.run_dir}/counted.txt" in action
 
+    def test_emit_implemented_uses_quiet_grep_for_dedup(self) -> None:
+        """emit_implemented dedup guard must use grep -qxF, not grep -cxF (BUG-2170).
+
+        grep -cxF "$ID" file 2>/dev/null || echo 0 produces double output when the
+        file exists but $ID is absent: grep -c outputs "0" AND exits 1, triggering
+        || echo 0, so ALREADY_COUNTED captures "0\\n0" which fails the -eq 0 test.
+        The fix is grep -qxF which exits 0/1 with no stdout.
+        """
+        data = _load_loop()
+        action = data["states"]["emit_implemented"]["action"]
+        assert "grep -qxF" in action, (
+            "emit_implemented dedup guard must use 'grep -qxF' (not 'grep -cxF') (BUG-2170)"
+        )
+        assert "grep -cxF" not in action, (
+            "emit_implemented must not use 'grep -cxF' — causes double-output bug (BUG-2170)"
+        )
+
     def test_implement_action_is_minimal(self) -> None:
         """implement action contains only ll-auto invocation and exit (ENH-2119)."""
         data = _load_loop()

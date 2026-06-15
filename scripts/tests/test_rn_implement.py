@@ -244,13 +244,17 @@ class TestSubLoopDelegation:
         assert state.get("loop") == "rn-remediate"
 
     def test_run_remediation_has_with_bindings(self) -> None:
-        """run_remediation passes issue_id, thresholds, and max_passes via with: bindings."""
+        """run_remediation passes issue_id, thresholds, max_passes, and run_dir via with: bindings."""
         data = _load_loop()
         with_bindings = data["states"]["run_remediation"]["with"]
         assert with_bindings["issue_id"] == "${captured.input.output}"
         assert with_bindings["readiness_threshold"] == "${context.readiness_threshold}"
         assert with_bindings["outcome_threshold"] == "${context.outcome_threshold}"
         assert with_bindings["max_remediation_passes"] == "${context.max_remediation_passes}"
+        assert with_bindings["run_dir"] == "${captured.run_dir.output}", (
+            "run_remediation must pass run_dir to rn-remediate so emit_implemented "
+            "writes to the outer loop's run_dir (BUG-2170)"
+        )
 
     def test_run_remediation_routes_on_success_to_dequeue_next(self) -> None:
         """run_remediation routes to dequeue_next on success (child done = implemented)."""
