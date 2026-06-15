@@ -96,9 +96,53 @@ No code changes in this issue — output is a research artifact:
 | `hooks/adapters/codex/README.md` | Adapter contract that Gemini adapter will need to match |
 | `scripts/little_loops/host_runner.py` | `PiRunner` / `CodexRunner` patterns for `GeminiRunner` |
 
+## Findings
+
+**All three research questions have definitive answers.** Full artifact: `thoughts/research/gemini-cli-surface.md`.
+
+### Q1: Binary surface — ✓
+
+- Binary: `gemini` (npm `@google/gemini-cli`), v0.46.0
+- Headless flag: `-p` / `--prompt` — **identical to Claude Code**
+- Streaming JSON: `-o stream-json` — **identical flag name**
+- Blocking JSON: `-o json` → single `{response, stats, error?}` blob
+- Model: `-m <id>` (auto/pro/flash/gemini-2.5-pro/etc.)
+- Auto-approval: `--approval-mode=yolo`
+- Session resume: `-r latest` / `-r <index>` / `-r <session-id>`
+- Agent select: ✗ (no `--agent` flag; skills activate implicitly)
+- Tool allowlist: Policy Engine via `--policy <file>` (not a simple list flag)
+
+### Q2: Lifecycle hooks — ✓ (11 events)
+
+Config in `.gemini/settings.json` under `hooks:`. stdin/stdout JSON — same protocol as Claude Code. `CLAUDE_PROJECT_DIR` alias provided for compatibility. `gemini hooks migrate --from-claude` command exists.
+
+Core mappings: `SessionStart` → `session_start` (advisory), `PreCompress` → `pre_compact` (async), `BeforeAgent` → `user_prompt_submit`, `BeforeTool` → `pre_tool_use`, `AfterTool` → `post_tool_use`, `SessionEnd` → `session_end` (best-effort).
+
+New events with no current ll intent: `AfterAgent`, `BeforeModel`, `AfterModel`, `BeforeToolSelection`, `Notification`.
+
+### Q3: Plugin/command/skill discovery — ✓ (3 surfaces)
+
+- **Commands**: `.gemini/commands/*.toml` — TOML format; needs bridge script
+- **Skills**: `.gemini/skills/<name>/SKILL.md` — compatible format; minor adaptation only
+- **Extensions**: `~/.gemini/extensions/<name>/` with `gemini-extension.json` manifest
+- **Project instructions**: `GEMINI.md` (exact analog of `CLAUDE.md`)
+
+### Recommended child issues for EPIC-2178
+
+1. `GeminiRunner` stub in `host_runner.py` (raises `HostNotConfigured`)
+2. `GeminiRunner` full implementation (flag translation complete in research doc)
+3. Hook adapter — `.gemini/settings.json` injection OR extension `hooks/hooks.json` (decision needed)
+4. Config probe — `.gemini/ll-config.json` in `config/core.py _config_candidates()`
+5. Skills adaptation — `ll-adapt-skills-for-gemini` (add `name:` where missing)
+6. Commands adaptation — `ll-adapt-commands-for-gemini` (`.md` → `.toml`)
+7. `GEMINI.md` project context file (created by `ll:init --gemini`)
+8. `HOST_COMPATIBILITY.md` Gemini column — flip cells from `(deferred)` to ✓ as children land
+9. Conformance test suite (`ll-auto`/`ll-sprint`/`ll-loop` golden paths)
+
 ## Session Log
 - `/ll:capture-issue` - 2026-06-15T17:09:51Z - `63a402ce-7d2e-45a1-befc-4392e24ffc82.jsonl`
+- FEAT-2179 completed - 2026-06-15 - `63a402ce-7d2e-45a1-befc-4392e24ffc82.jsonl`
 
 ---
 
-**Open** | Created: 2026-06-15 | Priority: P4
+**Done** | Created: 2026-06-15 | Priority: P4

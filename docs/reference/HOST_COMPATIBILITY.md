@@ -18,16 +18,16 @@ Hook intents are dispatched through the host-agnostic Python layer at
 `hooks/adapters/<host>/` and translates the host's native hook protocol
 into `LLHookEvent` payloads.
 
-| Hook intent          | Claude Code | OpenCode      | Codex CLI     |
-| -------------------- | ----------- | ------------- | ------------- |
-| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) |
-| `pre_compact`        | ✓           | ✓             | ✓             |
-| `user_prompt_submit` | ✓           | (deferred)    | ✓             |
-| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] |
-| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] |
-| `stop` → `session_end` | ✓ (dispatched as `session_end`) | (deferred)    | (deferred)    |
-| `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] |
-| `permission_request` | N/A         | N/A           | (deferred)[^permreq] |
+| Hook intent          | Claude Code | OpenCode      | Codex CLI     | Gemini CLI    |
+| -------------------- | ----------- | ------------- | ------------- | ------------- |
+| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) | (deferred)[^gemini] — `SessionStart`; advisory only |
+| `pre_compact`        | ✓           | ✓             | ✓             | (deferred)[^gemini] — `PreCompress`; advisory, async |
+| `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` |
+| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` |
+| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` |
+| `stop` → `session_end` | ✓ (dispatched as `session_end`) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort |
+| `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent |
+| `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only |
 
 [^hot]: Hot-path intents (`pre_tool_use` / `post_tool_use`) fire on every
     tool invocation and require a latency budget. Research decision
@@ -64,12 +64,24 @@ into `LLHookEvent` payloads.
     `PostCompact` and `PermissionRequest` no-op handlers in one pass. Deferred
     until a concrete consumer exists; the cell flips to ✓ when FEAT-1719 lands.
 
+[^gemini]: Gemini CLI (`gemini` binary, npm `@google/gemini-cli`) support is
+    tracked by **EPIC-2178**. Research spike **FEAT-2179** (2026-06-15) confirmed
+    all three research questions — binary surface, hook model, plugin discovery —
+    have definitive answers. No unknowns remain; implementation work is gated on
+    child issues of EPIC-2178. Research artifact:
+    `thoughts/research/gemini-cli-surface.md`. Key findings: `-p`/`--prompt` headless
+    mode and `--output-format stream-json` flags are **identical to Claude Code**;
+    hook I/O protocol (stdin/stdout JSON) is compatible; `CLAUDE_PROJECT_DIR` env
+    var alias is provided by Gemini for Claude Code compatibility; `gemini hooks
+    migrate --from-claude` command exists. Cells flip from `(deferred)` to ✓ as
+    EPIC-2178 children land.
+
 ## Slash-command and skill discovery
 
-| Surface                  | Claude Code               | OpenCode                  | Codex CLI                 |
-| ------------------------ | ------------------------- | ------------------------- | ------------------------- |
-| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt-skills-for-codex` (FEAT-1493)[^cmds] |
-| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt-skills-for-codex` (FEAT-1486)[^cmds] |
+| Surface                  | Claude Code               | OpenCode                  | Codex CLI                 | Gemini CLI                |
+| ------------------------ | ------------------------- | ------------------------- | ------------------------- | ------------------------- |
+| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt-skills-for-codex` (FEAT-1493)[^cmds] | (deferred)[^gemini] — `.gemini/commands/*.toml`; TOML format; bridge script needed |
+| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt-skills-for-codex` (FEAT-1486)[^cmds] | (deferred)[^gemini] — `.gemini/skills/<name>/SKILL.md`; compatible format; minor adaptation (add `name:`) |
 
 [^cmds]: Codex has no `.codex/prompts/` slash-command path (that reference in
     prior footnotes was speculative — no such surface exists in the current
@@ -93,14 +105,14 @@ into `LLHookEvent` payloads.
 
 Runtime capabilities reported by `ll-doctor` for each host runner.
 
-| Capability       | Claude Code | OpenCode | Codex CLI                          |
-| ---------------- | ----------- | -------- | ---------------------------------- |
-| Streaming        | ✓           | ✓        | ✓                                  |
-| Permission skip  | ✓           | ✗        | ✗[^runnercap]                      |
-| Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        |
-| Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      |
-| `json_schema`    | ✗           | ✗        | partial (file-mediated)[^schema]   |
-| Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            |
+| Capability       | Claude Code | OpenCode | Codex CLI                          | Gemini CLI                         |
+| ---------------- | ----------- | -------- | ---------------------------------- | ---------------------------------- |
+| Streaming        | ✓           | ✓        | ✓                                  | ✓ (`-o stream-json`)[^gemini]      |
+| Permission skip  | ✓           | ✗        | ✗[^runnercap]                      | ✓ (`--approval-mode=yolo`)[^gemini] |
+| Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] |
+| Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] |
+| `json_schema`    | ✗           | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         |
+| Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         |
 
 [^tok]: OpenCode and Codex CLI do not expose per-invocation token usage in their streaming output. The `on_usage_detailed` callback in `subprocess_utils.run_claude_command()` therefore fires only for `claude`-backed runs. Adapter work to surface usage from OpenCode/Codex is tracked by **FEAT-2123**. Loops run under those hosts will produce no `usage.jsonl` file and no per-state cost table in `ll-loop run` output.
 
@@ -160,15 +172,15 @@ satisfied by four concrete runners — `ClaudeCodeRunner` (production),
 a matter of fleshing out the corresponding runner rather than touching
 call sites.
 
-| Tool                          | Claude Code | OpenCode      | Codex CLI    | Pi           |
-| ----------------------------- | ----------- | ------------- | ------------ | ------------ |
-| `ll-auto`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
-| `ll-parallel`                 | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
-| `ll-action`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
-| `ll-loop`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
-| `ll-harness`                  | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
-| `ll-sprint`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
-| FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
+| Tool                          | Claude Code | OpenCode      | Codex CLI    | Pi           | Gemini CLI   |
+| ----------------------------- | ----------- | ------------- | ------------ | ------------ | ------------ |
+| `ll-auto`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
+| `ll-parallel`                 | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
+| `ll-action`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
+| `ll-loop`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
+| `ll-harness`                  | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
+| `ll-sprint`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
+| FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
 
 [^orch]: All seven call sites now route through
     `scripts/little_loops/host_runner.py` (`HostRunner` Protocol +
@@ -191,6 +203,7 @@ Resolved by `resolve_config_path()` in
 | Claude Code | `.ll/ll-config.json` → root-level `ll-config.json`                                       |
 | OpenCode    | `.ll/ll-config.json` → root-level `ll-config.json` (same as default)                     |
 | Codex CLI   | `.codex/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json`             |
+| Gemini CLI  | `.gemini/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json` (deferred)[^gemini] |
 
 The Codex order is triggered by either `LL_HOOK_HOST=codex` or
 `LL_STATE_DIR=.codex` in the environment. The Codex adapter sets the
@@ -282,3 +295,6 @@ This matrix is the authoritative parity reference; the Codex docs above are the 
   `thoughts/research/hot-path-hook-intents.md`).
 - **FEAT-1489** — Wire `post_tool_use` for Codex and OpenCode (fire-and-forget);
   create benchmark script; wire `pre_tool_use` if benchmark clears 200ms threshold.
+- **EPIC-2178** — Gemini CLI host adapter tracking (this matrix's Gemini column).
+- **FEAT-2179** — Research spike: gemini-cli binary surface, hook events, and plugin
+  discovery (completed — all cells confirmed; see `thoughts/research/gemini-cli-surface.md`).
