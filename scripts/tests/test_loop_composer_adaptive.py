@@ -42,6 +42,7 @@ REQUIRED_STATES = {
     "route_reassess_continue",
     "route_reassess_replan",
     "apply_replan",
+    "validate_replan",
     "read_checkpoints",
     "review_chain",
     "present_result",
@@ -115,12 +116,21 @@ class TestLoopComposerAdaptiveStates:
         missing = REQUIRED_STATES - actual
         assert not missing, f"loop-composer-adaptive missing states: {missing}"
 
-    def test_write_step_failed_routes_to_increment_not_checkpoints(self, states: dict) -> None:
+    def test_write_step_failed_routes_to_reassess_chain_not_checkpoints(self, states: dict) -> None:
         wf = states["write_step_failed"]
-        assert wf.get("next") == "increment_replan_count", (
-            "write_step_failed must route to increment_replan_count (adaptive path), "
-            "not read_checkpoints (static path)"
+        assert wf.get("next") == "read_completed_summaries", (
+            "write_step_failed must enter the reassess chain (read_completed_summaries) "
+            "without consuming replan budget — the budget gate sits on the REPLAN_TAIL "
+            "branch downstream, not on every failure (adaptive path), and it must not "
+            "route to read_checkpoints (static path)"
         )
+
+    def test_write_step_failed_does_not_mark_step_succeeded(self, states: dict) -> None:
+        """A failed step advances the cursor but is NOT locked as succeeded, so
+        REPLAN_TAIL can retry it (see apply_replan immutability boundary)."""
+        action = states["write_step_failed"].get("action", "")
+        assert "completed-steps.txt" in action
+        assert "succeeded-steps.txt" not in action
 
     def test_write_step_success_routes_to_execute_plan(self, states: dict) -> None:
         ws = states["write_step_success"]
@@ -165,13 +175,23 @@ class TestReplanBudget:
         assert state.get("on_no") == "abort_composer"
         assert state.get("on_error") == "abort_composer"
 
-    def test_budget_ok_routes_to_read_summaries(self, states: dict) -> None:
+    def test_budget_ok_routes_to_increment(self, states: dict) -> None:
+        # On the REPLAN_TAIL branch the budget is checked BEFORE increment, so
+        # max_replans=2 permits exactly 2 replans (count read while still < max).
         state = states["check_replan_budget"]
-        assert state.get("on_yes") == "read_completed_summaries"
+        assert state.get("on_yes") == "increment_replan_count"
 
-    def test_increment_replan_count_precedes_budget_check(self, states: dict) -> None:
-        inc = states["increment_replan_count"]
-        assert inc.get("next") == "check_replan_budget"
+    def test_budget_check_precedes_increment(self, states: dict) -> None:
+        # check_replan_budget reads the count, then increment_replan_count bumps
+        # it and proceeds to apply_replan (only actual replans consume budget).
+        assert states["check_replan_budget"].get("on_yes") == "increment_replan_count"
+        assert states["increment_replan_count"].get("next") == "apply_replan"
+
+    def test_replan_budget_only_consumed_on_replan_branch(self, states: dict) -> None:
+        # The budget gate is reached only from route_reassess_replan (REPLAN_TAIL);
+        # CONTINUE routes straight to execute_plan and never consumes budget.
+        assert states["route_reassess_replan"].get("on_yes") == "check_replan_budget"
+        assert states["route_reassess_continue"].get("on_yes") == "execute_plan"
 
 
 class TestReassessState:
@@ -203,12 +223,16 @@ class TestReassessState:
         assert state.get("on_partial") == "parse_reassess_decision"
         assert state.get("on_error") == "abort_composer"
 
-    def test_reassess_is_preceded_by_output_numeric_gate(self, states: dict) -> None:
-        """MR-1: llm_structured state must be paired with non-LLM evaluator in routing chain."""
+    def test_reassess_is_paired_with_output_numeric_gate(self, states: dict) -> None:
+        """MR-1: the llm_structured reassess state must be paired with a non-LLM
+        evaluator in its routing chain. The deterministic parse_reassess_decision
+        + route_* states drive routing, and the output_numeric budget gate sits on
+        the REPLAN_TAIL branch downstream of reassess."""
         budget = states["check_replan_budget"]
         assert budget["evaluate"]["type"] == "output_numeric"
-        # The output_numeric gate routes on_yes toward the reassess state
-        assert budget.get("on_yes") == "read_completed_summaries"
+        # Reachable downstream of reassess: reassess -> parse -> route_continue ->
+        # route_reassess_replan -> check_replan_budget.
+        assert states["route_reassess_replan"].get("on_yes") == "check_replan_budget"
 
 
 class TestVerdictGateRouting:
@@ -231,11 +255,30 @@ class TestVerdictGateRouting:
     def test_route_reassess_continue_falls_through_to_replan_check(self, states: dict) -> None:
         assert states["route_reassess_continue"].get("on_no") == "route_reassess_replan"
 
-    def test_route_reassess_replan_routes_to_apply_replan_on_yes(self, states: dict) -> None:
-        assert states["route_reassess_replan"].get("on_yes") == "apply_replan"
+    def test_route_reassess_replan_routes_to_budget_gate_on_yes(self, states: dict) -> None:
+        # REPLAN_TAIL must pass through the budget gate before apply_replan.
+        assert states["route_reassess_replan"].get("on_yes") == "check_replan_budget"
 
     def test_route_reassess_replan_routes_to_abort_on_no(self, states: dict) -> None:
         assert states["route_reassess_replan"].get("on_no") == "abort_composer"
+
+    def test_apply_replan_validates_before_executing(self, states: dict) -> None:
+        # The replanned (succeeded + new tail) plan is re-validated (catalog
+        # membership, node cap, cycles, dup step_ids, Kahn topo-sort) before
+        # dispatch; a rejected replan aborts cleanly.
+        assert states["apply_replan"].get("next") == "validate_replan"
+        vr = states["validate_replan"]
+        assert vr.get("fragment") == "validate_plan"
+        assert vr.get("on_yes") == "execute_plan"
+        assert vr.get("on_no") == "abort_composer"
+        assert vr.get("on_error") == "abort_composer"
+
+    def test_apply_replan_uses_succeeded_steps_as_immutable_boundary(self, states: dict) -> None:
+        # Fix #8: the immutable prefix is succeeded-steps.txt (not completed-steps),
+        # and apply_replan resets the cursor so a failed step can be retried.
+        action = states["apply_replan"].get("action", "")
+        assert "succeeded-steps.txt" in action
+        assert "completed-steps.txt" in action
 
 
 class TestCheckpointPersistence:
@@ -251,6 +294,23 @@ class TestCheckpointPersistence:
         action = states["write_step_success"].get("action", "")
         assert "${context.run_dir}" in action
         assert "checkpoints" in action
+
+    def test_write_step_success_records_succeeded_step(self, states: dict) -> None:
+        # Fix #8: a successful step is appended to both the cursor and the
+        # immutable boundary file used by apply_replan.
+        action = states["write_step_success"].get("action", "")
+        assert "completed-steps.txt" in action
+        assert "succeeded-steps.txt" in action
+
+    def test_no_state_interpolates_captured_output_into_python_literal(self, states: dict) -> None:
+        # Fix #5: shell states read captured values from disk (quoted heredoc),
+        # never `"""${captured.X.output}"""` which corrupts on quotes/backslashes.
+        for name, state in states.items():
+            action = state.get("action", "") or ""
+            assert '"""${captured' not in action, (
+                f"State {name!r} interpolates a captured value into a Python triple-quoted "
+                f"literal — read it from disk via a quoted heredoc instead (fix #5)"
+            )
 
     def test_parse_plan_writes_plan_v1(self, states: dict) -> None:
         action = states["parse_plan"].get("action", "")

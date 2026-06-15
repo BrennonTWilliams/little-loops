@@ -213,7 +213,9 @@ fragments:
       Adaptive re-assessment after a sub-loop step failure. Reads captured context
       (completed_step_summaries, last_verdict, plan_display) and returns a structured
       CONTINUE / REPLAN_TAIL / ABORT decision in a REASSESS_DECISION block.
-      Pairs with check_replan_budget (output_numeric) in the MR-1 routing chain.
+      The deterministic parse_reassess_decision + route_* states (not this LLM
+      verdict) drive routing; check_replan_budget (output_numeric) gates the
+      REPLAN_TAIL branch downstream, satisfying the MR-1 non-LLM-evaluator pairing.
       State must supply: on_yes, on_no, on_partial, on_error.
     action_type: prompt
     timeout: 300
@@ -234,8 +236,10 @@ fragments:
       Choose one of:
       - CONTINUE — skip the failing step; proceed with remaining steps unchanged.
       - REPLAN_TAIL — propose a revised tail plan for the unexecuted steps only.
-        Completed steps are IMMUTABLE. New tail must use only loops from the catalog.
-        Max ${context.max_plan_nodes} total steps in the new tail.
+        Successfully-completed steps are IMMUTABLE; the step that just failed MAY be
+        retried by including it in the new tail. New tail must use only loops from
+        the catalog. A step's input may reference a prior step's output with
+        {{step_id}}. Max ${context.max_plan_nodes} total steps in the merged plan.
       - ABORT — goal is not achievable; terminate cleanly.
 
       Emit your decision LAST as:

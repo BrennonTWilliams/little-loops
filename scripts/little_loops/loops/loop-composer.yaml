@@ -56,7 +56,7 @@ states:
          For a simple linear sequence all depends_on lists are [previous_step_id].
          For independent parallel work, depends_on may be [].
       5. The input field is a string passed as --input to that loop. It may reference
-         a prior step's output with {{step_id_output}} (replaced at runtime).
+         a prior step's output with {{step_id}} (e.g. {{step_1}}, replaced at runtime).
 
       Output your plan on the LAST block as:
       PLAN_JSON:
@@ -83,12 +83,18 @@ states:
   parse_plan:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/plan-raw.txt" << 'LL_PLAN_RAW_EOF'
+      ${captured.plan_json.output}
+      LL_PLAN_RAW_EOF
       python3 << 'PYEOF'
       import json, re, sys, os
 
       run_dir = '${context.run_dir}'
       os.makedirs(run_dir, exist_ok=True)
-      output = """${captured.plan_json.output}"""
+      # Read the raw LLM output from disk (written above via a quoted heredoc)
+      # rather than interpolating it into a Python string literal.
+      with open(os.path.join(run_dir, 'plan-raw.txt')) as f:
+          output = f.read()
 
       # Extract JSON array from tagged block
       plan = None
@@ -219,7 +225,11 @@ states:
       # Substitute {{step_id_output}} references in input
       step_input = next_step.get('input', '${context.goal}') or '${context.goal}'
       def replace_step_ref(m):
-          ref_id = m.group(1)
+          ref_id = m.group(1).strip()
+          # Tolerate a trailing "_output" (the prompt placeholder used to be
+          # {{step_id_output}}); the checkpoint file is keyed by bare step_id.
+          if ref_id.endswith('_output'):
+              ref_id = ref_id[: -len('_output')]
           ckpt = os.path.join(run_dir, 'checkpoints', f'step-{ref_id}.json')
           try:
               with open(ckpt) as cf:
@@ -278,6 +288,9 @@ states:
   write_step_success:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/current-step-output.jsonl" << 'LL_STEP_OUTPUT_EOF'
+      ${captured.step_output.output}
+      LL_STEP_OUTPUT_EOF
       python3 << 'PYEOF'
       import json, os
 
@@ -291,8 +304,10 @@ states:
       step_num = _read(os.path.join(run_dir, 'current-step-num.txt'), '0')
       loop_name = _read(os.path.join(run_dir, 'current-step-loop.txt'), '')
 
-      # Parse sub-loop JSONL event stream for output summary
-      subloop_out = """${captured.step_output.output}"""
+      # Parse sub-loop JSONL event stream for output summary. Read the events
+      # from disk (written above via a quoted heredoc) so embedded quotes /
+      # backslashes / triple-quotes are never reinterpreted as Python source.
+      subloop_out = _read(os.path.join(run_dir, 'current-step-output.jsonl'))
       output_summary = ''
       terminal_state = 'done'
       for line in subloop_out.strip().split('\n'):
@@ -341,6 +356,9 @@ states:
   write_step_failed:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/current-step-output.jsonl" << 'LL_STEP_OUTPUT_EOF'
+      ${captured.step_output.output}
+      LL_STEP_OUTPUT_EOF
       python3 << 'PYEOF'
       import json, os
 
@@ -354,7 +372,8 @@ states:
       step_num = _read(os.path.join(run_dir, 'current-step-num.txt'), '0')
       loop_name = _read(os.path.join(run_dir, 'current-step-loop.txt'), '')
 
-      subloop_out = """${captured.step_output.output}"""
+      # Read sub-loop JSONL from disk (written above) — see write_step_success.
+      subloop_out = _read(os.path.join(run_dir, 'current-step-output.jsonl'))
       terminal_state = 'failed'
       for line in subloop_out.strip().split('\n'):
           try:

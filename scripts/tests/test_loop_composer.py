@@ -163,6 +163,17 @@ class TestLoopComposerStates:
             "write_step_failed must proceed to read_checkpoints (MVP: stop on failure)"
         )
 
+    def test_no_state_interpolates_captured_output_into_python_literal(self, states: dict) -> None:
+        # Fix #5: shell states must read captured sub-loop/LLM output from disk
+        # (via a quoted heredoc), never `"""${captured.X.output}"""`, which a
+        # JSONL value containing quotes/backslashes/triple-quotes would corrupt.
+        for name, state in states.items():
+            action = state.get("action", "") or ""
+            assert '"""${captured' not in action, (
+                f"State {name!r} interpolates a captured value into a Python triple-quoted "
+                f"literal — read it from disk via a quoted heredoc instead (fix #5)"
+            )
+
     def test_no_loops_tmp_paths(self, states: dict) -> None:
         """MR-3 guard: no state action should write to .loops/tmp/."""
         for state_name, state in states.items():

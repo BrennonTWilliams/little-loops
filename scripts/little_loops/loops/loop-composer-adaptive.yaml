@@ -63,7 +63,7 @@ states:
          For a simple linear sequence all depends_on lists are [previous_step_id].
          For independent parallel work, depends_on may be [].
       5. The input field is a string passed as --input to that loop. It may reference
-         a prior step's output with {{step_id_output}} (replaced at runtime).
+         a prior step's output with {{step_id}} (e.g. {{step_1}}, replaced at runtime).
 
       Output your plan on the LAST block as:
       PLAN_JSON:
@@ -76,13 +76,10 @@ states:
 
       Think briefly (2-3 sentences) about how to decompose the goal, then emit the plan.
     capture: plan_json
-    evaluate:
-      type: llm_structured
-      prompt: "Does the response end with a PLAN_JSON: code block containing a JSON array of step objects?"
-      min_confidence: 0.5
-    on_yes: parse_plan
-    on_no: parse_plan
-    on_partial: parse_plan
+    # No evaluate block: the LLM verdict was discarded (all branches went to
+    # parse_plan). parse_plan is the real, deterministic gate. Using next: skips
+    # a wasted llm_structured grading call.
+    next: parse_plan
     on_error: failed
 
   # ─── Phase 3: Plan Parsing & Display ─────────────────────────────────────────
@@ -90,12 +87,18 @@ states:
   parse_plan:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/plan-raw.txt" << 'LL_PLAN_RAW_EOF'
+      ${captured.plan_json.output}
+      LL_PLAN_RAW_EOF
       python3 << 'PYEOF'
       import json, re, sys, os
 
       run_dir = '${context.run_dir}'
       os.makedirs(run_dir, exist_ok=True)
-      output = """${captured.plan_json.output}"""
+      # Read the raw LLM output from disk (written above via a quoted heredoc)
+      # rather than interpolating it into a Python string literal.
+      with open(os.path.join(run_dir, 'plan-raw.txt')) as f:
+          output = f.read()
 
       # Extract JSON array from tagged block
       plan = None
@@ -182,7 +185,8 @@ states:
       type: exit_code
     on_yes: execute_plan
     on_no: present_plan
-    on_error: execute_plan
+    # A genuine execution error must not silently skip the HITL approval gate.
+    on_error: present_plan
 
   # ─── Phase 6: HITL Plan Approval ──────────────────────────────────────────────
 
@@ -232,7 +236,11 @@ states:
       # Substitute {{step_id_output}} references in input
       step_input = next_step.get('input', '${context.goal}') or '${context.goal}'
       def replace_step_ref(m):
-          ref_id = m.group(1)
+          ref_id = m.group(1).strip()
+          # Tolerate a trailing "_output" (the prompt placeholder used to be
+          # {{step_id_output}}); the checkpoint file is keyed by bare step_id.
+          if ref_id.endswith('_output'):
+              ref_id = ref_id[: -len('_output')]
           ckpt = os.path.join(run_dir, 'checkpoints', f'step-{ref_id}.json')
           try:
               with open(ckpt) as cf:
@@ -291,6 +299,9 @@ states:
   write_step_success:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/current-step-output.jsonl" << 'LL_STEP_OUTPUT_EOF'
+      ${captured.step_output.output}
+      LL_STEP_OUTPUT_EOF
       python3 << 'PYEOF'
       import json, os
 
@@ -304,7 +315,10 @@ states:
       step_num = _read(os.path.join(run_dir, 'current-step-num.txt'), '0')
       loop_name = _read(os.path.join(run_dir, 'current-step-loop.txt'), '')
 
-      subloop_out = """${captured.step_output.output}"""
+      # Read the sub-loop JSONL from disk (written above via a quoted heredoc) so
+      # embedded quotes / backslashes / triple-quotes are never reinterpreted as
+      # Python source — the failure mode the catalog read-from-disk fix solved.
+      subloop_out = _read(os.path.join(run_dir, 'current-step-output.jsonl'))
       output_summary = ''
       terminal_state = 'done'
       for line in subloop_out.strip().split('\n'):
@@ -337,7 +351,12 @@ states:
       with open(os.path.join(run_dir, 'last-verdict.json'), 'w') as f:
           json.dump(verdict, f)
 
+      # completed-steps.txt = execution cursor (advances past every executed step,
+      # success or fail). succeeded-steps.txt = the immutable boundary apply_replan
+      # uses; only successful steps are locked, so REPLAN_TAIL may retry a failure.
       with open(os.path.join(run_dir, 'completed-steps.txt'), 'a') as f:
+          f.write(step_id + '\n')
+      with open(os.path.join(run_dir, 'succeeded-steps.txt'), 'a') as f:
           f.write(step_id + '\n')
 
       print(f'STEP_DONE:{step_id}')
@@ -349,6 +368,9 @@ states:
   write_step_failed:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/current-step-output.jsonl" << 'LL_STEP_OUTPUT_EOF'
+      ${captured.step_output.output}
+      LL_STEP_OUTPUT_EOF
       python3 << 'PYEOF'
       import json, os
 
@@ -362,7 +384,8 @@ states:
       step_num = _read(os.path.join(run_dir, 'current-step-num.txt'), '0')
       loop_name = _read(os.path.join(run_dir, 'current-step-loop.txt'), '')
 
-      subloop_out = """${captured.step_output.output}"""
+      # Read sub-loop JSONL from disk (written above) — see write_step_success.
+      subloop_out = _read(os.path.join(run_dir, 'current-step-output.jsonl'))
       terminal_state = 'failed'
       for line in subloop_out.strip().split('\n'):
           try:
@@ -392,14 +415,15 @@ states:
       with open(os.path.join(run_dir, 'last-verdict.json'), 'w') as f:
           json.dump(verdict, f)
 
-      # Mark step completed so topo-order advances past it on retry
+      # Advance the execution cursor past this step (so a CONTINUE decision skips
+      # it) but do NOT mark it succeeded — that keeps it retryable by REPLAN_TAIL.
       with open(os.path.join(run_dir, 'completed-steps.txt'), 'a') as f:
           f.write(step_id + '\n')
 
       print(f'STEP_FAILED:{step_id}')
       PYEOF
     capture: checkpoint_failed
-    next: increment_replan_count
+    next: read_completed_summaries
     on_error: abort_composer
 
   # ─── Phase 8: Adaptive Re-Plan Machinery ─────────────────────────────────────
@@ -412,7 +436,7 @@ states:
       echo "$COUNT" > "${context.run_dir}/replan_count.txt"
       echo "$COUNT"
     capture: replan_count_updated
-    next: check_replan_budget
+    next: apply_replan
     on_error: abort_composer
 
   check_replan_budget:
@@ -423,7 +447,10 @@ states:
       type: output_numeric
       operator: lt
       target: "${context.max_replans}"
-    on_yes: read_completed_summaries
+    # Reached only on the REPLAN_TAIL branch (after reassess). Reads the count
+    # BEFORE increment so max_replans=2 permits exactly 2 replans. CONTINUE /
+    # ABORT decisions never reach here, so they do not consume budget.
+    on_yes: increment_replan_count
     on_no: abort_composer
     on_error: abort_composer
 
@@ -476,10 +503,17 @@ states:
   parse_reassess_decision:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/reassess-decision.txt" << 'LL_REASSESS_EOF'
+      ${captured.reassess_decision.output}
+      LL_REASSESS_EOF
       python3 << 'PYEOF'
-      import json, re, sys
+      import json, re, sys, os
 
-      output = """${captured.reassess_decision.output}"""
+      run_dir = '${context.run_dir}'
+      # Read the raw reassess decision from disk (written above) rather than
+      # interpolating LLM output into a Python string literal.
+      with open(os.path.join(run_dir, 'reassess-decision.txt')) as f:
+          output = f.read()
       m = re.search(r'REASSESS_DECISION:\s*```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
       if m:
           try:
@@ -511,20 +545,26 @@ states:
       type: output_contains
       source: "${captured.reassess_token.output}"
       pattern: "REPLAN_TAIL"
-    on_yes: apply_replan
+    # Only an actual REPLAN_TAIL consults the replan budget.
+    on_yes: check_replan_budget
     on_no: abort_composer
     on_error: abort_composer
 
   apply_replan:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/reassess-decision.txt" << 'LL_REASSESS_EOF'
+      ${captured.reassess_decision.output}
+      LL_REASSESS_EOF
       python3 << 'PYEOF'
       import json, re, os, sys
 
       run_dir = '${context.run_dir}'
 
-      # Parse reassess decision for new tail plan
-      output = """${captured.reassess_decision.output}"""
+      # Read the reassess decision from disk (written above) rather than
+      # interpolating LLM output into a Python string literal.
+      with open(os.path.join(run_dir, 'reassess-decision.txt')) as f:
+          output = f.read()
       decision_data = None
       m = re.search(r'REASSESS_DECISION:\s*```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
       if m:
@@ -542,22 +582,23 @@ states:
           print('ERROR: REPLAN_TAIL requires a non-empty new_tail_plan array')
           sys.exit(1)
 
-      # Read completed steps (immutable)
-      completed_file = os.path.join(run_dir, 'completed-steps.txt')
-      completed_ids = []
-      if os.path.exists(completed_file):
-          with open(completed_file) as f:
-              completed_ids = [l.strip() for l in f if l.strip()]
-      completed_set = set(completed_ids)
+      # The immutable prefix is the set of SUCCEEDED steps only. A failed step is
+      # deliberately NOT locked here, so the new tail is free to retry it.
+      succeeded_file = os.path.join(run_dir, 'succeeded-steps.txt')
+      succeeded_ids = []
+      if os.path.exists(succeeded_file):
+          with open(succeeded_file) as f:
+              succeeded_ids = [l.strip() for l in f if l.strip()]
+      succeeded_set = set(succeeded_ids)
 
       # Read current plan
       plan_file = os.path.join(run_dir, 'composer-plan.json')
       with open(plan_file) as f:
           current_plan = json.load(f)
 
-      # Keep completed steps immutable; append new tail
-      completed_steps = [s for s in current_plan if s['step_id'] in completed_set]
-      new_plan = completed_steps + new_tail
+      # Keep succeeded steps immutable; replace the unexecuted tail with the proposal.
+      succeeded_steps = [s for s in current_plan if s['step_id'] in succeeded_set]
+      new_plan = succeeded_steps + new_tail
 
       # Version the plan
       plans_dir = os.path.join(run_dir, 'plans')
@@ -567,19 +608,37 @@ states:
       with open(os.path.join(plans_dir, f'v{next_ver}.json'), 'w') as f:
           json.dump(new_plan, f, indent=2)
 
-      # Write new topo-order (completed first, then new tail in sequence)
-      topo_order = completed_ids + [s['step_id'] for s in new_tail]
-      with open(os.path.join(run_dir, 'topo-order.json'), 'w') as f:
-          json.dump(topo_order, f)
+      # Reset the execution cursor to the succeeded steps so the new tail (which
+      # may re-include a previously failed step_id) gets re-executed instead of
+      # being skipped as already-completed.
+      with open(os.path.join(run_dir, 'completed-steps.txt'), 'w') as f:
+          if succeeded_ids:
+              f.write('\n'.join(succeeded_ids) + '\n')
 
-      # Overwrite main plan file with combined plan
+      # Overwrite the main plan file and drop any stale topo-order so the
+      # validate_replan state (validate_plan fragment) recomputes a proper
+      # topological sort and re-checks catalog membership / node cap / cycles.
       with open(plan_file, 'w') as f:
           json.dump(new_plan, f, indent=2)
+      topo_file = os.path.join(run_dir, 'topo-order.json')
+      if os.path.exists(topo_file):
+          os.remove(topo_file)
 
       print(f'REPLAN_APPLIED:v{next_ver}:{len(new_tail)}_new_steps')
       PYEOF
     capture: replan_applied
-    next: execute_plan
+    next: validate_replan
+    on_error: abort_composer
+
+  validate_replan:
+    # Re-run the same validation the initial plan passed, now over the merged
+    # (succeeded + new tail) plan written by apply_replan: rejects unknown loop
+    # names, node-cap violations, cycles, and duplicate step_ids, and writes the
+    # Kahn-sorted topo-order.json. A rejected replan aborts cleanly rather than
+    # dispatching a malformed plan.
+    fragment: validate_plan
+    on_yes: execute_plan
+    on_no: abort_composer
     on_error: abort_composer
 
   # ─── Phase 9: Review & Synthesize ────────────────────────────────────────────
@@ -625,13 +684,10 @@ states:
       Write a 2-3 sentence summary: what was accomplished, whether the overall goal was achieved,
       and what (if anything) failed or was not completed.
     capture: chain_review
-    evaluate:
-      type: llm_structured
-      prompt: "Does the response contain a substantive summary of plan execution results?"
-      min_confidence: 0.5
-    on_yes: present_result
-    on_no: present_result
-    on_partial: present_result
+    # No evaluate block: the LLM verdict was discarded (all branches went to
+    # present_result). present_result tolerates an empty chain_review, so a
+    # plain next: avoids a wasted llm_structured grading call.
+    next: present_result
     on_error: present_result
 
   # ─── Terminal States ──────────────────────────────────────────────────────────
