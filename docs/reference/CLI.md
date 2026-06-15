@@ -651,7 +651,9 @@ An `Events:` line follows whenever an `<instance-id>.events.jsonl` file is found
 
 Stop a running loop. Terminates **all running instances** of the named loop (no `--instance-id` selector).
 
-Also handles loops in `interrupted` state that hold an orphaned lock-file PID: if `.loops/.running/<loop>.lock` exists and its PID is alive, `ll-loop stop` sends SIGTERM (with SIGKILL fallback after 10 s) and removes the lock file. This resolves scope conflicts that block subsequent `ll-loop run` invocations without requiring manual `kill` + `rm`. If the lock-file PID is already dead, the stale lock is cleaned up and reported.
+Termination is process-cohort aware (ENH BUG-2147): before sending any signal, `ll-loop stop` walks the full descendant tree of the root PID via `pgrep -P` recursion, collecting every child and grandchild process. Children are terminated first (so the root cannot respawn them), then the root receives SIGTERM. If any member of the cohort is still alive after 10 s, the entire group is escalated to SIGKILL. This ensures that loops spawning child CLIs (e.g. the `claude` binary launched with `start_new_session=True`) are reliably cleaned up rather than left as orphans.
+
+Also handles loops in `interrupted` state that hold an orphaned lock-file PID: if `.loops/.running/<loop>.lock` exists and its PID is alive, `ll-loop stop` terminates the full process cohort as above and removes the lock file. This resolves scope conflicts that block subsequent `ll-loop run` invocations without requiring manual `kill` + `rm`. If the lock-file PID is already dead, the stale lock is cleaned up and reported.
 
 #### `ll-loop resume <loop>` / `ll-loop res <loop>`
 
@@ -1998,7 +2000,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 |------------|-------------|
 | `search` | FTS5 full-text query with BM25-ranked results |
 | `recent` | Most recent rows for an event kind; optionally filtered by issue |
-| `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830); `--extract-decisions` runs `extract-from-completed` after backfill (ENH-2152) |
+| `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830); `--snapshots` seeds the `issue_snapshots` table from `.issues/` files (ENH-2151); `--extract-decisions` runs `extract-from-completed` after backfill (ENH-2152) |
 | `related` | Issue events for a given issue ID |
 | `path` | Resolve the JSONL file path for a session ID |
 | `grep` | Regex search over `message_events` with optional summary-node scope filtering; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |

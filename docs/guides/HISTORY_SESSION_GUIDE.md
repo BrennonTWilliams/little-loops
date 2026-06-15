@@ -42,7 +42,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 12.
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 14.
 
 ---
 
@@ -53,6 +53,7 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | `tool_events` | Every tool call (Bash, Read, Write, etc.) with token counts and cache-hit flag |
 | `file_events` | File reads and writes with path, operation, and associated issue ID |
 | `issue_events` | Issue state transitions: captured, started, completed, deferred |
+| `issue_snapshots` | Point-in-time snapshots of issue content at lifecycle transitions (`open`, `done`, `cancelled`); dedup index on `(issue_id, transition)`; FTS-indexed via the `search_index` with `kind="snapshot"`. Populated live by `set_status` and by `ll-session backfill --snapshots` for historical issues. Used by `ll-history-context` as a last-resort fallback when no corrections or FTS rows match an issue (ENH-2151). |
 | `loop_events` | FSM state-machine transitions with loop name and retry count |
 | `message_events` | User message content for FTS indexing |
 | `assistant_messages` | Assistant response content with tool-use count |

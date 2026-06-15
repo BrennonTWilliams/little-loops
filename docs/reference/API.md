@@ -5039,7 +5039,7 @@ Manage scope-based locks for concurrent loop execution. Lock files are stored in
 |--------|---------|-------------|
 | `acquire(loop_name, scope, instance_id=None)` | `bool` | Acquire lock; returns `False` if conflict exists |
 | `release(loop_name, instance_id=None)` | `None` | Release lock for a loop instance |
-| `find_conflict(scope)` | `ScopeLock \| None` | Find conflicting running loop; cleans stale locks |
+| `find_conflict(scope)` | `ScopeLock \| None` | Find conflicting running loop; cleans stale locks. Returns `None` if the only conflict is an ancestor process of the caller (prevents self-blocking when a parent loop spawns a child that shares the same scope). |
 | `list_locks()` | `list[ScopeLock]` | List all active locks; cleans stale locks |
 | `wait_for_scope(scope, timeout=300)` | `bool` | Wait until scope is available; `False` on timeout |
 
