@@ -348,6 +348,8 @@ states:
 
   done:
     terminal: true
+    output:
+      animation_plan: "${captured.animation_plan}"
 
   plan_failed:
     terminal: true

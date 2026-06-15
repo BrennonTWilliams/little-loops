@@ -62,7 +62,7 @@ states:
     evaluate:
       type: output_contains
       pattern: "INPUT_VALID"
-    on_yes: plan_animation
+    on_yes: run_generate
     on_no: input_missing
     on_error: input_missing
 
@@ -70,333 +70,19 @@ states:
     terminal: true
     description: "Input validation failed — context.input is empty; set a non-empty animation description"
 
-  plan_animation:
-    action: |
-      PLAN ONLY — do NOT write files, produce HTML, or create SVG markup.
-      The render_animation state handles all implementation.
-      Do NOT read files, describe your process, or emit exploratory preamble.
-      Output ONLY the concrete animation plan as text and stop.
-
-      ## INPUT VALIDATION (ENH-035)
-
-      Before planning, check whether a non-empty animation description is provided
-      below. If the description after "Design an animated SVG from this description:"
-      is empty, missing, or contains only whitespace, you MUST output exactly:
-      EMPTY_INPUT_ERROR
-      on its own line and stop immediately. Do NOT fabricate a subject, invent a
-      description, or produce any plan content. An empty input means the loop is
-      misconfigured and planning cannot proceed.
-
-      ## PRIOR LEARNINGS (ENH-011)
-
-      Read ${context.run_dir}/optimization_summary.md if it exists. Extract every
-      lesson marked **[ACTIVE]** with its tag (e.g., `[EASING]`, `[Z-ORDER]`,
-      `[PROMPT]`, `[TIMING]`, `[VALIDATION]`). These are carry-forward lessons
-      from prior iterations that describe patterns known to cause failures.
-
-      For each active carry-forward lesson, explicitly address it in your plan:
-      - If the lesson warns against a specific pattern (e.g., "avoid easeOutElastic
-        on elements smaller than 50px viewBox units"), do NOT use that pattern
-      - If the lesson recommends a specific approach, adopt it unless it conflicts
-        with the input description
-      - If the lesson is tagged `[VALIDATED]`, it has been proven effective —
-        prefer it over alternatives
-      - If the lesson is tagged `[INEFFECTIVE]`, the pattern did not improve scores —
-        do not reuse it
-
-      If no summary file exists or no active lessons are found, proceed silently.
-
-      ---
-
-      ## OPTIMIZATION PHASE (ENH-012)
-
-      This is iteration ${state.iteration} of 30 max. Adapt your planning
-      strategy to the current optimization phase:
-
-      EXPLORE PHASE (iterations 1–${context.explore_cutoff}):
-      - This is early exploration. Prefer novel, diverse animation approaches
-        over incremental fixes. Try different easing strategies, composition
-        styles, and motion patterns. It's acceptable — even desirable — to
-        propose a completely different animation design than prior iterations.
-      - Quality target is lenient (${context.quality_target} − 2 = 6) —
-        exploration is prioritized over immediate score optimization.
-      - Generate a bold, distinctive plan. Avoid premature convergence to a
-        local optimum.
-
-      EXPLOIT PHASE (iterations ${context.explore_cutoff}+1–${context.exploit_cutoff}):
-      - This is mid-stage targeted optimization. Focus the plan on the SINGLE
-        rubric dimension with the most room for improvement. Be surgical —
-        identify the specific SVG elements, animation parameters, or structural
-        patterns that are binding constraints.
-      - Component-level ranking signal is strongest in this phase — use it
-        to guide which harness component (prompt, tool, memory, workflow)
-        should receive the most attention.
-      - Quality target is standard (${context.quality_target}).
-
-      CONVERGE PHASE (iterations ${context.exploit_cutoff}+1–30):
-      - This is late-stage conservative refinement. Make only minimal,
-        high-confidence changes. Do NOT introduce new animation sequences,
-        restructure the composition, or change the core animation strategy.
-      - Prefer reverting to the best-scored version if uncertain.
-      - Regression risk is highest in this phase — favor stability over
-        novelty. Small, safe parameter adjustments only (timing tweaks,
-        easing fine-tuning, color harmonization).
-      - Quality target is standard (${context.quality_target}) but regression
-        sensitivity is doubled.
-
-      ---
-
-      Design an animated SVG from this description:
-      ${context.input}
-
-      ${context.design_tokens_context}
-
-      Plan the animation across these dimensions:
-
-      1. SCENE & COMPOSITION
-         - Identify the visual subject(s), setting, and overall composition
-         - Determine the SVG viewBox dimensions and aspect ratio
-         - Plan the layer/Z-order stack: background → midground → foreground → overlays
-         - If design tokens are provided, map them to the color palette:
-             color.surface.primary → background fills
-             color.text.primary → label/text colors
-             color.border.strong → stroke/outline colors
-             color.action.primary → emphasis/highlight elements
-           Do not invent new color values outside the token palette.
-
-      2. SHAPE INVENTORY
-         List every SVG element needed with:
-         - Element type (<rect>, <circle>, <ellipse>, <line>, <polyline>, <polygon>,
-           <path>, <text>, <g> group)
-         - Approximate position and dimensions (relative to viewBox)
-         - Fill and stroke colors (from token palette if provided)
-         - CSS class or ID for animation targeting
-         - Z-order position in the rendering stack
-         - Transform origin for rotation/scale animations
-
-      3. ANIMATION CHOREOGRAPHY
-         Design the motion timeline. For each animation sequence:
-         - Target element(s) — which shapes are animated
-         - Property animated — opacity, translateX/Y, rotate, scale, morph (path d),
-           stroke-dashoffset (line drawing), color/fill transition
-         - Easing function — anime.js built-in easings (easeOutExpo, easeInOutQuad,
-           easeOutElastic, etc.) or spring physics (spring(mass, stiffness, damping,
-           velocity))
-         - Duration and delay — absolute values in milliseconds
-         - Stagger configuration — for multi-element sequences (per-target delay,
-           direction: normal/reverse, easing per step)
-         - Timeline structure — group animations into an anime.js timeline with
-           offsets; plan entrance sequence, main loop, and exit/transition
-         - Loop behavior — whether the animation loops, repeats N times, or plays once
-         - CRITICAL: plan ONLY anime.js animations — never mix CSS @keyframes or SMIL
-           <animate> tags with anime.js on the same properties; this causes
-           unpredictable conflicts
-
-      4. MULTI-FRAME CAPTURE AWARENESS
-         Four screenshots are captured at staggered timestamps (1000ms, 3000ms,
-         5000ms, 7000ms) after page load for vision model scoring. The vision
-         model sees ALL frames together and can evaluate temporal quality directly.
-
-         This means:
-         - Entrance animations can take their natural time — you no longer need
-           to force all elements visible by t=3000ms. Elements can fade in at
-           1000ms, 2500ms, 4000ms, etc. based on what makes the best animation.
-         - Each phase of animation should show distinct, recognizable state so
-           the frame sequence tells a clear story of motion
-         - At least one element should be actively animating (changing position,
-           scale, opacity, or rotation) at each capture timestamp to demonstrate
-           continuous motion
-         - Avoid "dead zones" where nothing is moving at any of the four capture
-           points — stagger animation phases so motion is always visible in at
-           least 2 of the 4 frames
-         - The t=3000ms capture point remains the primary "storyboard" frame where
-           the maximum number of elements should be visible — but they no longer
-           all need to have completed their entrance animations by that point
-
-      5. EASING & PHYSICS STRATEGY
-         - Assign specific easing functions to each animation based on the desired feel:
-           * Entrances: easeOutExpo or easeOutBack for snappy reveals
-           * Continuous motion: easeInOutSine or spring() for organic feel
-           * Emphasis/highlights: easeOutElastic for playful bounce
-           * Line drawing: easeInOutQuad for smooth reveals
-         - For spring physics, specify mass, stiffness, damping, and velocity values
-         - Avoid linear easing except for mechanical/technical motions where appropriate
-
-      6. ACCESSIBILITY & GRACEFUL DEGRADATION
-         - Plan aria-labelledby/title/desc elements for the SVG root
-         - Plan prefers-reduced-motion: reduce media query that disables all animations
-           or replaces them with static final-state rendering
-         - Plan keyboard-navigable controls if interactive (play/pause buttons)
-
-      7. SINGLE-FILE HTML STRUCTURE
-         - anime.js loading strategy: anime.js v3.2.2 loaded via CDN <script> tag
-           (UMD, works under file:// without CORS) with onerror fallback to static SVG
-         - SVG as raw inline markup in the HTML body
-         - Animation JS in a single <script> tag at end of body
-         - No external file dependencies beyond the single anime.js CDN <script> tag
-         - Include a <meta> viewport for responsive scaling
-
-      Output a concrete, numbered plan covering all seven dimensions above.
-      Be specific about coordinates, timing values, easing parameters, and
-      color hex values. The render_animation state will implement this plan
-      exactly — do not leave any design decisions unspecified.
-    action_type: prompt
-    timeout: 300
-    max_retries: 3
-    retryable_exit_codes: [124]
-    on_retry_exhausted: plan_failed
-    capture: animation_plan
-    next: render_animation
-    on_error: plan_animation
-
-  render_animation:
-    action: |
-      IMPLEMENT ONLY — use the plan below exactly. Do NOT re-plan, re-analyze
-      the description, or change the animation design. Write the single-file
-      HTML artifact and stop.
-
-      Using the animation plan below, create the animated SVG artifact:
-
-      ${captured.animation_plan}
-
-      ${context.design_tokens_context}
-
-      Write a single self-contained HTML file to ${context.run_dir}/output.html.
-      The file must be complete, valid, and render correctly in modern browsers
-      when opened from file:// or any HTTP server.
-
-      STRUCTURE REQUIREMENTS:
-      ```
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>[descriptive title matching the scene]</title>
-        <style>
-          *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-          body {
-            display: flex; justify-content: center; align-items: center;
-            min-height: 100vh; background: [from token palette or neutral];
-            font-family: system-ui, -apple-system, sans-serif;
-          }
-          .animation-container {
-            width: 100%; max-width: 800px; height: auto;
-          }
-          .animation-container svg {
-            width: 100%; height: auto; display: block;
-          }
-          @media (prefers-reduced-motion: reduce) {
-            .animation-container * {
-              animation-duration: 0.01ms !important;
-              animation-iteration-count: 1 !important;
-              transition-duration: 0.01ms !important;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="animation-container">
-          <svg viewBox="[from plan]" xmlns="http://www.w3.org/2000/svg"
-               role="img" aria-labelledby="svg-title svg-desc">
-            <title id="svg-title">[descriptive title]</title>
-            <desc id="svg-desc">[brief description of the animated scene]</desc>
-            <!-- ALL SVG elements from the plan's shape inventory here,
-                 in the Z-order specified by the plan -->
-          </svg>
-        </div>
-
-        <!-- anime.js v3.2.2 UMD — works in file:// and all browsers, no import maps -->
-        <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"
-                onerror="document.querySelector('.animation-container svg').classList.add('static-fallback');
-                         console.warn('anime.js CDN unavailable — showing static SVG');"></script>
-        <script>
-          // anime.js v3 exposes window.anime globally
-          // API: const tl = anime.timeline({...}); tl.add({...});
-          if (typeof anime === 'undefined') {
-            console.warn('anime.js CDN unavailable — showing static SVG');
-            document.querySelector('.animation-container svg').classList.add('static-fallback');
-          } else {
-            initAnimations();
-          }
-
-          function initAnimations() {
-            // ALL animation code from the plan's choreography here
-            // Use anime.js v3 timeline for sequenced animations:
-            //   const tl = anime.timeline({ easing: 'easeOutExpo', duration: 750 });
-            //   tl.add({ targets: '.shape-1', translateY: [50, 0], opacity: [0, 1] })
-            //     .add({ targets: '.shape-2', ... }, '-=400');
-            //
-            // For spring physics:
-            //   anime({ targets: '.bounce', translateY: [0, -20],
-            //           easing: 'spring(1, 80, 10, 0)' });
-            //
-            // For line drawing:
-            //   anime({ targets: '.line-path',
-            //           strokeDashoffset: [anime.setDashoffset, 0],
-            //           easing: 'easeInOutQuad', duration: 2000 });
-            //
-            // For path morphing:
-            //   anime({ targets: '.morph-path',
-            //           d: [{ value: 'M...' }, { value: 'M...' }],
-            //           easing: 'easeInOutQuad', duration: 3000 });
-          }
-        </script>
-      </body>
-      </html>
-      ```
-
-      IMPLEMENTATION RULES — follow these strictly to avoid common failure modes:
-      1. SVG elements MUST target CSS classes or IDs (via anime.js targets), not inline
-         style attributes that conflict with animation transforms
-      2. NEVER mix CSS @keyframes or SMIL <animate>/<animateTransform> with anime.js
-         on the same SVG elements — anime.js owns all animated properties
-      3. All path data coordinates MUST fall inside the declared viewBox
-      4. Use transform-origin CSS property on elements that rotate or scale, set to
-         the element's center or the specific pivot point from the plan
-      5. Set initial animated properties via anime.js parameters (e.g.,
-         opacity: [0, 1]) rather than inline style attributes — this ensures
-         animation starts from the correct state even on slow connections
-      6. Escape all special XML characters in text content (&lt; &gt; &amp; &quot;)
-      7. Verify tag nesting: every SVG element is properly closed; <g> groups are
-         correctly nested; no dangling or self-closing tags where children exist
-      8. For multi-subpath morphing, ensure source and target paths have identical
-         segment counts and command types — anime.js cannot morph between
-         incompatible path structures
-      9. Do not regenerate or approximate path data from the plan — use the exact
-         coordinates specified; tokenization drift (digit-by-digit regeneration)
-         causes cumulative geometric distortion
-      10. Add a small delay (100-300ms) before starting animations to ensure the
-          DOM is fully parsed and the anime.js module has loaded
-    action_type: prompt
-    timeout: 900
-    max_retries: 3
-    retryable_exit_codes: [124]
-    on_retry_exhausted: write_final_summary
-    capture: candidate
-    next: verify_render
-    on_error: render_animation
-
-  verify_render:
-    # ENH-033: Artifact verification gate between render_animation and smoke_test.
-    # Confirms output.html exists before the expensive browser-based smoke test.
-    # If the LLM hallucinates the file write (known issue with non-Claude models),
-    # the loop retries the render instead of failing inscrutably in Playwright.
-    # Pattern ported from p5js-sketch-generator verify_brief/verify_index gates.
-    action_type: shell
-    action: |
-      if [ -f "${captured.run_dir.output}/output.html" ]; then
-        echo "RENDER_EXISTS"
-      else
-        echo "RENDER_MISSING" >&2
-        exit 1
-      fi
-    evaluate:
-      type: output_contains
-      pattern: "RENDER_EXISTS"
-    on_yes: run_evaluate
-    on_no: render_animation
-    on_error: render_animation
+  run_generate:
+    loop: rlhf-svg-generate
+    with:
+      input: "${context.input}"
+      run_dir: "${captured.run_dir.output}"
+      global_iteration: "${state.iteration}"
+      design_tokens_context: "${context.design_tokens_context}"
+      quality_target: "${context.quality_target}"
+      explore_cutoff: "${context.explore_cutoff}"
+      exploit_cutoff: "${context.exploit_cutoff}"
+    on_success: run_evaluate
+    on_failure: plan_failed
+    on_error: failed
 
   run_evaluate:
     loop: rlhf-svg-evaluate
@@ -433,7 +119,7 @@ states:
     evaluate:
       type: output_contains
       pattern: "OSCILLATION_DETECTED"
-    on_yes: plan_animation
+    on_yes: run_generate
     on_no: check_score_streak
     on_error: check_score_streak
 
@@ -500,7 +186,7 @@ states:
     evaluate:
       type: output_contains
       pattern: "REPLAN"
-    on_yes: plan_animation
+    on_yes: run_generate
     on_no: run_refine
 
   concept_reset:
@@ -546,7 +232,7 @@ states:
 
       Be specific and opinionated. This is a forced conceptual pivot — the
       previous mechanism is off the table.
-    next: render_animation
+    next: run_generate
 
   check_replan_budget:
     # ENH-019: Replan cycle resource guard.
@@ -582,7 +268,7 @@ states:
       type: output_contains
       pattern: "REPLAN_EXHAUSTED"
     on_yes: write_final_summary
-    on_no: plan_animation
+    on_no: run_generate
 
   write_final_summary:
     # TERMINAL CUMULATIVE SUMMARY (ENH-011 / BUG-016):

@@ -6820,12 +6820,91 @@ class TestRlhfAnimatedSvgParentOrchestration:
     # --- line count ---
 
     def test_parent_body_within_line_limit(self) -> None:
-        # Intermediate target: ≤800 lines while generate states remain inline (ENH-2051 pending).
-        # Final target after ENH-2051 extracts generate states to rlhf-svg-generate: ≤450 lines.
+        # Final target after ENH-2162 extracts generate states to rlhf-svg-generate: ≤450 lines.
         line_count = len(self.LOOP_FILE.read_text().splitlines())
-        assert line_count <= 800, (
-            f"Parent loop is {line_count} lines (intermediate target: ≤800 until ENH-2051; "
-            f"final target: ≤450)"
+        assert line_count <= 450, (
+            f"Parent loop is {line_count} lines (target: ≤450 after generate delegation)"
+        )
+
+
+class TestRlhfAnimatedSvgDelegatesGenerate:
+    """rlhf-animated-svg parent must delegate generate phase to rlhf-svg-generate (ENH-2162)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rlhf-animated-svg.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    # --- inline generate states absent ---
+
+    def test_no_inline_plan_animation(self, data: dict) -> None:
+        assert "plan_animation" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline plan_animation (delegated to rlhf-svg-generate)"
+        )
+
+    def test_no_inline_render_animation(self, data: dict) -> None:
+        assert "render_animation" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline render_animation (delegated to rlhf-svg-generate)"
+        )
+
+    def test_no_inline_verify_render(self, data: dict) -> None:
+        assert "verify_render" not in data.get("states", {}), (
+            "rlhf-animated-svg must not have inline verify_render (delegated to rlhf-svg-generate)"
+        )
+
+    # --- run_generate delegation state ---
+
+    def test_run_generate_state_exists(self, data: dict) -> None:
+        assert "run_generate" in data.get("states", {}), (
+            "rlhf-animated-svg must have a run_generate delegation state"
+        )
+
+    def test_run_generate_delegates_to_rlhf_svg_generate(self, data: dict) -> None:
+        state = data.get("states", {}).get("run_generate", {})
+        assert state.get("loop") == "rlhf-svg-generate", (
+            f"run_generate.loop must be 'rlhf-svg-generate', got {state.get('loop')!r}"
+        )
+
+    def test_run_generate_passes_input(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_generate", {}).get("with", {})
+        assert "input" in with_, "run_generate.with must include input"
+
+    def test_run_generate_passes_run_dir(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_generate", {}).get("with", {})
+        assert "run_dir" in with_, "run_generate.with must include run_dir"
+
+    def test_run_generate_passes_global_iteration(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_generate", {}).get("with", {})
+        assert "global_iteration" in with_, "run_generate.with must include global_iteration"
+
+    def test_run_generate_passes_design_tokens_context(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_generate", {}).get("with", {})
+        assert "design_tokens_context" in with_, "run_generate.with must include design_tokens_context"
+
+    def test_run_generate_passes_quality_target(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_generate", {}).get("with", {})
+        assert "quality_target" in with_, "run_generate.with must include quality_target"
+
+    def test_run_generate_passes_explore_cutoff(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_generate", {}).get("with", {})
+        assert "explore_cutoff" in with_, "run_generate.with must include explore_cutoff"
+
+    def test_run_generate_passes_exploit_cutoff(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("run_generate", {}).get("with", {})
+        assert "exploit_cutoff" in with_, "run_generate.with must include exploit_cutoff"
+
+    def test_run_generate_on_success_is_run_evaluate(self, data: dict) -> None:
+        state = data.get("states", {}).get("run_generate", {})
+        assert state.get("on_success") == "run_evaluate", (
+            f"run_generate.on_success must be 'run_evaluate', got {state.get('on_success')!r}"
+        )
+
+    def test_run_generate_on_failure_is_plan_failed(self, data: dict) -> None:
+        state = data.get("states", {}).get("run_generate", {})
+        assert state.get("on_failure") == "plan_failed", (
+            f"run_generate.on_failure must be 'plan_failed', got {state.get('on_failure')!r}"
         )
 
 
