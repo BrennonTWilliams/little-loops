@@ -5,9 +5,15 @@ priority: P3
 status: deferred
 discovered_date: 2026-04-18
 discovered_by: capture-issue
-blocked_by: [FEAT-1112, FEAT-1116, FEAT-1156, FEAT-1157, FEAT-1158]
-
-relates_to: ['FEAT-1112', 'FEAT-1113']
+blocked_by:
+- FEAT-1112
+- FEAT-1116
+- FEAT-1156
+- FEAT-1157
+- FEAT-1158
+relates_to:
+- FEAT-1112
+- FEAT-1113
 ---
 
 # FEAT-1159: Continuous Session Event Capture with PreCompact Guarantee and SessionStart Injection
@@ -99,6 +105,14 @@ Three-component architecture following context-mode's model, adapted for the lit
 - `hooks/scripts/precompact-handoff.sh` — PreCompact snapshot builder (supersedes the deferred FEAT-1113 scope)
 - `hooks/scripts/session-start-inject.sh` — SessionStart injector
 
+### Dependent Files (Callers/Importers)
+
+See "Consumers of ll-continue-prompt.md" below.
+
+### Similar Patterns
+
+- `hooks/scripts/context-monitor.sh` — existing PostToolUse hook for threshold detection; session-capture.sh follows the same event-filter + append pattern
+
 ### Reusable Utilities (hooks/scripts/lib/common.sh)
 - `acquire_lock` / `release_lock` / `atomic_write_json` — all state writes must use these
 - `ll_config_value` / `ll_feature_enabled` — feature flag guards
@@ -160,6 +174,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `hooks`, `session-management`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-16T23:25:00 - `0f3c4d3d-bfb8-4be3-873f-42ff99dd9160.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-22T20:04:15 - `82d256a6-9a99-40f5-8866-377a208de262.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:capture-issue` - 2026-04-18T00:00:00Z - `ffa52965-8df7-4476-a2af-96e098002a6a.jsonl`

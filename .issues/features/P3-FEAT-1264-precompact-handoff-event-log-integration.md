@@ -2,13 +2,18 @@
 id: FEAT-1264
 type: FEAT
 priority: P3
-status: deferred
+status: open
 discovered_date: 2026-04-22
 discovered_by: issue-size-review
-blocked_by: [FEAT-1156, FEAT-1262]
+blocked_by:
+- FEAT-1156
+- FEAT-1262
 parent: FEAT-1159
-
-relates_to: ['FEAT-1156', 'FEAT-1262', 'FEAT-1263', 'FEAT-1113']
+relates_to:
+- FEAT-1156
+- FEAT-1262
+- FEAT-1263
+- FEAT-1113
 ---
 
 # FEAT-1264: PreCompact Handoff — Event Log Integration
@@ -21,11 +26,29 @@ Enhance `precompact-handoff.sh` (delivered by FEAT-1156) to read structured even
 
 Decomposed from FEAT-1159: Continuous Session Event Capture with PreCompact Guarantee and SessionStart Injection
 
+## Current Behavior
+
+`precompact-handoff.sh` (delivered by FEAT-1156) reconstructs session state at compaction time using a fallback strategy: `git diff --name-only HEAD` for files edited, `ll-issues list --status in_progress` for active issue status, and `.ll/loops/` JSON for loop state. This approach misses files edited then reverted, tasks completed mid-session, and errors that were subsequently resolved.
+
+## Expected Behavior
+
+`precompact-handoff.sh` reads `.ll/ll-session-events.jsonl` (delivered by FEAT-1262) when available to produce a more accurate, deduplicated session snapshot: file edits sorted by recency with reverts excluded, only unresolved errors, and net task state where the last event per subject wins. When the event log is absent, the FEAT-1156 fallback path is used unchanged.
+
 ## Motivation
 
 FEAT-1156 builds `precompact-handoff.sh` using a fallback strategy: `git diff --name-only HEAD` for files edited, `ll-issues list --status in_progress` for active issues, and `.ll/loops/` JSON for loop state. This is reasonably accurate but has gaps — it can't distinguish files edited early then reverted, tasks completed mid-session, or errors that were subsequently resolved.
 
 With FEAT-1262's event log available, the snapshot builder can group events by type, deduplicate file edits, filter resolved errors, and produce a more accurate priority-tiered snapshot without any model involvement.
+
+## Use Case
+
+**Who**: A developer running `ll-auto`, `ll-parallel`, or a long interactive session.
+
+**Context**: After an extended session, Claude Code triggers context compaction. `precompact-handoff.sh` runs before the compaction window closes to produce a session snapshot.
+
+**Goal**: The snapshot accurately reflects what happened — files actually edited (not reverted), errors that remain unresolved, and tasks still in progress.
+
+**Outcome**: The next context window opens with a precise, noise-free summary rather than stale references to reverted files, resolved errors, or completed tasks.
 
 ## Acceptance Criteria
 
@@ -87,6 +110,8 @@ This issue modifies only `precompact-handoff.sh`. It does NOT modify:
 - `session-start-inject.sh` (FEAT-1263) — that issue owns the injector
 - The FEAT-1156 fallback path — it must remain working
 
+**MVP Designation** (2026-05-01 audit): FEAT-1264 is the MVP for "reconstruct PreCompact summary at handoff" — the JSONL+jq path defined here. FEAT-1112's SQLite/FTS5-backed reconstruction is a future replacement that reuses the same snapshot-builder API surface (input → markdown sections). Designing the snapshot builder as a stable interface allows the SQLite implementation to swap in without changes to `precompact-handoff.sh` consumers. The error-resolution heuristic lives canonically in FEAT-1262's Event Semantics section.
+
 ## Verification Notes
 
 **Verdict**: VALID — Verified 2026-04-23
@@ -104,15 +129,25 @@ This issue modifies only `precompact-handoff.sh`. It does NOT modify:
 - Downstream beneficiary: FEAT-1263 (richer snapshot → richer injection)
 - Original vision: FEAT-1159 Component 2 integration notes
 
+## Impact
+
+- **Priority**: P3 — Enhances session snapshot accuracy for long sessions; not blocking but meaningfully improves handoff quality
+- **Effort**: Medium — Adds event-log read path to an existing shell script; extends `TestPrecompactHandoff` with new test scenarios
+- **Risk**: Low — New path is additive; FEAT-1156 fallback preserved unchanged; isolated to a single script
+- **Breaking Change**: No
+
+## Labels
+
+`hooks`, `session-events`, `precompact`, `integration`
+
+## Status
+
+**Open** | Created: 2026-04-22 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-16T23:26:53 - `6859bdb6-28b4-4bbd-942d-3775826e1d79.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:05 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-
----
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): MVP designation from 2026-05-01 audit. FEAT-1264 is the MVP for "reconstruct PreCompact summary at handoff" — the JSONL+jq path defined here. FEAT-1112's SQLite/FTS5-backed reconstruction is a future replacement that reuses the same snapshot-builder API surface (input → markdown sections). Designing the snapshot builder as a stable interface allows the SQLite implementation to swap in without changes to `precompact-handoff.sh` consumers. The error-resolution heuristic referenced above lives canonically in FEAT-1262's Event Semantics section.
