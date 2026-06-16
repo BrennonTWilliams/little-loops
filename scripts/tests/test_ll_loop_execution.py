@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -24,13 +25,24 @@ if TYPE_CHECKING:
 def _make_mock_popen_factory(
     returncode: int = 0, stdout: str = "", stderr: str = ""
 ) -> Callable[..., Any]:
-    """Return a side_effect factory for mocking subprocess.Popen in executor tests."""
+    """Return a side_effect factory for mocking subprocess.Popen in executor tests.
+
+    Uses real OS pipes so selectors.DefaultSelector can register stdout/stderr.
+    """
 
     def factory(*args: Any, **kwargs: Any) -> Any:
         mock_proc = MagicMock()
-        lines = stdout.splitlines(keepends=True) if stdout else []
-        mock_proc.stdout = iter(lines)
-        mock_proc.stderr.read.return_value = stderr
+
+        stdout_r, stdout_w = os.pipe()
+        with os.fdopen(stdout_w, "w") as wf:
+            wf.write(stdout)
+        mock_proc.stdout = os.fdopen(stdout_r, "r")
+
+        stderr_r, stderr_w = os.pipe()
+        with os.fdopen(stderr_w, "w") as wf:
+            wf.write(stderr)
+        mock_proc.stderr = os.fdopen(stderr_r, "r")
+
         mock_proc.returncode = returncode
         mock_proc.wait.return_value = None
         mock_proc.kill.return_value = None

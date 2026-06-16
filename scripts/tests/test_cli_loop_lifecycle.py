@@ -2603,7 +2603,7 @@ class TestCmdMonitor:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.fsm.persistence._process_alive", return_value=False),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_monitor(args, tmp_path)
@@ -2673,7 +2673,7 @@ class TestCmdMonitor:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.fsm.persistence._process_alive", return_value=True),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
             patch(
                 "little_loops.cli.loop._helpers.StateFeedRenderer",
@@ -2709,7 +2709,7 @@ class TestCmdMonitor:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.fsm.persistence._process_alive", return_value=True),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
             patch(
                 "little_loops.cli.loop._helpers.StateFeedRenderer",
@@ -2738,7 +2738,7 @@ class TestCmdMonitor:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.fsm.persistence._process_alive", return_value=True),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
             patch("little_loops.cli.loop._helpers.StateFeedRenderer"),
             patch("builtins.print") as mock_print,

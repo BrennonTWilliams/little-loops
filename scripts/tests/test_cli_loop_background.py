@@ -918,7 +918,8 @@ class TestCmdStopWithPid:
             ),
             patch("little_loops.fsm.persistence.StatePersistence"),
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
-            patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=12345),
+            patch("little_loops.cli.loop.lifecycle.os.killpg") as mock_kill,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
             from little_loops.cli.loop.lifecycle import cmd_stop
