@@ -865,6 +865,83 @@ class TestWorkerPoolWorktreeManagement:
         warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
         assert any("node_modules" in w and "directory" in w.lower() for w in warning_calls)
 
+    def test_setup_worktree_passes_base_branch_in_feature_mode(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_setup_worktree() appends base_branch as commit-ish in worktree add args."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker-feat-001"
+        branch_name = "feature/feat-001-some-feature"
+
+        captured_commands: list[list[str]] = []
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            captured_commands.append(args)
+            return subprocess.CompletedProcess(args, 0, "abc1234\n", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            with patch("subprocess.run") as mock_subprocess:
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "", "")
+                with patch("shutil.copy2"):
+                    with patch("shutil.copytree"):
+                        worker_pool._setup_worktree(worktree_path, branch_name, base_branch="main")
+
+        worktree_cmds = [c for c in captured_commands if "worktree" in c and "add" in c]
+        assert len(worktree_cmds) >= 1
+        assert "main" in worktree_cmds[0]
+
+    def test_setup_worktree_no_base_branch_for_parallel_path(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_setup_worktree() without base_branch does not append a commit-ish (parallel/* path)."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-001"
+        branch_name = "parallel/bug-001-20260616-120000"
+
+        captured_commands: list[list[str]] = []
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            captured_commands.append(args)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            with patch("subprocess.run") as mock_subprocess:
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "", "")
+                with patch("shutil.copy2"):
+                    with patch("shutil.copytree"):
+                        worker_pool._setup_worktree(worktree_path, branch_name, base_branch=None)
+
+        worktree_cmds = [c for c in captured_commands if "worktree" in c and "add" in c]
+        assert len(worktree_cmds) >= 1
+        # Four-arg form: worktree add -b <branch> <path> — no extra commit-ish
+        assert worktree_cmds[0] == ["worktree", "add", "-b", branch_name, str(worktree_path)]
+
+    def test_setup_worktree_raises_on_unresolvable_base_branch(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_setup_worktree() raises RuntimeError when base_branch does not resolve."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker-feat-002"
+        branch_name = "feature/feat-002-new"
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["rev-parse", "--verify"]:
+                return subprocess.CompletedProcess(args, 1, "", "fatal: bad revision 'nonexistent'")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            with pytest.raises(RuntimeError, match="does not resolve"):
+                worker_pool._setup_worktree(worktree_path, branch_name, base_branch="nonexistent")
+
 
 class TestActiveWorktreeProtection:
     """Tests for BUG-142: Prevent cleanup of worktrees in active use."""

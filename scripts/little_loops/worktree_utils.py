@@ -25,6 +25,7 @@ def setup_worktree(
     copy_files: list[str],
     logger: Logger,
     git_lock: GitLock,
+    base_branch: str | None = None,
 ) -> None:
     """Create a git worktree on a new branch and copy essential files.
 
@@ -39,15 +40,33 @@ def setup_worktree(
         copy_files: File paths (relative to repo_path) to copy into the worktree.
         logger: Logger instance.
         git_lock: Thread-safe git lock for serializing repo operations.
+        base_branch: Optional commit-ish to fork the new branch from. When None,
+            the branch forks from the current HEAD of repo_path (existing behavior).
+            When provided, validated before use; fails fast if unresolvable.
 
     Raises:
-        RuntimeError: If git worktree creation fails.
+        RuntimeError: If git worktree creation fails or base_branch does not resolve.
     """
     if worktree_path.exists():
         cleanup_worktree(worktree_path, repo_path, logger, git_lock, delete_branch=True)
 
+    if base_branch is not None:
+        verify_result = git_lock.run(
+            ["rev-parse", "--verify", base_branch],
+            cwd=repo_path,
+            timeout=10,
+        )
+        if verify_result.returncode != 0:
+            raise RuntimeError(
+                f"Branch '{base_branch}' does not resolve: {verify_result.stderr}"
+            )
+
+    worktree_args = ["worktree", "add", "-b", branch_name, str(worktree_path)]
+    if base_branch is not None:
+        worktree_args.append(base_branch)
+
     result = git_lock.run(
-        ["worktree", "add", "-b", branch_name, str(worktree_path)],
+        worktree_args,
         cwd=repo_path,
         timeout=60,
     )

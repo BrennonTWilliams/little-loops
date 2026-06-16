@@ -265,7 +265,13 @@ class WorkerPool:
 
         try:
             # Step 1: Create worktree with new branch
-            self._setup_worktree(worktree_path, branch_name)
+            self._setup_worktree(
+                worktree_path,
+                branch_name,
+                base_branch=self.parallel_config.base_branch
+                if self.parallel_config.use_feature_branches
+                else None,
+            )
 
             # Register worktree as active to prevent cleanup while in use (BUG-142)
             with self._process_lock:
@@ -535,12 +541,15 @@ class WorkerPool:
             with self._process_lock:
                 self._active_worktrees.discard(worktree_path)
 
-    def _setup_worktree(self, worktree_path: Path, branch_name: str) -> None:
+    def _setup_worktree(
+        self, worktree_path: Path, branch_name: str, base_branch: str | None = None
+    ) -> None:
         """Create a git worktree with a new branch.
 
         Args:
             worktree_path: Path for the new worktree
             branch_name: Name of the new branch
+            base_branch: Optional commit-ish to fork the branch from; None forks from HEAD.
         """
         from little_loops.worktree_utils import setup_worktree
 
@@ -551,6 +560,7 @@ class WorkerPool:
             copy_files=self.parallel_config.worktree_copy_files,
             logger=self.logger,
             git_lock=self._git_lock,
+            base_branch=base_branch,
         )
 
         # Verify model if --show-model flag is set (requires API call)
