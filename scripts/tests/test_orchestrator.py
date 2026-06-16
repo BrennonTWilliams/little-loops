@@ -1756,6 +1756,254 @@ class TestOnWorkerComplete:
 
         orchestrator.merge_coordinator.queue_merge.assert_called_once_with(result)  # type: ignore[attr-defined]
 
+    def test_on_worker_complete_feature_branch_local_only(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """Feature-branch mode with push disabled stores dict with pushed=False (BUG-2172)."""
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = False
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001-test",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        with patch("subprocess.run") as mock_run:
+            orchestrator._on_worker_complete(result)
+            # No git push should be called
+            for call in mock_run.call_args_list:
+                args = call[0][0] if call[0] else call[1].get("args", [])
+                assert "push" not in args, f"Unexpected git push call: {call}"
+
+        state = orchestrator._pr_ready_branches["BUG-001"]
+        assert state["branch_name"] == "feature/bug-001-test"
+        assert state["pushed"] is False
+        assert state["pr_url"] is None
+
+    def test_on_worker_complete_feature_branch_push_enabled(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """Feature-branch mode with push enabled calls git push with correct args (BUG-2172)."""
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = True
+        orchestrator.parallel_config.remote_name = "origin"
+        orchestrator.parallel_config.open_pr_for_feature_branches = False
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001-test",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        import subprocess
+
+        push_completed = subprocess.CompletedProcess(
+            args=["git", "push", "--force-with-lease", "origin", "feature/bug-001-test"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        with patch("little_loops.parallel.orchestrator.subprocess.run", return_value=push_completed) as mock_run:
+            orchestrator._on_worker_complete(result)
+
+        push_calls = [
+            call for call in mock_run.call_args_list
+            if call[0] and "push" in call[0][0]
+        ]
+        assert len(push_calls) == 1
+        push_args = push_calls[0][0][0]
+        assert push_args == ["git", "push", "--force-with-lease", "origin", "feature/bug-001-test"]
+
+        state = orchestrator._pr_ready_branches["BUG-001"]
+        assert state["pushed"] is True
+        assert state["pr_url"] is None
+
+    def test_on_worker_complete_feature_branch_open_pr(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """Feature-branch mode opens PR when open_pr_for_feature_branches=True (BUG-2172)."""
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = True
+        orchestrator.parallel_config.open_pr_for_feature_branches = True
+        orchestrator.parallel_config.remote_name = "origin"
+        orchestrator.parallel_config.base_branch = "main"
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001-test",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        import subprocess
+
+        def fake_subprocess_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if args[0] == "git" and "push" in args:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh" and args[1] == "auth":
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh" and args[1] == "pr":
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0,
+                    stdout="https://github.com/owner/repo/pull/42",
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="unexpected")
+
+        with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run):
+            orchestrator._on_worker_complete(result)
+
+        state = orchestrator._pr_ready_branches["BUG-001"]
+        assert state["pushed"] is True
+        assert state["pr_url"] == "https://github.com/owner/repo/pull/42"
+
+    def test_on_worker_complete_feature_branch_push_failure(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """Feature-branch push failure is surfaced as warning without failing the issue (BUG-2172)."""
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = True
+        orchestrator.parallel_config.open_pr_for_feature_branches = False
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001-test",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        import subprocess
+
+        push_failed = subprocess.CompletedProcess(
+            args=["git", "push", "--force-with-lease", "origin", "feature/bug-001-test"],
+            returncode=1,
+            stdout="",
+            stderr="Permission denied",
+        )
+
+        with patch("little_loops.parallel.orchestrator.subprocess.run", return_value=push_failed):
+            orchestrator._on_worker_complete(result)
+
+        # Issue still marked completed despite push failure
+        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
+
+        # Branch state reflects push failure
+        state = orchestrator._pr_ready_branches["BUG-001"]
+        assert state["pushed"] is False
+
+    def test_on_worker_complete_feature_branch_gh_missing(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """gh CLI missing degrades gracefully to push-only (BUG-2172)."""
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = True
+        orchestrator.parallel_config.open_pr_for_feature_branches = True
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001-test",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        import subprocess
+
+        def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if args[0] == "git" and "push" in args:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh":
+                raise FileNotFoundError("gh not found")
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+        with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_run):
+            orchestrator._on_worker_complete(result)
+
+        state = orchestrator._pr_ready_branches["BUG-001"]
+        assert state["pushed"] is True
+        assert state["pr_url"] is None
+        # Issue still completed
+        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
+
+    def test_report_results_feature_branch_local_only(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_report_results shows 'local-only branch retained' for unpushed branches (BUG-2172)."""
+        orchestrator._pr_ready_branches = {
+            "BUG-001": {"branch_name": "feature/bug-001", "pushed": False, "pr_url": None}
+        }
+        orchestrator.queue.completed_count = 1
+        orchestrator.queue.failed_count = 0
+        orchestrator.queue.failed_ids = []
+
+        log_messages: list[str] = []
+        orchestrator.logger.info = lambda msg: log_messages.append(str(msg))  # type: ignore[method-assign]
+
+        orchestrator._report_results(time.time() - 1.0)
+
+        combined = "\n".join(log_messages)
+        assert "local-only branch retained" in combined
+        assert "pushed + PR opened" not in combined
+
+    def test_report_results_feature_branch_pushed(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_report_results shows 'pushed (PR skipped)' for pushed-only branches (BUG-2172)."""
+        orchestrator._pr_ready_branches = {
+            "BUG-001": {"branch_name": "feature/bug-001", "pushed": True, "pr_url": None}
+        }
+        orchestrator.queue.completed_count = 1
+        orchestrator.queue.failed_count = 0
+        orchestrator.queue.failed_ids = []
+
+        log_messages: list[str] = []
+        orchestrator.logger.info = lambda msg: log_messages.append(str(msg))  # type: ignore[method-assign]
+
+        orchestrator._report_results(time.time() - 1.0)
+
+        combined = "\n".join(log_messages)
+        assert "pushed (PR skipped)" in combined
+
+    def test_report_results_feature_branch_pr_opened(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_report_results shows 'pushed + PR opened' with URL for PR'd branches (BUG-2172)."""
+        orchestrator._pr_ready_branches = {
+            "BUG-001": {
+                "branch_name": "feature/bug-001",
+                "pushed": True,
+                "pr_url": "https://github.com/owner/repo/pull/42",
+            }
+        }
+        orchestrator.queue.completed_count = 1
+        orchestrator.queue.failed_count = 0
+        orchestrator.queue.failed_ids = []
+
+        log_messages: list[str] = []
+        orchestrator.logger.info = lambda msg: log_messages.append(str(msg))  # type: ignore[method-assign]
+
+        orchestrator._report_results(time.time() - 1.0)
+
+        combined = "\n".join(log_messages)
+        assert "pushed + PR opened" in combined
+        assert "https://github.com/owner/repo/pull/42" in combined
+
 
 class TestMergeSequential:
     """Tests for _merge_sequential method."""

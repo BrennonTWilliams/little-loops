@@ -376,12 +376,27 @@
         },
         "use_feature_branches": {
           "type": "boolean",
-          "description": "Create a dedicated feature branch per issue (e.g., feature/ENH-123-slug) instead of the default parallel/<id>-<timestamp> branch. When true, auto-merge to main is skipped and branches survive as PR-ready. Use for PR-based CI/CD workflows.",
+          "description": "Create a dedicated feature branch per issue (e.g., feature/ENH-123-slug) instead of the default parallel/<id>-<timestamp> branch. When true, auto-merge to main is skipped and the branch is retained locally. Enable push_feature_branches to push to remote; enable open_pr_for_feature_branches to also open a PR.",
           "default": false
+        },
+        "push_feature_branches": {
+          "type": "boolean",
+          "description": "When use_feature_branches is true, push each completed feature branch to remote_name after a successful run. Requires remote_name to be configured.",
+          "default": false
+        },
+        "open_pr_for_feature_branches": {
+          "type": "boolean",
+          "description": "When push_feature_branches is true, open a draft PR for each pushed feature branch using the gh CLI. Requires gh to be installed and authenticated. If gh is missing or unauthenticated, degrades gracefully to push-only with a warning.",
+          "default": false
+        },
+        "base_branch": {
+          "type": "string",
+          "description": "Base branch targeted by PR creation when open_pr_for_feature_branches is true. Also used as the rebase target for worktree updates. Defaults to 'main'.",
+          "default": "main"
         },
         "remote_name": {
           "type": "string",
-          "description": "Git remote name used for fetch/pull operations in parallel runs. Use if your remote is not named 'origin'.",
+          "description": "Git remote name used for fetch/pull operations in parallel runs, and for push when push_feature_branches is true. Use if your remote is not named 'origin'.",
           "default": "origin"
         }
       },

@@ -115,8 +115,8 @@ class ParallelOrchestrator:
         self._interrupted_issues: list[str] = []
         # Accumulate per-issue failure reasons for state file (BUG-1383)
         self._worker_errors: dict[str, str] = {}
-        # Track PR-ready branches when use_feature_branches=True (ENH-665)
-        self._pr_ready_branches: dict[str, str] = {}  # issue_id -> branch_name
+        # Track feature-branch state when use_feature_branches=True (ENH-665, BUG-2172)
+        self._pr_ready_branches: dict[str, dict] = {}  # issue_id -> {branch_name, pushed, pr_url}
 
         # Overlap detection (ENH-143)
         self.overlap_detector: OverlapDetector | None = (
@@ -949,12 +949,43 @@ class ParallelOrchestrator:
                     with self._state_lock:
                         self.state.corrections[result.issue_id] = result.corrections
             if self.parallel_config.use_feature_branches:
-                # Feature branch mode: skip auto-merge, branch stays alive for a PR (ENH-665)
+                # Feature branch mode: skip auto-merge, branch stays alive (ENH-665, BUG-2172)
                 self.logger.info(f"{result.issue_id}: feature branch ready — {result.branch_name}")
                 self.queue.mark_completed(result.issue_id)
                 self._complete_issue_lifecycle_if_needed(result.issue_id)
+                branch_state: dict[str, Any] = {
+                    "branch_name": result.branch_name,
+                    "pushed": False,
+                    "pr_url": None,
+                }
+                if self.parallel_config.push_feature_branches:
+                    push_result = subprocess.run(
+                        [
+                            "git",
+                            "push",
+                            "--force-with-lease",
+                            self.parallel_config.remote_name,
+                            result.branch_name,
+                        ],
+                        cwd=self.repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    if push_result.returncode == 0:
+                        branch_state["pushed"] = True
+                        self.logger.info(
+                            f"{result.issue_id}: pushed {result.branch_name}"
+                            f" to {self.parallel_config.remote_name}"
+                        )
+                        if self.parallel_config.open_pr_for_feature_branches:
+                            self._open_pr_for_branch(result.issue_id, result.branch_name, branch_state)
+                    else:
+                        self.logger.warning(
+                            f"{result.issue_id}: git push failed: {push_result.stderr.strip()}"
+                        )
                 with self._state_lock:
-                    self._pr_ready_branches[result.issue_id] = result.branch_name
+                    self._pr_ready_branches[result.issue_id] = branch_state
             else:
                 self.merge_coordinator.queue_merge(result)
                 # Wait for merge to complete before returning from callback.
@@ -1017,6 +1048,61 @@ class ParallelOrchestrator:
                     self.queue.add(issue)
 
         self._deferred_issues = still_deferred
+
+    def _open_pr_for_branch(
+        self,
+        issue_id: str,
+        branch_name: str,
+        branch_state: dict[str, Any],
+    ) -> None:
+        """Open a draft PR for a pushed feature branch using the gh CLI.
+
+        Mutates branch_state in place to record pr_url on success.
+        Degrades gracefully if gh is missing or unauthenticated.
+        """
+        try:
+            auth_result = subprocess.run(
+                ["gh", "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if auth_result.returncode != 0:
+                self.logger.warning(f"{issue_id}: gh not authenticated, skipping PR creation")
+                return
+            issue_info = self._issue_info_by_id.get(issue_id)
+            pr_title = issue_info.title if issue_info else issue_id
+            pr_result = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--title",
+                    pr_title,
+                    "--body",
+                    f"Closes {issue_id}",
+                    "--base",
+                    self.parallel_config.base_branch,
+                    "--draft",
+                    "--head",
+                    branch_name,
+                ],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if pr_result.returncode == 0:
+                branch_state["pr_url"] = pr_result.stdout.strip()
+                self.logger.info(f"{issue_id}: PR opened: {branch_state['pr_url']}")
+            else:
+                self.logger.warning(
+                    f"{issue_id}: gh pr create failed: {pr_result.stderr.strip()}"
+                )
+        except FileNotFoundError:
+            self.logger.warning(f"{issue_id}: gh CLI not found, skipping PR creation")
+        except subprocess.TimeoutExpired:
+            self.logger.warning(f"{issue_id}: gh pr create timed out")
 
     def _merge_sequential(self, result: WorkerResult) -> None:
         """Merge a sequential (P0) result immediately.
@@ -1135,12 +1221,20 @@ class ParallelOrchestrator:
             for issue_id in self._interrupted_issues:
                 self.logger.info(f"  - {issue_id}")
 
-        # Report PR-ready branches when use_feature_branches=True (ENH-665)
+        # Report feature branches with actual per-branch state (ENH-665, BUG-2172)
         if self._pr_ready_branches:
             self.logger.info("")
-            self.logger.info(f"PR-ready: {len(self._pr_ready_branches)} branch(es)")
-            for issue_id, branch in self._pr_ready_branches.items():
-                self.logger.info(f"  - {issue_id}: {branch}")
+            self.logger.info(f"Feature branches: {len(self._pr_ready_branches)} branch(es)")
+            for issue_id, state in self._pr_ready_branches.items():
+                branch = state["branch_name"]
+                if state.get("pr_url"):
+                    self.logger.info(
+                        f"  - {issue_id}: {branch} — pushed + PR opened: {state['pr_url']}"
+                    )
+                elif state.get("pushed"):
+                    self.logger.info(f"  - {issue_id}: {branch} — pushed (PR skipped)")
+                else:
+                    self.logger.info(f"  - {issue_id}: {branch} — local-only branch retained")
 
         # Report correction statistics for quality tracking (ENH-010)
         if corrections_snapshot:

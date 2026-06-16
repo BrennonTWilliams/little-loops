@@ -1017,6 +1017,8 @@ class TestParallelConfig:
             skip_ids={"C"},
             require_code_changes=False,
             use_feature_branches=True,
+            push_feature_branches=True,
+            open_pr_for_feature_branches=True,
             merge_pending=True,
             clean_start=True,
             ignore_pending=True,
@@ -1047,6 +1049,8 @@ class TestParallelConfig:
         assert restored.skip_ids == original.skip_ids
         assert restored.require_code_changes == original.require_code_changes
         assert restored.use_feature_branches == original.use_feature_branches
+        assert restored.push_feature_branches == original.push_feature_branches
+        assert restored.open_pr_for_feature_branches == original.open_pr_for_feature_branches
         assert restored.merge_pending == original.merge_pending
         assert restored.clean_start == original.clean_start
         assert restored.ignore_pending == original.ignore_pending

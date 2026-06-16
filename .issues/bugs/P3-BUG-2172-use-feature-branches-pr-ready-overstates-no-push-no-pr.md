@@ -1,14 +1,25 @@
 ---
 id: BUG-2172
-title: use_feature_branches "PR-ready" overstates behavior — no push, no PR
+title: "use_feature_branches \"PR-ready\" overstates behavior \u2014 no push, no PR"
 type: BUG
-status: open
+status: done
 priority: P3
 parent: EPIC-2171
 captured_at: '2026-06-15T16:51:50Z'
+completed_at: '2026-06-16T15:43:32Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
-labels: [parallel, feature-branches, docs, workflow]
+labels:
+- parallel
+- feature-branches
+- docs
+- workflow
+confidence_score: 96
+outcome_confidence: 78
+score_complexity: 19
+score_test_coverage: 15
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # BUG-2172: use_feature_branches "PR-ready" overstates behavior — no push, no PR
@@ -30,7 +41,7 @@ unused in feature-branch mode.
 - config-schema.json:377-381 describes `use_feature_branches`:
   > "When true, auto-merge to main is skipped and branches survive as PR-ready.
   > Use for PR-based CI/CD workflows."
-- `orchestrator.py:951` (feature-branch branch of `_handle_worker_result`):
+- `orchestrator.py:951` (feature-branch arm of `_on_worker_complete()`):
   - logs "feature branch ready — <branch_name>"
   - marks the issue completed
   - records the branch in `_pr_ready_branches`
@@ -79,15 +90,15 @@ Enabling `use_feature_branches` produces a branch that is genuinely PR-ready:
 
 Implement Option A with opt-in sub-flags to preserve existing behavior:
 
-- Add `parallel.push_feature_branches` (bool, default `false`): when true, `_handle_worker_result()` in `orchestrator.py` calls `git push <remote_name> <branch>` after a successful feature-branch result
-- Add `parallel.open_pr_for_feature_branches` (bool, default `false`): when true and branch was pushed, shells out to `gh pr create` and captures the PR URL
-- Update the end-of-run report (`_print_pr_ready_report()` or equivalent in `orchestrator.py`) to report actual state: "pushed + PR opened", "pushed (local PR skipped)", or "local-only branch retained"
+- Add `parallel.push_feature_branches` (bool, default `false`): when true, `_on_worker_complete()` in `orchestrator.py` calls `git push <remote_name> <branch>` after a successful feature-branch result
+- Add `parallel.open_pr_for_feature_branches` (bool, default `false`): when true and branch was pushed, shells out to `gh pr create` and captures the PR URL; reuse `_run_gh_command()` / `_check_gh_auth()` from `scripts/little_loops/sync.py:98–138`
+- Update the PR-ready section of `_report_results()` in `orchestrator.py` (lines 1138–1143) to report actual state: "pushed + PR opened", "pushed (local PR skipped)", or "local-only branch retained"; expand `_pr_ready_branches` from `dict[str, str]` (branch name only) to `dict[str, dict]` to carry per-branch push/PR state
 - Update `config-schema.json` description for `use_feature_branches` to accurately describe local-branch retention; wire `remote_name` into the push path or remove it with a deprecation note
 
 ## Root Cause
 
 - **File**: `scripts/little_loops/parallel/orchestrator.py`
-- **Anchor**: feature-branch branch of the worker-result handler (~line 951)
+- **Anchor**: `_on_worker_complete()` (~line 951), feature-branch arm
 - **Cause**: the feature-branch path was implemented to *retain* the branch
   (skip auto-merge) but the push/PR completion steps were never added; the
   schema/docs were written to the intended end-state, creating a behavior↔docs
@@ -128,9 +139,12 @@ Implement Option A with opt-in sub-flags to preserve existing behavior:
 
 ## Implementation Steps
 
-1. Add a push step in the feature-branch branch of the worker-result handler
-   using `parallel.remote_name`; thread the `open_pr_for_feature_branches`
-   sub-flag to optionally shell out to `gh pr create`.
+1. Add a push step in the feature-branch arm of `_on_worker_complete()`
+   (`orchestrator.py:951`) using `parallel.remote_name`; thread the
+   `open_pr_for_feature_branches` sub-flag to optionally shell out to
+   `gh pr create` via `_run_gh_command()` / `_check_gh_auth()` from `sync.py`.
+   Expand `_pr_ready_branches` from `dict[str, str]` to `dict[str, dict]`
+   so push/PR status is tracked per branch.
 2. Wire the new sub-flags (`push_feature_branches`,
    `open_pr_for_feature_branches`) through the `ParallelConfig` dataclass in
    `parallel/types.py` (fields, defaults, **and** the `to_dict`/`from_dict`
@@ -139,30 +153,39 @@ Implement Option A with opt-in sub-flags to preserve existing behavior:
 3. Add `parallel.base_branch` to `config-schema.json` (default `"main"`) so the
    PR base is configurable; resolve it in `create_parallel_config` like the other
    parallel fields.
-4. Update the end-of-run "PR-ready" report to reflect actual state (pushed /
-   PR'd / local-only).
+4. Update the PR-ready block in `_report_results()` (lines 1138–1143 in
+   `orchestrator.py`) to iterate `_pr_ready_branches` dict values and print
+   actual state per branch: "pushed + PR opened", "pushed (PR skipped)", or
+   "local-only branch retained".
 5. Update config-schema.json description text to match behavior.
 6. Add tests.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/parallel/orchestrator.py` — `_handle_worker_result()` feature-branch branch (~line 951, add push/PR step); end-of-run "PR-ready" report (~line 1138)
+- `scripts/little_loops/parallel/orchestrator.py` — `_on_worker_complete()` feature-branch arm (~line 951, add push/PR step); expand `_pr_ready_branches` (line 119) from `dict[str, str]` to `dict[str, dict]`; PR-ready block in `_report_results()` (~lines 1138–1143)
 - `scripts/little_loops/parallel/types.py` — `ParallelConfig` dataclass (~line 304): add `push_feature_branches` / `open_pr_for_feature_branches` fields **and** include them in `to_dict()` (~line 448) / `from_dict()` (~line 491) so they survive serialization to workers. (`parallel/config.py` does **not** exist — `ParallelConfig` lives here.)
 - `scripts/little_loops/config/automation.py` — `ParallelAutomationConfig` dataclass + `from_dict` (~lines 58–59, 90–91): add the new sub-flags
 - `scripts/little_loops/config/core.py` — `create_parallel_config` (~line 415): accept and resolve the new sub-flags **and** `base_branch` (model after the `remote_name` resolution at ~line 494)
 - `config-schema.json` — `use_feature_branches` description (~line 377); add `push_feature_branches` / `open_pr_for_feature_branches` entries; add `base_branch` (default `"main"`, currently runtime-only); wire `remote_name` into the push path (~line 382)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/ll_parallel.py` — entry-point that constructs and runs the orchestrator; may surface new sub-flags
+- `scripts/little_loops/cli/parallel.py` — entry-point (`main()`) that constructs `ParallelConfig` via `create_parallel_config()` and launches the orchestrator; `base_branch` is auto-detected from HEAD at line ~199 here (not schema-driven today)
 - `scripts/little_loops/parallel/__init__.py` — re-exports `ParallelConfig`; update if new fields added
-- `scripts/little_loops/parallel/worker_pool.py` / `merge_coordinator.py` — already consume `base_branch` / `remote_name`; verify no regression when `base_branch` becomes schema-driven
+- `scripts/little_loops/parallel/worker_pool.py` / `merge_coordinator.py` — already consume `base_branch` / `remote_name` in `_update_branch_base()` and `_handle_conflict_retry()`; verify no regression when `base_branch` becomes schema-driven
+- `scripts/little_loops/sync.py` — provides `_run_gh_command()` (lines 98–124) and `_check_gh_auth()` (lines 127–138) reusable for the PR-creation step; import or copy the pattern
 
 ### Similar Patterns
-- Auto-merge path in `_handle_worker_result()` (the `else` branch of the feature-branch check) — complementary pattern for completing worker results
+- Auto-merge path in `_on_worker_complete()` (the `else` branch at ~line 958) — complementary pattern for completing worker results
+- `git push` subprocess shape to follow: `_update_branch_base()` in `worker_pool.py:985–1031` — same `subprocess.run(["git", ...], cwd=self.repo_path, capture_output=True, text=True, timeout=60)` shape applies for push; note push runs against `self.repo_path` (main repo), not a worktree
+- `gh` CLI calls: `_run_gh_command()` in `sync.py:98–124` (wraps `subprocess.run`); `_check_gh_auth()` in `sync.py:127–138` (catches `FileNotFoundError` for missing binary + `returncode != 0` for auth failure)
+- `gh pr create` URL capture follows `_create_github_issue()` in `sync.py:454–488`: `stdout.strip()` is the PR URL; wrap in `try/except subprocess.CalledProcessError`
+- Boolean flag round-trip: `use_feature_branches` field in `types.py:360`, `to_dict` at line 448, `from_dict` at line 491 — exact model for `push_feature_branches` / `open_pr_for_feature_branches`
 
 ### Tests
-- `scripts/tests/test_parallel_orchestrator.py` (or equivalent) — add: push invoked with correct `remote_name`/branch args; PR creation shelled out when `open_pr_for_feature_branches=true`; report wording reflects actual state (local-only vs pushed vs PR'd)
+- `scripts/tests/test_orchestrator.py` — class `TestOnWorkerComplete` (line 1506); add: push invoked with correct `remote_name`/branch args; PR creation shelled out when `open_pr_for_feature_branches=true`; report wording reflects actual state (local-only vs pushed vs PR'd)
+- `scripts/tests/test_parallel_types.py` — `ParallelConfig` round-trip test (lines 1010–1054): add `push_feature_branches=True` / `open_pr_for_feature_branches=True` to `original` and assertions, following `use_feature_branches` at line 1019
+- `scripts/tests/test_sync.py` — `TestGitHubHelpers` (line 305) for `gh` mock pattern reference: `patch("little_loops.sync._run_gh_command")` returning `CompletedProcess(returncode=0, stdout="<pr_url>")`
 
 ### Documentation
 - `config-schema.json` — `use_feature_branches` and `remote_name` description fields
@@ -191,6 +214,10 @@ Implement Option A with opt-in sub-flags to preserve existing behavior:
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-16T15:25:06 - `5dce21b3-f668-485e-bcfe-69d009c19e64.jsonl`
+- `/ll:refine-issue` - 2026-06-16T15:13:07 - `3ad8c21b-3893-403a-ae25-ae90f621c982.jsonl`
 - decision - 2026-06-15 - Option A (push + opt-in PR) selected; Integration Map corrected (`parallel/types.py`, not `parallel/config.py`); `base_branch` promoted to schema.
 - `/ll:format-issue` - 2026-06-15T16:57:14 - `c5ee10aa-e3ea-47f9-afcb-d5efd2450ef6.jsonl`
 - `/ll:capture-issue` - 2026-06-15T16:51:50Z - `5b1dd63b-714f-41e9-b9c2-f55f8ebd0e98.jsonl`
+- `/ll:confidence-check` - 2026-06-16T00:00:00Z - `dc3c8e90-0d40-4863-b36a-2d9a1c9c2785.jsonl`
+- `/ll:confidence-check` - 2026-06-16T16:00:00Z - `cad3b190-a062-4104-9c6f-a63873c22959.jsonl`

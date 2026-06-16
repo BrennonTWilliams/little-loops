@@ -360,6 +360,8 @@ class ParallelConfig:
     use_feature_branches: bool = (
         False  # If True, create feature/<id>-<slug> branch instead of parallel/
     )
+    push_feature_branches: bool = False  # If True, push feature branch to remote_name after success
+    open_pr_for_feature_branches: bool = False  # If True, open a draft PR after push via gh CLI
     # Additional files to copy from main repo to worktrees
     # Note: .claude/ directory is always copied automatically (see worker_pool.py)
     worktree_copy_files: list[str] = field(
@@ -446,6 +448,8 @@ class ParallelConfig:
             "label_filter": list(self.label_filter) if self.label_filter else None,
             "require_code_changes": self.require_code_changes,
             "use_feature_branches": self.use_feature_branches,
+            "push_feature_branches": self.push_feature_branches,
+            "open_pr_for_feature_branches": self.open_pr_for_feature_branches,
             "merge_pending": self.merge_pending,
             "clean_start": self.clean_start,
             "ignore_pending": self.ignore_pending,
@@ -489,6 +493,8 @@ class ParallelConfig:
             label_filter=set(label_filter_data) if label_filter_data else None,
             require_code_changes=data.get("require_code_changes", True),
             use_feature_branches=data.get("use_feature_branches", False),
+            push_feature_branches=data.get("push_feature_branches", False),
+            open_pr_for_feature_branches=data.get("open_pr_for_feature_branches", False),
             merge_pending=data.get("merge_pending", False),
             clean_start=data.get("clean_start", False),
             ignore_pending=data.get("ignore_pending", False),

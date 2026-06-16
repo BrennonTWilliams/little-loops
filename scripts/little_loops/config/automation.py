@@ -56,6 +56,9 @@ class ParallelAutomationConfig:
     )
     require_code_changes: bool = True
     use_feature_branches: bool = False
+    push_feature_branches: bool = False
+    open_pr_for_feature_branches: bool = False
+    base_branch: str = "main"
     remote_name: str = "origin"
 
     @classmethod
@@ -88,6 +91,9 @@ class ParallelAutomationConfig:
             ),
             require_code_changes=data.get("require_code_changes", True),
             use_feature_branches=data.get("use_feature_branches", False),
+            push_feature_branches=data.get("push_feature_branches", False),
+            open_pr_for_feature_branches=data.get("open_pr_for_feature_branches", False),
+            base_branch=data.get("base_branch", "main"),
             remote_name=data.get("remote_name", "origin"),
         )
 
