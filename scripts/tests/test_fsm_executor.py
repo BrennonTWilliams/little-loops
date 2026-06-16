@@ -7746,6 +7746,133 @@ class TestMaxIterationsSummaryHook:
         summary_events = [e for e in events if e.get("event") == "max_iterations_summary"]
         assert len(summary_events) == 1
 
+    def test_sub_loop_on_error_at_iteration_cap_flushes_and_runs_handler(self) -> None:
+        """BUG-158: sub-loop on_error at the iteration cap flushes the
+        intermediate state before entering the on_max_iterations handler,
+        and the handler's action executes before terminating.
+        """
+        import tempfile
+
+        fsm = FSMLoop(
+            name="bug-158-regression",
+            initial="sub_loop_state",
+            max_iterations=3,
+            on_max_iterations="summary_handler",
+            states={
+                "sub_loop_state": StateConfig(
+                    loop="nonexistent-loop",
+                    on_error="intermediate_gate",
+                ),
+                "intermediate_gate": StateConfig(
+                    action="gate.sh",
+                    on_yes="sub_loop_state",
+                ),
+                "summary_handler": StateConfig(
+                    action="summary.sh",
+                    terminal=True,
+                ),
+            },
+        )
+        runner = MockActionRunner()
+        # gate.sh succeeds (exit 0 → on_yes → back to sub_loop_state)
+        runner.set_result("gate.sh", exit_code=0, output="gated")
+        # summary.sh always runs
+        runner.set_result("summary.sh", exit_code=0, output="summary")
+
+        events: list[dict] = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            executor = FSMExecutor(
+                fsm,
+                action_runner=runner,
+                event_callback=events.append,
+                loops_dir=Path(tmpdir),
+            )
+            result = executor.run()
+
+        # Primary assertion: terminated_by must be "max_iterations"
+        assert result.terminated_by == "max_iterations", (
+            f"Expected terminated_by='max_iterations', got "
+            f"'{result.terminated_by}'"
+        )
+
+        # Final state must be the summary handler, not the intermediate gate
+        complete_events = [e for e in events if e.get("event") == "loop_complete"]
+        assert len(complete_events) == 1
+        assert complete_events[0]["final_state"] == "summary_handler", (
+            f"Expected final_state='summary_handler', got "
+            f"'{complete_events[0]['final_state']}'"
+        )
+
+        # max_iterations_summary event must be emitted
+        summary_events = [
+            e for e in events if e.get("event") == "max_iterations_summary"
+        ]
+        assert len(summary_events) == 1
+        assert summary_events[0]["summary_state"] == "summary_handler"
+
+        # The summary handler's action must have executed
+        assert runner.calls.count("summary.sh") == 1, (
+            "summary_handler action never executed"
+        )
+
+        # The intermediate gate was reached at least once (its action was
+        # flushed by the BUG-158 guard before the handler ran).
+        gate_enter_events = [
+            e
+            for e in events
+            if e.get("event") == "state_enter"
+            and e.get("state") == "intermediate_gate"
+        ]
+        assert len(gate_enter_events) >= 1, (
+            "intermediate_gate was never entered (or flushed)"
+        )
+
+    def test_sub_loop_on_error_without_handler_preserves_behavior(self) -> None:
+        """BUG-158: when on_max_iterations is not set, sub-loop on_error at
+        the cap still terminates cleanly with max_iterations (no regression).
+        """
+        import tempfile
+
+        fsm = FSMLoop(
+            name="bug-158-no-handler",
+            initial="sub_loop_state",
+            max_iterations=3,
+            states={
+                "sub_loop_state": StateConfig(
+                    loop="nonexistent-loop",
+                    on_error="intermediate_gate",
+                ),
+                "intermediate_gate": StateConfig(
+                    action="gate.sh",
+                    on_yes="sub_loop_state",
+                ),
+            },
+        )
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+
+        events: list[dict] = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            executor = FSMExecutor(
+                fsm,
+                action_runner=runner,
+                event_callback=events.append,
+                loops_dir=Path(tmpdir),
+            )
+            result = executor.run()
+
+        # With no on_max_iterations, terminates via max_iterations (unchanged)
+        assert result.terminated_by == "max_iterations"
+        complete_events = [e for e in events if e.get("event") == "loop_complete"]
+        assert len(complete_events) == 1
+        assert complete_events[0]["terminated_by"] == "max_iterations"
+
+        # No summary event (on_max_iterations is None)
+        summary_events = [
+            e for e in events if e.get("event") == "max_iterations_summary"
+        ]
+        assert summary_events == []
+
 
 class TestFragmentParamBinding:
     """Tests for fragment with: bindings populating the param namespace at runtime."""

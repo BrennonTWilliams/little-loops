@@ -202,14 +202,17 @@ class FSMExecutor:
         # State entered in the previous iteration (None on first iteration or after resume).
         self._prev_state: str | None = None
 
-        # BUG-1226: true between emitting a `route` event and entering the
-        # target state. Gates the "flush one pending shell state on timeout"
-        # behavior so we only flush when there is actually a pending state.
+        # BUG-1226 / BUG-158: true between emitting a `route` event and
+        # entering the target state. Gates the "flush one pending state on
+        # timeout / max_iterations" behavior so we only flush when there is
+        # actually a pending state.
         self._just_routed: bool = False
 
-        # ENH-1631: true once the on_max_iterations summary state has been
-        # dispatched. Prevents the cap guard from re-triggering before the
-        # summary state completes.
+        # ENH-1631 / BUG-158: true once the on_max_iterations summary state
+        # has been dispatched. Prevents the cap guard from re-triggering
+        # before the summary state completes. Also gates the terminal-check
+        # short-circuit so the handler executes at least once before
+        # terminating (BUG-158 dual-bug fix).
         self._summary_state_executed: bool = False
 
         # FEAT-1822: Per-item A/B comparison results accumulated during baseline
@@ -302,6 +305,32 @@ class FSMExecutor:
                 # Check iteration limit
                 if self.iteration >= self.fsm.max_iterations:
                     if self.fsm.on_max_iterations is not None and not self._summary_state_executed:
+                        # BUG-158: if we just routed from a sub-loop state
+                        # (e.g. its on_error fired at the iteration cap),
+                        # flush one pending non-sub-loop state before
+                        # entering the summary handler so its action isn't
+                        # silently lost. Mirrors the BUG-1226 timeout guard
+                        # at lines 320-341. Single-step: no cascade.
+                        # Gate: only flush when the route originated from a
+                        # sub-loop (checked via _prev_state.loop). Normal
+                        # self-routes are not sub-loop–originated and their
+                        # action already executed — flushing them would
+                        # double-count the iteration.
+                        # Gate uses `pending.action is not None` (broader
+                        # than the timeout guard's shell-only gate) so both
+                        # shell-action and prompt-action intermediate states
+                        # are flushed.
+                        if self._just_routed:
+                            prev_config = self.fsm.states.get(self._prev_state or "")
+                            if prev_config is not None and prev_config.loop is not None:
+                                pending = self.fsm.states.get(self.current_state)
+                                if (
+                                    pending is not None
+                                    and not pending.terminal
+                                    and pending.loop is None
+                                    and pending.action is not None
+                                ):
+                                    self._flush_pending_shell_state(pending)
                         self._emit(
                             "max_iterations_summary",
                             {
@@ -382,8 +411,16 @@ class FSMExecutor:
                     # state, preserve terminated_by="max_iterations" so audit tooling
                     # and PersistentExecutor see "interrupted" rather than "completed".
                     if self._summary_state_executed:
-                        return self._finish("max_iterations")
-                    return self._finish("terminal")
+                        # BUG-158: when current_state IS the on_max_iterations
+                        # handler, it hasn't executed yet — let it run once before
+                        # terminating. The _summary_state_executed flag prevents the
+                        # cap guard from re-triggering; it shouldn't prevent the
+                        # handler from executing its action.
+                        if self.current_state != self.fsm.on_max_iterations:
+                            return self._finish("max_iterations")
+                        # Fall through — execute the handler's action this iteration.
+                    else:
+                        return self._finish("terminal")
 
                 # Check per-state retry limit. If the consecutive re-entry count exceeds
                 # max_retries, skip execution and route to on_retry_exhausted instead.
@@ -458,6 +495,12 @@ class FSMExecutor:
                     return self._finish("signal")
 
                 if next_state is None:
+                    # BUG-158: if the on_max_iterations summary handler executed
+                    # and returned None (no routing targets — typical for terminal
+                    # handlers that produce diagnostic output), terminate with the
+                    # max_iterations reason instead of an error.
+                    if self._summary_state_executed:
+                        return self._finish("max_iterations")
                     return self._finish("error", error="No valid transition")
 
                 # At this point next_state is guaranteed to be str
