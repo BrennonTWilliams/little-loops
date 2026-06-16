@@ -8,9 +8,20 @@ parent: EPIC-2171
 captured_at: '2026-06-15T00:00:00Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
-labels: [parallel, feature-branches, cleanup, worktrees, lifecycle, dx]
-relates_to: [BUG-2172, ENH-2175]
-blocked_by: [ENH-2177, ENH-2182, ENH-2183]
+labels:
+- parallel
+- feature-branches
+- cleanup
+- worktrees
+- lifecycle
+- dx
+relates_to:
+- BUG-2172
+- ENH-2175
+blocked_by:
+- ENH-2177
+- ENH-2182
+- ENH-2183
 ---
 
 # ENH-2181: Prune merged local feature branches (feature-branch lifecycle/cleanup)

@@ -8,9 +8,19 @@ parent: EPIC-2171
 captured_at: '2026-06-15T00:00:00Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
-labels: [parallel, feature-branches, issues, lifecycle, status, sync, workflow]
-blocked_by: [ENH-2175]
-relates_to: [BUG-2172, ENH-2181]
+labels:
+- parallel
+- feature-branches
+- issues
+- lifecycle
+- status
+- sync
+- workflow
+blocked_by:
+- ENH-2175
+relates_to:
+- BUG-2172
+- ENH-2181
 ---
 
 # ENH-2182: Reconcile issue status with PR merge in feature-branch mode (done is premature)
