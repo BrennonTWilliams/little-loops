@@ -161,13 +161,12 @@ class TestReadinessAndDecisionGates:
 
 
 # ---------------------------------------------------------------------------
-# TestDiagnoseRouting — States: diagnose, route_d_implement, route_d_decide,
-#   route_d_wire, route_d_refine
+# TestDiagnoseRouting — States: diagnose (classify evaluator + route: table)
 # ---------------------------------------------------------------------------
 
 
 class TestDiagnoseRouting:
-    """Tests for the dimensional diagnosis state and 4-way token routing chain."""
+    """Tests for the dimensional diagnosis state and classify-based route: table."""
 
     def test_diagnose_is_shell_action(self) -> None:
         """diagnose state is action_type: shell."""
@@ -175,11 +174,12 @@ class TestDiagnoseRouting:
         diag = data["states"]["diagnose"]
         assert diag["action_type"] == "shell"
 
-    def test_diagnose_captures_output_as_diagnosis(self) -> None:
-        """diagnose captures output as diagnosis."""
+    def test_diagnose_has_classify_evaluator(self) -> None:
+        """diagnose uses classify evaluator and has no capture field."""
         data = _load_loop()
         diag = data["states"]["diagnose"]
-        assert diag.get("capture") == "diagnosis"
+        assert diag.get("evaluate", {}).get("type") == "classify"
+        assert diag.get("capture") is None
 
     def test_diagnose_uses_json_keys_not_frontmatter_names(self) -> None:
         """diagnose uses JSON keys (.confidence, .outcome), not frontmatter names."""
@@ -211,43 +211,26 @@ class TestDiagnoseRouting:
         assert "OUTCOME" in action
         assert "READINESS_THRESHOLD" in action or "ge" in action
 
-    def test_diagnose_routes_to_route_d_implement(self) -> None:
-        """diagnose chains into route_d_implement."""
-        data = _load_loop()
-        diag = data["states"]["diagnose"]
-        assert diag["next"] == "route_d_implement"
-
     def test_diagnose_on_error_routes_to_failed(self) -> None:
-        """diagnose on_error routes to failed (terminal) — no parent decomposition path."""
+        """diagnose _error arm in route: table routes to emit_implement_failed."""
         data = _load_loop()
         diag = data["states"]["diagnose"]
-        assert diag["on_error"] == "emit_implement_failed"
+        assert diag["route"]["_error"] == "emit_implement_failed"
 
-    def test_router_chain_covers_all_five_tokens(self) -> None:
-        """The 4 routers cover IMPLEMENT, DECIDE, WIRE, REFINE with DECOMPOSE fallthrough."""
+    def test_diagnose_route_table_covers_all_five_tokens(self) -> None:
+        """diagnose route: table maps all 5 tokens + default + error to correct targets."""
         data = _load_loop()
-        # route_d_implement → gate_implement (marker-gate; diagnose can emit
-        # IMPLEMENT on the first visit with zero refine/wire) or route_d_decide
-        assert data["states"]["route_d_implement"]["on_yes"] == "gate_implement"
-        assert data["states"]["route_d_implement"]["on_no"] == "route_d_decide"
-        # route_d_decide → decide or route_d_wire
-        assert data["states"]["route_d_decide"]["on_yes"] == "decide"
-        assert data["states"]["route_d_decide"]["on_no"] == "route_d_wire"
-        # route_d_wire → wire or route_d_refine
-        assert data["states"]["route_d_wire"]["on_yes"] == "wire"
-        assert data["states"]["route_d_wire"]["on_no"] == "route_d_refine"
-        # route_d_refine → refine or failed (DECOMPOSE fallthrough → terminal)
-        assert data["states"]["route_d_refine"]["on_yes"] == "refine"
-        assert data["states"]["route_d_refine"]["on_no"] == "emit_needs_decompose"
-
-    def test_routers_use_output_contains_with_source(self) -> None:
-        """All diagnose routers use output_contains with captured diagnosis source."""
-        data = _load_loop()
-        for state_name in ("route_d_implement", "route_d_decide", "route_d_wire", "route_d_refine"):
-            state = data["states"][state_name]
-            evaluate = state["evaluate"]
-            assert evaluate["type"] == "output_contains"
-            assert "${captured.diagnosis.output}" in evaluate["source"]
+        route = data["states"]["diagnose"]["route"]
+        # IMPLEMENT goes through the marker-gate
+        assert route["IMPLEMENT"] == "gate_implement"
+        assert route["DECIDE"] == "decide"
+        assert route["WIRE"] == "wire"
+        assert route["REFINE"] == "refine"
+        assert route["DECOMPOSE"] == "emit_needs_decompose"
+        # unmatched token fallback
+        assert route["_"] == "emit_implement_failed"
+        # shell non-zero exit arm
+        assert route["_error"] == "emit_implement_failed"
 
     def test_diagnose_logs_to_diagnosis_json(self) -> None:
         """diagnose writes structured diagnosis data to run_dir."""
@@ -444,8 +427,10 @@ class TestMarkerGate:
     def test_above_minimal_entry_points_route_through_gate(self) -> None:
         """Both above-minimal routes to implement go through gate_implement first."""
         data = _load_loop()
-        assert data["states"]["route_d_implement"]["on_yes"] == "gate_implement"
-        assert data["states"]["route_conv_pass"]["on_yes"] == "gate_implement"
+        # diagnose IMPLEMENT token routes through the marker-gate
+        assert data["states"]["diagnose"]["route"]["IMPLEMENT"] == "gate_implement"
+        # check_convergence CONVERGED_PASS token routes through the marker-gate
+        assert data["states"]["check_convergence"]["route"]["CONVERGED_PASS"] == "gate_implement"
 
     def test_minimal_ready_path_does_not_require_gate(self) -> None:
         """check_wire_pre_implement (only reachable when complexity < threshold) still
@@ -555,41 +540,36 @@ class TestReassessAndConvergence:
         action = cc["action"]
         assert "remediation_count_" in action
 
-    def test_check_convergence_captures_as_convergence_result(self) -> None:
-        """check_convergence captures output as convergence_result."""
+    def test_check_convergence_has_classify_evaluator(self) -> None:
+        """check_convergence uses classify evaluator and has no capture field."""
         data = _load_loop()
         cc = data["states"]["check_convergence"]
-        assert cc.get("capture") == "convergence_result"
+        assert cc.get("evaluate", {}).get("type") == "classify"
+        assert cc.get("capture") is None
 
     def test_convergence_router_chain_is_correct(self) -> None:
-        """Convergence routing: PASS → gate_implement, IMPROVED → budget, STALLED → budget."""
+        """check_convergence route: table maps all tokens to correct targets."""
         data = _load_loop()
-        # route_conv_pass — marker-gate: a PASS can follow a single refine OR wire
-        # OR decide, so route through gate_implement (ENH-2107 budget chain below).
-        rcp = data["states"]["route_conv_pass"]
-        assert rcp["on_yes"] == "gate_implement"
-        assert rcp["on_no"] == "route_conv_improved"
-        # route_conv_improved
-        rci = data["states"]["route_conv_improved"]
-        assert rci["on_yes"] == "check_remediation_budget"
-        assert rci["on_no"] == "route_conv_manual_review"
-        # route_conv_manual_review
-        # ENH-2107: convergence stall (on_no) now routes to check_remediation_budget
-        # instead of directly to emit_stalled_needs_decompose, giving a budget-gated
-        # retry. on_error stays plain decompose (pattern-match error ≠ stall).
-        rcmr = data["states"]["route_conv_manual_review"]
-        assert rcmr["on_yes"] == "emit_needs_manual_review"
-        assert rcmr["on_no"] == "check_remediation_budget"
-        assert rcmr["on_error"] == "emit_needs_decompose"
+        route = data["states"]["check_convergence"]["route"]
+        # CONVERGED_PASS → marker-gate (a PASS after single refine/wire/decide)
+        assert route["CONVERGED_PASS"] == "gate_implement"
+        # CONVERGED_IMPROVED → budget-gated retry (ENH-2107)
+        assert route["CONVERGED_IMPROVED"] == "check_remediation_budget"
+        # NEEDS_MANUAL_REVIEW → escalate
+        assert route["NEEDS_MANUAL_REVIEW"] == "emit_needs_manual_review"
+        # CONVERGED_STALLED → budget-gated retry (ENH-2107)
+        assert route["CONVERGED_STALLED"] == "check_remediation_budget"
+        # unmatched token fallback (safe: treat unknown stall as budget retry)
+        assert route["_"] == "check_remediation_budget"
+        # shell non-zero exit → fail-open like original on_error: route_conv_pass
+        assert route["_error"] == "gate_implement"
 
-    def test_convergence_routers_use_output_contains_with_source(self) -> None:
-        """Convergence routers use output_contains with captured source."""
+    def test_check_convergence_route_table_covers_all_tokens(self) -> None:
+        """check_convergence route: table has all 4 convergence tokens + default + error."""
         data = _load_loop()
-        for state_name in ("route_conv_pass", "route_conv_improved", "route_conv_manual_review"):
-            state = data["states"][state_name]
-            evaluate = state["evaluate"]
-            assert evaluate["type"] == "output_contains"
-            assert "${captured.convergence_result.output}" in evaluate["source"]
+        route = data["states"]["check_convergence"]["route"]
+        required = {"CONVERGED_PASS", "CONVERGED_IMPROVED", "NEEDS_MANUAL_REVIEW", "CONVERGED_STALLED", "_", "_error"}
+        assert required.issubset(set(route.keys())), f"Missing route keys: {required - set(route.keys())}"
 
     def test_check_convergence_writes_convergence_json(self) -> None:
         """check_convergence writes convergence data to run_dir."""
@@ -828,13 +808,23 @@ class TestFSMHealth:
                     f"State '{state_name}' should use shell_exit fragment for exit_code"
                 )
 
-        # diagnose uses output_contains via router chain
-        router = data["states"]["route_d_implement"]
-        assert router["evaluate"]["type"] == "output_contains"
+        # diagnose uses classify evaluator (non-LLM token dispatch)
+        assert data["states"]["diagnose"]["evaluate"]["type"] == "classify"
 
-        # check_convergence uses output_contains via router chain
-        router = data["states"]["route_conv_pass"]
-        assert router["evaluate"]["type"] == "output_contains"
+        # check_convergence uses classify evaluator (non-LLM token dispatch)
+        assert data["states"]["check_convergence"]["evaluate"]["type"] == "classify"
+
+    def test_route_d_states_absent(self) -> None:
+        """Deleted cascade states route_d_* must not exist in the states dict."""
+        data = _load_loop()
+        for name in ("route_d_implement", "route_d_decide", "route_d_wire", "route_d_refine"):
+            assert name not in data["states"], f"Cascade state '{name}' should be deleted"
+
+    def test_route_conv_states_absent(self) -> None:
+        """Deleted cascade states route_conv_* must not exist in the states dict."""
+        data = _load_loop()
+        for name in ("route_conv_pass", "route_conv_improved", "route_conv_manual_review"):
+            assert name not in data["states"], f"Cascade state '{name}' should be deleted"
 
     def test_mr3_run_dir_used_for_writes(self) -> None:
         """No state writes to .loops/tmp/ — all file writes use ${context.run_dir}/ (MR-3)."""
@@ -872,6 +862,10 @@ class TestFSMHealth:
                 target = state.get(key)
                 if target and isinstance(target, str) and target not in reachable:
                     queue.append(target)
+            # Also traverse route: table entries (classify + route: pattern)
+            for target in state.get("route", {}).values():
+                if isinstance(target, str) and target not in reachable:
+                    queue.append(target)
 
         unreachable = state_names - reachable
         assert not unreachable, f"Unreachable states: {sorted(unreachable)}"
@@ -897,6 +891,13 @@ class TestFSMHealth:
                         f"State '{name}' routes to '{target}' via '{key}', "
                         f"but '{target}' is not a state"
                     )
+            # Also check route: table targets
+            for route_key, target in state.get("route", {}).items():
+                if isinstance(target, str):
+                    assert target in state_names, (
+                        f"State '{name}' route['{route_key}'] → '{target}', "
+                        f"but '{target}' is not a state"
+                    )
 
     def test_no_dead_end_states(self) -> None:
         """No non-terminal states dead-end without routing."""
@@ -911,7 +912,7 @@ class TestFSMHealth:
                 continue
             has_route = any(
                 k in state for k in ("on_yes", "on_no", "on_success", "on_failure", "on_error")
-            )
+            ) or bool(state.get("route"))  # classify + route: table is also valid routing
             assert has_route, f"Non-terminal state '{name}' has no routing"
 
     def test_terminal_states_have_no_outgoing(self) -> None:
@@ -969,19 +970,22 @@ class TestOutcomeTokenChannel:
         assert data["states"]["implement"]["on_yes"] == "emit_implemented"
         assert data["states"]["implement"]["on_no"] == "emit_implement_failed"
 
-    def test_decompose_token_distinguishes_stall_from_too_large(self) -> None:
-        """BUG-2006: the diagnose-DECOMPOSE path (genuinely too large) emits plain
-        NEEDS_DECOMPOSE, while budget-exhausted stall paths emit STALLED_NEEDS_DECOMPOSE.
-        ENH-2107: convergence STALLED now routes through check_remediation_budget first
-        (budget-gated retry) rather than emitting STALLED_NEEDS_DECOMPOSE directly."""
+    def test_bug2006_token_disambiguation_preserved(self) -> None:
+        """BUG-2006: diagnose DECOMPOSE path → emit_needs_decompose (plain token);
+        budget-exhausted stall path → emit_stalled_needs_decompose (superstring token).
+        ENH-2107: CONVERGED_STALLED routes through check_remediation_budget first.
+        Both emit states still exist to preserve the parent's substring dispatch."""
         data = _load_loop()
-        # Genuine "too big" — unchanged plain token.
-        assert data["states"]["route_d_refine"]["on_no"] == "emit_needs_decompose"
-        assert data["states"]["route_conv_improved"]["on_no"] == "route_conv_manual_review"
-        # CONVERGED_STALLED now routes to budget check first (ENH-2107).
-        assert data["states"]["route_conv_manual_review"]["on_no"] == "check_remediation_budget"
-        # Budget-exhausted terminal still emits stall-specific token.
-        assert data["states"]["check_remediation_budget"]["on_no"] == "emit_stalled_needs_decompose"
+        states = data["states"]
+        # Genuine "too big" path via diagnose route table → plain NEEDS_DECOMPOSE
+        assert states["diagnose"]["route"]["DECOMPOSE"] == "emit_needs_decompose"
+        # CONVERGED_STALLED routes to budget-gated retry (ENH-2107)
+        assert states["check_convergence"]["route"]["CONVERGED_STALLED"] == "check_remediation_budget"
+        # Budget-exhausted path still emits the stall-specific superstring token
+        assert states["check_remediation_budget"]["on_no"] == "emit_stalled_needs_decompose"
+        # Both emitter states still exist (parent rn-implement relies on them)
+        assert "emit_needs_decompose" in states
+        assert "emit_stalled_needs_decompose" in states
 
     def test_emit_stalled_needs_decompose_writes_superstring_token(self) -> None:
         """BUG-2006: the stall emitter writes STALLED_NEEDS_DECOMPOSE (a superstring

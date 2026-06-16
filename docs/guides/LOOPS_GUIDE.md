@@ -313,7 +313,7 @@ diagnose:
   evaluate:
     type: classify
     # optional: line: last (default) | first | <int index>
-    source: "${captured.diagnosis.output}"   # optional; defaults to this action's stdout
+    # optional: source: "${captured.other_state.output}"  # defaults to this action's stdout
   route:
     IMPLEMENT: gate_implement
     DECIDE:    decide

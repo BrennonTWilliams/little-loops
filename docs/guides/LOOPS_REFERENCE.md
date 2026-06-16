@@ -521,9 +521,9 @@ ll-loop run rn-remediate "<issue-id>" \
 
 Convergence rules (first match wins): both scores at or above thresholds → `CONVERGED_PASS` → `implement`; `total_delta ≤ 2` + `decision_needed=true` → `NEEDS_MANUAL_REVIEW` → `failed` (parent marks issue blocked); `total_delta ≤ 2` + `decision_needed=false` → `CONVERGED_STALLED` → `check_remediation_budget` (under budget → re-enter `diagnose`; exhausted → `failed`); otherwise → `CONVERGED_IMPROVED` → check remediation budget (under budget → re-enter `diagnose`; exhausted → `failed`).
 
-**Stall vs. too-large outcome tokens (BUG-2006, ENH-2107):** the non-pass terminals emit one of two decompose tokens so the parent can tell a *stall* from a genuinely *too-large* issue. The diagnose-`DECOMPOSE` path (`route_d_refine.on_no`, i.e. `change_surface ≥ 15`) emits plain `NEEDS_DECOMPOSE` — a legitimate "split this" signal. The budget-exhausted stall path (`check_remediation_budget.on_no`) emits `STALLED_NEEDS_DECOMPOSE`. A `CONVERGED_STALLED` result (zero delta, no `decision_needed`) routes to `check_remediation_budget` first (ENH-2107 — budget-gated retry), so `STALLED_NEEDS_DECOMPOSE` is only emitted after all remediation passes are exhausted. Because the stall token is a superstring of `NEEDS_DECOMPOSE`, the parent's substring match still triggers a decomposition attempt; only after `rn-decompose` returns `NO_CHILDREN` does the parent's `route_dec_stalled_origin` disambiguate — a stall → `mark_deferred` (status set to `deferred`, reason logged), a too-large/atomic decline → `skip_issue`.
+**Stall vs. too-large outcome tokens (BUG-2006, ENH-2107):** the non-pass terminals emit one of two decompose tokens so the parent can tell a *stall* from a genuinely *too-large* issue. The diagnose-`DECOMPOSE` path (`diagnose route: DECOMPOSE:` key, i.e. `change_surface ≥ 15`) emits plain `NEEDS_DECOMPOSE` — a legitimate "split this" signal. The budget-exhausted stall path (`check_remediation_budget.on_no`) emits `STALLED_NEEDS_DECOMPOSE`. A `CONVERGED_STALLED` result (zero delta, no `decision_needed`) routes to `check_remediation_budget` first (ENH-2107 — budget-gated retry), so `STALLED_NEEDS_DECOMPOSE` is only emitted after all remediation passes are exhausted. Because the stall token is a superstring of `NEEDS_DECOMPOSE`, the parent's substring match still triggers a decomposition attempt; only after `rn-decompose` returns `NO_CHILDREN` does the parent's `route_dec_stalled_origin` disambiguate — a stall → `mark_deferred` (status set to `deferred`, reason logged), a too-large/atomic decline → `skip_issue`.
 
-**FSM flow** (abbreviated — 23 states across 5 phases):
+**FSM flow** (abbreviated — 16 states across 5 phases):
 
 ```
 Phase 1 — Assessment Bridge:
@@ -531,8 +531,9 @@ Phase 1 — Assessment Bridge:
     (readiness passes → implement; decision_needed → decide; otherwise → diagnose)
 
 Phase 2 — Dimensional Diagnosis:
-  diagnose → route_d_implement → route_d_decide → route_d_wire → route_d_refine
-    (first-matching token routes to corresponding action; DECOMPOSE falls through to failed)
+  diagnose [classify evaluator + route: table]
+    IMPLEMENT → gate_implement | DECIDE → decide | WIRE → wire | REFINE → refine
+    DECOMPOSE → emit_needs_decompose | _ → emit_implement_failed
 
 Phase 3 — Remediation Actions:
   implement (shell: ll-auto --only) → done
@@ -544,9 +545,10 @@ Phase 4 — Re-Assessment:
   re_assess → verify_re_assess_scores → check_convergence
 
 Phase 5 — Convergence:
-  check_convergence → route_conv_pass → route_conv_improved → route_conv_manual_review → check_remediation_budget
-    (PASS → implement; IMPROVED + under budget → diagnose; NEEDS_MANUAL_REVIEW → emit_needs_manual_review → failed;
-     STALLED → check_remediation_budget (under budget → diagnose; exhausted → emit_stalled_needs_decompose → failed))
+  check_convergence [classify evaluator + route: table]
+    CONVERGED_PASS → gate_implement | CONVERGED_IMPROVED → check_remediation_budget
+    NEEDS_MANUAL_REVIEW → emit_needs_manual_review | CONVERGED_STALLED → check_remediation_budget
+    (under budget → diagnose; exhausted → emit_stalled_needs_decompose → failed)
 ```
 
 **Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > DECOMPOSE). The `DECOMPOSE` token is a terminal diagnosis — it falls through the routing chain to `failed`, signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_iterations: 100`, `timeout: 14400`, `on_handoff: spawn`.

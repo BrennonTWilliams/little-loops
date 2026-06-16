@@ -37,7 +37,15 @@ Replace the hand-rolled `eval_export_parser.add_argument("--json", ...)` with `a
 1. In `scripts/little_loops/cli/logs.py`, locate `eval_export_parser` (around line 1887).
 2. Replace the hand-rolled `eval_export_parser.add_argument("--json", ...)` with `add_json_arg(eval_export_parser)`.
 3. Verify `_cmd_eval_export` reads `args.json` — `add_json_arg` uses the same dest name so no call-site changes needed.
-4. Add a test in `scripts/tests/test_ll_logs.py` asserting `-j` is accepted by the `eval-export` subparser.
+4. Add a test in `scripts/tests/test_ll_logs.py` asserting `-j` is accepted by the `eval-export` subparser. Model after `TestDiscover.test_discover_json_short_flag` (`test_ll_logs.py:422`); add inside `TestEvalExport` class (`test_ll_logs.py:2682`). Optionally extend `test_help_shows_all_flags` (line 2685) to assert `-j` appears in help output.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Update `docs/reference/CLI.md` — in the `**eval-export flags:**` table (~line 1933), add `-j` to the Short column for the `--json` row, matching all other `ll-logs` subcommands in that document.
+
+> **Note**: Calling `add_json_arg(eval_export_parser)` without `help_text=` changes the help display from `"JSON output instead of YAML (default: YAML)"` to `"Output as JSON"`. Either pass `help_text="JSON output instead of YAML (default: YAML)"` to preserve it, or accept the new default. `test_help_shows_all_flags` only checks `"--json" in help_text` (substring), so neither choice breaks tests.
 
 ## Integration Map
 
@@ -54,10 +62,25 @@ Replace the hand-rolled `eval_export_parser.add_argument("--json", ...)` with `a
 - `scripts/tests/test_ll_logs.py` — add test asserting `-j` is accepted by the `eval-export` subparser
 
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — eval-export flags table (~line 1933): Short column for `--json` is blank; update to `-j` to match every other `ll-logs` subcommand in that table [Agent 2 finding]
 
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Accurate scope**: Only 6 of the 8 other `ll-logs` subcommands call `add_json_arg` — `tail` and `extract` have no `--json` flag at all and are irrelevant to this fix. The 6 that use it: `discover` (line 1701), `sequences` (line 1775), `stats` (line 1806), `scan-failures` (line 1841), `dead-skills` (line 1873), `diff` (line 1885).
+- **Exact change location**: `scripts/little_loops/cli/logs.py:1920` (not ~1919) — the hand-rolled `add_argument("--json", action="store_true", help="JSON output instead of YAML (default: YAML)")`.
+- **No import needed**: `add_json_arg` is already imported at `logs.py:21` (`from little_loops.cli_args import add_json_arg`).
+- **Helper definition**: `scripts/little_loops/cli_args.py:225` — `add_json_arg(parser, help_text="Output as JSON")` registers both `-j` and `--json` as `action="store_true"` into `args.json`.
+- **Consumer anchor**: `_cmd_eval_export()` at `logs.py:1652` reads `args.json` to branch between JSON and YAML output; no handler change needed.
+- **Test class**: `TestEvalExport` at `scripts/tests/test_ll_logs.py:2682`. `test_help_shows_all_flags` (line 2685) and `test_all_flags_parse` (line 2713) cover `--json` but not `-j`.
+- **Test template**: `TestDiscover.test_discover_json_short_flag` at `scripts/tests/test_ll_logs.py:422` — direct model for the new `-j` acceptance test on `eval-export`.
+- **Help text side-effect**: Switching to `add_json_arg` changes the help display from `--json` to `-j, --json`. `test_help_shows_all_flags` checks `"--json" in help_text` — still passes. Consider adding a `"-j" in help_text` assertion too.
 
 ## API/Interface
 
@@ -73,7 +96,7 @@ ll-logs eval-export --json     # unchanged
 - Only changes `eval-export` subcommand argument registration
 - No changes to other subcommands or to the `add_json_arg` helper itself
 - No behavior changes — purely additive short-flag alias
-- No documentation updates required
+- One documentation update required: `docs/reference/CLI.md` eval-export flags table Short column
 
 ## Impact
 
@@ -91,5 +114,7 @@ ll-logs eval-export --json     # unchanged
 **Open** | Created: 2026-06-14 | Priority: P4
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-16T01:45:41 - `0ae2622c-db89-46ee-978a-bc368e17a69d.jsonl`
+- `/ll:refine-issue` - 2026-06-16T01:39:23 - `67b90856-6acc-4e59-9c73-3b2e43ae05e5.jsonl`
 - `/ll:format-issue` - 2026-06-14T01:58:07 - `2a5cb136-c2a6-4327-b4ad-e6deaff58e4f.jsonl`
 - `/ll:capture-issue` - 2026-06-14T01:52:17Z - `audit-session`

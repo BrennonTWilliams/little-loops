@@ -258,47 +258,16 @@ states:
       else
         echo "REFINE"
       fi
-    capture: diagnosis
-    next: route_d_implement
-    on_error: emit_implement_failed
-
-  route_d_implement:
     evaluate:
-      type: output_contains
-      source: "${captured.diagnosis.output}"
-      pattern: "IMPLEMENT"
-    # Marker-gate: diagnose can emit IMPLEMENT on the first visit with zero
-    # refine/wire, so route through gate_implement (not directly to implement).
-    on_yes: gate_implement
-    on_no: route_d_decide
-    on_error: emit_implement_failed
-
-  route_d_decide:
-    evaluate:
-      type: output_contains
-      source: "${captured.diagnosis.output}"
-      pattern: "DECIDE"
-    on_yes: decide
-    on_no: route_d_wire
-    on_error: emit_implement_failed
-
-  route_d_wire:
-    evaluate:
-      type: output_contains
-      source: "${captured.diagnosis.output}"
-      pattern: "WIRE"
-    on_yes: wire
-    on_no: route_d_refine
-    on_error: emit_implement_failed
-
-  route_d_refine:
-    evaluate:
-      type: output_contains
-      source: "${captured.diagnosis.output}"
-      pattern: "REFINE"
-    on_yes: refine
-    on_no: emit_needs_decompose
-    on_error: emit_implement_failed
+      type: classify
+    route:
+      IMPLEMENT: gate_implement
+      DECIDE:    decide
+      WIRE:      wire
+      REFINE:    refine
+      DECOMPOSE: emit_needs_decompose
+      _:         emit_implement_failed
+      _error:    emit_implement_failed
 
   # =========================================================================
   # Phase 3: Remediation Actions
@@ -541,44 +510,22 @@ states:
       else
         echo "CONVERGED_IMPROVED"
       fi
-    capture: convergence_result
-    next: route_conv_pass
-    on_error: route_conv_pass
-
-  route_conv_pass:
     evaluate:
-      type: output_contains
-      source: "${captured.convergence_result.output}"
-      pattern: "CONVERGED_PASS"
-    # Marker-gate: a PASS can follow a single refine OR wire OR decide, so route
-    # through gate_implement to force the missing one for above-minimal issues.
-    on_yes: gate_implement
-    on_no: route_conv_improved
-    on_error: emit_implement_failed
-
-  route_conv_improved:
-    evaluate:
-      type: output_contains
-      source: "${captured.convergence_result.output}"
-      pattern: "CONVERGED_IMPROVED"
-    on_yes: check_remediation_budget
-    on_no: route_conv_manual_review
-    on_error: emit_implement_failed
-
-  route_conv_manual_review:
-    evaluate:
-      type: output_contains
-      source: "${captured.convergence_result.output}"
-      pattern: "NEEDS_MANUAL_REVIEW"
-    on_yes: emit_needs_manual_review
-    # ENH-2107: CONVERGED_STALLED routes to check_remediation_budget instead of
-    # directly to emit_stalled_needs_decompose, giving the loop a budget-gated
-    # retry (same as CONVERGED_IMPROVED). Only after passes are exhausted does
-    # check_remediation_budget escalate to emit_stalled_needs_decompose.
-    # on_error stays on plain emit_needs_decompose — a pattern-match error is
-    # not evidence of a stall.
-    on_no: check_remediation_budget
-    on_error: emit_needs_decompose
+      type: classify
+    route:
+      # Marker-gate: a PASS can follow a single refine OR wire OR decide,
+      # so route through gate_implement to force the missing one for
+      # above-minimal issues.
+      CONVERGED_PASS:      gate_implement
+      # ENH-2107: IMPROVED and STALLED both get a budget-gated retry before
+      # escalating to emit_stalled_needs_decompose.
+      CONVERGED_IMPROVED:  check_remediation_budget
+      NEEDS_MANUAL_REVIEW: emit_needs_manual_review
+      CONVERGED_STALLED:   check_remediation_budget
+      # unmatched token: treat as a retry (safe fallback)
+      _:                   check_remediation_budget
+      # shell non-zero exit: fail-open, same as original on_error: route_conv_pass
+      _error:              gate_implement
 
   check_remediation_budget:
     action_type: shell

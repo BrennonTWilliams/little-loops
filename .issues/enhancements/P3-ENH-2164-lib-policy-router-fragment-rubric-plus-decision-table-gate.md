@@ -2,19 +2,25 @@
 id: ENH-2164
 type: ENH
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 captured_at: '2026-06-15T05:30:52Z'
 parent: EPIC-2167
-blocked_by:
-- ENH-2165
+blocked_by: []
+decision_needed: false
 blocks:
 - ENH-2166
 relates_to:
 - ENH-2165
 - ENH-2166
 - ENH-2154
+confidence_score: 98
+outcome_confidence: 80
+score_complexity: 17
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 23
 ---
 
 # ENH-2164: lib/policy-router Fragment — Rubric + Decision Table Gate
@@ -217,6 +223,22 @@ The fragment reads `context.policy_rules`, parses the rule table, evaluates each
 
 8. **Validate and test** — `ll-loop validate lib/policy-router.yaml`, then `python -m pytest scripts/tests/` passing.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete implementation guidance:_
+
+**Step 1 (parse fragment decision):** Add `policy_parse_scores` as a new fragment in `lib/policy-router.yaml`. Do NOT extend `rubric_parse_scores` in `lib/rubric-router.yaml` (ENH-2154) — extending breaks the predecessor's contract. `policy_parse_scores` re-parses `${captured.scores.output}` (same source as `rubric_parse_scores`) and additionally writes per-dimension files.
+
+**Step 2 (policy_parse_scores shell action):** Follow the Python heredoc pattern from `lib/rubric-router.yaml:rubric_parse_scores`. Regex pattern for aggregate: `re.search(r'AGGREGATE:\s*(\d+)', output)`. Per-dimension: iterate lines matching `r'(\w[\w\s]+):\s*(\d+)'`, exclude `AGGREGATE`, lowercaseify name + replace spaces with hyphens → write to `${context.run_dir}/rubric-dim-<name>.txt`. The `rubric_parse_scores` aggregate extraction + file write is the exact template; extend it.
+
+**Step 3 (policy_table_dispatch shell action):** Python heredoc; parse `${context.policy_rules}` line by line; skip blank/comment lines. Rule parser: `<dim>:<op><value> -> <state>` (single predicate) or `<dim>:<op><value> & <dim2>:<op2><value2> -> <state>` (conjunctive). Special `* -> <state>` as catch-all. Score lookup: `${context.run_dir}/rubric-aggregate.txt` for `aggregate`, `${context.run_dir}/rubric-dim-<dim>.txt` for named dims. On first match: `print(state_name)` on last stdout line, exit 0. If no match + no catch-all: print empty line or error token (falls to `route.default`).
+
+**Step 4 (routing handoff — RESOLVED):** ENH-2165 is `done`. `classify` evaluator is live at `evaluators.py:evaluate_classify()` (line 416). Use option (c): `policy_table_dispatch` prints the winning state token as its last stdout line; the consuming loop state uses `evaluate: {type: classify}` + `route:` table to dispatch. Required: include `default:` in the `route:` table or `ll-loop validate` will emit WARNING (`validation.py:_validate_classify_route_default()` line 1564). The `route.routes[verdict]` lookup in `executor.py:_route()` (line 1367) handles dispatch.
+
+**Step 7 (TestPolicyRouterLib pattern):** Model directly after `test_fsm_fragments.py:TestRubricRouterLib` (line 2178). Required coverage: fragment name assertions (`policy_parse_scores`, `policy_table_dispatch`); `action_type: shell` for both; `description` presence for all; `${context.run_dir}` in action text; `resolve_fragments()` integration test using real `loops_dir`. Add a unit test for the rule-parser Python helper extracted from the fragment (operators `>=`, `<=`, `==`, `!=`, `<`, `>`, catch-all `*`, conjunctive `&`).
+
+**rn-remediate.yaml migration path (ENH-2166):** The `diagnose` state (line 204) + 5-state cascade (`route_d_implement` → `route_d_decide` → `route_d_wire` → `route_d_refine` → fallthrough) is the exact pattern this fragment replaces. `policy_table_dispatch` + `classify` + `route:` collapses those 5 states to 1. The `diagnose` shell action itself (scoring + priority-ordered token emit) becomes `policy_table_dispatch`'s caller-supplied rule table once ENH-2166 proceeds.
+
 ## Scope Boundaries
 
 - **In scope**: `lib/policy-router.yaml` as the general decision-table engine — `policy_parse_scores` and `policy_table_dispatch` fragments; **conjunctive (`&`) rules**; **score-source-agnostic** per-dimension input; `classify`-based routing handoff (consumes ENH-2165); one runnable example loop (`policy-refine.yaml`); `loops/README.md` update; `TestPolicyRouterLib` in `test_fsm_fragments.py`
@@ -278,6 +300,26 @@ Per-run artifact files written:
 ### Configuration
 - N/A — no config files changed; fragment context variables are caller-supplied
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**FSM executor anchor references:**
+- `scripts/little_loops/fsm/evaluators.py:evaluate_classify()` (line 416) — `classify` evaluator is fully implemented; filters to non-empty lines, selects by `config.line` (`"last"` default), returns trimmed token as verdict
+- `scripts/little_loops/fsm/schema.py:EvaluateConfig` (line 94) — `line: str | int | None = None` field controls which line `classify` reads (`"last"`, `"first"`, or integer index)
+- `scripts/little_loops/fsm/executor.py:_route()` (line 1367) — `route:` table lookup order: `routes[verdict]` → `route.default` → `route.error`; empty-string verdict falls to `default`
+- `scripts/little_loops/fsm/validation.py:_validate_classify_route_default()` (line 1564) — emits WARNING when a `classify` state's `route:` table has no `default:` fallback; must satisfy this to pass `ll-loop validate`
+- `scripts/little_loops/fsm/validation.py:is_runnable_loop()` (line 1999) — lib/ files (which have only `fragments:`, no `name:`/`initial:`/`states:`) return `False` automatically; no special-casing needed
+
+**Test pattern anchor:**
+- `scripts/tests/test_fsm_fragments.py:TestRubricRouterLib` (line 2178) — exact model for `TestPolicyRouterLib`; covers fragment name assertions, `action_type` checks, evaluator type checks, `description` presence, `${context.run_dir}` usage in action, `resolve_fragments()` integration test
+
+**Real-world caller (rn-remediate.yaml) anchor:**
+- `scripts/little_loops/loops/rn-remediate.yaml:diagnose` (line 204) — the shipping multi-axis decision-table pattern; emits one token (`IMPLEMENT`/`DECIDE`/`WIRE`/`REFINE`/`DECOMPOSE`) via priority-ordered `if/elif` chain reading `ll-issues show --json` scores; followed by a cascade of 5 `route_d_*` `output_contains` states (lines ~270–320) that `policy_table_dispatch` + `classify` would collapse to 1 state
+
+**ENH-2165 blocker resolved:**
+- `classify` evaluator (ENH-2165) status is `done`; `evaluate_classify()` is live at `evaluators.py:416` — this issue is no longer blocked
+
 ## Related Key Documentation
 
 - [`scripts/little_loops/loops/lib/rubric-router.yaml`](../../scripts/little_loops/loops/lib/rubric-router.yaml) — direct predecessor (ENH-2154); policy-router imports and builds on it
@@ -294,5 +336,8 @@ Per-run artifact files written:
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-15T00:00:00Z - `36f09c2f-8598-41e8-8022-29d032bf584b.jsonl`
+- `/ll:refine-issue` - 2026-06-16T01:05:37 - `4868c01f-d653-4e88-92f4-0dfdaf0947d0.jsonl`
+- `/ll:confidence-check` - 2026-06-15T00:00:00Z - `534b43f7-8b8b-4649-8a48-fd91433994bd.jsonl`
 - `/ll:format-issue` - 2026-06-15T05:36:08 - `812e5bd7-abf8-4165-8311-64bd345e60ff.jsonl`
 - `/ll:capture-issue` - 2026-06-15T05:30:52Z - `bcc19f01-efdb-45bc-a50b-ec443da22f83.jsonl`
