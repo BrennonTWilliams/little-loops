@@ -1468,7 +1468,11 @@ class TestRouting:
 
     def test_classify_route_dispatches_to_correct_state(self) -> None:
         """classify evaluator + route: table dispatches to the matching target state."""
-        for token, expected in [("IMPLEMENT", "gate_implement"), ("WIRE", "wire"), ("REFINE", "refine")]:
+        for token, expected in [
+            ("IMPLEMENT", "gate_implement"),
+            ("WIRE", "wire"),
+            ("REFINE", "refine"),
+        ]:
             fsm = FSMLoop(
                 name="test",
                 initial="classify",
@@ -1495,7 +1499,9 @@ class TestRouting:
             mock_runner.set_result("echo.sh", output=token, exit_code=0)
             executor = FSMExecutor(fsm, action_runner=mock_runner)
             result = executor.run()
-            assert result.final_state == expected, f"token={token!r} routed to {result.final_state!r}, expected {expected!r}"
+            assert result.final_state == expected, (
+                f"token={token!r} routed to {result.final_state!r}, expected {expected!r}"
+            )
 
     def test_classify_route_default_catches_unknown_token(self) -> None:
         """classify route: table default: catches any unlisted token."""
@@ -3946,6 +3952,7 @@ class TestDefaultActionRunnerProcessTracking:
                     return next(_iter)
                 except StopIteration:
                     return ""
+
             fobj.readline.side_effect = _readline
         else:
             fobj.readline.return_value = ""
@@ -4079,6 +4086,7 @@ class TestFSMExecutorProcessTracking:
                     return next(_iter)
                 except StopIteration:
                     return ""
+
             fobj.readline.side_effect = _readline
         else:
             fobj.readline.return_value = ""

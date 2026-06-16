@@ -866,9 +866,7 @@ class TestLoopListVisibilityFilter:
         loops_dir.mkdir(parents=True, exist_ok=True)
 
         # Parent loop with the full FSM
-        (loops_dir / "parent.yaml").write_text(
-            _runnable("name: parent\nvisibility: public\n")
-        )
+        (loops_dir / "parent.yaml").write_text(_runnable("name: parent\nvisibility: public\n"))
         # Pure context-override stub — no initial or states of its own
         (loops_dir / "ctx-stub.yaml").write_text(
             "name: ctx-stub\nfrom: parent\nvisibility: internal\ndescription: variant\n"
@@ -902,9 +900,7 @@ class TestLoopListVisibilityFilter:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir(parents=True, exist_ok=True)
 
-        (loops_dir / "parent.yaml").write_text(
-            _runnable("name: parent\nvisibility: public\n")
-        )
+        (loops_dir / "parent.yaml").write_text(_runnable("name: parent\nvisibility: public\n"))
         (loops_dir / "ctx-stub.yaml").write_text(
             "name: ctx-stub\nfrom: parent\nvisibility: internal\ndescription: variant\n"
         )

@@ -568,8 +568,17 @@ class TestReassessAndConvergence:
         """check_convergence route: table has all 4 convergence tokens + default + error."""
         data = _load_loop()
         route = data["states"]["check_convergence"]["route"]
-        required = {"CONVERGED_PASS", "CONVERGED_IMPROVED", "NEEDS_MANUAL_REVIEW", "CONVERGED_STALLED", "_", "_error"}
-        assert required.issubset(set(route.keys())), f"Missing route keys: {required - set(route.keys())}"
+        required = {
+            "CONVERGED_PASS",
+            "CONVERGED_IMPROVED",
+            "NEEDS_MANUAL_REVIEW",
+            "CONVERGED_STALLED",
+            "_",
+            "_error",
+        }
+        assert required.issubset(set(route.keys())), (
+            f"Missing route keys: {required - set(route.keys())}"
+        )
 
     def test_check_convergence_writes_convergence_json(self) -> None:
         """check_convergence writes convergence data to run_dir."""
@@ -980,7 +989,9 @@ class TestOutcomeTokenChannel:
         # Genuine "too big" path via diagnose route table → plain NEEDS_DECOMPOSE
         assert states["diagnose"]["route"]["DECOMPOSE"] == "emit_needs_decompose"
         # CONVERGED_STALLED routes to budget-gated retry (ENH-2107)
-        assert states["check_convergence"]["route"]["CONVERGED_STALLED"] == "check_remediation_budget"
+        assert (
+            states["check_convergence"]["route"]["CONVERGED_STALLED"] == "check_remediation_budget"
+        )
         # Budget-exhausted path still emits the stall-specific superstring token
         assert states["check_remediation_budget"]["on_no"] == "emit_stalled_needs_decompose"
         # Both emitter states still exist (parent rn-implement relies on them)
@@ -1015,12 +1026,16 @@ class TestOutcomeTokenChannel:
         data = _load_loop()
         action = data["states"]["check_convergence"]["action"]
         section_start = action.find("# Convergence rules")
-        assert section_start != -1, "Convergence rules section not found in check_convergence action"
+        assert section_start != -1, (
+            "Convergence rules section not found in check_convergence action"
+        )
         section = action[section_start:]
         first_post_decision = section.find("POST_DECISION")
         first_converged_pass_echo = section.find('echo "CONVERGED_PASS"')
         assert first_post_decision != -1, "POST_DECISION guard missing from convergence section"
-        assert first_converged_pass_echo != -1, 'echo "CONVERGED_PASS" missing from convergence section'
+        assert first_converged_pass_echo != -1, (
+            'echo "CONVERGED_PASS" missing from convergence section'
+        )
         assert first_post_decision < first_converged_pass_echo, (
             "BUG-2193: POST_DECISION guard must appear before echo CONVERGED_PASS in pass branch"
         )

@@ -6921,7 +6921,9 @@ class TestRlhfAnimatedSvgDelegatesGenerate:
 
     def test_run_generate_passes_design_tokens_context(self, data: dict) -> None:
         with_ = data.get("states", {}).get("run_generate", {}).get("with", {})
-        assert "design_tokens_context" in with_, "run_generate.with must include design_tokens_context"
+        assert "design_tokens_context" in with_, (
+            "run_generate.with must include design_tokens_context"
+        )
 
     def test_run_generate_passes_quality_target(self, data: dict) -> None:
         with_ = data.get("states", {}).get("run_generate", {}).get("with", {})

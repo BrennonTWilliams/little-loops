@@ -8,9 +8,7 @@ Provides the protocol and concrete implementations for action execution:
 
 from __future__ import annotations
 
-import os
 import selectors
-import signal
 import subprocess
 import sys
 import time

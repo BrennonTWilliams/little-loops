@@ -226,16 +226,16 @@ class TestCmdStop:
             patch("little_loops.fsm.persistence.StatePersistence"),
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=99),
-            patch(
-                "little_loops.cli.loop.lifecycle.os.killpg", side_effect=killpg_side_effect
-            ),
+            patch("little_loops.cli.loop.lifecycle.os.killpg", side_effect=killpg_side_effect),
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0  # No exception propagated
         assert mock_state.status == "interrupted"
-        assert not pid_file.exists(), "PID file should be removed even when SIGKILL raises ProcessLookupError"
+        assert not pid_file.exists(), (
+            "PID file should be removed even when SIGKILL raises ProcessLookupError"
+        )
 
     def test_stop_interrupted_with_live_lock_pid_kills_process_and_removes_lock(
         self, tmp_path: Path

@@ -742,8 +742,10 @@ class TestEvaluateDispatcher:
 
     def test_dispatch_classify_not_in_exit_code_aware_set(self) -> None:
         """classify must not appear in _EXIT_CODE_AWARE_EVALUATORS."""
-        import little_loops.fsm.evaluators as ev_module
         import inspect
+
+        import little_loops.fsm.evaluators as ev_module
+
         src = inspect.getsource(ev_module.evaluate)
         # _EXIT_CODE_AWARE_EVALUATORS must not include classify
         # (checked by verifying nonzero exit short-circuits above, but also

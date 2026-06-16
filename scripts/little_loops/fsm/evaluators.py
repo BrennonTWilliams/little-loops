@@ -450,7 +450,12 @@ def evaluate_classify(
         except IndexError:
             return EvaluationResult(
                 verdict="",
-                details={"token": "", "line": line, "source_lines": len(lines), "error": "index out of range"},
+                details={
+                    "token": "",
+                    "line": line,
+                    "source_lines": len(lines),
+                    "error": "index out of range",
+                },
             )
     else:
         selected = lines[-1]

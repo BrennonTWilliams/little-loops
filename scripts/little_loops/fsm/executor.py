@@ -11,10 +11,8 @@ This module provides the execution engine that runs FSM loops:
 from __future__ import annotations
 
 import json
-import os
 import random
 import selectors
-import signal
 import subprocess
 import time
 from collections.abc import Callable
