@@ -508,6 +508,7 @@ def _cmd_sprint_run(
                     serialize_overlapping=True,
                     base_branch=_base_branch,
                     clean_start=True,  # Sprint manages its own state; don't load stale orchestrator state
+                    use_feature_branches=args.feature_branches,
                 )
 
                 from little_loops.events import EventBus

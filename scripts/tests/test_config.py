@@ -903,6 +903,50 @@ class TestBRConfig:
         assert parallel_config.dry_run is True
         assert parallel_config.max_issues == 10
 
+    def test_create_parallel_config_feature_branches_explicit_true(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """--feature-branches forces True regardless of config value."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        # Config has use_feature_branches=True; explicit True should still be True
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config(use_feature_branches=True)
+        assert result.use_feature_branches is True
+
+    def test_create_parallel_config_feature_branches_explicit_false(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """--no-feature-branches forces False even when config has True."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        # Config has use_feature_branches=True; explicit False must override it
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config(use_feature_branches=False)
+        assert result.use_feature_branches is False
+
+    def test_create_parallel_config_feature_branches_none_falls_back_to_config_true(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Omitting the flag falls back to config value (True case)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config()
+        assert result.use_feature_branches is True
+
+    def test_create_parallel_config_feature_branches_none_falls_back_to_config_false(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Omitting the flag falls back to config value (False case)."""
+        cfg = dict(sample_config)
+        cfg["parallel"] = dict(sample_config["parallel"], use_feature_branches=False)
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config()
+        assert result.use_feature_branches is False
+
     def test_to_dict_excludes_deprecated_dirs(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:

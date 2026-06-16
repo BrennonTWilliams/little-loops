@@ -138,6 +138,12 @@ Examples:
         add_handoff_threshold_arg(run_parser)
         add_context_limit_arg(run_parser)
         run_parser.add_argument(
+            "--feature-branches",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help="Enable/disable feature-branch mode for this run (overrides config)",
+        )
+        run_parser.add_argument(
             "--save",
             action="store_true",
             help="Write resolved sprint YAML to .ll/sprints/ before executing (useful for EPIC IDs)",

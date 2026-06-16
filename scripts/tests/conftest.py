@@ -179,6 +179,7 @@ def sample_config() -> dict[str, Any]:
             "command_prefix": "/ll:",
             "ready_command": "ready-issue {{issue_id}}",
             "manage_command": "manage-issue {{issue_type}} {{action}} {{issue_id}}",
+            "use_feature_branches": True,
         },
         "sprints": {
             "sprints_dir": ".sprints",

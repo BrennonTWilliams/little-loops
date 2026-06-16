@@ -434,6 +434,7 @@ class BRConfig:
         serialize_overlapping: bool = True,
         base_branch: str | None = None,
         remote_name: str | None = None,
+        use_feature_branches: bool | None = None,
     ) -> ParallelConfig:
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
@@ -484,7 +485,9 @@ class BRConfig:
             label_filter=label_filter,
             worktree_copy_files=self._parallel.worktree_copy_files,
             require_code_changes=self._parallel.require_code_changes,
-            use_feature_branches=self._parallel.use_feature_branches,
+            use_feature_branches=(
+                use_feature_branches if use_feature_branches is not None else self._parallel.use_feature_branches
+            ),
             push_feature_branches=self._parallel.push_feature_branches,
             open_pr_for_feature_branches=self._parallel.open_pr_for_feature_branches,
             merge_pending=merge_pending,

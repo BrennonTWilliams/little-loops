@@ -112,6 +112,12 @@ Examples:
             help="Make API call to verify and display model on worktree setup",
         )
         parser.add_argument(
+            "--feature-branches",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help="Enable/disable feature-branch mode for this run (overrides config)",
+        )
+        parser.add_argument(
             "--overlap-detection",
             action="store_true",
             help="Enable pre-flight overlap detection to reduce merge conflicts (ENH-143)",
@@ -218,6 +224,7 @@ Examples:
             overlap_detection=args.overlap_detection,
             serialize_overlapping=not args.warn_only,
             base_branch=_base_branch,
+            use_feature_branches=args.feature_branches,
         )
 
         # Delete state file if not resuming
