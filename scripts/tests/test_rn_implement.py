@@ -576,10 +576,11 @@ class TestValidation:
         FEAT-1991 added fifo_pop + select_next (+2 states), raising the ceiling to 26.
         BUG-2006 added route_dec_stalled_origin + mark_deferred (+2), raising it to 28.
         ENH-2008 added check_blocked_by + route_blocked_by (+2), raising it to 30.
+        ENH-2195 added re_enqueue_unblocked (+1), raising it to 31.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 30, f"Expected ≤30 states in orchestrator, got {state_count}"
+        assert state_count <= 31, f"Expected ≤31 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
@@ -638,9 +639,9 @@ class TestParentClassifier:
         assert "on_rate_limit_exhausted" not in data["states"]["run_decomposition"]
         assert "max_rate_limit_retries" not in data["states"]["run_remediation"]
 
-    def test_implemented_routes_to_dequeue(self) -> None:
+    def test_implemented_routes_to_re_enqueue(self) -> None:
         data = _load_loop()
-        assert data["states"]["route_rem_implemented"]["on_yes"] == "dequeue_next"
+        assert data["states"]["route_rem_implemented"]["on_yes"] == "re_enqueue_unblocked"
 
     def test_only_needs_decompose_routes_to_decomposition(self) -> None:
         data = _load_loop()
@@ -808,6 +809,78 @@ class TestBlockedByGate:
         action = _load_loop()["states"]["mark_deferred"]["action"]
         assert "blocked_by_unmet_" in action
         assert "not done" in action
+
+
+# ============================================================================
+# TestReEnqueueUnblocked — ENH-2195: re-enqueue deferred issues in same run
+# ============================================================================
+
+
+class TestReEnqueueUnblocked:
+    """ENH-2195: re-enqueue deferred issues when their blockers resolve in the same run."""
+
+    def test_re_enqueue_unblocked_state_exists(self) -> None:
+        """re_enqueue_unblocked state is present in the FSM."""
+        data = _load_loop()
+        assert "re_enqueue_unblocked" in data["states"]
+
+    def test_route_rem_implemented_routes_to_re_enqueue(self) -> None:
+        """route_rem_implemented.on_yes routes to re_enqueue_unblocked, not dequeue_next."""
+        data = _load_loop()
+        assert data["states"]["route_rem_implemented"]["on_yes"] == "re_enqueue_unblocked"
+
+    def test_re_enqueue_unblocked_routes_to_dequeue_next(self) -> None:
+        """re_enqueue_unblocked.next routes unconditionally to dequeue_next."""
+        data = _load_loop()
+        state = data["states"]["re_enqueue_unblocked"]
+        assert state.get("next") == "dequeue_next"
+
+    def test_re_enqueue_reads_deferred_txt_under_run_dir(self) -> None:
+        """re_enqueue_unblocked reads deferred.txt under run_dir (MR-3: no shared paths)."""
+        data = _load_loop()
+        action = data["states"]["re_enqueue_unblocked"]["action"]
+        assert "deferred.txt" in action
+        assert "${captured.run_dir.output}" in action
+
+    def test_re_enqueue_appends_to_queue_txt_via_tmp_swap(self) -> None:
+        """re_enqueue_unblocked re-adds unblocked issues to queue.txt using tmp-file swap."""
+        data = _load_loop()
+        action = data["states"]["re_enqueue_unblocked"]["action"]
+        assert "queue.txt" in action
+        assert "QUEUE.tmp" in action
+
+    def test_re_enqueue_diffs_blocked_by_against_done_set(self) -> None:
+        """re_enqueue_unblocked checks blocked_by deps against ll-issues list --status done."""
+        data = _load_loop()
+        action = data["states"]["re_enqueue_unblocked"]["action"]
+        assert "blocked_by" in action
+        assert "ll-issues" in action
+        assert '"list"' in action
+        assert '"--status"' in action and '"done"' in action
+
+    def test_re_enqueue_skips_issues_with_no_blocked_by(self) -> None:
+        """Stalled issues with no blocked_by deps are left in deferred.txt, not re-enqueued."""
+        data = _load_loop()
+        action = data["states"]["re_enqueue_unblocked"]["action"]
+        assert "NO_BLOCKED_BY" in action
+
+    def test_re_enqueue_rewrites_deferred_txt_via_tmp_swap(self) -> None:
+        """re_enqueue_unblocked rewrites deferred.txt atomically, removing re-enqueued entries."""
+        data = _load_loop()
+        action = data["states"]["re_enqueue_unblocked"]["action"]
+        assert "deferred.tmp" in action
+
+    def test_re_enqueue_logs_re_enqueue_marker(self) -> None:
+        """re_enqueue_unblocked emits [RE_ENQUEUE] to stderr for each re-enqueued issue."""
+        data = _load_loop()
+        action = data["states"]["re_enqueue_unblocked"]["action"]
+        assert "[RE_ENQUEUE]" in action
+
+    def test_re_enqueue_noop_on_empty_deferred(self) -> None:
+        """re_enqueue_unblocked exits immediately when deferred.txt is empty or absent."""
+        data = _load_loop()
+        action = data["states"]["re_enqueue_unblocked"]["action"]
+        assert "! -s" in action
 
 
 # ============================================================================

@@ -1,12 +1,14 @@
 ---
 id: ENH-2195
-title: 'rn-implement: re-enqueue deferred issues when their blocker resolves in the same run'
+title: 'rn-implement: re-enqueue deferred issues when their blocker resolves in the
+  same run'
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-15
 discovered_by: audit-loop-run
 captured_at: '2026-06-15T23:30:00Z'
+completed_at: '2026-06-16T02:04:55Z'
 relates_to:
 - ENH-2008
 - ENH-2164
@@ -14,6 +16,12 @@ labels:
 - rn-implement
 - orchestration
 - queue
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 19
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2195: rn-implement — re-enqueue deferred issues when blocker resolves in same run
@@ -156,6 +164,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-16T01:51:06 - `d973f314-f2aa-4986-8b5b-25ddd3f3da7d.jsonl`
+- `/ll:confidence-check` - 2026-06-16T01:48:27Z - `6a12d4eb-3469-43cd-bcdc-388a1a564bb6.jsonl`
 - `/ll:wire-issue` - 2026-06-16T01:45:32 - `7f4378cf-51ba-437c-9494-6af10b37144f.jsonl`
 - `/ll:refine-issue` - 2026-06-16T01:39:12 - `a7a2c13d-80a1-4674-af7a-b59a585951f8.jsonl`
 - `/ll:format-issue` - 2026-06-16T00:55:41 - `e9cc82c4-5d2e-4176-91b8-ad6205bbef80.jsonl`
