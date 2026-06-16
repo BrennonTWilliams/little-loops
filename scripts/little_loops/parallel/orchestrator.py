@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from little_loops.events import EventBus
-from little_loops.frontmatter import update_frontmatter
+from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.git_lock import GitLock
@@ -983,6 +983,34 @@ class ParallelOrchestrator:
                     else:
                         self.logger.warning(
                             f"{result.issue_id}: git push failed: {push_result.stderr.strip()}"
+                        )
+                # Write branch name (and optional PR URL) back to issue frontmatter (ENH-2175)
+                info = self._issue_info_by_id.get(result.issue_id)
+                if info and info.path.exists():
+                    try:
+                        content = info.path.read_text()
+                        fm = parse_frontmatter(content)
+                        updates: dict[str, Any] = {"branch": result.branch_name}
+                        if branch_state.get("pr_url") and not fm.get("pr_url"):
+                            updates["pr_url"] = branch_state["pr_url"]
+                        content = update_frontmatter(content, updates)
+                        info.path.write_text(content)
+                        self._git_lock.run(["add", "-A"], cwd=self.repo_path)
+                        commit_result = self._git_lock.run(
+                            ["commit", "-m", f"{result.issue_id}: record feature branch in frontmatter"],
+                            cwd=self.repo_path,
+                        )
+                        if (
+                            commit_result.returncode != 0
+                            and "nothing to commit" not in commit_result.stdout.lower()
+                        ):
+                            self.logger.warning(
+                                f"{result.issue_id}: branch frontmatter commit failed:"
+                                f" {commit_result.stderr}"
+                            )
+                    except Exception as exc:
+                        self.logger.warning(
+                            f"{result.issue_id}: failed to record branch in frontmatter: {exc}"
                         )
                 with self._state_lock:
                     self._pr_ready_branches[result.issue_id] = branch_state

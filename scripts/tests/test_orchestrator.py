@@ -2005,6 +2005,138 @@ class TestOnWorkerComplete:
         assert "https://github.com/owner/repo/pull/42" in combined
 
 
+    def test_on_worker_complete_feature_branch_records_branch_in_frontmatter(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_issue: MagicMock,
+    ) -> None:
+        """Feature-branch completion writes branch: field to issue frontmatter (ENH-2175)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        original_path = temp_repo_with_config / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        original_path.write_text("---\nid: BUG-001\nstatus: done\n---\n\n# BUG-001\n")
+        mock_issue.path = original_path
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        git_ok: MagicMock = MagicMock()
+        git_ok.returncode = 0
+        git_ok.stdout = "[main abc1234] commit"
+        git_ok.stderr = ""
+        orchestrator._git_lock.run = lambda *a, **kw: git_ok  # type: ignore[method-assign]
+
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = False
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001-record-branch",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        content = original_path.read_text()
+        fm = parse_frontmatter(content)
+        assert fm.get("branch") == "feature/bug-001-record-branch"
+
+    def test_on_worker_complete_auto_merge_no_branch_in_frontmatter(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_issue: MagicMock,
+    ) -> None:
+        """Auto-merge (non-feature-branch) mode does NOT write branch: to frontmatter (ENH-2175)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        original_path = temp_repo_with_config / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        original_path.write_text("---\nid: BUG-001\nstatus: done\n---\n\n# BUG-001\n")
+        mock_issue.path = original_path
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        # Default config: use_feature_branches=False (auto-merge path)
+        orchestrator.parallel_config.use_feature_branches = False
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]  # type: ignore[misc]
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        content = original_path.read_text()
+        fm = parse_frontmatter(content)
+        assert "branch" not in fm
+
+    def test_on_worker_complete_feature_branch_pr_url_idempotency(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_issue: MagicMock,
+    ) -> None:
+        """Re-running does not clobber an existing pr_url: already in frontmatter (ENH-2175)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        existing_url = "https://github.com/owner/repo/pull/99"
+        original_path = temp_repo_with_config / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        original_path.write_text(
+            f"---\nid: BUG-001\nstatus: done\npr_url: {existing_url}\n---\n\n# BUG-001\n"
+        )
+        mock_issue.path = original_path
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        git_ok: MagicMock = MagicMock()
+        git_ok.returncode = 0
+        git_ok.stdout = "[main abc1234] commit"
+        git_ok.stderr = ""
+        orchestrator._git_lock.run = lambda *a, **kw: git_ok  # type: ignore[method-assign]
+
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = True
+        orchestrator.parallel_config.open_pr_for_feature_branches = True
+        orchestrator.parallel_config.remote_name = "origin"
+        orchestrator.parallel_config.base_branch = "main"
+
+        import subprocess
+
+        def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if args[0] == "git" and "push" in args:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh" and args[1] == "auth":
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh" and args[1] == "pr":
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0,
+                    stdout="https://github.com/owner/repo/pull/100",
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001-record-branch",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_run):
+            orchestrator._on_worker_complete(result)
+
+        content = original_path.read_text()
+        fm = parse_frontmatter(content)
+        # branch: should be written
+        assert fm.get("branch") == "feature/bug-001-record-branch"
+        # pr_url: must NOT be overwritten — existing URL preserved
+        assert fm.get("pr_url") == existing_url
+
+
 class TestMergeSequential:
     """Tests for _merge_sequential method."""
 

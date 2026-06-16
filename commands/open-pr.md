@@ -5,6 +5,9 @@ description: |
   Trigger keywords: "open pr", "create pull request", "submit pr", "create pr", "open pull request", "submit for review", "make a pr"
 argument-hint: "[target-branch]"
 arguments:
+  - name: issue_id
+    description: "Issue ID (e.g. ENH-2175) to read recorded branch/pr_url from frontmatter"
+    required: false
   - name: target_branch
     description: "Target branch for the PR (default: auto-detect from origin/HEAD)"
     required: false
@@ -20,6 +23,37 @@ allowed-tools:
 You are tasked with opening a pull request for the current branch's work.
 
 ## Process
+
+### 0.5. Issue Frontmatter Check
+
+Determine the issue ID from the `issue_id` argument, or extract it from the current branch name:
+
+```bash
+CURRENT_BRANCH=$(git branch --show-current)
+ISSUE_ID="${issue_id:-$(echo "$CURRENT_BRANCH" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' | head -1)}"
+echo "Issue ID: ${ISSUE_ID:-none}"
+```
+
+If an issue ID is found, look up the issue file and read its frontmatter:
+
+```bash
+ISSUE_FILE=$(ll-issues path "$ISSUE_ID" 2>/dev/null)
+```
+
+If the issue file exists, check:
+
+1. **`pr_url:` is present** → Stop immediately and report:
+   ```
+   PR already recorded for [ISSUE_ID]: [pr_url]
+   Nothing to do — the PR was created during the feature-branch run.
+   ```
+   Do not proceed further.
+
+2. **`branch:` is present** → Use the recorded branch as the branch hint. If the current branch differs from the recorded branch, inform the user and switch:
+   ```bash
+   git checkout <recorded-branch>
+   ```
+   Then continue with the PR creation flow on the recorded branch.
 
 ### 1. Check Prerequisites
 
@@ -171,7 +205,12 @@ PR created successfully!
 
 $ARGUMENTS
 
-- **target_branch** (optional, default: auto-detect): Target branch for the PR
+- **issue_id** (optional): Issue ID (e.g. `ENH-2175`) to read `branch:` and `pr_url:` from issue frontmatter.
+  - If `pr_url:` is already set, the command short-circuits with "PR already recorded."
+  - If `branch:` is set and the current branch differs, the command switches to the recorded branch first.
+  - If omitted, issue ID is auto-detected from the current branch name.
+
+- **target_branch** (optional, default: auto-detect): Target branch for the PR base
   - If provided, uses specified branch as the PR base
   - If omitted, auto-detects from `refs/remotes/origin/HEAD` (usually `main` or `master`)
 
