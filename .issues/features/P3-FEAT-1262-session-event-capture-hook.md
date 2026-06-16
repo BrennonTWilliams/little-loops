@@ -248,6 +248,10 @@ This issue owns only the capture side: writing `.ll/ll-session-events.jsonl`. It
 
 **FEAT-1116 migration note**: `session-capture.sh` is a PostToolUse shell script in the layer FEAT-1116 is migrating to Python core handlers. Implement as specified here for unblocked delivery; once FEAT-1116's PostToolUse migration scaffolding lands, port the event-capture logic to a Python intent handler (e.g., `scripts/little_loops/hooks/post_tool_use_capture.py`) and replace `session-capture.sh` with a thin Claude Code adapter. Keep the shell script logic minimal — event parsing, JSONL append, and failure-safe exit — so the Python port is straightforward.
 
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-1158 (PreCompact Handoff Hook — Docs & Configuration) also modifies `docs/ARCHITECTURE.md` (lines 85–98 and 888–955) and may modify `config-schema.json` if opt-in is chosen. This issue adds `session-capture.sh` to `docs/ARCHITECTURE.md`'s PostToolUse flow section and always modifies `config-schema.json`. No ordering dependency exists between FEAT-1262 and FEAT-1158. If worked concurrently, coordinate edits to `docs/ARCHITECTURE.md` and `config-schema.json` to avoid merge conflicts.
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-1157 (PreCompact Handoff Hook — Integration Tests) also adds a test class (`TestPrecompactHandoff`) to `scripts/tests/test_hooks_integration.py`. This issue adds `TestSessionCapture` to the same file. No logical conflict exists, but concurrent edits risk git merge conflicts. Coordinate or serialize work on this shared test file.
+
 ## Verification Notes
 
 **Verdict**: VALID — Verified 2026-04-23

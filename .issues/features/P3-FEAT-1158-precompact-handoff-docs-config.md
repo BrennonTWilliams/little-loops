@@ -2,7 +2,7 @@
 id: FEAT-1158
 type: FEAT
 priority: P3
-status: deferred
+status: open
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
 blocked_by: [FEAT-1112, FEAT-1156]
@@ -99,3 +99,5 @@ Decide whether `precompact_handoff` is opt-in (feature flag in config) or always
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue edits `docs/ARCHITECTURE.md`, `docs/guides/SESSION_HANDOFF.md`, and `skills/configure/areas.md` for the precompact handoff feature. These same files are also modified by the session-start inject doc family: FEAT-1317 (`docs/ARCHITECTURE.md`), FEAT-1318 (`docs/guides/SESSION_HANDOFF.md`), FEAT-1319 (`skills/configure/areas.md`). No ordering dependency exists between these two doc families. If worked concurrently, coordinate to avoid git merge conflicts in these three shared files.
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-1262 (Session Event Capture Hook) also modifies `docs/ARCHITECTURE.md` (PostToolUse hook flow section) and `config-schema.json` (adds `session_capture` property). This issue touches `docs/ARCHITECTURE.md` at lines 85–98 and 888–955 and may touch `config-schema.json` if opt-in is chosen. No ordering dependency exists between FEAT-1158 and FEAT-1262. If worked concurrently, coordinate edits to these two shared files to avoid merge conflicts.

@@ -27,15 +27,23 @@ score_change_surface: 20
 
 ## Summary
 
-Implement `hooks/scripts/precompact-handoff.sh` with priority-tiered snapshot logic, size-capping, and idempotency, then register it as a second PreCompact hook in `hooks/hooks.json`.
+Implement `scripts/little_loops/hooks/pre_compact_handoff.py` (Python handler) and
+`hooks/adapters/claude-code/precompact-handoff.sh` (thin Claude Code adapter) with priority-tiered
+snapshot logic, 2KB size-capping, and idempotency, then register the adapter as a second PreCompact
+hook in `hooks/hooks.json`.
 
 ## Current Behavior
 
-No automatic handoff snapshot is written before context compaction. Users must manually run `/ll:handoff` to generate `.ll/ll-continue-prompt.md`. If a PreCompact event fires without a prior manual handoff, session continuity state (active issues, file edits, open decisions) is lost.
+No automatic handoff snapshot is written before context compaction. Users must manually run
+`/ll:handoff` to generate `.ll/ll-continue-prompt.md`. If a PreCompact event fires without a prior
+manual handoff, session continuity state (active issues, file edits, open decisions) is lost.
 
 ## Expected Behavior
 
-`hooks/scripts/precompact-handoff.sh` fires automatically on every PreCompact event and writes `.ll/ll-continue-prompt.md` (≤2KB, priority-tiered) before context is compacted. An idempotency guard skips the write when the snapshot is already fresh relative to `compacted_at` in `ll-precompact-state.json`.
+`pre_compact_handoff.handle()` fires automatically on every PreCompact event and writes
+`.ll/ll-continue-prompt.md` (≤2KB, priority-tiered) before context is compacted. An idempotency
+guard skips the write when the snapshot is already fresh relative to `compacted_at` in
+`.ll/ll-precompact-state.json`.
 
 ## Parent Issue
 
@@ -43,109 +51,156 @@ Decomposed from FEAT-1113: PreCompact Auto-Handoff Hook
 
 ## Motivation
 
-`/ll:handoff` today is a manual step. Claude Code's PreCompact event fires before context compaction; hooking into it ensures a continuity snapshot is always written before state is lost. This is the core deliverable of FEAT-1113.
+`/ll:handoff` today is a manual step. Claude Code's PreCompact event fires before context
+compaction; hooking into it ensures a continuity snapshot is always written before state is lost.
+This is the core deliverable of FEAT-1113.
 
 ## Use Case
 
 **Who**: Developer using little-loops with Claude Code's automatic context compaction enabled.
 
-**Context**: Working on a long session that triggers a PreCompact event, with active issues in progress and file edits staged.
+**Context**: Working on a long session that triggers a PreCompact event, with active issues in
+progress and file edits staged.
 
-**Goal**: Ensure session continuity is preserved automatically — without remembering to run `/ll:handoff` manually before each potential compaction.
+**Goal**: Ensure session continuity is preserved automatically — without remembering to run
+`/ll:handoff` manually before each potential compaction.
 
-**Outcome**: After compaction, `/ll:resume` restores the session from `.ll/ll-continue-prompt.md`, which was automatically written by the PreCompact hook.
+**Outcome**: After compaction, `/ll:resume` restores the session from `.ll/ll-continue-prompt.md`,
+which was automatically written by the PreCompact hook.
 
 ## Acceptance Criteria
 
-- `hooks/scripts/precompact-handoff.sh` exists and is executable
+- `scripts/little_loops/hooks/pre_compact_handoff.py` exists with a `handle(event: LLHookEvent) -> LLHookResult` function
+- `hooks/adapters/claude-code/precompact-handoff.sh` exists and is executable
 - Hook fires on PreCompact and produces `.ll/ll-continue-prompt.md` ≤2KB
 - Priority tiers drop LIFO under size pressure (tool-event summary dropped first, then decisions, etc.)
-- Idempotency: skips write if `ll-continue-prompt.md` mtime is newer than `compacted_at` from `.ll/ll-precompact-state.json`
-- `hooks/hooks.json` registers the new script as a second PreCompact entry (existing `precompact-state.sh` entry preserved)
+- Idempotency: skips write if `.ll/ll-continue-prompt.md` mtime is newer than `compacted_at` from `.ll/ll-precompact-state.json`
+- `hooks/hooks.json` registers the new adapter as a second PreCompact entry (existing `precompact.sh` entry preserved and ordered first)
 - Schema of written file passes `/ll:resume` compatibility: frontmatter with `session_date`, `session_branch`, `issues_in_progress` + sections `## Intent`, `## File Modifications`, `## Decisions Made`, `## Next Steps`
+- `scripts/little_loops/hooks/__init__.py` dispatch table includes `"pre_compact_handoff"`
 
 ## Implementation
 
-### New File: `hooks/scripts/precompact-handoff.sh`
+### New File: `scripts/little_loops/hooks/pre_compact_handoff.py`
 
-Follow `precompact-state.sh` structure:
-- Read stdin JSON, extract `transcript_path` via jq
-- Source `hooks/scripts/lib/common.sh`
-- Check `ll_feature_enabled` guard
-- Build tiered content sections:
-  1. Active issue + loop state (always kept) — from `ll-issues list --status in_progress` + `.ll/loops/` JSON files
-  2. Files edited this session (always kept) — from `git diff --name-only HEAD`
+Follow `pre_compact.py` structure exactly:
+
+- `handle(event: LLHookEvent) -> LLHookResult` signature from `scripts/little_loops/hooks/types.py`
+- Read `compacted_at` from `.ll/ll-precompact-state.json` (written by `pre_compact.handle()`)
+- **Idempotency guard**: compare `Path(".ll/ll-continue-prompt.md").stat().st_mtime` vs `compacted_at` epoch; return `LLHookResult(exit_code=0)` if already fresh
+- **Tiered section builder** (priority order):
+  1. Active issues + loop state (always kept) — `subprocess` call to `ll-issues list --status in_progress` + `.ll/loops/` JSON reads
+  2. Files edited this session (always kept) — `subprocess` call to `git diff --name-only HEAD`
   3. Open decisions / blockers (kept if space)
   4. Recent tool-event summary (dropped first under size pressure)
-- Cap at 2KB with `wc -c`; drop sections LIFO until under cap
-- Write atomically using `acquire_lock` / `atomic_write_json` from `lib/common.sh`
-- Exit 2 with message to surface errors to user
+- **LIFO 2KB cap**: `while len(content.encode()) > 2048: sections.pop()` then join
+- Write via `acquire_lock(lock_path, timeout=3.0)` + `atomic_write(prompt_path, content)` — use `atomic_write` (text), NOT `atomic_write_json` (JSON), since `.ll/ll-continue-prompt.md` is markdown
+- Best-effort fallback: `except TimeoutError: atomic_write(prompt_path, content)` (mirrors `pre_compact.py` lines 96–100)
+- Wrap entire body in `try/except Exception: return LLHookResult(exit_code=0)` — failures must not surface
+- Return `LLHookResult(exit_code=2, feedback="[ll] Session handoff snapshot written.")` on successful write; `LLHookResult(exit_code=0)` on skip or error
 
-### Idempotency Guard
+### New File: `hooks/adapters/claude-code/precompact-handoff.sh`
 
-Before writing, compare `.ll/ll-continue-prompt.md` mtime against `compacted_at` from `.ll/ll-precompact-state.json`. If prompt is already fresh (mtime > compacted_at), skip write and exit 0.
+Thin adapter following `hooks/adapters/claude-code/precompact.sh` exactly (3 lines):
 
-### Registration: `hooks/hooks.json:89-100`
+```bash
+#!/usr/bin/env bash
+INPUT=$(cat)
+echo "$INPUT" | python -m little_loops.hooks pre_compact_handoff
+exit $?
+```
 
-Add a second object to the PreCompact array. Do NOT remove the existing `precompact-state.sh` entry — `context-monitor.sh:check_compaction()` (lines 176–206) depends on `.ll/ll-precompact-state.json` being written.
+### Modify: `scripts/little_loops/hooks/__init__.py`
 
-### Output Schema
+1. Add `pre_compact_handoff` to the lazy import block in `_dispatch_table()` (alongside `pre_compact`, `session_start`, etc.)
+2. Add `"pre_compact_handoff": pre_compact_handoff.handle` to the `built_ins` dict
+3. Add `pre_compact_handoff` to the `_USAGE` string (line 51)
 
-Follow `commands/handoff.md:134-158` structured schema. The `commands/resume.md:28-42` consumer validates `## Intent` + `## Next Steps` presence. The legacy `hooks/prompts/continuation-prompt-template.md` is for reference only.
+### Modify: `hooks/hooks.json` (PreCompact section, lines 165–177)
+
+Add a second object to the `"PreCompact": [...]` array **after** the existing entry:
+
+```json
+{
+  "matcher": "*",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/precompact-handoff.sh",
+      "timeout": 5,
+      "statusMessage": "Writing session handoff..."
+    }
+  ]
+}
+```
+
+**Ordering constraint**: this entry MUST be second. The existing `precompact.sh` entry writes
+`compacted_at` to `.ll/ll-precompact-state.json`; this handler reads that value for its idempotency
+guard. Reversing the order breaks the guard on first run.
 
 ### State Sources (FEAT-1112 Fallback)
 
 FEAT-1112 (session store) is not yet implemented; gather state without it:
+
 - **Files edited**: `git diff --name-only HEAD`
-- **Active issues**: `ll-issues list --status in_progress` or frontmatter scan of `.issues/`
+- **Active issues**: `ll-issues list --status in_progress` (single-value `--status` per BUG-1799)
 - **Loop state**: read `.ll/loops/` JSON files
+
+When FEAT-1262's `.ll/ll-session-events.jsonl` is present, prefer it as the primary source for
+files-edited and decisions sections (FEAT-1264 formalizes this). Fall back to the above when absent.
+
+### Output Schema
+
+Follow `commands/handoff.md` structured schema. The consumer `commands/resume.md:28-56` validates
+`## Intent` + `## Next Steps` presence.
 
 ## Files to Modify
 
-- `hooks/hooks.json:89-100` — add second PreCompact entry
-- `hooks/scripts/precompact-state.sh` — read-only reference for structure (do not modify)
-- `hooks/scripts/lib/common.sh` — import only (`acquire_lock`, `release_lock`, `atomic_write_json`, `ll_config_value`, `ll_feature_enabled`, `to_epoch`, `get_mtime`)
+- `scripts/little_loops/hooks/__init__.py` — add `pre_compact_handoff` to dispatch table + `_USAGE` string
+- `hooks/hooks.json:165-177` — add second PreCompact entry (after existing entry)
 
 ## New Files
 
-- `hooks/scripts/precompact-handoff.sh`
+- `scripts/little_loops/hooks/pre_compact_handoff.py` — Python handler
+- `hooks/adapters/claude-code/precompact-handoff.sh` — thin Claude Code adapter
 
 ## References
 
 - Related tests: FEAT-1157
 - Docs/config updates: FEAT-1158
-- Depends on: FEAT-1112 (fallback available without it)
-- Consumers of `ll-continue-prompt.md`: `commands/resume.md:28-42`, `scripts/little_loops/subprocess_utils.py:31-58`, `hooks/scripts/context-monitor.sh:334-348`
+- Depends on: `pre_compact.py` (writes `compacted_at` before this handler reads it); FEAT-1112 (fallback available without it)
+- Consumers of `ll-continue-prompt.md`: `commands/resume.md:28-56`, `scripts/little_loops/subprocess_utils.py:57-95`, `hooks/scripts/context-monitor.sh:370-407`
 
 ## Integration Map
 
 ### Files to Modify
-- `hooks/hooks.json:89-100` — add second PreCompact entry
-- `scripts/little_loops/hooks/__init__.py` — add dispatch entry + update `_USAGE` string [Wiring pass]
-- `scripts/little_loops/cli/doctor.py` — update PreCompact feature description to reflect second hook [Wiring pass]
+- `hooks/hooks.json:165-177` — add second PreCompact entry
+- `scripts/little_loops/hooks/__init__.py` — add dispatch entry + update `_USAGE` string
 
 ### New Files
-- `hooks/scripts/precompact-handoff.sh` — core hook implementation
+- `scripts/little_loops/hooks/pre_compact_handoff.py` — Python handler
+- `hooks/adapters/claude-code/precompact-handoff.sh` — thin Claude Code adapter
 
 ### Dependent Files (Callers/Importers)
-- `commands/resume.md:28-42` — consumer of `.ll/ll-continue-prompt.md`
-- `scripts/little_loops/subprocess_utils.py:31-58` — consumer of `.ll/ll-continue-prompt.md`
-- `hooks/scripts/context-monitor.sh:334-348` — consumer of `.ll/ll-continue-prompt.md`
+- `commands/resume.md:28-56` — consumer of `.ll/ll-continue-prompt.md`
+- `scripts/little_loops/subprocess_utils.py:57-95` — `detect_context_handoff()` and `read_continuation_prompt()`; checks file presence/non-emptiness only
+- `hooks/scripts/context-monitor.sh:370-407` — mtime-vs-threshold idempotency check
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `hooks/scripts/context-monitor.sh:50-80` — `check_handoff()` function reads `ll-continue-prompt.md` for `handoff_pending` state (second read point not listed above)
+- `hooks/scripts/context-monitor.sh:50-80` — `check_handoff()` function reads `ll-continue-prompt.md` for `handoff_pending` state
 - `scripts/little_loops/issue_manager.py:290,462-464` — calls `detect_context_handoff()` and `read_continuation_prompt()` (indirect `ll-continue-prompt.md` consumer)
 - `scripts/little_loops/parallel/worker_pool.py:797,939-943` — same pattern as `issue_manager.py`; reads handoff state in parallel worker execution
 
 ### Similar Patterns
-- `hooks/scripts/precompact-state.sh` — reference for stdin JSON → jq → feature guard structure
-- `hooks/scripts/lib/common.sh` — shared utilities: `acquire_lock`, `release_lock`, `atomic_write_json`, `ll_config_value`, `ll_feature_enabled`, `to_epoch`, `get_mtime`
+- `scripts/little_loops/hooks/pre_compact.py` — canonical Python handler to model after (`handle(event: LLHookEvent) -> LLHookResult`, `acquire_lock` + `atomic_write_json`, try/except wrapper)
+- `hooks/adapters/claude-code/precompact.sh` — thin adapter pattern: `INPUT=$(cat)` + `echo "$INPUT" | python -m little_loops.hooks <intent>`
+- `scripts/little_loops/file_utils.py` — `acquire_lock`, `atomic_write` (text files), `atomic_write_json` (JSON files)
 
 ### Tests
-- FEAT-1157 covers test additions for this hook
+- FEAT-1157 covers test additions for this handler
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_hook_intents.py` — `TestHooksMainModule.test_dispatch_table_merges_hook_intent_registry` needs `assert "pre_compact_handoff" in table`; new `test_dispatch_pre_compact_handoff_happy_path` test needed (parallel to the existing `test_dispatch_pre_compact_happy_path` at line ~273)
+- `scripts/tests/test_hook_intents.py` — `TestHooksMainModule.test_dispatch_table_merges_hook_intent_registry` needs `assert "pre_compact_handoff" in table`; new `test_dispatch_pre_compact_handoff_happy_path` test needed (parallel to existing `test_dispatch_pre_compact_happy_path`)
 
 ### Documentation
 - FEAT-1158 covers docs/config updates for this hook
@@ -153,99 +208,46 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 - N/A — no new config keys; hook registered via `hooks/hooks.json` entry only
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — based on codebase analysis:_
-
-**Architecture change (FEAT-1116 has shipped):** The issue was written before FEAT-1116 (Hook-Intent Abstraction Layer) landed. That migration is complete — live PreCompact execution goes through `hooks/adapters/claude-code/precompact.sh` → `python -m little_loops.hooks pre_compact` → `scripts/little_loops/hooks/pre_compact.py`. The Scope Boundary notes' "once FEAT-1116 lands, port to Python" condition is now satisfied. The implementation MUST follow the Python handler + thin adapter pattern, not `hooks/scripts/precompact-handoff.sh`.
-
-**Corrected files to create/modify:**
-- `scripts/little_loops/hooks/pre_compact_handoff.py` — new Python handler (replaces planned `hooks/scripts/precompact-handoff.sh`)
-- `hooks/adapters/claude-code/precompact-handoff.sh` — new thin Claude Code adapter (model after `hooks/adapters/claude-code/precompact.sh`: 2 lines — reads stdin, pipes to `python -m little_loops.hooks pre_compact_handoff`)
-- `scripts/little_loops/hooks/__init__.py` — add `"pre_compact_handoff": pre_compact_handoff.handle` to `_dispatch_table()` (line ~70)
-- `hooks/hooks.json:165-177` — actual PreCompact section (issue's `:89-100` is stale); add second entry in the array
-
-**Reference implementation:**
-- `scripts/little_loops/hooks/pre_compact.py` — canonical Python handler to model after (`handle(event: LLHookEvent) -> LLHookResult` with `acquire_lock` + `atomic_write_json`)
-- `hooks/adapters/claude-code/precompact.sh` — thin adapter pattern: `INPUT=$(cat)` + `echo "$INPUT" | python -m little_loops.hooks <intent>`
-- `scripts/little_loops/hooks/types.py` — `LLHookEvent`, `LLHookResult` dataclass contracts
-
-**Python utilities (replaces shell lib/common.sh equivalents):**
-- `scripts/little_loops/file_utils.py` — `acquire_lock(path, timeout=3.0)` context manager; `atomic_write_json(path, data)` with round-trip validation
-- No `ll_feature_enabled` gate needed: `pre_compact.py` runs unconditionally (same for this handler)
-
-**Corrected line numbers for dependent consumers:**
-- `hooks/hooks.json:165-177` (not `:89-100`) — current PreCompact array
-- `commands/resume.md:28-56` (not `:28-42`) — schema detection (checks for `## Intent` + `## Next Steps` presence)
-- `scripts/little_loops/subprocess_utils.py:57-95` (not `:31-58`) — `detect_context_handoff()` and `read_continuation_prompt()`; checks file presence/non-emptiness only, content not parsed
-- `hooks/scripts/context-monitor.sh:370-407` (not `:334-348`) — mtime-vs-threshold idempotency check
-
-**`ll-issues list` constraint (BUG-1799):** `--status` accepts a single value only. Use `ll-issues list --status in_progress`. For multi-status needs, use the frontmatter awk pattern from `skills/capture-issue/SKILL.md:168-179`.
-
-**Tests to model after:**
-- `scripts/tests/test_pre_compact.py` — unit tests for `pre_compact.handle()` (direct Python handler logic)
-- `scripts/tests/test_hooks_integration.py` — integration tests including `TestPrecompactState` for subprocess/adapter layer
-
-**Novel logic (no existing pattern):** The LIFO-under-2KB section-dropping algorithm has no prior implementation. Python equivalent: build sections as a list in priority order, join, check `len(content.encode()) <= 2048`, pop from tail until under cap.
-
 ## Implementation Steps
 
-1. Create `hooks/scripts/precompact-handoff.sh` following `precompact-state.sh` structure (stdin JSON → jq → feature guard → common.sh import)
-2. Implement priority-tiered content builder: active issues + loop state (always kept), file edits (always kept), decisions/blockers (kept if space), tool-event summary (dropped first under size pressure)
-3. Add idempotency guard: compare `.ll/ll-continue-prompt.md` mtime vs `compacted_at` from `ll-precompact-state.json`; skip write if already fresh
-4. Add 2KB size cap with LIFO section dropping; use `wc -c` to measure; write atomically via `acquire_lock` / `atomic_write_json`
-5. Register as second PreCompact hook in `hooks/hooks.json`, preserving the existing `precompact-state.sh` entry
-6. Validate output passes `/ll:resume` compatibility (frontmatter schema + required `## Intent` and `## Next Steps` headers)
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-6. Update `scripts/little_loops/hooks/__init__.py` — add `pre_compact_handoff` to the `_USAGE` constant (lines 48–52) and to the module-level docstring intents list; without this the CLI help text is stale
-7. Update `hooks/hooks.json` with ordering constraint: the new `precompact-handoff.sh` entry MUST be second in the `"PreCompact"` array — `precompact.sh` writes `compacted_at` to `ll-precompact-state.json`, which the new handler reads for its idempotency guard; reversing the order breaks the guard on first run
-8. Update `scripts/tests/test_hook_intents.py` — add `assert "pre_compact_handoff" in table` to `test_dispatch_table_merges_hook_intent_registry`; add `test_dispatch_pre_compact_handoff_happy_path` parallel to existing `test_dispatch_pre_compact_happy_path`
-9. Update `scripts/little_loops/cli/doctor.py` — update the PreCompact feature description string to reflect the second hook (e.g., "PreCompact state capture + handoff snapshot" or add a second feature row)
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — Python-first steps (FEAT-1116 has shipped):_
-
-1. Create `scripts/little_loops/hooks/pre_compact_handoff.py` following `pre_compact.py`'s structure:
-   - `handle(event: LLHookEvent) -> LLHookResult` signature from `scripts/little_loops/hooks/types.py`
-   - Read `compacted_at` from `.ll/ll-precompact-state.json` (written by `pre_compact.handle()`)
-   - Idempotency: compare `Path(".ll/ll-continue-prompt.md").stat().st_mtime` vs `compacted_at` epoch; return `LLHookResult(exit_code=0)` if already fresh
-   - Build tiered sections in priority order: (1) active issues via `subprocess` call to `ll-issues list --status in_progress` + `.ll/loops/` JSON reads; (2) files via `git diff --name-only HEAD`; (3) decisions/blockers; (4) tool-event summary
-   - LIFO 2KB cap: join sections, while `len(content.encode()) > 2048`, pop last section
-   - Write via `acquire_lock(lock_path, timeout=3.0)` + `atomic_write_json(prompt_path, content)` from `scripts/little_loops/file_utils.py`
-   - Return `LLHookResult(exit_code=2, feedback="Handoff snapshot written.")` on success, `LLHookResult(exit_code=0)` on skip/error
-2. Register in `scripts/little_loops/hooks/__init__.py` `_dispatch_table()` (~line 70): add `"pre_compact_handoff": pre_compact_handoff.handle`
-3. Create `hooks/adapters/claude-code/precompact-handoff.sh` following `hooks/adapters/claude-code/precompact.sh` exactly: `INPUT=$(cat)` + `echo "$INPUT" | python -m little_loops.hooks pre_compact_handoff; exit $?`
-4. Add second entry to `hooks/hooks.json` inside the `"PreCompact": [...]` array (after the existing entry at lines 165–177): `{"matcher": "*", "hooks": [{"type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/precompact-handoff.sh", "timeout": 5, "statusMessage": "Writing session handoff..."}]}`
-5. Add unit tests in `scripts/tests/test_pre_compact_handoff.py` following `scripts/tests/test_pre_compact.py` pattern; add integration test to `scripts/tests/test_hooks_integration.py` following `TestPrecompactState`
+1. Create `scripts/little_loops/hooks/pre_compact_handoff.py` following `pre_compact.py` structure:
+   - `handle(event: LLHookEvent) -> LLHookResult` signature
+   - Idempotency guard: read `compacted_at` from `.ll/ll-precompact-state.json`, compare against `ll-continue-prompt.md` mtime; return `exit_code=0` if already fresh
+   - Build tiered sections in priority order: active issues via `ll-issues list --status in_progress` + `.ll/loops/` JSON reads; files via `git diff --name-only HEAD`; decisions/blockers; tool-event summary
+   - LIFO 2KB cap: `while len(content.encode()) > 2048: sections.pop()`
+   - Write via `acquire_lock(lock_path, timeout=3.0)` + `atomic_write(prompt_path, content)` with `TimeoutError` best-effort fallback
+   - Wrap entire body in `try/except Exception: return LLHookResult(exit_code=0)`
+2. Register in `scripts/little_loops/hooks/__init__.py`: add `pre_compact_handoff` to the lazy import block in `_dispatch_table()`, add to `built_ins` dict, add to `_USAGE` string
+3. Create `hooks/adapters/claude-code/precompact-handoff.sh` (3-line thin adapter: `#!/usr/bin/env bash`, `INPUT=$(cat)`, `echo "$INPUT" | python -m little_loops.hooks pre_compact_handoff; exit $?`)
+4. Add second PreCompact entry in `hooks/hooks.json` after the existing entry — ordering required (existing entry writes `compacted_at` first)
+5. Write tests in `scripts/tests/test_pre_compact_handoff.py` modeled after `scripts/tests/test_pre_compact.py`: cover LIFO algorithm in isolation, idempotency guard (fresh vs stale prompt), subprocess fanout graceful degradation (each of the three sources fails independently), and result contract (exit 2 + feedback on write, exit 0 on skip). Add `assert "pre_compact_handoff" in table` to `test_dispatch_table_merges_hook_intent_registry` and add `test_dispatch_pre_compact_handoff_happy_path` to `scripts/tests/test_hook_intents.py`
 
 ## Impact
 
 - **Priority**: P3 — Convenience/reliability improvement; compaction is occasional and manual workaround (`/ll:handoff`) exists
-- **Effort**: Medium — New shell script with atomic writes, size-capping logic, idempotency guard, and hook registration
-- **Risk**: Low — Additive hook; existing `precompact-state.sh` entry is preserved; worst case is no snapshot on hook failure
+- **Effort**: Medium — New Python handler with subprocess fanout, size-capping logic, idempotency guard, thin adapter, and hook registration
+- **Risk**: Low — Additive hook; existing `precompact.sh` entry is preserved; worst case is no snapshot on hook failure
 - **Breaking Change**: No
 
 ## Labels
 
-`hooks`, `precompact`, `automation`, `shell-script`
+`hooks`, `precompact`, `automation`, `python`
 
 ---
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): FEAT-1116 (hook-intent abstraction layer) is migrating PreCompact hooks from `hooks/scripts/` shell scripts to Python core handlers with thin per-host adapters. This issue adds a new shell script in the legacy layer FEAT-1116 is retiring. Implement `precompact-handoff.sh` as specified here for the MVP, but scope it to be replaced by — or restructured as — the Python core handler + Claude Code adapter pattern once FEAT-1116's PreCompact migration scaffolding is in place.
+**FEAT-1116 has shipped.** The implementation follows the Python handler + thin Claude Code adapter
+pattern directly (`pre_compact_handoff.py` + `precompact-handoff.sh`). No legacy shell script is
+created under `hooks/scripts/`. The "port to Python later" caveat from earlier passes is now moot.
 
 ## Verification Notes
 
 **Verdict**: VALID — Verified 2026-04-23
 
-- `hooks/scripts/precompact-handoff.sh` does not exist ✓
-- `hooks/hooks.json` has no second PreCompact entry for handoff ✓
+- `scripts/little_loops/hooks/pre_compact_handoff.py` does not exist ✓
+- `hooks/adapters/claude-code/precompact-handoff.sh` does not exist ✓
+- No second PreCompact entry for handoff in `hooks/hooks.json` ✓
 - Feature not yet implemented ✓
 
 ## Confidence Check Notes
@@ -280,11 +282,3 @@ _Added by `/ll:confidence-check` on 2026-06-16_
 - FEAT-1158
 - FEAT-1264
 - FEAT-1315
-
----
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The State Sources section specifies git diff/ll-issues/loops-JSON as the fallback approach — but does not acknowledge FEAT-1262's `.ll/ll-session-events.jsonl` as the richer primary source. If `.ll/ll-session-events.jsonl` is present and non-empty (i.e., FEAT-1262 has been shipping and running), prefer it as the primary source for the files-edited and decisions sections of the snapshot. Fall back to `git diff --name-only HEAD` and `ll-issues list` only when the JSONL is absent. FEAT-1264 (which formally integrates the event log) depends on this issue; this note ensures the fallback/primary distinction is documented in the implementation contract so FEAT-1264 doesn't need to re-explain the fallback semantics.
-
-**Note** (added by `/ll:audit-issue-conflicts` 2026-05-11): This issue implements `precompact-handoff.sh` as a full-logic shell script. FEAT-1116 (Hook-Intent Abstraction Layer) will migrate PreCompact hooks to Python core handlers with thin per-host shell adapters. Implement the shell script as specified here for the MVP, but treat it as temporary: once FEAT-1116's PreCompact migration scaffolding lands, port the snapshot logic to a Python intent handler (e.g., `scripts/little_loops/hooks/pre_compact_handoff.py`) and replace `precompact-handoff.sh` with a thin Claude Code adapter that delegates to the Python handler. Do not embed new business logic in the shell script beyond what is required for the initial implementation.

@@ -140,6 +140,12 @@ This issue modifies only `precompact-handoff.sh`. It does NOT modify:
 
 `hooks`, `session-events`, `precompact`, `integration`
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's implementation plan references `hooks/scripts/precompact-handoff.sh` as the target file to modify. Per FEAT-1156's Scope Boundary, that path does not exist. FEAT-1156 delivers a Python handler at `scripts/little_loops/hooks/pre_compact_handoff.py` and a 3-line passthrough adapter at `hooks/adapters/claude-code/precompact-handoff.sh` (no logic to modify). The event-log integration code shown in the implementation section (bash `jq` extraction into `FILES_EDITED`, `ERRORS`, etc.) must be rewritten as Python inside `pre_compact_handoff.handle()` in `scripts/little_loops/hooks/pre_compact_handoff.py`. The fallback/primary-path structure and size-capping logic remain as described, just in Python rather than bash.
+
 ## Status
 
 **Open** | Created: 2026-04-22 | Priority: P3

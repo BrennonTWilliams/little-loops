@@ -2,7 +2,7 @@
 id: FEAT-1157
 type: FEAT
 priority: P3
-status: deferred
+status: open
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
 blocked_by: [FEAT-1112, FEAT-1156]
@@ -77,6 +77,12 @@ For each: read the test, understand the mtime assumption, confirm whether an aut
 
 - Depends on: FEAT-1156 (hook must exist before these tests can pass)
 - Docs: FEAT-1158
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue adds `TestPrecompactHandoff` to `scripts/tests/test_hooks_integration.py`. FEAT-1262 also adds `TestSessionCapture` to the same file. No logical conflict exists (different test classes), but concurrent edits risk git merge conflicts. If worked in parallel, coordinate line insertions or serialize work on this shared test file.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-05-14T20:42:05 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
