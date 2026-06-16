@@ -1826,3 +1826,147 @@ class TestGetLocalIssues:
         names = [p.name for p in issues]
         assert "P1-BUG-001-open.md" in names
         assert "P2-BUG-002-done.md" not in names
+
+
+class TestReconcilePrMerges:
+    """Tests for GitHubSyncManager.reconcile_pr_merges (ENH-2182)."""
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        from little_loops.logger import Logger
+
+        return MagicMock(spec=Logger)
+
+    @pytest.fixture
+    def sync_config(self, tmp_path: Path) -> BRConfig:
+        """BRConfig with sync enabled and issue dirs set up."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps(
+                {
+                    "sync": {"enabled": True, "github": {"repo": "owner/repo"}},
+                    "issues": {"base_dir": ".issues"},
+                }
+            )
+        )
+        for cat in ("bugs", "features", "enhancements"):
+            (tmp_path / ".issues" / cat).mkdir(parents=True, exist_ok=True)
+        return BRConfig(tmp_path)
+
+    def test_reconcile_promotes_merged_pr(
+        self, sync_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """An in_progress issue with a merged PR is promoted to done."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-feature-branch.md"
+        issue_file.write_text(
+            "---\nid: BUG-001\nstatus: in_progress\nbranch: feature/bug-001-fix\n"
+            "pr_url: https://github.com/owner/repo/pull/42\n---\n\n# BUG-001\n"
+        )
+
+        manager = GitHubSyncManager(sync_config, mock_logger)
+
+        with patch(
+            "little_loops.parallel.github_utils.subprocess.run"
+        ) as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps({"state": "MERGED", "mergedAt": "2026-06-16T12:00:00Z"}),
+                stderr="",
+            )
+            count = manager.reconcile_pr_merges()
+
+        assert count == 1
+        fm = parse_frontmatter(issue_file.read_text())
+        assert fm.get("status") == "done"
+        assert "completed_at" in fm
+
+    def test_reconcile_skips_unmerged_pr(
+        self, sync_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """An in_progress issue with an unmerged PR is left unchanged."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-unmerged.md"
+        issue_file.write_text(
+            "---\nid: BUG-001\nstatus: in_progress\nbranch: feature/bug-001-fix\n"
+            "pr_url: https://github.com/owner/repo/pull/43\n---\n\n# BUG-001\n"
+        )
+
+        manager = GitHubSyncManager(sync_config, mock_logger)
+
+        with patch(
+            "little_loops.parallel.github_utils.subprocess.run"
+        ) as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps({"state": "OPEN", "mergedAt": None}),
+                stderr="",
+            )
+            count = manager.reconcile_pr_merges()
+
+        assert count == 0
+        fm = parse_frontmatter(issue_file.read_text())
+        assert fm.get("status") == "in_progress"
+
+    def test_reconcile_skips_issue_without_pr_or_branch(
+        self, sync_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """An in_progress issue with no pr_url or branch is skipped."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-no-pr.md"
+        issue_file.write_text(
+            "---\nid: BUG-001\nstatus: in_progress\n---\n\n# BUG-001\n"
+        )
+
+        manager = GitHubSyncManager(sync_config, mock_logger)
+
+        with patch(
+            "little_loops.parallel.github_utils.subprocess.run"
+        ) as mock_run:
+            count = manager.reconcile_pr_merges()
+
+        mock_run.assert_not_called()
+        assert count == 0
+
+    def test_reconcile_promotes_merged_leaves_unmerged(
+        self, sync_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Reconcile promotes merged PR to done and leaves unmerged PR at in_progress."""
+        merged_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-merged.md"
+        merged_file.write_text(
+            "---\nid: BUG-001\nstatus: in_progress\nbranch: feature/bug-001\n"
+            "pr_url: https://github.com/owner/repo/pull/10\n---\n\n# BUG-001\n"
+        )
+        unmerged_file = tmp_path / ".issues" / "bugs" / "P2-BUG-002-open-pr.md"
+        unmerged_file.write_text(
+            "---\nid: BUG-002\nstatus: in_progress\nbranch: feature/bug-002\n"
+            "pr_url: https://github.com/owner/repo/pull/11\n---\n\n# BUG-002\n"
+        )
+
+        def fake_gh_run(
+            args: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            # Distinguish by the ref passed to `gh pr view`
+            ref = args[3]
+            if "pull/10" in ref:
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=json.dumps({"state": "MERGED", "mergedAt": "2026-06-16T10:00:00Z"}),
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=0,
+                stdout=json.dumps({"state": "OPEN", "mergedAt": None}),
+                stderr="",
+            )
+
+        manager = GitHubSyncManager(sync_config, mock_logger)
+
+        with patch("little_loops.parallel.github_utils.subprocess.run", side_effect=fake_gh_run):
+            count = manager.reconcile_pr_merges()
+
+        assert count == 1
+        assert parse_frontmatter(merged_file.read_text()).get("status") == "done"
+        assert parse_frontmatter(unmerged_file.read_text()).get("status") == "in_progress"

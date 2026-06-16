@@ -2,10 +2,11 @@
 id: ENH-2182
 title: Reconcile issue status with PR merge in feature-branch mode (done is premature)
 type: ENH
-status: open
+status: done
 priority: P3
 parent: EPIC-2171
 captured_at: '2026-06-15T00:00:00Z'
+completed_at: '2026-06-16T19:07:00Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels:
@@ -21,6 +22,12 @@ blocked_by:
 relates_to:
 - BUG-2172
 - ENH-2181
+confidence_score: 94
+outcome_confidence: 80
+score_complexity: 18
+score_test_coverage: 21
+score_ambiguity: 23
+score_change_surface: 18
 ---
 
 # ENH-2182: Reconcile issue status with PR merge in feature-branch mode (done is premature)
@@ -49,16 +56,32 @@ This enhancement would:
 
 ## Current Behavior
 
-- `orchestrator.py:951-955` — feature-branch success path calls
-  `self.queue.mark_completed(...)` then
-  `self._complete_issue_lifecycle_if_needed(result.issue_id)`.
-- `orchestrator.py:1198-1199` — `_complete_issue_lifecycle_if_needed()` writes
-  `status: done` (and a `## Resolution` section) to the issue frontmatter
-  unconditionally for both modes.
-- Net: an issue is marked `done` as soon as the worker finishes, regardless of
-  whether the branch was pushed (BUG-2172), a PR was opened, or that PR merged.
-  There is no path that ever moves a feature-branch issue to `done`-on-merge,
-  because it is already `done`.
+- `scripts/little_loops/parallel/orchestrator.py:951-955` — feature-branch
+  success path (`_on_worker_result`, inside `elif result.success:`) calls
+  `self.queue.mark_completed(result.issue_id)` then
+  `self._complete_issue_lifecycle_if_needed(result.issue_id)` — writing
+  `status: done` **before** push or PR creation. The ENH-2175 `branch:`/`pr_url:`
+  write follows at lines 987–1014 (a second commit), so `done` lands on disk
+  before the branch field is even recorded.
+- `orchestrator.py:1320` — `_complete_issue_lifecycle_if_needed(self, issue_id: str) -> bool`
+  definition. Returns `bool` (True = lifecycle completed or already complete).
+  Signature takes no mode parameter.
+- `orchestrator.py:~1370` — hardcoded `update_frontmatter(content, {"status": "done", "completed_at": ...})`
+  inside the helper, followed by a `## Resolution` section ("Merged from parallel
+  worker branch"), then a `git add -A` + `git commit` via `self._git_lock.run`.
+- Auto-merge path guard (lines 1017–1031): `done` is written only after
+  `self.merge_coordinator.merged_ids` membership is confirmed. Feature-branch mode
+  has no equivalent guard — hence the premature write.
+- Additional auto-merge `done` writes at `_wait_for_completion` (~line 1200) and
+  `_merge_sequential` (~line 1170), both inside `merged_ids` guards — not affected
+  by this fix.
+- `scripts/little_loops/sync.py` — `GitHubSyncManager` reads only
+  `github_issue:` frontmatter (an integer issue number); no `branch:` or `pr_url:`
+  field access exists anywhere in the file. No `gh pr view` call exists in the
+  entire sync module. Available subcommands (`cli/sync.py:main_sync`): `status`,
+  `push`, `pull`, `diff`, `close`, `reopen` — no `reconcile` subcommand.
+- `scripts/little_loops/parallel/github_utils.py` — does not exist; must be
+  created as a new file.
 
 ## Steps to Reproduce
 
@@ -107,40 +130,101 @@ canonical status enum, which would require schema + coercion changes).
 ## Implementation Steps
 
 1. Hold-state is decided: `in_progress`. No schema change needed.
-2. Parameterize `_complete_issue_lifecycle_if_needed()` (`orchestrator.py:~1198`) to write `in_progress` (not `done`) in feature-branch mode; guard the auto-merge path so it remains unchanged.
-3. Update the feature-branch success branch (`orchestrator.py:~955`) to call the parameterized helper with `"in_progress"` after ENH-2175 records `branch:`/`pr_url:`.
-4. Extract `is_pr_merged(branch: str, pr_url: str | None = None) -> bool` into `scripts/little_loops/parallel/github_utils.py` (new file) using `gh pr view --json state,mergedAt`; use this utility in the `ll-sync` reconciliation step. ENH-2181 (prune) consumes the same utility from this module.
-5. Extend `ll-sync` / `sync-issues` with a PR-merge reconciliation step: for each issue in `in_progress` with a `pr_url:`, call `is_pr_merged()` and promote `status: done` when merged.
-6. Update toggle documentation (ENH-2174) and workflow guide (ENH-2177) to describe the hold state, the promotion path, and how `ll-sync` reconciliation is triggered.
-7. Add tests: feature-branch success → hold state (not `done`); `ll-sync` reconciliation promotes merged-PR issue → `done`, leaves unmerged PR in hold state; auto-merge path unchanged.
+2. Add an optional `terminal_status: str = "done"` parameter to
+   `_complete_issue_lifecycle_if_needed(self, issue_id: str)` at
+   `orchestrator.py:1320`. Change the hardcoded `{"status": "done", ...}` write at
+   `~line 1370` to `{"status": terminal_status, ...}`. Adjust the `## Resolution`
+   section text to reflect hold state when `terminal_status == "in_progress"` (e.g.,
+   "Branch ready, awaiting PR merge") so the commit message is accurate.
+3. In the feature-branch success branch at `orchestrator.py:951-955`, change the
+   call from `self._complete_issue_lifecycle_if_needed(result.issue_id)` to
+   `self._complete_issue_lifecycle_if_needed(result.issue_id, terminal_status="in_progress")`.
+   The ENH-2175 `branch:`/`pr_url:` write at lines 987–1014 follows in the same
+   block — ordering is already correct (hold-state commit → branch/PR-url commit).
+   Auto-merge call sites at `_wait_for_completion` (~line 1200) and
+   `_merge_sequential` (~line 1170) retain the default `terminal_status="done"`.
+4. Create `scripts/little_loops/parallel/github_utils.py` (new file) with:
+   ```python
+   def is_pr_merged(branch: str, pr_url: str | None = None) -> bool
+   ```
+   Model after `_open_pr_for_branch()` at `orchestrator.py:1080`: use
+   `subprocess.run(["gh", "pr", "view", pr_url or branch, "--json", "state,mergedAt"],
+   capture_output=True, text=True, timeout=30)`, parse `json.loads(result.stdout)`,
+   and return `data.get("state") == "MERGED"`. Handle `FileNotFoundError` (gh not
+   installed), `TimeoutExpired`, non-zero returncode, and `json.JSONDecodeError`
+   gracefully (return `False`). ENH-2181 (prune) imports this same function.
+5. Extend `scripts/little_loops/sync.py`:
+   - Add `reconcile_pr_merges(self) -> int` to `GitHubSyncManager`: call
+     `_get_local_issues()` (at `sync.py:264`) to enumerate issues, filter for those
+     with `status: in_progress` and a non-empty `pr_url:` frontmatter field, call
+     `is_pr_merged(branch, pr_url)` for each, and write `status: done` via
+     `update_frontmatter` (from `little_loops.frontmatter`) when merged. Use the
+     existing `_run_gh_command` wrapper pattern at `sync.py` for any additional
+     auth checks. Returns count of issues promoted to `done`.
+   - Add a `reconcile` subcommand in `scripts/little_loops/cli/sync.py:main_sync()`
+     that calls `manager.reconcile_pr_merges()`.
+6. Update toggle documentation (ENH-2174) and workflow guide (ENH-2177) to describe
+   the hold state, the promotion path, and how `ll-sync reconcile` is triggered.
+7. Add tests in `scripts/tests/test_orchestrator.py` (existing file, lines 1759+),
+   following the `patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=...)`
+   pattern used in `test_on_worker_complete_feature_branch_records_branch_in_frontmatter`
+   (line 2008):
+   - Feature-branch success path leaves issue `status: in_progress`, not `done`
+   - Auto-merge path still writes `status: done` (regression guard)
+   - `reconcile_pr_merges()` in `test_sync.py`: patch `little_loops.sync._run_gh_command`,
+     return `{"state": "MERGED", "mergedAt": "..."}` for one issue and
+     `{"state": "OPEN"}` for another; assert first promoted to `done`, second stays
+     `in_progress`
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/parallel/orchestrator.py` — feature-branch success path
-  (~line 955): stop calling `_complete_issue_lifecycle_if_needed()` (or pass a
-  mode flag so it writes the hold state instead of `done`)
+  at line 955 (`_on_worker_result`): change call to pass `terminal_status="in_progress"`
 - `scripts/little_loops/parallel/orchestrator.py` — `_complete_issue_lifecycle_if_needed`
-  (~line 1198): parameterize the terminal status it writes
-- `scripts/little_loops/ll_sync.py` (or the `sync-issues` surface) — add a
-  reconciliation that promotes feature-branch issues to `done` on PR merge
-- `scripts/little_loops/parallel/github_utils.py` — new file; contains `is_pr_merged()` utility
+  at line 1320: add `terminal_status: str = "done"` parameter; change hardcoded
+  `{"status": "done", ...}` write at ~line 1370 to use `terminal_status`
+- `scripts/little_loops/sync.py` — add `reconcile_pr_merges()` to
+  `GitHubSyncManager`; reads `_get_local_issues()` (line 264) filtering for
+  `status: in_progress` + `pr_url:` field; calls `is_pr_merged()`; writes `done`
+  via `update_frontmatter` from `little_loops.frontmatter`
+- `scripts/little_loops/cli/sync.py` — add `reconcile` subcommand to
+  `main_sync()` (line 17 area)
+- `scripts/little_loops/parallel/github_utils.py` — **new file**; exports
+  `is_pr_merged(branch: str, pr_url: str | None = None) -> bool` using
+  `subprocess.run(["gh", "pr", "view", ..., "--json", "state,mergedAt"], timeout=30)`;
+  follows error-handling shape of `_open_pr_for_branch()` at `orchestrator.py:1080`
+
+### Callers of `_complete_issue_lifecycle_if_needed` (must not regress)
+- `orchestrator.py:955` — feature-branch success path (**changes** to `in_progress`)
+- `orchestrator.py:1026` — auto-merge success callback (retains default `done`)
+- `orchestrator.py:~1170` — `_merge_sequential` (retains default `done`)
+- `orchestrator.py:~1200` — `_wait_for_completion` (retains default `done`)
 
 ### Dependencies
-- **ENH-2175** — supplies the recorded `branch:` / `pr_url:` the reconciliation
-  reads to find each issue's PR.
+- **ENH-2175** (done) — supplies `branch:` / `pr_url:` frontmatter fields the
+  reconciliation reads; confirmed written at `orchestrator.py:987-1014`
 - **BUG-2172** — establishes the push/PR flow and `base_branch` (the merge
-  target the reconciliation checks against).
+  target `gh pr view` checks against)
 
-### Similar Patterns
-- Auto-merge success path (`orchestrator.py:958-967`) — the mode where `done` is
-  legitimately written on merge; model the feature-branch promotion on the same
-  "only-on-merge" principle.
-- `ll-sync` GitHub status pull — existing GitHub state read to extend.
+### Utilities & Shared Patterns
+- `scripts/little_loops/frontmatter.py` — `update_frontmatter(content, updates)` /
+  `parse_frontmatter(content)` — canonical frontmatter write; used by orchestrator
+  and sync already
+- `_run_gh_command(args, logger, check)` in `sync.py` — existing `gh` CLI wrapper
+  used for all gh calls in the sync module; follow for any auth checks in
+  reconciliation
+- `_open_pr_for_branch()` at `orchestrator.py:1080` — reference implementation
+  for `gh pr view` subprocess call shape (timeout, FileNotFoundError, TimeoutExpired
+  handling)
 
 ### Tests
-- `scripts/tests/test_parallel_orchestrator.py` — hold-state vs `done` per mode
-- `scripts/tests/` sync tests — PR-merge → `done` promotion; unmerged → hold
+- `scripts/tests/test_orchestrator.py` (existing, lines 1759+) — hold-state vs
+  `done` per mode; follow `test_on_worker_complete_feature_branch_records_branch_in_frontmatter`
+  (line 2008) pattern: patch `little_loops.parallel.orchestrator.subprocess.run`
+- `scripts/tests/test_sync.py` — PR-merge → `done` promotion; unmerged → hold
+  state; follow `patch("little_loops.sync._run_gh_command")` pattern
+- **Note**: `test_parallel_orchestrator.py` does not exist — use `test_orchestrator.py`
 
 ## Impact
 
@@ -158,6 +242,8 @@ canonical status enum, which would require schema + coercion changes).
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-16T18:59:08 - `5098d00f-1cd6-4670-aef2-adfa732238b2.jsonl`
+- `/ll:refine-issue` - 2026-06-16T18:53:13 - `a5cfe2d2-fa69-45f3-86aa-e4e5dfba5bdd.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:51:38 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
 - `/ll:format-issue` - 2026-06-15T20:17:49 - `80f4c8dd-8652-4bca-bbbc-08ee87084746.jsonl`
 - `/ll:capture-issue` - 2026-06-15 - added to EPIC-2171 (premature-`done` / merge-reconciliation gap identified during EPIC review)

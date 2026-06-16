@@ -39,6 +39,7 @@ Examples:
   %(prog)s close --all-completed  # Close all completed issues on GitHub
   %(prog)s reopen BUG-042     # Reopen GitHub issue for BUG-042
   %(prog)s reopen --all-reopened  # Reopen all issues moved back to active locally
+  %(prog)s reconcile          # Promote feature-branch issues to done when PR is merged
 """,
         )
 
@@ -89,6 +90,12 @@ Examples:
             "--all-completed",
             action="store_true",
             help="Close all GitHub issues whose local counterparts have status: done or status: cancelled",
+        )
+
+        # Reconcile subcommand
+        subparsers.add_parser(
+            "reconcile",
+            help="Promote feature-branch issues to done when their PR is merged",
         )
 
         # Reopen subcommand
@@ -185,6 +192,15 @@ Examples:
             result = manager.reopen_issues(issue_ids, all_reopened=all_reopened)
             _print_sync_result(result, logger)
             return 0 if result.success else 1
+
+        elif args.action == "reconcile":
+            if dry_run:
+                logger.info(
+                    "[DRY RUN] Showing which feature-branch issues would be promoted (no changes will be made)"
+                )
+            count = manager.reconcile_pr_merges()
+            logger.info(f"Reconcile complete: {count} issue(s) promoted to done")
+            return 0
 
         return 1
 

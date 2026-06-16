@@ -950,9 +950,10 @@ class ParallelOrchestrator:
                         self.state.corrections[result.issue_id] = result.corrections
             if self.parallel_config.use_feature_branches:
                 # Feature branch mode: skip auto-merge, branch stays alive (ENH-665, BUG-2172)
+                # Hold issue at in_progress until PR is merged; ll-sync reconcile promotes to done (ENH-2182)
                 self.logger.info(f"{result.issue_id}: feature branch ready — {result.branch_name}")
                 self.queue.mark_completed(result.issue_id)
-                self._complete_issue_lifecycle_if_needed(result.issue_id)
+                self._complete_issue_lifecycle_if_needed(result.issue_id, terminal_status="in_progress")
                 branch_state: dict[str, Any] = {
                     "branch_name": result.branch_name,
                     "pushed": False,
@@ -1317,11 +1318,15 @@ class ParallelOrchestrator:
                 "then 'git stash pop' or 'git stash apply stash@{N}'"
             )
 
-    def _complete_issue_lifecycle_if_needed(self, issue_id: str) -> bool:
-        """Complete issue lifecycle by writing ``status: done`` to frontmatter.
+    def _complete_issue_lifecycle_if_needed(
+        self, issue_id: str, terminal_status: str = "done"
+    ) -> bool:
+        """Complete issue lifecycle by writing status to frontmatter.
 
         Args:
             issue_id: ID of the issue to complete
+            terminal_status: Status to write — ``"done"`` for auto-merge,
+                ``"in_progress"`` for feature-branch hold (ENH-2182)
 
         Returns:
             True if lifecycle was completed (or already complete), False on error
@@ -1345,6 +1350,12 @@ class ParallelOrchestrator:
             # Add resolution section if not already present
             if "## Resolution" not in content:
                 action = self.br_config.get_category_action(info.issue_type)
+                if terminal_status == "in_progress":
+                    status_label = "Branch ready, awaiting PR merge"
+                    impl_note = "Feature branch created; PR pending review and merge"
+                else:
+                    status_label = "Completed (parallel merge fallback)"
+                    impl_note = "Merged from parallel worker branch"
                 resolution = f"""
 
 ---
@@ -1353,8 +1364,8 @@ class ParallelOrchestrator:
 
 - **Action**: {action}
 - **Completed**: {datetime.now(UTC).strftime("%Y-%m-%d")}
-- **Status**: Completed (parallel merge fallback)
-- **Implementation**: Merged from parallel worker branch
+- **Status**: {status_label}
+- **Implementation**: {impl_note}
 
 ### Changes Made
 - See git history for implementation details
@@ -1367,13 +1378,10 @@ class ParallelOrchestrator:
 """
                 content += resolution
 
-            content = update_frontmatter(
-                content,
-                {
-                    "status": "done",
-                    "completed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                },
-            )
+            fm_updates: dict[str, Any] = {"status": terminal_status}
+            if terminal_status == "done":
+                fm_updates["completed_at"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            content = update_frontmatter(content, fm_updates)
             original_path.write_text(content)
             append_session_log_entry(original_path, "ll-parallel")
 
@@ -1384,9 +1392,13 @@ class ParallelOrchestrator:
             )
 
             action = self.br_config.get_category_action(info.issue_type)
+            if terminal_status == "in_progress":
+                lifecycle_note = "Feature branch ready — status: in_progress (awaiting PR merge)"
+            else:
+                lifecycle_note = "Parallel merge fallback — status: done written to frontmatter"
             commit_msg = f"""{action}({info.issue_type}): complete {issue_id} lifecycle
 
-Parallel merge fallback - status: done written to frontmatter.
+{lifecycle_note}
 
 Issue: {issue_id}
 Type: {info.issue_type}

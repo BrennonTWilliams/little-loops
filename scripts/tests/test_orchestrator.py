@@ -2136,6 +2136,82 @@ class TestOnWorkerComplete:
         # pr_url: must NOT be overwritten — existing URL preserved
         assert fm.get("pr_url") == existing_url
 
+    def test_feature_branch_success_writes_in_progress_not_done(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_issue: MagicMock,
+    ) -> None:
+        """Feature-branch success leaves issue at in_progress, not done (ENH-2182)."""
+        original_path = temp_repo_with_config / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        original_path.write_text("---\nid: BUG-001\nstatus: open\n---\n\n# BUG-001\n")
+        mock_issue.path = original_path
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        git_ok: MagicMock = MagicMock()
+        git_ok.returncode = 0
+        git_ok.stdout = "[main abc1234] commit"
+        git_ok.stderr = ""
+        orchestrator._git_lock.run = lambda *a, **kw: git_ok  # type: ignore[method-assign]
+
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = False
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001-fix",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        from little_loops.frontmatter import parse_frontmatter
+
+        content = original_path.read_text()
+        fm = parse_frontmatter(content)
+        assert fm.get("status") == "in_progress", "Feature-branch success must hold at in_progress"
+        assert "completed_at" not in fm
+
+    def test_auto_merge_success_still_writes_done(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_issue: MagicMock,
+    ) -> None:
+        """Auto-merge success path still writes done (regression guard, ENH-2182)."""
+        original_path = temp_repo_with_config / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        original_path.write_text("---\nid: BUG-001\nstatus: open\n---\n\n# BUG-001\n")
+        mock_issue.path = original_path
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        git_ok: MagicMock = MagicMock()
+        git_ok.returncode = 0
+        git_ok.stdout = "[main abc1234] commit"
+        git_ok.stderr = ""
+        orchestrator._git_lock.run = lambda *a, **kw: git_ok  # type: ignore[method-assign]
+
+        orchestrator.parallel_config.use_feature_branches = False
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]  # type: ignore[misc]
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        from little_loops.frontmatter import parse_frontmatter
+
+        content = original_path.read_text()
+        fm = parse_frontmatter(content)
+        assert fm.get("status") == "done", "Auto-merge path must still write done"
+        assert "completed_at" in fm
+
 
 class TestMergeSequential:
     """Tests for _merge_sequential method."""
@@ -2368,6 +2444,64 @@ class TestCompleteIssueLifecycle:
         assert parse_frontmatter(content).get("status") == "done"
         # No completed/ directory was created
         assert not (temp_repo_with_config / ".issues" / "completed" / original_path.name).exists()
+
+    def test_complete_lifecycle_in_progress_writes_in_progress_not_done(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_issue: MagicMock,
+    ) -> None:
+        """terminal_status='in_progress' writes in_progress (not done) with no completed_at (ENH-2182)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        original_path = temp_repo_with_config / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        original_path.write_text("# BUG-001: Test\n\n## Resolution\n\nDone.\n")
+        mock_issue.path = original_path
+        mock_issue.issue_type = "bugs"
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        git_ok = MagicMock()
+        git_ok.returncode = 0
+        git_ok.stdout = "[main abc1234] commit"
+        git_ok.stderr = ""
+        orchestrator._git_lock.run = lambda *a, **kw: git_ok  # type: ignore[method-assign]
+
+        result = orchestrator._complete_issue_lifecycle_if_needed("BUG-001", terminal_status="in_progress")
+
+        assert result is True
+        content = original_path.read_text()
+        fm = parse_frontmatter(content)
+        assert fm.get("status") == "in_progress"
+        assert "completed_at" not in fm
+
+    def test_complete_lifecycle_done_still_writes_completed_at(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_issue: MagicMock,
+    ) -> None:
+        """Default terminal_status='done' still writes completed_at timestamp (regression guard)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        original_path = temp_repo_with_config / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        original_path.write_text("# BUG-001: Test\n\n## Resolution\n\nDone.\n")
+        mock_issue.path = original_path
+        mock_issue.issue_type = "bugs"
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        git_ok = MagicMock()
+        git_ok.returncode = 0
+        git_ok.stdout = "[main abc1234] commit"
+        git_ok.stderr = ""
+        orchestrator._git_lock.run = lambda *a, **kw: git_ok  # type: ignore[method-assign]
+
+        result = orchestrator._complete_issue_lifecycle_if_needed("BUG-001")
+
+        assert result is True
+        content = original_path.read_text()
+        fm = parse_frontmatter(content)
+        assert fm.get("status") == "done"
+        assert "completed_at" in fm
 
 
 class TestCleanup:

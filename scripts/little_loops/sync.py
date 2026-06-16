@@ -1138,3 +1138,48 @@ class GitHubSyncManager:
             result.success = False
 
         return result
+
+    def reconcile_pr_merges(self) -> int:
+        """Promote feature-branch issues to done when their PR has been merged.
+
+        Enumerates all in_progress issues that have a ``pr_url:`` or ``branch:``
+        frontmatter field, queries GitHub PR state via ``gh pr view``, and writes
+        ``status: done`` for any whose PR has been merged into the base branch.
+
+        Returns:
+            Count of issues promoted to ``done``
+        """
+        from little_loops.parallel.github_utils import is_pr_merged
+
+        promoted = 0
+        for issue_path in self._get_local_issues():
+            try:
+                content = issue_path.read_text(encoding="utf-8")
+                fm = parse_frontmatter(content)
+                if fm.get("status") != "in_progress":
+                    continue
+                pr_url = fm.get("pr_url") or None
+                branch = fm.get("branch") or None
+                if not pr_url and not branch:
+                    continue
+                if is_pr_merged(branch or "", pr_url):
+                    issue_id = self._extract_issue_id(issue_path.name)
+                    if self.dry_run:
+                        self.logger.info(
+                            f"[DRY RUN] Would promote {issue_id} to done (PR merged)"
+                        )
+                        promoted += 1
+                    else:
+                        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+                        new_content = update_frontmatter(
+                            content, {"status": "done", "completed_at": now}
+                        )
+                        issue_path.write_text(new_content, encoding="utf-8")
+                        self.logger.success(f"Promoted {issue_id} to done (PR merged)")
+                        promoted += 1
+            except Exception as exc:
+                self.logger.warning(
+                    f"reconcile: error processing {issue_path.name}: {exc}"
+                )
+
+        return promoted
