@@ -332,6 +332,7 @@ Process issues concurrently using isolated git worktrees.
 | `--ignore-pending` | | Report pending work but continue without merging |
 | `--stream-output` | | Stream Claude CLI subprocess output to console |
 | `--show-model` | | Verify and display model on worktree setup |
+| `--feature-branches` | | Enable/disable feature-branch mode (`--feature-branches` / `--no-feature-branches`); overrides `parallel.use_feature_branches` in config for this run |
 | `--overlap-detection` | | Enable pre-flight overlap detection to reduce merge conflicts |
 | `--warn-only` | | With `--overlap-detection`, warn instead of serializing |
 | `--dry-run` | `-n` | Show what would be processed |
@@ -348,7 +349,7 @@ Process issues concurrently using isolated git worktrees.
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 
-> **Config tip:** Branch naming and merge behavior are controlled by `parallel.use_feature_branches` in `ll-config.json`. When `true`, branches are named `feature/<id>-<slug>` and auto-merge is skipped, leaving PR-ready branches for review. See [Configuration reference](CONFIGURATION.md#parallel).
+> **Config tip:** Branch naming and merge behavior are controlled by `parallel.use_feature_branches` in `ll-config.json`. When `true`, branches are named `feature/<id>-<slug>` and auto-merge is skipped, leaving PR-ready branches for review. Set `parallel.push_feature_branches: true` to also push branches to remote after success, and `parallel.open_pr_for_feature_branches: true` to open a draft PR via `gh` and record `pr_url:` on the issue. See [Configuration reference](CONFIGURATION.md#parallel) and the [Feature-Branch / PR-Based Workflow](../guides/SPRINT_GUIDE.md#feature-branch--pr-based-workflow) guide.
 
 **Examples:**
 ```bash
@@ -394,6 +395,7 @@ Execute a sprint or resolve an EPIC's active children as a sprint.
 |---------------|-------|-------------|
 | `sprint` | | Sprint name **or** EPIC ID (e.g. `EPIC-1234`) to resolve and execute |
 | `--dry-run` | `-n` | Show plan without running |
+| `--feature-branches` | | Enable/disable feature-branch mode (`--feature-branches` / `--no-feature-branches`); overrides `parallel.use_feature_branches` in config for this run |
 | `--max-workers` | `-w` | Max parallel workers |
 | `--timeout` | `-t` | Timeout per issue in seconds |
 | `--config` | | Path to project root |

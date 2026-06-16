@@ -263,6 +263,28 @@ After each wave completes:
 - State is checkpointed to `.sprint-state.json`
 - Execution continues to the next wave
 
+### Feature-Branch / PR-Based Workflow
+
+By default, multi-issue waves auto-merge each worktree back to the current branch. To use a PR-based CI/CD workflow instead, set `parallel.use_feature_branches: true` in `.ll/ll-config.json` — or pass `--feature-branches` on the CLI to override config for a single run.
+
+**What changes when feature branches are enabled:**
+
+- Each issue in a multi-issue wave gets a `feature/<id>-<slug>` branch (e.g., `feature/bug-001-fix-null-ptr`) instead of the temporary `parallel/<id>-<timestamp>` branch
+- Auto-merge is skipped — branches survive as PR-ready
+- `branch: feature/<id>-<slug>` is written to the issue's frontmatter for traceability
+- The issue stays at `status: in_progress` until the PR merges; use `ll-sync` to reconcile status once merged (ENH-2182)
+
+**Optional push and PR sub-flags** (both default `false`):
+
+| Config key | Default | Effect |
+|---|---|---|
+| `push_feature_branches` | `false` | Push the branch to `remote_name` (default `origin`) via `git push --force-with-lease` after worker success |
+| `open_pr_for_feature_branches` | `false` | Open a draft PR via `gh pr create` after push; records `pr_url:` on the issue; requires `push_feature_branches: true` and `gh auth status` |
+
+Set `push_feature_branches: true` to push branches automatically after each issue finishes. Add `open_pr_for_feature_branches: true` to also open a draft PR and record `pr_url:` on the issue. If `gh` is unavailable or unauthenticated, the push proceeds but the PR step is skipped with a warning.
+
+> **Coverage boundary**: `use_feature_branches` only applies to multi-issue waves dispatched through `ParallelOrchestrator`. Single-issue waves and contention sub-waves always run in-place on the current branch — no worktree is created and no feature branch is produced for those issues. When feature branches are enabled and a wave runs in-place, `ll-sprint` emits a one-time warning naming the branch where work lands.
+
 ### Failed Issues
 
 If an issue fails during a **multi-issue parallel wave**, the runner:

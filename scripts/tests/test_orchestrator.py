@@ -2213,6 +2213,170 @@ class TestOnWorkerComplete:
         assert "completed_at" in fm
 
 
+class TestFeatureBranchE2E:
+    """End-to-end integration tests for the feature-branch workflow composition (ENH-2177).
+
+    Each test exercises _on_worker_complete for two issues so the multi-issue
+    (parallel-wave) path is covered, not just single-issue slices.
+    """
+
+    def _register_issue(
+        self,
+        orchestrator: ParallelOrchestrator,
+        issue_id: str,
+        path: Path,
+    ) -> None:
+        issue = MagicMock(spec=IssueInfo)
+        issue.issue_id = issue_id
+        issue.issue_type = "bugs"
+        issue.title = f"Test {issue_id}"
+        issue.priority = "P1"
+        issue.path = path
+        orchestrator._issue_info_by_id[issue_id] = issue
+
+    def test_feature_branch_push_only_two_issues(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Full chain for two issues: branch created → push invoked → branch: written → status: in_progress."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        bugs_dir = temp_repo_with_config / ".issues" / "bugs"
+        path_001 = bugs_dir / "P1-BUG-001-test-bug.md"
+        path_002 = bugs_dir / "P1-BUG-002-another-bug.md"
+        path_001.write_text("---\nid: BUG-001\nstatus: open\n---\n\n# BUG-001\n")
+        path_002.write_text("---\nid: BUG-002\nstatus: open\n---\n\n# BUG-002\n")
+        self._register_issue(orchestrator, "BUG-001", path_001)
+        self._register_issue(orchestrator, "BUG-002", path_002)
+
+        git_ok: MagicMock = MagicMock()
+        git_ok.returncode = 0
+        git_ok.stdout = "[main abc1234] commit"
+        git_ok.stderr = ""
+        orchestrator._git_lock.run = lambda *a, **kw: git_ok  # type: ignore[method-assign]
+
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = True
+        orchestrator.parallel_config.open_pr_for_feature_branches = False
+        orchestrator.parallel_config.remote_name = "origin"
+
+        import subprocess
+
+        push_calls: list[list[str]] = []
+
+        def fake_subprocess_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if args[0] == "git" and "push" in args:
+                push_calls.append(args)
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="unexpected")
+
+        with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run):
+            for iid, branch in [
+                ("BUG-001", "feature/bug-001-test-bug"),
+                ("BUG-002", "feature/bug-002-another-bug"),
+            ]:
+                orchestrator._on_worker_complete(
+                    WorkerResult(
+                        issue_id=iid,
+                        success=True,
+                        branch_name=branch,
+                        worktree_path=Path("/tmp/worktree"),
+                        duration=10.0,
+                    )
+                )
+
+        # Both branches pushed
+        assert len(push_calls) == 2
+        pushed_branches = {call[4] for call in push_calls}
+        assert pushed_branches == {"feature/bug-001-test-bug", "feature/bug-002-another-bug"}
+
+        # Both issues: branch: written, no pr_url:, status: in_progress
+        for path, branch in [
+            (path_001, "feature/bug-001-test-bug"),
+            (path_002, "feature/bug-002-another-bug"),
+        ]:
+            fm = parse_frontmatter(path.read_text())
+            assert fm.get("branch") == branch, f"{path.name}: expected branch: {branch}"
+            assert "pr_url" not in fm, f"{path.name}: pr_url should not be written without open_pr"
+            assert fm.get("status") == "in_progress", f"{path.name}: status must be held at in_progress"
+
+    def test_feature_branch_push_and_pr_two_issues(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Full chain for two issues with PR: push + gh pr create → pr_url: written → status: in_progress."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        bugs_dir = temp_repo_with_config / ".issues" / "bugs"
+        path_001 = bugs_dir / "P1-BUG-001-test-bug.md"
+        path_002 = bugs_dir / "P1-BUG-002-another-bug.md"
+        path_001.write_text("---\nid: BUG-001\nstatus: open\n---\n\n# BUG-001\n")
+        path_002.write_text("---\nid: BUG-002\nstatus: open\n---\n\n# BUG-002\n")
+        self._register_issue(orchestrator, "BUG-001", path_001)
+        self._register_issue(orchestrator, "BUG-002", path_002)
+
+        git_ok: MagicMock = MagicMock()
+        git_ok.returncode = 0
+        git_ok.stdout = "[main abc1234] commit"
+        git_ok.stderr = ""
+        orchestrator._git_lock.run = lambda *a, **kw: git_ok  # type: ignore[method-assign]
+
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = True
+        orchestrator.parallel_config.open_pr_for_feature_branches = True
+        orchestrator.parallel_config.remote_name = "origin"
+        orchestrator.parallel_config.base_branch = "main"
+
+        import subprocess
+
+        pr_counter = [0]
+
+        def fake_subprocess_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if args[0] == "git" and "push" in args:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh" and args[1] == "auth":
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh" and args[1] == "pr":
+                pr_counter[0] += 1
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0,
+                    stdout=f"https://github.com/owner/repo/pull/{pr_counter[0]}",
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="unexpected")
+
+        with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run):
+            for iid, branch in [
+                ("BUG-001", "feature/bug-001-test-bug"),
+                ("BUG-002", "feature/bug-002-another-bug"),
+            ]:
+                orchestrator._on_worker_complete(
+                    WorkerResult(
+                        issue_id=iid,
+                        success=True,
+                        branch_name=branch,
+                        worktree_path=Path("/tmp/worktree"),
+                        duration=10.0,
+                    )
+                )
+
+        # Two PRs were opened (one per issue)
+        assert pr_counter[0] == 2
+
+        # Both issues: branch: and pr_url: written, status: in_progress
+        fm_001 = parse_frontmatter(path_001.read_text())
+        assert fm_001.get("branch") == "feature/bug-001-test-bug"
+        assert fm_001.get("pr_url") is not None
+        assert fm_001.get("status") == "in_progress"
+
+        fm_002 = parse_frontmatter(path_002.read_text())
+        assert fm_002.get("branch") == "feature/bug-002-another-bug"
+        assert fm_002.get("pr_url") is not None
+        assert fm_002.get("status") == "in_progress"
+
+
 class TestMergeSequential:
     """Tests for _merge_sequential method."""
 

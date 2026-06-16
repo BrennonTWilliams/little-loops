@@ -2,15 +2,35 @@
 id: ENH-2177
 title: Document the feature-branch workflow end-to-end and add an integration test
 type: ENH
-status: open
+status: done
 priority: P4
 parent: EPIC-2171
 captured_at: '2026-06-15T17:30:00Z'
+completed_at: '2026-06-16T20:16:27Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
-labels: [parallel, feature-branches, docs, testing, workflow]
-relates_to: [BUG-2172, ENH-2173, ENH-2175]
-blocked_by: [BUG-2172, ENH-2173, ENH-2175, ENH-2176, ENH-2182]
+labels:
+- parallel
+- feature-branches
+- docs
+- testing
+- workflow
+relates_to:
+- BUG-2172
+- ENH-2173
+- ENH-2175
+blocked_by:
+- BUG-2172
+- ENH-2173
+- ENH-2175
+- ENH-2176
+- ENH-2182
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # ENH-2177: Document the feature-branch workflow end-to-end and add an integration test
@@ -96,25 +116,45 @@ ENH-2175 is guarded against regressions.
 
 ### Files to Modify
 - `docs/guides/SPRINT_GUIDE.md` — new end-to-end "Feature-branch / PR-based
-  workflow" section
-- `docs/reference/CLI.md` — `--feature-branches` override entry and push/PR
-  sub-flag entries
-- `docs/reference/CONFIGURATION.md` — `use_feature_branches` + push/PR sub-flags
+  workflow" section (model on the existing `### Wave Execution` paragraph at
+  line 258 and the `> **Coverage boundary**:` blockquote at line 260)
+- `docs/reference/CLI.md` — `--feature-branches` flag entry; the `> Config tip:`
+  blockquote at line 351 already exists but the flag row in the `ll-parallel` table
+  (lines 325–366) is the insertion point
+- `docs/reference/CONFIGURATION.md` — `push_feature_branches` and
+  `open_pr_for_feature_branches` table rows missing from `### parallel` section
+  (lines 316–336); `use_feature_branches` row at line 334 and `remote_name` at
+  line 335 are already present
 
 ### Dependent Files (Callers/Importers)
-- N/A — doc-only changes; the test file imports `ll_parallel` orchestrator under
-  test, not a new public API
+- Doc-only changes have no callers. The integration test will import:
+  - `little_loops.parallel.orchestrator` — `ParallelOrchestrator`
+  - `little_loops.parallel.types` — `ParallelConfig`
+  - `little_loops.config.core` — `BRConfig`
+  - `little_loops.frontmatter` — `parse_frontmatter`
 
 ### Similar Patterns
-- Existing parallel-workflow section in `docs/guides/SPRINT_GUIDE.md` — model
-  the new feature-branch section on the same heading/subsection structure
-- Existing flag reference entries in `docs/reference/CLI.md` — follow the same
-  flag-description table format
+- `docs/guides/SPRINT_GUIDE.md` lines 255–261 — model new feature-branch prose on
+  the `### Wave Execution` heading + `> **Coverage boundary**:` blockquote shape
+- `docs/reference/CLI.md` lines 325–366 — `ll-parallel` flag table format to
+  follow; the `> **Config tip:**` blockquote at line 351 already cross-links to
+  CONFIGURATION.md (good model for `--feature-branches` entry)
+- `docs/reference/CONFIGURATION.md` lines 316–336 — `### parallel` table for the
+  two missing rows (`push_feature_branches`, `open_pr_for_feature_branches`)
+- `scripts/tests/test_orchestrator.py` `TestOnWorkerComplete` class (lines 1759–2214) —
+  existing unit tests per feature-branch slice; model the new integration test on
+  the `fake_subprocess_run` side-effect pattern (lines 1829–1868) and the
+  `parse_frontmatter` assertion pattern (lines 2008–2043)
 
 ### Tests
-- `scripts/tests/test_parallel_orchestrator.py` (or a new
-  `test_feature_branch_workflow.py`) — end-to-end composed assertion (push/PR
-  calls mocked via `unittest.mock.patch`)
+- `scripts/tests/test_orchestrator.py` — existing unit tests in `TestOnWorkerComplete`
+  class (lines 1759–2214); the new integration test should be added here or in a
+  separate `test_feature_branch_e2e.py`; mock path:
+  `patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run)`
+- `scripts/tests/test_worker_pool.py` — `test_process_issue_uses_feature_branch_name_when_enabled()`
+  at line 2131 for branch-naming slice (already covered, not duplicated)
+- `scripts/tests/test_cli_sprint.py` — `TestFeatureBranchInPlaceWarning` class covers
+  ENH-2176 warning behavior (already covered, not duplicated)
 
 ### Documentation
 - `docs/reference/CLI.md` and `docs/reference/CONFIGURATION.md` cross-link to
@@ -130,19 +170,34 @@ ENH-2175 is guarded against regressions.
 
 ## Implementation Steps
 
-1. Confirm BUG-2172, ENH-2173, ENH-2175, ENH-2176 are merged (capstone — depends
-   on final wording/flags from those issues)
-2. Draft "Feature-branch / PR-based workflow" section in `docs/guides/SPRINT_GUIDE.md`
-   covering: enabling via config or `--feature-branches`, push/PR sub-flags and
-   their defaults, `gh` requirement, what gets recorded (`branch:` / `pr_url:`),
-   and the single-issue-wave boundary
-3. Add `--feature-branches` and push/PR sub-flag entries to `docs/reference/CLI.md`
-   and `use_feature_branches` + sub-flags to `docs/reference/CONFIGURATION.md`;
-   cross-link to the new SPRINT_GUIDE section
-4. Write end-to-end integration test in a temp git repo with mocked push/PR calls
-   asserting: branch created → push invoked with correct args → `branch:`/`pr_url:`
-   written to issue frontmatter
-5. Run `ll-verify-docs` to confirm no broken links introduced by the additions
+1. Confirm BUG-2172, ENH-2173, ENH-2175, ENH-2176 are merged (ENH-2182 is already
+   done per commit c80f82f4); coordinate with final wording from BUG-2172 before
+   writing the "PR-ready" language in docs
+2. Add a `### Feature-Branch / PR-Based Workflow` H3 section inside
+   `docs/guides/SPRINT_GUIDE.md` after the existing `### Wave Execution` paragraph
+   (line 258); cover: enabling via config `parallel.use_feature_branches` or
+   `--feature-branches` flag, the `push_feature_branches` / `open_pr_for_feature_branches`
+   sub-flags and their defaults (both `false`), the `gh auth status` precondition,
+   what gets recorded (`branch:` always, `pr_url:` only if PR opened), the
+   single-issue-wave warning from `cli/sprint/run.py`, and the
+   `status: in_progress` hold until PR merges
+3. In `docs/reference/CLI.md` (lines 325–366), add `--feature-branches /
+   --no-feature-branches` row to the `ll-parallel` flag table following the
+   `BooleanOptionalAction` default-`None` semantics; mirror the row in the
+   `ll-sprint` flag table; update the existing `> Config tip:` blockquote at
+   line 351 to also mention `push_feature_branches` and `open_pr_for_feature_branches`
+4. In `docs/reference/CONFIGURATION.md` `### parallel` section (lines 316–336),
+   add the two missing table rows: `push_feature_branches` (default `false`) and
+   `open_pr_for_feature_branches` (default `false`); cross-link both from the
+   `use_feature_branches` row already at line 334
+5. Write integration test in `scripts/tests/test_orchestrator.py` (or new
+   `test_feature_branch_e2e.py`) using the `temp_repo_with_config` fixture
+   (lines 50–88 in `test_orchestrator.py`) and a `fake_subprocess_run`
+   side-effect (pattern: lines 1829–1868) that dispatches `git push` and
+   `gh pr create` calls; assert via `parse_frontmatter()` that `branch:` is written
+   and `pr_url:` is written only when `open_pr_for_feature_branches=True`; assert
+   `status: in_progress` is held (not `done`)
+6. Run `ll-verify-docs` to confirm no broken links introduced by the additions
 
 ## Impact
 
@@ -158,6 +213,10 @@ ENH-2175 is guarded against regressions.
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-16T20:07:47 - `c78fbd64-67b2-4313-b745-fc5bf1a97cb1.jsonl`
+- `/ll:confidence-check` - 2026-06-16T20:00:00Z - `a62eab42-672d-4938-a889-8f7f41408abe.jsonl`
+- `/ll:refine-issue` - 2026-06-16T19:59:32 - `9b87a7ff-f929-468a-be7c-8ddc441b752e.jsonl`
+- `/ll:confidence-check` - 2026-06-16T00:00:00Z - `98177882-cbdf-4d87-8f9e-d9221da608a5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:51:38 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:33:22 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T20:17:30 - `6bcffe20-05d5-4d4e-9464-920433a7db90.jsonl`
