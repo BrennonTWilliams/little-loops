@@ -31,7 +31,7 @@ context:
   judge_retry_max: 3             # max evaluate retries for transient LLM API errors
   action_fail_max: 3             # max consecutive action failures before replan
   plan_error_max: 2              # max consecutive plan LLM errors before diagnosing
-  plan_timeout_sec: 300          # plan state timeout in seconds (configurable)
+  plan_timeout_sec: 120          # plan state timeout in seconds (per-category tasks are small)
   plan_retry_max: 2              # max plan timeout retries before escalating to diagnose
   cc_error_max: 2                # max consecutive check_completion LLM errors before diagnosing
   snapshot_detail: "compact"     # compact (default) or full snapshot output
@@ -316,7 +316,7 @@ states:
 
       Remember: you can only interact through agent-desktop commands. You
       cannot run arbitrary shell scripts or system commands.
-    timeout: 300                                # plan state timeout in seconds (see context.plan_timeout_sec)
+    timeout: 120                                # plan state timeout in seconds (see context.plan_timeout_sec)
     capture: plan_output
     evaluate:
       type: output_contains
@@ -324,7 +324,6 @@ states:
     on_yes: execute_action
     on_no: _route_plan_verdict
     on_error: _handle_plan_error
-    on_timeout: _handle_plan_timeout
 
   _route_plan_verdict:
     # If plan output doesn't contain a commands array, check whether the
@@ -806,10 +805,15 @@ states:
     # check_stale_ref_limit / check_enf_limit / check_timeout_limit). Retries the
     # plan LLM call on transient errors; escalates to diagnose after exhausting
     # plan_error_max retries.
+    #
+    # BUG-062: The FSM runner routes state timeouts (exit code 124) to on_error
+    # rather than the separate on_timeout path. The _handle_plan_timeout and
+    # _retry_plan_timeout states were dead code — removed. This state now handles
+    # both plan API errors and plan timeouts via the same counter-based retry.
     action_type: shell
     action: |
       ABS_DIR="${captured.run_dir.output}"
-      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM API error at iteration ${state.iteration}" \
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM API error or timeout at iteration ${state.iteration}" \
         >> "$ABS_DIR/.plan_errors.log"
       COUNTER_FILE="$ABS_DIR/.plan_error_count"
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
@@ -824,47 +828,6 @@ states:
     evaluate:
       type: output_contains
       pattern: "PLAN_ERROR_LIMIT_EXCEEDED"
-    on_yes: diagnose
-    on_no: plan
-
-  _handle_plan_timeout:
-    # Handles plan state timeouts (SIGTERM / exit 124). Logs the timeout event
-    # with a timestamp for post-mortem diagnostics, then routes to the retry
-    # counter. Separate from _handle_plan_error (which handles LLM API errors)
-    # so timeout behavior (retry count, escalation) is independently configurable.
-    action_type: shell
-    action: |
-      ABS_DIR="${captured.run_dir.output}"
-      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] plan state timed out (> ${context.plan_timeout_sec}s at iteration ${state.iteration})" \
-        >> "$ABS_DIR/.plan_timeout.log"
-      echo "PLAN_TIMEOUT_LOGGED"
-    evaluate:
-      type: output_contains
-      pattern: "PLAN_TIMEOUT_LOGGED"
-    on_yes: _retry_plan_timeout
-    on_no: plan
-
-  _retry_plan_timeout:
-    # Increments the plan timeout retry counter. Retries the plan state up to
-    # plan_retry_max times. After exhausting retries, escalates to diagnose
-    # for structured diagnostics output instead of silent termination.
-    # Follows the same counter-file pattern as all other retry states.
-    action_type: shell
-    action: |
-      ABS_DIR="${captured.run_dir.output}"
-      COUNTER_FILE="$ABS_DIR/.plan_timeout_count"
-      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
-      COUNT=$((COUNT + 1))
-      echo "$COUNT" > "$COUNTER_FILE"
-      if [ "$COUNT" -ge "${context.plan_retry_max}" ]; then
-        echo "PLAN_TIMEOUT_LIMIT_EXCEEDED: $COUNT consecutive plan timeouts (> ${context.plan_timeout_sec}s) — escalating to diagnose"
-        echo "0" > "$COUNTER_FILE"
-      else
-        echo "PLAN_TIMEOUT_RETRY: attempt $COUNT of ${context.plan_retry_max}"
-      fi
-    evaluate:
-      type: output_contains
-      pattern: "PLAN_TIMEOUT_LIMIT_EXCEEDED"
     on_yes: diagnose
     on_no: plan
 
@@ -1028,14 +991,25 @@ states:
     # Collects diagnostic information about why the task failed, then
     # routes to the terminal 'failed' state. The captured diagnostics are
     # available in the run directory for analysis.
+    #
+    # BUG-061 (shell injection): The task description often contains markdown
+    # backtick code spans (e.g. `npm run dev`) and JSON double-quote
+    # characters. Embedding ${context.description} inside a double-quoted
+    # echo string causes bash to execute backtick expressions as command
+    # substitutions and prematurely terminate on JSON " chars — the same
+    # class of bug that validate_input fixes with a quoted heredoc.
+    # Using cat with a quoted heredoc delimiter ('DIAGEOF') prevents all
+    # shell interpretation of the expanded description content.
     action_type: shell
     action: |
       DIR="${captured.run_dir.output}"
       echo "=== cua-agent-desktop failure diagnostics ===" > "$DIR/diagnostics.md"
-      echo "Task: ${context.description}" >> "$DIR/diagnostics.md"
-      echo "Iteration: ${state.iteration}" >> "$DIR/diagnostics.md"
-      echo "" >> "$DIR/diagnostics.md"
-      echo "## Action Log" >> "$DIR/diagnostics.md"
+      cat >> "$DIR/diagnostics.md" << 'DIAGEOF'
+      Task: ${context.description}
+      Iteration: ${state.iteration}
+
+      ## Action Log
+      DIAGEOF
       cat "$DIR/.action_log.md" 2>/dev/null || echo "(no actions logged)" >> "$DIR/diagnostics.md"
       echo "" >> "$DIR/diagnostics.md"
       echo "## Action Results" >> "$DIR/diagnostics.md"
