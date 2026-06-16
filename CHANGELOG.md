@@ -12,6 +12,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.125.0] - 2026-06-15
+
+### Added
+
+- **Marker-gated refine+wire enforcement in `rn-remediate`** — Above-minimal-complexity issues now require at least one refine and one wire pass before implementation, enforced by write-once markers. 8 new test cases validate the gate logic. (ENH-2163)
+- **`classify` evaluator for multi-way FSM routing** — New evaluator type enables single-state multi-way routing without chaining multiple boolean states. (2178d861)
+- **`from:` stub consolidation in built-in loop catalog** — Overlapping built-in loops consolidated into `from:` stub entries; stubs are hidden from `ll-loop list` output. (ENH-2161, ENH-2194)
+- **`issue_snapshots` table and snapshot functions** — New `session_store` table records point-in-time issue snapshots with backfill support via `ll-session`. (74804b1f)
+- **`rn-implement` re-enqueues deferred blockers** — When a blocker resolves within the same run, deferred issues are automatically re-enqueued for processing. (c62c6fdb)
+- **`distill-decisions` loop and extract-from-completed** — New loop extracts decisions from completed issues and distills them into the decisions log. (b12ce4d7)
+- **`lib/rubric-router.yaml` and `rubric-refine.yaml`** — New reusable library loops for rubric-driven routing and iterative refinement. (aa38dc03)
+- **History-db integration points wired** — ENH-2151 integration complete; history entries now correlate session and issue data for enriched context. (a55ea77f)
+
+### Fixed
+
+- **`loop-composer-adaptive` correctness rewrite** — Fixed 8 design-level defects: step-output reference resolution (`{{step_id}}` placeholders), replan budget accounting (was consuming budget on CONTINUE), `validate_replan` state for plan validation, JSONL interpolation corruption, and dead LLM evaluator removal. Fixes propagated to `loop-composer.yaml`. (ENH-2168)
+- **`os.killpg` for atomic process-group termination** — FSM shell states now use `os.killpg` to reliably terminate entire subprocess trees on timeout or stop. (d6a616fc)
+- **Selector-based wall-clock I/O in FSM shell states** — Threading-based stderr drain replaced with selector-based I/O, eliminating subprocess output hangs. (a3fd43cc)
+- **`ll-loop stop` kills descendant processes** — Stop signal now propagates to all descendant processes, not just the direct child. (8dbacec0)
+- **`rn-remediate` verdict routing (BUG-2169)** — Replaced `on_success`/`on_error` with explicit verdict routing in decide, wire, and refine states. (4b9e9144)
+- **`rn-remediate` grep dedup guard (BUG-2170)** — Replaced `grep -cxF` with `grep -qxF` to fix implemented-count undercount. (a584ba18)
+- **`rn-remediate` wire/refine bypass gaps** — Fast-path and diagnose routing now correctly enforce wire and refine passes; CONVERGED_PASS branch guarded against `decision_needed`. (164188c4, 894b3fc3)
+- **`loop-composer` catalog JSON injection** — Escaped `${captured.catalog.output}` in Python comment to prevent shell variable interpolation. (f1c60514)
+- **`is_runnable_loop()` from: stub inheritance** — FSM correctly resolves inheritance for `from:` stubs in runability checks. (80cce461)
+- **3 mypy type errors** — Fixed type errors in concurrency and decisions modules. (ab8994b6)
+- **`ll-logs eval-export` `-j` short flag** — Added `-j` as an alias for `--json`. (27560827)
+
+### Changed
+
+- **`rn-remediate` routing migrated to `classify` evaluator** — Routing cascades now use the new classify evaluator and `route:` table syntax for cleaner multi-way dispatch. (004bcb4d)
+- **Ancestor-process detection in `LockManager`** — `LockManager.find_conflict()` now detects conflicts with ancestor processes to prevent false lock-free signals. (43dbdeb2)
+
+[1.125.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.124.0...v1.125.0
+
 ## [1.124.0] - 2026-06-14
 
 ### Added
