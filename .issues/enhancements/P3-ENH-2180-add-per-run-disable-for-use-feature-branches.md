@@ -2,14 +2,21 @@
 id: ENH-2180
 title: Add per-run disable for use_feature_branches (--no-feature-branches)
 type: ENH
-status: done
+status: cancelled
 priority: P3
 parent: EPIC-2171
 captured_at: '2026-06-15T00:00:00Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
-labels: [parallel, sprint, cli, feature-branches, dx]
-relates_to: [ENH-2173, ENH-2174]
+labels:
+- parallel
+- sprint
+- cli
+- feature-branches
+- dx
+relates_to:
+- ENH-2173
+- ENH-2174
 ---
 
 # ENH-2180: Add per-run disable for use_feature_branches (--no-feature-branches)
@@ -152,7 +159,7 @@ definition.
 
 ## Status
 
-**Done** | Created: 2026-06-15 | Priority: P3
+**Cancelled (superseded by ENH-2173)** | Created: 2026-06-15 | Priority: P3
 
 ## Resolution
 
