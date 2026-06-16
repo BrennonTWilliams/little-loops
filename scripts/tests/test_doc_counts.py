@@ -190,6 +190,28 @@ class TestIsRunnableLoop:
         if oracle.exists():
             assert is_runnable_loop(oracle) is True
 
+    def test_from_stub_without_own_initial_returns_true(self, tmp_path: Path) -> None:
+        """A bare from: stub (name + from:, no initial, no states) is runnable when parent provides them."""
+        parent = tmp_path / "parent.yaml"
+        parent.write_text(
+            "name: parent\ninitial: run\nstates:\n  run:\n    terminal: true\n"
+        )
+        stub = tmp_path / "stub.yaml"
+        stub.write_text("name: stub\nfrom: parent\n")
+        assert is_runnable_loop(stub) is True
+
+    def test_from_stub_with_extra_fields_returns_true(self, tmp_path: Path) -> None:
+        """A from: stub with description/context overrides but no initial/states is runnable."""
+        parent = tmp_path / "parent.yaml"
+        parent.write_text(
+            "name: parent\ninitial: run\nstates:\n  run:\n    terminal: true\n"
+        )
+        stub = tmp_path / "stub-extra.yaml"
+        stub.write_text(
+            "name: stub-extra\nfrom: parent\ndescription: variant\ncontext:\n  key: value\n"
+        )
+        assert is_runnable_loop(stub) is True
+
     def test_lib_fragments_are_not_runnable(self) -> None:
         """All real library fragments under loops/lib/ are excluded by the predicate."""
         from pathlib import Path as _Path

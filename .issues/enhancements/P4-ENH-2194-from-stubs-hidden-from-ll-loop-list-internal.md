@@ -2,10 +2,11 @@
 id: ENH-2194
 priority: P4
 type: ENH
-status: open
+status: done
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 captured_at: '2026-06-15T21:55:27Z'
+completed_at: '2026-06-16T00:46:39Z'
 relates_to:
 - ENH-2161
 decision_needed: false
@@ -181,6 +182,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 8. Run `test_builtin_loops.py` and confirm `TestBuiltinLoopFiles` suite passes with `deep-research-arxiv` in the fixture set
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-16T00:39:57 - `512c5db2-8ad2-4487-be94-ecea514bfc52.jsonl`
 - `/ll:wire-issue` - 2026-06-15T22:34:22 - `402fe244-4ba0-4578-8a76-dbe81c63f5c4.jsonl`
 - `/ll:decide-issue` - 2026-06-15T22:15:12 - `b1d17ad8-dc9f-4eae-9b2e-e90be9fcd350.jsonl`
 - `/ll:refine-issue` - 2026-06-15T22:11:41 - `10a24057-b22d-4d1f-8907-08b18272ac1e.jsonl`

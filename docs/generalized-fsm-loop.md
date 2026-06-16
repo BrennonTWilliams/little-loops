@@ -437,7 +437,7 @@ state_defs:                # Optional: supply action/evaluate bodies for generat
 - `flow:` and `states:` are mutually exclusive; the validator raises an error if both are present.
 - When a child loop (via `from:`) declares its own `flow:`, it overrides the parent's `states:` entirely.
 - `state_defs:` is stripped after expansion and is never visible to the executor.
-- The loop is considered runnable by `ll-loop list` / `is_runnable_loop()` when `name`, `initial`, and `flow` are all present.
+- The loop is considered runnable by `ll-loop list` / `is_runnable_loop()` when `name`, `initial`, and `flow` (or `states`) are all present after inheritance resolution. A pure `from:` stub without its own `initial`/`states` qualifies as runnable when its parent chain supplies those fields.
 
 See [Linear Flow Shorthand via `flow:`](guides/LOOPS_GUIDE.md#linear-flow-shorthand-via-flow) in the Loops Guide for worked examples including conditional branching and error-recovery overrides.
 

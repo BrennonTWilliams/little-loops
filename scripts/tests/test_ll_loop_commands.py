@@ -856,6 +856,77 @@ class TestLoopListVisibilityFilter:
         assert by_name["sub"] == "internal"
         assert by_name["demo"] == "example"
 
+    def test_internal_includes_from_stubs(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--internal shows a pure from: stub (no initial/states) with visibility: internal."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+
+        # Parent loop with the full FSM
+        (loops_dir / "parent.yaml").write_text(
+            _runnable("name: parent\nvisibility: public\n")
+        )
+        # Pure context-override stub — no initial or states of its own
+        (loops_dir / "ctx-stub.yaml").write_text(
+            "name: ctx-stub\nfrom: parent\nvisibility: internal\ndescription: variant\n"
+        )
+
+        args = argparse.Namespace(
+            running=False,
+            status=None,
+            json=True,
+            category=None,
+            label=None,
+            all=False,
+            internal=True,
+            examples=False,
+        )
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            assert cmd_list(args, loops_dir) == 0
+        names = {item["name"] for item in json.loads(capsys.readouterr().out)}
+        assert "ctx-stub" in names
+        assert "parent" not in names  # parent is public, not internal
+
+    def test_default_hides_from_stub_with_internal_visibility(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Default listing still hides a from: stub marked visibility: internal."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+
+        (loops_dir / "parent.yaml").write_text(
+            _runnable("name: parent\nvisibility: public\n")
+        )
+        (loops_dir / "ctx-stub.yaml").write_text(
+            "name: ctx-stub\nfrom: parent\nvisibility: internal\ndescription: variant\n"
+        )
+
+        args = argparse.Namespace(
+            running=False,
+            status=None,
+            json=False,
+            category=None,
+            label=None,
+            all=False,
+            internal=False,
+            examples=False,
+        )
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            assert cmd_list(args, loops_dir) == 0
+        out = capsys.readouterr().out
+        assert "ctx-stub" not in out
+
 
 class TestLoopListFormatting:
     """Tests for ENH-1614: ll-loop list output readability improvements."""

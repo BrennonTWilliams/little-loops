@@ -915,7 +915,7 @@ states:
   # `done`, max_iterations, timeout, on_handoff all inherited
 ```
 
-The `from:` value resolves like any loop name — project `.loops/` first, then built-ins; a `lib/<name>` path reaches inheritance-only templates, which are hidden from `ll-loop list` (they omit `initial:`, so they aren't runnable). The child must declare its own `name:`; everything else is optional.
+The `from:` value resolves like any loop name — project `.loops/` first, then built-ins; a `lib/<name>` path reaches inheritance-only templates, which are hidden from `ll-loop list` because their parent chain also omits `initial:` and `states:` (they remain library-only fragments, not runnable loops). Pure context-override stubs outside `lib/` — stubs that inherit a full FSM from a parent and only override `context:` or metadata — are recognized as runnable after inheritance resolution and appear under `ll-loop list --internal` when they declare `visibility: internal`. The child must declare its own `name:`; everything else is optional.
 
 > **Merge rules**: the loader deep-merges parent and child *before* validation. Scalars (`name`, `initial`, `max_iterations`, …) — child wins. Lists (`labels`) — child replaces outright. Dicts (`context`, `states`, `route`, nested `evaluate`) — recursive merge, child keys override. A parent's `import:`/`fragments:` are merged in first, so a child can use any fragment its parent imports. Circular chains (`A → B → A`) raise an error naming the full chain. The `from:` key is stripped from the merged result — there is no runtime overhead.
 

@@ -2002,11 +2002,13 @@ def is_runnable_loop(path: Path) -> bool:
     Returns True iff the file parses as a YAML mapping with the required
     top-level keys ``name``, ``initial``, and either ``states`` or ``flow``
     (the shorthand resolved by :func:`resolve_flow`). This matches the
-    required-fields gate in :func:`load_and_validate` (lines 885-894) so
-    "counted by the verifier" stays in sync with "runnable by ll-loop validate".
+    required-fields gate in :func:`load_and_validate` so "counted by the
+    verifier" stays in sync with "runnable by ll-loop validate".
 
-    No fragment/inheritance resolution is performed — library fragments under
-    ``loops/lib/`` that omit ``initial`` or ``states`` correctly return False.
+    When the raw YAML contains a ``from:`` key, inheritance is resolved first
+    (mirroring :func:`load_and_validate`) so pure context-override stubs whose
+    parent provides ``initial``/``states`` return True. Library fragments under
+    ``loops/lib/`` still return False — their parent chain also lacks ``initial``.
     """
     try:
         data = yaml.safe_load(path.read_text())
@@ -2014,6 +2016,11 @@ def is_runnable_loop(path: Path) -> bool:
         return False
     if not isinstance(data, dict):
         return False
+    if "from" in data:
+        try:
+            data = resolve_inheritance(data, path.parent)
+        except Exception:
+            return False
     has_flow = "states" in data or "flow" in data
     return "name" in data and "initial" in data and has_flow
 
