@@ -1730,6 +1730,61 @@ class TestRunWithContinuation:
         assert call_count[0] == 2
         assert "Sprint Worker Context" not in commands_received[1]
 
+    def test_guillotine_run_dir_single_issue_scope_constraint(self, tmp_path: Path) -> None:
+        """BUG-2201: Option J + run_dir + issue_path (no sprint_context) emits scope constraint."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+        run_dir = tmp_path / "runs" / "rn-implement-20260616"
+        run_dir.mkdir(parents=True)
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P2-ENH-2177-test-issue.md"
+        issue_file.write_text("---\nid: ENH-2177\nstatus: open\n---\n# ENH-2177")
+
+        overflow_result = MagicMock()
+        overflow_result.returncode = 1
+        overflow_result.stdout = "Partial work..."
+        overflow_result.stderr = ""
+        overflow_result.args = ["claude"]
+
+        fresh_result = MagicMock()
+        fresh_result.returncode = 0
+        fresh_result.stdout = "Continued from resume"
+        fresh_result.stderr = ""
+        fresh_result.args = ["claude"]
+
+        call_count = [0]
+
+        def mock_run(command: str, *args, **kwargs):
+            call_count[0] += 1
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)  # 195K > 90% of 200K → triggers Option J
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "ll-auto --only ENH-2177",
+                    mock_logger,
+                    repo_path=tmp_path,
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                    issue_path=issue_file,
+                    run_dir=str(run_dir),
+                    # sprint_context is None (the missing-scope bug path)
+                )
+
+        assert call_count[0] == 2
+        guillotine_file = run_dir / "guillotine-prompt.md"
+        assert guillotine_file.exists()
+        content = guillotine_file.read_text()
+        assert "ENH-2177" in content, "Scope constraint must name the issue"
+        assert "exactly ONE issue" in content, "Scope constraint must say 'exactly ONE issue'"
+        assert "exit immediately" in content, "Scope constraint must instruct immediate exit"
+
 
 class TestReadyIssueErrorHandling:
     """Tests for error handling during ready-issue phase (ENH-207)."""

@@ -7,6 +7,7 @@ Claude CLI integration and state persistence for resume capability.
 from __future__ import annotations
 
 import json
+import re
 import signal
 import subprocess
 import sys
@@ -347,6 +348,18 @@ def run_with_continuation(
                             f"Do NOT ask for further instructions. Exit with code 0.\n"
                             f"Branch: {sprint_context.branch}\n\n"
                         )
+                    elif issue_path is not None:
+                        _id_match = re.search(
+                            r"(BUG|FEAT|ENH|EPIC)-\d+", issue_path.name
+                        )
+                        if _id_match:
+                            sprint_framing = (
+                                f"## Scope Constraint\n"
+                                f"Process exactly ONE issue: {_id_match.group()}\n"
+                                f"After completing this issue, exit immediately — "
+                                f"do NOT process other issues.\n"
+                                f"Do NOT ask for further instructions. Exit with code 0.\n\n"
+                            )
                     guillotine_file.write_text(
                         sprint_framing + f"## Intent\n"
                         f"Resume an interrupted automation session that hit the context limit.\n"
@@ -372,6 +385,11 @@ def run_with_continuation(
                     guillotine_cmd = initial_command
             else:
                 try:
+                    _path_id: str | None = None
+                    if issue_path is not None:
+                        _pid_match = re.search(r"(BUG|FEAT|ENH|EPIC)-\d+", issue_path.name)
+                        if _pid_match:
+                            _path_id = _pid_match.group()
                     guillotine_cmd = assemble_guillotine_prompt(
                         original_command=initial_command,
                         captured_stdout="\n---CONTINUATION---\n".join(all_stdout),
@@ -382,6 +400,7 @@ def run_with_continuation(
                             "trigger_reason": trigger_reason,
                         },
                         sprint_context=sprint_context,
+                        issue_id=_path_id,
                     )
                 except Exception as exc:
                     logger.warning(

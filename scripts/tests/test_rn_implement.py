@@ -144,12 +144,12 @@ class TestDequeueAndDepthTracking:
         assert evaluate["operator"] == "lt"
         assert evaluate["target"] == "${context.max_depth}"
 
-    def test_check_depth_routes_below_cap_to_run_remediation(self) -> None:
-        """check_depth routes to run_remediation when depth is below cap."""
+    def test_check_depth_routes_below_cap_to_check_issue_status(self) -> None:
+        """BUG-2201: check_depth routes to check_issue_status (pre-flight gate) when depth is below cap."""
         data = _load_loop()
         cd = data["states"]["check_depth"]
-        assert cd["on_yes"] == "run_remediation", (
-            "on_yes (depth < max) should go to run_remediation"
+        assert cd["on_yes"] == "check_issue_status", (
+            "on_yes (depth < max) should go to check_issue_status pre-flight gate (BUG-2201)"
         )
         assert cd["on_no"] == "mark_depth_capped", "on_no (depth >= max) should cap"
 
@@ -1007,3 +1007,58 @@ class TestSelectNext:
         # Both must route to check_blocked_by when an issue is dequeued (on_no for output_contains)
         assert fp["on_no"] == "check_blocked_by"
         assert sn["on_no"] == "check_blocked_by"
+
+
+# ---------------------------------------------------------------------------
+# TestPreFlightStatusCheck — BUG-2201: pre-flight gate before run_remediation
+# ---------------------------------------------------------------------------
+
+
+class TestPreFlightStatusCheck:
+    """BUG-2201: check_issue_status pre-flight gate inserted before run_remediation."""
+
+    def test_check_issue_status_state_exists(self) -> None:
+        """check_issue_status state exists in the FSM."""
+        data = _load_loop()
+        assert "check_issue_status" in data["states"], (
+            "check_issue_status pre-flight state must be added (BUG-2201)"
+        )
+
+    def test_check_issue_status_is_shell_action(self) -> None:
+        """check_issue_status uses action_type: shell."""
+        data = _load_loop()
+        state = data["states"]["check_issue_status"]
+        assert state["action_type"] == "shell"
+
+    def test_check_issue_status_reads_issue_status(self) -> None:
+        """check_issue_status shell action reads the issue status field."""
+        data = _load_loop()
+        action = data["states"]["check_issue_status"]["action"]
+        # Must resolve the issue path and check status (either via ll-issues or grep)
+        assert "status" in action.lower()
+        assert "${captured.input.output}" in action or "ID" in action
+
+    def test_check_issue_status_on_yes_routes_to_skip(self) -> None:
+        """check_issue_status routes done/cancelled issues to skip_issue."""
+        data = _load_loop()
+        state = data["states"]["check_issue_status"]
+        # on_yes (already done) → skip
+        assert state["on_yes"] in ("skip_issue", "dequeue_next"), (
+            "on_yes (already done) must route to skip_issue or dequeue_next"
+        )
+
+    def test_check_issue_status_on_no_routes_to_run_remediation(self) -> None:
+        """check_issue_status routes open issues to run_remediation."""
+        data = _load_loop()
+        state = data["states"]["check_issue_status"]
+        assert state["on_no"] == "run_remediation", (
+            "on_no (needs implementation) must route to run_remediation"
+        )
+
+    def test_check_issue_status_fails_open_to_run_remediation(self) -> None:
+        """check_issue_status fails open: errors route to run_remediation, not skip."""
+        data = _load_loop()
+        state = data["states"]["check_issue_status"]
+        assert state["on_error"] == "run_remediation", (
+            "on_error must fail open to run_remediation (never block processing on a gate error)"
+        )

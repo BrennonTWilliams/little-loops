@@ -465,8 +465,34 @@ states:
       operator: lt
       target: "${context.max_depth}"
     capture: current_depth
-    on_yes: run_remediation
+    on_yes: check_issue_status
     on_no: mark_depth_capped
+    on_error: check_issue_status
+
+  check_issue_status:
+    # BUG-2201: pre-flight gate before delegating to rn-remediate. If the issue
+    # was completed out-of-band (e.g. by a continuation session that escaped its
+    # scope), skip it immediately rather than re-entering rn-remediate and ll-auto.
+    # Fail-open: unresolved path, parse error, or a missing status field all yield
+    # NEEDS_IMPLEMENTATION so processing is never blocked on a gate error.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
+      STATUS="open"
+      if [ -n "$ISSUE_FILE" ]; then
+        STATUS=$(grep '^status:' "$ISSUE_FILE" | awk '{print $2}' | tr -d "'\"" 2>/dev/null || echo "open")
+      fi
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "cancelled" ]; then
+        echo "ALREADY_DONE"
+      else
+        echo "NEEDS_IMPLEMENTATION"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "ALREADY_DONE"
+    on_yes: skip_issue
+    on_no: run_remediation
     on_error: run_remediation
 
   mark_depth_capped:

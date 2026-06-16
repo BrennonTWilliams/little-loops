@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.126.0] - 2026-06-16
+
+### Fixed
+
+- **Option J continuation scope guard for single-issue `ll-auto --only` runs (BUG-2201)** — When `sprint_context` is absent but `issue_path` is set, the guillotine prompt (both `run_dir` and non-`run_dir` paths) now includes a `## Scope Constraint` block identical in effect to sprint framing. Continuation sessions can no longer escape their single-issue scope and implement unrelated backlog issues. `rn-implement` also gains a `check_issue_status` pre-flight gate that skips issues already marked `done`/`cancelled` before delegating to `rn-remediate`. (BUG-2201)
+
+[1.126.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.125.0...v1.126.0
+
 ## [1.125.0] - 2026-06-15
 
 ### Added

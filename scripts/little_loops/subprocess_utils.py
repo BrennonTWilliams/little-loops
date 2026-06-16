@@ -159,6 +159,7 @@ def assemble_guillotine_prompt(
     captured_stdout: str,
     token_stats: dict,
     sprint_context: SprintWorkerContext | None = None,
+    issue_id: str | None = None,
 ) -> str:
     """Assemble a fresh-session continuation prompt for Option J (parent-side guillotine).
 
@@ -226,6 +227,15 @@ that interrupted session.
             f"After completing this issue, exit immediately — do NOT process other issues.\n"
             f"Do NOT ask for further instructions. Exit with code 0.\n"
             f"Branch: {sprint_context.branch}\n\n"
+        )
+        return framing + body
+
+    if issue_id is not None:
+        framing = (
+            f"## Scope Constraint\n"
+            f"Process exactly ONE issue: {issue_id}\n"
+            f"After completing this issue, exit immediately — do NOT process other issues.\n"
+            f"Do NOT ask for further instructions. Exit with code 0.\n\n"
         )
         return framing + body
 

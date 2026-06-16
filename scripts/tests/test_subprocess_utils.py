@@ -2084,6 +2084,44 @@ class TestAssembleGuillatinePrompt:
         assert "Sprint Worker Context" not in prompt
         assert prompt.startswith("⚠ CONTEXT LIMIT REACHED")
 
+    def test_issue_id_scope_constraint_emitted_without_sprint_context(self) -> None:
+        """BUG-2201: issue_id param emits scope constraint when sprint_context is absent."""
+        from little_loops.subprocess_utils import assemble_guillotine_prompt
+
+        prompt = assemble_guillotine_prompt(
+            original_command="ll-auto --only ENH-2177",
+            captured_stdout="Partial work...",
+            token_stats={
+                "input_tokens": 185_000,
+                "output_tokens": 10_000,
+                "context_limit": 200_000,
+            },
+            issue_id="ENH-2177",
+        )
+
+        assert "ENH-2177" in prompt
+        assert "exactly ONE issue" in prompt
+        assert "exit immediately" in prompt
+        # Scope constraint must come before the standard body
+        assert prompt.index("Scope Constraint") < prompt.index("CONTEXT LIMIT REACHED")
+
+    def test_issue_id_ignored_when_sprint_context_present(self) -> None:
+        """BUG-2201: when sprint_context is set, it takes precedence over issue_id."""
+        from little_loops.parallel.types import SprintWorkerContext
+        from little_loops.subprocess_utils import assemble_guillotine_prompt
+
+        ctx = SprintWorkerContext(issue_id="FEAT-025", branch="main")
+        prompt = assemble_guillotine_prompt(
+            original_command="ll-auto --only FEAT-025",
+            captured_stdout="Partial work...",
+            token_stats={"input_tokens": 185_000, "output_tokens": 10_000, "context_limit": 200_000},
+            sprint_context=ctx,
+            issue_id="FEAT-025",
+        )
+
+        assert "Sprint Worker Context" in prompt
+        assert "Scope Constraint" not in prompt
+
 
 class TestSentinelHelpers:
     """Tests for write_sentinel() and read_sentinel() (BUG-1377 Option G)."""
