@@ -1034,6 +1034,9 @@ def run_background(
         cmd.extend(["--max-iterations", str(max_iter)])
     if getattr(args, "no_llm", False):
         cmd.append("--no-llm")
+    run_model = getattr(args, "run_model", None)
+    if run_model:
+        cmd.extend(["--model", run_model])
     llm_model = getattr(args, "llm_model", None)
     if llm_model:
         cmd.extend(["--llm-model", llm_model])

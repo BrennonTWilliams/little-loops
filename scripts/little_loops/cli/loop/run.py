@@ -414,7 +414,12 @@ def cmd_run(
         )
         Path(fsm.context["run_dir"]).mkdir(parents=True, exist_ok=True)
         executor = PersistentExecutor(
-            fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id, pid=os.getpid()
+            fsm,
+            loops_dir=loops_dir,
+            circuit=circuit,
+            instance_id=instance_id,
+            pid=os.getpid(),
+            run_model=getattr(args, "run_model", None) or None,
         )
 
         # Register signal handlers for graceful shutdown

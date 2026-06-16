@@ -39,6 +39,7 @@ class TestLoopArgumentParsing:
         parser.add_argument("--follow", "-f", action="store_true")
         parser.add_argument("--no-llm", action="store_true")
         parser.add_argument("--no-lock", action="store_true")
+        parser.add_argument("--model", type=str, dest="run_model")
         parser.add_argument("--llm-model", type=str)
         parser.add_argument("--context", action="append", default=[], metavar="KEY=VALUE")
         parser.add_argument("--program-md", type=Path, default=None)
@@ -199,6 +200,27 @@ class TestLoopArgumentParsing:
         parser = self._create_run_parser()
         args = parser.parse_args(["test-loop"])
         assert args.llm_model is None
+
+    def test_run_model_flag_parsed_correctly(self) -> None:
+        """--model accepts model string and stores as run_model."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop", "--model", "claude-haiku-4-5-20251001"])
+        assert args.run_model == "claude-haiku-4-5-20251001"
+
+    def test_run_model_default_is_none(self) -> None:
+        """--model defaults to None when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop"])
+        assert getattr(args, "run_model", None) is None
+
+    def test_run_model_independent_of_llm_model(self) -> None:
+        """--model and --llm-model are independent flags."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(
+            ["test-loop", "--model", "claude-haiku-4-5-20251001", "--llm-model", "claude-opus-4-8"]
+        )
+        assert args.run_model == "claude-haiku-4-5-20251001"
+        assert args.llm_model == "claude-opus-4-8"
 
     def test_context_single_flag(self) -> None:
         """--context KEY=VALUE is parsed into a list."""

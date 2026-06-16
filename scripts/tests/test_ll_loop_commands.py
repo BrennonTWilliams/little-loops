@@ -923,6 +923,152 @@ class TestLoopListVisibilityFilter:
         out = capsys.readouterr().out
         assert "ctx-stub" not in out
 
+    def test_visibility_flag_public_shows_only_public(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--visibility public returns only public loops (explicit form of the default view)."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        self._seed(loops_dir)
+        args = argparse.Namespace(
+            running=False,
+            status=None,
+            json=True,
+            category=None,
+            label=None,
+            all=False,
+            internal=False,
+            examples=False,
+            visibility="public",
+        )
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            assert cmd_list(args, loops_dir) == 0
+        names = {item["name"] for item in json.loads(capsys.readouterr().out)}
+        assert "pub" in names
+        assert "vis-pub" in names
+        assert "sub" not in names
+        assert "demo" not in names
+
+    def test_visibility_flag_internal_shows_only_internal(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--visibility internal narrows to internal loops."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        self._seed(loops_dir)
+        args = argparse.Namespace(
+            running=False,
+            status=None,
+            json=True,
+            category=None,
+            label=None,
+            all=False,
+            internal=False,
+            examples=False,
+            visibility="internal",
+        )
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            assert cmd_list(args, loops_dir) == 0
+        names = {item["name"] for item in json.loads(capsys.readouterr().out)}
+        assert names == {"sub"}
+
+    def test_visibility_flag_example_shows_only_examples(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--visibility example narrows to example-tier loops."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        self._seed(loops_dir)
+        args = argparse.Namespace(
+            running=False,
+            status=None,
+            json=True,
+            category=None,
+            label=None,
+            all=False,
+            internal=False,
+            examples=False,
+            visibility="example",
+        )
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            assert cmd_list(args, loops_dir) == 0
+        names = {item["name"] for item in json.loads(capsys.readouterr().out)}
+        assert names == {"demo"}
+
+    def test_visibility_flag_all_shows_everything(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--visibility all includes all tiers."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        self._seed(loops_dir)
+        args = argparse.Namespace(
+            running=False,
+            status=None,
+            json=True,
+            category=None,
+            label=None,
+            all=False,
+            internal=False,
+            examples=False,
+            visibility="all",
+        )
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            assert cmd_list(args, loops_dir) == 0
+        names = {item["name"] for item in json.loads(capsys.readouterr().out)}
+        assert {"pub", "vis-pub", "sub", "demo"} == names
+
+    def test_visibility_flag_composes_with_label(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--visibility public + --label filters to labeled public loops only."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        (loops_dir / "pub-tagged.yaml").write_text(
+            _runnable("name: pub-tagged\nvisibility: public\nlabels: [hermes]\n")
+        )
+        (loops_dir / "pub-plain.yaml").write_text(_runnable("name: pub-plain\nvisibility: public\n"))
+        (loops_dir / "int-tagged.yaml").write_text(
+            _runnable("name: int-tagged\nvisibility: internal\nlabels: [hermes]\n")
+        )
+
+        args = argparse.Namespace(
+            running=False,
+            status=None,
+            json=True,
+            category=None,
+            label=["hermes"],
+            all=False,
+            internal=False,
+            examples=False,
+            visibility="public",
+        )
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            assert cmd_list(args, loops_dir) == 0
+        names = {item["name"] for item in json.loads(capsys.readouterr().out)}
+        assert names == {"pub-tagged"}
+
 
 class TestLoopListFormatting:
     """Tests for ENH-1614: ll-loop list output readability improvements."""

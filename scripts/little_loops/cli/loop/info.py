@@ -185,15 +185,24 @@ def cmd_list(
             if any(lf.lower() in [lb.lower() for lb in lp["labels"]] for lf in label_filters)
         ]
 
-    # Apply visibility filter. Default view shows only "public" loops, hiding
-    # delegated-only sub-loops ("internal") and demos/templates ("example").
-    # --all shows everything; --internal / --examples narrow to those tiers.
-    show_all = getattr(args, "all", False)
-    show_internal = getattr(args, "internal", False)
-    show_examples = getattr(args, "examples", False)
+    # Apply visibility filter. The new --visibility flag is the canonical interface;
+    # the legacy --all / --internal / --examples flags remain supported for backwards
+    # compatibility and map onto the same underlying tiers.
+    visibility_flag: str | None = getattr(args, "visibility", None)
+    show_all = getattr(args, "all", False) or visibility_flag == "all"
+    show_internal = getattr(args, "internal", False) or visibility_flag == "internal"
+    show_examples = getattr(args, "examples", False) or visibility_flag == "example"
+    # When --visibility public is explicit, enforce it even if other legacy flags are set.
+    show_public_only = visibility_flag == "public"
     hidden_counts: dict[str, int] = {"internal": 0, "example": 0}
     if not show_all:
-        if show_internal or show_examples:
+        if show_public_only:
+            for lp in all_loops:
+                vis = lp.get("visibility", "public")
+                if vis in hidden_counts:
+                    hidden_counts[vis] += 1
+            all_loops = [lp for lp in all_loops if lp.get("visibility", "public") == "public"]
+        elif show_internal or show_examples:
             wanted = set()
             if show_internal:
                 wanted.add("internal")

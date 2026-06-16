@@ -149,6 +149,7 @@ class FSMExecutor:
         handoff_handler: HandoffHandler | None = None,
         loops_dir: Path | None = None,
         circuit: RateLimitCircuit | None = None,
+        run_model: str | None = None,
     ):
         """Initialize the executor.
 
@@ -160,6 +161,8 @@ class FSMExecutor:
             handoff_handler: Optional handler for handoff signals
             loops_dir: Base directory for resolving sub-loop references
             circuit: Optional shared rate-limit circuit breaker for 429 coordination
+            run_model: Run-level default model for host-CLI action states. Per-state
+                StateConfig.model overrides this value.
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
@@ -168,6 +171,7 @@ class FSMExecutor:
         self.handoff_handler = handoff_handler
         self.loops_dir = loops_dir
         self._circuit = circuit
+        self.run_model = run_model
 
         # Runtime state
         self.current_state = fsm.initial
@@ -1174,7 +1178,7 @@ class FSMExecutor:
                 agent=state.agent if action_mode == "prompt" else None,
                 tools=state.tools if action_mode == "prompt" else None,
                 on_usage=on_usage,
-                model=state.model if action_mode == "prompt" else None,
+                model=(state.model or self.run_model) if action_mode == "prompt" else None,
             )
 
         preview = result.output[-2000:].strip() if result.output else None

@@ -2,12 +2,15 @@
 id: ENH-2200
 type: ENH
 priority: P4
-status: open
-captured_at: 2026-06-16T18:21:36Z
+status: done
+captured_at: 2026-06-16 18:21:36+00:00
 discovered_date: 2026-06-16
 discovered_by: scope-epic
 parent: EPIC-2196
-labels: [hermes, docs, transports]
+labels:
+- hermes
+- docs
+- transports
 testable: false
 ---
 

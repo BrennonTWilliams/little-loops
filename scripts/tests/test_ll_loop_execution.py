@@ -892,6 +892,142 @@ states:
         assert captured_fsm.llm.max_tokens == 512
         assert captured_fsm.llm.timeout == 60
 
+    def test_run_model_flag_accepted_with_dry_run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--model flag is accepted by the CLI with --dry-run."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: done
+states:
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-loop", "run", "test-loop", "--model", "claude-haiku-4-5-20251001", "--dry-run"],
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+
+    def test_run_model_propagates_to_fsm_executor(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--model propagates as run_model kwarg to FSMExecutor via PersistentExecutor."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: check
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        captured_kwargs: dict = {}
+
+        from little_loops.fsm.executor import FSMExecutor
+
+        original_fsm_init = FSMExecutor.__init__
+
+        def capture_fsm_executor_init(self: Any, fsm: Any, **kwargs: Any) -> None:
+            captured_kwargs.update(kwargs)
+            original_fsm_init(self, fsm, **kwargs)
+
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(FSMExecutor, "__init__", capture_fsm_executor_init):
+                with patch.object(
+                    sys,
+                    "argv",
+                    ["ll-loop", "run", "test-loop", "--model", "claude-haiku-4-5-20251001"],
+                ):
+                    from little_loops.cli import main_loop
+
+                    main_loop()
+
+        assert captured_kwargs.get("run_model") == "claude-haiku-4-5-20251001"
+
+    def test_run_model_used_as_fallback_for_host_action(self) -> None:
+        """FSMExecutor.run_model is passed to action runner when state has no model."""
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = make_test_fsm()
+        fsm.states["start"] = make_test_state(
+            action="/ll:some-skill",
+            evaluate=EvaluateConfig(type="exit_code"),
+            on_yes="done",
+            on_no="done",
+            model=None,  # no per-state model
+        )
+
+        captured_model: list[str | None] = []
+
+        class CapturingRunner:
+            def run(self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any) -> ActionResult:
+                captured_model.append(kwargs.get("model"))
+                return ActionResult(output="", stderr="", exit_code=0, duration_ms=0)
+
+        executor = FSMExecutor(fsm, action_runner=CapturingRunner(), run_model="claude-haiku-4-5-20251001")
+        executor.run()
+
+        assert captured_model, "action runner was never called"
+        assert captured_model[0] == "claude-haiku-4-5-20251001"
+
+    def test_state_model_overrides_run_model(self) -> None:
+        """Per-state StateConfig.model takes precedence over FSMExecutor.run_model."""
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = make_test_fsm()
+        fsm.states["start"] = make_test_state(
+            action="/ll:some-skill",
+            evaluate=EvaluateConfig(type="exit_code"),
+            on_yes="done",
+            on_no="done",
+            model="claude-opus-4-8",  # per-state override
+        )
+
+        captured_model: list[str | None] = []
+
+        class CapturingRunner:
+            def run(self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any) -> ActionResult:
+                captured_model.append(kwargs.get("model"))
+                return ActionResult(output="", stderr="", exit_code=0, duration_ms=0)
+
+        executor = FSMExecutor(fsm, action_runner=CapturingRunner(), run_model="claude-haiku-4-5-20251001")
+        executor.run()
+
+        assert captured_model, "action runner was never called"
+        assert captured_model[0] == "claude-opus-4-8", "state model should win over run_model"
+
     def test_no_llm_prevents_explicit_llm_structured_evaluation(self) -> None:
         """llm.enabled=False blocks evaluate_llm_structured for explicit llm_structured config."""
         from unittest.mock import patch

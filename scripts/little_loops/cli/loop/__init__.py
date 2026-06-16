@@ -135,7 +135,19 @@ Examples:
             help="Sleep N seconds between iterations (useful for recording)",
         )
         run_parser.add_argument("--no-llm", action="store_true", help="Disable LLM evaluation")
-        run_parser.add_argument("--llm-model", type=str, help="Override LLM model")
+        run_parser.add_argument(
+            "--model",
+            type=str,
+            dest="run_model",
+            metavar="MODEL_ID",
+            help="Default model for host-CLI action states (prompt/slash-command). Per-state model: overrides this.",
+        )
+        run_parser.add_argument(
+            "--llm-model",
+            type=str,
+            metavar="MODEL_ID",
+            help="Override model for FSM evaluator/judge states (distinct from --model).",
+        )
         run_parser.add_argument(
             "--dry-run", action="store_true", help="Show execution plan without running"
         )
@@ -309,6 +321,18 @@ Examples:
             "--examples",
             action="store_true",
             help="Show only example/template loops",
+        )
+        list_parser.add_argument(
+            "--visibility",
+            choices=["public", "internal", "example", "all"],
+            default=None,
+            metavar="{public,internal,example,all}",
+            help=(
+                "Filter loops by visibility tier. "
+                "'public' (default view) returns only routable loops; "
+                "'internal'/'example' narrow to those tiers; "
+                "'all' shows everything. Composes with --label and --json."
+            ),
         )
 
         # Status subcommand
