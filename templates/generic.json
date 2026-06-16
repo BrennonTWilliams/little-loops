@@ -36,6 +36,9 @@
       "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"}
     }
   },
+  "parallel": {
+    "use_feature_branches": false
+  },
   "product": {
     "enabled": false
   },

@@ -188,10 +188,13 @@ questions:
 ```
 Current Parallel Configuration
 ------------------------------
-  max_workers:        {{config.parallel.max_workers}}
-  timeout_per_issue:  {{config.parallel.timeout_per_issue}}
-  worktree_copy_files: {{config.parallel.worktree_copy_files}}
-  stream_output:      {{config.parallel.stream_subprocess_output}}
+  max_workers:                  {{config.parallel.max_workers}}
+  timeout_per_issue:            {{config.parallel.timeout_per_issue}}
+  worktree_copy_files:          {{config.parallel.worktree_copy_files}}
+  stream_output:                {{config.parallel.stream_subprocess_output}}
+  use_feature_branches:         {{config.parallel.use_feature_branches}}
+  push_feature_branches:        {{config.parallel.push_feature_branches}}
+  open_pr_for_feature_branches: {{config.parallel.open_pr_for_feature_branches}}
 ```
 
 ### Round 1 (4 questions)
@@ -246,6 +249,22 @@ questions:
         description: "Yes, stream output"
       - label: "false"
         description: "No, capture only (default)"
+    multiSelect: false
+```
+
+### Round 2 (1 question)
+
+```yaml
+questions:
+  - header: "Feature branches"
+    question: "Enable feature-branch mode for parallel runs (branch-per-issue)?"
+    options:
+      - label: "{{current use_feature_branches}} (keep)"
+        description: "Keep current setting"
+      - label: "true"
+        description: "Yes — ll-parallel creates a local feature/<id>-<slug> branch per issue and retains it after the run (no push, no PR opened automatically). Applies to parallel waves only; does not affect ll-auto (sequential) or single-issue sprint sub-waves."
+      - label: "false"
+        description: "No, work in-place on current branch (default)"
     multiSelect: false
 ```
 

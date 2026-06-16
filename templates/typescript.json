@@ -66,6 +66,9 @@
       }
     }
   },
+  "parallel": {
+    "use_feature_branches": false
+  },
   "product": {
     "enabled": false
   },

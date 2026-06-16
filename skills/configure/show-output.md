@@ -47,6 +47,10 @@ Parallel Processing Configuration (ll-parallel)
   max_merge_retries:       {{config.parallel.max_merge_retries}}        (default: 2)
   stream_subprocess_output: {{config.parallel.stream_subprocess_output}} (default: false)
   worktree_copy_files:     {{config.parallel.worktree_copy_files}}      (default: [.env])
+  use_feature_branches:         {{config.parallel.use_feature_branches}}         (default: false)
+  push_feature_branches:        {{config.parallel.push_feature_branches}}        (default: false)
+  open_pr_for_feature_branches: {{config.parallel.open_pr_for_feature_branches}} (default: false)
+  base_branch:                  {{config.parallel.base_branch}}                  (default: main)
 
 Edit: /ll:configure parallel
 ```

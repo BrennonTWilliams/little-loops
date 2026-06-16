@@ -2,15 +2,30 @@
 id: ENH-2174
 title: Surface use_feature_branches in /ll:configure and init templates
 type: ENH
-status: open
+status: done
 priority: P4
 parent: EPIC-2171
 captured_at: '2026-06-15T16:51:50Z'
+completed_at: '2026-06-16T19:44:48Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
-labels: [parallel, configure, init, feature-branches, dx, discoverability]
-depends_on: [ENH-2176]
-relates_to: [ENH-2175]
+labels:
+- parallel
+- configure
+- init
+- feature-branches
+- dx
+- discoverability
+depends_on:
+- ENH-2176
+relates_to:
+- ENH-2175
+confidence_score: 99
+outcome_confidence: 81
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # ENH-2174: Surface use_feature_branches in /ll:configure and init templates
@@ -72,21 +87,55 @@ development workflow (branch-per-issue / PR-based), discoverability matters.
 ## Integration Map
 
 ### Files to Modify
-- `skills/configure/` — add the flag to the parallel settings the skill presents
-- `templates/` — add a documented `use_feature_branches` entry to the parallel block of relevant config templates
-- (optional) `ll-init` flow — prompt under a PR-workflow opt-in
+
+**Configure skill:**
+- `skills/configure/areas.md` (`## Area: parallel`) — extend the **Current Values** display block to show `use_feature_branches`, `push_feature_branches`, `open_pr_for_feature_branches`; add a **Round 2** question block with a `use_feature_branches` toggle following the `Stream` question pattern (header / question / `{{current …}} (keep)` / `true` / `false`, `multiSelect: false`)
+- `skills/configure/show-output.md` (`## parallel --show`) — add four new rows after `worktree_copy_files`: `use_feature_branches`, `push_feature_branches`, `open_pr_for_feature_branches`, `base_branch`, each following the `  key_name: {{config.parallel.key_name}}  (default: VALUE)` format
+- `skills/configure/SKILL.md` — update the `parallel` area description string from `"ll-parallel: workers, timeouts, worktree files"` to include feature branches in both the `## Mode: --list` table row and the area-picker `description` field
+
+**Init TUI:**
+- `scripts/little_loops/init/tui.py` — in `run_tui()` under `if "parallel" in selected_set:` (around line 224), add a `questionary.confirm("Enable feature-branch mode (branch-per-issue)?", default=False)` prompt; propagate the result through `_build_final_config()` (around line 465) to write `"use_feature_branches": True` to the `parallel` section when selected
+
+**Config templates:**
+- All `templates/*.json` files (`generic.json`, `python-generic.json`, `typescript.json`, `javascript.json`, `go.json`, `rust.json`, `java-maven.json`, `java-gradle.json`, `dotnet.json`) — no `parallel` block exists in any template; add a `"parallel": {"use_feature_branches": false}` entry so generated configs document the flag
+
+### Dependent Files (Read-Only / No Change Required)
+- `scripts/little_loops/config/automation.py` (`ParallelAutomationConfig.from_dict()`) — already deserializes `use_feature_branches`, `push_feature_branches`, `open_pr_for_feature_branches`, `base_branch`, `remote_name`; no change needed
+- `scripts/little_loops/config/core.py` (`BRConfig.to_dict()`, lines 550–568) — already exports all feature-branch keys; `{{config.parallel.use_feature_branches}}` resolves correctly in skill templates
+
+### Optional: Explicit-Default in Init Core
+- `scripts/little_loops/init/core.py` (`build_config()`, lines 96–103) — consider writing `"use_feature_branches": false` into an explicit `parallel` block in `build_config()`, following the `loops.run_defaults` precedent (ENH-2113) that writes explicit defaults so the key is discoverable in generated configs even without TUI interaction
+
+### Similar Patterns to Follow
+- `skills/configure/areas.md` — `Stream` question (lines 240–250): exact template for the `use_feature_branches` boolean toggle (header `"Feature branches"`, `(keep)`, `true`, `false` options)
+- `scripts/little_loops/init/tui.py` — `questionary.confirm("Add custom exclude patterns?", default=False)` at line 193: pattern for optional boolean prompts in the TUI
+- `scripts/little_loops/init/core.py` `build_config()` lines 96–103: `loops.run_defaults` explicit-defaults precedent for always exposing a feature key in generated config
+
+### Tests
+- `scripts/tests/test_wiring_init_and_configure.py` — doc-wiring tests for init and configure; assert `use_feature_branches` appears in the configure parallel area output
+- `scripts/tests/test_init_tui.py` — add test for the new feature-branch TUI prompt path
+- `scripts/tests/test_init_core.py` — cover `build_config()` if the explicit-default parallel block is added
 
 ### Dependencies
 - Coordinate description text with **BUG-2172**: only describe push/PR behavior
   if that issue implements it; otherwise describe local-branch retention.
+- The coverage-boundary prose (feature-branch mode applies to parallel waves, not `ll-auto` or single-issue sprint sub-waves) should reference or quote the `docs/guides/SPRINT_GUIDE.md` paragraph finalized by **ENH-2176** rather than authoring independent text (per the `/ll:audit-issue-conflicts` note).
 
 ## Implementation Steps
 
-1. Audit `skills/configure/` to locate where parallel settings are presented; add `use_feature_branches` with a one-line description of the PR-based workflow it enables.
-2. Add a documented `use_feature_branches` entry (commented or `false`-defaulted) to the `parallel` block in relevant `templates/`.
-3. (Optional) Add a PR-workflow opt-in prompt to the `ll-init` flow.
-4. Coordinate description text with BUG-2172 outcome — only describe push/PR behavior if that issue has landed.
-5. Verify `/ll:configure` output and generated config templates include the new entry.
+1. **Configure skill — `--show` output** (`skills/configure/show-output.md`, `## parallel --show`): Add four rows after `worktree_copy_files`: `use_feature_branches (default: false)`, `push_feature_branches (default: false)`, `open_pr_for_feature_branches (default: false)`, `base_branch (default: main)`.
+
+2. **Configure skill — interactive area** (`skills/configure/areas.md`, `## Area: parallel`): Add `use_feature_branches`, `push_feature_branches`, `open_pr_for_feature_branches` to the Current Values block; add a Round 2 question block following the `Stream` pattern (lines 240–250) — note the coverage-boundary caveat in the `false` option description (applies to parallel waves only; see ENH-2176/SPRINT_GUIDE.md for scope language).
+
+3. **Configure skill — area description** (`skills/configure/SKILL.md`): Update the `parallel` description string in `## Mode: --list` and the area-picker entries from `"ll-parallel: workers, timeouts, worktree files"` to also mention feature branches.
+
+4. **Init TUI** (`scripts/little_loops/init/tui.py`, `run_tui()` around line 224): Under `if "parallel" in selected_set:`, add `questionary.confirm("Enable feature-branch mode (branch-per-issue)?", default=False)` and propagate the result through `_build_final_config()` (around line 465) to emit `"use_feature_branches": True` in the `parallel` section when selected.
+
+5. **Config templates** (`templates/*.json` — all 9 files): Add `"parallel": {"use_feature_branches": false}` to each template. This follows the `product: {enabled: false}` / `context_monitor: {enabled: true}` pattern of writing explicit-default keys for discoverability.
+
+6. **Coordinate with BUG-2172**: Read BUG-2172's outcome before writing description text — only mention push/PR behavior if implemented; otherwise restrict to "creates and retains a local `feature/<id>-<slug>` branch, skipping auto-merge." Pull coverage-boundary wording from `docs/guides/SPRINT_GUIDE.md` (finalized by ENH-2176) rather than writing new prose.
+
+7. **Verify**: Run `/ll:configure parallel` to confirm `use_feature_branches` appears; run `ll-init --yes` to confirm a generated config exposes the key; run `python -m pytest scripts/tests/test_wiring_init_and_configure.py scripts/tests/test_init_tui.py -v`.
 
 ## Impact
 
@@ -101,6 +150,10 @@ development workflow (branch-per-issue / PR-based), discoverability matters.
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-16T19:27:05 - `2d0784ea-20ea-4342-b7d5-61cd71315525.jsonl`
+- `/ll:confidence-check` - 2026-06-16T20:00:00Z - `8bb197a1-c4a2-4bce-985e-788fa46c1c85.jsonl`
+- `/ll:refine-issue` - 2026-06-16T19:20:16 - `308688f6-076c-43c9-af14-37a7a9f88806.jsonl`
+- `/ll:confidence-check` - 2026-06-16T00:00:00Z - `3132e209-9d0e-4a66-ae96-3bb5ef8cc7d2.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:47:56 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T16:57:30 - `bbf7e27c-ea9f-4af6-b201-de02c8065217.jsonl`

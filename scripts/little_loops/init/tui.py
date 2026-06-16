@@ -221,9 +221,10 @@ def run_tui(
 
     selected_set = set(selected_features)
 
-    # Conditional: parallel worker count + worktree copy files
+    # Conditional: parallel worker count, worktree copy files, and feature-branch mode
     parallel_workers: int = 4
     worktree_copy_files: list[str] = []
+    use_feature_branches: bool = False
     if "parallel" in selected_set:
         workers_str = questionary.text("Max parallel workers:", default="4").ask()
         if workers_str is None:
@@ -247,6 +248,13 @@ def run_tui(
         if wt_files is None:
             return 130
         worktree_copy_files = wt_files
+
+        fb_val: bool | None = questionary.confirm(
+            "Enable feature-branch mode (branch-per-issue)?", default=False
+        ).ask()
+        if fb_val is None:
+            return 130
+        use_feature_branches = fb_val
 
     # Conditional: design-token profile picker
     design_token_profile = "default"
@@ -369,6 +377,7 @@ def run_tui(
         scan_focus_dirs=scan_focus_dirs,
         scan_custom_excludes=scan_custom_excludes,
         worktree_copy_files=worktree_copy_files,
+        use_feature_branches=use_feature_branches,
         design_token_profile=design_token_profile,
         documents_categories=documents_categories,
         session_digest_enabled=bool(session_digest_enabled),
@@ -425,6 +434,7 @@ def _build_final_config(
     scan_focus_dirs: list[str] | None = None,
     scan_custom_excludes: list[str] | None = None,
     worktree_copy_files: list[str] | None = None,
+    use_feature_branches: bool = False,
     design_token_profile: str = "default",
     documents_categories: dict[str, Any] | None = None,
     session_digest_enabled: bool = True,
@@ -468,6 +478,8 @@ def _build_final_config(
             parallel_section["max_workers"] = parallel_workers
         if worktree_copy_files:
             parallel_section["worktree_copy_files"] = list(worktree_copy_files)
+        if use_feature_branches:
+            parallel_section["use_feature_branches"] = True
         if parallel_section:
             config["parallel"] = parallel_section
 

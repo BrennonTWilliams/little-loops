@@ -171,6 +171,9 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # REMOVED (stub ENH-1982): ("skills/init/interactive.md", "Session Digest", "ENH-2040"),
     # REMOVED (stub ENH-1982): ("skills/init/interactive.md", "SESSION_DIGEST_ENABLED", "ENH-2040"),
     # REMOVED (stub ENH-1982): ("skills/init/SKILL.md", "session_digest", "ENH-2040"),
+    ("skills/configure/show-output.md", "use_feature_branches", "ENH-2174"),
+    ("skills/configure/areas.md", "use_feature_branches", "ENH-2174"),
+    ("skills/configure/SKILL.md", "feature branches", "ENH-2174"),
 ]
 
 

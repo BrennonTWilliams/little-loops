@@ -42,6 +42,7 @@ def _wire_q(
     features: list[str] | None = None,
     workers: str = "4",
     worktree_files: list[str] | None = None,
+    use_feature_branches: bool = False,
     session_digest: bool = True,
     hosts: list[str] | None = None,
     settings: str = "local",
@@ -53,7 +54,7 @@ def _wire_q(
       1. Project Basics: name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd (text)
       2. Scan: focus_dirs (text), add_excludes (confirm), [custom_excludes (text) if add_excludes]
       3. Features: features (checkbox), [workers (text) + worktree_files (checkbox) if parallel],
-                   session_digest (confirm)
+                   [use_feature_branches (confirm) if parallel], session_digest (confirm)
       4. Hosts: hosts (checkbox)
       5. Settings: settings (select)
       6. CLAUDE.md: (select, via select return_value)
@@ -86,12 +87,13 @@ def _wire_q(
     #  and design_tokens not in default features so no profile select)
     mock_q.select.return_value.ask.return_value = settings
 
-    # Confirm: add_excludes (screen 2), session_digest (screen 3), apply (final)
-    mock_q.confirm.side_effect = [
-        _mock_ask(add_excludes),
-        _mock_ask(session_digest),
-        _mock_ask(confirmed),
-    ]
+    # Confirm: add_excludes (screen 2), [use_feature_branches if parallel] (screen 3),
+    # session_digest (screen 3), apply (final)
+    confirm_returns = [add_excludes]
+    if "parallel" in features:
+        confirm_returns.append(use_feature_branches)
+    confirm_returns.extend([session_digest, confirmed])
+    mock_q.confirm.side_effect = [_mock_ask(v) for v in confirm_returns]
 
     # Choice is used only to build checkbox/select lists; let it return a plain MagicMock
     mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
@@ -258,6 +260,30 @@ class TestConditionalParallel:
 
         config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
         assert "parallel" not in config
+
+    @patch("little_loops.init.tui.questionary")
+    def test_feature_branches_enabled_written_to_config(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["parallel"], workers="4", use_feature_branches=True)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config.get("parallel", {}).get("use_feature_branches") is True
+
+    @patch("little_loops.init.tui.questionary")
+    def test_feature_branches_disabled_not_written_to_config(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["parallel"], workers="4", use_feature_branches=False)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config.get("parallel", {}).get("use_feature_branches") is None
 
 
 # ---------------------------------------------------------------------------
