@@ -181,7 +181,7 @@ ll-loop run integrate-sdk --context target="anthropic" --context goal="streaming
 | Loop | Description |
 |------|-------------|
 | `deep-research` | Iterative web research synthesis — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured Markdown report with citations; delegates inner FSM chain to `oracles/research-coverage` (ENH-1876) |
-| `deep-research-arxiv` | Arxiv-only sibling of `deep-research` — constrains web search to `site:arxiv.org`, scores sources on relevance + recency (derived from arxiv submission date) instead of credibility, and emits an arxiv-ID-keyed sources table plus a `## BibTeX` section ready to drop into a `.bib` file; delegates inner FSM chain to `oracles/research-coverage` with `academic_mode=true` (ENH-1876) |
+| `deep-research-arxiv` | Arxiv-only variant of `deep-research` (`from: deep-research` stub, ENH-2161) — overrides `source_filter=site:arxiv.org` and `academic_mode=true`; inherits the full research FSM. Scores sources on relevance + recency (derived from arxiv submission date) instead of credibility, and emits an arxiv-ID-keyed sources table plus a `## BibTeX` section ready to drop into a `.bib` file. |
 | `apply-research` | Document ingestion pipeline — reads local `.txt`, `.md`, or `.pdf` files; scores each extracted idea by relevance to the project (0–1); filters below threshold; synthesizes actionable issue descriptions; and captures Issues via `/ll:capture-issue`. Use when you have research papers, RFCs, or design docs and want them translated into project issues automatically. |
 | `rn-plan` | Recursive task planning with self-scoring rubric — accepts a natural language task description, generates a 8-dimension rubric (breadth, depth, complexity, clarity, consistency, logic_strategy, feasibility, testability, risk_mitigation), then iteratively researches and refines the plan until all dimensions reach VERY-HIGH; delegates the per-iteration research chain to `oracles/plan-research-iteration` |
 | `rn-refine` | Recursive refinement loop for an existing plan document — accepts a path to a plan `.md` file, calibrates a 9-dimension rubric to the plan's current state, then iteratively researches and refines until all dimensions reach VERY-HIGH; delegates the per-iteration research chain to `oracles/plan-research-iteration` with `overwrite_source=true` for in-place file updates |
@@ -499,6 +499,8 @@ ll-loop run rn-remediate "<issue-id>" \
 | `readiness_threshold` | no | `85` | Confidence score threshold for readiness gate (int, 0–100) |
 | `outcome_threshold` | no | `75` | Outcome confidence threshold (int, 0–100) |
 | `max_remediation_passes` | no | `3` | Max remediation iterations before escalation to decomposition |
+| `require_refine_and_wire` | no | `true` | Enable the `gate_implement` marker-gate (see below); set `false` to skip the enforcement and proceed to `implement` unconditionally |
+| `diagnose_complexity_threshold` | no | `15` | Complexity score (0–25) above which an issue is classified as "above-minimal" and subject to the refine+wire gate |
 
 **Dimensional diagnosis routing** — the `diagnose` state parses scores and emits one of five tokens:
 
@@ -550,6 +552,8 @@ Phase 5 — Convergence:
     NEEDS_MANUAL_REVIEW → emit_needs_manual_review | CONVERGED_STALLED → check_remediation_budget
     (under budget → diagnose; exhausted → emit_stalled_needs_decompose → failed)
 ```
+
+**`gate_implement` marker-gate (ENH-2163)**: Both `IMPLEMENT` (from `diagnose`) and `CONVERGED_PASS` (from `check_convergence`) route through `gate_implement` before reaching `implement`. This choke point checks whether an above-minimal-complexity issue (`score_complexity ≥ diagnose_complexity_threshold`, default 15) has been through *at least one* `/ll:refine-issue` pass **and** *at least one* `/ll:wire-issue` pass in this run. If not, it forces the missing step first — adding at most one refine detour and one wire detour per issue, bounded, not a loop. Minimal-complexity issues and callers that set `require_refine_and_wire: false` pass straight through. Fail-open: any gate error routes directly to `implement` rather than blocking. Markers (`refined_<ID>.txt` and `wired_<ID>.txt`) are written to `${context.run_dir}` by the `refine` and `wire` states and persist for the duration of the run.
 
 **Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > DECOMPOSE). The `DECOMPOSE` token is a terminal diagnosis — it falls through the routing chain to `failed`, signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_iterations: 100`, `timeout: 14400`, `on_handoff: spawn`.
 
@@ -1191,8 +1195,8 @@ run_eval → score_results → analyze_failures
 | Loop | Description |
 |------|-------------|
 | `apo-beam` | Beam search prompt optimization — generate N variants, score all, advance the winner |
-| `apo-contrastive` | Contrastive APO — generate N variants → score comparatively → select best → repeat |
-| `apo-feedback-refinement` | Feedback-driven APO — generate → evaluate → refine until convergence |
+| `apo-contrastive` | Contrastive APO — generate N variants → score comparatively → select best → repeat (`from: lib/apo-shape-a` stub; inherits shared context defaults, ENH-2161) |
+| `apo-feedback-refinement` | Feedback-driven APO — generate → evaluate → refine until convergence (`from: lib/apo-shape-a` stub; inherits shared context defaults, ENH-2161) |
 | `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
 | `apo-textgrad` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |
 | `rn-plan-apo` | Plan-quality gradient optimization for the `rn-plan` recursive planner — scores plan trees on four plan-quality dimensions and refines the planning prompt via text gradient until `target_plan_quality` is reached |
@@ -1215,9 +1219,10 @@ run_eval → score_results → analyze_failures
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
-| `p5js-sketch-generator` | Generator-evaluator harness for p5.js creative coding sketches — multi-frame screenshots at deterministic frameCounts evaluate motion, not just composition; GAN-style architecture with p5.js loaded from CDN |
+| `generative-art` | Canonical p5.js generative art base loop — single-pass plan → generate → evaluate → score cycle with multi-frame Playwright screenshots; parent for `p5js-sketch-generator` and `pixi-generative-art` via `from:` inheritance (ENH-2161) |
+| `p5js-sketch-generator` | p5.js sketch specialization of `generative-art` (`from: generative-art` stub, ENH-2161) — multi-frame screenshots at deterministic frameCounts evaluate motion, not just composition; GAN-style architecture with p5.js loaded from CDN |
 | `pixi-data-viz` | Generator-evaluator harness for animated PixiJS data visualizations — embeds synthetic-but-plausible data inline; hard-gates `encoding_clarity` at threshold 7; evaluates whether motion aids comprehension |
-| `pixi-generative-art` | Generator-evaluator harness for PixiJS generative art sketches — GPU-accelerated idioms (filters, blend modes, container hierarchies); rewards Pixi-distinctive patterns over p5.js conventions |
+| `pixi-generative-art` | PixiJS specialization of `generative-art` (`from: generative-art` stub, ENH-2161) — overrides plan/generate/evaluate/score for GPU-accelerated idioms (filters, blend modes, container hierarchies); rewards Pixi-distinctive patterns over p5.js conventions |
 | `vega-viz` | Generator-evaluator harness for Vega / Vega-Lite data visualizations — compile-gates broken specs via deterministic exit-code before LLM scoring, supports optional real data (CSV/JSON path), defaults to Vega-Lite and escalates to full Vega only for custom/interactive composition; Playwright captures three interaction states (settled, hover/tooltip, brush/selection) as multimodal PNG input for the judge (ENH-2010) |
 | `canvas-sketch-generator` | Generator-evaluator harness for canvas-sketch (Matt DesLauriers) still-image generative art — objective non-blank render gate (parsed pixel statistics) hard-gates blank sketches before the LLM judge runs; per-iteration snapshots with deterministic best-iteration selection; `on_max_iterations: finalize` ensures `best.html` is always published even when the pass threshold is never crossed |
 | `rlhf-animated-svg` | RLHF-style generate-score-refine orchestrator for animated SVG artifacts — generates a zero-dependency self-contained HTML file with inline SVG animated via anime.js v3.2.2 (CDN, works under `file://`). Evaluation and refinement phases are delegated to the `rlhf-svg-evaluate` and `rlhf-svg-refine` sub-loops. Includes `explore → exploit → converge` phase gating, replan-on-streak-failure escalation, concept-reset escalation, and per-iteration artifact versioning. Accessibility: `role="img"`, `aria-labelledby`, `prefers-reduced-motion` detection. |
@@ -1616,7 +1621,17 @@ init → plan → generate → evaluate
 - The generator enforces a strict 250-line SVG size limit — use `<circle>`, `<path>`, and `<text>` with `<g transform="">` for repeated elements rather than verbose repeated markup.
 - Prefer `svg-image-generator` for quick iterations; reach for `svg-textgrad` when you see the same failure pattern repeating across iterations.
 
+### `generative-art` — Canonical Generative Art Base Loop
+
+**Inheritance**: Parent loop for `p5js-sketch-generator` and `pixi-generative-art` (ENH-2161). Implements the shared plan → generate → evaluate → score FSM topology with multi-frame Playwright screenshots. Child loops inherit this full state chain and override only the states specific to their rendering backend (plan brief, generator HTML, GPU strategy, scorer criteria).
+
+**When to use directly**: When you want to create a project-local generative art loop that inherits the shared topology. Run `ll-loop install generative-art` and customize the overridden states for your target environment. For p5.js or PixiJS specifically, use `p5js-sketch-generator` or `pixi-generative-art` instead.
+
+---
+
 ### `p5js-sketch-generator` — GAN-Style p5.js Sketch Loop
+
+**Inheritance**: `from: generative-art` stub (ENH-2161). Inherits the plan → generate → evaluate → score state chain from `generative-art`; all states are p5.js-specific.
 
 > **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Node.js must be available in `PATH` with `@playwright/test` in the global npm tree.
 
@@ -1748,6 +1763,8 @@ init → plan → generate → evaluate
 ---
 
 ### `pixi-generative-art` — PixiJS Generative Art Loop
+
+**Inheritance**: `from: generative-art` stub (ENH-2161). Overrides the `plan`, `generate`, `evaluate`, and `score` states with PixiJS-specific logic; inherits the shared FSM topology from `generative-art`.
 
 > **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Node.js must be available in `PATH` with `@playwright/test` in the global npm tree.
 
@@ -2411,6 +2428,8 @@ Eight built-in APO loops ship with little-loops:
 
 ### `apo-feedback-refinement` — Feedback-Driven Refinement
 
+**Inheritance**: `from: lib/apo-shape-a` stub (ENH-2161). Inherits shared `eval_criteria` and `quality_threshold` context defaults from `lib/apo-shape-a`; defines its own `generate_candidate → evaluate_candidate → refine` state chain.
+
 **Technique**: Generate one improved candidate → evaluate against criteria → apply feedback → repeat until convergence.
 
 **When to use**: You have a single target prompt and a clear quality rubric. Good for system prompts that produce inconsistent outputs — the evaluator diagnoses what's wrong and the refinement step fixes it.
@@ -2449,6 +2468,8 @@ generate_candidate ──→ evaluate_candidate ──→ route_convergence
 ---
 
 ### `apo-contrastive` — Contrastive Optimization
+
+**Inheritance**: `from: lib/apo-shape-a` stub (ENH-2161). Inherits shared `eval_criteria` and `quality_threshold` context defaults from `lib/apo-shape-a`; defines its own `generate_variants → score_and_select → route_convergence` state chain.
 
 **Technique**: Generate N diverse variants → score comparatively → select the best → update the file → repeat until convergence.
 
