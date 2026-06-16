@@ -285,6 +285,24 @@ Set `push_feature_branches: true` to push branches automatically after each issu
 
 > **Coverage boundary**: `use_feature_branches` only applies to multi-issue waves dispatched through `ParallelOrchestrator`. Single-issue waves and contention sub-waves always run in-place on the current branch — no worktree is created and no feature branch is produced for those issues. When feature branches are enabled and a wave runs in-place, `ll-sprint` emits a one-time warning naming the branch where work lands.
 
+### Cleaning up merged feature branches
+
+Feature branches (`feature/<id>-<slug>`) are retained intentionally after each worker finishes — the branch survives worktree cleanup so you can push, open a PR, and run CI. Once a PR has merged, the local ref is no longer needed. Over many runs the main repo accumulates stale `feature/` refs; use the opt-in prune to reclaim them.
+
+```bash
+# Preview what would be deleted (safe to run any time)
+ll-parallel --prune-merged-branches --dry-run
+
+# Delete branches already merged into the base branch
+ll-parallel --prune-merged-branches
+```
+
+**What is pruned:** local `feature/*` branches that are fully merged into `parallel.base_branch` (the branch that was checked out when `ll-parallel` last ran, defaulting to `main`). The currently checked-out branch and the base branch are never deleted.
+
+**Squash/rebase merges:** `git branch --merged` only detects fast-forward and merge-commit histories. If your repository uses squash or rebase merges, install `gh` and authenticate (`gh auth login`) — `ll-parallel --prune-merged-branches` will cross-check PR state via `gh pr view` and prune those branches too. Without `gh`, squash/rebase-merged branches are left untouched.
+
+**Scope:** only *local* branches are affected. GitHub's "delete branch on merge" setting governs the remote refs.
+
 ### Failed Issues
 
 If an issue fails during a **multi-issue parallel wave**, the runner:

@@ -1527,4 +1527,83 @@ class WorkerPool:
             if worktree_dir.is_dir() and _is_ll_worktree(worktree_dir.name):
                 self._cleanup_worktree(worktree_dir)
 
+    def prune_merged_feature_branches(
+        self, base_branch: str, dry_run: bool = False
+    ) -> tuple[list[str], list[str]]:
+        """Delete local feature/* branches already merged into base_branch.
+
+        Uses ``git branch --merged <base_branch>`` to detect fast-forward and
+        merge-commit histories, then cross-checks remaining ``feature/`` branches
+        via :func:`~.github_utils.is_pr_merged` to handle squash- and
+        rebase-merged PRs.  When ``gh`` is absent the cross-check returns False
+        for every branch, so only ``--merged``-detected branches are pruned.
+
+        Args:
+            base_branch: Branch that acts as the merge target (e.g. ``"main"``).
+            dry_run: If True, list candidates but do not delete anything.
+
+        Returns:
+            (pruned, skipped): names of branches that were (or would be) deleted,
+            and branches where deletion failed (non-dry-run only).
+        """
+        from little_loops.parallel.github_utils import is_pr_merged
+
+        current_result = self._git_lock.run(
+            ["rev-parse", "--abbrev-ref", "HEAD"], cwd=self.repo_path, timeout=10
+        )
+        current_branch = (
+            current_result.stdout.strip() if current_result.returncode == 0 else ""
+        )
+
+        all_result = self._git_lock.run(["branch"], cwd=self.repo_path, timeout=30)
+        merged_result = self._git_lock.run(
+            ["branch", "--merged", base_branch], cwd=self.repo_path, timeout=30
+        )
+
+        def _parse(output: str) -> list[str]:
+            branches = []
+            for line in output.splitlines():
+                b = line.strip()
+                if b.startswith("* "):
+                    b = b[2:]
+                if b and not b.startswith("("):
+                    branches.append(b)
+            return branches
+
+        all_branches = _parse(all_result.stdout) if all_result.returncode == 0 else []
+        merged_set = set(
+            _parse(merged_result.stdout) if merged_result.returncode == 0 else []
+        )
+
+        pruned: list[str] = []
+        skipped: list[str] = []
+
+        for branch in all_branches:
+            if not branch.startswith("feature/"):
+                continue
+            if branch in (current_branch, base_branch):
+                continue
+
+            is_merged = branch in merged_set or is_pr_merged(branch)
+            if not is_merged:
+                continue
+
+            if dry_run:
+                self.logger.info(f"[DRY RUN] would delete: {branch}")
+                pruned.append(branch)
+            else:
+                del_result = self._git_lock.run(
+                    ["branch", "-D", branch], cwd=self.repo_path, timeout=30
+                )
+                if del_result.returncode == 0:
+                    self.logger.info(f"Deleted merged feature branch: {branch}")
+                    pruned.append(branch)
+                else:
+                    self.logger.warning(
+                        f"Failed to delete branch {branch}: {del_result.stderr.strip()}"
+                    )
+                    skipped.append(branch)
+
+        return pruned, skipped
+
         self.logger.info("Cleaned up all worker worktrees")

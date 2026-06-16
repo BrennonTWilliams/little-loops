@@ -2735,3 +2735,192 @@ class TestWorkerPoolDecisionNeededGate:
 
         # decide-issue command should NOT be called
         assert not any("decide-issue" in cmd for cmd in commands_called)
+
+
+class TestPruneMergedFeatureBranches:
+    """Tests for WorkerPool.prune_merged_feature_branches() (ENH-2181)."""
+
+    def _make_git_run(
+        self,
+        current_branch: str = "main",
+        all_branches: list[str] | None = None,
+        merged_branches: list[str] | None = None,
+        delete_succeeds: bool = True,
+    ):
+        """Return a side_effect function for git_lock.run() calls."""
+        all_branches = all_branches or []
+        merged_branches = merged_branches or []
+
+        def _all_branches_output() -> str:
+            lines = []
+            for b in all_branches:
+                prefix = "* " if b == current_branch else "  "
+                lines.append(f"{prefix}{b}")
+            return "\n".join(lines) + ("\n" if lines else "")
+
+        def _merged_output() -> str:
+            lines = []
+            for b in merged_branches:
+                prefix = "* " if b == current_branch else "  "
+                lines.append(f"{prefix}{b}")
+            return "\n".join(lines) + ("\n" if lines else "")
+
+        def side_effect(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+                return subprocess.CompletedProcess([], 0, current_branch + "\n", "")
+            if args == ["branch"]:
+                return subprocess.CompletedProcess([], 0, _all_branches_output(), "")
+            if len(args) >= 3 and args[0] == "branch" and args[1] == "--merged":
+                return subprocess.CompletedProcess([], 0, _merged_output(), "")
+            if args[:2] == ["branch", "-D"]:
+                if delete_succeeds:
+                    return subprocess.CompletedProcess([], 0, "", "")
+                return subprocess.CompletedProcess(
+                    [], 1, "", f"error: Cannot delete branch '{args[2]}'"
+                )
+            return subprocess.CompletedProcess([], 1, "", f"unexpected: {args}")
+
+        return side_effect
+
+    def test_merged_feature_branch_is_deleted(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A feature branch fully merged into base_branch is deleted."""
+        side_effect = self._make_git_run(
+            current_branch="main",
+            all_branches=["main", "feature/bug-001-fix-null"],
+            merged_branches=["main", "feature/bug-001-fix-null"],
+        )
+        with patch("little_loops.parallel.github_utils.is_pr_merged", return_value=False):
+            with patch.object(worker_pool._git_lock, "run", side_effect=side_effect):
+                pruned, skipped = worker_pool.prune_merged_feature_branches("main")
+
+        assert pruned == ["feature/bug-001-fix-null"]
+        assert skipped == []
+
+    def test_unmerged_feature_branch_is_retained(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A feature branch NOT merged into base_branch is left untouched."""
+        side_effect = self._make_git_run(
+            current_branch="main",
+            all_branches=["main", "feature/enh-002-open-pr"],
+            merged_branches=["main"],  # feature branch NOT in merged list
+        )
+        with patch("little_loops.parallel.github_utils.is_pr_merged", return_value=False):
+            with patch.object(worker_pool._git_lock, "run", side_effect=side_effect):
+                pruned, skipped = worker_pool.prune_merged_feature_branches("main")
+
+        assert pruned == []
+        assert skipped == []
+
+    def test_parallel_branches_are_not_touched(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """parallel/* branches are never deleted, even if merged."""
+        side_effect = self._make_git_run(
+            current_branch="main",
+            all_branches=["main", "parallel/bug-003-20240115", "feature/bug-001-fix"],
+            merged_branches=["main", "parallel/bug-003-20240115", "feature/bug-001-fix"],
+        )
+        with patch("little_loops.parallel.github_utils.is_pr_merged", return_value=False):
+            with patch.object(worker_pool._git_lock, "run", side_effect=side_effect) as mock_run:
+                pruned, skipped = worker_pool.prune_merged_feature_branches("main")
+
+        # Only the feature branch should be pruned; parallel branch is untouched
+        assert pruned == ["feature/bug-001-fix"]
+        assert skipped == []
+        # Verify no branch -D call was made for the parallel branch
+        delete_calls = [
+            c for c in mock_run.call_args_list if c.args[0][:2] == ["branch", "-D"]
+        ]
+        assert all("parallel/" not in str(c) for c in delete_calls)
+
+    def test_dry_run_lists_but_does_not_delete(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Dry-run returns candidates without issuing any branch -D command."""
+        side_effect = self._make_git_run(
+            current_branch="main",
+            all_branches=["main", "feature/bug-004-dry-test"],
+            merged_branches=["main", "feature/bug-004-dry-test"],
+        )
+        with patch("little_loops.parallel.github_utils.is_pr_merged", return_value=False):
+            with patch.object(worker_pool._git_lock, "run", side_effect=side_effect) as mock_run:
+                pruned, skipped = worker_pool.prune_merged_feature_branches(
+                    "main", dry_run=True
+                )
+
+        assert pruned == ["feature/bug-004-dry-test"]
+        assert skipped == []
+        # No destructive git branch -D call issued
+        delete_calls = [
+            c for c in mock_run.call_args_list if c.args[0][:2] == ["branch", "-D"]
+        ]
+        assert delete_calls == []
+
+    def test_current_branch_is_never_deleted(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """The currently checked-out branch is never deleted, even if it matches feature/."""
+        side_effect = self._make_git_run(
+            current_branch="feature/bug-005-active",
+            all_branches=["main", "feature/bug-005-active"],
+            merged_branches=["main", "feature/bug-005-active"],
+        )
+        with patch("little_loops.parallel.github_utils.is_pr_merged", return_value=False):
+            with patch.object(worker_pool._git_lock, "run", side_effect=side_effect):
+                pruned, skipped = worker_pool.prune_merged_feature_branches("main")
+
+        assert pruned == []
+        assert skipped == []
+
+    def test_squash_merged_branch_pruned_via_gh(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A squash-merged branch not in git --merged list is pruned when is_pr_merged() returns True."""
+        side_effect = self._make_git_run(
+            current_branch="main",
+            all_branches=["main", "feature/enh-006-squash"],
+            merged_branches=["main"],  # git --merged misses squash merges
+        )
+        # Simulate gh reporting the PR as merged
+        with patch(
+            "little_loops.parallel.github_utils.is_pr_merged", return_value=True
+        ):
+            with patch.object(worker_pool._git_lock, "run", side_effect=side_effect):
+                pruned, skipped = worker_pool.prune_merged_feature_branches("main")
+
+        assert pruned == ["feature/enh-006-squash"]
+        assert skipped == []
+
+    def test_failed_delete_goes_to_skipped(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Branches that fail to delete are reported in skipped, not pruned."""
+        side_effect = self._make_git_run(
+            current_branch="main",
+            all_branches=["main", "feature/bug-007-fail"],
+            merged_branches=["main", "feature/bug-007-fail"],
+            delete_succeeds=False,
+        )
+        with patch("little_loops.parallel.github_utils.is_pr_merged", return_value=False):
+            with patch.object(worker_pool._git_lock, "run", side_effect=side_effect):
+                pruned, skipped = worker_pool.prune_merged_feature_branches("main")
+
+        assert pruned == []
+        assert skipped == ["feature/bug-007-fail"]

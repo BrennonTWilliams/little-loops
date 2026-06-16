@@ -2,10 +2,11 @@
 id: ENH-2181
 title: Prune merged local feature branches (feature-branch lifecycle/cleanup)
 type: ENH
-status: open
+status: done
 priority: P4
 parent: EPIC-2171
 captured_at: '2026-06-15T00:00:00Z'
+completed_at: '2026-06-16T21:09:01Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
 labels:
@@ -22,6 +23,13 @@ blocked_by:
 - ENH-2177
 - ENH-2182
 - ENH-2183
+confidence_score: 98
+outcome_confidence: 75
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 15
+score_change_surface: 22
+decision_needed: false
 ---
 
 # ENH-2181: Prune merged local feature branches (feature-branch lifecycle/cleanup)
@@ -41,7 +49,7 @@ The feature-branch path deliberately *retains* its branch (skip auto-merge,
 survive worktree cleanup) so the user can push / open a PR. But there is no
 back-end of that lifecycle:
 
-- `worker_pool.py:631` deletes a worktree's branch only when it starts with
+- `worker_pool.py:641` deletes a worktree's branch only when it starts with
   `parallel/`; `feature/*` branches are explicitly kept.
 - `/ll:cleanup-worktrees` removes orphaned worktrees but does not touch retained
   feature branches.
@@ -54,7 +62,7 @@ development loop, the missing cleanup half makes the local branch list unusable.
 
 ## Current Behavior
 
-- `parallel/worker_pool.py:630-631` — `delete_branch = branch_name is not None and
+- `parallel/worker_pool.py:641` — `delete_branch = branch_name is not None and
   branch_name.startswith("parallel/")`; `feature/*` survives by design.
 - `/ll:cleanup-worktrees` — prunes worktrees, not branches.
 - No `git branch --merged` style prune anywhere in the parallel code.
@@ -92,12 +100,12 @@ development loop, the missing cleanup half makes the local branch list unusable.
 
 ## Implementation Steps
 
-1. Add opt-in prune surface — a `--prune-merged-branches` flag on `ll-parallel` or a `--branches` mode on `/ll:cleanup-worktrees`; pick the surface that fits the existing CLI shape
-2. Implement `git branch --merged <base_branch>` filtered to the `feature/` prefix as the primary merged-branch detector; guard against deleting the current branch or base branch
-3. Add optional `gh pr view <branch> --json state` cross-check when `gh` is available to handle squash/rebase merges that `--merged` misses; document as a known limitation when `gh` is absent
-4. Add `--dry-run` mode that prints candidates without deleting
-5. Write tests: merged feature branch pruned; unmerged branch retained; `parallel/*` branches unaffected; dry-run deletes nothing
-6. Document feature-branch lifecycle and prune instructions in `docs/guides/SPRINT_GUIDE.md` and the ENH-2174 toggle description
+1. Add `--prune-merged-branches` and `--dry-run` flags to `main_parallel()` in `scripts/little_loops/cli/parallel.py`; use `add_dry_run_arg(parser)` from `scripts/little_loops/cli_args.py` for the `--dry-run` / `-n` registration (same helper used by `ll-migrate`, `ll-sync`, `ll-session prune`); add `--prune-merged-branches` with `action="store_true"`; **do not add this to `commands/cleanup-worktrees.md`** — that command is a pure LLM slash command with no Python backing
+2. Implement `prune_merged_feature_branches(base_branch: str, dry_run: bool, git_lock: GitLock, repo_path: Path, logger: Logger) -> tuple[list[str], list[str]]` in `scripts/little_loops/parallel/worker_pool.py` (co-locate with `cleanup_all_worktrees()` and `_cleanup_worktree()`): call `git_lock.run(["branch", "--merged", base_branch], cwd=repo_path, timeout=30)` to enumerate merged branches (`git_lock.run()` in `scripts/little_loops/parallel/git_lock.py` prepends `["git"]` internally), filter for `startswith("feature/")` prefix (the literal used in `_process_issue()` lines 245–250), guard against deleting the current branch (`git rev-parse --abbrev-ref HEAD`) and `base_branch`
+3. Add optional `is_pr_merged(branch)` cross-check imported from `scripts/little_loops/parallel/github_utils.py` for squash/rebase-merged branches (created by ENH-2182, already available); the function accepts `(branch: str, pr_url: str | None = None)`, calls `gh pr view --json state,mergedAt`, and returns `False` gracefully when `gh` is absent — no extra availability guard needed; document as known limitation when `gh` is absent
+4. `--dry-run` support: follow `scripts/little_loops/cli/migrate.py:main_migrate()` pattern — print `[DRY RUN] would delete: feature/...` per candidate, skip `git_lock.run(["branch", "-D", branch], ...)` calls; return candidates list without modifying repo
+5. Write tests in `scripts/tests/test_worker_pool.py` (file is `pytestmark = pytest.mark.integration`); mock `subprocess.run` via `patch("little_loops.parallel.worker_pool.subprocess.run")` to control `git branch --merged` output; cover: merged `feature/` branch deleted, unmerged `feature/` branch retained, `parallel/*` branch unaffected, dry-run prints candidates but no `branch -D` call issued
+6. Append `### Cleaning up merged feature branches` subsection to `docs/guides/SPRINT_GUIDE.md` within ENH-2177's "Feature-branch / PR-based workflow" section (not a new top-level section per the Scope Boundary note from `/ll:audit-issue-conflicts`; sequence after ENH-2177's section is committed)
 
 ## Acceptance Criteria
 
@@ -123,37 +131,31 @@ development loop, the missing cleanup half makes the local branch list unusable.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/parallel.py` **or** the `cleanup-worktrees` surface
-  (`skills/cleanup-worktrees/` + its CLI/handler) — add the prune mode + `--dry-run`
-- `scripts/little_loops/parallel/worker_pool.py` — reuse branch-prefix knowledge
-  (`feature/`, ~line 245/631) for safe candidate selection
-- `docs/guides/SPRINT_GUIDE.md` — document the feature-branch lifecycle (coordinate
-  with ENH-2177)
+- `scripts/little_loops/cli/parallel.py` — add `--prune-merged-branches` and `--dry-run` to `main_parallel()`; route new flags to `prune_merged_feature_branches()`; **`commands/cleanup-worktrees.md` is a pure LLM slash command with no Python backing — do not add the prune path there**
+- `scripts/little_loops/parallel/worker_pool.py` — add `prune_merged_feature_branches()` function co-located with `cleanup_all_worktrees()` and `_cleanup_worktree()`; the `feature/` prefix is an inline literal at `_process_issue()` lines 245–250 (no shared constant exists); the `startswith("parallel/")` guard at `_cleanup_worktree()` lines 634–641 is the pattern to mirror
+- `docs/guides/SPRINT_GUIDE.md` — append `### Cleaning up merged feature branches` subsection within ENH-2177's "Feature-branch / PR-based workflow" section
+
+### Dependent Files (Read, Not Modified)
+- `scripts/little_loops/parallel/github_utils.py` — import `is_pr_merged(branch: str, pr_url: str | None = None) -> bool`; function calls `gh pr view --json state,mergedAt`, returns `False` on any error (gh absent, timeout, JSON error) — no extra availability guard needed; created by ENH-2182 (confirmed available)
+- `scripts/little_loops/parallel/git_lock.py` — use `GitLock.run(["branch", "--merged", base_branch], cwd=repo_path, timeout=30)` and `GitLock.run(["branch", "-D", branch], ...)` for all git operations on the main repo; `git_lock.run()` prepends `["git"]` internally and serializes to avoid `index.lock` conflicts
+- `scripts/little_loops/parallel/types.py` — `ParallelConfig.base_branch: str` (default `"main"`) is the merge target; accessed as `parallel_config.base_branch` in `main_parallel()`
+- `scripts/little_loops/cli_args.py` — `add_dry_run_arg(parser)` is the canonical shared helper for `--dry-run` / `-n` across CLI modules; used by `ll-migrate`, `ll-sync`, `ll-session prune`, and others
 
 ### Similar Patterns
-- `worker_pool.py:631` — the existing `startswith("parallel/")` branch-delete
-  decision; mirror the prefix gate for `feature/`
-- `/ll:cleanup-worktrees` — existing worktree-pruning flow to extend
-
-### Dependencies
-- **BUG-2172** — establishes `parallel.base_branch` in config (the merge target
-  this prune checks against) and the push/PR flow that makes branches PR-backed.
-- **ENH-2175** — `pr_url:`/`branch:` frontmatter could make PR-state cross-checks
-  more precise (optional).
+- `worker_pool.py:_cleanup_worktree()` lines 634–641 — `startswith("parallel/")` branch-delete decision; mirror this prefix gate for `feature/`
+- `worktree_utils.py:cleanup_worktree()` — the `git_lock.run(["branch", "-D", branch_name])` call pattern for safe branch deletion after worktree removal
+- `cli/migrate.py:main_migrate()` — canonical dry-run pattern: announce at top with `[DRY RUN]`, prefix per-item output, skip destructive calls when `args.dry_run`
+- `orchestrator.py:_cleanup_orphaned_worktrees()` — inline `startswith("parallel/")` guard before `git_lock.run(["branch", "-D", ...])` call
 
 ### Tests
-- `scripts/tests/test_worker_pool.py` / cleanup tests — merged vs unmerged
-  feature-branch handling, `parallel/*` untouched, dry-run is a no-op
-
-### Dependent Files (Callers/Importers)
-- N/A — new opt-in prune surface; nothing currently calls it
+- `scripts/tests/test_worker_pool.py` — primary test location; `pytestmark = pytest.mark.integration`; mock `subprocess.run` via `patch("little_loops.parallel.worker_pool.subprocess.run")` to control `git branch --merged` output
 
 ### Configuration
-- `.ll/ll-config.json` `parallel.base_branch` key (from BUG-2172) — merge target the prune checks against
+- `.ll/ll-config.json` `parallel.base_branch` key (from BUG-2172) — merge target the prune checks against; accessed at runtime as `parallel_config.base_branch`
+- `config-schema.json` lines 392–396 — source-of-truth schema definition for `parallel.base_branch`
 
 ### Documentation
-- `docs/guides/SPRINT_GUIDE.md` — feature-branch lifecycle/cleanup section
-- ENH-2174 toggle description — note that feature branches are retained and how to prune
+- `docs/guides/SPRINT_GUIDE.md` — append `### Cleaning up merged feature branches` subsection within ENH-2177's feature-branch section (not a new top-level section)
 
 ## Impact
 
@@ -169,6 +171,9 @@ development loop, the missing cleanup half makes the local branch list unusable.
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-16T21:00:37 - `2d57d6d8-53e5-4322-be9a-0dbe5f49627c.jsonl`
+- `/ll:confidence-check` - 2026-06-16T21:00:00Z - `cf1880fc-9aab-465a-872b-8c85b25fcfd1.jsonl`
+- `/ll:refine-issue` - 2026-06-16T20:52:57 - `0094cc88-1e02-49a1-9193-2c08bcde57f7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:51:38 - `fc9e22f8-f75a-4ab7-a570-0b05a961077c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T20:17:38 - `c323cac1-9bc1-4447-9eba-2b6d36af7dfc.jsonl`

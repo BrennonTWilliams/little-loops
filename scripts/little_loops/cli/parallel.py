@@ -51,6 +51,8 @@ Examples:
   %(prog)s --dry-run          # Preview what would be processed
   %(prog)s --priority P1,P2   # Only process P1 and P2 issues
   %(prog)s --cleanup          # Clean up worktrees and exit
+  %(prog)s --prune-merged-branches  # Delete merged feature/* branches
+  %(prog)s --prune-merged-branches --dry-run  # Preview what would be pruned
   %(prog)s --stream-output    # Stream Claude CLI output in real-time
   %(prog)s --only BUG-001,BUG-002  # Process only specific issues
   %(prog)s --skip BUG-003     # Skip specific issues
@@ -85,6 +87,15 @@ Examples:
             "-c",
             action="store_true",
             help="Clean up all worktrees and exit",
+        )
+        parser.add_argument(
+            "--prune-merged-branches",
+            action="store_true",
+            help=(
+                "Delete local feature/* branches already merged into the base branch. "
+                "Use --dry-run to preview. "
+                "Squash/rebase-merged branches require gh CLI for detection."
+            ),
         )
         parser.add_argument(
             "--merge-pending",
@@ -226,6 +237,31 @@ Examples:
             base_branch=_base_branch,
             use_feature_branches=args.feature_branches,
         )
+
+        # Handle prune mode
+        if args.prune_merged_branches:
+            from little_loops.parallel import WorkerPool
+
+            pool = WorkerPool(parallel_config, config, logger, project_root)
+            if args.dry_run:
+                logger.info("[DRY RUN] No branches will be deleted.")
+            pruned, skipped = pool.prune_merged_feature_branches(
+                base_branch=parallel_config.base_branch,
+                dry_run=args.dry_run,
+            )
+            if pruned:
+                verb = "would delete" if args.dry_run else "deleted"
+                logger.success(
+                    f"Pruned {len(pruned)} merged feature branch(es) "
+                    f"({verb}): {', '.join(pruned)}"
+                )
+            else:
+                logger.info("No merged feature branches found to prune.")
+            if skipped:
+                logger.warning(
+                    f"Could not delete {len(skipped)} branch(es): {', '.join(skipped)}"
+                )
+            return 0
 
         # Delete state file if not resuming
         if not args.resume:
