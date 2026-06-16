@@ -1916,11 +1916,7 @@ Examples:
         metavar="PATH",
         help="Write output to file (default: stdout)",
     )
-    eval_export_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="JSON output instead of YAML (default: YAML)",
-    )
+    add_json_arg(eval_export_parser, help_text="JSON output instead of YAML (default: YAML)")
 
     return parser
 

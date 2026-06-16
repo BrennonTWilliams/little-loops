@@ -1939,7 +1939,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--issue ID` | | Filter to fixtures where this issue ID appears in session context |
 | `--limit N` | | Cap output record count (0 = unlimited) |
 | `--out PATH` | | Write output to file (default: stdout) |
-| `--json` | | JSON output instead of default YAML |
+| `--json` | `-j` | JSON output instead of default YAML |
 
 **Examples:**
 ```bash

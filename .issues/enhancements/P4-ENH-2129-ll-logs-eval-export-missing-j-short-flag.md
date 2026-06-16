@@ -2,12 +2,19 @@
 id: ENH-2129
 type: ENH
 priority: P4
-status: open
+status: done
 title: ll-logs eval-export missing -j short flag (use add_json_arg)
 discovered_date: 2026-06-14
 discovered_by: capture-issue
-captured_at: "2026-06-14T01:52:17Z"
+captured_at: '2026-06-14T01:52:17Z'
+completed_at: '2026-06-16T02:10:34Z'
 parent: EPIC-1918
+confidence_score: 98
+outcome_confidence: 97
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # ENH-2129: ll-logs eval-export missing -j short flag (use add_json_arg)
@@ -114,6 +121,7 @@ ll-logs eval-export --json     # unchanged
 **Open** | Created: 2026-06-14 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-16T02:07:15 - `142e9af6-7219-44c5-afdb-081986828717.jsonl`
 - `/ll:wire-issue` - 2026-06-16T01:45:41 - `0ae2622c-db89-46ee-978a-bc368e17a69d.jsonl`
 - `/ll:refine-issue` - 2026-06-16T01:39:23 - `67b90856-6acc-4e59-9c73-3b2e43ae05e5.jsonl`
 - `/ll:format-issue` - 2026-06-14T01:58:07 - `2a5cb136-c2a6-4327-b4ad-e6deaff58e4f.jsonl`

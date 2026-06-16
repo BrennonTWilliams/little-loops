@@ -2732,6 +2732,12 @@ class TestEvalExport:
             result = main_logs()
         assert result == 0
 
+    def test_eval_export_json_short_flag(self, capsys: pytest.CaptureFixture) -> None:
+        """-j is accepted by eval-export as a short form for --json."""
+        with patch("sys.argv", ["ll-logs", "eval-export", "-j"]):
+            result = main_logs()
+        assert result == 0
+
     def test_no_regression_extract(self, capsys: pytest.CaptureFixture) -> None:
         """eval-export addition does not break the existing extract subcommand."""
         with (
