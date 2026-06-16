@@ -2,14 +2,30 @@
 id: ENH-2176
 title: Honor use_feature_branches in single-issue sprint waves (flag silently no-ops)
 type: ENH
-status: open
+status: done
 priority: P3
 parent: EPIC-2171
 captured_at: '2026-06-15T17:30:00Z'
+completed_at: '2026-06-16T16:32:43Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
-labels: [parallel, sprint, feature-branches, workflow, dx, coverage]
-relates_to: [BUG-2172, ENH-2174]
+labels:
+- parallel
+- sprint
+- feature-branches
+- workflow
+- dx
+- coverage
+relates_to:
+- BUG-2172
+- ENH-2174
+confidence_score: 100
+outcome_confidence: 80
+score_complexity: 20
+score_test_coverage: 12
+score_ambiguity: 23
+score_change_surface: 25
+decision_needed: false
 ---
 
 # ENH-2176: Honor use_feature_branches in single-issue sprint waves (flag silently no-ops)
@@ -129,7 +145,9 @@ documented at the toggle surfaces. No silent no-op.
   `create_parallel_config` + `ParallelOrchestrator` path that already honors the flag
 
 ### Tests
-- `scripts/tests/` sprint run tests — single-issue wave behavior under the flag
+- `scripts/tests/test_cli_sprint.py:TestIssueWallClockTimeout` — existing tests for the single-issue execution path; add new test cases here for Option B warning behavior (uses `patch("little_loops.cli.sprint.run.process_issue_inplace")` to intercept execution)
+- `scripts/tests/test_cli_sprint.py:TestMainSprintArgForwarding` — pattern for arg-forwarding tests: `patch sys.argv` → call `main_sprint()` → inspect `call_args[0][0].<attr>`; follow this shape for a `--feature-branches` + single-issue-wave warning test
+- `scripts/tests/conftest.py` line 182 — `sample_config` fixture with `"parallel": {"use_feature_branches": True}` — reuse for tests that need the flag active via config
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/sprint/run.py` is invoked by `ll-sprint run`; the
@@ -146,10 +164,46 @@ documented at the toggle surfaces. No silent no-op.
 
 ## Implementation Steps
 
-1. Add a guarded one-time warning in `scripts/little_loops/cli/sprint/run.py` at the single-issue / contention sub-wave branch (~line 437): when `config.parallel.use_feature_branches` is set and the wave runs in-place, emit a warning naming the current branch (use a flag to suppress repeats within the same sprint run).
+1. Add a guarded one-time warning in `scripts/little_loops/cli/sprint/run.py` at the single-issue / contention sub-wave branch (~line 437): when the effective `use_feature_branches` value is `True` and the wave runs in-place, emit a warning naming the current branch (use a local boolean to suppress repeats within the same sprint run).
 2. Update `docs/guides/SPRINT_GUIDE.md` to document the coverage boundary at the toggle surface; coordinate wording with ENH-2174's description text.
-3. Add tests in `scripts/tests/` covering both Option B cases: warning emitted when flag is set + in-place wave; no warning when flag is unset.
+3. Add tests in `scripts/tests/test_cli_sprint.py` (class `TestIssueWallClockTimeout`) covering both Option B cases: warning emitted when flag is set + in-place wave; no warning when flag is unset.
 4. Verify no regression on the multi-issue `else` branch (`cli/sprint/run.py:489`) — flag must still honor `use_feature_branches` normally there.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Step 1 — exact deduplication + resolver pattern:**
+
+```python
+# Before the wave loop in _cmd_sprint_run():
+_fb_warning_emitted = False   # deduplicate: fire once per sprint run (mirrors OTelTransport._subloop_warned in transport.py)
+
+# Inside the single-issue / contention sub-wave branch, after _detect_current_branch() (line 443):
+effective_feature_branches = (
+    args.feature_branches
+    if args.feature_branches is not None
+    else config.parallel.use_feature_branches
+)  # mirrors create_parallel_config() resolver at config/core.py:488-490; required to catch --feature-branches CLI flag (ENH-2173 scope note)
+
+if effective_feature_branches and not _fb_warning_emitted:
+    logger.warning(
+        "feature-branch mode does not apply to single-issue / contention sub-waves; "
+        f"these issues run in-place on '{_current_branch}'"
+    )
+    _fb_warning_emitted = True
+```
+
+- `logger` is the custom `Logger` instance (`little_loops.logger.Logger`), created at line 173 of `_cmd_sprint_run()` — use `logger.warning(...)`, not `logging.warning(...)`.
+- `_current_branch` is already set by `_detect_current_branch()` at line 443 (called inside the single-issue branch before the per-issue loop); it is the string branch name, defaulting to `"main"` on failure.
+- The `args.feature_branches` attribute comes from `argparse.BooleanOptionalAction` defined in `cli/sprint/__init__.py` lines 140–145; it is `None` when the flag was not supplied on the command line.
+
+**Step 3 — test file and mock anchors:**
+
+- Target file: `scripts/tests/test_cli_sprint.py`, class `TestIssueWallClockTimeout`
+- Intercept single-issue execution: `patch("little_loops.cli.sprint.run.process_issue_inplace", return_value=...)`
+- Intercept warning: `patch.object(logger_instance, "warning")` or capture via `caplog`
+- Config fixture with flag active: `scripts/tests/conftest.py:sample_config` at line 182 (`"parallel": {"use_feature_branches": True}`)
 
 ## API/Interface
 
@@ -168,6 +222,10 @@ N/A — No public API changes. The warning is emitted to the existing sprint log
 **Open** | Created: 2026-06-15 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-16T16:23:29 - `09daeb9a-5d85-4460-b7ce-f4d5f275f881.jsonl`
+- `/ll:confidence-check` - 2026-06-16T00:00:00Z - `00773d27-9332-4390-8730-3e066fde730b.jsonl`
+- `/ll:refine-issue` - 2026-06-16T16:17:56 - `d8fd877c-48ea-47b1-8328-2a51e81e443a.jsonl`
+- `/ll:confidence-check` - 2026-06-16T00:00:00Z - `97575fec-0e0a-46f3-80d3-a37f17f6f8ca.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-15T20:33:23 - `708f5540-fdfd-4ca1-92bc-72a7cb548730.jsonl`
 - `/ll:format-issue` - 2026-06-15T20:12:41 - `50c8117c-6f1e-4df2-8979-885c3ae158c7.jsonl`
 - `/ll:format-issue` - 2026-06-15T20:10:07 - `50c8117c-6f1e-4df2-8979-885c3ae158c7.jsonl`

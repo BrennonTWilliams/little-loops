@@ -410,6 +410,7 @@ def _cmd_sprint_run(
         failed_waves = 0
         total_duration = 0.0
         total_waves = len(waves)
+        _fb_warning_emitted = False  # deduplicate: fire once per sprint run (ENH-2176)
 
         for wave_num, wave in enumerate(waves, 1):
             # Check for shutdown request (ENH-183)
@@ -441,6 +442,17 @@ def _cmd_sprint_run(
 
                 wave_failed = False
                 _current_branch = _detect_current_branch()
+                effective_feature_branches = (
+                    args.feature_branches
+                    if args.feature_branches is not None
+                    else config.parallel.use_feature_branches
+                )
+                if effective_feature_branches and not _fb_warning_emitted:
+                    logger.warning(
+                        "feature-branch mode does not apply to single-issue / contention"
+                        f" sub-waves; these issues run in-place on '{_current_branch}'"
+                    )
+                    _fb_warning_emitted = True
                 for issue in wave:
                     # TODO(ENH-1686): sprint sequential path not yet live-written
                     issue_result = _run_issue_with_wall_clock_timeout(

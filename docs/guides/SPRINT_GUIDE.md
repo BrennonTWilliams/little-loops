@@ -257,6 +257,8 @@ Each wave runs as follows:
 - **Single-issue wave**: `/ll:manage-issue` runs in-place (no worktree overhead) — this is the same skill used for individual issue implementation, invoked automatically by the sprint runner
 - **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results. With `use_feature_branches: true` in `ll-config.json`, auto-merge is skipped and each issue produces a PR-ready `feature/<id>-<slug>` branch instead — use this for PR-based CI/CD workflows.
 
+> **Coverage boundary**: `use_feature_branches` only applies to multi-issue waves dispatched through `ParallelOrchestrator`. Single-issue waves and contention sub-waves always run in-place on the current branch — no worktree is created and no feature branch is produced for those issues. When `use_feature_branches` is set and a wave runs in-place, `ll-sprint` emits a one-time warning naming the branch the work lands on. Dependency chains that produce all single-issue waves will see this warning for every sprint run; if per-issue feature branches are required for all issues, avoid all-sequential dependency chains or track the follow-up enhancement.
+
 After each wave completes:
 - State is checkpointed to `.sprint-state.json`
 - Execution continues to the next wave

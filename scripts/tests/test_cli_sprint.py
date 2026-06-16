@@ -722,3 +722,158 @@ class TestIssueWallClockTimeout:
 
         alarm_calls = mock_signal.alarm.call_args_list
         assert call(0) in alarm_calls
+
+
+# ---------------------------------------------------------------------------
+# Feature-branch in-place warning (ENH-2176 Option B)
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureBranchInPlaceWarning:
+    """One-time warning when use_feature_branches is set and a wave runs in-place."""
+
+    def _make_args(self, feature_branches=None) -> MagicMock:
+        args = MagicMock()
+        args.sprint = "test-sprint"
+        args.quiet = False
+        args.dry_run = False
+        args.resume = False
+        args.skip = None
+        args.only = None
+        args.type = None
+        args.label = None
+        args.skip_analysis = True
+        args.max_workers = 1
+        args.handoff_threshold = None
+        args.context_limit = None
+        args.save = False
+        args.feature_branches = feature_branches
+        return args
+
+    def _make_config(self, *, use_feature_branches: bool) -> MagicMock:
+        config = MagicMock()
+        config.parallel.use_feature_branches = use_feature_branches
+        config.sprints.max_issue_wall_clock_time = 60
+        config.issues.base_dir = ".issues"
+        config.project_root = Path(".")
+        return config
+
+    def _run(self, args: MagicMock, config: MagicMock, num_waves: int = 1) -> tuple[int, list]:
+        """Call _cmd_sprint_run with enough mocking to reach the in-place wave path.
+
+        Returns (exit_code, warning_calls) where warning_calls is a list of
+        positional-arg tuples from the Logger.warning mock.
+        """
+        from little_loops.cli.sprint.run import _cmd_sprint_run
+        from little_loops.issue_manager import IssueProcessingResult
+        from little_loops.issue_parser import IssueInfo
+
+        mock_issues = []
+        for i in range(num_waves):
+            issue = MagicMock(spec=IssueInfo)
+            issue.issue_id = f"ENH-{100 + i}"
+            issue.labels = []
+            mock_issues.append(issue)
+
+        issue_ids = [iss.issue_id for iss in mock_issues]
+
+        mock_path = MagicMock()
+        mock_path.read_text.return_value = "---\nstatus: open\n---\n"
+
+        mock_sprint = MagicMock()
+        mock_sprint.name = "test-sprint"
+        mock_sprint.issues = issue_ids
+        mock_sprint.options = None
+
+        mock_manager = MagicMock()
+        mock_manager.load_or_resolve.return_value = mock_sprint
+        mock_manager.validate_issues.return_value = dict.fromkeys(issue_ids, mock_path)
+        mock_manager.load_issue_infos.return_value = mock_issues
+
+        waves = [[iss] for iss in mock_issues]
+        contention_notes = [None] * len(waves)
+
+        success = IssueProcessingResult(success=True, duration=0.1, issue_id="dummy")
+        warning_calls: list = []
+
+        with (
+            patch("little_loops.cli.sprint.run.signal"),
+            patch("little_loops.frontmatter.parse_frontmatter", return_value={"status": "open"}),
+            patch(
+                "little_loops.frontmatter.update_frontmatter",
+                side_effect=lambda c, _: c,
+            ),
+            patch("little_loops.dependency_mapper.gather_all_issue_ids", return_value=set()),
+            patch("little_loops.cli.sprint.run.DependencyGraph") as mock_graph_cls,
+            patch(
+                "little_loops.cli.sprint.run.refine_waves_for_contention",
+                return_value=(waves, contention_notes),
+            ),
+            patch(
+                "little_loops.cli.sprint.run._run_issue_with_wall_clock_timeout",
+                return_value=success,
+            ),
+            patch("little_loops.cli.sprint.run._save_sprint_state"),
+            patch("little_loops.cli.sprint.run._cleanup_sprint_state"),
+            patch("little_loops.cli.sprint.run._detect_current_branch", return_value="main"),
+            patch("little_loops.cli.sprint.run.use_color_enabled", return_value=False),
+            patch("little_loops.cli.sprint.run.Logger") as mock_logger_cls,
+        ):
+            mock_graph = MagicMock()
+            mock_graph.has_cycles.return_value = False
+            mock_graph.get_execution_waves.return_value = waves
+            mock_graph_cls.from_issues.return_value = mock_graph
+
+            mock_logger = MagicMock()
+            mock_logger_cls.return_value = mock_logger
+            mock_logger.warning.side_effect = lambda msg: warning_calls.append(msg)
+
+            exit_code = _cmd_sprint_run(args, mock_manager, config)
+
+        return exit_code, warning_calls
+
+    def test_warning_emitted_when_config_flag_set_and_wave_in_place(self) -> None:
+        """Warning fires when use_feature_branches=True (via config) and wave runs in-place."""
+        args = self._make_args(feature_branches=None)
+        config = self._make_config(use_feature_branches=True)
+        exit_code, warnings = self._run(args, config)
+        assert exit_code == 0
+        matching = [w for w in warnings if "feature-branch mode does not apply" in w]
+        assert len(matching) == 1
+        assert "main" in matching[0]
+
+    def test_warning_emitted_when_cli_flag_true_and_wave_in_place(self) -> None:
+        """Warning fires when --feature-branches CLI flag is True (overriding unset config)."""
+        args = self._make_args(feature_branches=True)
+        config = self._make_config(use_feature_branches=False)
+        exit_code, warnings = self._run(args, config)
+        assert exit_code == 0
+        matching = [w for w in warnings if "feature-branch mode does not apply" in w]
+        assert len(matching) == 1
+
+    def test_no_warning_when_flag_unset(self) -> None:
+        """No warning when use_feature_branches is False and CLI flag is absent."""
+        args = self._make_args(feature_branches=None)
+        config = self._make_config(use_feature_branches=False)
+        exit_code, warnings = self._run(args, config)
+        assert exit_code == 0
+        matching = [w for w in warnings if "feature-branch mode does not apply" in w]
+        assert matching == []
+
+    def test_no_warning_when_cli_flag_explicitly_false(self) -> None:
+        """No warning when --no-feature-branches overrides a True config value."""
+        args = self._make_args(feature_branches=False)
+        config = self._make_config(use_feature_branches=True)
+        exit_code, warnings = self._run(args, config)
+        assert exit_code == 0
+        matching = [w for w in warnings if "feature-branch mode does not apply" in w]
+        assert matching == []
+
+    def test_warning_emitted_only_once_for_multiple_in_place_waves(self) -> None:
+        """Warning fires exactly once even when multiple single-issue waves run in-place."""
+        args = self._make_args(feature_branches=None)
+        config = self._make_config(use_feature_branches=True)
+        exit_code, warnings = self._run(args, config, num_waves=3)
+        assert exit_code == 0
+        matching = [w for w in warnings if "feature-branch mode does not apply" in w]
+        assert len(matching) == 1
