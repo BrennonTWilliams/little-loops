@@ -2,7 +2,7 @@
 id: BUG-2011
 type: BUG
 priority: P2
-status: open
+status: cancelled
 captured_at: '2026-06-07T22:42:29Z'
 discovered_date: 2026-06-07
 discovered_by: capture-issue
