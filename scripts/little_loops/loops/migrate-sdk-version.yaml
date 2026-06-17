@@ -4,7 +4,7 @@ description: >
   Re-proves stale learning-test records after a dependency bump, classifying
   each as still-valid, needs-upgrade, or refuted, and producing a triage report.
 initial: list_stale
-max_iterations: 50
+max_steps: 50
 timeout: 7200
 on_handoff: spawn
 import:

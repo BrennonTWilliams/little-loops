@@ -12,7 +12,7 @@ description: |
   modifications) via lookup_session_metadata(), filter with four opt-in quality
   predicates, track rejections, and publish a quality-gated SFT training corpus.
 initial: stage
-max_iterations: 40
+max_steps: 40
 timeout: 3600               # 1-hour wall clock limit
 on_handoff: spawn
 context:

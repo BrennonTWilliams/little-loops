@@ -11,7 +11,7 @@ description: |
 initial: generate
 on_handoff: spawn
 timeout: 7200
-max_iterations: 20
+max_steps: 20
 artifact_versioning: true
 
 parameters:

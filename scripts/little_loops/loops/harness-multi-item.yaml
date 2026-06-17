@@ -23,7 +23,7 @@ description: |
   → check_invariants before advancing to the next item.
   Adapt by replacing the discover and execute actions for your target workflow.
 initial: discover
-max_iterations: 200       # total budget across all items
+max_steps: 200       # total budget across all items
 timeout: 14400            # 4-hour wall clock limit (seconds)
 import:
   - lib/common.yaml

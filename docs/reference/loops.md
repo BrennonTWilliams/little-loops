@@ -49,7 +49,7 @@ See [`.ll/program.md` convention](program-md.md) for the steering file format an
 | `tasks_dir` | `""` | **Required.** Path to Harbor task directory passed to scorer. |
 | `scorer` | `""` | **Required.** Scorer command that prints a bare float to stdout on exit 0. |
 | `target_score` | `1.0` | Early-stop threshold. `1.0` means "never early-stop on target reached". |
-| `max_iterations` | `30` | Hard budget ceiling. |
+| `max_steps` | `30` | Hard budget ceiling. |
 | `STATE_NAME` | — | State-mode only. Name of the state being optimized; set by `dequeue_state` and read by `propose`, `apply`, and `write_trajectory_*`. |
 | `EXAMPLES_FILE` | — | State-mode only. Path to the examples file for the current state; set by `dequeue_state` and injected into the `propose` prompt. |
 
@@ -123,7 +123,7 @@ In addition to trajectory JSONL files written under `${context.run_dir}/states/`
 **Category**: research
 **File**: `scripts/little_loops/loops/deep-research.yaml`
 
-Iterative web research synthesis loop. Accepts a research topic or question, generates an initial set of faceted search queries, performs web searches, evaluates and deduplicates sources, scores per-facet coverage, and iterates until coverage is sufficient or `max_iterations` is exhausted. Produces a structured Markdown report with executive summary, key findings, source table, coverage gaps, and conclusion.
+Iterative web research synthesis loop. Accepts a research topic or question, generates an initial set of faceted search queries, performs web searches, evaluates and deduplicates sources, scores per-facet coverage, and iterates until coverage is sufficient or `max_steps` is exhausted. Produces a structured Markdown report with executive summary, key findings, source table, coverage gaps, and conclusion.
 
 ### Invocation
 
@@ -393,7 +393,7 @@ When a flag is `false`/`0` (or `pii_action` is not `discard` with detected PII),
 **Category**: oracle sub-loop
 **File**: `scripts/little_loops/loops/oracles/generator-evaluator.yaml`
 
-Reusable iterative artifact generation oracle. Loops `generate → evaluate (Playwright screenshot) → score (LLM rubric)` until `ALL_PASS` or `max_iterations`. Returns `done` on success; the calling thin-wrapper routes `on_yes` to its next state.
+Reusable iterative artifact generation oracle. Loops `generate → evaluate (Playwright screenshot) → score (LLM rubric)` until `ALL_PASS` or `max_steps`. Returns `done` on success; the calling thin-wrapper routes `on_yes` to its next state.
 
 Used by `html-website-generator`, `svg-image-generator`, `html-anything`, `hitl-md`, and `hitl-compare` as a `loop:` delegation state named `run_gen_eval` (ENH-1869).
 

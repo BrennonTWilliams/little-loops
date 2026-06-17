@@ -99,6 +99,6 @@ states:
     next: scan
   done:
     terminal: true
-max_iterations: 15
+max_steps: 15
 timeout: 5400
 on_handoff: spawn

@@ -7,7 +7,7 @@ description: |
   and reverts otherwise. Commits accepted mutations to the current branch.
   Trajectory persists to .ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl.
 initial: init_run
-max_iterations: 30
+max_steps: 30
 timeout: 7200
 on_handoff: spawn
 import:

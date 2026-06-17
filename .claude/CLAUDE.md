@@ -166,13 +166,13 @@ satisfied) but still be toothless if its verdict never varies across runs.
 Bernoulli variance `p*(1-p)` below 0.05 across ≥10 runs flags an evaluator that
 isn't measuring anything useful.
 
-Use `ll-loop calibrate-budget <loop>` to decide whether increasing `max_iterations`
+Use `ll-loop calibrate-budget <loop>` to decide whether increasing `max_steps`
 will actually improve outcomes. Additional iterations amplify a sound strategy but
 produce near-zero returns when the underlying evaluator is unhealthy. Example:
 
 ```
 Evaluator: check_quality (llm_structured)
-  Variance p*(1-p): 0.02   ⚠ WARN: below 0.05 threshold — fix evaluator before increasing max_iterations
+  Variance p*(1-p): 0.02   ⚠ WARN: below 0.05 threshold — fix evaluator before increasing max_steps
 Evaluator: check_exit (exit_code)
   Variance p*(1-p): 0.23   ✓ OK
 ```

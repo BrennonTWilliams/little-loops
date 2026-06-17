@@ -16,7 +16,7 @@ description: |
   accessibility support: role="img", aria-labelledby, and
   prefers-reduced-motion detection.
 initial: init
-max_iterations: 30
+max_steps: 30
 timeout: 7200
 artifact_versioning: true
 on_handoff: spawn

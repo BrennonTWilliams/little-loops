@@ -9,7 +9,7 @@ description: |
   Note: run_sub_loop has a default timeout of 1800s. For loops with longer expected
   runtimes, pass --timeout <seconds> to the outer loop invocation.
 initial: validate_input
-max_iterations: 15
+max_steps: 15
 timeout: 14400
 on_handoff: spawn
 context:

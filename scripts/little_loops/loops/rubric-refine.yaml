@@ -8,7 +8,7 @@ category: quality
 input_key: subject
 required_inputs: ["subject"]
 initial: score
-max_iterations: 10
+max_steps: 10
 import:
   - lib/rubric-router.yaml
 

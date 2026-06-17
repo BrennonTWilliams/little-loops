@@ -20,7 +20,7 @@ description: |
     on_yes: dequeue_next
     on_no: run_decomposition
 initial: assess
-max_iterations: 100
+max_steps: 100
 timeout: 14400
 on_handoff: spawn
 import:

@@ -2,7 +2,7 @@ name: "incremental-refactor"
 category: code-quality
 description: "Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure"
 initial: plan_steps
-max_iterations: 30
+max_steps: 30
 on_handoff: spawn
 
 context:

@@ -10,7 +10,7 @@ description: |
   oracles/research-coverage oracle (ENH-1876). Run as:
   ll-loop run deep-research "your research topic"
 initial: init
-max_iterations: 30
+max_steps: 30
 timeout: 3600
 
 context:

@@ -12,7 +12,7 @@ description: |
   accuracy for social cards, print safety for résumés) are enforced via the rubric thresholds.
   Thin wrapper over oracles/generator-evaluator (ENH-1869).
 initial: init
-max_iterations: 20
+max_steps: 20
 timeout: 7200
 
 # HARNESS: Context variables control quality threshold.

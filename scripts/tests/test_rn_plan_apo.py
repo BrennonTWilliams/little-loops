@@ -63,10 +63,10 @@ class TestRnPlanApoFile:
     def test_initial_state(self, raw_data: dict) -> None:
         assert raw_data.get("initial") == "run_planner"
 
-    def test_inherits_apo_category_max_iterations_timeout(self, resolved_data: dict) -> None:
-        """category, max_iterations, and timeout must come from lib/apo-base."""
+    def test_inherits_apo_category_max_steps_timeout(self, resolved_data: dict) -> None:
+        """category, max_steps, and timeout must come from lib/apo-base."""
         assert resolved_data.get("category") == "apo"
-        assert resolved_data.get("max_iterations") == 20
+        assert resolved_data.get("max_steps") == 20
         assert resolved_data.get("timeout") == 3600
 
     def test_context_defaults(self, raw_data: dict) -> None:

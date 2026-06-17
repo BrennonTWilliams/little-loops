@@ -114,8 +114,8 @@ class TestRnPlanYaml:
         assert "task" in ctx
         assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
-    def test_max_iterations_is_50(self, data: dict) -> None:
-        assert data.get("max_iterations") == 50
+    def test_max_steps_is_50(self, data: dict) -> None:
+        assert data.get("max_steps") == 50
 
     def test_router_states_have_on_error(self, data: dict) -> None:
         oracle = yaml.safe_load(ORACLE_FILE.read_text())

@@ -673,7 +673,7 @@ Review an existing FSM loop configuration for quality, correctness, consistency,
 **Flags:**
 - `--auto`: Apply all eligible non-breaking fixes automatically. Still prints the full report.
 - `--dry-run`: Report findings and scorecard only. Make no changes, skip artifact persistence.
-- `--exercise`: In Step 2.5, also run `ll-loop run --max-iterations 1` in addition to `ll-loop simulate`.
+- `--exercise`: In Step 2.5, also run `ll-loop run --max-steps 1` in addition to `ll-loop simulate`.
 - `--no-simulate`: Skip behavioral verification (Step 2.5) entirely.
 - `--rubric-only`: Stop after displaying the rubric scorecard. No fix proposals, no artifact persistence.
 - `--strict-semantic`: Run SR-* semantic checks in a fresh context seeded only with calibration examples from `reference.md` to prevent static-check findings from biasing judgment.
@@ -698,9 +698,9 @@ Review an existing FSM loop configuration for quality, correctness, consistency,
 
 | Check | Severity | Trigger |
 |-------|----------|---------|
-| SIM-1 | Warning | Simulation stalls — repeated state in `States visited:` before `max_iterations` |
-| SIM-2 | Warning | Terminal reached in <2 iterations on a `max_iterations > 5` loop (no-op happy path) |
-| SIM-3 | Error | Simulation hit `max_iterations` without reaching a terminal state |
+| SIM-1 | Warning | Simulation stalls — repeated state in `States visited:` before `max_steps` |
+| SIM-2 | Warning | Terminal reached in <2 iterations on a `max_steps > 5` loop (no-op happy path) |
+| SIM-3 | Error | Simulation hit `max_steps` without reaching a terminal state |
 
 **Semantic flow checks (SR-*):** In addition to structural (V-*, QC-*) and flow (FA-*) checks, the skill performs four semantic checks against the declared loop goal:
 

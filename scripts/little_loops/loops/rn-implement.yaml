@@ -16,7 +16,7 @@ description: |
   - Terminal: report state writes summary before bare done anchor (avoids
     terminal-state caveat where actions on terminal states are skipped)
 initial: init
-max_iterations: 500
+max_steps: 500
 timeout: 28800
 on_handoff: spawn
 context:

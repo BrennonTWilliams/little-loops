@@ -2,7 +2,7 @@ name: assumption-firewall
 category: gate
 description: Gates an issue against the Learning-Test Registry; extracts external-API assumptions (max 7) via LLM, classifies each as testable/untestable, records untestable claims via --assume flag, delegates testable claims to ready-to-implement-gate, routes done/blocked/no_external_deps.
 initial: read_issue
-max_iterations: 100
+max_steps: 100
 timeout: 7200
 on_handoff: spawn
 import:

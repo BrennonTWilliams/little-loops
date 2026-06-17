@@ -62,6 +62,6 @@ states:
     next: verify_docs
   done:
     terminal: true
-max_iterations: 10
+max_steps: 10
 timeout: 3600
 on_handoff: spawn

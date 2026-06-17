@@ -79,7 +79,7 @@ class TestEndToEndExecution:
         loop_content = """
 name: test-exec
 initial: check
-max_iterations: 3
+max_steps: 3
 states:
   check:
     action: "echo test"
@@ -106,24 +106,24 @@ states:
         captured = capsys.readouterr()
         # Verify loop header displayed
         assert "Running loop: test-exec" in captured.out
-        assert "Max iterations: 3" in captured.out
+        assert "Max steps: 3" in captured.out
         # Verify completion message shows correct final state
         assert "Loop completed: done" in captured.out
         assert "1 iterations" in captured.out
 
-    def test_exits_on_max_iterations(
+    def test_exits_on_max_steps(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Loop exits with code 1 when max_iterations reached."""
+        """Loop exits with code 1 when max_steps reached."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         loop_content = """
 name: test-max
 initial: check
-max_iterations: 2
+max_steps: 2
 states:
   check:
     action: "echo fail"
@@ -146,29 +146,29 @@ states:
                 result = main_loop()
 
         assert result == 1  # Non-terminal exit
-        assert mock_popen.call_count == 2  # Ran exactly max_iterations times
+        assert mock_popen.call_count == 2  # Ran exactly max_steps times
 
         captured = capsys.readouterr()
         # Verify loop header and completion message
         assert "Running loop: test-max" in captured.out
-        assert "Max iterations: 2" in captured.out
-        # Final state is check (not done) because max_iterations reached
+        assert "Max steps: 2" in captured.out
+        # Final state is check (not done) because max_steps reached
         assert "Loop completed: check" in captured.out
         assert "2 iterations" in captured.out
 
-    def test_runs_summary_state_on_max_iterations(
+    def test_runs_summary_state_on_max_steps(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """on_max_iterations summary state executes when cap fires, then loop terminates."""
+        """on_max_steps summary state executes when cap fires, then loop terminates."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         loop_content = """
 name: test-max-summary
 initial: check
-max_iterations: 2
+max_steps: 2
 on_max_steps: summarize
 states:
   check:
@@ -194,7 +194,7 @@ states:
 
                 result = main_loop()
 
-        assert result == 1  # terminated_by=max_iterations → exit code 1
+        assert result == 1  # terminated_by=max_steps → exit code 1
         assert mock_popen.call_count == 3  # 2 check iterations + 1 summarize
 
         captured = capsys.readouterr()
@@ -214,7 +214,7 @@ states:
         loop_content = """
 name: test-fail
 initial: check
-max_iterations: 1
+max_steps: 1
 states:
   check:
     action: "echo fail"
@@ -252,7 +252,7 @@ states:
         loop_content = """
 name: test-route
 initial: check
-max_iterations: 3
+max_steps: 3
 states:
   check:
     action: "echo test"
@@ -299,7 +299,7 @@ states:
         loop_content = """
 name: test-quiet
 initial: done
-max_iterations: 1
+max_steps: 1
 states:
   done:
     terminal: true
@@ -332,7 +332,7 @@ states:
         loop_content = """
 name: test-quiet-logo
 initial: done
-max_iterations: 1
+max_steps: 1
 states:
   done:
     terminal: true
@@ -363,7 +363,7 @@ states:
         loop_content = """
 name: test-progress
 initial: check
-max_iterations: 3
+max_steps: 3
 states:
   check:
     action: "echo test"
@@ -407,7 +407,7 @@ states:
         loop_content = """
 name: test-quiet-iter
 initial: check
-max_iterations: 3
+max_steps: 3
 states:
   check:
     action: "echo test"
@@ -450,7 +450,7 @@ states:
         loop_content = """
 name: test-background
 initial: done
-max_iterations: 1
+max_steps: 1
 states:
   done:
     terminal: true
@@ -486,7 +486,7 @@ states:
         loop_content = """
 name: test-foreground-pid
 initial: done
-max_iterations: 1
+max_steps: 1
 states:
   done:
     terminal: true
@@ -516,7 +516,7 @@ states:
         loop_content = """
 name: test-state
 initial: check
-max_iterations: 2
+max_steps: 2
 states:
   check:
     action: "echo test"
@@ -1285,7 +1285,7 @@ states:
     next: evaluate
   done:
     terminal: true
-max_iterations: 5
+max_steps: 5
 """
         (loops_dir / "test-echo.yaml").write_text(loop_yaml)
 
@@ -1324,7 +1324,7 @@ states:
     next: evaluate
   done:
     terminal: true
-max_iterations: 5
+max_steps: 5
 """
         (loops_dir / "test-fail.yaml").write_text(loop_yaml)
 
@@ -1365,7 +1365,7 @@ states:
     next: evaluate
   done:
     terminal: true
-max_iterations: 5
+max_steps: 5
 """
         (loops_dir / "test-slash.yaml").write_text(loop_yaml)
 
@@ -1408,7 +1408,7 @@ states:
     next: check
   done:
     terminal: true
-max_iterations: 5
+max_steps: 5
 """
         (loops_dir / "test-parse-error.yaml").write_text(loop_yaml)
 
@@ -1442,7 +1442,7 @@ states:
     next: done
   done:
     terminal: true
-max_iterations: 5
+max_steps: 5
 """
         (loops_dir / "test-no-action.yaml").write_text(loop_yaml)
 
@@ -1611,7 +1611,7 @@ states:
     next: check
   done:
     terminal: true
-max_iterations: 5
+max_steps: 5
 """
         (loops_dir / "test-sim.yaml").write_text(loop_yaml)
 
@@ -1650,7 +1650,7 @@ states:
     next: check
   done:
     terminal: true
-max_iterations: 5
+max_steps: 5
 """
         (loops_dir / "test-sim.yaml").write_text(loop_yaml)
 
@@ -1669,13 +1669,13 @@ max_iterations: 5
         assert "fix → check" in captured.out
         assert "check → done" in captured.out
 
-    def test_simulate_max_iterations_limit(
+    def test_simulate_max_steps_limit(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """simulate caps iterations at 20 by default."""
+        """simulate caps steps at 20 by default."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         loop_yaml = """
@@ -1688,7 +1688,7 @@ states:
     on_no: check
   done:
     terminal: true
-max_iterations: 100
+max_steps: 100
 """
         (loops_dir / "test-sim.yaml").write_text(loop_yaml)
 
@@ -1703,13 +1703,13 @@ max_iterations: 100
         assert "Limiting simulation to 20 steps" in captured.out
         assert "max_steps" in captured.out
 
-    def test_simulate_custom_max_iterations(
+    def test_simulate_custom_max_steps(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """simulate respects --max-iterations override."""
+        """simulate respects -n/--max-steps override."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         loop_yaml = """
@@ -1722,7 +1722,7 @@ states:
     on_no: check
   done:
     terminal: true
-max_iterations: 100
+max_steps: 100
 """
         (loops_dir / "test-sim.yaml").write_text(loop_yaml)
 

@@ -7,7 +7,7 @@ description: |
   shared `done:` terminal state. Children supply their own `initial:` state and
   the operative state graph. Not runnable directly — kept under `lib/` so it
   is excluded from non-recursive loop discovery.
-max_iterations: 20
+max_steps: 20
 timeout: 3600
 on_handoff: spawn
 context:

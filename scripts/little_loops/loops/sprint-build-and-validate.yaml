@@ -144,6 +144,6 @@ states:
   done:
     terminal: true
 
-max_iterations: 16
+max_steps: 16
 timeout: 25200
 on_handoff: spawn

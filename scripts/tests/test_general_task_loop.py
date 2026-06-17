@@ -359,9 +359,9 @@ class TestENH1732StateSplit:
             "execute state must be removed after ENH-1732 split"
         )
 
-    def test_max_iterations_increased(self, raw_data: dict) -> None:
-        assert raw_data.get("max_iterations", 0) >= 200, (
-            "max_iterations must be ≥200 to support ~33 plan steps at 6 iterations/step"
+    def test_max_steps_increased(self, raw_data: dict) -> None:
+        assert raw_data.get("max_steps", 0) >= 200, (
+            "max_steps must be ≥200 to support ~33 plan steps at 6 iterations/step"
         )
 
 

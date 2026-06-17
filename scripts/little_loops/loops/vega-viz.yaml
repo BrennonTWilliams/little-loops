@@ -29,8 +29,8 @@ description: |
   the highest-scoring version so far (the "a middle iteration often beat the
   last" finding from Anthropic's harness-design work).
 initial: init
-max_iterations: 20
-on_max_steps: max_iterations_summary
+max_steps: 20
+on_max_steps: max_steps_summary
 on_handoff: spawn
 timeout: 7200
 
@@ -519,7 +519,7 @@ states:
     on_no: done
     on_error: generate
 
-  max_iterations_summary:
+  max_steps_summary:
     # HARNESS: Terminal summary state fired when the FSM engine hits max_iterations
     # before EVAL_PASS is achieved. Surfaces the best partial result that already
     # exists on disk (best.html, best.critique.md, best_score.txt — maintained by

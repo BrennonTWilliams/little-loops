@@ -564,10 +564,26 @@ class TestMainLoopShorthand:
 class TestMainLoopRunFlagForwarding:
     """Tests that run subcommand flags are parsed and forwarded correctly."""
 
+    def test_max_steps_forwarded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--max-steps is parsed and forwarded to cmd_run."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--max-steps", "5"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_run"].assert_called_once()
+        call_args = mocks["cmd_run"].call_args
+        assert call_args[0][1].max_steps == 5
+
     def test_max_iterations_forwarded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """--max-iterations is parsed and forwarded to cmd_run."""
+        """--max-iterations (full-pass cap) is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
         mocks = _mock_handlers(monkeypatch)
@@ -849,10 +865,26 @@ class TestMainLoopSimulateFlagForwarding:
         assert result == 0
         mocks["cmd_simulate"].assert_called_once()
 
+    def test_simulate_max_steps_forwarded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--max-steps is parsed and forwarded to cmd_simulate."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-loop", "simulate", "test-loop", "--max-steps", "10"]
+        ):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_simulate"].assert_called_once()
+
     def test_simulate_max_iterations_forwarded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """--max-iterations is parsed and forwarded to cmd_simulate."""
+        """--max-iterations (full-pass cap) is parsed and forwarded to cmd_simulate."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
         mocks = _mock_handlers(monkeypatch)

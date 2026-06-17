@@ -104,14 +104,14 @@ class TestReviewLoopChecks:
         warnings = [i for i in issues if i.severity == ValidationSeverity.WARNING]
         assert any("orphan" in i.message.lower() or "orphan" in (i.path or "") for i in warnings)
 
-    # ---- V-12: max_iterations <= 0 ----
+    # ---- V-12: max_steps <= 0 ----
 
-    def test_v12_max_iterations_zero(self) -> None:
-        """V-12: max_iterations of 0 → Error."""
-        fsm = make_test_fsm(max_iterations=0)
+    def test_v12_max_steps_zero(self) -> None:
+        """V-12: max_steps of 0 → Error."""
+        fsm = make_test_fsm(max_steps=0)
         errors = validate_fsm(fsm)
         error_msgs = [e for e in errors if e.severity == ValidationSeverity.ERROR]
-        assert any("max_iterations" in (e.path or "") for e in error_msgs)
+        assert any("max_steps" in (e.path or "") for e in error_msgs)
 
     # ---- V-10: Routing conflict (shorthand + route) → Warning ----
 
@@ -163,29 +163,29 @@ class TestReviewLoopQualityChecks:
     raw YAML dict (not via validate_fsm).
     """
 
-    # ---- QC-1: max_iterations range ----
+    # ---- QC-1: max_steps range ----
 
-    def test_qc1_max_iterations_too_low(self) -> None:
-        """QC-1: max_iterations < 3 should be flagged."""
-        spec = {"max_iterations": 2}
-        value = spec.get("max_iterations", 50)
+    def test_qc1_max_steps_too_low(self) -> None:
+        """QC-1: max_steps < 3 should be flagged."""
+        spec = {"max_steps": 2}
+        value = spec.get("max_steps", 50)
         assert value < 3, "Skill should flag values below 3"
 
-    def test_qc1_max_iterations_too_high(self) -> None:
-        """QC-1: max_iterations > 100 should be flagged."""
-        spec = {"max_iterations": 200}
-        value = spec.get("max_iterations", 50)
+    def test_qc1_max_steps_too_high(self) -> None:
+        """QC-1: max_steps > 100 should be flagged."""
+        spec = {"max_steps": 200}
+        value = spec.get("max_steps", 50)
         assert value > 100, "Skill should flag values above 100"
 
-    def test_qc1_max_iterations_absent(self) -> None:
-        """QC-1: Absent max_iterations defaults to 50 (Suggestion only)."""
+    def test_qc1_max_steps_absent(self) -> None:
+        """QC-1: Absent max_steps defaults to 50 (Suggestion only)."""
         spec: dict = {}
-        value = spec.get("max_iterations", 50)
+        value = spec.get("max_steps", 50)
         assert value == 50, "Default should be 50"
         # Absent key → Suggestion, not Warning
-        assert "max_iterations" not in spec
+        assert "max_steps" not in spec
 
-    def test_qc1_max_iterations_reasonable(self) -> None:
+    def test_qc1_max_steps_reasonable(self) -> None:
         """QC-1: Values in [3, 100] should not trigger QC-1."""
         for v in (3, 10, 50, 100):
             assert 3 <= v <= 100, f"Value {v} is in the acceptable range"
@@ -327,23 +327,23 @@ class TestReviewLoopQualityChecks:
     # ---- QC-6: on_handoff recommendation ----
 
     def test_qc6_long_loop_missing_on_handoff(self) -> None:
-        """QC-6: max_iterations > 20 without on_handoff → Suggestion."""
-        spec = {"max_iterations": 50}
-        max_iter = spec.get("max_iterations", 50)
+        """QC-6: max_steps > 20 without on_handoff → Suggestion."""
+        spec = {"max_steps": 50}
+        max_iter = spec.get("max_steps", 50)
         has_on_handoff = "on_handoff" in spec
 
         assert max_iter > 20 and not has_on_handoff
         # → skill should suggest QC-6
 
     def test_qc6_short_loop_exempt(self) -> None:
-        """QC-6: max_iterations <= 20 is exempt from on_handoff suggestion."""
-        spec = {"max_iterations": 10}
-        max_iter = spec.get("max_iterations", 50)
+        """QC-6: max_steps <= 20 is exempt from on_handoff suggestion."""
+        spec = {"max_steps": 10}
+        max_iter = spec.get("max_steps", 50)
         assert max_iter <= 20  # → no QC-6 flag
 
     def test_qc6_on_handoff_explicit_no_flag(self) -> None:
         """QC-6: Explicit on_handoff should not trigger suggestion."""
-        spec = {"max_iterations": 50, "on_handoff": "pause"}
+        spec = {"max_steps": 50, "on_handoff": "pause"}
         has_on_handoff = "on_handoff" in spec
         assert has_on_handoff  # → no QC-6 flag
 
@@ -384,7 +384,7 @@ class TestReviewLoopAutoFix:
 
     def test_qc6_auto_fix_adds_pause(self) -> None:
         """QC-6 auto-fix: on_handoff: pause is a pure addition of the default value."""
-        spec: dict = {"name": "my-loop", "max_iterations": 50}
+        spec: dict = {"name": "my-loop", "max_steps": 50}
         # Apply QC-6 auto-fix
         spec["on_handoff"] = "pause"
         assert spec["on_handoff"] == "pause"
@@ -1012,7 +1012,7 @@ class TestReviewLoopSimulation:
             "=== Summary ===\n"
             "Iterations: 5\n"
             "States visited: verify → verify → verify → verify → verify\n"
-            "Terminated by: max_iterations\n"
+            "Terminated by: max_steps\n"
         )
         lines = simulate_stdout.splitlines()
         states_line = next((ln for ln in lines if "States visited:" in ln), "")
@@ -1021,7 +1021,7 @@ class TestReviewLoopSimulation:
         # SIM-1: cycle in states visited AND terminated by max_iterations
         states_visited = states_line.split("States visited:")[-1].strip().split(" → ")
         has_cycle = len(states_visited) != len(set(states_visited))
-        terminated_by_max = "max_iterations" in terminated_line
+        terminated_by_max = "max_steps" in terminated_line
 
         assert has_cycle
         assert terminated_by_max
@@ -1036,7 +1036,7 @@ class TestReviewLoopSimulation:
             "States visited: check → done\n"
             "Terminated by: terminal\n"
         )
-        max_iterations = 50  # > 5
+        max_steps = 50  # > 5
         lines = simulate_stdout.splitlines()
         iter_line = next((ln for ln in lines if "Iterations:" in ln), "")
         terminated_line = next((ln for ln in lines if "Terminated by:" in ln), "")
@@ -1046,42 +1046,42 @@ class TestReviewLoopSimulation:
 
         assert iterations < 2
         assert terminated_by_terminal
-        assert max_iterations > 5
+        assert max_steps > 5
         # → skill should emit SIM-2 Warning
 
-    def test_sim2_skipped_when_max_iterations_small(self) -> None:
-        """SIM-2: terminal in 1 iteration on max_iterations <= 5 → no flag (expected behavior)."""
-        max_iterations = 3  # <= 5
+    def test_sim2_skipped_when_max_steps_small(self) -> None:
+        """SIM-2: terminal in 1 iteration on max_steps <= 5 → no flag (expected behavior)."""
+        max_steps = 3  # <= 5
         iterations = 1
         terminated_by_terminal = True
 
-        should_flag = iterations < 2 and terminated_by_terminal and max_iterations > 5
+        should_flag = iterations < 2 and terminated_by_terminal and max_steps > 5
         assert not should_flag
         # → skill should NOT emit SIM-2
 
-    def test_sim3_signal_exceeds_max_iterations(self) -> None:
-        """SIM-3: Terminated by max_iterations without a stall cycle → exceeds limit."""
+    def test_sim3_signal_exceeds_max_steps(self) -> None:
+        """SIM-3: Terminated by max_steps without a stall cycle → exceeds limit."""
         simulate_stdout = (
             "SIMULATION: test-loop\n"
             "=== Summary ===\n"
             "Iterations: 10\n"
             "States visited: check → fix → check → fix → check → fix → check → fix → check → fix\n"
-            "Terminated by: max_iterations\n"
+            "Terminated by: max_steps\n"
         )
         lines = simulate_stdout.splitlines()
         terminated_line = next((ln for ln in lines if "Terminated by:" in ln), "")
 
-        terminated_by_max = "max_iterations" in terminated_line
+        terminated_by_max = "max_steps" in terminated_line
         assert terminated_by_max
         # → skill should emit SIM-3 Error (regardless of whether it's also SIM-1)
 
     def test_sim_exit_code_not_unique_for_sim3(self) -> None:
         """SIM-3 cannot be identified by exit code alone — must parse stdout."""
-        # From _helpers.py EXIT_CODES: exit code 1 covers max_iterations, timeout, cycle_detected
-        exit_codes = {"terminal": 0, "max_iterations": 1, "timeout": 1, "cycle_detected": 1}
-        assert exit_codes["max_iterations"] == exit_codes["timeout"]
-        assert exit_codes["max_iterations"] == exit_codes["cycle_detected"]
-        # → SIM-3 detection requires parsing "Terminated by: max_iterations" in stdout
+        # From _helpers.py EXIT_CODES: exit code 1 covers max_steps, timeout, cycle_detected
+        exit_codes = {"terminal": 0, "max_steps": 1, "timeout": 1, "cycle_detected": 1}
+        assert exit_codes["max_steps"] == exit_codes["timeout"]
+        assert exit_codes["max_steps"] == exit_codes["cycle_detected"]
+        # → SIM-3 detection requires parsing "Terminated by: max_steps" in stdout
 
     def test_no_simulate_flag_skips_step(self) -> None:
         """--no-simulate flag: Step 2.5 is entirely skipped, simulation_result='skipped'."""
@@ -1203,7 +1203,7 @@ class TestReviewLoopArtifact:
 
     def test_artifact_simulation_result_values(self) -> None:
         """simulation_result must be one of: terminal, max_iterations, skipped, error."""
-        valid_values = {"terminal", "max_iterations", "skipped", "error"}
+        valid_values = {"terminal", "max_steps", "skipped", "error"}
         for val in valid_values:
             fm = self._make_artifact_frontmatter(simulation_result=val)
             assert fm["simulation_result"] in valid_values
@@ -1477,10 +1477,10 @@ class TestReviewLoopPostFixIteration:
         """RT-1: no new findings after fix → no RT-1 Warning."""
         original_findings = [
             self._make_finding("QC-6", "on_handoff"),
-            self._make_finding("QC-1", "max_iterations"),
+            self._make_finding("QC-1", "max_steps"),
         ]
         post_fix_findings = [
-            self._make_finding("QC-1", "max_iterations"),  # same as original, not new
+            self._make_finding("QC-1", "max_steps"),  # same as original, not new
         ]
         original_keys = {(f["check_id"], f["location"]) for f in original_findings}
         regressions = [

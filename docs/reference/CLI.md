@@ -493,7 +493,8 @@ Run a loop.
 |---------------|-------|-------------|
 | `loop` | | Loop name or path |
 | `input` | | (Optional positional) If valid JSON object with keys matching defined context variables, unpacks into those keys; otherwise stored as a string in `context[input_key]` |
-| `--max-iterations` | `-n` | Override iteration limit |
+| `--max-steps` | `-n` | Override step cap (individual state transitions) |
+| `--max-iterations` | | Override full-pass cap (complete loop cycles) |
 | `--delay` | | Sleep N seconds between iterations (useful for recording) |
 | `--no-llm` | | Disable LLM evaluation |
 | `--llm-model` | | Override LLM model |
@@ -728,7 +729,8 @@ Trace loop execution interactively without running commands.
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--scenario` | | Auto-select results: `all-pass`, `all-fail`, `first-fail`, `alternating` |
-| `--max-iterations` | `-n` | Override max iterations (default: min of loop config or 20) |
+| `--max-steps` | `-n` | Override step cap (default: min of loop config or 20) |
+| `--max-iterations` | | Override full-pass cap for simulation |
 
 Runner-injected context variables (`run_dir`, `input`, `run_timestamp`) are populated before simulation begins, matching the behaviour of `ll-loop run`. Loops that reference `${context.run_dir}` in early states can be tested with simulate without errors (BUG-2118).
 
@@ -826,7 +828,7 @@ ll-loop diagnose-evaluators harness-refine-issue --threshold 0.1 --min-runs 5
 
 #### `ll-loop calibrate-budget`
 
-Report per-evaluator Bernoulli variance `p*(1-p)` to decide whether increasing `max_iterations` will improve outcomes. Calls the same analytics engine as `diagnose-evaluators` but frames output around retry-budget ROI: evaluators below the variance threshold waste iterations and should be fixed before raising `max_iterations`.
+Report per-evaluator Bernoulli variance `p*(1-p)` to decide whether increasing `max_steps` will improve outcomes. Calls the same analytics engine as `diagnose-evaluators` but frames output around retry-budget ROI: evaluators below the variance threshold waste iterations and should be fixed before raising `max_steps`.
 
 | Flag | Short | Description |
 |------|-------|-------------|
@@ -834,7 +836,7 @@ Report per-evaluator Bernoulli variance `p*(1-p)` to decide whether increasing `
 | `--min-runs` | | Minimum runs required for meaningful variance (default: 10) |
 | `--json` | `-j` | Output results as a JSON object; each evaluator entry includes `ci_lower` and `ci_upper` (Wilson 95% CI bounds on the pass-rate) |
 
-**Exit codes:** 0 = all evaluators healthy or insufficient data; 1 = at least one evaluator flagged (fix before increasing `max_iterations`).
+**Exit codes:** 0 = all evaluators healthy or insufficient data; 1 = at least one evaluator flagged (fix before increasing `max_steps`).
 
 **Examples:**
 ```bash

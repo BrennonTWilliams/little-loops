@@ -8,7 +8,7 @@ description: >
 input_key: target
 required_inputs: ["target"]
 initial: scan_existing_usage
-max_iterations: 150
+max_steps: 150
 timeout: 7200
 on_handoff: spawn
 import:

@@ -65,5 +65,5 @@ states:
     next: failed
   failed:
     terminal: true
-max_iterations: 100
+max_steps: 100
 on_handoff: spawn

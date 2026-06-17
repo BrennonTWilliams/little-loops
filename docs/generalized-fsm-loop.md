@@ -53,7 +53,7 @@ Run a check, apply a fix on failure, repeat until the check passes.
 ```yaml
 name: "goal-no-type-errors"
 initial: "evaluate"
-max_iterations: 20
+max_steps: 20
 states:
   evaluate:
     action: "/ll:check-code types"
@@ -143,7 +143,7 @@ Execute an ordered list of steps, then check an exit condition.
 ```yaml
 name: "fix-all-types"
 initial: "step_0"
-max_iterations: 20
+max_steps: 20
 backoff: 2
 states:
   step_0:
@@ -158,7 +158,7 @@ states:
     on_no: "step_0"
   done:
     terminal: true
-max_iterations: 20
+max_steps: 20
 backoff: 2
 ```
 
@@ -181,7 +181,7 @@ states:
     next: "check"
   done:
     terminal: true
-max_iterations: 10
+max_steps: 10
 ```
 
 No compilation needed - this is the native format.
@@ -195,7 +195,7 @@ Invoke another loop as a child FSM from a parent state. The child runs to comple
 ```yaml
 name: "quality-then-commit"
 initial: "run_quality"
-max_iterations: 5
+max_steps: 5
 states:
   run_quality:
     loop: "fix-quality-and-tests"    # Invokes .loops/fix-quality-and-tests.yaml
@@ -251,7 +251,7 @@ For variants that share a skeleton — e.g. APO loops that share `category`, ite
 # scripts/little_loops/loops/lib/apo-base.yaml — not runnable directly
 name: apo-base
 category: apo
-max_iterations: 20
+max_steps: 20
 timeout: 3600
 on_handoff: spawn
 context:
@@ -354,7 +354,7 @@ description: string             # Human-readable summary shown by ll-loop list a
                                 # debug-loop-run / audit-loop-run goal-alignment assessment)
 context: object                 # Shared variables/config
 scope: array[string]            # Paths this loop operates on (for concurrency)
-max_iterations: integer         # Safety limit (default: 50)
+max_steps: integer         # Safety limit (default: 50)
 backoff: number                 # Seconds between iterations
 timeout: number                 # Max total runtime in seconds (loop-level)
 default_timeout: number         # Default per-state action timeout in seconds (overridden by state-level timeout:)
@@ -1029,7 +1029,7 @@ states:
 | `run_dir` | `cmd_run` / `cmd_resume` | Per-run artifact directory (`.loops/runs/<loop>-<timestamp>/`). Set before `--context` overrides so CLI flags take precedence. |
 | `design_tokens_context` | `cmd_run` / `cmd_resume` | Resolved design-token values rendered as a prompt-context snippet (empty string when disabled). |
 | `input_hash` | `cmd_run` / `cmd_resume` | SHA-256 hex digest (12 chars) of `context.input`. Available when input is a non-empty string; use for checkpoint fingerprinting to prevent cross-task contamination. Override with `--context input_hash=VALUE`. |
-| `max_iterations` | `cmd_run` | The loop's effective iteration cap (from YAML `max_iterations:` or `--max-iterations` CLI override). Use `${context.max_iterations}` in state actions or evaluator prompts to reference the budget without hard-coding it. A `--context max_iterations=VALUE` override takes precedence. |
+| `max_steps` | `cmd_run` | The loop's effective step cap (from YAML `max_steps:` or `--max-steps` CLI override). Use `${context.max_steps}` in state actions or evaluator prompts to reference the budget without hard-coding it. A `--context max_steps=VALUE` override takes precedence. |
 
 #### `captured` - Stored Action Results
 
@@ -1143,7 +1143,7 @@ states:
     next: "test"
   done:
     terminal: true
-max_iterations: 5
+max_steps: 5
 ```
 
 ### Example 2: Slash Command with LLM Evaluation
@@ -1161,11 +1161,11 @@ states:
     action: "/ll:manage-issue bug fix"
     # Default: evaluate with llm_structured, route success/failure
     on_yes: "check"
-    on_no: "check"    # Retry even on failure (up to max_iterations)
+    on_no: "check"    # Retry even on failure (up to max_steps)
   
   done:
     terminal: true
-max_iterations: 10
+max_steps: 10
 ```
 
 ### Example 3: Custom Verdicts with Full Routing
@@ -1208,7 +1208,7 @@ states:
 
   done:
     terminal: true
-max_iterations: 15
+max_steps: 15
 ```
 
 ### Example 4: Convergence Loop
@@ -1239,7 +1239,7 @@ states:
   done:
     action: "echo 'Finished with ${captured.errors.output} errors'"
     terminal: true
-max_iterations: 20
+max_steps: 20
 ```
 
 ### Example 5: CI-Friendly (No LLM Evaluation)
@@ -1274,7 +1274,7 @@ states:
 
   done:
     terminal: true
-max_iterations: 3
+max_steps: 3
 timeout: 600
 ```
 
@@ -1339,7 +1339,7 @@ states:
   done:
     terminal: true
 
-max_iterations: 5
+max_steps: 5
 timeout: 1800
 ```
 
@@ -1388,7 +1388,7 @@ states:
       _error: "$current"       # Also retry on errors
 ```
 
-Retries respect `max_iterations`.
+Retries respect `max_steps`.
 
 ### LLM Evaluation Errors
 
@@ -1506,7 +1506,7 @@ All slash command actions use `--dangerously-skip-permissions`. This is **non-ne
 ### Risk Mitigation
 
 - **Review before running**: Users should read loop definitions before execution
-- **Iteration limits**: `max_iterations` prevents runaway loops
+- **Iteration limits**: `max_steps` prevents runaway loops
 - **Timeouts**: Action and loop-level timeouts bound execution
 - **Scoped operations**: `scope` declaration limits file system impact
 
@@ -1698,7 +1698,7 @@ All states that previously routed directly to `failed` must instead route to `di
 
 ### Generator-Evaluator Loops: Never Route Evaluate Failures Back to Generate
 
-In any generator-evaluator pattern (`generate → evaluate → score → generate`), the `evaluate` state's `on_no` and `on_error` routes must point **forward** — to `score` or another evaluation fallback — not back to `generate`. Routing back creates an undetectable infinite cycle: `generate` routes unconditionally to `evaluate`, which fails again for the same reason, repeating until `max_iterations` is exhausted with zero useful output.
+In any generator-evaluator pattern (`generate → evaluate → score → generate`), the `evaluate` state's `on_no` and `on_error` routes must point **forward** — to `score` or another evaluation fallback — not back to `generate`. Routing back creates an undetectable infinite cycle: `generate` routes unconditionally to `evaluate`, which fails again for the same reason, repeating until `max_steps` is exhausted with zero useful output.
 
 When the external tool used by `evaluate` (Playwright, a linter, a build system) is unavailable, the correct fallback is to degrade to an alternative evaluation — LLM judgment of the artifact source, for example — not to regenerate the artifact.
 
@@ -1854,15 +1854,15 @@ class TestExecutor:
         assert result.final_state == "done"
         assert result.iterations == 2
 
-    def test_max_iterations_respected(self, mock_action_runner):
-        """Loop terminates at max_iterations even if not terminal."""
-        fsm = {"max_iterations": 3, ...}
+    def test_max_steps_respected(self, mock_action_runner):
+        """Loop terminates at max_steps even if not terminal."""
+        fsm = {"max_steps": 3, ...}
         mock_action_runner.always_fail()
 
         result = FSMExecutor(fsm, ...).run()
 
         assert result.iterations == 3
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
 
     def test_variable_interpolation(self, mock_action_runner):
         """${context.*} and ${captured.*} resolve correctly."""
@@ -1970,7 +1970,7 @@ Here's the loop configuration:
 ```yaml
 name: "fix-types-and-lint"
 initial: check_types
-max_iterations: 10
+max_steps: 10
 states:
   check_types:
     action: "mypy src/"

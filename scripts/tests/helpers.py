@@ -53,7 +53,7 @@ def make_test_fsm(
     name: str = "test-loop",
     initial: str = "start",
     states: dict[str, StateConfig] | None = None,
-    max_iterations: int = 50,
+    max_steps: int = 50,
     timeout: int | None = None,
 ) -> FSMLoop:
     """Create an FSMLoop for testing.
@@ -70,6 +70,6 @@ def make_test_fsm(
         name=name,
         initial=initial,
         states=states,
-        max_iterations=max_iterations,
+        max_steps=max_steps,
         timeout=timeout,
     )

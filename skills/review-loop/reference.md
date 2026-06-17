@@ -31,7 +31,7 @@ These are surfaced by running `ll-loop validate <name>`. The review skill presen
 | V-9 | No transition defined (non-terminal state) | Error |
 | V-10 | Routing conflict (shorthand + `route` both set) | Warning |
 | V-11 | Unreachable state (BFS from initial) | Warning |
-| V-12 | `max_iterations <= 0` | Error |
+| V-12 | `max_steps <= 0` | Error |
 | V-13 | `backoff < 0` | Error |
 | V-14 | `timeout <= 0` | Error |
 | V-15 | `llm.max_tokens <= 0` | Error |
@@ -52,13 +52,13 @@ YAML dict. QC-1 through QC-7 emit their own check_ids; QC-8 through QC-14 are th
 skill's pass that *produces* the FA-* and PR-1 findings whose definitions and fix
 templates appear later in this file. Run them in order.
 
-### QC-1: max_iterations Range
+### QC-1: max_steps Range
 
-Read `max_iterations` from the YAML dict (absent = 50 default).
+Read `max_steps` from the YAML dict (absent = 50 default).
 
-- If value < 3: add Warning finding at path `max_iterations`
-- If value > 100: add Warning finding at path `max_iterations`
-- If key is absent: add Suggestion finding at path `max_iterations`
+- If value < 3: add Warning finding at path `max_steps`
+- If value > 100: add Warning finding at path `max_steps`
+- If key is absent: add Suggestion finding at path `max_steps`
 
 ### QC-2: Missing `on_error` Routing
 
@@ -94,8 +94,8 @@ For each state with an `action` field:
 
 ### QC-6: `on_handoff` Recommendation
 
-Read top-level `on_handoff`. Read `max_iterations` (use 50 if absent).
-- If `max_iterations > 20` AND `on_handoff` is absent: add Suggestion finding at path `on_handoff`
+Read top-level `on_handoff`. Read `max_steps` (use 50 if absent).
+- If `max_steps > 20` AND `on_handoff` is absent: add Suggestion finding at path `on_handoff`
 
 ### QC-7: `capture` Usage Opportunity
 
@@ -111,7 +111,7 @@ For each non-terminal state, check whether ALL of its `on_error` and `on_partial
 
 ### QC-9: Missing Failure Terminal
 
-Scan all terminal states. If none has a name suggesting failure (`failed`, `error`, `aborted`, `bail`, `halt`, or similar), and `max_iterations` is the only stop condition for failure cases:
+Scan all terminal states. If none has a name suggesting failure (`failed`, `error`, `aborted`, `bail`, `halt`, or similar), and `max_steps` is the only stop condition for failure cases:
 - Add Warning finding at path `(loop)` (check_id: FA-2)
 - Note: a non-terminal error-handling state that eventually routes to a failure terminal does NOT trigger this
 
@@ -154,7 +154,7 @@ For each state where `action_type: prompt` OR where `action_type` is absent and 
 
 ## Quality Checks (QC — skill-specific)
 
-### QC-1: max_iterations Range
+### QC-1: max_steps Range
 
 **Severity**: Warning
 **Breaking**: false
@@ -162,17 +162,17 @@ For each state where `action_type: prompt` OR where `action_type` is absent and 
 
 | Condition | Finding |
 |-----------|---------|
-| `max_iterations < 3` | Warning: Value `N` is suspiciously low — may not allow convergence. Consider 5–20 for simple loops. |
-| `max_iterations > 100` | Warning: Value `N` is suspiciously high — a broken loop could run for a long time. Consider capping at 50 unless intentional. |
-| Key absent (uses default 50) | Suggestion: `max_iterations` not set; defaulting to 50. Consider setting explicitly for clarity. |
+| `max_steps < 3` | Warning: Value `N` is suspiciously low — may not allow convergence. Consider 5–20 for simple loops. |
+| `max_steps > 100` | Warning: Value `N` is suspiciously high — a broken loop could run for a long time. Consider capping at 50 unless intentional. |
+| Key absent (uses default 50) | Suggestion: `max_steps` not set; defaulting to 50. Consider setting explicitly for clarity. |
 
 **Fix template** (for high value):
 ```yaml
 # Before
-max_iterations: 200
+max_steps: 200
 
 # After (example — suggest based on loop complexity)
-max_iterations: 50
+max_steps: 50
 ```
 
 ---
@@ -261,7 +261,7 @@ states:
 For each state with `evaluate.type: convergence`:
 - If `on_maintain` is absent: stalls (metric not changing) are not handled
 
-**Finding**: `Warning: states.<name>: Convergence evaluator without on_maintain. If the metric stalls, the loop will retry indefinitely until max_iterations. Consider adding on_maintain: <stall-state> or on_maintain: $current.`
+**Finding**: `Warning: states.<name>: Convergence evaluator without on_maintain. If the metric stalls, the loop will retry indefinitely until max_steps. Consider adding on_maintain: <stall-state> or on_maintain: $current.`
 
 **Fix template**:
 ```yaml
@@ -315,20 +315,20 @@ action: "./scripts/run_checks.sh"   # or: "$HOME/scripts/run_checks.sh"
 **Breaking**: false
 **When to auto-apply**: No
 
-If `max_iterations > 20` (explicit) and `on_handoff` is absent from the top-level spec:
+If `max_steps > 20` (explicit) and `on_handoff` is absent from the top-level spec:
 
-**Finding**: `Suggestion: on_handoff not set. With max_iterations > 20, the loop may outlast a Claude session. Consider setting on_handoff: pause (default) or on_handoff: spawn explicitly.`
+**Finding**: `Suggestion: on_handoff not set. With max_steps > 20, the loop may outlast a Claude session. Consider setting on_handoff: pause (default) or on_handoff: spawn explicitly.`
 
 **Fix template**:
 ```yaml
 # Before
 name: my-loop
-max_iterations: 50
+max_steps: 50
 # on_handoff absent
 
 # After
 name: my-loop
-max_iterations: 50
+max_steps: 50
 on_handoff: pause   # pause and wait for user to resume (default but explicit)
 ```
 
@@ -397,7 +397,7 @@ These checks are run during Step 2c (FSM Flow Review). They evaluate whether the
 
 For each non-terminal state: if ALL of its `on_error` and `on_partial` transitions route back to itself (or form a tight cycle of ≤ 2 states) with no counter, escape condition, or alternative path:
 
-**Finding**: `Warning: states.<name>: Spin risk — on_error and on_partial both route back to <name> with no escape. A persistent LLM error or ambiguous output will loop indefinitely until max_iterations.`
+**Finding**: `Warning: states.<name>: Spin risk — on_error and on_partial both route back to <name> with no escape. A persistent LLM error or ambiguous output will loop indefinitely until max_steps.`
 
 **Fix template**:
 ```yaml
@@ -426,9 +426,9 @@ states:
 **Breaking**: false
 **When to auto-apply**: Never (requires adding a new state)
 
-If no terminal state has a name suggesting failure (`failed`, `error`, `aborted`, `bail`, `halt`, or similar), and `max_iterations` is the only stop condition for failure cases:
+If no terminal state has a name suggesting failure (`failed`, `error`, `aborted`, `bail`, `halt`, or similar), and `max_steps` is the only stop condition for failure cases:
 
-**Finding**: `Warning: No explicit failure terminal state. When the loop hits max_iterations on a failure path, it stops silently with no signal of failure. Consider adding a terminal state named 'failed' or 'error' for explicit failure signaling.`
+**Finding**: `Warning: No explicit failure terminal state. When the loop hits max_steps on a failure path, it stops silently with no signal of failure. Consider adding a terminal state named 'failed' or 'error' for explicit failure signaling.`
 
 **Fix template**:
 ```yaml
@@ -632,7 +632,7 @@ States: N states  |  Initial: <initial-state>  |  Max iterations: <N>
 |---|-------|----------|-------|
 | 1 | V-11  | states.check | Unreachable state |
 | 2 | QC-2  | states.evaluate | Missing on_error for shell evaluator |
-| 3 | QC-1  | max_iterations | Value 200 is suspiciously high (>100) |
+| 3 | QC-1  | max_steps | Value 200 is suspiciously high (>100) |
 | 4 | FA-1  | states.evaluate | Spin risk — on_error and on_partial both loop back |
 | 5 | FA-2  | (loop)   | No explicit failure terminal state |
 | 6 | SR-1  | (loop)   | Happy path does not accomplish declared goal |
@@ -643,7 +643,7 @@ States: N states  |  Initial: <initial-state>  |  Max iterations: <N>
 | # | Check | Location | Issue |
 |---|-------|----------|-------|
 | 1 | QC-3  | states.fix | action_type absent; action looks like a natural-language prompt |
-| 2 | QC-6  | on_handoff | max_iterations=50 but on_handoff not set explicitly |
+| 2 | QC-6  | on_handoff | max_steps=50 but on_handoff not set explicitly |
 | 3 | SR-2  | states.check_done | State name implies gate but action is broad open-ended analysis |
 
 ### FSM Flow Review: <loop-name>
@@ -804,7 +804,7 @@ In `--auto` mode, apply only fixes that are:
 3. Not routing changes (do not auto-add `on_error`, `on_maintain`, or change `on_yes`/`on_no`)
 
 Eligible for auto-apply in `--auto` mode:
-- **QC-6**: Add explicit `on_handoff: pause` if `max_iterations > 20` and `on_handoff` is absent — safe since `pause` is already the default
+- **QC-6**: Add explicit `on_handoff: pause` if `max_steps > 20` and `on_handoff` is absent — safe since `pause` is already the default
 
 Everything else requires user approval, including all **PR-*** findings (structural change to state type; cannot be applied without user confirmation).
 
@@ -823,8 +823,8 @@ These checks are run during Step 2.5 (Behavioral Verification). They evaluate wh
 | Check ID | Phase | Severity | Trigger |
 |----------|-------|----------|---------|
 | SIM-1 | 2.5 | Warning | Simulation stalls before reaching any terminal state (cycle detected in `States visited:`) |
-| SIM-2 | 2.5 | Warning | Terminal reached in <2 iterations when `max_iterations > 5` (no-op happy path) |
-| SIM-3 | 2.5 | Error | Simulation exceeds `max_iterations` without reaching a terminal state |
+| SIM-2 | 2.5 | Warning | Terminal reached in <2 iterations when `max_steps > 5` (no-op happy path) |
+| SIM-3 | 2.5 | Error | Simulation exceeds `max_steps` without reaching a terminal state |
 
 ### Parsing `ll-loop simulate` stdout
 
@@ -832,18 +832,18 @@ The `=== Summary ===` block always appears at end of stdout. Key lines to parse:
 
 | Signal | Pattern | Notes |
 |--------|---------|-------|
-| SIM-1 (stall) | `States visited:` contains a repeated state name AND `Terminated by: max_iterations` | Check for a cycle in the `→`-separated list |
-| SIM-2 (premature terminal) | `Iterations: 1` or `Iterations: 2` AND `Terminated by: terminal` | Only flag when `max_iterations > 5` |
-| SIM-3 (exceeds max_iterations) | `Terminated by: max_iterations` (parse stdout regardless of exit code) | Exit code 1 is non-unique; must parse stdout |
+| SIM-1 (stall) | `States visited:` contains a repeated state name AND `Terminated by: max_steps` | Check for a cycle in the `→`-separated list |
+| SIM-2 (premature terminal) | `Iterations: 1` or `Iterations: 2` AND `Terminated by: terminal` | Only flag when `max_steps > 5` |
+| SIM-3 (exceeds max_steps) | `Terminated by: max_steps` (parse stdout regardless of exit code) | Exit code 1 is non-unique; must parse stdout |
 
-**Exit code note**: `scripts/little_loops/cli/loop/_helpers.py:EXIT_CODES` — exit code 1 covers `max_iterations`, `timeout`, and `cycle_detected`. Do not use exit code alone to distinguish SIM-3; always parse stdout.
+**Exit code note**: `scripts/little_loops/cli/loop/_helpers.py:EXIT_CODES` — exit code 1 covers `max_steps`, `timeout`, and `cycle_detected`. Do not use exit code alone to distinguish SIM-3; always parse stdout.
 
 ### SIM-1: Simulation Stall
 
 **Severity**: Warning
 **When to auto-apply**: Never
 
-**Finding**: `Warning: (loop): Simulation stalls — verify state loops back on on_no with no escape condition. A persistent failure will reach max_iterations without terminating. Check on_no routing or add a failure terminal state.`
+**Finding**: `Warning: (loop): Simulation stalls — verify state loops back on on_no with no escape condition. A persistent failure will reach max_steps without terminating. Check on_no routing or add a failure terminal state.`
 
 ---
 
@@ -852,16 +852,16 @@ The `=== Summary ===` block always appears at end of stdout. Key lines to parse:
 **Severity**: Warning
 **When to auto-apply**: Never
 
-**Finding**: `Warning: (loop): Simulation terminated in <N> iteration(s) on a max_iterations=<M> loop. The happy path may be a no-op (actions complete immediately with no meaningful work). Verify that the loop exercises its intended behavior before terminating.`
+**Finding**: `Warning: (loop): Simulation terminated in <N> iteration(s) on a max_steps=<M> loop. The happy path may be a no-op (actions complete immediately with no meaningful work). Verify that the loop exercises its intended behavior before terminating.`
 
 ---
 
-### SIM-3: Exceeds max_iterations
+### SIM-3: Exceeds max_steps
 
 **Severity**: Error
 **When to auto-apply**: Never
 
-**Finding**: `Error: (loop): Simulation hit max_iterations (<N>) without reaching a terminal state. The loop has no viable exit path on the default scenario. Review routing conditions and ensure a terminal state is reachable.`
+**Finding**: `Error: (loop): Simulation hit max_steps (<N>) without reaching a terminal state. The loop has no viable exit path on the default scenario. Review routing conditions and ensure a terminal state is reachable.`
 
 ---
 
@@ -948,13 +948,13 @@ Is shared state reset on loop restart? Does the loop tolerate mid-run interrupti
 
 ### Dimension 6: Cost-Efficiency
 
-Are deterministic operations programmatic (not LLM prompts)? Is `max_iterations` proportionate?
+Are deterministic operations programmatic (not LLM prompts)? Is `max_steps` proportionate?
 
-- **5**: All deterministic ops are shell states; `max_iterations` is tight and justified
+- **5**: All deterministic ops are shell states; `max_steps` is tight and justified
 - **4**: Mostly efficient; one PR-1 candidate
-- **3**: A few replaceable prompt states; `max_iterations` somewhat generous
-- **2**: Several PR-1 findings; `max_iterations` high relative to loop complexity
-- **1**: Loop uses LLM for work that bash could do; `max_iterations` excessive
+- **3**: A few replaceable prompt states; `max_steps` somewhat generous
+- **2**: Several PR-1 findings; `max_steps` high relative to loop complexity
+- **1**: Loop uses LLM for work that bash could do; `max_steps` excessive
 
 ### Scorecard Display Format
 
@@ -1052,7 +1052,7 @@ findings_count:
   errors: <N>
   warnings: <N>
   suggestions: <N>
-simulation_result: <"terminal" | "max_iterations" | "skipped" | "error">
+simulation_result: <"terminal" | "max_steps" | "skipped" | "error">
 fixes_applied: <N>
 ---
 ```

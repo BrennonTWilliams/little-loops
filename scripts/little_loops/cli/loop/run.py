@@ -115,7 +115,9 @@ def cmd_run(
         return 1
 
     # Apply overrides
-    if args.max_iterations:
+    if getattr(args, "max_steps", None):
+        fsm.max_steps = args.max_steps
+    if getattr(args, "max_iterations", None):
         fsm.max_iterations = args.max_iterations
     if args.delay is not None:
         fsm.backoff = args.delay
@@ -168,11 +170,13 @@ def cmd_run(
         fsm.context["input_hash"] = hashlib.sha256(fsm.context["input"].encode()).hexdigest()[:12]
 
     # Inject loop metadata into context so templates can reference
-    # ${context.max_iterations} in state actions and evaluator prompts.
-    # --context max_iterations=VALUE (already applied above) takes precedence.
-    # Must run after the --max-iterations CLI override (line 118-119) so the
-    # context value reflects any CLI-supplied override.
-    if "max_iterations" not in fsm.context:
+    # ${context.max_steps} in state actions and evaluator prompts.
+    # --context max_steps=VALUE (already applied above) takes precedence.
+    # Must run after the --max-steps CLI override so the context value reflects
+    # any CLI-supplied override.
+    if "max_steps" not in fsm.context:
+        fsm.context["max_steps"] = fsm.max_steps
+    if fsm.max_iterations is not None and "max_iterations" not in fsm.context:
         fsm.context["max_iterations"] = fsm.max_iterations
 
     # Apply YAML loop config env-var overrides (CLI flags below overwrite these)

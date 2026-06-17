@@ -2,7 +2,7 @@ name: "general-task"
 description: "General-purpose task loop: writes a Definition of Done, decomposes the task into steps, executes one step at a time, and loops until all DoD criteria are verified."
 category: harness
 initial: define_done
-max_iterations: 200
+max_steps: 200
 default_timeout: 1800
 on_handoff: spawn
 artifact_versioning_ok: true

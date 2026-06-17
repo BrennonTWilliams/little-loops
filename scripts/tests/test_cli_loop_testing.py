@@ -26,7 +26,7 @@ def _make_minimal_loop(loops_dir: Path, name: str = "test-loop") -> Path:
     loop_file.write_text(
         f"""name: {name}
 initial: start
-max_iterations: 5
+max_steps: 5
 states:
   start:
     action: echo "hello"
@@ -43,7 +43,7 @@ def _make_multi_state_loop(loops_dir: Path) -> Path:
     loop_file = loops_dir / "multi.yaml"
     loop_file.write_text("""name: multi
 initial: step1
-max_iterations: 10
+max_steps: 10
 states:
   step1:
     action: echo "step1"
@@ -62,6 +62,7 @@ states:
 def _make_args(**kwargs) -> argparse.Namespace:
     """Build an argparse.Namespace with defaults for cmd_simulate."""
     defaults: dict = {
+        "max_steps": None,
         "max_iterations": None,
         "scenario": None,
     }
@@ -196,25 +197,25 @@ class TestCmdSimulateScenarios:
         assert "Terminated by:" in captured.out
 
 
-class TestCmdSimulateMaxIterations:
-    """Tests for --max-iterations flag in cmd_simulate."""
+class TestCmdSimulateMaxSteps:
+    """Tests for --max-steps flag in cmd_simulate."""
 
-    def test_max_iterations_applied(
+    def test_max_steps_applied(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """--max-iterations overrides the FSM's max_iterations."""
+        """--max-steps overrides the FSM's max_steps."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         _make_minimal_loop(loops_dir)
 
-        args = _make_args(max_iterations=3, scenario="all-pass")
+        args = _make_args(max_steps=3, scenario="all-pass")
         logger = Logger()
 
         result = cmd_simulate("test-loop", args, loops_dir, logger)
 
         assert result == 0
         captured = capsys.readouterr()
-        # Should complete within the specified max_iterations
+        # Should complete within the specified max_steps
         assert "Terminated by:" in captured.out
 
 
@@ -229,7 +230,7 @@ class TestCmdSimulateRunDir:
         loops_dir.mkdir()
         (loops_dir / "uses-run-dir.yaml").write_text("""name: uses-run-dir
 initial: init
-max_iterations: 5
+max_steps: 5
 states:
   init:
     action: mkdir -p ${context.run_dir}
@@ -255,7 +256,7 @@ states:
         custom_run_dir = str(tmp_path / "custom-run")
         (loops_dir / "custom-run-dir.yaml").write_text(f"""name: custom-run-dir
 initial: init
-max_iterations: 3
+max_steps: 3
 context:
   run_dir: "{custom_run_dir}/"
 states:

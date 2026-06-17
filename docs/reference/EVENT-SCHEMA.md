@@ -583,7 +583,7 @@ Emitted once when the executor finishes, regardless of how it terminated.
 |-------|------|-------------|
 | `final_state` | `str` | Name of the state at termination. Usually the last state entered; when `terminated_by="timeout"` this may be a state that was routed to but never entered. **Exception (BUG-1226):** when that pending state is a shell action, the executor flushes it — emitting `state_enter` with `flushed: true` and running its action — before honoring the timeout, so `state_enter` for `final_state` is always emitted before `loop_complete`. Slash commands and sub-loops are not flushed. |
 | `iterations` | `int` | Total number of iterations completed |
-| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), `"cycle_detected"` (same edge traversed more than `max_edge_revisits` times), `"max_iterations"` (iteration cap reached), or the terminal state name |
+| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), `"cycle_detected"` (same edge traversed more than `max_edge_revisits` times), `"max_steps"` (step cap reached), `"max_iterations_reached"` (full-pass cap reached), or the terminal state name |
 
 **Example:**
 ```json
@@ -598,22 +598,43 @@ Emitted once when the executor finishes, regardless of how it terminated.
 
 ---
 
-### `max_iterations_summary`
+### `max_steps_summary`
 
-Emitted when the iteration cap fires and `on_max_iterations` is set on the loop. Signals that the executor is about to run the summary state before terminating. Always immediately precedes the `state_enter` for the summary state. `loop_complete` fires after the summary state completes with `terminated_by="max_iterations"`.
+Emitted when the step cap fires and `on_max_steps` is set on the loop. Signals that the executor is about to run the summary state before terminating. Always immediately precedes the `state_enter` for the summary state. `loop_complete` fires after the summary state completes with `terminated_by="max_steps"`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `summary_state` | `str` | Name of the state the executor will transition to |
-| `iterations` | `int` | Iteration count at which the cap fired |
+| `iterations` | `int` | Step count at which the cap fired |
 
 **Example:**
 ```json
 {
-  "event": "max_iterations_summary",
+  "event": "max_steps_summary",
   "ts": "...",
   "summary_state": "summarize_partial",
   "iterations": 100
+}
+```
+
+---
+
+### `max_iterations_reached_summary`
+
+Emitted when the full-pass cap fires and `on_max_iterations` is set on the loop. Signals that the executor is about to run the summary state before terminating. Always immediately precedes the `state_enter` for the summary state. `loop_complete` fires after the summary state completes with `terminated_by="max_iterations_reached"`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `summary_state` | `str` | Name of the state the executor will transition to |
+| `iteration_count` | `int` | Full-pass count at which the cap fired |
+
+**Example:**
+```json
+{
+  "event": "max_iterations_reached_summary",
+  "ts": "...",
+  "summary_state": "summarize_passes",
+  "iteration_count": 10
 }
 ```
 
@@ -918,7 +939,8 @@ docs/reference/schemas/
 ├── loop_complete.json
 ├── loop_resume.json
 ├── loop_start.json
-├── max_iterations_summary.json
+├── max_iterations_reached_summary.json
+├── max_steps_summary.json
 ├── parallel_worker_completed.json
 ├── rate_limit_exhausted.json
 ├── rate_limit_storm.json
@@ -1019,7 +1041,8 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `handoff_detected` | FSM | `fsm/executor.py` |
 | `handoff_spawned` | FSM | `fsm/executor.py` |
 | `loop_complete` | FSM | `fsm/executor.py` |
-| `max_iterations_summary` | FSM | `fsm/executor.py` |
+| `max_steps_summary` | FSM | `fsm/executor.py` |
+| `max_iterations_reached_summary` | FSM | `fsm/executor.py` |
 | `throttle_warn` | FSM | `fsm/executor.py` |
 | `throttle_hard` | FSM | `fsm/executor.py` |
 | `throttle_stop` | FSM | `fsm/executor.py` |

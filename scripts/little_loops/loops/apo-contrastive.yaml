@@ -7,7 +7,7 @@ description: |
   Each iteration replaces the prompt file with the current best candidate.
   Inherits common APO context defaults from lib/apo-shape-a (ENH-2161).
 initial: generate_variants
-max_iterations: 15
+max_steps: 15
 context:
   num_variants: 3
 states:

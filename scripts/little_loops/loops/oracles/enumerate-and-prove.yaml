@@ -9,7 +9,7 @@ description: |
 initial: parse_enumeration
 on_handoff: spawn
 timeout: 3600
-max_iterations: 100
+max_steps: 100
 
 parameters:
   raw_enumeration:

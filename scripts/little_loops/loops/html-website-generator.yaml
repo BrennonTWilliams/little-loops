@@ -12,7 +12,7 @@ description: |
   Anthropic's harness design article. Thin wrapper over
   oracles/generator-evaluator (ENH-1869).
 initial: plan
-max_iterations: 30
+max_steps: 30
 timeout: 14400
 
 # HARNESS: Context variables control quality threshold.

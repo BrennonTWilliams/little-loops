@@ -7,7 +7,7 @@ description: |
   writing a diagnosis artifact to .loops/diagnostics/ and re-running via
   ll-loop run --max-iterations 1.
 initial: execute
-max_iterations: 5
+max_steps: 5
 timeout: 1800
 # The meta-loop detector matches this loop because the execute action prose references
 # agents/loop-specialist.md as a documentation link. This loop does not write harness

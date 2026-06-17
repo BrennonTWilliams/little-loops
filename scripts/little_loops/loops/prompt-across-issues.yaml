@@ -22,7 +22,7 @@ description: |
     the FSM runner injects. For skills with only explicit --auto support, pass it:
     ll-loop run prompt-across-issues "/ll:format-issue {issue_id} --auto"
 initial: init
-max_iterations: 500
+max_steps: 500
 timeout: 28800
 import:
   - lib/common.yaml

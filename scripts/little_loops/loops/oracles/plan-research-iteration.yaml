@@ -9,7 +9,7 @@ description: |
 
 initial: classify_research
 timeout: 3600
-max_iterations: 20
+max_steps: 20
 
 parameters:
   run_dir:

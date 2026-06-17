@@ -7,7 +7,7 @@ description: |
   are breached, and terminates with a persisted quality snapshot. Designed to
   run periodically — before sprint planning or weekly.
 initial: sample
-max_iterations: 5
+max_steps: 5
 timeout: 3600
 on_handoff: spawn
 context:

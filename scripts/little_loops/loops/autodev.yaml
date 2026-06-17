@@ -15,7 +15,7 @@ description: |
     ll-loop run autodev "ISSUE_ID"
     ll-loop run autodev "ID1,ID2,ID3"
 initial: init
-max_iterations: 500
+max_steps: 500
 timeout: 28800
 on_handoff: spawn
 scope:

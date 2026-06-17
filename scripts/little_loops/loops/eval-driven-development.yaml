@@ -6,7 +6,7 @@ description: |
   harness passes or the iteration budget is exhausted. Usable standalone by any
   project with an eval harness, or as a sub-loop of rn-build.
 initial: implement
-max_iterations: 20
+max_steps: 20
 timeout: 14400
 on_handoff: spawn
 context:

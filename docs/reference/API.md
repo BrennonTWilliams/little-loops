@@ -4168,8 +4168,10 @@ class FSMLoop:
     states: dict[str, StateConfig]     # State configurations
     context: dict[str, Any] = {}       # User-defined shared variables
     scope: list[str] = []              # Paths for concurrency control
-    max_iterations: int = 50           # Safety limit
-    on_max_iterations: str | None = None  # State to run once when cap fires (ENH-1631)
+    max_steps: int = 50                # Step cap (individual state executions)
+    on_max_steps: str | None = None    # State to run once when step cap fires (ENH-1631)
+    max_iterations: int | None = None  # Full-pass cap (maintain-mode restarts); None = no cap
+    on_max_iterations: str | None = None  # State to run once when full-pass cap fires
     max_edge_revisits: int = 100       # Per-edge cycle detection limit (see below)
     backoff: float | None = None       # Seconds between iterations
     timeout: int | None = None         # Max runtime in seconds
@@ -4215,12 +4217,12 @@ The stall detector records `(state_name, exit_code, eval_verdict)` after every t
 | `get_terminal_states()` | `set[str]` | States with `terminal=True` |
 | `get_all_referenced_states()` | `set[str]` | All states referenced by transitions |
 
-When any single state→state edge (e.g., `evaluate → fix`) is traversed more than `max_edge_revisits` times, the loop terminates immediately with `terminated_by="cycle_detected"` (exit code 1) rather than continuing until `max_iterations` is reached. This prevents tight infinite loops where two states bounce between each other indefinitely without making progress. Edge counts are persisted in `LoopState` so they survive a `--resume`. The default value of `100` covers all practical loops; lower it on short single-purpose loops to catch regressions faster.
+When any single state→state edge (e.g., `evaluate → fix`) is traversed more than `max_edge_revisits` times, the loop terminates immediately with `terminated_by="cycle_detected"` (exit code 1) rather than continuing until `max_steps` is reached. This prevents tight infinite loops where two states bounce between each other indefinitely without making progress. Edge counts are persisted in `LoopState` so they survive a `--resume`. The default value of `100` covers all practical loops; lower it on short single-purpose loops to catch regressions faster.
 
 ```yaml
 # Example: tighten cycle guard on a short loop
 name: quick-check
-max_iterations: 10
+max_steps: 10
 max_edge_revisits: 5   # terminate if any edge fires more than 5 times
 ```
 
@@ -4243,7 +4245,7 @@ fsm = FSMLoop(
         ),
         "done": StateConfig(terminal=True),
     },
-    max_iterations=20,
+    max_steps=20,
 )
 ```
 
@@ -4269,7 +4271,7 @@ fsm = FSMLoop(
         ),
         "done": StateConfig(terminal=True),
     },
-    max_iterations=5,
+    max_steps=5,
 )
 ```
 
@@ -4624,7 +4626,7 @@ result = executor.run()
 
 print(result.final_state)     # "done"
 print(result.iterations)      # Number of iterations
-print(result.terminated_by)   # "terminal", "max_iterations", "timeout", "signal", "cycle_detected", "stall_detected", or "error"
+print(result.terminated_by)   # "terminal", "max_steps", "max_iterations_reached", "timeout", "signal", "cycle_detected", "stall_detected", or "error"
 ```
 
 #### ExecutionResult
@@ -4634,7 +4636,7 @@ print(result.terminated_by)   # "terminal", "max_iterations", "timeout", "signal
 class ExecutionResult:
     final_state: str                      # State when execution stopped
     iterations: int                       # Total iterations
-    terminated_by: str                    # "terminal" | "max_iterations" | "timeout" | "signal" | "cycle_detected" | "stall_detected" | "error"
+    terminated_by: str                    # "terminal" | "max_steps" | "max_iterations_reached" | "timeout" | "signal" | "cycle_detected" | "stall_detected" | "error"
     duration_ms: int                      # Total execution time
     captured: dict[str, dict[str, Any]]   # Captured variable values
     error: str | None = None              # Error message if failed
@@ -7493,4 +7495,4 @@ ll-loop run rn-build --context spec=specs/backend.md,specs/frontend.md
 | `schedule_mode` | `value_ranked` | Passed to each `rn-implement` batch via `goal-cluster`; issues are implemented in value-ranked order |
 | `propagate_context` | `true` | Cluster propagates context across batches so later batches can incorporate earlier-batch results |
 
-**Loop settings**: `max_iterations: 30`, `timeout: 86400s` (24h), `on_handoff: spawn` (auto-resumes across session boundaries).
+**Loop settings**: `max_steps: 30`, `timeout: 86400s` (24h), `on_handoff: spawn` (auto-resumes across session boundaries).

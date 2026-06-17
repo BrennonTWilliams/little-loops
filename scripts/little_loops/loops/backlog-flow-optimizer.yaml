@@ -131,5 +131,5 @@ states:
     next: measure
   done:
     terminal: true
-max_iterations: 15
+max_steps: 15
 timeout: 7200

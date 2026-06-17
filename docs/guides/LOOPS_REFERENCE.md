@@ -226,7 +226,7 @@ The loop scores each extracted idea (0–1 relevance), drops below-threshold ite
 
 ### `rn-plan` — Recursive Task Planning with Self-Scoring Rubric
 
-**Technique**: Accepts a natural language task description, generates an initial plan outline and an 8-dimension rubric (breadth, depth, complexity, clarity, consistency, logic_strategy, feasibility, testability, risk_mitigation), then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 8 dimensions → loop until all dimensions reach VERY-HIGH or `max_iterations` is exhausted.
+**Technique**: Accepts a natural language task description, generates an initial plan outline and an 8-dimension rubric (breadth, depth, complexity, clarity, consistency, logic_strategy, feasibility, testability, risk_mitigation), then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 8 dimensions → loop until all dimensions reach VERY-HIGH or `max_steps` is exhausted.
 
 **When to use**: When you need a fully elaborated, implementable plan for a complex task before execution — especially when the task touches multiple files, external APIs, or requires tradeoff analysis. Produces `plan.md` (the refined plan) and `plan-rubric.md` (dimension scores) as primary artifacts. Use [`rn-plan-apo`](#rn-plan-apo--plan-quality-gradient-optimization) to iteratively improve the *planning prompt itself* using accumulated plan trees.
 
@@ -268,7 +268,7 @@ init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / researc
 
 ### `rn-refine` — Recursive Refinement of an Existing Plan
 
-**Technique**: Accepts a path to an existing plan `.md` file, copies it into a run directory, and calibrates a 9-dimension scoring rubric to the plan's **current** state (unlike `rn-plan`, which always initialises all dimensions at LOW). Then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 9 dimensions → loop until all reach VERY-HIGH or `max_iterations` is exhausted. A `verify_score` shell state reads the rubric file after the LLM emits `ALL_VERY_HIGH` to guard against hallucinated convergence signals.
+**Technique**: Accepts a path to an existing plan `.md` file, copies it into a run directory, and calibrates a 9-dimension scoring rubric to the plan's **current** state (unlike `rn-plan`, which always initialises all dimensions at LOW). Then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 9 dimensions → loop until all reach VERY-HIGH or `max_steps` is exhausted. A `verify_score` shell state reads the rubric file after the LLM emits `ALL_VERY_HIGH` to guard against hallucinated convergence signals.
 
 **When to use**: When you already have a draft plan (from `rn-plan`, `/ll:iterate-plan`, or written manually) and want to iteratively improve it without starting from scratch. Produces an in-place improved `plan.md` alongside a `plan-rubric.md` and `research.md` in the per-run artifact directory (`${context.run_dir}`).
 
@@ -316,7 +316,7 @@ init             (shell: validate plan_file exists, copy to run_dir/plan.md)
 
 ### `rn-implement` — Queue Orchestrator for Recursive Plan-and-Implement
 
-**Technique**: Queue orchestrator that manages a depth-bounded issue queue. Accepts an issue ID (or comma-separated list), initialises tracking files, then loops: dequeue an issue → depth gate → delegate remediation to `rn-remediate` → on failure, delegate decomposition to `rn-decompose` → enqueue children with cycle detection → repeat until queue is empty or `max_iterations` is exhausted. Domain logic (diagnosis, dimensional routing, convergence detection) lives in the delegated sub-loops — `rn-implement` is a pure orchestrator with no LLM calls of its own.
+**Technique**: Queue orchestrator that manages a depth-bounded issue queue. Accepts an issue ID (or comma-separated list), initialises tracking files, then loops: dequeue an issue → depth gate → delegate remediation to `rn-remediate` → on failure, delegate decomposition to `rn-decompose` → enqueue children with cycle detection → repeat until queue is empty or `max_steps` is exhausted. Domain logic (diagnosis, dimensional routing, convergence detection) lives in the delegated sub-loops — `rn-implement` is a pure orchestrator with no LLM calls of its own.
 
 **When to use**: When an issue is too large for a single implementation pass and needs recursive decomposition — the issue is split into children, each child is independently remediated, and any child that still fails is further decomposed. This replaces the old monolithic implementation approach with a structured divide-and-conquer strategy. Accepts a comma-separated list of issue IDs for multi-issue seed queues.
 
@@ -414,7 +414,7 @@ init               (shell: seed queue from comma-separated input, init tracking 
   → report (shell: write summary.json + human-readable summary) → done
 ```
 
-**Notes**: The `report` state writes summary JSON before transitioning to the bare `done` terminal anchor (actions on terminal states are skipped by the runner). Sub-loop delegation uses `on_success`/`on_failure` routing (not `on_yes`/`on_no`), matching the composable-sub-loop convention. `max_iterations: 500`, `timeout: 28800`, `on_handoff: spawn`. See individual sub-loop sections below for their context variables and FSM flows.
+**Notes**: The `report` state writes summary JSON before transitioning to the bare `done` terminal anchor (actions on terminal states are skipped by the runner). Sub-loop delegation uses `on_success`/`on_failure` routing (not `on_yes`/`on_no`), matching the composable-sub-loop convention. `max_steps: 500`, `timeout: 28800`, `on_handoff: spawn`. See individual sub-loop sections below for their context variables and FSM flows.
 
 ### `rn-decompose` — Issue Decomposition Sub-Loop
 
@@ -471,7 +471,7 @@ snap_for_size_review  (shell: snapshot current scores and pre-review ID list)
   → failed
 ```
 
-**Notes**: Child detection is a two-step filter: (1) `comm -13` identifies net-new IDs created during size review, (2) each candidate's issue file must contain an explicit `parent:` frontmatter reference or `"Decomposed from <PARENT_ID>"` body line to avoid picking up unrelated concurrently-created issues. Cycle detection checks candidates against the union of `visited.txt` and `queue.txt`; cycle candidates are logged to `cycles.txt` and filtered out. Depth-first prepend means children are inserted at the head of the queue before existing entries, so the tree is explored depth-first. The parent is recorded as skipped (decomposed) in `skipped.txt`. `max_iterations: 100`, `timeout: 3600`, `on_handoff: spawn`.
+**Notes**: Child detection is a two-step filter: (1) `comm -13` identifies net-new IDs created during size review, (2) each candidate's issue file must contain an explicit `parent:` frontmatter reference or `"Decomposed from <PARENT_ID>"` body line to avoid picking up unrelated concurrently-created issues. Cycle detection checks candidates against the union of `visited.txt` and `queue.txt`; cycle candidates are logged to `cycles.txt` and filtered out. Depth-first prepend means children are inserted at the head of the queue before existing entries, so the tree is explored depth-first. The parent is recorded as skipped (decomposed) in `skipped.txt`. `max_steps: 100`, `timeout: 3600`, `on_handoff: spawn`.
 
 ### `rn-remediate` — Iterative Deepening Remediation Sub-Loop
 
@@ -555,7 +555,7 @@ Phase 5 — Convergence:
 
 **`gate_implement` marker-gate (ENH-2163)**: Both `IMPLEMENT` (from `diagnose`) and `CONVERGED_PASS` (from `check_convergence`) route through `gate_implement` before reaching `implement`. This choke point checks whether an above-minimal-complexity issue (`score_complexity ≥ diagnose_complexity_threshold`, default 15) has been through *at least one* `/ll:refine-issue` pass **and** *at least one* `/ll:wire-issue` pass in this run. If not, it forces the missing step first — adding at most one refine detour and one wire detour per issue, bounded, not a loop. Minimal-complexity issues and callers that set `require_refine_and_wire: false` pass straight through. Fail-open: any gate error routes directly to `implement` rather than blocking. Markers (`refined_<ID>.txt` and `wired_<ID>.txt`) are written to `${context.run_dir}` by the `refine` and `wire` states and persist for the duration of the run.
 
-**Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > DECOMPOSE). The `DECOMPOSE` token is a terminal diagnosis — it falls through the routing chain to `failed`, signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_iterations: 100`, `timeout: 14400`, `on_handoff: spawn`.
+**Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > DECOMPOSE). The `DECOMPOSE` token is a terminal diagnosis — it falls through the routing chain to `failed`, signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_steps: 100`, `timeout: 14400`, `on_handoff: spawn`.
 
 ### `rn-build` — Spec-to-Project Capstone Orchestrator
 
@@ -726,7 +726,7 @@ route_input → [sprint_name provided?]
 | `extract_unresolved` | 30s | Reads `.sprint-state.json`; merges `failed_issues` + `skipped_blocked_issues`; emits comma-separated IDs |
 | `refine_unresolved` | — | Delegates to `recursive-refine` sub-loop via `context_passthrough: true` |
 
-**Notes**: The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_iterations: 16`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase. Clean sprint exits (exit 0) route directly to `done`; non-zero exits trigger the `extract_unresolved` → `refine_unresolved` recovery path.
+**Notes**: The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_steps: 16`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase. Clean sprint exits (exit 0) route directly to `done`; non-zero exits trigger the `extract_unresolved` → `refine_unresolved` recovery path.
 
 ### `sprint-refine-and-implement` — Sprint-Scoped Refine-and-Implement Loop
 
@@ -765,7 +765,7 @@ get_next_issue → [issue found?]
   └─ NO  → done
 ```
 
-**Notes**: All tmp files are prefixed `sprint-refine-and-implement-*` to avoid state collision with `auto-refine-and-implement` when both loops are used in the same project. The loop uses `on_handoff: spawn` and `max_iterations: 500` with an 8-hour global timeout, so it can survive session boundaries for long sprints.
+**Notes**: All tmp files are prefixed `sprint-refine-and-implement-*` to avoid state collision with `auto-refine-and-implement` when both loops are used in the same project. The loop uses `on_handoff: spawn` and `max_steps: 500` with an 8-hour global timeout, so it can survive session boundaries for long sprints.
 
 **Skip tracking**: When `recursive-refine` marks an issue as skipped (refinement failure or decomposition), it is written to `.loops/tmp/sprint-refine-and-implement-skipped.txt` — both for the current run and for any future resume of the same sprint. Decomposed parents are additionally marked `status: done` in frontmatter so they never re-appear as active candidates after a skip-file reset. On resume, `get_next_issue` reads the skip file and advances past any previously processed issues.
 
@@ -1009,7 +1009,7 @@ The counters reflect cumulative totals at the moment of dequeue: position `N/tot
 
 ### `context-health-monitor` — Scratch File Pressure Monitor
 
-**Technique**: Measure scratch directory size and session log age, emit a diagnosis tag (`PRESSURE_SCRATCH`, `PRESSURE_OUTPUTS`, or `CONTEXT_HEALTHY`), then compact or archive based on the diagnosis. Runs until healthy or until `max_iterations` is reached.
+**Technique**: Measure scratch directory size and session log age, emit a diagnosis tag (`PRESSURE_SCRATCH`, `PRESSURE_OUTPUTS`, or `CONTEXT_HEALTHY`), then compact or archive based on the diagnosis. Runs until healthy or until `max_steps` is reached.
 
 **When to use**: During long automation runs (`ll-auto`, `ll-parallel`) where scratch files accumulate. Symptoms that warrant a run: scratch dir >500 KB, per-file summaries growing stale, or loop reasoning speed degrading due to context bloat.
 
@@ -1224,7 +1224,7 @@ run_eval → score_results → analyze_failures
 | `pixi-data-viz` | Generator-evaluator harness for animated PixiJS data visualizations — embeds synthetic-but-plausible data inline; hard-gates `encoding_clarity` at threshold 7; evaluates whether motion aids comprehension |
 | `pixi-generative-art` | PixiJS specialization of `generative-art` (`from: generative-art` stub, ENH-2161) — overrides plan/generate/evaluate/score for GPU-accelerated idioms (filters, blend modes, container hierarchies); rewards Pixi-distinctive patterns over p5.js conventions |
 | `vega-viz` | Generator-evaluator harness for Vega / Vega-Lite data visualizations — compile-gates broken specs via deterministic exit-code before LLM scoring, supports optional real data (CSV/JSON path), defaults to Vega-Lite and escalates to full Vega only for custom/interactive composition; Playwright captures three interaction states (settled, hover/tooltip, brush/selection) as multimodal PNG input for the judge (ENH-2010) |
-| `canvas-sketch-generator` | Generator-evaluator harness for canvas-sketch (Matt DesLauriers) still-image generative art — objective non-blank render gate (parsed pixel statistics) hard-gates blank sketches before the LLM judge runs; per-iteration snapshots with deterministic best-iteration selection; `on_max_iterations: finalize` ensures `best.html` is always published even when the pass threshold is never crossed |
+| `canvas-sketch-generator` | Generator-evaluator harness for canvas-sketch (Matt DesLauriers) still-image generative art — objective non-blank render gate (parsed pixel statistics) hard-gates blank sketches before the LLM judge runs; per-iteration snapshots with deterministic best-iteration selection; `on_max_steps: finalize` ensures `best.html` is always published even when the pass threshold is never crossed |
 | `rlhf-animated-svg` | RLHF-style generate-score-refine orchestrator for animated SVG artifacts — generates a zero-dependency self-contained HTML file with inline SVG animated via anime.js v3.2.2 (CDN, works under `file://`). Evaluation and refinement phases are delegated to the `rlhf-svg-evaluate` and `rlhf-svg-refine` sub-loops. Includes `explore → exploit → converge` phase gating, replan-on-streak-failure escalation, concept-reset escalation, and per-iteration artifact versioning. Accessibility: `role="img"`, `aria-labelledby`, `prefers-reduced-motion` detection. |
 | `rlhf-svg-evaluate` | Sub-loop: smoke-test a rendered SVG artifact via Playwright and score it with an external vision API on a 4-dimension animation rubric (correctness, aesthetics, smoothness, completeness); captures 4 multi-frame screenshots at t=1s/3s/5s/7s for temporal evaluation; emits `VISION_PASS` or `VISION_FAIL` sentinel for parent routing |
 | `rlhf-svg-refine` | Sub-loop: rank harness components by improvement impact (Ong et al. arXiv:2605.22505), critique the scored artifact and produce a fix plan, apply targeted refinements, run optimizer self-diagnosis against the 8-error taxonomy, and append a carry-forward lesson entry to `optimization_summary.md`; emits `REPLAN_NEEDED` when a structural replan is required |
@@ -1235,7 +1235,7 @@ run_eval → score_results → analyze_failures
 
 For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, `canvas-sketch-generator`, and `rlhf-animated-svg`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
-> **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_iterations` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available. After ENH-1869, these states (`evaluate`, `score`) live inside `oracles/generator-evaluator`; the rule applies to the oracle's internal state machine, not the calling thin-wrapper loops.
+> **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_steps` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available. After ENH-1869, these states (`evaluate`, `score`) live inside `oracles/generator-evaluator`; the rule applies to the oracle's internal state machine, not the calling thin-wrapper loops.
 
 ### `html-anything` — Generalized HTML Artifact Harness
 
@@ -1307,7 +1307,7 @@ For `html-social-card`:
 - The `plan` state classifies artifact type atomically with brief + rubric — all three are written in one state to ensure the rubric always matches the classification.
 - Per-criterion thresholds (not a weighted average) are enforced in `score`: a platform constraint at threshold 8 can't be masked by a high aesthetic score at threshold 6.
 - If Playwright is unavailable, the `evaluate` state's `on_error` route falls back to `score` directly for LLM-only evaluation of the HTML source.
-- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
 - For a plain website, `html-website-generator` is simpler (no artifact classification step). Use `html-anything` when the artifact type determines which platform constraints to enforce.
 - To customize criteria for a specific artifact type, install locally (`ll-loop install html-anything`) and edit the `plan` state's rubric design rules.
 
@@ -1362,7 +1362,7 @@ init → identify → prune → generate → evaluate
 - The `prune` state logs every pruned item and its reason in `review.md` for traceability — you can audit what was excluded and why.
 - If all items are pruned (nothing to review), the generated HTML page reports this clearly; no human selections are needed.
 - The `evaluate` state's `on_no`/`on_error: score` routing means Playwright absence falls back to LLM-only `score` judgment — the loop runs end-to-end even without a browser installed.
-- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
 - To customize the scoring rubric, install locally (`ll-loop install hitl-compare`) and edit the `score` state's criteria and thresholds.
 - **Image embedding**: When an option's `source_path` points to an image file (`.png`, `.jpg`, `.gif`, `.webp`, `.svg`), the `generate` state converts it to a base64 data URI and embeds it inline in the HTML. This avoids broken-image icons under `file://` URLs (browsers block `file://` paths in `<img src>`). The `evaluate` rubric's `inline_constraint` criterion treats external `src=` attributes as a violation. Text-only items render without images — no broken `<img>` tags are emitted.
 
@@ -1372,7 +1372,7 @@ init → identify → prune → generate → evaluate
 
 **Technique**: Implements a `segment → generate → finalize` pipeline before the standard GAN-style `evaluate → score` loop. The `segment` state resolves the input token (file path or raw text) and applies the **GP-TSM (Grammar-Preserving Text Saliency Modulation)** algorithm inline as LLM instructions — no external Python/ML dependencies. It identifies grammar-preserving segment boundaries (sentence/clause level, treating headings, bullets, and code blocks as atomic), assigns saliency scores (0.0–1.0), a per-segment `confidence` score, and an accessible color palette per content type, and writes `segments.json`. The `generate` state then produces a single self-contained HTML review page that renders the document with its natural markdown flow (headings, paragraphs, lists, code blocks in their usual shape), with each segment wrapped in a `<span class="seg">` carrying low-alpha inline background highlights keyed to saliency. The five edit controls (delete / insert-before / insert-after / inline-edit / flag-for-AI) appear as a popover triggered by clicking or focusing a segment — controls overlay the document without causing reflow. The one trust-calibration signal retained is a **lightweight confidence cue**: segments with `confidence < 0.5` get a dotted underline plus a small "low confidence" badge rendered before the text (so the calibration signal is read before fluency biases judgment) — useful for fluent-but-wrong AI prose. A "Copy AI prompt" control aggregates all flagged segments, and a "Copy updated markdown" control reconstructs the full document from the live segment list. The `finalize` state copies the approved HTML to `./hitl-md-review.html` in the cwd. The `score` state evaluates a 7-criterion rubric (`document_readability`, `inline_highlighting`, `affordance_overlay`, `keyboard_reachability`, `inline_constraint`, `markdown_reconstruction`, `confidence_cue`) with per-criterion thresholds; the compound `ALL_PASS` token is the gate.
 
-> **Simplified 2026-06**: the original ENH-1770 "sensemaking layer" (staged `IntersectionObserver` highlighting, an adaptive density slider, multi-channel saliency toggles, a schema-switching toolbar, a canvas minimap + visit heatmap, and full click-to-reveal trust-calibration friction) was removed. Stacking ~10 toolbar controls onto a read-and-edit surface added extraneous cognitive load — contradicting the sensemaking research it cited — and made the 13-gate generator-evaluator rubric near-impossible to converge within `max_iterations`. Only the lightweight confidence cue survived.
+> **Simplified 2026-06**: the original ENH-1770 "sensemaking layer" (staged `IntersectionObserver` highlighting, an adaptive density slider, multi-channel saliency toggles, a schema-switching toolbar, a canvas minimap + visit heatmap, and full click-to-reveal trust-calibration friction) was removed. Stacking ~10 toolbar controls onto a read-and-edit surface added extraneous cognitive load — contradicting the sensemaking research it cited — and made the 13-gate generator-evaluator rubric near-impossible to converge within `max_steps`. Only the lightweight confidence cue survived.
 
 > **Evaluate routing note**: The `evaluate` state's `on_error` routes to `generate` (not `score`), deliberately diverging from the standard LOOPS_GUIDE.md design rule at line 897 ("never back to generate"). Playwright errors here typically indicate the HTML itself is malformed — regenerating is preferable to scoring a broken page. This follows the `svg-image-generator.yaml` precedent. The `on_no` route (Playwright unavailable) still goes to `score` for LLM-only fallback per the standard pattern.
 
@@ -1421,7 +1421,7 @@ init → segment → generate → evaluate
 - GP-TSM segmentation is implemented as LLM-in-prompt instructions — no PyPI or subprocess dependencies required, consistent with all other built-in loops.
 - The `segment` state enforces lossless reconstruction: every character of the original document must appear in exactly one segment's `markdown_source`, so "Copy updated markdown" is always lossless for unmodified segments.
 - The `evaluate` state's `on_error: generate` routing means Playwright crashes or malformed-HTML errors trigger an HTML regeneration pass rather than scoring a broken artifact.
-- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
 - To customize the scoring rubric, install locally (`ll-loop install hitl-md`) and edit the `score` state's criteria and thresholds.
 
 ### `html-website-generator` — GAN-Style Website Design Loop
@@ -1483,7 +1483,7 @@ plan → generate → capture
 
 - The HTML file embeds all CSS and JavaScript inline so it renders correctly under a `file://` URL without a web server.
 - If Playwright is unavailable (missing binary, permission error), the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the HTML source rather than a screenshot.
-- The loop runs up to 30 iterations with a 4-hour timeout (`max_iterations: 30`, `timeout: 14400`).
+- The loop runs up to 30 iterations with a 4-hour timeout (`max_steps: 30`, `timeout: 14400`).
 - To customize the design criteria or scoring weights, install the loop locally (`ll-loop install html-website-generator`) and edit the `score` state's prompt.
 
 ### `svg-image-generator` — GAN-Style SVG Creation Loop
@@ -1539,7 +1539,7 @@ init → plan → generate → evaluate
 **Notes:**
 - The SVG file embeds all shapes as paths and uses only inline colors — no external image hrefs, no external fonts — so it renders correctly under a `file://` URL without a web server.
 - If Playwright is unavailable, the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the SVG source rather than a screenshot.
-- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
 - To customize the scoring criteria, install the loop locally (`ll-loop install svg-image-generator`) and edit the `score` state's prompt.
 
 ### `svg-textgrad` — TextGrad-Style SVG Optimization Loop
@@ -1616,7 +1616,7 @@ init → plan → generate → evaluate
 **Notes:**
 - Unlike `svg-image-generator`, the generator receives only `brief.md` and never sees `critique.md`. Critique is consumed exclusively by `compute_gradient`, which distills it into a structured gradient before the brief is updated — keeping the generator working from a coherent specification rather than reconciling conflicting signals.
 - If Playwright is unavailable, the `evaluate` state's `on_no` route falls back to `generate` — no scoring occurs and the loop continues with the unchanged brief. Playwright is required to produce the screenshot that `score` reads; without it the loop re-generates rather than scoring without visual evidence.
-- The loop runs up to 40 iterations with a 2-hour timeout (`max_iterations: 40`, `timeout: 7200`). The convergence guard in `compute_gradient` (3-iteration score plateau) is the intended primary exit; the iteration cap is a safety backstop.
+- The loop runs up to 40 iterations with a 2-hour timeout (`max_steps: 40`, `timeout: 7200`). The convergence guard in `compute_gradient` (3-iteration score plateau) is the intended primary exit; the iteration cap is a safety backstop.
 - To customize scoring criteria, install the loop locally (`ll-loop install svg-textgrad`) and edit the `score` state's prompt (writes `critique.md`) and the `verify_score` state's shell arithmetic (controls the pass threshold computation and routing). To customize gradient computation, edit the `compute_gradient` state's prompt.
 - The generator enforces a strict 250-line SVG size limit — use `<circle>`, `<path>`, and `<text>` with `<g transform="">` for repeated elements rather than verbose repeated markup.
 - Prefer `svg-image-generator` for quick iterations; reach for `svg-textgrad` when you see the same failure pattern repeating across iterations.
@@ -1695,7 +1695,7 @@ init → plan → generate → evaluate
 - The `evaluate` state calls `noLoop()` immediately after `waitForFunction` reaches the target frame and before `page.screenshot()`, then calls `loop()` after the screenshot. This freezes the animation for the duration of the capture, preventing the ticker from advancing to frame N+1 or N+2 during the ~50–100 ms screenshot call. Both functions are p5.js globals exposed by global-mode sketches — generated sketches must not override or shadow them.
 - Canvas size defaults to `createCanvas(1200, 800)` — override in the brief if the concept needs a different aspect ratio.
 - If Playwright is unavailable, the `evaluate` state's `on_no` route retries with fresh HTML rather than scoring without visual evidence.
-- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
 - To customize scoring criteria, install the loop locally (`ll-loop install p5js-sketch-generator`) and edit the `score` state's prompt.
 
 ---
@@ -1757,7 +1757,7 @@ init → plan → generate → evaluate
 - A seeded deterministic PRNG (e.g. mulberry32 with a constant integer seed) is used for any runtime jitter — never unseeded `Math.random()` inside the ticker. PRNG seeding alone is insufficient for byte-exact reproducibility; ticker pause is also required.
 - **Stall detection** (ENH-2099): A `check_stall` state (via `diff_stall_gate` fragment) follows `score`'s ITERATE branch. If no file changes are detected for `max_stall` consecutive iterations (default 3), the loop accepts the best-so-far and exits rather than burning the remaining iteration budget.
 - If Playwright is unavailable, the `evaluate` state's `on_no` route retries with fresh HTML rather than scoring without visual evidence.
-- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
 - To customize scoring thresholds or criteria, install the loop locally (`ll-loop install pixi-data-viz`) and edit the `score` state's prompt and threshold logic.
 
 ---
@@ -1820,7 +1820,7 @@ init → plan → generate → evaluate
 - The `gpu_craft` criterion explicitly reads `index.html` source code — the evaluator verifies that a PixiJS-native feature is present in the code, not just claimed in the brief.
 - **Stall detection** (ENH-2099): A `check_stall` state (via `diff_stall_gate` fragment) follows `score`'s ITERATE branch. If no file changes are detected for `max_stall` consecutive iterations (default 3), the loop accepts the best-so-far and exits.
 - If Playwright is unavailable, the `evaluate` state's `on_no` route retries with fresh HTML rather than scoring without visual evidence.
-- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
 - Prefer `p5js-sketch-generator` when the p5.js ecosystem (global mode, built-in `noise()`) is the right tool; reach for `pixi-generative-art` when GPU filters, blend modes, or `ParticleContainer` density are central to the aesthetic.
 
 ---
@@ -1904,7 +1904,7 @@ init → resolve_data → plan → generate → validate
 - `window.__vegaReady = true` must be set in the `vegaEmbed` `.then()` callback; the `capture` state polls it before taking screenshots.
 - **Stall detection** (ENH-2099): A `check_stall` state (via `diff_stall_gate` fragment) follows `record`'s ITERATE branch. If no file changes are detected for `max_stall` consecutive iterations (default 3), the loop accepts the best-so-far and exits.
 - `repair` fixes only the structural break reported in `compile_error.txt` — schema errors, invalid field references, wrong encoding types, malformed transforms. It does not redesign the chart.
-- `on_handoff: spawn`, `max_iterations: 20`, `timeout: 7200`.
+- `on_handoff: spawn`, `max_steps: 20`, `timeout: 7200`.
 
 ---
 
@@ -1918,7 +1918,7 @@ init → resolve_data → plan → generate → validate
 
 2. **Infrastructure vs. sketch error split.** Sketch-level failures (JS error thrown by the sketch, no canvas element created, WebGL context used instead of 2D, never-ready, blank render) write an "Issues to Address" `critique.md` and emit `RENDER_BAD`, routing back to `generate` for self-repair. Only true infrastructure failures (browser won't launch, CDN unreachable) exit nonzero → `failed`. This means the generate→refine loop fixes its own bugs without human intervention.
 
-The `plan` state writes `brief.md` committing to a specific generative rule, palette, and composition before the generator writes a single line of code. The `score` state (LLM) assigns four criteria and writes `critique.md`; the `snapshot` state (shell) parses scores deterministically and gates on the minimum — the LLM assigns, a non-LLM state decides (MR-1 compliant). The `finalize` state reads `scores.tsv` and publishes the iteration with the highest minimum-criterion score as `best.html` / `best.png` — because score progression is non-monotonic, a middle iteration is often the strongest. `on_max_iterations: finalize` routes budget-exhausted runs through `finalize` so `best.html` is always published.
+The `plan` state writes `brief.md` committing to a specific generative rule, palette, and composition before the generator writes a single line of code. The `score` state (LLM) assigns four criteria and writes `critique.md`; the `snapshot` state (shell) parses scores deterministically and gates on the minimum — the LLM assigns, a non-LLM state decides (MR-1 compliant). The `finalize` state reads `scores.tsv` and publishes the iteration with the highest minimum-criterion score as `best.html` / `best.png` — because score progression is non-monotonic, a middle iteration is often the strongest. `on_max_steps: finalize` routes budget-exhausted runs through `finalize` so `best.html` is always published.
 
 **v1 scope:** still images only (no animation), 2D canvas only (WebGL/three/regl would need a different pixel-readback path).
 
@@ -1956,7 +1956,7 @@ init → plan → generate → evaluate
                             ├─ RENDER_BAD → generate (critique written — self-repair loop)
                             └─ ERROR (infra) → failed
 
-on_max_iterations: finalize → done  (best.html always published)
+on_max_steps: finalize → done  (best.html always published)
 ```
 
 **Evaluation criteria** (all four must meet `pass_threshold`):
@@ -1973,11 +1973,11 @@ on_max_iterations: finalize → done  (best.html always published)
 - Deterministic seeding is required: `random.setSeed('<constant>')` called once before drawing; all randomness via `canvas-sketch-util/random`. Unseeded `Math.random()` or `Date.now()` breaks per-iteration reproducibility.
 - The sketch MUST signal readiness for the `evaluate` harness: `canvasSketch(sketch, settings).then(() => { window.__sketchReady = true; }).catch(e => { window.__sketchError = String(e && e.stack || e); })`. The `evaluate` state polls `window.__sketchReady === true` before screenshotting.
 - Still images only (v1): do NOT set `settings.animate: true`. Draw the full composition in the single render call.
-- `max_iterations: 40` caps **state executions**, not refine cycles. One scored cycle ≈ 4 states (`generate`, `evaluate`, `score`, `snapshot`), plus ~2 extra whenever a blank/broken render triggers the self-repair path, plus `init` + `plan` + `finalize` + `done` overhead. 40 steps ≈ 6–8 scored cycles, matching the 5–15 iterations in Anthropic's harness-design article.
+- `max_steps: 40` caps **state executions**, not refine cycles. One scored cycle ≈ 4 states (`generate`, `evaluate`, `score`, `snapshot`), plus ~2 extra whenever a blank/broken render triggers the self-repair path, plus `init` + `plan` + `finalize` + `done` overhead. 40 steps ≈ 6–8 scored cycles, matching the 5–15 iterations in Anthropic's harness-design article.
 - **Stall detection** (ENH-2099): A `check_stall` state (via `diff_stall_gate` fragment) follows `snapshot`'s below-threshold branch. If no file changes are detected for `max_stall` consecutive iterations (default 3), the loop routes to `finalize` (publishing the best-so-far) instead of burning the remaining iteration budget.
-- `on_max_iterations: finalize` ensures `best.html` is always published, even when the pass threshold is never crossed. A run that exhausts its budget without ever scoring above threshold still produces the best artifact it found.
+- `on_max_steps: finalize` ensures `best.html` is always published, even when the pass threshold is never crossed. A run that exhausts its budget without ever scoring above threshold still produces the best artifact it found.
 - `finalize` reads `scores.tsv` (one `iteration<tab>min_score` row per `snapshot` call) and copies the highest-scoring iteration's `index.html` and `screenshot.png` to `best.html` and `best.png` at the run-dir root. Ties go to the latest iteration.
-- `on_handoff: spawn`, `max_iterations: 40`, `timeout: 7200`.
+- `on_handoff: spawn`, `max_steps: 40`, `timeout: 7200`.
 
 ### `rlhf-animated-svg` — RLHF Animated SVG Generator (ENH-2039)
 
@@ -2050,14 +2050,14 @@ run_evaluate
 
 **Output artifacts** (in `run_dir`):
 - `index.html` — Current iteration artifact (self-contained, `file://`-safe)
-- `best.html` — Highest-scoring iteration (written by `finalize` on `done` or `max_iterations`)
+- `best.html` — Highest-scoring iteration (written by `finalize` on `done` or `max_steps`)
 - `optimization_summary.md` — Running log of replan rationale and gradient history
 
 **Notes:**
 - anime.js v3.2.2 is loaded from CDN (`unpkg.com`). An `onerror` fallback renders the target element as a static SVG if the CDN is unavailable. All animation JS is inline.
 - Accessibility: `role="img"`, `aria-labelledby` pointing to a `<title>` element, and `prefers-reduced-motion` detection that disables animation when the OS preference is set.
 - `artifact_versioning: true` — each iteration's output is preserved; the runner will not overwrite previous iterations' artifacts.
-- `on_handoff: spawn`, `max_iterations: 30`, `timeout: 7200`.
+- `on_handoff: spawn`, `max_steps: 30`, `timeout: 7200`.
 
 ### `rlhf-svg-evaluate` — RLHF Animated SVG Evaluation Sub-Loop
 
@@ -2987,7 +2987,7 @@ Generic structure fragments (action_type + evaluate combinator) used by all buil
 | `convergence_gate` | Shell state evaluated by the convergence evaluator toward a numeric target. Callers supply only overrides; `type: convergence` and `direction: maximize` are fixed by the fragment. | `action_type: shell` + `evaluate.type: convergence` + `evaluate.direction: maximize` | `action`, `evaluate.target`, `evaluate.tolerance`, routing (`route.target`, `route.progress`, `route.stall`); optionally `evaluate.previous`, `route.error` |
 | `queue_pop` | Shell state that atomically pops the head of a queue file (head-1/tail-n+2/mv idiom). Evaluates by exit code: exit 0 = item popped (`on_yes`), exit 1 = queue empty (`on_no`). | `action_type: shell` + `evaluate.type: exit_code` | `action` (pop shell script), routing (`on_yes`, `on_no`); optionally `on_error`, `capture` |
 | `queue_track` | Shell state that appends an ID to a skip or visited tracking file (echo >> idiom). No evaluator — always transitions unconditionally. | `action_type: shell` | `action` (echo append script), `next:` |
-| `diff_stall_gate` | Shell state evaluated by the `diff_stall` evaluator; yields `on_yes` when a git diff is detected (progress), `on_no` after `max_stall` (default 2) consecutive iterations with no diff change. Used to skip idempotent iterations instead of exhausting `max_iterations`. | `action_type` inherited from caller + `evaluate.type: diff_stall` + `evaluate.max_stall: 2` | `action`, `action_type`, routing (`on_yes`, `on_no`); optionally `on_error`, `evaluate.scope` |
+| `diff_stall_gate` | Shell state evaluated by the `diff_stall` evaluator; yields `on_yes` when a git diff is detected (progress), `on_no` after `max_stall` (default 2) consecutive iterations with no diff change. Used to skip idempotent iterations instead of exhausting `max_steps`. | `action_type` inherited from caller + `evaluate.type: diff_stall` + `evaluate.max_stall: 2` | `action`, `action_type`, routing (`on_yes`, `on_no`); optionally `on_error`, `evaluate.scope` |
 | `plan_rubric_score` | 9-dimension plan scorer for rn-* loops. Evaluates plan.md on breadth/depth/complexity/clarity/consistency/logic_strategy/feasibility/testability/risk_mitigation, rewrites plan-rubric.md, and emits `ALL_VERY_HIGH` on convergence. Distinct from `score_plan_quality` (4-dimension batch scorer in `lib/score-plan-quality.yaml`). | `action_type: prompt` + 9-dimension scoring action + `evaluate.type: output_contains` with `pattern: "ALL_VERY_HIGH"` | routing (`on_yes`, `on_no`, `on_error`) |
 | `loop_failure_diagnose` | Terminal failure handler for rn-* planning loops. Prompts for root-cause diagnosis, reads rubric/plan artifacts, writes a one-paragraph diagnostic summary. Declares `parameters: {loop_name, extra_bullets}` — bind at call site via `with:`. Fixed `next: failed`. | `action_type: prompt` + diagnosis action + fixed `next: failed` | `with: {loop_name: <name>}`; optionally `with: {extra_bullets: <bullets>}` |
 | `subloop_rate_limit_diagnostic` | Sub-loop terminal handler for rate-limit exhaustion (ENH-1977 GAP A). Writes an outcome token to `${context.run_dir}/subloop_outcome_<ID>.txt` and routes to `failed` so the parent reads exhaustion correctly. Declares `parameters: {operation, outcome_token}` — bind at call site via `with:`. Fixed `next: failed`. | `action_type: shell` + outcome-token write + log line + fixed `next: failed` | `with: {operation: <word>}`; optionally `with: {outcome_token: <token>}` |
@@ -3120,7 +3120,7 @@ states:
 
 ### `lib/apo-base.yaml` — APO base loop skeleton
 
-Base skeleton for Automated Prompt Optimization (APO) loops. Unlike the other six libraries (which are fragment collections), this is a **loop template** inherited via `from:` rather than `import:`. Provides the common `category`, `max_iterations`, `timeout`, `on_handoff`, `context.prompt_file`, and a terminal `done` state. Child loops (e.g. `apo-beam`, `apo-textgrad`, `apo-opro`, `apo-contrastive`, `apo-feedback-refinement`) inherit from it and supply their own `initial:` state and operative state graph.
+Base skeleton for Automated Prompt Optimization (APO) loops. Unlike the other six libraries (which are fragment collections), this is a **loop template** inherited via `from:` rather than `import:`. Provides the common `category`, `max_steps`, `timeout`, `on_handoff`, `context.prompt_file`, and a terminal `done` state. Child loops (e.g. `apo-beam`, `apo-textgrad`, `apo-opro`, `apo-contrastive`, `apo-feedback-refinement`) inherit from it and supply their own `initial:` state and operative state graph.
 
 ```yaml
 from: lib/apo-base

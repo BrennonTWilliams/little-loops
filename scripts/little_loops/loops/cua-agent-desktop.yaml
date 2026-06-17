@@ -13,8 +13,8 @@ description: |
   ACTION_FAILED. Produces a summary artifact with the full action evidence
   chain in the run directory.
 initial: init
-max_iterations: 50
-on_max_steps: max_iterations_summary
+max_steps: 50
+on_max_steps: max_steps_summary
 artifact_versioning: true
 on_handoff: spawn
 timeout: 7200
@@ -1135,7 +1135,7 @@ states:
     terminal: true
     description: "Task failed due to a fundamental obstacle or error"
 
-  max_iterations_summary:
+  max_steps_summary:
     # Graceful termination when max_iterations is exhausted. Writes a
     # summary of what was accomplished even if the task wasn't fully done.
     action_type: prompt
@@ -1146,7 +1146,7 @@ states:
       Run directory: ${captured.run_dir.output}
       Task: "${context.description}"
       Target app: ${context.app_name}
-      Max iterations: ${context.max_iterations}
+      Max steps: ${context.max_steps}
       Final state before termination: ${state.last_state}
 
       STEP 1 - Read the action log:
@@ -1155,13 +1155,13 @@ states:
       STEP 2 - Write summary document:
       Write ${captured.run_dir.output}/summary.md with these sections:
 
-      # CUA Agent Summary (Max Iterations)
+      # CUA Agent Summary (Step Cap Reached)
 
       ## Task
       ${context.description}
 
       ## Termination
-      Max iterations (${context.max_iterations}) reached at state: ${state.last_state}.
+      Step cap (${context.max_steps}) reached at state: ${state.last_state}.
       The task may not be fully complete.
 
       ## Actions Completed

@@ -141,7 +141,7 @@ When `cli_command` category entries are present in Step 1 patterns, use the actu
 # Example ll-loop FSM config generated from detected CLI command patterns
 name: test-fix-lint
 initial: run_tests
-max_iterations: 10
+max_steps: 10
 states:
   run_tests:
     action: "python -m pytest scripts/tests/ -v"

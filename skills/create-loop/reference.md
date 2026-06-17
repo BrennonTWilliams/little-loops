@@ -320,7 +320,7 @@ What are you trying to do?
 ```yaml
 name: "quick-lint-fix"
 initial: evaluate
-max_iterations: 5
+max_steps: 5
 states:
   evaluate:
     action: "ruff check src/"
@@ -338,7 +338,7 @@ states:
 ```yaml
 name: "full-quality-gate"
 initial: check_types
-max_iterations: 30
+max_steps: 30
 states:
   check_types:
     action: "mypy src/"
@@ -369,7 +369,7 @@ states:
 ```yaml
 name: "improve-coverage"
 initial: measure
-max_iterations: 20
+max_steps: 20
 states:
   measure:
     action: "pytest --cov=src --cov-report=term | grep TOTAL | awk '{print $4}' | tr -d '%'"
@@ -428,7 +428,7 @@ The `action_type` field explicitly controls how an action is executed. In most c
 ```yaml
 name: "fix-with-plain-prompt"
 initial: evaluate
-max_iterations: 10
+max_steps: 10
 states:
   evaluate:
     action: "ruff check src/"
@@ -447,7 +447,7 @@ states:
 ```yaml
 name: "run-specific-script"
 initial: evaluate
-max_iterations: 5
+max_steps: 5
 states:
   evaluate:
     action: "/usr/local/bin/check.sh"
@@ -528,7 +528,7 @@ The `on_handoff` field configures loop behavior when context handoff signals are
 ```yaml
 name: "automated-quality-fix"
 initial: evaluate
-max_iterations: 20
+max_steps: 20
 on_handoff: "spawn"  # Automatically continue in new session if context runs out
 states:
   evaluate:
@@ -547,7 +547,7 @@ states:
 ```yaml
 name: "quick-check-guardian"
 initial: check_types
-max_iterations: 10
+max_steps: 10
 on_handoff: "terminate"  # Stop if we run out of context
 states:
   check_types:
@@ -585,7 +585,7 @@ The `scope` field declares which files or directories a loop operates on. It is 
 ```yaml
 name: "fix-api-types"
 initial: evaluate
-max_iterations: 10
+max_steps: 10
 scope:
   - "src/api/"
 states:
@@ -605,7 +605,7 @@ states:
 ```yaml
 name: "frontend-quality"
 initial: check_lint
-max_iterations: 20
+max_steps: 20
 scope:
   - "src/frontend/"
   - "tests/frontend/"
@@ -718,7 +718,7 @@ The `loop` field declares a state as a **sub-loop invocation** — instead of ru
 ```yaml
 name: "code-review"
 initial: fix_lint
-max_iterations: 10
+max_steps: 10
 states:
   fix_lint:
     loop: lint-fix                # runs .loops/lint-fix.yaml
@@ -740,7 +740,7 @@ states:
 
 **Routing:**
 - `on_success` (alias for `on_yes`): child reached a terminal state **named `done`** (`terminated_by: "terminal"` and `final_state: "done"`)
-- `on_failure` (alias for `on_no`): child reached a non-`done` terminal (e.g. `final_state: "failed"`), or terminated by max_iterations, timeout, or signal; also fires for `terminated_by: "error"` when `on_error` is not set
+- `on_failure` (alias for `on_no`): child reached a non-`done` terminal (e.g. `final_state: "failed"`), or terminated by max_steps, timeout, or signal; also fires for `terminated_by: "error"` when `on_error` is not set
 - `on_error`: child loop YAML not found or invalid, **or** child terminated with `terminated_by: "error"` (runtime failure) when `on_error` is defined
 
 **Context passthrough details:**
@@ -846,7 +846,7 @@ The `partial` verdict is returned by the `llm_structured` evaluator when Claude 
 ```yaml
 name: "refine-issues"
 initial: evaluate
-max_iterations: 15
+max_steps: 15
 states:
   evaluate:
     action: "/ll:verify-issues"
@@ -879,7 +879,7 @@ states:
   done:
     terminal: true
 initial: evaluate
-max_iterations: 15
+max_steps: 15
 ```
 
 **Most users can omit this field** — if you do not need distinct routing for partial progress, use `on_no` to handle both failure and partial outcomes, or use a full `route:` block for fine-grained control.
@@ -917,7 +917,7 @@ states:
   done:
     terminal: true
 initial: measure
-max_iterations: 20
+max_steps: 20
 ```
 
 **Example - Capture issue list for targeted fix:**
@@ -932,7 +932,7 @@ states:
   done:
     terminal: true
 initial: scan
-max_iterations: 10
+max_steps: 10
 ```
 
 **Most users can omit this field** — capture is needed only when states must share dynamic data. For static configuration, use the `context:` block at the loop level instead.
@@ -980,7 +980,7 @@ states:
     terminal: true
 
 initial: plan
-max_iterations: 10
+max_steps: 10
 ```
 
 **Relationship to `capture:`** — both fields are complementary, not exclusive. `capture:` provides per-variable access (`${captured.X.output}`, `${captured.X.exit_code}`); `append_to_messages` provides a single chronological log. Use `capture:` when a downstream state needs structured access to specific fields; use `append_to_messages` when later states just need the accumulated narrative.
@@ -997,7 +997,7 @@ Both fields must be set together (one without the other is a validation error).
 
 **When to use:**
 - Your loop processes multiple items and one bad item might loop indefinitely
-- You want to skip a stuck item and move on rather than burning the global `max_iterations` budget
+- You want to skip a stuck item and move on rather than burning the global `max_steps` budget
 - You are building a harness loop where each item gets a fixed number of attempts
 
 **How it works:**
@@ -1010,7 +1010,7 @@ Both fields must be set together (one without the other is a validation error).
 ```yaml
 name: "refine-with-retry-limit"
 initial: execute
-max_iterations: 100
+max_steps: 100
 states:
   execute:
     action: "/ll:refine-issue ${current_item}"
@@ -1057,7 +1057,7 @@ A parallel safeguard to `max_retries`/`on_retry_exhausted`, but specialized for 
 ```yaml
 name: "refine-with-rate-limit"
 initial: execute
-max_iterations: 100
+max_steps: 100
 states:
   execute:
     action: "/ll:refine-issue ${current_item}"

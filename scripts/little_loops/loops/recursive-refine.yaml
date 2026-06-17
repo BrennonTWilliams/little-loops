@@ -19,7 +19,7 @@ description: |
     ll-loop run recursive-refine "ID1,ID2,ID3"
     ll-loop run recursive-refine --context order=next-action commit_every=5 no_recursion=true
 initial: parse_input
-max_iterations: 500
+max_steps: 500
 timeout: 28800
 on_handoff: spawn
 artifact_versioning: true

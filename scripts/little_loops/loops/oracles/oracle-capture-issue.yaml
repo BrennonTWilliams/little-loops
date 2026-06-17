@@ -17,7 +17,7 @@ description: |
     invocation: the input text passed to the skill
     output:     JSON-serialized ResponseMetadata (tools_used, files_modified, completion_status)
 initial: check_mechanical
-max_iterations: 1
+max_steps: 1
 timeout: 180
 on_handoff: spawn
 context:

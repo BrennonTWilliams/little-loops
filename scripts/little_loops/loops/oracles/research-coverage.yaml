@@ -11,7 +11,7 @@ description: |
 initial: generate_queries
 on_handoff: spawn
 timeout: 3600
-max_iterations: 30
+max_steps: 30
 
 parameters:
   run_dir:

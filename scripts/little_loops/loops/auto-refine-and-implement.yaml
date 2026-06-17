@@ -8,7 +8,7 @@ description: |
   name or EPIC-NNN, scopes to that set via SprintManager.load_or_resolve.
   Loops until the issue set is exhausted.
 initial: init
-max_iterations: 500
+max_steps: 500
 timeout: 28800
 on_handoff: spawn
 import:

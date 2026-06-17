@@ -47,5 +47,5 @@ states:
     next: score
   done:
     terminal: true
-max_iterations: 30
+max_steps: 30
 on_handoff: spawn

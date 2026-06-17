@@ -596,7 +596,7 @@ class TestCmdResume:
         args = argparse.Namespace()
         mock_fsm = MagicMock()
         mock_fsm.name = "test-loop"
-        mock_fsm.max_iterations = 10
+        mock_fsm.max_steps = 10
 
         mock_result = MagicMock()
         mock_result.final_state = "done"
@@ -668,7 +668,7 @@ class TestCmdResume:
         mock_result.final_state = "error"
         mock_result.iterations = 5
         mock_result.duration_ms = 10000
-        mock_result.terminated_by = "max_iterations"
+        mock_result.terminated_by = "max_steps"
 
         with (
             patch(
@@ -727,7 +727,7 @@ class TestCmdResume:
         args = argparse.Namespace()
         mock_fsm = MagicMock()
         mock_fsm.name = "test-loop"
-        mock_fsm.max_iterations = 5
+        mock_fsm.max_steps = 5
 
         mock_result = MagicMock()
         mock_result.final_state = "done"
@@ -1153,9 +1153,9 @@ class TestCmdResumeExitCodes:
         """terminal, signal, and handoff all return exit code 0."""
         assert self._resume_with_terminated_by(tmp_path, terminated_by) == 0
 
-    @pytest.mark.parametrize("terminated_by", ["max_iterations", "timeout"])
+    @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout"])
     def test_nonzero_exit_for_limit_termination(self, tmp_path: Path, terminated_by: str) -> None:
-        """max_iterations and timeout return exit code 1."""
+        """max_steps and timeout return exit code 1."""
         assert self._resume_with_terminated_by(tmp_path, terminated_by) == 1
 
     def test_unknown_terminated_by_returns_1(self, tmp_path: Path) -> None:
@@ -1172,6 +1172,7 @@ class TestCmdRunHandoffThreshold:
         defaults = {
             "input": None,
             "context": [],
+            "max_steps": None,
             "max_iterations": None,
             "delay": None,
             "no_llm": False,
@@ -1267,6 +1268,7 @@ class TestCmdRunYAMLConfigOverrides:
         defaults = {
             "input": None,
             "context": [],
+            "max_steps": None,
             "max_iterations": None,
             "delay": None,
             "no_llm": False,

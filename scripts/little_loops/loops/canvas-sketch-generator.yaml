@@ -25,7 +25,7 @@ initial: init
 # done overhead. 40 steps ≈ 6–8 scored cycles, in line with the 5–15 iterations
 # the harness-design article runs. Raise for more refinement (and higher cost:
 # each generate/score is an LLM call); lower for a quick draft.
-max_iterations: 40
+max_steps: 40
 # On budget exhaustion, route through finalize so best.html is ALWAYS published
 # from the strongest scored iteration — otherwise a run that never crosses the
 # pass threshold would terminate with no selected artifact.

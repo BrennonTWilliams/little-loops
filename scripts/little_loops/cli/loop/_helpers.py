@@ -31,7 +31,7 @@ EXIT_CODES: dict[str, int] = {
     "terminal": 0,
     "signal": 0,
     "handoff": 0,
-    "max_iterations": 1,
+    "max_steps": 1,
     "timeout": 1,
     "cycle_detected": 1,
     "stall_detected": 1,
@@ -797,6 +797,13 @@ class StateFeedRenderer:
                 msg = f"step cap reached ({iters}); running summary state '{summary_state}'"
                 print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
 
+        elif event_type == "max_iterations_reached_summary":
+            if not self.quiet:
+                summary_state = event.get("summary_state", "")
+                iteration_count = event.get("iteration_count", 0)
+                msg = f"iteration cap reached ({iteration_count}); running summary state '{summary_state}'"
+                print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
+
         elif event_type == "stall_detected":
             if not self.quiet:
                 state = event.get("state", "")
@@ -945,7 +952,9 @@ def print_execution_plan(fsm: FSMLoop, edge_label_colors: dict[str, str] | None 
                 print(f"      _ {colorize('->', '2')} {colorize(state.route.default, '2')}")
     print()
     print(f"Initial state: {fsm.initial}")
-    print(f"Max iterations: {fsm.max_steps}")
+    print(f"Max steps: {fsm.max_steps}")
+    if fsm.max_iterations is not None:
+        print(f"Max iterations: {fsm.max_iterations}")
     if fsm.timeout:
         print(f"Timeout: {fsm.timeout}s")
     if fsm.context:
@@ -1029,6 +1038,9 @@ def run_background(
     cmd.extend(["--instance-id", instance_id])
 
     # Forward relevant args
+    max_steps = getattr(args, "max_steps", None)
+    if max_steps:
+        cmd.extend(["--max-steps", str(max_steps)])
     max_iter = getattr(args, "max_iterations", None)
     if max_iter:
         cmd.extend(["--max-iterations", str(max_iter)])
@@ -1169,7 +1181,9 @@ def run_foreground(
         )
         if not renderer.quiet:
             print(f"Running loop: {colorize(fsm.name, '1')}")
-            print(f"Max iterations: {colorize(str(fsm.max_steps), '2')}")
+            print(f"Max steps: {colorize(str(fsm.max_steps), '2')}")
+            if fsm.max_iterations is not None:
+                print(f"Max iterations: {colorize(str(fsm.max_iterations), '2')}")
             for key, value in _artifact_lines(fsm, loop_path):
                 print(f"  {key}: {colorize(value, '2')}")
             if model is not None:

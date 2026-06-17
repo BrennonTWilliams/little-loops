@@ -126,7 +126,8 @@ Examples:
             default=None,
             help="If valid JSON object with keys matching defined context variables, unpacks into those keys; otherwise stored as a string in context[input_key]",
         )
-        run_parser.add_argument("--max-iterations", "-n", type=int, help="Override iteration limit")
+        run_parser.add_argument("--max-steps", "-n", type=int, help="Override step cap (max individual state transitions)")
+        run_parser.add_argument("--max-iterations", type=int, help="Override full-pass cap (max complete loop cycles)")
         run_parser.add_argument(
             "--delay",
             type=float,
@@ -513,10 +514,15 @@ Examples:
             help="Auto-select results based on pattern instead of prompting (exit codes: 0=success, 1=failure, 2=error)",
         )
         simulate_parser.add_argument(
-            "--max-iterations",
+            "--max-steps",
             "-n",
             type=int,
-            help="Override max iterations for simulation (default: min of loop config or 20)",
+            help="Override step cap for simulation (default: min of loop config or 20)",
+        )
+        simulate_parser.add_argument(
+            "--max-iterations",
+            type=int,
+            help="Override full-pass cap for simulation",
         )
 
         # Install subcommand

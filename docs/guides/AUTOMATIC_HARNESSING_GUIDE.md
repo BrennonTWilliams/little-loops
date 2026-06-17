@@ -388,11 +388,11 @@ The two mechanisms are complementary: keep `capture:` for structured per-field a
 
 ### Stall Detection (`check_stall`) {#stall-detection-check_stall}
 
-Add a `check_stall` state when a skill might loop without making any code changes. This is especially important for prompt-based skills that sometimes conclude "nothing to do" — without stall detection, they exhaust `max_iterations` silently.
+Add a `check_stall` state when a skill might loop without making any code changes. This is especially important for prompt-based skills that sometimes conclude "nothing to do" — without stall detection, they exhaust `max_steps` silently.
 
 **When to add stall detection:**
 - The action uses `action_type: prompt` and may no-op
-- You see a harness exhausting `max_iterations` without git commits
+- You see a harness exhausting `max_steps` without git commits
 - The skill being harnessed sometimes returns "already done"
 
 **Placement**: Insert `check_stall` between `execute` and the first check state (e.g., `check_concrete`). In this position, use `on_yes: check_concrete` (or whichever check state comes first) and `on_no: advance` (multi-item) or `on_no: done` (single-shot). Placing it here avoids making LLM-based quality checks on output from a run that has already stalled.
@@ -598,7 +598,7 @@ What is the total iteration budget?
 
 **Convergence defaults by skill category:**
 
-| Skill category | Suggested max_iterations | Per-item retries |
+| Skill category | Suggested max_steps | Per-item retries |
 |----------------|--------------------------|------------------|
 | Issue refinement / analysis | 200 | 3 |
 | Code quality / fix | 50 | 5 |
@@ -616,7 +616,7 @@ Generated when work item mode is **"Single-shot"**. Starts directly at `execute`
 ```yaml
 name: "harness-check-code"
 initial: execute
-max_iterations: 5          # = per-item retries
+max_steps: 5          # = per-item retries
 states:
 
   execute:
@@ -670,7 +670,7 @@ Generated for **Active issues list**, **File glob pattern**, or **Manual list**.
 ```yaml
 name: "harness-refine-issue"
 initial: discover
-max_iterations: 200        # total budget across all items
+max_steps: 200        # total budget across all items
 states:
 
   discover:                  # shell command pops the next item
@@ -729,7 +729,7 @@ states:
     terminal: true
 ```
 
-> **`max_retries` + `on_retry_exhausted`**: Adding these to `execute` is the key safeguard in multi-item loops. Without them, one item that never passes evaluation will consume the entire `max_iterations` budget. With them, the loop skips the stuck item and moves on after `max_retries` attempts.
+> **`max_retries` + `on_retry_exhausted`**: Adding these to `execute` is the key safeguard in multi-item loops. Without them, one item that never passes evaluation will consume the entire `max_steps` budget. With them, the loop skips the stuck item and moves on after `max_retries` attempts.
 
 > **Ready-to-run example**: [`scripts/little_loops/loops/harness-multi-item.yaml`](../../scripts/little_loops/loops/harness-multi-item.yaml) is a fully annotated version of this variant with all five evaluation phases active, including `check_mcp` and `check_skill`. See [Using the Example Files](#using-the-example-files) below.
 
@@ -831,7 +831,7 @@ The following is a production-ready harness that refines all active issues. It i
 ```yaml
 name: "harness-refine-issue"
 initial: discover
-max_iterations: 200
+max_steps: 200
 timeout: 14400                    # 4-hour wall clock limit (seconds)
 states:
 
@@ -855,7 +855,7 @@ states:
   execute:                        # invoke the skill with the captured issue ID
     action: /ll:refine-issue ${captured.current_item.output} --auto
     action_type: prompt
-    max_retries: 3                # prevents a stuck issue from exhausting max_iterations
+    max_retries: 3                # prevents a stuck issue from exhausting max_steps
     on_retry_exhausted: advance
     next: check_concrete
 
@@ -917,7 +917,7 @@ states:
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Loop exhausts `max_iterations` without finishing | No stall detection; one item looping forever | Add `check_stall` state; or add `max_retries` + `on_retry_exhausted` on `execute` |
+| Loop exhausts `max_steps` without finishing | No stall detection; one item looping forever | Add `check_stall` state; or add `max_retries` + `on_retry_exhausted` on `execute` |
 | LLM-judge always returns NO | Evaluation prompt too strict or vague | Edit `check_semantic.evaluate.prompt` to match actual skill output characteristics |
 | `check_concrete` state missing from generated YAML | No tool commands in `ll-config.json` | Run `/ll:configure` to set `test_cmd`, `lint_cmd`, or `type_cmd` |
 | `discover` exits immediately with no items | Discovery command filter too narrow | Check that issues have `status: open`; verify `ll-issues list` returns results |

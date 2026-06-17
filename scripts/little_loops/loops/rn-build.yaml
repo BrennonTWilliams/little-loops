@@ -27,7 +27,7 @@ description: |
   - Quality gate: check_harness_name → eval_gate → check_eval_retry_budget → capture_eval_failures → re-cluster
   - Terminal: synthesize_result → done
 initial: init
-max_iterations: 30
+max_steps: 30
 timeout: 86400
 on_handoff: spawn
 

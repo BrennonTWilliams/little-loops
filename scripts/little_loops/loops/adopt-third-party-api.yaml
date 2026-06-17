@@ -2,7 +2,7 @@ name: adopt-third-party-api
 category: integration
 description: Scrape a vendor docs URL, enumerate up to 7 key endpoints/features, prove them via ready-to-implement-gate, and write a citation-linked integration playbook to docs/integration-<domain>.md.
 initial: scrape
-max_iterations: 150
+max_steps: 150
 timeout: 7200
 on_handoff: spawn
 import:

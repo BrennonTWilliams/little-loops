@@ -9,7 +9,7 @@ description: |
   A gradients.md log accumulates gradient history so compute_gradient can detect repeated
   failure patterns and escalate the gradient strength accordingly.
 initial: init
-max_iterations: 40
+max_steps: 40
 on_handoff: pause
 timeout: 7200
 artifact_versioning: true

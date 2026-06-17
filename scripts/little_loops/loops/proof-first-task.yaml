@@ -2,7 +2,7 @@ name: proof-first-task
 category: gate
 description: Opt-in wrapper that gates any implementation loop on assumption-firewall — extracts external-API assumptions from an issue file, proves each against the Learning-Test Registry, then delegates to a caller-specified impl loop. When no issue_file is given, skips the gate and runs the impl loop directly.
 initial: check_issue_file
-max_iterations: 150
+max_steps: 150
 timeout: 7200
 on_handoff: spawn
 import:

@@ -199,9 +199,11 @@ def cmd_simulate(
         logger.error(f"Validation error: {e}")
         return 1
 
-    # Apply CLI overrides — in simulation, -n/--max-iterations caps steps for brevity
-    if args.max_iterations:
-        fsm.max_steps = args.max_iterations
+    # Apply CLI overrides — in simulation, -n/--max-steps caps steps for brevity
+    if getattr(args, "max_steps", None):
+        fsm.max_steps = args.max_steps
+    if getattr(args, "max_iterations", None):
+        fsm.max_iterations = args.max_iterations
     else:
         # Limit steps for simulation safety (cap at 20 unless overridden)
         if fsm.max_steps > 20:

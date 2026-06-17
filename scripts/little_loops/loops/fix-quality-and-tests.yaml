@@ -100,6 +100,6 @@ states:
     next: check-quality
   done:
     terminal: true
-max_iterations: 30
+max_steps: 30
 timeout: 7200
 on_handoff: spawn

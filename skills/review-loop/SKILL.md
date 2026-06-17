@@ -91,7 +91,7 @@ Record:
 - `loop_name`: the `name` field
 - `initial`: the `initial` field
 - `states`: dict of state names → state configs
-- `max_iterations`: numeric value or absent
+- `max_steps`: numeric value or absent
 - `on_handoff`: string value or absent
 
 ---
@@ -133,7 +133,7 @@ Run each quality check from `reference.md` against the raw YAML dict. Record fin
 
 | QC | Check | Reference section | Resulting check_id |
 |----|-------|-------------------|--------------------|
-| QC-1 | max_iterations Range | QC-1 | QC-1 |
+| QC-1 | max_steps Range | QC-1 | QC-1 |
 | QC-2 | Missing `on_error` Routing | QC-2 | QC-2 |
 | QC-3 | `action_type` Mismatch | QC-3 | QC-3 |
 | QC-4 | Convergence Missing `on_maintain` | QC-4 | QC-4 |
@@ -212,18 +212,18 @@ ll-loop simulate <name>
 
 Parse the `=== Summary ===` block at the end of stdout for these signals (see `reference.md` Simulation Checks for full patterns):
 
-**SIM-1 (Stall)**: `States visited:` contains a repeated state AND `Terminated by: max_iterations`
+**SIM-1 (Stall)**: `States visited:` contains a repeated state AND `Terminated by: max_steps`
 - Add Warning finding at path `(loop)` with check_id `SIM-1`
 
-**SIM-2 (Premature terminal)**: `Iterations:` value is 1 or 2 AND `Terminated by: terminal` AND loop `max_iterations > 5`
+**SIM-2 (Premature terminal)**: `Iterations:` value is 1 or 2 AND `Terminated by: terminal` AND loop `max_steps > 5`
 - Add Warning finding at path `(loop)` with check_id `SIM-2`
 
-**SIM-3 (Exceeds max_iterations)**: `Terminated by: max_iterations` (regardless of states visited — this is not SIM-1 which requires a stall cycle)
+**SIM-3 (Exceeds max_steps)**: `Terminated by: max_steps` (regardless of states visited — this is not SIM-1 which requires a stall cycle)
 - Add Error finding at path `(loop)` with check_id `SIM-3`
 
 Record `simulation_result` for the artifact:
 - `"terminal"` — simulation reached a terminal state
-- `"max_iterations"` — simulation hit max_iterations
+- `"max_steps"` — simulation hit max_steps
 - `"error"` — simulate command failed with an unexpected error
 
 **If `--exercise` flag is set**, also run:

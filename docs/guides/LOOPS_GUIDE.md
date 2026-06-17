@@ -113,9 +113,11 @@ A loop whose fix never works would run forever. Picture a two-state loop: `check
 
 | Field | Default | What it stops |
 |-------|---------|---------------|
-| `max_iterations` | `50` | Runaway total work. Counts every state execution; when spent, the loop terminates with `terminated_by="max_iterations"`. |
-| `on_max_iterations` | unset | Silent budget exhaustion. Names a state to run exactly once when the cap fires (e.g., publish the best result so far) before terminating. |
-| `max_edge_revisits` | `100` | Tight ping-pong cycles. If any single state→state edge fires more than this, the loop terminates with `terminated_by="cycle_detected"` — long before `max_iterations` would notice. Lower it (e.g., `5`) on short loops to surface regressions faster. |
+| `max_steps` | `50` | Runaway total work. Counts every state execution; when spent, the loop terminates with `terminated_by="max_steps"`. |
+| `on_max_steps` | unset | Silent budget exhaustion. Names a state to run exactly once when the step cap fires (e.g., publish the best result so far) before terminating. |
+| `max_iterations` | unset | Full-pass cap. Counts complete loop cycles (maintain-mode restarts); terminates with `terminated_by="max_iterations_reached"` when reached. |
+| `on_max_iterations` | unset | Names a state to run exactly once when the full-pass cap fires before terminating. |
+| `max_edge_revisits` | `100` | Tight ping-pong cycles. If any single state→state edge fires more than this, the loop terminates with `terminated_by="cycle_detected"` — long before `max_steps` would notice. Lower it (e.g., `5`) on short loops to surface regressions faster. |
 | `circuit.repeated_failure` | unset | A single state failing the same way every iteration. See the stall detector below. |
 
 ### Stall Detector (circuit-repeated-failure)
@@ -190,7 +192,7 @@ Run `/ll:create-loop fix tests until they pass`, or write the YAML directly and 
 ```yaml
 name: fix-tests
 initial: evaluate
-max_iterations: 10
+max_steps: 10
 states:
   evaluate:
     action: "pytest tests/"
@@ -228,7 +230,7 @@ ll-loop simulate fix-tests --scenario all-fail  # auto-select verdicts to trace 
 ll-loop run fix-tests
 ```
 
-The engine enters `evaluate`, runs `pytest tests/`, checks the exit code, and follows the transition. If tests fail, it enters `fix`, sends the fix prompt to Claude, then returns to `evaluate` — until tests pass or `max_iterations` is reached.
+The engine enters `evaluate`, runs `pytest tests/`, checks the exit code, and follows the transition. If tests fail, it enters `fix`, sends the fix prompt to Claude, then returns to `evaluate` — until tests pass or `max_steps` is reached.
 
 ### 5. Monitor
 
@@ -471,7 +473,7 @@ When a loop detects that Claude's context window is approaching its limit, it tr
 ```yaml
 name: issue-refinement
 on_handoff: spawn        # loop-level field
-max_iterations: 20
+max_steps: 20
 states:
   discover:
     action: "ll-issues list --status open"
@@ -595,7 +597,7 @@ A **harness loop** wraps a skill or prompt in a layered quality evaluation pipel
 
 Run `/ll:create-loop` and select **"Harness a skill or prompt"** — the wizard derives the evaluation phases from your project config. Multi-item harnesses add `discover` and `advance` states around the evaluation chain.
 
-The critical safeguard in multi-item loops is `max_retries` + `on_retry_exhausted: advance` on the `execute` state — without it, one item that never passes evaluation consumes the entire `max_iterations` budget.
+The critical safeguard in multi-item loops is `max_retries` + `on_retry_exhausted: advance` on the `execute` state — without it, one item that never passes evaluation consumes the entire `max_steps` budget.
 
 ### Rate-Limit Resilience
 
@@ -641,7 +643,7 @@ states:
 
 ### Stall Detection
 
-For prompt-based skills that may produce no-ops ("already done"), add a `check_stall` state using the `diff_stall` evaluator between `execute` and the first check state. Without it, idempotent skills silently exhaust `max_iterations`:
+For prompt-based skills that may produce no-ops ("already done"), add a `check_stall` state using the `diff_stall` evaluator between `execute` and the first check state. Without it, idempotent skills silently exhaust `max_steps`:
 
 ```yaml
 check_stall:
@@ -677,9 +679,9 @@ check_stall:
 | `ll-loop monitor <name>` | Attach to a running loop and render FSM state live |
 | `ll-loop next-loop` | Suggest next loop(s) from execution history |
 | `ll-loop diagnose-evaluators <name>` | Scan evaluator history for non-discriminating states (Bernoulli variance `p*(1-p)` below 0.05); exits 1 if any flagged |
-| `ll-loop calibrate-budget <name>` | Check whether raising `max_iterations` will earn its token cost; reports `⚠ WARN` when evaluator variance is too low |
+| `ll-loop calibrate-budget <name>` | Check whether raising `max_steps` will earn its token cost; reports `⚠ WARN` when evaluator variance is too low |
 
-Common run flags: `--dry-run` (plan only), `-n <N>` (override `max_iterations`), `--queue` (wait on scope conflicts), `-b` (background), `-f` (stream transitions), `--show-diagrams` (live FSM diagram; add `--clear` for a pinned dashboard), `--delay <s>` (sleep between iterations), `--context KEY=VALUE` (override context, repeatable), `--no-llm` (deterministic evaluators only), `--program-md PATH` (load a steering directive; see [program.md convention](../reference/program-md.md)). Run `ll-loop run --help` for the full list.
+Common run flags: `--dry-run` (plan only), `-n <N>` (override `max_steps`), `--queue` (wait on scope conflicts), `-b` (background), `-f` (stream transitions), `--show-diagrams` (live FSM diagram; add `--clear` for a pinned dashboard), `--delay <s>` (sleep between iterations), `--context KEY=VALUE` (override context, repeatable), `--no-llm` (deterministic evaluators only), `--program-md PATH` (load a steering directive; see [program.md convention](../reference/program-md.md)). Run `ll-loop run --help` for the full list.
 
 ## Pattern: Using `--check` with Exit Code Evaluators
 
@@ -688,7 +690,7 @@ Issue prep skills (`format-issue`, `verify-issues`, `ready-issue`, `confidence-c
 ```yaml
 name: prep-sprint
 initial: check-format
-max_iterations: 20
+max_steps: 20
 states:
   check-format:
     action: "/ll:format-issue --all --check"
@@ -720,7 +722,7 @@ Each `check-*` state routes on the skill's exit code (0 = clean, 1 = work remain
 
 ## Tips
 
-- **Start with low `max_iterations`** (5-10) while developing a loop. Increase once the logic is proven.
+- **Start with low `max_steps`** (5-10) while developing a loop. Increase once the logic is proven.
 - **State is persisted to disk** after every transition. If a loop is interrupted, `ll-loop resume` picks up where it left off.
 - **Bind checkpoints to their task** with `${context.input_hash}` (a 12-char digest of the loop's input, auto-injected by the runner) so stale checkpoint files from an unrelated prior run can't trigger false crash-recovery skips.
 - **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
@@ -734,7 +736,7 @@ Any loop can invoke another loop as a **child FSM** using the `loop:` field on a
 ```yaml
 name: "quality-then-ship"
 initial: "run_quality"
-max_iterations: 3
+max_steps: 3
 states:
   run_quality:
     loop: "fix-quality-and-tests"   # runs the built-in loop as a child
@@ -874,7 +876,7 @@ When several variants of a loop share a category, iteration cap, default context
 ```yaml
 name: apo-beam
 category: apo
-max_iterations: 20
+max_steps: 20
 timeout: 3600
 on_handoff: spawn
 context:
@@ -892,7 +894,7 @@ states:
 ```yaml
 name: apo-base
 category: apo
-max_iterations: 20
+max_steps: 20
 timeout: 3600
 on_handoff: spawn
 context:
@@ -912,12 +914,12 @@ context:
   beam_width: 4
 states:
   generate_variants: { ... }
-  # `done`, max_iterations, timeout, on_handoff all inherited
+  # `done`, max_steps, timeout, on_handoff all inherited
 ```
 
 The `from:` value resolves like any loop name — project `.loops/` first, then built-ins; a `lib/<name>` path reaches inheritance-only templates, which are hidden from `ll-loop list` because their parent chain also omits `initial:` and `states:` (they remain library-only fragments, not runnable loops). Pure context-override stubs outside `lib/` — stubs that inherit a full FSM from a parent and only override `context:` or metadata — are recognized as runnable after inheritance resolution and appear under `ll-loop list --internal` when they declare `visibility: internal`. The child must declare its own `name:`; everything else is optional.
 
-> **Merge rules**: the loader deep-merges parent and child *before* validation. Scalars (`name`, `initial`, `max_iterations`, …) — child wins. Lists (`labels`) — child replaces outright. Dicts (`context`, `states`, `route`, nested `evaluate`) — recursive merge, child keys override. A parent's `import:`/`fragments:` are merged in first, so a child can use any fragment its parent imports. Circular chains (`A → B → A`) raise an error naming the full chain. The `from:` key is stripped from the merged result — there is no runtime overhead.
+> **Merge rules**: the loader deep-merges parent and child *before* validation. Scalars (`name`, `initial`, `max_steps`, …) — child wins. Lists (`labels`) — child replaces outright. Dicts (`context`, `states`, `route`, nested `evaluate`) — recursive merge, child keys override. A parent's `import:`/`fragments:` are merged in first, so a child can use any fragment its parent imports. Circular chains (`A → B → A`) raise an error naming the full chain. The `from:` key is stripped from the merged result — there is no runtime overhead.
 
 `ll-loop validate`, `ll-loop info`, and `/ll:review-loop` all see the *materialized* (merged) loop; `ll-loop info --raw` shows what the author wrote. `ll-loop list` also resolves inheritance before extracting the loop description, so loops that inherit their `description:` from a parent template display correctly in the list view (fixed in ENH-2101; previously showed a blank description).
 
@@ -949,7 +951,7 @@ Branch with ternary syntax — `check_ready?run_impl:done` gives `check_ready` a
 
 **Loop stuck repeating the same states.** Check `ll-loop history <name>` — if the same verdict repeats, the fix action isn't changing what the evaluator sees. Adjust the fix action, or rely on the automatic guards: `max_edge_revisits` (default 100) terminates tight cycles with `terminated_by="cycle_detected"`.
 
-**`max_iterations` hit unexpectedly.** Usually one work item (or one state) consuming the whole budget. Run `ll-loop history <name> --event route` to see where iterations went. Fixes: add `max_retries` + `on_retry_exhausted: advance` to the execute state (multi-item loops), or add a `diff_stall` gate so no-op iterations skip forward instead of repeating ([Stall Detection](#stall-detection)).
+**`max_steps` hit unexpectedly.** Usually one work item (or one state) consuming the whole budget. Run `ll-loop history <name> --event route` to see where iterations went. Fixes: add `max_retries` + `on_retry_exhausted: advance` to the execute state (multi-item loops), or add a `diff_stall` gate so no-op iterations skip forward instead of repeating ([Stall Detection](#stall-detection)).
 
 **Loop exits on the first iteration.** The initial state's evaluator probably returned `yes` immediately (nothing to do) or `error` with no `on_error` route. Run `ll-loop test <name>` to see the action output, verdict, and routing decision for a single iteration. If the action's exit code isn't what you expect, check that the command actually fails when work remains.
 
@@ -969,18 +971,18 @@ Passing `ll-loop validate` (MR-1) confirms a non-LLM evaluator is _present_ — 
 
 **`ll-loop diagnose-evaluators <name>`** — run this after MR-1 passes to validate that each evaluator actually discriminates across run history. The command computes Bernoulli variance `p*(1-p)` over ≥10 runs per evaluator state. Variance below 0.05 flags the evaluator as toothless — it is not measuring anything useful, and the per-state output includes a recommendation for how to fix it (broaden the judge prompt, tighten the exit-code command, etc.). See the [CLI reference](../reference/CLI.md) for full flag and exit-code documentation.
 
-**`ll-loop calibrate-budget <name>`** — run this before raising `max_iterations` to check whether additional iterations will actually earn their token cost. The command reports `⚠ WARN` for evaluators with low variance and `✓ OK` for healthy ones:
+**`ll-loop calibrate-budget <name>`** — run this before raising `max_steps` to check whether additional iterations will actually earn their token cost. The command reports `⚠ WARN` for evaluators with low variance and `✓ OK` for healthy ones:
 
 ```
 Evaluator: check_quality (llm_structured)
-  Variance p*(1-p): 0.02   ⚠ WARN: below 0.05 threshold — fix evaluator before increasing max_iterations
+  Variance p*(1-p): 0.02   ⚠ WARN: below 0.05 threshold — fix evaluator before increasing max_steps
 Evaluator: check_exit (exit_code)
   Variance p*(1-p): 0.23   ✓ OK
 ```
 
 `check_quality` nearly always returns the same verdict, so the loop cannot learn from its signal regardless of iteration count. `check_exit` discriminates well — more iterations here earn their cost. See the [CLI reference](../reference/CLI.md) for full output format documentation.
 
-Fix toothless evaluators _before_ raising `max_iterations`, or the extra budget is wasted.
+Fix toothless evaluators _before_ raising `max_steps`, or the extra budget is wasted.
 
 ## Further Reading
 

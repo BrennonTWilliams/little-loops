@@ -197,7 +197,7 @@ A 20-line harness optimizer for a single skill file, with one comment per key st
 name: optimize-capture-issue
 category: harness
 initial: diagnose
-max_iterations: 10
+max_steps: 10
 
 states:
   diagnose:                          # identify WHICH component is weakest before editing
@@ -287,7 +287,7 @@ ll-loop validate my-optimizer
 # Step 2: Verify the gate actually discriminates
 ll-loop diagnose-evaluators my-optimizer
 # → Reports Bernoulli variance p*(1-p) per evaluator. A score below 0.05 means the gate
-#   always returns the same verdict — it's not measuring anything useful. Fix before raising max_iterations.
+#   always returns the same verdict — it's not measuring anything useful. Fix before raising max_steps.
 
 # Step 3: Confirm the harness beats a single unguided call
 ll-loop run my-optimizer --baseline
@@ -301,7 +301,7 @@ ll-loop run my-optimizer --baseline
   actually *discriminating*. A gate can satisfy MR-1 yet be toothless if its verdict never
   varies; this flags evaluators with Bernoulli variance `p*(1-p)` below 0.05 across ≥10
   runs.
-- **`ll-loop calibrate-budget <loop>`** — decide whether increasing `max_iterations` will
+- **`ll-loop calibrate-budget <loop>`** — decide whether increasing `max_steps` will
   earn its token cost. Reports `p*(1-p)` per evaluator state with a WARN when variance
   falls below 0.05: iterations spent against a toothless evaluator change nothing, so fix
   the evaluator before raising the budget. Complements `diagnose-evaluators` with a
@@ -369,7 +369,7 @@ Fix: broaden the scorer (add more test cases, diversify the benchmark), or tight
 
 Cause: the diagnosis step isn't identifying the right component. The highest-leverage fix may be in a different part of the harness than `diagnose` is pointing at.
 
-Fix: lower `max_iterations` temporarily to 3 and inspect the `trajectory.jsonl` to see what's actually being proposed. Often the fix is to make `diagnose` output more specific component identification.
+Fix: lower `max_steps` temporarily to 3 and inspect the `trajectory.jsonl` to see what's actually being proposed. Often the fix is to make `diagnose` output more specific component identification.
 
 ### Tracking which strategies actually work
 

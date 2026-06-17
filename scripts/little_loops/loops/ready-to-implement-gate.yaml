@@ -3,7 +3,7 @@ category: gate
 # Canonical built-in example of the `type: learning` FSM primitive (FEAT-1283).
 description: Sub-loop that proves a list of external-API targets via ll-learning-tests; routes done if all proven, blocked if any refuted.
 initial: prove
-max_iterations: 50
+max_steps: 50
 timeout: 3600
 on_handoff: spawn
 

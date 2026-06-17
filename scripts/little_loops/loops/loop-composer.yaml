@@ -8,7 +8,7 @@ category: orchestration
 input_key: goal
 required_inputs: ["goal"]
 initial: discover_loops
-max_iterations: 120
+max_steps: 120
 timeout: 345600
 on_handoff: spawn
 

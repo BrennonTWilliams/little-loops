@@ -35,7 +35,7 @@ description: |
   hitl-md loop routed to generate instead of score — this deliberate divergence from the
   LOOPS_REFERENCE.md design rule is now handled by the oracle's internal routing logic.
 initial: init
-max_iterations: 20
+max_steps: 20
 timeout: 7200
 
 # HARNESS: Context variables for input.

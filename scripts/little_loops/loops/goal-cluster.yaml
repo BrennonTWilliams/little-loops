@@ -13,7 +13,7 @@ category: orchestration
 input_key: goals
 required_inputs: ["goals"]
 initial: load_goals
-max_iterations: 300
+max_steps: 300
 timeout: 345600
 on_handoff: spawn
 

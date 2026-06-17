@@ -9,7 +9,7 @@ description: |
   reach VERY-HIGH or max_iterations is exhausted. Run as:
   ll-loop run rn-plan "your task description"
 initial: init
-max_iterations: 50
+max_steps: 50
 timeout: 7200
 import:
   - lib/common.yaml

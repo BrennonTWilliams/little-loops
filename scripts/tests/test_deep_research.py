@@ -120,8 +120,8 @@ class TestDeepResearchYaml:
             f"run_research.with.academic_mode must be '${{context.academic_mode}}', got {with_.get('academic_mode')!r}"
         )
 
-    def test_max_iterations_is_30(self, data: dict) -> None:
-        assert data.get("max_iterations") == 30
+    def test_max_steps_is_30(self, data: dict) -> None:
+        assert data.get("max_steps") == 30
 
 
 class TestDeepResearchShellStates:

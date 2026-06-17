@@ -474,13 +474,13 @@ states:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Loop metadata (initial, max_iterations, timeout) shown."""
+        """Loop metadata (initial, max_steps, timeout) shown."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "test.yaml").write_text("""
 name: test
 initial: start
-max_iterations: 25
+max_steps: 25
 timeout: 3600
 states:
   start:
@@ -494,7 +494,7 @@ states:
 
         captured = capsys.readouterr()
         assert "Initial state: start" in captured.out
-        assert "Max iterations: 25" in captured.out
+        assert "Max steps: 25" in captured.out
         assert "Timeout: 3600s" in captured.out
 
 
@@ -596,7 +596,7 @@ class TestRenderFsmDiagram:
         initial: str = "start",
         states: dict[str, StateConfig] | None = None,
     ) -> FSMLoop:
-        return FSMLoop(name=name, initial=initial, states=states or {}, max_iterations=50)
+        return FSMLoop(name=name, initial=initial, states=states or {}, max_steps=50)
 
     def test_single_terminal_state(self) -> None:
         """Single terminal state renders just the state box."""
@@ -1406,7 +1406,7 @@ class TestAdaptiveLayoutTopologies:
         initial: str = "start",
         states: dict[str, StateConfig] | None = None,
     ) -> FSMLoop:
-        return FSMLoop(name=name, initial=initial, states=states or {}, max_iterations=50)
+        return FSMLoop(name=name, initial=initial, states=states or {}, max_steps=50)
 
     def test_two_state_linear_vertical(self) -> None:
         """2-state linear FSM renders vertically."""
@@ -2736,12 +2736,12 @@ class TestDisplayProgressEvents:
         assert "loops/test-loop.yaml" in captured.out
         assert "  output_dir:" in captured.out
         assert ".loops/output/" in captured.out
-        # Artifact lines appear after Max iterations and before the blank line
-        max_iter_pos = captured.out.find("Max iterations:")
+        # Artifact lines appear after Max steps and before the blank line
+        max_steps_pos = captured.out.find("Max steps:")
         loop_pos = captured.out.find("  loop:")
-        assert max_iter_pos >= 0
+        assert max_steps_pos >= 0
         assert loop_pos >= 0
-        assert max_iter_pos < loop_pos
+        assert max_steps_pos < loop_pos
 
     def test_run_foreground_startup_shows_model_when_provided(
         self, capsys: pytest.CaptureFixture[str]
@@ -2810,9 +2810,9 @@ class TestRunForegroundExitCodes:
         """terminal, signal, and handoff all return exit code 0."""
         assert self._run_with_terminated_by(terminated_by) == 0
 
-    @pytest.mark.parametrize("terminated_by", ["max_iterations", "timeout"])
+    @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout"])
     def test_nonzero_exit_code_for_limit_termination(self, terminated_by: str) -> None:
-        """max_iterations and timeout return exit code 1."""
+        """max_steps and timeout return exit code 1."""
         assert self._run_with_terminated_by(terminated_by) == 1
 
     def test_unknown_terminated_by_returns_1(self) -> None:
@@ -2824,7 +2824,7 @@ class TestRunForegroundExitCodes:
         assert EXIT_CODES["terminal"] == 0
         assert EXIT_CODES["signal"] == 0
         assert EXIT_CODES["handoff"] == 0
-        assert EXIT_CODES["max_iterations"] == 1
+        assert EXIT_CODES["max_steps"] == 1
         assert EXIT_CODES["timeout"] == 1
 
 
@@ -2992,7 +2992,7 @@ class TestStateBadges:
                 "start": StateConfig(action="do something", action_type="prompt", next="done"),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=5,
+            max_steps=5,
         )
         result = _render_fsm_diagram(fsm)
         assert "\u2726" in result  # ✦ prompt badge present
@@ -3010,7 +3010,7 @@ class TestStateBadges:
                 "x": StateConfig(loop="child.yaml", next="done"),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=1,
+            max_steps=1,
         )
         result = _render_fsm_diagram(fsm)
         top_border = next(
@@ -3030,7 +3030,7 @@ class TestStateBadges:
                 "start": StateConfig(action="do something", action_type="prompt", next="done"),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=5,
+            max_steps=5,
         )
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm, highlight_state="start", highlight_color="36")
@@ -3065,7 +3065,7 @@ class TestStateBadges:
                 ),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=5,
+            max_steps=5,
         )
         result = _render_fsm_diagram(fsm)
         assert "\u2443" in result  # ⑃ route badge in top border
@@ -3083,7 +3083,7 @@ class TestEdgeLineColorization:
         initial: str = "a",
         states: dict[str, StateConfig] | None = None,
     ) -> FSMLoop:
-        return FSMLoop(name="test", initial=initial, states=states or {}, max_iterations=10)
+        return FSMLoop(name="test", initial=initial, states=states or {}, max_steps=10)
 
     def test_collect_edges_includes_on_blocked(self) -> None:
         """_collect_edges() collects on_blocked transitions as 'blocked' label."""
@@ -3433,7 +3433,7 @@ class TestShowDiagramsMode:
                 "done": StateConfig(terminal=True),
                 "fail_terminal": StateConfig(terminal=True),
             },
-            max_iterations=5,
+            max_steps=5,
         )
 
     def test_show_diagrams_main_hides_error_edges(self) -> None:
@@ -3456,7 +3456,7 @@ class TestShowDiagramsMode:
                 "done": StateConfig(terminal=True),
                 "fail": StateConfig(terminal=True),
             },
-            max_iterations=5,
+            max_steps=5,
         )
         result = _render_fsm_diagram(fsm, mode="main")
         plain = _re.compile(r"\033\[[0-9;]*m").sub("", result)
@@ -3560,7 +3560,7 @@ class TestShowDiagramsMiniMode:
                 "retry": StateConfig(action="echo retry-action", next="start"),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=5,
+            max_steps=5,
         )
 
     def test_show_diagrams_mini_box_contains_only_state_title(self) -> None:
@@ -3623,7 +3623,7 @@ class TestShowDiagramsMiniMode:
                 "done": StateConfig(terminal=True),
                 "fail_terminal": StateConfig(terminal=True),
             },
-            max_iterations=5,
+            max_steps=5,
         )
         result = _render_fsm_diagram(fsm, mode="mini")
         plain = self._strip_ansi(result)
@@ -3759,6 +3759,7 @@ class TestShowDiagramsSubprocessReemit:
 
         args_ns = argparse.Namespace(
             input=None,
+            max_steps=None,
             max_iterations=None,
             no_llm=False,
             llm_model=None,

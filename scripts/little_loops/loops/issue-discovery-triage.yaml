@@ -76,6 +76,6 @@ states:
     next: count_baseline
   done:
     terminal: true
-max_iterations: 10
+max_steps: 10
 timeout: 7200
 on_handoff: spawn

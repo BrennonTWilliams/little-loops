@@ -10,7 +10,7 @@ category: issue-management
 #   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
 #   restore_best (ENH-2037) → done — restores best-scoring iter-N snapshot before termination
 initial: resolve_issue
-max_iterations: 20
+max_steps: 20
 on_handoff: spawn
 artifact_versioning: true
 context:

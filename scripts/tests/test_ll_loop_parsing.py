@@ -32,7 +32,8 @@ class TestLoopArgumentParsing:
         parser = argparse.ArgumentParser(prog="ll-loop run")
         parser.add_argument("loop")
         parser.add_argument("input", nargs="?", default=None)
-        parser.add_argument("--max-iterations", "-n", type=int)
+        parser.add_argument("--max-steps", "-n", type=int)
+        parser.add_argument("--max-iterations", type=int)
         parser.add_argument("--delay", type=float, default=None, metavar="SECONDS")
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--quiet", "-q", action="store_true")
@@ -93,11 +94,11 @@ class TestLoopArgumentParsing:
         assert args.command == "run"
         assert args.dry_run is True
 
-    def test_run_with_max_iterations(self) -> None:
-        """run --max-iterations."""
+    def test_run_with_max_steps(self) -> None:
+        """run --max-steps."""
         parser = self._create_run_parser()
-        args = parser.parse_args(["fix-types", "--max-iterations", "10"])
-        assert args.max_iterations == 10
+        args = parser.parse_args(["fix-types", "--max-steps", "10"])
+        assert args.max_steps == 10
         assert args.loop == "fix-types"
 
     def test_validate_subcommand(self) -> None:

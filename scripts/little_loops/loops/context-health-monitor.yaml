@@ -8,7 +8,7 @@ context:
   scratch_size_kb_warn: 500
   log_age_days_warn: 7
   scratch_dir: .loops/tmp
-max_iterations: 10
+max_steps: 10
 timeout: 3600
 
 states:

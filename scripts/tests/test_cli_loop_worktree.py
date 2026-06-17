@@ -563,6 +563,7 @@ class TestCmdRunWorktree:
         defaults = {
             "input": None,
             "context": [],
+            "max_steps": None,
             "max_iterations": None,
             "delay": None,
             "no_llm": False,

@@ -305,6 +305,7 @@ def cmd_next_loop(
 
         run_args = argparse.Namespace(
             input=top_candidate.input,
+            max_steps=None,
             max_iterations=None,
             delay=None,
             no_llm=False,

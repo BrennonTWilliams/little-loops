@@ -14,7 +14,7 @@ description: |
   this loop hard-gates encoding_clarity at threshold 7 — a beautiful
   chart with unlabeled axes still fails.
 initial: init
-max_iterations: 20
+max_steps: 20
 on_handoff: spawn
 timeout: 7200
 

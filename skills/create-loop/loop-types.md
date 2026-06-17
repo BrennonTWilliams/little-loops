@@ -155,7 +155,7 @@ If "Less than threshold" or "Greater than threshold" selected, ask for target va
 ```yaml
 name: "<loop-name>"
 initial: evaluate
-max_iterations: <selected-max>
+max_steps: <selected-max>
 # scope: ["src/"]          # Optional: declare paths for ll-parallel concurrency control
 states:
   evaluate:
@@ -182,7 +182,7 @@ states:
 ```yaml
 name: "fix-types-and-lint"
 initial: evaluate
-max_iterations: 10
+max_steps: 10
 states:
   evaluate:
     action: "mypy src/ && ruff check src/"
@@ -270,7 +270,7 @@ For each constraint `{name}` in order, generate a check/fix pair of states. The 
 ```yaml
 name: "<loop-name>"
 initial: check_<name1>
-max_iterations: 50
+max_steps: 50
 # scope: ["src/"]            # Optional: declare paths for ll-parallel concurrency control
 states:
   check_<name1>:
@@ -298,7 +298,7 @@ states:
 ```yaml
 name: "code-quality-guardian"
 initial: check_tests
-max_iterations: 50
+max_steps: 50
 states:
   check_tests:
     action: "pytest"
@@ -384,7 +384,7 @@ questions:
 ```yaml
 name: "<loop-name>"
 initial: measure
-max_iterations: 50
+max_steps: 50
 # scope: ["src/"]  # Optional: declare paths for ll-parallel concurrency control
 states:
   measure:
@@ -409,7 +409,7 @@ states:
 ```yaml
 name: "eliminate-lint-errors"
 initial: measure
-max_iterations: 50
+max_steps: 50
 states:
   measure:
     action: "ruff check src/ 2>&1 | grep -c 'error' || echo 0"
@@ -493,7 +493,7 @@ Follow the same conditional flow as Fix Until Clean for pattern/numeric follow-u
 ```yaml
 name: "<loop-name>"
 initial: step_0
-max_iterations: 50
+max_steps: 50
 backoff: 2
 # scope: ["src/"]            # Optional: declare paths for ll-parallel concurrency control
 states:
@@ -524,7 +524,7 @@ states:
 ```yaml
 name: "fix-test-check"
 initial: step_0
-max_iterations: 50
+max_steps: 50
 backoff: 2
 states:
   step_0:
@@ -691,7 +691,7 @@ questions:
         description: "For long-running batch operations"
 ```
 
-**Auto-calculate total if omitted**: `max_iterations = estimated_items * per_item_retries * evaluation_states + buffer`
+**Auto-calculate total if omitted**: `max_steps = estimated_items * per_item_retries * evaluation_states + buffer`
 
 ---
 
@@ -706,7 +706,7 @@ For "Single-shot" work item mode:
 ```yaml
 name: "<loop-name>"
 initial: execute
-max_iterations: <per-item-retries>
+max_steps: <per-item-retries>
 states:
   execute:
     action: "<skill-or-prompt>"
@@ -772,7 +772,7 @@ For "Active issues list", "File glob pattern", or "Manual list" work item modes:
 ```yaml
 name: "<loop-name>"
 initial: discover
-max_iterations: <max-iterations>
+max_steps: <max-iterations>
 states:
   discover:
     action: "<discovery-command>"   # see Discovery Commands table below
@@ -852,7 +852,7 @@ states:
     terminal: true
 ```
 
-> **`max_retries` on harness states**: Use `max_retries` + `on_retry_exhausted` on any check state that routes back to `execute` on failure. This prevents a single bad item from exhausting the global `max_iterations` budget. See [reference.md](reference.md) for details.
+> **`max_retries` on harness states**: Use `max_retries` + `on_retry_exhausted` on any check state that routes back to `execute` on failure. This prevents a single bad item from exhausting the global `max_steps` budget. See [reference.md](reference.md) for details.
 >
 > **`max_rate_limit_retries` on prompt states**: For prompt states that hit a rate-limited LLM upstream (especially under `ll-parallel`), pair `max_rate_limit_retries` with `on_rate_limit_exhausted` so 429s are retried in place with exponential backoff + jitter rather than surfaced as generic action failures. Override `rate_limit_backoff_base_seconds` (default `30`) upward when running wide parallelism — the jitter is load-bearing for avoiding thundering-herd retries. See [reference.md](reference.md) for details.
 
@@ -872,7 +872,7 @@ states:
 
 **Convergence defaults by action type:**
 
-| Skill category | Suggested max_iterations | Per-item retries |
+| Skill category | Suggested max_steps | Per-item retries |
 |----------------|--------------------------|------------------|
 | Issue refinement/analysis | 200 | 3 |
 | Code quality / fix | 50 | 5 |
@@ -894,12 +894,12 @@ check_stall:
   action_type: shell
   fragment: diff_stall_gate
   on_yes: advance    # progress detected — move on
-  on_no: skip_item  # stalled — skip without exhausting max_iterations
+  on_no: skip_item  # stalled — skip without exhausting max_steps
 ```
 
 **When to add stall detection:**
 - The action is prompt-based (`action_type: prompt`) and may loop without making changes
-- You observe a harness loop exhausting `max_iterations` without commits
+- You observe a harness loop exhausting `max_steps` without commits
 - The skill being harnessed sometimes produces no output (e.g., "already done")
 
 **YAML field reference:**
@@ -939,15 +939,15 @@ The `count_done` shell gate applies the following logic:
 
 Override `min_pass_rate` per run to require 100% satisfaction: `ll-loop run general-task --context min_pass_rate=1.0`. Loops that omit `min_pass_rate` from `context:` default to 0.95.
 
-**Iteration-Cap Summary Hook (`on_max_iterations` — ENH-1631)**
+**Step-Cap Summary Hook (`on_max_steps` — ENH-1631)**
 
-When a `general-task` run exhausts its 100-iteration budget before all DoD criteria are satisfied, the `on_max_iterations: summarize_partial` hook fires. The `summarize_partial` state reads the DoD and plan artifacts, then writes a one-paragraph summary to `.loops/tmp/general-task-summary.md` covering: what was accomplished, which DoD criteria remain unmet, and recommended next actions. The loop then terminates with `terminated_by: max_iterations`.
+When a `general-task` run exhausts its step budget before all DoD criteria are satisfied, the `on_max_steps: summarize_partial` hook fires. The `summarize_partial` state reads the DoD and plan artifacts, then writes a one-paragraph summary to `.loops/tmp/general-task-summary.md` covering: what was accomplished, which DoD criteria remain unmet, and recommended next actions. The loop then terminates with `terminated_by: max_steps`.
 
 This field is available on any loop YAML:
 
 ```yaml
-max_iterations: 100
-on_max_iterations: summarize_partial  # state to run once when cap fires
+max_steps: 100
+on_max_steps: summarize_partial  # state to run once when cap fires
 ```
 
 The named state runs **exactly once** (the iteration budget is not extended). Use it to write a handoff artifact so the next operator or session can pick up where the run left off without re-reading 100 iterations of JSONL. `/ll:audit-loop-run` surfaces runs with this hook as verdict `partial` (summary written).
@@ -959,7 +959,7 @@ The named state runs **exactly once** (the iteration budget is not extended). Us
 ```yaml
 name: "harness-refine-issue"
 initial: discover
-max_iterations: 200
+max_steps: 200
 timeout: 14400
 states:
   discover:
@@ -1026,7 +1026,7 @@ states:
 ```yaml
 name: "gate-and-implement"
 initial: discover
-max_iterations: 100
+max_steps: 100
 states:
   discover:
     action: |
@@ -1181,7 +1181,7 @@ Use the answers from Steps S1-S5 to generate the YAML. Route linearly: plan -> r
 ```yaml
 name: "<loop-name>"
 initial: plan                        # or research/implement if earlier roles omitted in S1
-max_iterations: <s5-budget>
+max_steps: <s5-budget>
 timeout: 7200
 import:
   - lib/common.yaml
@@ -1432,7 +1432,7 @@ name: <loop-name>
 description: |
   <user-provided description>
 initial: diagnose
-max_iterations: 30
+max_steps: 30
 timeout: 7200
 context:
   targets: "<user-provided>"
@@ -1564,7 +1564,7 @@ Sub-loop composition uses the `loop:` state field to invoke other loop YAMLs as 
 ```yaml
 name: "code-review-pipeline"
 initial: fix_lint
-max_iterations: 10
+max_steps: 10
 states:
   fix_lint:
     loop: lint-fix
@@ -1829,7 +1829,7 @@ Generate using these values:
 - `exploit_action` — shell command or prompt from Step R1
 - `exploit_action_type` — "shell" or "prompt"
 - `reward_target` — float from Step R2 (e.g. 0.8)
-- `max_iterations` — integer from Step R3
+- `max_steps` — integer from Step R3
 
 ```yaml
 name: <loop-name>
@@ -1867,7 +1867,7 @@ states:
       stall: explore
   done:
     terminal: true
-max_iterations: <max_iterations>
+max_steps: <max_steps>
 ```
 
 ---
@@ -1950,7 +1950,7 @@ Generate using these values:
 - `refine_action` / `refine_action_type` — from Step H1
 - `score_action` / `score_action_type` — from Step H2
 - `quality_target` — integer from Step H2 (e.g. 8)
-- `max_iterations` — integer from Step H3
+- `max_steps` — integer from Step H3
 
 ```yaml
 name: <loop-name>
@@ -1983,7 +1983,7 @@ states:
     next: score
   done:
     terminal: true
-max_iterations: <max_iterations>
+max_steps: <max_steps>
 ```
 
 ---
@@ -2064,7 +2064,7 @@ Generate using these values:
 - `observe_action` / `observe_action_type` — from Step P1
 - `improve_action` / `improve_action_type` — from Step P2
 - `reward_target` — float from Step P2 (e.g. 0.85)
-- `max_iterations` — integer from Step P3
+- `max_steps` — integer from Step P3
 
 ```yaml
 name: <loop-name>
@@ -2106,6 +2106,6 @@ states:
     next: act
   done:
     terminal: true
-max_iterations: <max_iterations>
+max_steps: <max_steps>
 ```
 ```

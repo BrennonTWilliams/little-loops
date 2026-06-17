@@ -27,7 +27,7 @@ description: |
   - Target software accessible at the given path or repo URL
   - Python 3.10+ available for venv install
 initial: init
-max_iterations: 30 # clean pass = ~13 transitions; 5 was too low to reach delegate-bootstrap
+max_steps: 30 # clean pass = ~13 transitions; 5 was too low to reach delegate-bootstrap
 timeout: 7200 # 2h — CLI-Anything's full 7-phase pipeline takes 20-30 min
 
 context:

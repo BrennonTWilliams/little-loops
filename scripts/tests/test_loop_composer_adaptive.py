@@ -84,8 +84,8 @@ class TestLoopComposerAdaptiveFile:
     def test_initial_state(self, loop_data: dict) -> None:
         assert loop_data.get("initial") == "discover_loops"
 
-    def test_max_iterations_allows_replans(self, loop_data: dict) -> None:
-        assert loop_data.get("max_iterations", 0) >= 200
+    def test_max_steps_allows_replans(self, loop_data: dict) -> None:
+        assert loop_data.get("max_steps", 0) >= 200
 
     def test_imports_composer_lib(self, loop_data: dict) -> None:
         assert "lib/composer.yaml" in loop_data.get("import", [])

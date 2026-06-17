@@ -88,19 +88,19 @@ states:
         assert "[start]" in captured.out
         assert "[done]" in captured.out
 
-    def test_run_with_max_iterations_shows_in_plan(
+    def test_run_with_max_steps_shows_in_plan(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """--max-iterations override is reflected in dry-run plan."""
+        """--max-steps override is reflected in dry-run plan."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         loop_content = """
 name: test-loop
 initial: done
-max_iterations: 5
+max_steps: 5
 states:
   done:
     terminal: true

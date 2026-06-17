@@ -107,8 +107,8 @@ class TestDeepResearchArxivYaml:
         assert "depth" in ctx
         assert "coverage_threshold_pct" in ctx
 
-    def test_max_iterations_is_30(self, resolved_data: dict) -> None:
-        assert resolved_data.get("max_iterations") == 30
+    def test_max_steps_is_30(self, resolved_data: dict) -> None:
+        assert resolved_data.get("max_steps") == 30
 
     def test_timeout_is_3600(self, resolved_data: dict) -> None:
         assert resolved_data.get("timeout") == 3600

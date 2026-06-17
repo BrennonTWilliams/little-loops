@@ -11,7 +11,7 @@ description: |
   a copy-pasteable markdown block for feeding chosen decisions back to the coding agent.
   Thin wrapper over oracles/generator-evaluator (ENH-1869).
 initial: init
-max_iterations: 20
+max_steps: 20
 timeout: 7200
 
 # HARNESS: Context variables for input.

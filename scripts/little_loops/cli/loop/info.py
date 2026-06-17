@@ -823,11 +823,11 @@ def cmd_diagnose_evaluators(loop_name: str, args: argparse.Namespace, loops_dir:
 
 
 def cmd_calibrate_budget(loop_name: str, args: argparse.Namespace, loops_dir: Path) -> int:
-    """Report per-evaluator Bernoulli variance to guide max_iterations calibration.
+    """Report per-evaluator Bernoulli variance to guide max_steps calibration.
 
     Calls compute_evaluator_variance() from analytics.variance and reports
     p*(1-p) per evaluator state.  Variance below threshold signals that
-    increasing max_iterations is unlikely to help; fix the evaluator first.
+    increasing max_steps is unlikely to help; fix the evaluator first.
 
     Returns 0 if all evaluators are healthy, 1 if any are flagged.
     """
@@ -869,7 +869,7 @@ def cmd_calibrate_budget(loop_name: str, args: argparse.Namespace, loops_dir: Pa
             print(
                 f"  Variance p*(1-p): {state.variance:.2f}{ci_str}"
                 f"   ⚠ WARN: below {threshold} threshold"
-                f" — fix evaluator before increasing max_iterations"
+                f" — fix evaluator before increasing max_steps"
             )
         else:
             print(f"  Variance p*(1-p): {state.variance:.2f}{ci_str}   ✓ OK")
@@ -1116,8 +1116,10 @@ def cmd_show(
     print(f"{header_left}{dashes}{header_right}")
 
     # Line 2: source · max: N iter · handoff: X [· optional fields]
-    config_parts: list[str] = [str(path), f"max: {fsm.max_iterations} iter"]
+    config_parts: list[str] = [str(path), f"max: {fsm.max_steps} steps"]
     config_parts.append(f"handoff: {fsm.on_handoff}")
+    if fsm.max_iterations is not None:
+        config_parts.append(f"max_iterations: {fsm.max_iterations}")
     if fsm.on_max_iterations is not None:
         config_parts.append(f"on_max_iterations: {fsm.on_max_iterations}")
     if fsm.timeout:

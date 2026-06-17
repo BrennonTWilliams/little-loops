@@ -12,7 +12,7 @@ description: |
   converge when coverage target is met. Each iteration focuses on one gap to
   keep changes reviewable and test quality high.
 initial: measure
-max_iterations: 30
+max_steps: 30
 timeout: 7200
 on_handoff: spawn
 context:

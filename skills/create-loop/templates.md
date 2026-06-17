@@ -35,7 +35,7 @@ questions:
 ```yaml
 name: "fix-until-clean"
 initial: evaluate
-max_iterations: {{max_iterations}}
+max_steps: {{max_steps}}
 states:
   evaluate:
     action: "{{check_cmd}}"
@@ -54,7 +54,7 @@ states:
 ```yaml
 name: "maintain-constraints"
 initial: check_tests
-max_iterations: {{max_iterations}}
+max_steps: {{max_steps}}
 states:
   check_tests:
     action: "{{test_cmd}}"
@@ -86,7 +86,7 @@ states:
 ```yaml
 name: "run-sequence"
 initial: step_0
-max_iterations: {{max_iterations}}
+max_steps: {{max_steps}}
 states:
   step_0:
     action: "{{step_0_cmd}}"
@@ -109,7 +109,7 @@ name: "{{loop_name}}"
 description: |
   {{description}}
 initial: diagnose
-max_iterations: {{max_iterations}}
+max_steps: {{max_steps}}
 timeout: 7200
 context:
   targets: "{{targets}}"
@@ -200,7 +200,7 @@ states:
     terminal: true
 ```
 
-**Placeholders**: `{{loop_name}}`, `{{description}}`, `{{max_iterations}}`, `{{targets}}`, `{{tasks_dir}}`, `{{scorer}}`, `{{target_score}}`, `{{diagnose_action_type}}`, `{{diagnose_action}}`.
+**Placeholders**: `{{loop_name}}`, `{{description}}`, `{{max_steps}}`, `{{targets}}`, `{{tasks_dir}}`, `{{scorer}}`, `{{target_score}}`, `{{diagnose_action_type}}`, `{{diagnose_action}}`.
 
 ---
 
@@ -209,7 +209,7 @@ states:
 ```yaml
 name: "harness-{{skill_name}}"
 initial: execute
-max_iterations: {{max_iterations}}
+max_steps: {{max_steps}}
 states:
   execute:
     action: "/ll:{{skill_name}}"
@@ -272,7 +272,7 @@ questions:
         description: "For complex issues"
 ```
 
-**Apply substitutions:** Replace `{{check_cmd}}`, `{{fix_cmd}}`, `{{max_iterations}}`.
+**Apply substitutions:** Replace `{{check_cmd}}`, `{{fix_cmd}}`, `{{max_steps}}`.
 
 ### For "Maintain constraints"
 
@@ -303,7 +303,7 @@ questions:
         description: "For complex issues"
 ```
 
-**Apply substitutions:** Replace `{{src_dir}}`, `{{max_iterations}}`, `{{test_cmd}}`, `{{type_cmd}}`, `{{lint_cmd}}`, `{{lint_fix_cmd}}`, `{{fix_tests_cmd}}`, `{{fix_types_cmd}}` with language-appropriate defaults (Python: `pytest`, `mypy {{src_dir}}`, `ruff check {{src_dir}}`, `ruff check --fix {{src_dir}}`, `/ll:manage-issue bug fix`; JavaScript: `npm test`, `npx tsc --noEmit`, `npx eslint {{src_dir}}`, `npx eslint --fix {{src_dir}}`, `echo 'Fix manually'`).
+**Apply substitutions:** Replace `{{src_dir}}`, `{{max_steps}}`, `{{test_cmd}}`, `{{type_cmd}}`, `{{lint_cmd}}`, `{{lint_fix_cmd}}`, `{{fix_tests_cmd}}`, `{{fix_types_cmd}}` with language-appropriate defaults (Python: `pytest`, `mypy {{src_dir}}`, `ruff check {{src_dir}}`, `ruff check --fix {{src_dir}}`, `/ll:manage-issue bug fix`; JavaScript: `npm test`, `npx tsc --noEmit`, `npx eslint {{src_dir}}`, `npx eslint --fix {{src_dir}}`, `echo 'Fix manually'`).
 
 **If "Custom path" selected for source dir**: Ask for path via Other option.
 
@@ -344,7 +344,7 @@ questions:
         description: "For complex pipelines"
 ```
 
-**Apply substitutions:** Replace `{{step_0_cmd}}`, `{{step_1_cmd}}`, `{{done_check_cmd}}`, `{{max_iterations}}`.
+**Apply substitutions:** Replace `{{step_0_cmd}}`, `{{step_1_cmd}}`, `{{done_check_cmd}}`, `{{max_steps}}`.
 
 ### For "Harness a skill or prompt"
 
@@ -380,7 +380,7 @@ questions:
         description: "For complex or slow-converging skills"
 ```
 
-**Apply substitutions:** Replace `{{skill_name}}`, `{{check_cmd}}`, `{{max_iterations}}`.
+**Apply substitutions:** Replace `{{skill_name}}`, `{{check_cmd}}`, `{{max_steps}}`.
 
 ### For "Optimize a harness (meta-loop)"
 
@@ -446,7 +446,7 @@ Error: scorer is required for meta-optimize loops.
   Re-run /ll:create-loop and enter a scorer command to continue.
 ```
 
-**Apply substitutions:** Replace `{{targets}}`, `{{scorer}}`, `{{target_score}}`, `{{tasks_dir}}`, `{{diagnose_action_type}}` (`shell` or `prompt`), `{{diagnose_action}}`, `{{max_iterations}}` (default 30), `{{loop_name}}` (auto-suggest: `optimize-<artifact-basename>`), `{{description}}`.
+**Apply substitutions:** Replace `{{targets}}`, `{{scorer}}`, `{{target_score}}`, `{{tasks_dir}}`, `{{diagnose_action_type}}` (`shell` or `prompt`), `{{diagnose_action}}`, `{{max_steps}}` (default 30), `{{loop_name}}` (auto-suggest: `optimize-<artifact-basename>`), `{{description}}`.
 
 ### For "Route / compose / supervise other loops"
 

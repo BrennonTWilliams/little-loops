@@ -73,5 +73,5 @@ states:
     next: find_stale
   done:
     terminal: true
-max_iterations: 15
+max_steps: 15
 timeout: 3600

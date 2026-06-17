@@ -595,9 +595,9 @@ class TestEvaluationQualityLoop:
         evaluate = state.get("evaluate", {})
         assert "NONE" in evaluate.get("pattern", "")
 
-    def test_max_iterations_and_timeout(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
 
@@ -717,9 +717,9 @@ class TestLearningTestsAuditLoop:
         ctx = data.get("context", {})
         assert "stale_after_days" in ctx
 
-    def test_max_iterations_and_timeout(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
 
@@ -3367,9 +3367,9 @@ class TestHtmlWebsiteGeneratorLoop:
         ctx = data.get("context", {})
         assert "design_tokens_context" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
 
@@ -3482,9 +3482,9 @@ class TestSvgImageGeneratorLoop:
         ctx = data.get("context", {})
         assert "design_tokens_context" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
     def test_init_action_uses_absolute_path(self, data: dict) -> None:
@@ -3607,9 +3607,9 @@ class TestP5jsSketchGeneratorLoop:
         ctx = resolved_data.get("context", {})
         assert "sample_frames" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, resolved_data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert resolved_data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, resolved_data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert resolved_data.get("max_steps", 0) > 0
         assert resolved_data.get("timeout", 0) > 0
 
 
@@ -3727,9 +3727,9 @@ class TestPixiGenerativeArtLoop:
         ctx = resolved_data.get("context", {})
         assert "sample_frames" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, resolved_data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert resolved_data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, resolved_data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert resolved_data.get("max_steps", 0) > 0
         assert resolved_data.get("timeout", 0) > 0
 
 
@@ -3837,9 +3837,9 @@ class TestPixiDataVizLoop:
         state = data["states"].get("score", {})
         assert state.get("on_yes") == "done"
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
 
@@ -3992,9 +3992,9 @@ class TestAdversarialRedesignLoop:
         assert data["states"].get("done", {}).get("terminal") is True
         assert data["states"].get("failed", {}).get("terminal") is True
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
     def test_context_has_concept(self, data: dict) -> None:
@@ -4099,9 +4099,9 @@ class TestSvgTextgradLoop:
         ctx = data.get("context", {})
         assert "design_tokens_context" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
     def test_screenshot_state_is_shell(self, data: dict) -> None:
@@ -4485,9 +4485,9 @@ class TestHtmlAnythingLoop:
         ctx = data.get("context", {})
         assert "design_tokens_context" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
     def test_done_reports_all_five_output_files(self, data: dict) -> None:
@@ -4610,9 +4610,9 @@ class TestHitlCompareLoop:
         ctx = data.get("context", {})
         assert "design_tokens_context" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
     def test_identify_action_writes_items_md(self, data: dict) -> None:
@@ -4789,9 +4789,9 @@ class TestHitlMdLoop:
         ctx = data.get("context", {})
         assert "design_tokens_context" in ctx
 
-    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
     def test_segment_action_writes_segments_json(self, data: dict) -> None:
@@ -6115,9 +6115,9 @@ class TestMigrateSdkVersionLoop:
         action = data["states"].get("build_report", {}).get("action", "")
         assert "${captured.report_path.output}" in action
 
-    def test_max_iterations_and_timeout(self, data: dict) -> None:
-        """Loop must define max_iterations and timeout."""
-        assert data.get("max_iterations", 0) > 0
+    def test_max_steps_and_timeout(self, data: dict) -> None:
+        """Loop must define max_steps and timeout."""
+        assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
     def test_reprove_next_captures_reprove(self, data: dict) -> None:

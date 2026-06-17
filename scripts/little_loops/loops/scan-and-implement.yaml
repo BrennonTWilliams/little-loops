@@ -7,7 +7,7 @@ description: |
   issues created in this run (already-completed or closed-by-triage issues are
   excluded automatically since they won't appear in the post-snapshot diff).
 initial: snapshot_pre
-max_iterations: 5
+max_steps: 5
 timeout: 36000
 on_handoff: spawn
 

@@ -13,6 +13,7 @@ def _make_args(**kwargs: object) -> argparse.Namespace:
     defaults = {
         "input": None,
         "context": [],
+        "max_steps": None,
         "max_iterations": None,
         "delay": None,
         "no_llm": False,

@@ -25,7 +25,8 @@ type) and `"ts"` (ISO 8601 timestamp) plus the type-specific fields below:
 | `throttle_stop` | `state` (str), `count` (int), `hard_max` (int) |
 | `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int) |
 | `loop_resume` | `from_state` (str), `iteration` (int) |
-| `max_iterations_summary` | `summary_state` (str), `iterations` (int) |
+| `max_steps_summary` | `summary_state` (str), `iterations` (int) |
+| `max_iterations_reached_summary` | `summary_state` (str), `iteration_count` (int) |
 
 The `evaluate` payload also exposes `value` (`output_numeric`), `current`
 (`convergence`), and `target` for numeric-trajectory analysis (Signal 5),
