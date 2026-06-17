@@ -209,6 +209,8 @@ class LoopState:
     consecutive_rate_limit_exhaustions: int = 0
     # Per-edge revisit tracking for cycle detection.
     edge_revisit_counts: dict[str, int] = field(default_factory=dict)
+    # BUG-2204: full-pass counter (maintain-mode restarts); 0 for loops without maintain.
+    iteration_count: int = 0
     active_sub_loop: str | None = None  # name of currently executing sub-loop (observability)
     pid: int | None = None  # OS PID of the process that started this run (for reconciliation sweep)
     reconciled_at: str | None = None  # ISO timestamp when orphaned-running state was auto-flipped
@@ -238,6 +240,8 @@ class LoopState:
             result["consecutive_rate_limit_exhaustions"] = self.consecutive_rate_limit_exhaustions
         if self.edge_revisit_counts:
             result["edge_revisit_counts"] = self.edge_revisit_counts
+        if self.iteration_count:
+            result["iteration_count"] = self.iteration_count
         if self.active_sub_loop is not None:
             result["active_sub_loop"] = self.active_sub_loop
         if self.pid is not None:
@@ -291,6 +295,7 @@ class LoopState:
             rate_limit_retries=migrated_rl,
             consecutive_rate_limit_exhaustions=data.get("consecutive_rate_limit_exhaustions", 0),
             edge_revisit_counts=data.get("edge_revisit_counts", {}),
+            iteration_count=data.get("iteration_count", 0),
             active_sub_loop=data.get("active_sub_loop"),
             pid=data.get("pid"),
             reconciled_at=data.get("reconciled_at"),
@@ -742,6 +747,7 @@ class PersistentExecutor:
             rate_limit_retries={k: dict(v) for k, v in self._executor._rate_limit_retries.items()},
             consecutive_rate_limit_exhaustions=(self._executor._consecutive_rate_limit_exhaustions),
             edge_revisit_counts=dict(self._executor._edge_revisit_counts),
+            iteration_count=self._executor._iteration_count,
             pid=self._run_pid,
             messages=list(self._executor.messages),
         )
@@ -763,7 +769,7 @@ class PersistentExecutor:
 
         # Update final state
         final_status = "completed" if result.terminated_by == "terminal" else "failed"
-        if result.terminated_by in ("max_iterations", "signal"):
+        if result.terminated_by in ("max_steps", "max_iterations_reached", "signal"):
             final_status = "interrupted"
         if result.terminated_by == "handoff":
             final_status = "awaiting_continuation"
@@ -820,6 +826,7 @@ class PersistentExecutor:
             state.consecutive_rate_limit_exhaustions
         )
         self._executor._edge_revisit_counts = dict(state.edge_revisit_counts)
+        self._executor._iteration_count = state.iteration_count
         self._executor.messages = list(state.messages)
 
         # Restore accumulated elapsed time so duration_ms and ${loop.elapsed_ms} reflect

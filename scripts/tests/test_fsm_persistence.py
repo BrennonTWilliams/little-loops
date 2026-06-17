@@ -941,13 +941,13 @@ class TestPersistentExecutor:
         assert state is not None
         assert state.status == "completed"
 
-    def test_final_status_interrupted_on_max_iterations(self, tmp_loops_dir: Path) -> None:
-        """Final status is 'interrupted' when max_iterations reached."""
+    def test_final_status_interrupted_on_max_steps(self, tmp_loops_dir: Path) -> None:
+        """Final status is 'interrupted' when max_steps (step cap) reached."""
         # Create FSM that won't terminate
         fsm = FSMLoop(
             name="infinite-loop",
             initial="check",
-            max_iterations=2,
+            max_steps=2,
             states={
                 "check": StateConfig(
                     action="echo 'checking'",
@@ -961,20 +961,20 @@ class TestPersistentExecutor:
         executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner)
         result = executor.run()
 
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
         state = executor.persistence.load_state()
         assert state is not None
         assert state.status == "interrupted"
 
-    def test_final_status_interrupted_with_on_max_iterations_summary(
+    def test_final_status_interrupted_with_on_max_steps_summary(
         self, tmp_loops_dir: Path
     ) -> None:
-        """Final status is 'interrupted' after on_max_iterations summary state runs."""
+        """Final status is 'interrupted' after on_max_steps summary state runs."""
         fsm = FSMLoop(
             name="summary-loop",
             initial="check",
-            max_iterations=2,
-            on_max_iterations="summarize",
+            max_steps=2,
+            on_max_steps="summarize",
             states={
                 "check": StateConfig(
                     action="echo 'checking'",
@@ -993,7 +993,7 @@ class TestPersistentExecutor:
         executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner)
         result = executor.run()
 
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
         assert "echo 'summarizing'" in mock_runner.calls
         state = executor.persistence.load_state()
         assert state is not None

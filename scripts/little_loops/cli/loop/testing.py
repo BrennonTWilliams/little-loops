@@ -199,16 +199,16 @@ def cmd_simulate(
         logger.error(f"Validation error: {e}")
         return 1
 
-    # Apply CLI overrides
+    # Apply CLI overrides — in simulation, -n/--max-iterations caps steps for brevity
     if args.max_iterations:
-        fsm.max_iterations = args.max_iterations
+        fsm.max_steps = args.max_iterations
     else:
-        # Limit iterations for simulation safety (cap at 20 unless overridden)
-        if fsm.max_iterations > 20:
+        # Limit steps for simulation safety (cap at 20 unless overridden)
+        if fsm.max_steps > 20:
             logger.info(
-                f"Limiting simulation to 20 iterations (max_iterations: {fsm.max_iterations})"
+                f"Limiting simulation to 20 steps (max_steps: {fsm.max_steps})"
             )
-            fsm.max_iterations = 20
+            fsm.max_steps = 20
 
     # Inject runner-managed context variables so ${context.run_dir} resolves during
     # simulation — the real runner does this in run.py before FSMExecutor is created.

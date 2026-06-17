@@ -6,7 +6,7 @@ max_iterations: 200
 default_timeout: 1800
 on_handoff: spawn
 artifact_versioning_ok: true
-on_max_iterations: summarize_partial
+on_max_steps: summarize_partial
 
 context:
   min_pass_rate: 0.95

@@ -29,7 +29,7 @@ max_iterations: 40
 # On budget exhaustion, route through finalize so best.html is ALWAYS published
 # from the strongest scored iteration — otherwise a run that never crosses the
 # pass threshold would terminate with no selected artifact.
-on_max_iterations: finalize
+on_max_steps: finalize
 on_handoff: spawn
 timeout: 7200
 artifact_versioning: true

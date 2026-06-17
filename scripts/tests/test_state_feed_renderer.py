@@ -241,14 +241,14 @@ class TestStateFeedRendererHandleEvent:
         captured = capsys.readouterr()
         assert "done" in captured.out
 
-    def test_max_iterations_summary(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """max_iterations_summary event prints summary message."""
+    def test_max_steps_summary(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """max_steps_summary event prints summary message."""
         fsm = _make_test_fsm()
         args = _make_args()
         renderer = StateFeedRenderer(fsm, args)
         renderer.handle_event(
             {
-                "event": "max_iterations_summary",
+                "event": "max_steps_summary",
                 "summary_state": "check_status",
                 "iterations": 50,
                 "depth": 0,

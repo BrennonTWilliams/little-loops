@@ -34,11 +34,24 @@
         "type": "string"
       }
     },
-    "max_iterations": {
+    "max_steps": {
       "type": "integer",
-      "description": "Safety limit for loop iterations",
+      "description": "Safety limit for individual state executions (steps)",
       "default": 50,
       "minimum": 1
+    },
+    "on_max_steps": {
+      "type": "string",
+      "description": "State to execute as a summary when the step cap fires"
+    },
+    "max_iterations": {
+      "type": "integer",
+      "description": "Cap on full loop passes (maintain-mode restarts); null = no cap",
+      "minimum": 1
+    },
+    "on_max_iterations": {
+      "type": "string",
+      "description": "State to execute as a summary when the full-pass cap fires"
     },
     "backoff": {
       "type": "number",

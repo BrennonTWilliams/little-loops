@@ -166,12 +166,12 @@ class TestFSMExecutorBasic:
         assert result.iterations == 3
         assert result.terminated_by == "terminal"
 
-    def test_max_iterations_respected(self) -> None:
-        """Loop terminates at max_iterations."""
+    def test_max_steps_respected(self) -> None:
+        """Loop terminates at max_steps (step cap)."""
         fsm = FSMLoop(
             name="test",
             initial="loop",
-            max_iterations=3,
+            max_steps=3,
             states={
                 "loop": StateConfig(
                     action="fail.sh",
@@ -188,14 +188,14 @@ class TestFSMExecutorBasic:
         result = executor.run()
 
         assert result.iterations == 3
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
 
     def test_cycle_detection_terminates_loop(self) -> None:
         """Loop terminates with cycle_detected when the same edge is traversed too many times."""
         fsm = FSMLoop(
             name="test",
             initial="loop",
-            max_iterations=100,
+            max_steps=100,
             max_edge_revisits=3,
             states={
                 "loop": StateConfig(
@@ -666,7 +666,7 @@ class TestVariableInterpolation:
         fsm = FSMLoop(
             name="test",
             initial="log",
-            max_iterations=2,
+            max_steps=2,
             states={
                 "log": StateConfig(
                     action="echo iteration ${state.iteration}",
@@ -1201,7 +1201,7 @@ class TestRouting:
         fsm = FSMLoop(
             name="test",
             initial="retry",
-            max_iterations=3,
+            max_steps=3,
             states={
                 "retry": StateConfig(
                     action="flaky.sh",
@@ -1218,7 +1218,7 @@ class TestRouting:
         result = executor.run()
 
         assert result.iterations == 3
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
 
     def test_no_valid_route_terminates_with_error(self) -> None:
         """Missing route causes error termination."""
@@ -1637,7 +1637,7 @@ class TestMaintainMode:
             name="test",
             initial="check",
             maintain=True,
-            max_iterations=3,
+            max_steps=3,
             states={
                 "check": StateConfig(
                     action="check.sh",
@@ -1654,8 +1654,8 @@ class TestMaintainMode:
         executor = FSMExecutor(fsm, action_runner=mock_runner)
         result = executor.run()
 
-        # Should hit max_iterations due to restart cycle
-        assert result.terminated_by == "max_iterations"
+        # Should hit max_steps due to restart cycle
+        assert result.terminated_by == "max_steps"
         assert result.iterations == 3
 
     def test_maintain_uses_on_maintain_target(self) -> None:
@@ -1664,7 +1664,7 @@ class TestMaintainMode:
             name="test",
             initial="start",
             maintain=True,
-            max_iterations=3,
+            max_steps=3,
             states={
                 "start": StateConfig(action="start.sh", next="check"),
                 "check": StateConfig(
@@ -1682,7 +1682,7 @@ class TestMaintainMode:
 
         # Should restart from "check" (on_maintain), not "start" (initial)
         # Calls: start.sh, check.sh, check.sh (restart), check.sh (restart)
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
 
     def test_maintain_route_event_emitted(self) -> None:
         """Restart in maintain mode emits a route event with reason='maintain'."""
@@ -1691,7 +1691,7 @@ class TestMaintainMode:
             name="test",
             initial="check",
             maintain=True,
-            max_iterations=2,
+            max_steps=2,
             states={
                 "check": StateConfig(action="check.sh", on_yes="done"),
                 "done": StateConfig(terminal=True),
@@ -1944,7 +1944,7 @@ class TestEvaluators:
         fsm = FSMLoop(
             name="test",
             initial="measure",
-            max_iterations=3,
+            max_steps=3,
             states={
                 "measure": StateConfig(
                     action="count.sh",
@@ -1982,7 +1982,7 @@ class TestEvaluators:
         fsm = FSMLoop(
             name="test",
             initial="measure",
-            max_iterations=2,
+            max_steps=2,
             states={
                 "measure": StateConfig(
                     action="count.sh",
@@ -2687,7 +2687,7 @@ class TestSignalHandling:
         fsm = FSMLoop(
             name="test",
             initial="check",
-            max_iterations=10,
+            max_steps=10,
             states={
                 "check": StateConfig(action="pytest", on_yes="done", on_no="check"),
                 "done": StateConfig(terminal=True),
@@ -2711,7 +2711,7 @@ class TestSignalHandling:
         fsm = FSMLoop(
             name="test",
             initial="step1",
-            max_iterations=10,
+            max_steps=10,
             states={
                 "step1": StateConfig(action="step1.sh", next="step2"),
                 "step2": StateConfig(action="step2.sh", next="step3"),
@@ -2805,7 +2805,7 @@ class TestSignalHandling:
         fsm = FSMLoop(
             name="test",
             initial="capture_step",
-            max_iterations=10,
+            max_steps=10,
             states={
                 "capture_step": StateConfig(
                     action="get_value.sh",
@@ -2868,11 +2868,11 @@ class TestSignalHandling:
         assert result.captured["my_value"]["output"] == "captured_data_123"
 
     def test_shutdown_checked_before_max_iterations(self) -> None:
-        """Shutdown is checked before max_iterations check."""
+        """Shutdown is checked before max_steps check."""
         fsm = FSMLoop(
             name="test",
             initial="check",
-            max_iterations=1,  # Would trigger max_iterations
+            max_steps=1,  # Would trigger max_steps
             states={
                 "check": StateConfig(action="check.sh", on_yes="done", on_no="check"),
                 "done": StateConfig(terminal=True),
@@ -2882,13 +2882,13 @@ class TestSignalHandling:
         mock_runner.always_return(exit_code=0)
 
         executor = FSMExecutor(fsm, action_runner=mock_runner)
-        # Both conditions true: shutdown requested AND at max_iterations
+        # Both conditions true: shutdown requested AND at max_steps
         executor._shutdown_requested = True
-        executor.iteration = 1  # At max_iterations
+        executor.iteration = 1  # At max_steps
 
         result = executor.run()
 
-        # Signal takes precedence over max_iterations
+        # Signal takes precedence over max_steps
         assert result.terminated_by == "signal"
 
     def test_shutdown_checked_before_timeout(self) -> None:
@@ -2896,7 +2896,7 @@ class TestSignalHandling:
         fsm = FSMLoop(
             name="test",
             initial="check",
-            max_iterations=100,
+            max_steps=100,
             timeout=1,  # 1 second timeout
             states={
                 "check": StateConfig(action="check.sh", on_yes="done", on_no="check"),
@@ -3261,7 +3261,7 @@ class TestSimulationActionRunner:
         fsm = FSMLoop(
             name="test",
             initial="check",
-            max_iterations=5,
+            max_steps=5,
             states={
                 "check": StateConfig(
                     action="run_check",
@@ -3773,7 +3773,7 @@ class TestMaintainModeExecutor:
         fsm = FSMLoop(
             name="test",
             initial="check",
-            max_iterations=3,
+            max_steps=3,
             maintain=True,
             states={
                 "check": StateConfig(
@@ -3790,7 +3790,7 @@ class TestMaintainModeExecutor:
         result = executor.run()
 
         # Should loop back from terminal to initial via maintain
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
         assert result.iterations == 3
 
 
@@ -3827,7 +3827,7 @@ class TestBackoff:
             name="test",
             initial="check",
             backoff=0.01,  # tiny real value so deadline advances naturally
-            max_iterations=2,
+            max_steps=2,
             states={
                 "check": StateConfig(
                     action="check.sh",
@@ -3854,7 +3854,7 @@ class TestBackoff:
             name="test",
             initial="check",
             backoff=None,
-            max_iterations=3,
+            max_steps=3,
             states={
                 "check": StateConfig(
                     action="check.sh",
@@ -7310,7 +7310,7 @@ class TestStallDetector:
                 "recover": StateConfig(action="echo recover", next="done"),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=50,
+            max_steps=50,
         )
         fsm.circuit = CircuitConfig(
             repeated_failure=RepeatedFailureConfig(
@@ -7393,9 +7393,9 @@ class TestStallDetector:
                 "fix": StateConfig(action="fix.sh", next="check"),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=5,
+            max_steps=5,
         )
-        # No fsm.circuit assigned — should run until max_iterations
+        # No fsm.circuit assigned — should run until max_steps
         runner = MockActionRunner()
         runner.always_return(exit_code=1)
         events: list[dict] = []
@@ -7403,7 +7403,7 @@ class TestStallDetector:
         executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
         result = executor.run()
 
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
         stall_events = [e for e in events if e.get("event") == "stall_detected"]
         assert stall_events == []
 
@@ -7422,7 +7422,7 @@ class TestStallDetector:
                 ),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=50,
+            max_steps=50,
         )
         fsm.circuit = CircuitConfig(
             repeated_failure=RepeatedFailureConfig(window=3, on_repeated_failure="abort")
@@ -7516,7 +7516,7 @@ class TestStallDetector:
                 "work": StateConfig(action="work.sh", next="check"),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=20,
+            max_steps=20,
         )
         fsm.circuit = CircuitConfig(
             repeated_failure=RepeatedFailureConfig(
@@ -7532,10 +7532,10 @@ class TestStallDetector:
         executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
         result = executor.run()
 
-        # Should exhaust max_iterations without stalling (file changes reset window)
+        # Should exhaust max_steps without stalling (file changes reset window)
         stall_events = [e for e in events if e.get("event") == "stall_detected"]
         assert stall_events == [], f"Unexpected stall fired: {stall_events}"
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
 
     def test_progress_paths_absent_stall_fires_as_before(self) -> None:
         """BUG-1674 regression: without progress_paths, stall fires after window cycles."""
@@ -7634,7 +7634,7 @@ class TestStallDetector:
                 "work": StateConfig(action="work.sh", next="check"),
                 "done": StateConfig(terminal=True),
             },
-            max_iterations=50,
+            max_steps=50,
         )
         fsm.circuit = CircuitConfig(
             repeated_failure=RepeatedFailureConfig(
@@ -7660,15 +7660,15 @@ class TestStallDetector:
         assert len(stall_events) == 1
 
 
-class TestMaxIterationsSummaryHook:
-    """Tests for ENH-1631: on_max_iterations summary hook."""
+class TestMaxStepsSummaryHook:
+    """Tests for ENH-1631 / BUG-2204: on_max_steps summary hook (step cap)."""
 
-    def _make_fsm(self, on_max_iterations: str | None = "summarize") -> FSMLoop:
+    def _make_fsm(self, on_max_steps: str | None = "summarize") -> FSMLoop:
         return FSMLoop(
             name="summary-hook-test",
             initial="loop",
-            max_iterations=3,
-            on_max_iterations=on_max_iterations,
+            max_steps=3,
+            on_max_steps=on_max_steps,
             states={
                 "loop": StateConfig(action="work.sh", on_yes="done", on_no="loop"),
                 "summarize": StateConfig(action="summarize.sh", next="done"),
@@ -7677,19 +7677,19 @@ class TestMaxIterationsSummaryHook:
         )
 
     def test_summary_state_runs_on_cap(self) -> None:
-        """Summary state executes when iteration cap fires."""
+        """Summary state executes when step cap fires."""
         fsm = self._make_fsm()
         runner = MockActionRunner()
-        runner.always_return(exit_code=1)  # loop never succeeds → hits cap at iter 3
+        runner.always_return(exit_code=1)  # loop never succeeds → hits cap at step 3
 
         executor = FSMExecutor(fsm, action_runner=runner)
         result = executor.run()
 
         assert runner.calls.count("summarize.sh") == 1
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
 
-    def test_max_iterations_summary_event_emitted(self) -> None:
-        """max_iterations_summary event is emitted with correct payload when cap fires."""
+    def test_max_steps_summary_event_emitted(self) -> None:
+        """max_steps_summary event is emitted with correct payload when step cap fires."""
         fsm = self._make_fsm()
         runner = MockActionRunner()
         runner.always_return(exit_code=1)
@@ -7698,14 +7698,14 @@ class TestMaxIterationsSummaryHook:
         executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
         executor.run()
 
-        summary_events = [e for e in events if e.get("event") == "max_iterations_summary"]
+        summary_events = [e for e in events if e.get("event") == "max_steps_summary"]
         assert len(summary_events) == 1
         evt = summary_events[0]
         assert evt["summary_state"] == "summarize"
         assert evt["iterations"] == 3
 
-    def test_terminated_by_max_iterations_after_summary(self) -> None:
-        """loop_complete.terminated_by is 'max_iterations' even when summary state runs."""
+    def test_terminated_by_max_steps_after_summary(self) -> None:
+        """loop_complete.terminated_by is 'max_steps' even when summary state runs."""
         fsm = self._make_fsm()
         runner = MockActionRunner()
         runner.always_return(exit_code=1)
@@ -7714,14 +7714,14 @@ class TestMaxIterationsSummaryHook:
         executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
         result = executor.run()
 
-        assert result.terminated_by == "max_iterations"
+        assert result.terminated_by == "max_steps"
         complete_events = [e for e in events if e.get("event") == "loop_complete"]
         assert len(complete_events) == 1
-        assert complete_events[0]["terminated_by"] == "max_iterations"
+        assert complete_events[0]["terminated_by"] == "max_steps"
 
-    def test_no_summary_state_without_on_max_iterations(self) -> None:
-        """When on_max_iterations is not set, cap terminates normally with no summary."""
-        fsm = self._make_fsm(on_max_iterations=None)
+    def test_no_summary_state_without_on_max_steps(self) -> None:
+        """When on_max_steps is not set, step cap terminates normally with no summary."""
+        fsm = self._make_fsm(on_max_steps=None)
         runner = MockActionRunner()
         runner.always_return(exit_code=1)
 
@@ -7729,8 +7729,8 @@ class TestMaxIterationsSummaryHook:
         executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
         result = executor.run()
 
-        assert result.terminated_by == "max_iterations"
-        summary_events = [e for e in events if e.get("event") == "max_iterations_summary"]
+        assert result.terminated_by == "max_steps"
+        summary_events = [e for e in events if e.get("event") == "max_steps_summary"]
         assert summary_events == []
 
     def test_summary_state_executes_only_once(self) -> None:
@@ -7743,12 +7743,12 @@ class TestMaxIterationsSummaryHook:
         executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
         executor.run()
 
-        summary_events = [e for e in events if e.get("event") == "max_iterations_summary"]
+        summary_events = [e for e in events if e.get("event") == "max_steps_summary"]
         assert len(summary_events) == 1
 
-    def test_sub_loop_on_error_at_iteration_cap_flushes_and_runs_handler(self) -> None:
-        """BUG-158: sub-loop on_error at the iteration cap flushes the
-        intermediate state before entering the on_max_iterations handler,
+    def test_sub_loop_on_error_at_step_cap_flushes_and_runs_handler(self) -> None:
+        """BUG-158: sub-loop on_error at the step cap flushes the
+        intermediate state before entering the on_max_steps handler,
         and the handler's action executes before terminating.
         """
         import tempfile
@@ -7756,8 +7756,8 @@ class TestMaxIterationsSummaryHook:
         fsm = FSMLoop(
             name="bug-158-regression",
             initial="sub_loop_state",
-            max_iterations=3,
-            on_max_iterations="summary_handler",
+            max_steps=3,
+            on_max_steps="summary_handler",
             states={
                 "sub_loop_state": StateConfig(
                     loop="nonexistent-loop",
@@ -7789,9 +7789,9 @@ class TestMaxIterationsSummaryHook:
             )
             result = executor.run()
 
-        # Primary assertion: terminated_by must be "max_iterations"
-        assert result.terminated_by == "max_iterations", (
-            f"Expected terminated_by='max_iterations', got "
+        # Primary assertion: terminated_by must be "max_steps"
+        assert result.terminated_by == "max_steps", (
+            f"Expected terminated_by='max_steps', got "
             f"'{result.terminated_by}'"
         )
 
@@ -7803,9 +7803,9 @@ class TestMaxIterationsSummaryHook:
             f"'{complete_events[0]['final_state']}'"
         )
 
-        # max_iterations_summary event must be emitted
+        # max_steps_summary event must be emitted
         summary_events = [
-            e for e in events if e.get("event") == "max_iterations_summary"
+            e for e in events if e.get("event") == "max_steps_summary"
         ]
         assert len(summary_events) == 1
         assert summary_events[0]["summary_state"] == "summary_handler"
@@ -7828,15 +7828,15 @@ class TestMaxIterationsSummaryHook:
         )
 
     def test_sub_loop_on_error_without_handler_preserves_behavior(self) -> None:
-        """BUG-158: when on_max_iterations is not set, sub-loop on_error at
-        the cap still terminates cleanly with max_iterations (no regression).
+        """BUG-158: when on_max_steps is not set, sub-loop on_error at
+        the cap still terminates cleanly with max_steps (no regression).
         """
         import tempfile
 
         fsm = FSMLoop(
             name="bug-158-no-handler",
             initial="sub_loop_state",
-            max_iterations=3,
+            max_steps=3,
             states={
                 "sub_loop_state": StateConfig(
                     loop="nonexistent-loop",
@@ -7861,15 +7861,15 @@ class TestMaxIterationsSummaryHook:
             )
             result = executor.run()
 
-        # With no on_max_iterations, terminates via max_iterations (unchanged)
-        assert result.terminated_by == "max_iterations"
+        # With no on_max_steps, terminates via max_steps (unchanged)
+        assert result.terminated_by == "max_steps"
         complete_events = [e for e in events if e.get("event") == "loop_complete"]
         assert len(complete_events) == 1
-        assert complete_events[0]["terminated_by"] == "max_iterations"
+        assert complete_events[0]["terminated_by"] == "max_steps"
 
-        # No summary event (on_max_iterations is None)
+        # No summary event (on_max_steps is None)
         summary_events = [
-            e for e in events if e.get("event") == "max_iterations_summary"
+            e for e in events if e.get("event") == "max_steps_summary"
         ]
         assert summary_events == []
 
@@ -8093,3 +8093,92 @@ class TestGeneratePartialVerdictRouting:
             on_error="failed",
         )
         assert self._executor()._route(fixed, "error", self._ctx()) == "failed"
+
+
+class TestMaxIterationFullPassCap:
+    """BUG-2204: max_iterations caps full loop passes (maintain-mode restarts), not steps."""
+
+    def _make_maintain_fsm(
+        self,
+        max_iterations: int | None = None,
+        on_max_iterations: str | None = None,
+        max_steps: int = 200,
+    ) -> FSMLoop:
+        """A 2-state maintain loop: work → done → (restart via maintain)."""
+        states: dict = {
+            "work": StateConfig(action="work.sh", next="done"),
+            "done": StateConfig(terminal=True),
+        }
+        if on_max_iterations:
+            states["iter_summary"] = StateConfig(action="isum.sh", next="done")
+        return FSMLoop(
+            name="pass-cap-test",
+            initial="work",
+            maintain=True,
+            max_steps=max_steps,
+            max_iterations=max_iterations,
+            on_max_iterations=on_max_iterations,
+            states=states,
+        )
+
+    def test_max_iterations_none_means_no_pass_cap(self) -> None:
+        """Without max_iterations, loop runs until max_steps fires."""
+        fsm = self._make_maintain_fsm(max_iterations=None, max_steps=4)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        result = FSMExecutor(fsm, action_runner=runner).run()
+        assert result.terminated_by == "max_steps"
+
+    def test_max_iterations_1_terminates_after_one_full_pass(self) -> None:
+        """max_iterations=1 terminates after completing one full pass (one maintain restart)."""
+        fsm = self._make_maintain_fsm(max_iterations=1, max_steps=200)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        result = FSMExecutor(fsm, action_runner=runner).run()
+        assert result.terminated_by == "max_iterations_reached"
+
+    def test_max_iterations_2_terminates_after_two_full_passes(self) -> None:
+        """max_iterations=2 allows two complete passes before terminating."""
+        fsm = self._make_maintain_fsm(max_iterations=2, max_steps=200)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        result = FSMExecutor(fsm, action_runner=runner).run()
+        assert result.terminated_by == "max_iterations_reached"
+        # Each pass: work executes (1 step) + maintain restart (1 step) = 2 step increments
+        # 2 passes × 2 increments = 4 total step executions in self.iteration
+        assert result.iterations == 4
+
+    def test_state_enter_includes_iteration_count(self) -> None:
+        """state_enter event payload includes 'iteration_count' (full-pass count)."""
+        fsm = self._make_maintain_fsm(max_iterations=1, max_steps=200)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        events: list[dict] = []
+        FSMExecutor(fsm, action_runner=runner, event_callback=events.append).run()
+        state_enters = [e for e in events if e.get("event") == "state_enter"]
+        assert all("iteration_count" in e for e in state_enters)
+
+    def test_on_max_iterations_summary_state_runs(self) -> None:
+        """Summary state runs when iteration cap fires and on_max_iterations is set."""
+        fsm = self._make_maintain_fsm(
+            max_iterations=1, max_steps=200, on_max_iterations="iter_summary"
+        )
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        result = FSMExecutor(fsm, action_runner=runner).run()
+        assert runner.calls.count("isum.sh") == 1
+        assert result.terminated_by == "max_iterations_reached"
+
+    def test_max_iterations_reached_summary_event_emitted(self) -> None:
+        """max_iterations_reached_summary event is emitted with correct payload."""
+        fsm = self._make_maintain_fsm(
+            max_iterations=1, max_steps=200, on_max_iterations="iter_summary"
+        )
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        events: list[dict] = []
+        FSMExecutor(fsm, action_runner=runner, event_callback=events.append).run()
+        cap_events = [e for e in events if e.get("event") == "max_iterations_reached_summary"]
+        assert len(cap_events) == 1
+        assert cap_events[0]["summary_state"] == "iter_summary"
+        assert cap_events[0]["iteration_count"] == 1

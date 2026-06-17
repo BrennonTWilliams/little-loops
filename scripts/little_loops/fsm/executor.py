@@ -212,12 +212,16 @@ class FSMExecutor:
         # actually a pending state.
         self._just_routed: bool = False
 
-        # ENH-1631 / BUG-158: true once the on_max_iterations summary state
-        # has been dispatched. Prevents the cap guard from re-triggering
-        # before the summary state completes. Also gates the terminal-check
-        # short-circuit so the handler executes at least once before
-        # terminating (BUG-158 dual-bug fix).
+        # ENH-1631 / BUG-158: true once the on_max_steps summary state has been
+        # dispatched. Prevents the step-cap guard from re-triggering before the
+        # summary state completes. Also gates the terminal-check short-circuit so
+        # the handler executes at least once before terminating (BUG-158 fix).
         self._summary_state_executed: bool = False
+
+        # BUG-2204: full-pass counter (incremented on each maintain-mode restart)
+        # and flag for the on_max_iterations iteration-cap summary hook.
+        self._iteration_count: int = 0
+        self._iteration_summary_executed: bool = False
 
         # FEAT-1822: Per-item A/B comparison results accumulated during baseline
         # execution. Populated by _execute_with_baseline(), written to ab.json
@@ -306,22 +310,21 @@ class FSMExecutor:
                 if self._shutdown_requested:
                     return self._finish("signal")
 
-                # Check iteration limit
-                if self.iteration >= self.fsm.max_iterations:
-                    if self.fsm.on_max_iterations is not None and not self._summary_state_executed:
+                # Check step limit (max_steps): caps individual state executions.
+                if self.iteration >= self.fsm.max_steps:
+                    if self.fsm.on_max_steps is not None and not self._summary_state_executed:
                         # BUG-158: if we just routed from a sub-loop state
-                        # (e.g. its on_error fired at the iteration cap),
+                        # (e.g. its on_error fired at the step cap),
                         # flush one pending non-sub-loop state before
                         # entering the summary handler so its action isn't
-                        # silently lost. Mirrors the BUG-1226 timeout guard
-                        # at lines 320-341. Single-step: no cascade.
-                        # Gate: only flush when the route originated from a
-                        # sub-loop (checked via _prev_state.loop). Normal
-                        # self-routes are not sub-loop–originated and their
-                        # action already executed — flushing them would
-                        # double-count the iteration.
-                        # Gate uses `pending.action is not None` (broader
-                        # than the timeout guard's shell-only gate) so both
+                        # silently lost. Mirrors the BUG-1226 timeout guard.
+                        # Single-step: no cascade. Gate: only flush when the
+                        # route originated from a sub-loop (checked via
+                        # _prev_state.loop). Normal self-routes are not
+                        # sub-loop–originated and their action already executed
+                        # — flushing them would double-count the step.
+                        # Gate uses `pending.action is not None` (broader than
+                        # the timeout guard's shell-only gate) so both
                         # shell-action and prompt-action intermediate states
                         # are flushed.
                         if self._just_routed:
@@ -336,19 +339,42 @@ class FSMExecutor:
                                 ):
                                     self._flush_pending_shell_state(pending)
                         self._emit(
-                            "max_iterations_summary",
+                            "max_steps_summary",
                             {
-                                "summary_state": self.fsm.on_max_iterations,
+                                "summary_state": self.fsm.on_max_steps,
                                 "iterations": self.iteration,
                             },
                         )
                         self._summary_state_executed = True
-                        self.current_state = self.fsm.on_max_iterations
+                        self.current_state = self.fsm.on_max_steps
                         # Fall through — let the summary state run in this iteration.
                         # (do not `continue`; that would re-trigger the cap check
                         # before the state executes since self.iteration is unchanged.)
                     else:
-                        return self._finish("max_iterations")
+                        return self._finish("max_steps")
+
+                # Check iteration limit (max_iterations): caps full loop passes
+                # (maintain-mode restarts). Only active when max_iterations is set.
+                if (
+                    self.fsm.max_iterations is not None
+                    and self._iteration_count >= self.fsm.max_iterations
+                ):
+                    if (
+                        self.fsm.on_max_iterations is not None
+                        and not self._iteration_summary_executed
+                    ):
+                        self._emit(
+                            "max_iterations_reached_summary",
+                            {
+                                "summary_state": self.fsm.on_max_iterations,
+                                "iteration_count": self._iteration_count,
+                            },
+                        )
+                        self._iteration_summary_executed = True
+                        self.current_state = self.fsm.on_max_iterations
+                        # Fall through — let the summary state run.
+                    else:
+                        return self._finish("max_iterations_reached")
 
                 # Check timeout
                 if self.fsm.timeout:
@@ -398,6 +424,7 @@ class FSMExecutor:
                     # Handle maintain mode - restart loop instead of terminating
                     if self.fsm.maintain:
                         self.iteration += 1
+                        self._iteration_count += 1  # BUG-2204: full-pass counter
                         maintain_target = state_config.on_maintain or self.fsm.initial
                         self._emit(
                             "route",
@@ -411,18 +438,21 @@ class FSMExecutor:
                         self.current_state = maintain_target
                         self._just_routed = True
                         continue
-                    # ENH-1631: if we arrived here via the on_max_iterations summary
-                    # state, preserve terminated_by="max_iterations" so audit tooling
-                    # and PersistentExecutor see "interrupted" rather than "completed".
+                    # ENH-1631 / BUG-2204: if we arrived here via a cap summary state,
+                    # preserve the correct terminated_by so audit tooling and
+                    # PersistentExecutor see "interrupted" rather than "completed".
                     if self._summary_state_executed:
-                        # BUG-158: when current_state IS the on_max_iterations
-                        # handler, it hasn't executed yet — let it run once before
-                        # terminating. The _summary_state_executed flag prevents the
-                        # cap guard from re-triggering; it shouldn't prevent the
-                        # handler from executing its action.
+                        # BUG-158: when current_state IS the on_max_steps handler,
+                        # it hasn't executed yet — let it run once before terminating.
+                        # The flag prevents the cap guard from re-triggering; it
+                        # shouldn't prevent the handler from executing its action.
+                        if self.current_state != self.fsm.on_max_steps:
+                            return self._finish("max_steps")
+                        # Fall through — execute the step-cap handler's action.
+                    elif self._iteration_summary_executed:
                         if self.current_state != self.fsm.on_max_iterations:
-                            return self._finish("max_iterations")
-                        # Fall through — execute the handler's action this iteration.
+                            return self._finish("max_iterations_reached")
+                        # Fall through — execute the iteration-cap handler's action.
                     else:
                         return self._finish("terminal")
 
@@ -460,6 +490,7 @@ class FSMExecutor:
                     {
                         "state": self.current_state,
                         "iteration": self.iteration,
+                        "iteration_count": self._iteration_count,
                     },
                 )
 
@@ -499,12 +530,13 @@ class FSMExecutor:
                     return self._finish("signal")
 
                 if next_state is None:
-                    # BUG-158: if the on_max_iterations summary handler executed
-                    # and returned None (no routing targets — typical for terminal
-                    # handlers that produce diagnostic output), terminate with the
-                    # max_iterations reason instead of an error.
+                    # BUG-158 / BUG-2204: if a cap summary handler executed and
+                    # returned None (no routing targets — typical for terminal
+                    # summary states), terminate with the appropriate reason.
                     if self._summary_state_executed:
-                        return self._finish("max_iterations")
+                        return self._finish("max_steps")
+                    if self._iteration_summary_executed:
+                        return self._finish("max_iterations_reached")
                     return self._finish("error", error="No valid transition")
 
                 # At this point next_state is guaranteed to be str
@@ -1494,6 +1526,7 @@ class FSMExecutor:
             {
                 "state": self.current_state,
                 "iteration": self.iteration,
+                "iteration_count": self._iteration_count,
                 "flushed": True,
             },
         )

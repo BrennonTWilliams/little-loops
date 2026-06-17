@@ -14,7 +14,7 @@ description: |
   chain in the run directory.
 initial: init
 max_iterations: 50
-on_max_iterations: max_iterations_summary
+on_max_steps: max_iterations_summary
 artifact_versioning: true
 on_handoff: spawn
 timeout: 7200

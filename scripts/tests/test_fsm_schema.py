@@ -812,7 +812,7 @@ class TestFSMLoop:
                 "done": StateConfig(terminal=True),
             },
             context={"max_errors": 10},
-            max_iterations=20,
+            max_steps=20,
             timeout=3600,
         )
 
@@ -822,7 +822,7 @@ class TestFSMLoop:
         assert restored.initial == original.initial
         assert len(restored.states) == 3
         assert restored.context == original.context
-        assert restored.max_iterations == original.max_iterations
+        assert restored.max_steps == original.max_steps
         assert restored.timeout == original.timeout
 
     def test_roundtrip_on_max_iterations(self) -> None:
@@ -3479,3 +3479,153 @@ class TestGeneratorFixOk:
             }
         )
         assert fsm.generator_fix_ok is False
+
+
+class TestFSMLoopMaxStepsAndIterations:
+    """Tests for BUG-2204: max_steps (step cap) and max_iterations (full-pass cap)."""
+
+    def _minimal(self) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+
+    def test_max_steps_defaults_to_50(self) -> None:
+        """FSMLoop.max_steps defaults to 50."""
+        assert self._minimal().max_steps == 50
+
+    def test_max_iterations_defaults_to_none(self) -> None:
+        """FSMLoop.max_iterations (full-pass cap) defaults to None."""
+        assert self._minimal().max_iterations is None
+
+    def test_on_max_steps_defaults_to_none(self) -> None:
+        """FSMLoop.on_max_steps defaults to None."""
+        assert self._minimal().on_max_steps is None
+
+    def test_max_steps_omitted_from_to_dict_when_50(self) -> None:
+        """to_dict omits max_steps when it equals the default (50)."""
+        assert "max_steps" not in self._minimal().to_dict()
+
+    def test_max_steps_in_to_dict_when_not_50(self) -> None:
+        """to_dict serializes max_steps when != 50."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            max_steps=10,
+        )
+        d = fsm.to_dict()
+        assert d.get("max_steps") == 10
+
+    def test_max_iterations_omitted_from_to_dict_when_none(self) -> None:
+        """to_dict omits max_iterations when None."""
+        assert "max_iterations" not in self._minimal().to_dict()
+
+    def test_max_iterations_in_to_dict_when_set(self) -> None:
+        """to_dict serializes max_iterations (iteration cap) when not None."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            max_iterations=3,
+        )
+        d = fsm.to_dict()
+        assert d.get("max_iterations") == 3
+
+    def test_on_max_steps_omitted_when_none(self) -> None:
+        """to_dict omits on_max_steps when None."""
+        assert "on_max_steps" not in self._minimal().to_dict()
+
+    def test_on_max_steps_serialized_when_set(self) -> None:
+        """to_dict serializes on_max_steps when set."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(action="run.sh", on_yes="t", on_no="s"),
+                "summary": StateConfig(action="sum.sh", next="t"),
+                "t": StateConfig(terminal=True),
+            },
+            on_max_steps="summary",
+        )
+        assert fsm.to_dict().get("on_max_steps") == "summary"
+
+    def test_legacy_max_iterations_aliases_to_max_steps(self) -> None:
+        """YAML max_iterations (without max_steps) reads as max_steps via from_dict alias."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+                "max_iterations": 30,
+            }
+        )
+        assert fsm.max_steps == 30
+        assert fsm.max_iterations is None
+
+    def test_max_steps_and_max_iterations_coexist(self) -> None:
+        """When both max_steps and max_iterations present, both are parsed independently."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+                "max_steps": 100,
+                "max_iterations": 5,
+            }
+        )
+        assert fsm.max_steps == 100
+        assert fsm.max_iterations == 5
+
+    def test_roundtrip_max_steps(self) -> None:
+        """max_steps survives to_dict/from_dict roundtrip."""
+        original = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            max_steps=20,
+        )
+        restored = FSMLoop.from_dict(original.to_dict())
+        assert restored.max_steps == 20
+
+    def test_roundtrip_max_iterations(self) -> None:
+        """max_iterations (full-pass cap) survives to_dict/from_dict roundtrip."""
+        original = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            max_steps=50,
+            max_iterations=3,
+        )
+        restored = FSMLoop.from_dict(original.to_dict())
+        assert restored.max_iterations == 3
+
+    def test_on_max_steps_included_in_referenced_states(self) -> None:
+        """get_all_referenced_states includes the on_max_steps target."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(action="run.sh", on_yes="done", on_no="work"),
+                "cap_summary": StateConfig(action="sum.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            on_max_steps="cap_summary",
+        )
+        assert "cap_summary" in fsm.get_all_referenced_states()
+
+    def test_on_max_iterations_included_in_referenced_states(self) -> None:
+        """get_all_referenced_states includes the on_max_iterations target."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(action="run.sh", on_yes="done", on_no="work"),
+                "iter_summary": StateConfig(action="isum.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=3,
+            on_max_iterations="iter_summary",
+        )
+        assert "iter_summary" in fsm.get_all_referenced_states()

@@ -155,6 +155,8 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "context",
         "parameters",
         "scope",
+        "max_steps",
+        "on_max_steps",
         "max_iterations",
         "on_max_iterations",
         "max_edge_revisits",
@@ -972,7 +974,14 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
         errors.extend(_validate_state_routing(state_name, state))
 
     # Check numeric field ranges
-    if fsm.max_iterations <= 0:
+    if fsm.max_steps <= 0:
+        errors.append(
+            ValidationError(
+                message=f"max_steps must be > 0, got {fsm.max_steps}",
+                path="max_steps",
+            )
+        )
+    if fsm.max_iterations is not None and fsm.max_iterations <= 0:
         errors.append(
             ValidationError(
                 message=f"max_iterations must be > 0, got {fsm.max_iterations}",
@@ -1047,6 +1056,7 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_zero_retry_counter(fsm))
 
+    errors.extend(_validate_on_max_steps(fsm, defined_states))
     errors.extend(_validate_on_max_iterations(fsm, defined_states))
 
     errors.extend(_validate_circuit(fsm, defined_states))
@@ -1612,8 +1622,29 @@ def _has_baseline_reference(fsm: FSMLoop, capture_names: set[str]) -> bool:
     return False
 
 
+def _validate_on_max_steps(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:
+    """Validate the top-level `on_max_steps` field (BUG-2204).
+
+    Checks that the named state exists when `on_max_steps` is set.
+    """
+    errors: list[ValidationError] = []
+    if fsm.on_max_steps is None:
+        return errors
+    if fsm.on_max_steps not in defined_states:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"on_max_steps references unknown state "
+                    f"'{fsm.on_max_steps}' (must be a declared state)"
+                ),
+                path="on_max_steps",
+            )
+        )
+    return errors
+
+
 def _validate_on_max_iterations(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:
-    """Validate the top-level `on_max_iterations` field (ENH-1631).
+    """Validate the top-level `on_max_iterations` field (BUG-2204: iteration-cap summary state).
 
     Checks that the named state exists when `on_max_iterations` is set.
     """
@@ -1973,6 +2004,8 @@ def _find_reachable_states(fsm: FSMLoop) -> set[str]:
     """
     reachable: set[str] = set()
     to_visit: deque[str] = deque([fsm.initial])
+    if fsm.on_max_steps is not None:
+        to_visit.append(fsm.on_max_steps)
     if fsm.on_max_iterations is not None:
         to_visit.append(fsm.on_max_iterations)
     if fsm.circuit is not None and fsm.circuit.repeated_failure is not None:

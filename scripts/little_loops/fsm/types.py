@@ -20,8 +20,10 @@ class ExecutionResult:
 
     Attributes:
         final_state: Name of the state when execution stopped
-        iterations: Total iterations executed
-        terminated_by: Reason for termination (terminal, max_iterations, timeout, signal, error, handoff)
+        iterations: Total step executions (state enters)
+        terminated_by: Reason for termination. Values: "terminal", "max_steps" (step cap reached;
+            legacy "max_iterations" renamed), "max_iterations_reached" (full-pass cap reached),
+            "timeout", "signal", "error", "handoff", "cycle_detected", "stall_detected".
         duration_ms: Total execution time in milliseconds
         captured: All captured variable values
         error: Error message if terminated_by is "error"
@@ -31,7 +33,7 @@ class ExecutionResult:
 
     final_state: str
     iterations: int
-    terminated_by: str  # "terminal", "max_iterations", "timeout", "signal", "error", "handoff", "cycle_detected"
+    terminated_by: str  # "terminal", "max_steps", "max_iterations_reached", "timeout", "signal", "error", "handoff", "cycle_detected"
     duration_ms: int
     captured: dict[str, dict[str, Any]]
     error: str | None = None

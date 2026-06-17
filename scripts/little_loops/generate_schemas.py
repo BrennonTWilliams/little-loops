@@ -394,16 +394,27 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["final_state", "iterations", "terminated_by"],
     ),
-    "max_iterations_summary": _schema(
-        "max_iterations_summary",
-        "Max Iterations Summary",
-        "Emitted when the iteration cap fires and on_max_iterations is set; "
+    "max_steps_summary": _schema(
+        "max_steps_summary",
+        "Max Steps Summary",
+        "Emitted when the step cap fires and on_max_steps is set; "
         "signals that a summary state will run before the loop terminates.",
         {
             "summary_state": _str("Name of the summary state the executor transitions to"),
-            "iterations": _int("Iteration count at which the cap fired"),
+            "iterations": _int("Step count at which the cap fired"),
         },
         ["summary_state", "iterations"],
+    ),
+    "max_iterations_reached_summary": _schema(
+        "max_iterations_reached_summary",
+        "Max Iterations Reached Summary",
+        "Emitted when the full-pass cap fires and on_max_iterations is set; "
+        "signals that a summary state will run before the loop terminates.",
+        {
+            "summary_state": _str("Name of the summary state the executor transitions to"),
+            "iteration_count": _int("Full-pass count at which the cap fired"),
+        },
+        ["summary_state", "iteration_count"],
     ),
     # FSM Persistence (1 type)
     "loop_resume": _schema(

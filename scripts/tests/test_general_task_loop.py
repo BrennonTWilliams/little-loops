@@ -1070,8 +1070,8 @@ class TestCountFinalShellScript:
 class TestENH1631SummarizePartial:
     """ENH-1631: on_max_iterations: summarize_partial wiring in general-task.yaml."""
 
-    def test_on_max_iterations_set_to_summarize_partial(self, raw_data: dict) -> None:
-        assert raw_data.get("on_max_iterations") == "summarize_partial"
+    def test_on_max_steps_set_to_summarize_partial(self, raw_data: dict) -> None:
+        assert raw_data.get("on_max_steps") == "summarize_partial"
 
     def test_summarize_partial_state_exists(self, raw_data: dict) -> None:
         assert "summarize_partial" in raw_data.get("states", {})

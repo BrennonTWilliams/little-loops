@@ -958,9 +958,11 @@ class FSMLoop:
     context: dict[str, Any] = field(default_factory=dict)
     parameters: dict[str, ParameterSpec] = field(default_factory=dict)
     scope: list[str] = field(default_factory=list)
-    max_iterations: int = 50
-    on_max_iterations: str | None = None
+    max_steps: int = 50
+    on_max_steps: str | None = None
     max_edge_revisits: int = 100
+    max_iterations: int | None = None
+    on_max_iterations: str | None = None
     backoff: float | None = None
     timeout: int | None = None
     default_timeout: int | None = None
@@ -1005,7 +1007,9 @@ class FSMLoop:
             result["parameters"] = {name: spec.to_dict() for name, spec in self.parameters.items()}
         if self.scope:
             result["scope"] = self.scope
-        if self.max_iterations != 50:
+        if self.max_steps != 50 or self.max_iterations is not None:
+            result["max_steps"] = self.max_steps
+        if self.max_iterations is not None:
             result["max_iterations"] = self.max_iterations
         if self.max_edge_revisits != 100:
             result["max_edge_revisits"] = self.max_edge_revisits
@@ -1019,6 +1023,8 @@ class FSMLoop:
             result["maintain"] = self.maintain
         if self.on_handoff != "pause":
             result["on_handoff"] = self.on_handoff
+        if self.on_max_steps is not None:
+            result["on_max_steps"] = self.on_max_steps
         if self.on_max_iterations is not None:
             result["on_max_iterations"] = self.on_max_iterations
         if self.input_key != "input":
@@ -1090,6 +1096,20 @@ class FSMLoop:
             name: ParameterSpec.from_dict(spec) for name, spec in data.get("parameters", {}).items()
         }
 
+        # Legacy alias: YAML key "max_iterations" without "max_steps" → step cap (max_steps).
+        # When "max_steps" IS present, "max_iterations" is the new full-pass cap field.
+        _raw_max_steps = data.get("max_steps")
+        _raw_max_iterations = data.get("max_iterations")
+        if _raw_max_steps is not None:
+            _max_steps_val: int = _raw_max_steps
+            _max_iterations_val: int | None = _raw_max_iterations
+        elif _raw_max_iterations is not None:
+            _max_steps_val = _raw_max_iterations  # legacy alias
+            _max_iterations_val = None
+        else:
+            _max_steps_val = 50
+            _max_iterations_val = None
+
         return cls(
             name=data["name"],
             initial=data["initial"],
@@ -1098,7 +1118,9 @@ class FSMLoop:
             context=data.get("context", {}),
             parameters=parameters,
             scope=data.get("scope", []),
-            max_iterations=data.get("max_iterations", 50),
+            max_steps=_max_steps_val,
+            on_max_steps=data.get("on_max_steps"),
+            max_iterations=_max_iterations_val,
             on_max_iterations=data.get("on_max_iterations"),
             max_edge_revisits=data.get("max_edge_revisits", 100),
             backoff=data.get("backoff"),
@@ -1153,6 +1175,8 @@ class FSMLoop:
         refs: set[str] = {self.initial}
         for state in self.states.values():
             refs.update(state.get_referenced_states())
+        if self.on_max_steps is not None:
+            refs.add(self.on_max_steps)
         if self.on_max_iterations is not None:
             refs.add(self.on_max_iterations)
         return refs

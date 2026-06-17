@@ -2977,3 +2977,26 @@ class TestBackfillSnapshots:
             conn.close()
         assert row is not None
         assert "Body content here" in (row[0] or "")
+
+
+class TestLoopEventTypes:
+    """BUG-2204: _LOOP_EVENT_TYPES contains expected event type strings."""
+
+    def test_max_steps_summary_in_loop_event_types(self) -> None:
+        """'max_steps_summary' is a member of _LOOP_EVENT_TYPES."""
+        from little_loops.session_store import _LOOP_EVENT_TYPES
+
+        assert "max_steps_summary" in _LOOP_EVENT_TYPES
+
+    def test_max_iterations_reached_summary_in_loop_event_types(self) -> None:
+        """'max_iterations_reached_summary' is a member of _LOOP_EVENT_TYPES."""
+        from little_loops.session_store import _LOOP_EVENT_TYPES
+
+        assert "max_iterations_reached_summary" in _LOOP_EVENT_TYPES
+
+    def test_stable_event_types_remain(self) -> None:
+        """Core event types remain in _LOOP_EVENT_TYPES after BUG-2204 changes."""
+        from little_loops.session_store import _LOOP_EVENT_TYPES
+
+        for name in ("loop_start", "loop_complete", "state_enter", "route"):
+            assert name in _LOOP_EVENT_TYPES

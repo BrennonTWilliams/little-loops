@@ -2,8 +2,9 @@
 id: BUG-2204
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-17T00:00:00Z'
+completed_at: '2026-06-17T20:21:06Z'
 discovered_date: 2026-06-17
 discovered_by: finalize-decomposition
 labels:
@@ -82,7 +83,7 @@ full loop passes. See BUG-2011 for full root cause detail.
   - Update three increment sites (`:400`, `:456`, `:1490`) to increment `self.iteration` (step) only
   - Increment `self._iteration_count` on return-to-initial (maintain-mode restart at `:456`)
   - Update cap check (`:310`) to check both `max_steps` and `max_iterations` independently
-  - Add `_iteration_summary_executed: bool = False` alongside `_summary_state_executed` (`:212`)
+  - Add `_iteration_summary_executed: bool = False` alongside `_summary_state_executed` (`:220`)
   - Add iteration-cap branch: event name `"max_iterations_reached_summary"`, `terminated_by="max_iterations_reached"`
   - Update `state_enter` event payload: keep `"iteration"` field (step count, backwards compat), add `"iteration_count"` (full-pass count)
 
@@ -90,11 +91,11 @@ full loop passes. See BUG-2011 for full root cause detail.
   - Update `ExecutionResult` `terminated_by` docstring (`:24`, `:34`): add `"max_steps"` and `"max_iterations_reached"` reason strings; keep `"max_iterations"` → `"max_steps"` note for migration
 
 - `scripts/little_loops/fsm/persistence.py`
-  - Add `iteration_count: int = 0` to `LoopState` (`:190`)
-  - Update `PersistentExecutor.resume()` (`:810`) to restore `self._executor._iteration_count`
+  - Add `iteration_count: int = 0` to `LoopState` (`:163`)
+  - Update `PersistentExecutor.resume()` (`:793`) to restore `self._executor._iteration_count`
 
 - `scripts/little_loops/session_store.py`
-  - Update `_LOOP_EVENT_TYPES` frozenset (`:55-65`): rename `"max_iterations_summary"` → `"max_steps_summary"`; add `"max_iterations_reached_summary"`
+  - Update `_LOOP_EVENT_TYPES` frozenset (`:110`): rename `"max_iterations_summary"` → `"max_steps_summary"`; add `"max_iterations_reached_summary"`
 
 - `scripts/little_loops/fsm/fsm-loop-schema.json`
   - Rename `max_iterations` field entry to `max_steps`; add `max_iterations` (iteration cap) entry
@@ -117,10 +118,10 @@ full loop passes. See BUG-2011 for full root cause detail.
 ### Tests that BREAK on executor/schema changes
 
 - `scripts/tests/test_fsm_executor.py`
-  - `test_max_iterations_respected` (`:159`) → rename to `test_max_steps_respected`; update to use `max_steps=3`
+  - `test_max_iterations_respected` (`:169`) → rename to `test_max_steps_respected`; update to use `max_steps=3`
   - `TestMaxIterationsSummaryHook` (`:7663`) → rename to `TestMaxStepsSummaryHook`; update event name to `"max_steps_summary"` and `terminated_by="max_steps"`
   - `test_fix_retry_loop` — verify `result.iterations` semantics; update if field now means full-pass count
-  - `test_cycle_detection_terminates_loop` (`:183`) — verify still passes after executor changes
+  - `test_cycle_detection_terminates_loop` (`:193`) — verify still passes after executor changes
 
 - `scripts/tests/test_fsm_persistence.py`
   - `test_final_status_interrupted_on_max_iterations` — update when `LoopState` gains `iteration_count`
@@ -141,10 +142,10 @@ full loop passes. See BUG-2011 for full root cause detail.
   - New regression: a 2-step-per-iteration loop with `max_iterations=1` runs all steps in one full pass before capping
 
 - `scripts/tests/test_fsm_schema.py`
-  - `TestFSMLoopMaxIterations` class (model after `TestFSMLoopArtifactVersioning`, `:3282`): default `None`, `from_dict()` parses, `to_dict()` omits when None, roundtrip; test legacy YAML key `max_iterations` → `max_steps` alias
+  - `TestFSMLoopMaxIterations` class (model after `TestFSMLoopArtifactVersioning`, `:3336`): default `None`, `from_dict()` parses, `to_dict()` omits when None, roundtrip; test legacy YAML key `max_iterations` → `max_steps` alias
 
 - `scripts/tests/test_fsm_validation.py`
-  - `TestMaxStepsValidation` class (model after `TestOnMaxIterationsValidation`, `:1421`)
+  - `TestMaxStepsValidation` class (model after `TestOnMaxIterationsValidation`, `:1532`)
   - `TestMaxIterationsValidation` class for the new iteration cap
 
 - `scripts/tests/test_session_store.py`
@@ -158,15 +159,15 @@ full loop passes. See BUG-2011 for full root cause detail.
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop run <loop> --max-steps N` (and `-n N`) terminates after at most N state executions
-- [ ] `ll-loop run <loop> --max-iterations N` terminates after at most N full loop passes (returns to initial), with `terminated_by="max_iterations_reached"`
-- [ ] Legacy YAML `max_iterations: 50` (no `max_steps:`) reads as `max_steps=50` via `from_dict()` alias; `max_iterations` (iteration cap) remains `None`
-- [ ] `on_max_steps: <state>` executes summary state when step cap fires; `terminated_by="max_steps"` preserved
-- [ ] `on_max_iterations: <state>` executes summary state when iteration cap fires; `terminated_by="max_iterations_reached"` preserved
-- [ ] `general-task.yaml`, `canvas-sketch-generator.yaml`, `vega-viz.yaml` updated to `on_max_steps:`
-- [ ] `test_all_validate_as_valid_fsm` passes unchanged (all built-in loops valid)
-- [ ] `TestMaxStepsSummaryHook` and new `TestMaxIterationsSummaryHook` both pass (5-method structure each)
-- [ ] `state_enter` event payload has both `"iteration"` (step count) and `"iteration_count"` (full-pass count) fields
+- [x] `ll-loop run <loop> --max-steps N` (and `-n N`) terminates after at most N state executions
+- [x] `ll-loop run <loop> --max-iterations N` terminates after at most N full loop passes (returns to initial), with `terminated_by="max_iterations_reached"`
+- [x] Legacy YAML `max_iterations: 50` (no `max_steps:`) reads as `max_steps=50` via `from_dict()` alias; `max_iterations` (iteration cap) remains `None`
+- [x] `on_max_steps: <state>` executes summary state when step cap fires; `terminated_by="max_steps"` preserved
+- [x] `on_max_iterations: <state>` executes summary state when iteration cap fires; `terminated_by="max_iterations_reached"` preserved
+- [x] `general-task.yaml`, `canvas-sketch-generator.yaml`, `vega-viz.yaml` updated to `on_max_steps:`
+- [x] `test_all_validate_as_valid_fsm` passes unchanged (all built-in loops valid)
+- [x] `TestMaxStepsSummaryHook` and new `TestMaxIterationsSummaryHook` both pass (5-method structure each)
+- [x] `state_enter` event payload has both `"iteration"` (step count) and `"iteration_count"` (full-pass count) fields
 
 ## Implementation Steps
 
@@ -191,7 +192,24 @@ full loop passes. See BUG-2011 for full root cause detail.
 - The rename sweep in BUG-2205 depends on this issue completing first (the Python fields must exist before CLI flags can be wired)
 - `max_edge_revisits` (`:963`) is unchanged — retain as-is
 
+## Resolution
+
+Implemented dual-counter semantic fix across all FSM core modules:
+
+- **schema.py**: renamed `max_iterations` → `max_steps` (step cap, default 50); added `max_iterations: int | None = None` (full-pass cap); added `from_dict()` legacy alias mapping old `max_iterations` YAML key → `max_steps` when `max_steps` is absent; updated serialization guards.
+- **executor.py**: renamed `self.iteration` (step counter, unchanged semantics); added `self._iteration_count` (full-pass counter, incremented on maintain-mode restarts); added independent cap checks for both `max_steps` and `max_iterations`; added `max_iterations_reached_summary` event; `state_enter` now includes both `"iteration"` and `"iteration_count"` fields.
+- **persistence.py**: added `iteration_count: int = 0` to `LoopState`; restored `_iteration_count` on resume.
+- **session_store.py**: renamed `"max_iterations_summary"` → `"max_steps_summary"`; added `"max_iterations_reached_summary"`.
+- **types.py**: updated `ExecutionResult.terminated_by` docstring with new values.
+- **fsm-loop-schema.json**: renamed `max_iterations` field to `max_steps`; added `max_iterations` (iteration cap) and `on_max_iterations` entries.
+- **generate_schemas.py**: renamed `"max_steps_summary"` entry; added `"max_iterations_reached_summary"` entry.
+- **Loop YAML migrations**: `general-task.yaml`, `canvas-sketch-generator.yaml`, `vega-viz.yaml`, `cua-agent-desktop.yaml` migrated from `on_max_iterations:` → `on_max_steps:`.
+- **CLI display fixes**: updated `_helpers.py` `[current/max]` progress display, execution plan, and run-start header to use `max_steps`; fixed `max_iterations_summary` event handler → `max_steps_summary`; fixed `testing.py` simulation step-cap to use `max_steps`.
+- **Tests**: updated `TestMaxStepsSummaryHook`, added `TestMaxIterationsSummaryHook`; added `TestFSMLoopMaxIterations` schema tests; updated session_store, persistence, general-task, generate_schemas, and state_feed_renderer tests.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-17T20:21:06Z - implementation complete
+- `/ll:ready-issue` - 2026-06-17T18:49:41 - `b6b384b9-6d42-4932-8b77-aaaf3b4cd36b.jsonl`
 - `/ll:format-issue` - 2026-06-17T18:39:08 - `73a22b6c-06de-4d5e-aee5-75c901aa8812.jsonl`
 - Decomposed from BUG-2011 - 2026-06-17
 - `/ll:confidence-check` - 2026-06-17T00:00:00Z - `4b5d66b8-fe01-446b-be44-7f390d4d76d5.jsonl`

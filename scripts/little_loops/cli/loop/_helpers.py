@@ -512,7 +512,7 @@ class StateFeedRenderer:
         """Redraw the pinned pane in place using the current depth-0 state."""
         assert self.facets is not None
         iter_line = (
-            f"[{self.current_iteration[0]}/{self.fsm.max_iterations}] "
+            f"[{self.current_iteration[0]}/{self.fsm.max_steps}] "
             f"{colorize(state0, '1')} ({colorize(self._elapsed_str(), '2')})"
         )
         self.pinned_height[0] = _render_pinned_pane(
@@ -653,7 +653,7 @@ class StateFeedRenderer:
             # only print it inline for non-pinned paths.
             if not self.quiet and not self.in_pinned_mode:
                 print(
-                    f"{indent}[{self.current_iteration[0]}/{self.fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
+                    f"{indent}[{self.current_iteration[0]}/{self.fsm.max_steps}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
                     end="",
                     flush=True,
                 )
@@ -790,11 +790,11 @@ class StateFeedRenderer:
                     flush=True,
                 )
 
-        elif event_type == "max_iterations_summary":
+        elif event_type == "max_steps_summary":
             if not self.quiet:
                 summary_state = event.get("summary_state", "")
                 iters = event.get("iterations", 0)
-                msg = f"iteration cap reached ({iters}); running summary state '{summary_state}'"
+                msg = f"step cap reached ({iters}); running summary state '{summary_state}'"
                 print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
 
         elif event_type == "stall_detected":
@@ -945,7 +945,7 @@ def print_execution_plan(fsm: FSMLoop, edge_label_colors: dict[str, str] | None 
                 print(f"      _ {colorize('->', '2')} {colorize(state.route.default, '2')}")
     print()
     print(f"Initial state: {fsm.initial}")
-    print(f"Max iterations: {fsm.max_iterations}")
+    print(f"Max iterations: {fsm.max_steps}")
     if fsm.timeout:
         print(f"Timeout: {fsm.timeout}s")
     if fsm.context:
@@ -1169,7 +1169,7 @@ def run_foreground(
         )
         if not renderer.quiet:
             print(f"Running loop: {colorize(fsm.name, '1')}")
-            print(f"Max iterations: {colorize(str(fsm.max_iterations), '2')}")
+            print(f"Max iterations: {colorize(str(fsm.max_steps), '2')}")
             for key, value in _artifact_lines(fsm, loop_path):
                 print(f"  {key}: {colorize(value, '2')}")
             if model is not None:

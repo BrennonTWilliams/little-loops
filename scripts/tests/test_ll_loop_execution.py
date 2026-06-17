@@ -169,7 +169,7 @@ states:
 name: test-max-summary
 initial: check
 max_iterations: 2
-on_max_iterations: summarize
+on_max_steps: summarize
 states:
   check:
     action: "echo check"
@@ -1700,8 +1700,8 @@ max_iterations: 100
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "Limiting simulation to 20 iterations" in captured.out
-        assert "max_iterations" in captured.out
+        assert "Limiting simulation to 20 steps" in captured.out
+        assert "max_steps" in captured.out
 
     def test_simulate_custom_max_iterations(
         self,
