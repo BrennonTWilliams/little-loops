@@ -5,10 +5,19 @@ priority: P3
 status: open
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
-blocked_by: [FEAT-1112, FEAT-1156]
+blocked_by:
+- FEAT-1112
+- FEAT-1156
 parent: FEAT-1113
-
-relates_to: ['FEAT-1156', 'FEAT-1158']
+relates_to:
+- FEAT-1156
+- FEAT-1158
+confidence_score: 72
+outcome_confidence: 85
+score_complexity: 25
+score_test_coverage: 20
+score_ambiguity: 15
+score_change_surface: 25
 ---
 
 # FEAT-1157: PreCompact Handoff Hook — Integration Tests
@@ -84,7 +93,19 @@ For each: read the test, understand the mtime assumption, confirm whether an aut
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue adds `TestPrecompactHandoff` to `scripts/tests/test_hooks_integration.py`. FEAT-1262 also adds `TestSessionCapture` to the same file. No logical conflict exists (different test classes), but concurrent edits risk git merge conflicts. If worked in parallel, coordinate line insertions or serialize work on this shared test file.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-16_
+
+**Readiness Score**: 72/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 85/100 → HIGH CONFIDENCE
+
+### Concerns
+- `pre_compact_handoff.py` and `precompact-handoff.sh` must be delivered (FEAT-1156) before any test in this class can be run; do not start until FEAT-1156 is merged
+- Lines 434, 489, 531 in `test_hooks_integration.py` (rate-limit and mtime tests) need a read-and-decide pass before `TestPrecompactHandoff` is added — the new hook auto-writes `ll-continue-prompt.md`, which may flip `handoff_complete` and break existing mtime assertions; isolate if needed
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-16T00:00:00Z - `582fb982-6866-45ba-b90e-d2cfdc139ff2.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:05 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
