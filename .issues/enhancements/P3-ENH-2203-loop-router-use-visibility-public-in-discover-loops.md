@@ -1,10 +1,18 @@
 ---
 id: ENH-2203
-title: "Wire --visibility public into loop-router.yaml discover_loops state"
+title: Wire --visibility public into loop-router.yaml discover_loops state
 priority: P3
 status: open
 type: ENH
-relates_to: [ENH-2198, EPIC-2196]
+relates_to:
+- ENH-2198
+- EPIC-2196
+confidence_score: 98
+outcome_confidence: 91
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 24
+score_change_surface: 23
 ---
 
 ## Summary
@@ -132,6 +140,7 @@ Open
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-17T18:04:41 - `4cdaf4f4-92fa-4ef1-8ecc-a6fe874fa5bd.jsonl`
 - `/ll:wire-issue` - 2026-06-17T17:59:03 - `f2b3ef53-2acc-45d4-ad59-26197633fe46.jsonl`
 - `/ll:refine-issue` - 2026-06-17T17:50:04 - `caf9feb9-9f53-43b2-8ff0-6d559aabdc0f.jsonl`
 - `/ll:format-issue` - 2026-06-17T17:43:15 - `de66b4ba-9ea7-4d59-b95d-7249a74b546e.jsonl`
