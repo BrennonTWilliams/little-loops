@@ -381,7 +381,7 @@ This gate applies to **both** `fifo` and `value_ranked` scheduling — it is not
 | `depth_map.txt` | Per-issue depth assignments (`<ID> <depth>`) |
 | `depth_capped.txt` | Issues skipped due to max_depth cap |
 | `skipped.txt` | Issues skipped (genuinely atomic/too-large decline, errors) |
-| `deferred.txt` | Issues deferred after a remediation stall + no-children decline, or due to unmet `blocked_by` deps (BUG-2006, ENH-2008); the issue's `status` is also set to `deferred`. `re_enqueue_unblocked` removes entries mid-run when their blockers resolve (ENH-2195). |
+| `deferred.txt` | Issues deferred after a remediation stall + no-children decline, or due to unmet `blocked_by` deps (BUG-2006, ENH-2008); the issue's `status` is also set to `deferred`. `re_enqueue_unblocked` removes entries mid-run when their blockers resolve — only entries whose deferral reason contains `blocked_by` are eligible; stalled and depth-capped entries remain untouched (ENH-2195, BUG-2202). |
 | `summary.json` | Final run summary (processed, implemented, decomposed, skipped, deferred, blocked, depth-capped) |
 
 **FSM flow:**
@@ -397,7 +397,7 @@ init               (shell: seed queue from comma-separated input, init tracking 
       on_yes → run_remediation
       on_no  → mark_depth_capped → dequeue_next
     → run_remediation   (sub-loop: rn-remediate, max_rate_limit_retries: 3)
-      on_success (PASS)             → re_enqueue_unblocked (scan deferred.txt for issues now unblocked) → dequeue_next
+      on_success (PASS)             → re_enqueue_unblocked (scan deferred.txt for blocked_by-reason entries now unblocked; stalled/capped entries skipped) → dequeue_next
       on_failure (FAIL/STALLED)     → run_decomposition
       on_error                      → skip_issue
       on_rate_limit_exhausted       → rate_limit_diagnostic

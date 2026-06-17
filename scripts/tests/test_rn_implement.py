@@ -882,6 +882,14 @@ class TestReEnqueueUnblocked:
         action = data["states"]["re_enqueue_unblocked"]["action"]
         assert "! -s" in action
 
+    def test_re_enqueue_skips_stall_deferred_entries(self) -> None:
+        """BUG-2202: entries deferred for non-blocked_by reasons are kept in deferred.txt unchanged."""
+        data = _load_loop()
+        action = data["states"]["re_enqueue_unblocked"]["action"]
+        # The shell loop must extract the reason field and skip re-enqueue when it
+        # does not contain "blocked_by" (e.g. "remediation stalled ..." entries).
+        assert 'grep -q "blocked_by"' in action
+
 
 # ============================================================================
 # TestSelectNext — FEAT-1991: value-ranked dequeue

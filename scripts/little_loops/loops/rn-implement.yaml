@@ -575,6 +575,11 @@ states:
         [ -z "$line" ] && continue
         ID=$(echo "$line" | awk '{print $1}')
         [ -z "$ID" ] && continue
+        REASON=$(echo "$line" | cut -d' ' -f2-)
+        if ! echo "$REASON" | grep -q "blocked_by"; then
+          echo "$line" >> "$NEW_DEFERRED"
+          continue
+        fi
         export _REQUEUE_ID="$ID"
         UNMET=$(python3 << 'PYEOF'
       import os, re, subprocess, json, sys
