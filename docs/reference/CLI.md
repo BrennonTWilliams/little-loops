@@ -509,7 +509,7 @@ Run a loop.
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
 | `--program-md PATH` | | Load steering directive from a Markdown file (default: `.ll/program.md` when present); parsed fields injected into context before `--context` overrides. See [program-md reference](program-md.md). |
 | `--worktree` | | Run loop in an isolated git worktree on a new branch named `TIMESTAMP-LOOP-NAME`; worktree and branch are removed on exit. **Cannot be combined with `--background`** — passing both exits with an error. |
-| `--baseline` | | Run a blind A/B comparison: executes primary skill with full evaluation gates (harness arm) and creates a matching ungated invocation (baseline arm) in parallel, then feeds both outputs into a blind LLM judge. Writes `ab.json` to the run directory and prints a terminal summary with pass-rate delta and token/duration ratios. **Cannot be combined with `--worktree`** — passing both exits with an error. |
+| `--baseline` | | Run a blind A/B comparison: executes primary skill with full evaluation gates (harness arm) and creates a matching ungated invocation (baseline arm) in parallel, then feeds both outputs into a blind LLM judge. Writes `ab.json` to the run directory and prints a terminal summary with pass-rate delta, Wilson 95% CI bounds `[lo, hi]` for each arm, and token/duration ratios. **Cannot be combined with `--worktree`** — passing both exits with an error. |
 | `--baseline-skill` | | Override the baseline arm skill (default: extracted from the execute state action). Accepts a full slash command such as `/ll:some-skill`. |
 | `--cross-host` | | Re-run the loop on a second available host CLI and append a cross-host comparison table to the baseline report. Requires `--baseline`. The comparison runs the execute state on the alternate host, then feeds both outputs into the same blind LLM judge. (ENH-2086) |
 | `--items` | | Number of compare cycles to run (default: iterate with MIMO packing heuristics) |
@@ -813,7 +813,7 @@ Scan `.loops/.history/*-<loop>/events.jsonl` to detect non-discriminating evalua
 |------|-------|-------------|
 | `--threshold` | | Variance floor below which a state is flagged (default: 0.05) |
 | `--min-runs` | | Minimum runs required for meaningful variance (default: 10) |
-| `--json` | `-j` | Output results as a JSON object |
+| `--json` | `-j` | Output results as a JSON object; each evaluator entry includes `ci_lower` and `ci_upper` (Wilson 95% CI bounds on the pass-rate) |
 
 **Exit codes:** 0 = no low-variance states found or insufficient data; 1 = at least one non-discriminating evaluator flagged.
 
@@ -832,7 +832,7 @@ Report per-evaluator Bernoulli variance `p*(1-p)` to decide whether increasing `
 |------|-------|-------------|
 | `--threshold` | | Variance floor below which a state is flagged (default: 0.05) |
 | `--min-runs` | | Minimum runs required for meaningful variance (default: 10) |
-| `--json` | `-j` | Output results as a JSON object |
+| `--json` | `-j` | Output results as a JSON object; each evaluator entry includes `ci_lower` and `ci_upper` (Wilson 95% CI bounds on the pass-rate) |
 
 **Exit codes:** 0 = all evaluators healthy or insufficient data; 1 = at least one evaluator flagged (fix before increasing `max_iterations`).
 
@@ -1921,7 +1921,8 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--all` | | Scan all projects with ll activity |
 | `--project DIR` | | Working directory of the target project |
 | `--window-days D` | | Only consider records within D days of latest record |
-| `--capture` | | Create BUG issue files for each failure cluster |
+| `--capture` | | Create BUG issue files for each failure cluster. When combined with `--all`, scopes capture to `Path.cwd()` by default — foreign-project clusters are reported but not filed. Use `--capture-foreign` to also create issues for clusters from other projects |
+| `--capture-foreign` | | When `--capture --all` is active, also create BUG issues for failure clusters from projects outside the current working directory |
 | `--json` | `-j` | Output as JSON: `[{"tool": str, "count": int, "normalized_sig": str, "sample_error": str, "session_ids": [...]}]` |
 
 **`diff` flags:**
