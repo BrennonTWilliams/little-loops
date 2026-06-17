@@ -14,6 +14,9 @@ labels:
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 56
+decomposed_into:
+- BUG-2204
+- BUG-2205
 score_complexity: 13
 score_test_coverage: 25
 score_ambiguity: 18
@@ -452,6 +455,7 @@ _Additional touchpoints identified by third wiring pass:_
 
 - **State**: open
 - **Discovered**: 2026-06-07 (smoke run of canvas-sketch-generator)
+- **Decomposed**: 2026-06-17 into BUG-2204 (core dual-counter implementation) and BUG-2205 (rename sweep — CLI, tests, skills, docs). Implement BUG-2204 first; BUG-2205 depends on it.
 
 ## Confidence Check Notes
 
