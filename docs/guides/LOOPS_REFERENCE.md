@@ -35,7 +35,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 
 | Loop | Description |
 |------|-------------|
-| `loop-router` | Natural-language entry point — classifies a goal into the best-fit project or built-in loop (3-way branch: project / built-in / propose new), scores candidates, dispatches as a sub-loop, and summarises the result |
+| `loop-router` | Natural-language entry point — classifies a goal into the best-fit project or built-in loop (3-way branch: project / built-in / propose new), scores candidates, dispatches as a sub-loop, and summarises the result. Catalog enumerates only `visibility: public` loops — `internal` sub-loops and `example` templates are excluded from routing candidates. |
 
 `loop-router` is the recommended starting point when you know *what you want done* but not *which loop to run*:
 

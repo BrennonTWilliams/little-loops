@@ -304,6 +304,8 @@ Fires as a second PreCompact handler, after `precompact.sh`. Reads `.ll/ll-preco
 
 > `[ll] Session continuation prompt written to .ll/ll-continue-prompt.md`
 
+**Two content paths**: when `.ll/ll-session-events.jsonl` is present (written by the `session-capture.sh` PostToolUse hook when `session_capture.enabled: true`), the handler builds the continuation prompt from structured event data — deduplicating file edits by subject and surfacing only unresolved errors. When the event log is absent, it falls back to a git-diff/loop-state snapshot. Enable `session_capture.enabled` to get richer, event-structured continuation prompts; the fallback still produces a usable prompt without it.
+
 Use `/ll:resume` after compaction to re-inject the continuation prompt. Always on; passive counterpart to the active `/ll:handoff` command. See [Session Handoff](SESSION_HANDOFF.md).
 
 ---
