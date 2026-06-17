@@ -284,6 +284,20 @@ class TestHooksMainModule:
         assert "Task state preserved" in result.stderr
         assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
 
+    def test_dispatch_pre_compact_handoff_happy_path(self, tmp_path) -> None:
+        """``pre_compact_handoff`` intent reads stdin JSON, exits 2, and writes the prompt file."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "pre_compact_handoff"],
+            input=json.dumps({}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 2
+        assert "Session handoff snapshot written" in result.stderr
+        assert (tmp_path / ".ll" / "ll-continue-prompt.md").is_file()
+
     def test_dispatch_session_start_happy_path(self, tmp_path) -> None:
         """``session_start`` intent runs the handler and exits 0 (no config in tmp dir)."""
         result = subprocess.run(
@@ -518,6 +532,7 @@ class TestHooksMainModule:
         assert "my_intent" in table
         assert table["my_intent"] is custom_handler
         assert "pre_compact" in table
+        assert "pre_compact_handoff" in table
         assert "session_end" in table
         assert "session_start" in table
         # Built-in shadows extension on collision.

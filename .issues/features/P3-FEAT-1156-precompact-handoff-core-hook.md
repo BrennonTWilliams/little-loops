@@ -2,8 +2,9 @@
 id: FEAT-1156
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-18
+completed_at: 2026-06-17 04:02:26+00:00
 discovered_by: issue-size-review
 blocked_by:
 - FEAT-1112
@@ -17,10 +18,10 @@ relates_to:
 decision_needed: false
 implementation_order_risk: true
 confidence_score: 100
-outcome_confidence: 72
+outcome_confidence: 74
 score_complexity: 15
 score_test_coverage: 17
-score_ambiguity: 20
+score_ambiguity: 22
 score_change_surface: 20
 size: Very Large
 ---
@@ -118,7 +119,7 @@ exit $?
 2. Add `"pre_compact_handoff": pre_compact_handoff.handle` to the `built_ins` dict
 3. Add `pre_compact_handoff` to the `_USAGE` string (line 51)
 
-### Modify: `hooks/hooks.json` (PreCompact section, lines 165–177)
+### Modify: `hooks/hooks.json` (PreCompact section, lines 176–188)
 
 Add a second object to the `"PreCompact": [...]` array **after** the existing entry:
 
@@ -159,7 +160,7 @@ Follow `commands/handoff.md` structured schema. The consumer `commands/resume.md
 ## Files to Modify
 
 - `scripts/little_loops/hooks/__init__.py` — add `pre_compact_handoff` to dispatch table + `_USAGE` string
-- `hooks/hooks.json:165-177` — add second PreCompact entry (after existing entry)
+- `hooks/hooks.json:176-188` — add second PreCompact entry (after existing entry)
 
 ## New Files
 
@@ -176,7 +177,7 @@ Follow `commands/handoff.md` structured schema. The consumer `commands/resume.md
 ## Integration Map
 
 ### Files to Modify
-- `hooks/hooks.json:165-177` — add second PreCompact entry
+- `hooks/hooks.json:176-188` — add second PreCompact entry
 - `scripts/little_loops/hooks/__init__.py` — add dispatch entry + update `_USAGE` string
 
 ### New Files
@@ -190,9 +191,13 @@ Follow `commands/handoff.md` structured schema. The consumer `commands/resume.md
 - `hooks/scripts/context-monitor.sh:370-407` — mtime-vs-threshold idempotency check
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `hooks/scripts/context-monitor.sh:50-80` — `check_handoff()` function reads `ll-continue-prompt.md` for `handoff_pending` state
+- `hooks/scripts/context-monitor.sh:370-385` — inline mtime-vs-threshold check reads `ll-continue-prompt.md`; sets `handoff_complete` in state JSON (no standalone `check_handoff` function exists)
 - `scripts/little_loops/issue_manager.py:290,462-464` — calls `detect_context_handoff()` and `read_continuation_prompt()` (indirect `ll-continue-prompt.md` consumer)
 - `scripts/little_loops/parallel/worker_pool.py:797,939-943` — same pattern as `issue_manager.py`; reads handoff state in parallel worker execution
+
+_Added by `/ll:refine-issue` 2026-06-16:_
+- `hooks/prompts/continuation-prompt-template.md` — Markdown template for `.ll/ll-continue-prompt.md` output schema; use as reference for section ordering and frontmatter keys when building the tiered content string
+- `scripts/little_loops/init/writers.py:48` — registers `"Write(.ll/ll-continue-prompt.md)"` in the permissions list for ll-init; any changes to the output path must be reflected here
 
 ### Similar Patterns
 - `scripts/little_loops/hooks/pre_compact.py` — canonical Python handler to model after (`handle(event: LLHookEvent) -> LLHookResult`, `acquire_lock` + `atomic_write_json`, try/except wrapper)
@@ -204,7 +209,7 @@ _Confirmed by codebase research 2026-06-16:_
 - `scripts/little_loops/hooks/__init__.py` dispatch table: `session_end` maps to `sweep_stale_refs.handle` (not a `session_end.py`) — `pre_compact_handoff` should follow the same built_ins pattern. Precedence: `return {**_HOOK_INTENT_REGISTRY, **built_ins}` means built-ins shadow extension-provided handlers on name collision.
 - `scripts/little_loops/hooks/pre_compact.py` uses `atomic_write_json` (JSON output) — `pre_compact_handoff.py` must use `atomic_write` (text/markdown) instead.
 - All adapters (`session-end.sh`, `post-tool-use.sh`, etc.) confirm the 3-line pattern is universal. `precompact-handoff.sh` differs only in the intent name argument.
-- `scripts/little_loops/cli/session.py:_run_extract_decisions()` confirms the `ll-issues` subprocess call pattern: `["ll-issues", "list", "--status", "in_progress"]` with `capture_output=True, text=True, timeout=5` + `except (FileNotFoundError, subprocess.TimeoutExpired): active_issues_text = ""` guard. Same pattern applies to `git diff --name-only HEAD`. No existing Python hook handler calls `ll-issues` via subprocess — this is the first.
+- `scripts/little_loops/cli/session.py:_run_extract_decisions()` is the conceptual model for the subprocess call shape but uses `capture_output=False` (stdout/stderr inherit from parent). `pre_compact_handoff.py` MUST use `capture_output=True, text=True, timeout=5` instead — it needs to capture stdout to build the handoff content string, not print to terminal. The `except (FileNotFoundError, subprocess.TimeoutExpired): active_issues_text = ""` guard pattern applies unchanged. No existing Python hook handler calls `ll-issues` via subprocess — this is the first.
 
 ### Tests
 - FEAT-1157 covers test additions for this handler
@@ -287,24 +292,31 @@ created under `hooks/scripts/`. The "port to Python later" caveat from earlier p
 - `scripts/little_loops/hooks/pre_compact_handoff.py` does not exist ✓
 - `hooks/adapters/claude-code/precompact-handoff.sh` does not exist ✓
 - No second PreCompact entry for handoff in `hooks/hooks.json` ✓
-- `hooks/hooks.json` PreCompact section line range 165–177 still accurate ✓
+- `hooks/hooks.json` PreCompact section line range 176–188 confirmed (re-verified 2026-06-16; prior reference of 165–177 was stale) ✓
 - `__init__.py` dispatch table line ranges (73–80 import block, 82–89 built_ins, 48–52 `_USAGE`) confirmed current ✓
 - `subprocess_utils.py:59` `CONTINUATION_PROMPT_PATH` confirmed current ✓
 - Feature not yet implemented ✓
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-16; updated 2026-06-16_
+_Added by `/ll:confidence-check` on 2026-06-16; updated 2026-06-17_
 
 **Readiness Score**: 100/100 → PROCEED
-**Outcome Confidence**: 72/100 → LOW
+**Outcome Confidence**: 74/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Novel LIFO algorithm** — `_build_content(sections, max_bytes)` has no existing Python counterpart to model; design and test this pure helper in isolation before integrating with the hook handler
-- **Multi-source subprocess fanout** — handler spawns `ll-issues list --status in_progress` + `git diff --name-only HEAD` + `.loops/runs/` glob; each has its own failure mode — ensure all three degrade to empty section (not a crash)
-- **Tests are co-deliverables (FEAT-1157)** — `test_pre_compact_handoff.py` and `test_hook_intents.py` assertion (`pre_compact_handoff in table`) are tracked in FEAT-1157; implement tests first so LIFO and idempotency guard are exercised before hook registration
+- **Novel LIFO algorithm** — `_build_content(sections, max_bytes)` has no existing Python counterpart; implement and test this pure helper in isolation before integrating with the hook handler
+- **Multi-source subprocess fanout** — first hook handler to call `ll-issues` via subprocess; three independent failure modes (active issues, files-edited, loop-state glob) — confirm all three degrade to empty string, not a crash
+- **Tests are co-deliverables (FEAT-1157)** — implement tests first so LIFO and idempotency guard are exercised before hook registration
+
+### Notes (2026-06-16)
+- **FEAT-1112 blocker is now `done`** — `blocked_by: FEAT-1112` constraint is cleared; issue's `deferred` status may warrant reconsideration separately
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-17T03:38:00 - `a53d0aeb-c853-4ec3-9d19-1cffd99290e1.jsonl`
+- `/ll:confidence-check` - 2026-06-17T00:00:00 - `28153f88-2588-49f4-a92e-1cd258eb8379.jsonl`
+- `/ll:refine-issue` - 2026-06-17T02:25:12 - `e87d0021-b0a1-42a2-a6d9-99c2d45c3e0f.jsonl`
+- `/ll:confidence-check` - 2026-06-16T00:00:00 - `75d1ba0d-a54a-4e92-adb7-c2c3aad8da56.jsonl`
 - `/ll:confidence-check` - 2026-06-16T00:00:00 - `b396a3fd-b6f8-4762-9f77-9bf4135b13a5.jsonl`
 - `/ll:refine-issue` - 2026-06-17T01:26:06 - `db7c22a7-6029-405e-9991-478990a1bba3.jsonl`
 - `/ll:confidence-check` - 2026-06-16T00:00:00 - `16a2efe8-0d23-40b4-8630-87117c17a1bc.jsonl`
