@@ -2937,3 +2937,270 @@ class TestSessionEndSweep:
         assert result.returncode == 0, (
             f"session-end.sh exited {result.returncode}. stderr: {result.stderr!r}"
         )
+
+
+class TestSessionCapture:
+    """Test session-capture.sh PostToolUse hook (FEAT-1262)."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to session-capture.sh (tested directly — no adapter wrapper)."""
+        return Path(__file__).parent.parent.parent / "hooks/scripts/session-capture.sh"
+
+    @pytest.fixture
+    def test_config(self, tmp_path: Path) -> Path:
+        """Config file with session_capture.enabled: true."""
+        config = {"session_capture": {"enabled": True}}
+        config_file = tmp_path / ".ll" / "ll-config.json"
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(json.dumps(config))
+        return config_file
+
+    def _make_input(
+        self,
+        tool_name: str,
+        tool_input: dict,
+        tool_response: dict | None = None,
+    ) -> str:
+        """Build JSON stdin for the hook simulating a PostToolUse invocation."""
+        data: dict = {"tool_name": tool_name, "tool_input": tool_input}
+        if tool_response is not None:
+            data["tool_response"] = tool_response
+        return json.dumps(data)
+
+    def _run_hook(
+        self,
+        hook_script: Path,
+        stdin: str,
+        cwd: Path,
+        env: dict | None = None,
+    ) -> subprocess.CompletedProcess:
+        import os
+
+        run_env = dict(os.environ) if env is None else env
+        return subprocess.run(
+            [str(hook_script)],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(cwd),
+            env=run_env,
+        )
+
+    def _read_events(self, tmp_path: Path) -> list[dict]:
+        """Read all events from the JSONL file, returning parsed dicts."""
+        events_file = tmp_path / ".ll" / "ll-session-events.jsonl"
+        if not events_file.exists():
+            return []
+        lines = [ln for ln in events_file.read_text().splitlines() if ln.strip()]
+        return [json.loads(ln) for ln in lines]
+
+    def test_file_event_captured(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ) -> None:
+        """Write tool invocation produces a type=file event record."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            stdin = self._make_input(
+                "Write",
+                {"file_path": "scripts/foo.py"},
+            )
+            result = self._run_hook(hook_script, stdin, tmp_path)
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook exited non-zero: {result.stderr}"
+        events = self._read_events(tmp_path)
+        assert len(events) == 1, f"Expected 1 event, got {len(events)}: {events}"
+        ev = events[0]
+        assert ev["type"] == "file"
+        assert ev["op"] == "Write"
+        assert ev["subject"] == "scripts/foo.py"
+        assert "ts" in ev
+        assert "status" in ev
+
+    def test_task_event_captured(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ) -> None:
+        """TaskCreate tool invocation produces a type=task event record."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            stdin = self._make_input(
+                "TaskCreate",
+                {"id": "task-123", "content": "implement foo", "status": "in_progress"},
+            )
+            result = self._run_hook(hook_script, stdin, tmp_path)
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook exited non-zero: {result.stderr}"
+        events = self._read_events(tmp_path)
+        assert len(events) == 1
+        ev = events[0]
+        assert ev["type"] == "task"
+        assert ev["op"] == "TaskCreate"
+        assert "ts" in ev
+
+    def test_git_event_captured(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ) -> None:
+        """Bash invocation with git produces a type=git event record."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            stdin = self._make_input(
+                "Bash",
+                {"command": "git commit -m 'fix: test'"},
+                tool_response={"exit_code": 0},
+            )
+            result = self._run_hook(hook_script, stdin, tmp_path)
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook exited non-zero: {result.stderr}"
+        events = self._read_events(tmp_path)
+        assert len(events) == 1
+        ev = events[0]
+        assert ev["type"] == "git"
+        assert ev["op"] == "commit"
+        assert "ts" in ev
+
+    def test_error_event_captured(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ) -> None:
+        """Bash invocation with non-zero exit produces a type=error event record."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            stdin = self._make_input(
+                "Bash",
+                {"command": "pytest scripts/tests/"},
+                tool_response={"exit_code": 1},
+            )
+            result = self._run_hook(hook_script, stdin, tmp_path)
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook exited non-zero: {result.stderr}"
+        events = self._read_events(tmp_path)
+        assert len(events) == 1
+        ev = events[0]
+        assert ev["type"] == "error"
+        assert ev["op"] == "bash_error"
+        assert ev["status"] == "1"
+        assert "pytest" in ev["subject"]
+        assert "ts" in ev
+
+    def test_exits_zero_when_feature_disabled(
+        self, hook_script: Path, tmp_path: Path
+    ) -> None:
+        """Hook exits 0 and produces no record when session_capture.enabled is false (default)."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            # No test_config fixture — feature defaults to disabled
+            stdin = self._make_input("Write", {"file_path": "scripts/foo.py"})
+            result = self._run_hook(hook_script, stdin, tmp_path)
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook exited non-zero: {result.stderr}"
+        events = self._read_events(tmp_path)
+        assert len(events) == 0, "No events should be written when feature is disabled"
+
+    def test_exits_zero_on_malformed_stdin(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ) -> None:
+        """Hook exits 0 and produces no record when stdin is malformed JSON."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = self._run_hook(hook_script, "not valid json {{{{", tmp_path)
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook exited non-zero on bad stdin: {result.stderr}"
+
+    def test_unknown_tool_produces_no_record(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ) -> None:
+        """Unknown tool names produce no event record."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            stdin = self._make_input("SomeUnknownTool", {"data": "value"})
+            result = self._run_hook(hook_script, stdin, tmp_path)
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook exited non-zero: {result.stderr}"
+        events = self._read_events(tmp_path)
+        assert len(events) == 0, "Unknown tools should produce no event record"
+
+    def test_concurrent_writes_no_corruption(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ) -> None:
+        """10 concurrent hook invocations produce 10 valid, uncorrupted JSONL lines."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            def run_one(i: int) -> subprocess.CompletedProcess:
+                stdin = self._make_input(
+                    "Write",
+                    {"file_path": f"scripts/file_{i}.py"},
+                )
+                return self._run_hook(hook_script, stdin, tmp_path)
+
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(run_one, i) for i in range(10)]
+                results = [f.result() for f in as_completed(futures)]
+        finally:
+            os.chdir(original_dir)
+
+        assert all(r.returncode == 0 for r in results), "All hook invocations must exit 0"
+
+        events = self._read_events(tmp_path)
+        assert len(events) == 10, f"Expected 10 events, got {len(events)}"
+        for ev in events:
+            assert ev["type"] == "file"
+            assert ev["op"] == "Write"
+            assert "ts" in ev
+
+    def test_file_subject_strips_leading_dot_slash(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ) -> None:
+        """File subject has leading ./ stripped per subject-normalization rule."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            stdin = self._make_input("Read", {"file_path": "./scripts/foo.py"})
+            result = self._run_hook(hook_script, stdin, tmp_path)
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0
+        events = self._read_events(tmp_path)
+        assert len(events) == 1
+        assert events[0]["subject"] == "scripts/foo.py"

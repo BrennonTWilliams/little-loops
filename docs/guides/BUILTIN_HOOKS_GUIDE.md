@@ -60,6 +60,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | issue-completion-log | Appends a session log entry to issues marked `done` | — | on |
 | **PostToolUse** | check-duplicate-issue-id-post | Deletes a just-written duplicate issue file (TOCTOU guard) | exit 2 | on |
 | **PostToolUse** | issue-auto-commit | Auto-commits issue-file edits | — | off |
+| **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
 | **Stop** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
@@ -199,7 +200,7 @@ Keeps large tool output out of the conversation. On `Bash`, it rewrites allowlis
 
 ## PostToolUse
 
-Five hooks run after each tool call.
+Six hooks run after each tool call.
 
 ### Tool & file analytics
 
@@ -335,6 +336,7 @@ A few quick controls:
 | `context_monitor.enabled` | PostToolUse, Stop | `true` | Track context usage |
 | `context_monitor.auto_handoff_threshold` | PostToolUse | `80` | % at which to nudge handoff |
 | `issues.auto_commit` | PostToolUse | `false` | Auto-commit issue files |
+| `session_capture.enabled` | PostToolUse | `false` | Append per-tool structured event records to `.ll/ll-session-events.jsonl` |
 | `issues.base_dir` | (all issue hooks) | `.issues` | Issue directory |
 | `hooks.stale_ref_fix` | Stop | `report` | `report` or `auto` |
 | `parallel.worktree_base` | Stop | `.worktrees` | Worktree cleanup scope |

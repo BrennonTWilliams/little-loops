@@ -1210,6 +1210,28 @@ When `issues.auto_commit: true` is set in `.ll/ll-config.json`, a PostToolUse ho
 
 ---
 
+### Session Event Capture
+
+When `session_capture.enabled: true` is set in `.ll/ll-config.json`, a PostToolUse hook fires on every tool invocation and appends one structured JSON event record to `.ll/ll-session-events.jsonl`. This event log is the data source for FEAT-1264's PreCompact snapshot builder, which uses it to reconstruct a structured handoff context (pending tasks, net-modified files, unresolved errors) that is more accurate than the current git-diff-based approach.
+
+**Trigger**: Any tool invocation (matcher: `*`).
+
+**Event types captured**:
+- `file` — Read, Write, Edit, Glob, Grep tool calls (subject = file path)
+- `task` — TodoWrite, TaskCreate, TaskUpdate tool calls (subject = content/id, status = task status)
+- `git` — Bash invocations containing `git` with exit 0 (op = git subcommand, subject = args)
+- `error` — Bash invocations with non-zero exit code (op = "bash_error", subject = command, status = exit code)
+
+**Implementation**:
+- Hook script: `hooks/scripts/session-capture.sh`
+- Output file: `.ll/ll-session-events.jsonl` (one compact JSON object per line)
+- Config flag: `session_capture.enabled` (bool, default `false`)
+- Failure-safe: all error paths exit 0; capture failures never block tool execution
+
+**Consumer**: FEAT-1264 (`precompact-handoff.sh`) reads this log to build the structured handoff snapshot.
+
+---
+
 ### Context Efficiency
 
 > **Efficiency metric: tokens-per-task, not tokens-per-request.**

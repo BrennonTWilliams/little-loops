@@ -1467,6 +1467,18 @@
       },
       "additionalProperties": false
     },
+    "session_capture": {
+      "type": "object",
+      "description": "Continuous session event capture (FEAT-1262). When enabled, session-capture.sh appends one structured event record per tool invocation to .ll/ll-session-events.jsonl, providing the data source for FEAT-1264's PreCompact handoff snapshot builder.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable per-tool event capture to .ll/ll-session-events.jsonl. Default off; opt in alongside FEAT-1264."
+        }
+      },
+      "additionalProperties": false
+    },
     "analytics": {
       "type": "object",
       "description": "Context-window analytics settings (FEAT-1160). When enabled, the post_tool_use hook persists per-tool byte metrics into .ll/history.db for consumption by /ll:ctx-stats.",

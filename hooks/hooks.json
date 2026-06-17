@@ -128,6 +128,17 @@
             "statusMessage": "Auto-committing issue file..."
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-capture.sh",
+            "timeout": 5,
+            "statusMessage": "Capturing session event..."
+          }
+        ]
       }
     ],
     "Stop": [

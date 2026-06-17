@@ -15,12 +15,14 @@ relates_to:
 - FEAT-1157
 - FEAT-1158
 decision_needed: false
-confidence_score: 91
+implementation_order_risk: true
+confidence_score: 100
 outcome_confidence: 72
 score_complexity: 15
 score_test_coverage: 17
 score_ambiguity: 20
 score_change_surface: 20
+size: Very Large
 ---
 
 # FEAT-1156: PreCompact Handoff Hook — Core Implementation
@@ -87,13 +89,13 @@ Follow `pre_compact.py` structure exactly:
 
 - `handle(event: LLHookEvent) -> LLHookResult` signature from `scripts/little_loops/hooks/types.py`
 - Read `compacted_at` from `.ll/ll-precompact-state.json` (written by `pre_compact.handle()`)
-- **Idempotency guard**: compare `Path(".ll/ll-continue-prompt.md").stat().st_mtime` vs `compacted_at` epoch; return `LLHookResult(exit_code=0)` if already fresh
+- **Idempotency guard**: read `compacted_at` string (format `"%Y-%m-%dT%H:%M:%SZ"`) from `.ll/ll-precompact-state.json`; parse to epoch via `datetime.fromisoformat(compacted_at.replace("Z", "+00:00")).timestamp()`; compare to `Path(".ll/ll-continue-prompt.md").stat().st_mtime`; return `LLHookResult(exit_code=0)` if prompt mtime is newer than compacted epoch (already fresh)
 - **Tiered section builder** (priority order):
-  1. Active issues + loop state (always kept) — `subprocess` call to `ll-issues list --status in_progress` + `.ll/loops/` JSON reads
+  1. Active issues + loop state (always kept) — `subprocess` call to `ll-issues list --status in_progress`; loop state from `.loops/runs/` (glob latest run-dir JSON files); gracefully degrade to empty section if `.loops/runs/` does not exist or subprocess fails
   2. Files edited this session (always kept) — `subprocess` call to `git diff --name-only HEAD`
   3. Open decisions / blockers (kept if space)
   4. Recent tool-event summary (dropped first under size pressure)
-- **LIFO 2KB cap**: `while len(content.encode()) > 2048: sections.pop()` then join
+- **LIFO 2KB cap**: extract into a pure helper `_build_content(sections: list[str], max_bytes: int = 2048) -> str` — `while len("\n\n".join(sections).encode()) > max_bytes: sections.pop()` then return `"\n\n".join(sections)`; test this function in isolation per Confidence Check Note on LIFO complexity
 - Write via `acquire_lock(lock_path, timeout=3.0)` + `atomic_write(prompt_path, content)` — use `atomic_write` (text), NOT `atomic_write_json` (JSON), since `.ll/ll-continue-prompt.md` is markdown
 - Best-effort fallback: `except TimeoutError: atomic_write(prompt_path, content)` (mirrors `pre_compact.py` lines 96–100)
 - Wrap entire body in `try/except Exception: return LLHookResult(exit_code=0)` — failures must not surface
@@ -144,15 +146,15 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 
 - **Files edited**: `git diff --name-only HEAD`
 - **Active issues**: `ll-issues list --status in_progress` (single-value `--status` per BUG-1799)
-- **Loop state**: read `.ll/loops/` JSON files
+- **Loop state**: glob `.loops/runs/` for most-recent run-dir JSON files; gracefully skip if directory absent
 
 When FEAT-1262's `.ll/ll-session-events.jsonl` is present, prefer it as the primary source for
 files-edited and decisions sections (FEAT-1264 formalizes this). Fall back to the above when absent.
 
 ### Output Schema
 
-Follow `commands/handoff.md` structured schema. The consumer `commands/resume.md:28-56` validates
-`## Intent` + `## Next Steps` presence.
+Follow `commands/handoff.md` structured schema. The consumer `commands/resume.md:56-68` validates
+`## Intent` + `## Next Steps` section headings (schema detection by section heading presence, not frontmatter keys).
 
 ## Files to Modify
 
@@ -182,8 +184,9 @@ Follow `commands/handoff.md` structured schema. The consumer `commands/resume.md
 - `hooks/adapters/claude-code/precompact-handoff.sh` — thin Claude Code adapter
 
 ### Dependent Files (Callers/Importers)
-- `commands/resume.md:28-56` — consumer of `.ll/ll-continue-prompt.md`
-- `scripts/little_loops/subprocess_utils.py:57-95` — `detect_context_handoff()` and `read_continuation_prompt()`; checks file presence/non-emptiness only
+- `commands/resume.md:56-68` — consumer of `.ll/ll-continue-prompt.md`; detects schema by checking for `## Intent` and `## Next Steps` section headings (not frontmatter keys)
+- `scripts/little_loops/subprocess_utils.py:59` — `CONTINUATION_PROMPT_PATH = Path(".ll/ll-continue-prompt.md")` constant; all consumers import this path, not a hard-coded string
+- `scripts/little_loops/subprocess_utils.py:71,92` — `detect_context_handoff()` and `read_continuation_prompt()`; read `.ll/ll-continue-prompt.md` via `CONTINUATION_PROMPT_PATH`
 - `hooks/scripts/context-monitor.sh:370-407` — mtime-vs-threshold idempotency check
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -195,6 +198,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/hooks/pre_compact.py` — canonical Python handler to model after (`handle(event: LLHookEvent) -> LLHookResult`, `acquire_lock` + `atomic_write_json`, try/except wrapper)
 - `hooks/adapters/claude-code/precompact.sh` — thin adapter pattern: `INPUT=$(cat)` + `echo "$INPUT" | python -m little_loops.hooks <intent>`
 - `scripts/little_loops/file_utils.py` — `acquire_lock`, `atomic_write` (text files), `atomic_write_json` (JSON files)
+- `scripts/little_loops/cli/session.py:_run_extract_decisions()` — reference for `["ll-issues", ...]` subprocess call pattern: `capture_output=True, text=True` + `except FileNotFoundError` guard (exact model for the `ll-issues list --status in_progress` call)
+
+_Confirmed by codebase research 2026-06-16:_
+- `scripts/little_loops/hooks/__init__.py` dispatch table: `session_end` maps to `sweep_stale_refs.handle` (not a `session_end.py`) — `pre_compact_handoff` should follow the same built_ins pattern. Precedence: `return {**_HOOK_INTENT_REGISTRY, **built_ins}` means built-ins shadow extension-provided handlers on name collision.
+- `scripts/little_loops/hooks/pre_compact.py` uses `atomic_write_json` (JSON output) — `pre_compact_handoff.py` must use `atomic_write` (text/markdown) instead.
+- All adapters (`session-end.sh`, `post-tool-use.sh`, etc.) confirm the 3-line pattern is universal. `precompact-handoff.sh` differs only in the intent name argument.
+- `scripts/little_loops/cli/session.py:_run_extract_decisions()` confirms the `ll-issues` subprocess call pattern: `["ll-issues", "list", "--status", "in_progress"]` with `capture_output=True, text=True, timeout=5` + `except (FileNotFoundError, subprocess.TimeoutExpired): active_issues_text = ""` guard. Same pattern applies to `git diff --name-only HEAD`. No existing Python hook handler calls `ll-issues` via subprocess — this is the first.
 
 ### Tests
 - FEAT-1157 covers test additions for this handler
@@ -212,15 +222,44 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 1. Create `scripts/little_loops/hooks/pre_compact_handoff.py` following `pre_compact.py` structure:
    - `handle(event: LLHookEvent) -> LLHookResult` signature
-   - Idempotency guard: read `compacted_at` from `.ll/ll-precompact-state.json`, compare against `ll-continue-prompt.md` mtime; return `exit_code=0` if already fresh
-   - Build tiered sections in priority order: active issues via `ll-issues list --status in_progress` + `.ll/loops/` JSON reads; files via `git diff --name-only HEAD`; decisions/blockers; tool-event summary
-   - LIFO 2KB cap: `while len(content.encode()) > 2048: sections.pop()`
-   - Write via `acquire_lock(lock_path, timeout=3.0)` + `atomic_write(prompt_path, content)` with `TimeoutError` best-effort fallback
+   - Idempotency guard: read `compacted_at` from `.ll/ll-precompact-state.json` (format `"%Y-%m-%dT%H:%M:%SZ"`), parse to epoch via `datetime.fromisoformat(compacted_at.replace("Z", "+00:00")).timestamp()`, compare against `prompt_path.stat().st_mtime`; return `exit_code=0` if prompt is already fresh; guard the whole block in `try/except (OSError, json.JSONDecodeError, KeyError, ValueError)` — skip guard on any error and proceed to write
+   - Extract LIFO cap as pure helper: `_build_content(sections: list[str], max_bytes: int = 2048) -> str` — `while len("\n\n".join(sections).encode()) > max_bytes: sections.pop()` then return `"\n\n".join(sections)`
+   - Build tiered sections in priority order:
+     - **Active issues** via subprocess (exact pattern from `session.py:_run_extract_decisions()`):
+       ```python
+       try:
+           r = subprocess.run(["ll-issues", "list", "--status", "in_progress"],
+                              capture_output=True, text=True, timeout=5)
+           active_issues_text = r.stdout if r.returncode == 0 else ""
+       except (FileNotFoundError, subprocess.TimeoutExpired):
+           active_issues_text = ""
+       ```
+     - **Files edited** via subprocess (same guard pattern):
+       ```python
+       try:
+           r = subprocess.run(["git", "diff", "--name-only", "HEAD"],
+                              capture_output=True, text=True, timeout=5)
+           files_text = r.stdout if r.returncode == 0 else ""
+       except (FileNotFoundError, subprocess.TimeoutExpired):
+           files_text = ""
+       ```
+     - **Loop state** via `Path(".loops/runs/").glob("*/")` sorted by mtime — read first `.json` in each run dir; graceful `OSError` degradation
+     - **Loop state caveat (confirmed 2026-06-16)**: Standard run-dir files use `.jsonl` extension (`usage.jsonl`, `messages.jsonl`); the `*.json` glob will typically return nothing — the empty-section graceful degradation handles this normally. The loop-state section is best-effort and may be empty in most real runs.
+     - **Decisions/blockers** (kept if space after tiers 1–3)
+     - **Tool-event summary** (dropped first under size pressure)
+   - Apply `_build_content(sections, max_bytes=2048)` to assemble the final markdown
+   - Write via `acquire_lock(lock_path, timeout=3.0)` + `atomic_write(prompt_path, content)` with `TimeoutError` best-effort fallback; lock file path: `prompt_path.with_suffix(".md.lock")`
    - Wrap entire body in `try/except Exception: return LLHookResult(exit_code=0)`
-2. Register in `scripts/little_loops/hooks/__init__.py`: add `pre_compact_handoff` to the lazy import block in `_dispatch_table()`, add to `built_ins` dict, add to `_USAGE` string
+2. Register in `scripts/little_loops/hooks/__init__.py`:
+   - Lazy import block (`_dispatch_table()` lines 73–80): add `pre_compact_handoff,` alphabetically between `pre_compact` and `pre_tool_use`
+   - `built_ins` dict (lines 82–89): add `"pre_compact_handoff": pre_compact_handoff.handle,` after the `"pre_compact"` entry
+   - `_USAGE` string (lines 48–52): append `, pre_compact_handoff` to the end of the `" post_tool_use, pre_tool_use, session_end"` line (before the closing `"`)
+   - Module docstring (line 14): add `- ``pre_compact_handoff`` → :mod:`little_loops.hooks.pre_compact_handoff`` to the routing list
 3. Create `hooks/adapters/claude-code/precompact-handoff.sh` (3-line thin adapter: `#!/usr/bin/env bash`, `INPUT=$(cat)`, `echo "$INPUT" | python -m little_loops.hooks pre_compact_handoff; exit $?`)
 4. Add second PreCompact entry in `hooks/hooks.json` after the existing entry — ordering required (existing entry writes `compacted_at` first)
 5. Write tests in `scripts/tests/test_pre_compact_handoff.py` modeled after `scripts/tests/test_pre_compact.py`: cover LIFO algorithm in isolation, idempotency guard (fresh vs stale prompt), subprocess fanout graceful degradation (each of the three sources fails independently), and result contract (exit 2 + feedback on write, exit 0 on skip). Add `assert "pre_compact_handoff" in table` to `test_dispatch_table_merges_hook_intent_registry` and add `test_dispatch_pre_compact_handoff_happy_path` to `scripts/tests/test_hook_intents.py`
+   - **Exact subprocess test pattern (confirmed 2026-06-16)** — `tmp_path` has no `.ll/ll-precompact-state.json`, so the idempotency guard hits `OSError` → caught → handler proceeds to write (no skip). Assert `returncode == 2`, `"Session handoff snapshot written" in result.stderr`, and `(tmp_path / ".ll" / "ll-continue-prompt.md").is_file()`. Pattern mirrors `test_dispatch_pre_compact_happy_path` (uses `cwd=str(tmp_path)`, `input=json.dumps({})`, `capture_output=True`, `timeout=10`).
+   - All test classes use `monkeypatch.chdir(tmp_path)` (in-process tests) or `cwd=str(tmp_path)` (subprocess tests) — never write to the real `.ll/` directory.
 
 ## Impact
 
@@ -243,26 +282,36 @@ created under `hooks/scripts/`. The "port to Python later" caveat from earlier p
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-23
+**Verdict**: VALID — Re-verified 2026-06-16
 
 - `scripts/little_loops/hooks/pre_compact_handoff.py` does not exist ✓
 - `hooks/adapters/claude-code/precompact-handoff.sh` does not exist ✓
 - No second PreCompact entry for handoff in `hooks/hooks.json` ✓
+- `hooks/hooks.json` PreCompact section line range 165–177 still accurate ✓
+- `__init__.py` dispatch table line ranges (73–80 import block, 82–89 built_ins, 48–52 `_USAGE`) confirmed current ✓
+- `subprocess_utils.py:59` `CONTINUATION_PROMPT_PATH` confirmed current ✓
 - Feature not yet implemented ✓
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-16_
+_Added by `/ll:confidence-check` on 2026-06-16; updated 2026-06-16_
 
-**Readiness Score**: 91/100 → PROCEED
+**Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 72/100 → LOW
 
 ### Outcome Risk Factors
-- **Novel per-site complexity** — The LIFO 2KB section-dropping algorithm has no existing Python implementation to model. Design and test this piece in isolation (a small pure-function `_build_content(sections, max_bytes)`) before integrating with the hook handler.
-- **Multi-source subprocess fanout** — The handler spawns `ll-issues list --status in_progress` + reads `.ll/loops/` JSON + calls `git diff --name-only HEAD`. Each subprocess has its own failure mode; ensure all three have graceful degradation (empty section on error, not a crash).
-- **Tests are co-deliverables** — `test_pre_compact_handoff.py` and the `test_hook_intents.py` assertions (`pre_compact_handoff in table`) are tracked in FEAT-1157, not co-located here. Implement tests first so the LIFO algorithm and idempotency guard are exercised before hook registration.
+- **Novel LIFO algorithm** — `_build_content(sections, max_bytes)` has no existing Python counterpart to model; design and test this pure helper in isolation before integrating with the hook handler
+- **Multi-source subprocess fanout** — handler spawns `ll-issues list --status in_progress` + `git diff --name-only HEAD` + `.loops/runs/` glob; each has its own failure mode — ensure all three degrade to empty section (not a crash)
+- **Tests are co-deliverables (FEAT-1157)** — `test_pre_compact_handoff.py` and `test_hook_intents.py` assertion (`pre_compact_handoff in table`) are tracked in FEAT-1157; implement tests first so LIFO and idempotency guard are exercised before hook registration
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-16T00:00:00 - `b396a3fd-b6f8-4762-9f77-9bf4135b13a5.jsonl`
+- `/ll:refine-issue` - 2026-06-17T01:26:06 - `db7c22a7-6029-405e-9991-478990a1bba3.jsonl`
+- `/ll:confidence-check` - 2026-06-16T00:00:00 - `16a2efe8-0d23-40b4-8630-87117c17a1bc.jsonl`
+- `/ll:refine-issue` - 2026-06-17T01:17:02 - `3da5122d-2e48-40a4-8df4-932869055323.jsonl`
+- `/ll:confidence-check` - 2026-06-17T00:00:00 - `0e61485f-3d17-4f44-b005-5b6f95252be2.jsonl`
+- `/ll:refine-issue` - 2026-06-17T00:36:33 - `7d311f92-7a9f-475e-a7a0-98b44e638a80.jsonl`
+- `/ll:confidence-check` - 2026-06-16T00:00:00 - `74f0a04a-2564-4481-b304-97bcf6561db6.jsonl`
 - `/ll:confidence-check` - 2026-06-16T23:55:00 - `bf3fb4d1-54fd-4a5b-a332-5d6f637f776f.jsonl`
 - `/ll:confidence-check` - 2026-06-16T23:30:00 - `f7a2c37a-062a-4915-a771-821fa46945ff.jsonl`
 - `/ll:wire-issue` - 2026-06-16T23:06:39 - `f1cfd32d-9915-4da3-89f1-643c1c09bfb4.jsonl`

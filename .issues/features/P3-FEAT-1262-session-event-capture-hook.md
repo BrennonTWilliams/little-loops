@@ -2,9 +2,10 @@
 id: FEAT-1262
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-22
 discovered_by: issue-size-review
+completed_at: 2026-06-17 02:07:34+00:00
 blocked_by:
 - FEAT-1112
 parent: FEAT-1159
@@ -13,12 +14,12 @@ relates_to:
 - FEAT-1156
 - FEAT-1264
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 80
-score_complexity: 18
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 20
 score_test_coverage: 20
 score_ambiguity: 22
-score_change_surface: 20
+score_change_surface: 25
 ---
 
 # FEAT-1262: Session Event Capture Hook (`session-capture.sh`)
@@ -176,6 +177,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `TestIssueCompletionLog` at line 1363 — also a direct-script test (no adapter) and a closer model than `TestPrecompactState` for JSONL-appending PostToolUse scripts
 - `TestContextMonitor` at line 14 — concurrent access test model
 
+**TestSessionCapture `test_config` fixture** (required for feature-flag tests): since `session_capture.enabled` defaults to `false`, the hook early-exits without a config. Tests that verify actual capture behavior need a `test_config` fixture that accepts `test_config` as a parameter; tests that verify early-exit behavior omit it. Follow the `TestContextMonitor.test_config` pattern:
+```python
+@pytest.fixture
+def test_config(self, tmp_path: Path) -> Path:
+    config = {"session_capture": {"enabled": True}}
+    config_file = tmp_path / ".ll" / "ll-config.json"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text(json.dumps(config))
+    return config_file
+```
+
+**`_make_input()` helper method**: follow `TestIssueCompletionLog._make_input()` (line 1374) — a private class method that constructs the stdin JSON string; keeps payload construction out of test assertions and simplifies parametrize usage.
+
+**`test_session_capture_in_schema` assertion style**: use `is False` (identity, not equality) for boolean defaults: `assert enabled["default"] is False`. The `test_analytics_in_schema` pattern at line 253 uses `is False` throughout.
+
 ## Implementation Steps
 
 1. Create `hooks/scripts/session-capture.sh` following `precompact-state.sh` structure (stdin JSON, jq, common.sh)
@@ -232,6 +248,36 @@ IFS=$'\t' read -r TOOL_NAME BASH_CMD BASH_EXIT <<< "$(echo "$INPUT" | jq -r '[
 
 **Exit code**: PostToolUse hooks exit `0` (confirmed from `issue-completion-log.sh`). Only PreCompact uses exit `2`. All success and error paths in `session-capture.sh` must exit `0`.
 
+**jq availability check ordering**: `if ! command -v jq &>/dev/null; then exit 0; fi` must come BEFORE `INPUT=$(cat)` — following `issue-completion-log.sh` line 17–19. If jq is absent, `cat` would block waiting for stdin.
+
+**`acquire_lock` return values**: returns `0` on success, `1` on lock timeout (after `timeout` seconds, default 10). The best-effort fallback (`echo "$EVENT_JSON" >> "$EVENTS_FILE" 2>/dev/null || true` when lock times out) follows the `precompact-state.sh` pattern at lines 77–79.
+
+**BUILTIN_HOOKS_GUIDE.md new row (step 8)** — add to the "The Lifecycle at a Glance" table (exact column values):
+```
+| **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
+```
+The PostToolUse array in `hooks/hooks.json` currently has 6 entries (lines 65–131); adding `session-capture.sh` makes 7. Update the count in the `## PostToolUse` prose accordingly.
+
+**BUILTIN_HOOKS_GUIDE.md Configuration Reference new row (step 8)**:
+```
+| `session_capture.enabled` | PostToolUse | `false` | Append per-tool structured event records to `.ll/ll-session-events.jsonl` |
+```
+
+**CONFIGURATION.md `### session_capture` section (step 9)** — model after `### analytics` (line 438). Minimal viable structure:
+```markdown
+### `session_capture`
+
+Continuous session event capture (FEAT-1262). When enabled, `session-capture.sh`
+appends one structured event record per tool invocation to `.ll/ll-session-events.jsonl`,
+providing the data source for FEAT-1264's PreCompact handoff snapshot builder.
+Default is off; opt in alongside FEAT-1264.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable per-tool event capture to `.ll/ll-session-events.jsonl`. |
+```
+The `### analytics` section uses a 3-column table (Key / Default / Description) for single-property blocks; no `Type` column needed here.
+
 ## Impact
 
 - **Priority**: P3 — Enables structured event-log-driven handoffs; current text-based handoff still works without it
@@ -272,6 +318,10 @@ This issue owns only the capture side: writing `.ll/ll-session-events.jsonl`. It
 `hook`, `session`, `automation`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-17T01:48:40 - `eb3d98fb-09f0-4f74-aa6a-11b4bac43676.jsonl`
+- `/ll:confidence-check` - 2026-06-16T04:00:00Z - `10c36db2-931b-48c1-91b8-b8103f5098f7.jsonl`
+- `/ll:refine-issue` - 2026-06-17T01:41:51 - `fecd2e7e-76c0-40d9-8bf8-2efafa5991b6.jsonl`
+- `/ll:confidence-check` - 2026-06-16T23:56:00Z - `7ef07396-4e37-4232-ac98-0b903775e514.jsonl`
 - `/ll:confidence-check` - 2026-06-16T23:30:00Z - `6bc84bfa-fc14-45b4-b36b-142a14cd7862.jsonl`
 - `/ll:wire-issue` - 2026-06-16T23:04:16 - `db7f74a5-4414-4c6c-b58d-b13028a4c420.jsonl`
 - `/ll:refine-issue` - 2026-06-16T22:56:38 - `a0890b90-9ac3-4ede-9e12-de710c5778d0.jsonl`

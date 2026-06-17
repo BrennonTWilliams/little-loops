@@ -574,3 +574,24 @@ class TestConfigSchema:
         assert scope_props["max_children"]["type"] == "integer"
         assert scope_props["max_children"]["minimum"] == 1
         assert scope_props["max_children"]["default"] == 8
+
+    def test_session_capture_in_schema(self) -> None:
+        """session_capture block must be declared in config-schema.json (FEAT-1262).
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing 'session_capture' will be rejected unless the property
+        is declared here. The block gates the session-capture.sh PostToolUse hook
+        that appends per-tool event records to .ll/ll-session-events.jsonl.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "session_capture" in data["properties"], (
+            "session_capture is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        session_capture = data["properties"]["session_capture"]
+        assert session_capture["type"] == "object"
+        assert session_capture.get("additionalProperties") is False
+        assert "enabled" in session_capture["properties"]
+        enabled = session_capture["properties"]["enabled"]
+        assert enabled["type"] == "boolean"
+        assert enabled["default"] is False
