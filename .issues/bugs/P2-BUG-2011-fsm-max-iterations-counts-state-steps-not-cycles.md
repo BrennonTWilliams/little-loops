@@ -127,6 +127,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/cli/loop/run.py:118-119` — applies CLI override: `if args.max_iterations: fsm.max_iterations = args.max_iterations`. Update to route `--max-steps` → `fsm.max_steps` and `--max-iterations` → `fsm.max_iterations` (iteration cap).
 - `scripts/little_loops/fsm/persistence.py:190,810` — `LoopState.iteration: int` persists the per-step counter; `PersistentExecutor.resume()` restores it via `self._executor.iteration = state.iteration` at line 810. Under Option 2, add `iteration_count: int = 0` to `LoopState` and restore alongside `self._executor.iteration`.
 
+### Wiring Pass 4 — Additional Files (2026-06-17)
+
+_Added by `/ll:refine-issue` — new touchpoints not captured in prior wiring passes:_
+
+- `scripts/little_loops/fsm/types.py:24,34` — `ExecutionResult` docstring enumerates `terminated_by` reason strings: `"terminal", "max_iterations", "timeout", "signal", "error", "handoff", "cycle_detected"`. Under Option 2, `"max_iterations"` as a reason string is replaced by `"max_steps"` (step cap) and `"max_iterations_reached"` (iteration cap). Update both the one-line attribute docstring (line 24) and the inline comment (line 34).
+- `scripts/tests/helpers.py:56,73` — Test helper `FSMLoop(max_iterations=max_iterations)` passes `max_iterations` as a step cap today (same pattern as `test_cli.py` in step 27). Under Option 2, the Python field `FSMLoop.max_iterations` becomes the iteration cap; step cap is `FSMLoop.max_steps`. Rename parameter `max_iterations: int = 50` → `max_steps: int = 50` (line 56) and update constructor call at line 73 to `FSMLoop(max_steps=max_steps)`.
+
 ### Wiring Pass — Additional Dependent Files (Callers/Consumers)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -448,7 +455,7 @@ _Additional touchpoints identified by third wiring pass:_
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-06-13 (re-check after Wiring Pass 3)_
+_Updated by `/ll:confidence-check` on 2026-06-17 (re-check post-verification pass; scores unchanged)_
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 56/100 → LOW
@@ -471,12 +478,14 @@ The existing `_summary_state_executed` flag at `executor.py:212` and the `TestMa
 
 **YAML alias conflict**: `from_dict()` cannot alias `on_max_iterations` YAML key → `on_max_steps` Python field because the new `on_max_iterations` Python field is the iteration-cap summary state. The 2 existing loops (`general-task.yaml:9`, `canvas-sketch-generator.yaml:32`) must be explicitly updated to `on_max_steps:` as part of this implementation — there is no non-breaking alias path.
 
-## Verification Notes (2026-06-13)
+## Verification Notes (2026-06-17)
 
-- Line numbers have drifted since last wiring pass: primary increment is `executor.py:414` (issue says `:403`); cap check is `:302` (issue says `:296`); maintain-mode restart is `:366` (issue says `:355`); flush path is `:1403` (issue says `:1372`). `schema.py` field lines: 955/956/957 (issue says 951/952/953). `TestMaxIterationsSummaryHook` is at line 7357 (issue says 7184). All code paths described are still accurate — only line numbers need refreshing at implementation time.
+- **Current line numbers** (verified 2026-06-17): primary increment `executor.py:400`; cap check `:310`; maintain-mode restart `:456`; flush path `:1490`. `schema.py` fields: `max_iterations` `:961`, `on_max_iterations` `:962`, `max_edge_revisits` `:963`. `TestMaxIterationsSummaryHook` at line `7663`.
 - Bug is unimplemented: `max_steps`/`max_iterations` dual-counter fix not yet in `executor.py` or `schema.py`. Three YAML files (`canvas-sketch-generator.yaml`, `vega-viz.yaml`, `general-task.yaml`) still use `on_max_iterations:` as described.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-17T00:00:00Z - `61080daf-c8b4-4a7f-bca8-e81a09d0e829.jsonl`
+- `/ll:refine-issue` - 2026-06-17T18:18:12 - `a975220c-f204-4a44-bba9-d07f395df4f0.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:confidence-check` - 2026-06-13T18:30:00Z - `b2d4feeb-e222-4a6a-8608-9774ec172c24.jsonl`
 - `/ll:wire-issue` - 2026-06-13T18:05:54Z - `ecae74c3-ea98-4133-b95f-77f464d27531.jsonl`
