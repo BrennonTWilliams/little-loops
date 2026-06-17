@@ -298,6 +298,12 @@ class TestComposerLibFragment:
             "discover_loops fragment must exclude 'goal-cluster' from the candidate catalog"
         )
 
+    def test_discover_loops_fragment_uses_visibility_public(self, lib_data: dict) -> None:
+        action = lib_data["fragments"]["discover_loops"].get("action", "")
+        assert "--visibility public" in action, (
+            "discover_loops fragment must include '--visibility public' flag on ll-loop list"
+        )
+
 
 class TestCatalogExclusivity:
     """Tests for the routing guard between loop-router, loop-composer, and goal-cluster."""

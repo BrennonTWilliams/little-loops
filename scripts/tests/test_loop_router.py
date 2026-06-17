@@ -113,6 +113,12 @@ class TestLoopRouterStates:
             "discover_loops must exclude 'loop-router' from the catalog"
         )
 
+    def test_discover_loops_uses_visibility_public(self, loop_data: dict) -> None:
+        state = loop_data["states"]["discover_loops"]
+        assert "--visibility public" in state.get("action", ""), (
+            "discover_loops action must include '--visibility public' flag on ll-loop list"
+        )
+
     def test_classify_goal_is_prompt(self, loop_data: dict) -> None:
         state = loop_data["states"]["classify_goal"]
         assert state.get("action_type") == "prompt"

@@ -2,8 +2,9 @@
 id: ENH-2203
 title: Wire --visibility public into loop-router.yaml discover_loops state
 priority: P3
-status: open
+status: done
 type: ENH
+completed_at: 2026-06-17 18:07:41+00:00
 relates_to:
 - ENH-2198
 - EPIC-2196
@@ -139,7 +140,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 Open
 
 
+## Resolution
+
+Added `--visibility public` to `ll-loop list --json` in both `loop-router.yaml` `discover_loops` state and `lib/composer.yaml` `discover_loops` fragment. The hardcoded blocklist was retained as-is since none of the five excluded loops have `visibility: internal` annotations — they default to public and would still appear in the filtered output. Two new tests guard the flag in both locations.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-17T18:07:41Z - implementation complete
 - `/ll:ready-issue` - 2026-06-17T18:04:41 - `4cdaf4f4-92fa-4ef1-8ecc-a6fe874fa5bd.jsonl`
 - `/ll:wire-issue` - 2026-06-17T17:59:03 - `f2b3ef53-2acc-45d4-ad59-26197633fe46.jsonl`
 - `/ll:refine-issue` - 2026-06-17T17:50:04 - `caf9feb9-9f53-43b2-8ff0-6d559aabdc0f.jsonl`

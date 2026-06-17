@@ -25,7 +25,7 @@ states:
     action_type: shell
     timeout: 60
     action: |
-      ll-loop list --json 2>/dev/null | python3 -c "
+      ll-loop list --json --visibility public 2>/dev/null | python3 -c "
       import json, sys, os
       loops = json.load(sys.stdin)
       exclude_raw = '${context.exclude}'
