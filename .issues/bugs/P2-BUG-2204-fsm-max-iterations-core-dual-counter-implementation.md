@@ -15,10 +15,10 @@ parent: BUG-2011
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 78
-score_complexity: 13
-score_test_coverage: 20
-score_ambiguity: 0
-score_change_surface: 0
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-2204: FSM max_iterations — core dual-counter implementation
@@ -194,3 +194,4 @@ full loop passes. See BUG-2011 for full root cause detail.
 ## Session Log
 - `/ll:format-issue` - 2026-06-17T18:39:08 - `73a22b6c-06de-4d5e-aee5-75c901aa8812.jsonl`
 - Decomposed from BUG-2011 - 2026-06-17
+- `/ll:confidence-check` - 2026-06-17T00:00:00Z - `4b5d66b8-fe01-446b-be44-7f390d4d76d5.jsonl`
