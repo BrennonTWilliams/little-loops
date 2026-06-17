@@ -349,3 +349,97 @@ class TestExceptionSafety:
         )
 
         assert result.exit_code in (0, 2)
+
+
+class TestEventLogPath:
+    """Event-log-driven path: structured JSONL events produce deduplicated sections (FEAT-1264)."""
+
+    def _write_events(self, ll_dir: Path, events: list[dict]) -> None:
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        lines = "\n".join(json.dumps(e) for e in events) + "\n"
+        (ll_dir / "ll-session-events.jsonl").write_text(lines, encoding="utf-8")
+
+    def test_deduplication_multiple_writes_same_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Multiple Write events for same file → exactly one entry in ll-continue-prompt.md."""
+        monkeypatch.chdir(tmp_path)
+        ll_dir = tmp_path / ".ll"
+        self._write_events(ll_dir, [
+            {"ts": "2026-06-17T10:00:00Z", "type": "file", "op": "Write", "subject": "scripts/foo.py", "status": ""},
+            {"ts": "2026-06-17T10:01:00Z", "type": "file", "op": "Write", "subject": "scripts/foo.py", "status": ""},
+        ])
+
+        result = pre_compact_handoff.handle(_event())
+
+        assert result.exit_code == 2
+        content = (ll_dir / "ll-continue-prompt.md").read_text(encoding="utf-8")
+        assert content.count("scripts/foo.py") == 1
+
+    def test_unresolved_errors_included(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """type=error event with no subsequent same-subject event → appears in Unresolved Errors."""
+        monkeypatch.chdir(tmp_path)
+        ll_dir = tmp_path / ".ll"
+        self._write_events(ll_dir, [
+            {"ts": "2026-06-17T10:00:00Z", "type": "error", "op": "run", "subject": "ruff-check-failed", "status": ""},
+        ])
+
+        result = pre_compact_handoff.handle(_event())
+
+        assert result.exit_code == 2
+        content = (ll_dir / "ll-continue-prompt.md").read_text(encoding="utf-8")
+        assert "ruff-check-failed" in content
+
+    def test_resolved_errors_excluded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """type=error then later same-subject event → error absent from Unresolved Errors section."""
+        monkeypatch.chdir(tmp_path)
+        ll_dir = tmp_path / ".ll"
+        self._write_events(ll_dir, [
+            {"ts": "2026-06-17T10:00:00Z", "type": "error", "op": "run", "subject": "lint-failed", "status": ""},
+            {"ts": "2026-06-17T10:01:00Z", "type": "task", "op": "complete", "subject": "lint-failed", "status": "done"},
+        ])
+
+        result = pre_compact_handoff.handle(_event())
+
+        assert result.exit_code == 2
+        content = (ll_dir / "ll-continue-prompt.md").read_text(encoding="utf-8")
+        assert "## Unresolved Errors" in content
+        errors_start = content.index("## Unresolved Errors")
+        errors_end = content.find("## ", errors_start + 5)
+        errors_section = content[errors_start:errors_end] if errors_end != -1 else content[errors_start:]
+        assert "lint-failed" not in errors_section
+
+    def test_fallback_when_jsonl_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No .ll/ll-session-events.jsonl → fallback path runs; ll-continue-prompt.md is written."""
+        monkeypatch.chdir(tmp_path)
+        assert not (tmp_path / ".ll" / "ll-session-events.jsonl").exists()
+
+        result = pre_compact_handoff.handle(_event())
+
+        assert result.exit_code in (0, 2)
+        assert (tmp_path / ".ll" / "ll-continue-prompt.md").is_file()
+
+    def test_net_task_state_last_event_wins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two type=task events for same subject → only one entry, with the last status."""
+        monkeypatch.chdir(tmp_path)
+        ll_dir = tmp_path / ".ll"
+        self._write_events(ll_dir, [
+            {"ts": "2026-06-17T10:00:00Z", "type": "task", "op": "start", "subject": "FEAT-1264", "status": "in_progress"},
+            {"ts": "2026-06-17T10:01:00Z", "type": "task", "op": "complete", "subject": "FEAT-1264", "status": "done"},
+        ])
+
+        result = pre_compact_handoff.handle(_event())
+
+        assert result.exit_code == 2
+        content = (ll_dir / "ll-continue-prompt.md").read_text(encoding="utf-8")
+        assert "FEAT-1264" in content
+        assert content.count("FEAT-1264") == 1
+        assert "done" in content

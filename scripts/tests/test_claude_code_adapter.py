@@ -73,6 +73,22 @@ class TestClaudeCodeAdapterIntegration:
             f"wildcard commands: {wildcard_commands!r}"
         )
 
+    def test_hooks_json_has_precompact_handoff(self) -> None:
+        """hooks/hooks.json must have a second PreCompact entry pointing to precompact-handoff.sh."""
+        data = json.loads(HOOKS_JSON.read_text())
+        assert "PreCompact" in data["hooks"], "hooks.json is missing PreCompact key"
+        groups = data["hooks"]["PreCompact"]
+        assert len(groups) >= 2, f"Expected ≥2 PreCompact groups, got {len(groups)}"
+        all_commands = [
+            h["command"]
+            for group in groups
+            for h in group.get("hooks", [])
+            if h.get("type") == "command"
+        ]
+        assert any("precompact-handoff.sh" in cmd for cmd in all_commands), (
+            f"expected precompact-handoff.sh in a PreCompact command; got {all_commands!r}"
+        )
+
     def test_post_tool_use_default_host_claude_code(self, tmp_path: Path) -> None:
         """post-tool-use.sh runs the Python handler without setting LL_HOOK_HOST.
 

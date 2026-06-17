@@ -2222,6 +2222,65 @@ class TestPrecompactHandoff:
         finally:
             os.chdir(original_dir)
 
+    def test_event_log_deduplicated_file_edits(self, hook_script: Path, tmp_path: Path):
+        """(e) Event log with duplicate file events → single entry in ll-continue-prompt.md."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            ll_dir = tmp_path / ".ll"
+            ll_dir.mkdir(exist_ok=True)
+            events = [
+                {"ts": "2026-06-17T10:00:00Z", "type": "file", "op": "Write", "subject": "scripts/bar.py", "status": ""},
+                {"ts": "2026-06-17T10:01:00Z", "type": "file", "op": "Write", "subject": "scripts/bar.py", "status": ""},
+            ]
+            (ll_dir / "ll-session-events.jsonl").write_text(
+                "\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8"
+            )
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps({}),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert result.returncode == 2
+            content = (tmp_path / ".ll" / "ll-continue-prompt.md").read_text(encoding="utf-8")
+            assert content.count("scripts/bar.py") == 1
+        finally:
+            os.chdir(original_dir)
+
+    def test_event_log_unresolved_error_in_output(self, hook_script: Path, tmp_path: Path):
+        """(f) Unresolved error event → subject appears in Unresolved Errors section."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            ll_dir = tmp_path / ".ll"
+            ll_dir.mkdir(exist_ok=True)
+            events = [
+                {"ts": "2026-06-17T10:00:00Z", "type": "error", "op": "run", "subject": "mypy-type-error", "status": ""},
+            ]
+            (ll_dir / "ll-session-events.jsonl").write_text(
+                "\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8"
+            )
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps({}),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert result.returncode == 2
+            content = (tmp_path / ".ll" / "ll-continue-prompt.md").read_text(encoding="utf-8")
+            assert "mypy-type-error" in content
+        finally:
+            os.chdir(original_dir)
+
 
 class TestScratchPadRedirect:
     """Test scratch-pad-redirect.sh PreToolUse hook (ENH-1129)."""
