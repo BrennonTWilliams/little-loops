@@ -385,7 +385,7 @@ See v3 for detailed specifications. These are the PM's judgment layer and haven'
 
 ## little-loops Enablement Gaps (this repo's work)
 
-Most of v4 is **Hermes-repo** work (`hermes_little_loops` package, webhook endpoint, `portfolio.db`, read/action tools, persona, rituals, slash commands) — none of which is implementable in this repo. The little-loops side is a small, well-bounded set of enabling gaps that Hermes depends on. These are the only items that become little-loops issues:
+Most of v4 is split across two repos (see [Repo Architecture](#repo-architecture) below). The little-loops side is a small, well-bounded set of enabling gaps that Hermes depends on. These are the only items that become little-loops issues:
 
 | # | Gap | Verified state | Blocks |
 |---|---|---|---|
@@ -397,6 +397,58 @@ Most of v4 is **Hermes-repo** work (`hermes_little_loops` package, webhook endpo
 
 Already de-risked (no work): `LLExtension`/`ExtensionLoader`/`wire_extensions()`, `little_loops.extensions` entry point, 37 event schemas, `WebhookTransport`+`JsonlTransport`, `ll-loop list/status --json`, `ll-issues list --json`, `--label` cron filter, per-state `StateConfig.model`.
 
+---
+
+## Repo Architecture
+
+The integration splits across two repos following the dependency seam: extension code imports from `little_loops.*` internals, Hermes tools import from Hermes internals. They share no dependencies and have different release cadences.
+
+### Extension: in-tree with little-loops
+
+The `LLExtension` implementation lives in the little-loops source tree as a first-party extension package. It imports `LLExtension`, `EventBus`, and `Transport` from `little_loops.*` — stable public protocols that haven't changed in 45 releases — so coupling risk is low. Co-location means any future API change to those protocols updates the extension atomically in the same commit and CI run. It also signals first-party status: users browsing little-loops docs see the Hermes integration as official, not a third-party bolt-on.
+
+```
+little-loops/
+├── extensions/hermes/           # first-party extension package
+│   ├── pyproject.toml
+│   ├── src/little_loops_hermes/
+│   │   ├── __init__.py
+│   │   ├── extension.py         # LLExtension subclass
+│   │   ├── buffer.py            # In-memory event buffer
+│   │   └── fallback.py          # JSONL fallback sink
+│   └── tests/
+├── scripts/little_loops/        # core (extension.py, events.py, transport.py)
+└── ...
+```
+
+Discovered automatically via `little_loops.extensions` entry point when installed (`pip install -e extensions/hermes` during dev, or shipped as `pip install little-loops[hermes]` via an extras entry in the main `pyproject.toml`).
+
+### Hermes tools: `little-loops-hermes` pip package
+
+Everything that imports from Hermes internals lives in a standalone pip package. This is the codebase that will iterate rapidly as PM intelligence (portfolio prioritization, scope pushback, proactive surfacing) grows across Phases 1-3.
+
+```
+little-loops-hermes/
+├── pyproject.toml
+├── src/little_loops_hermes/
+│   ├── __init__.py
+│   ├── tools/                   # ll_portfolio, ll_route, ll_briefing, ll_status, ll_events, ll_ritual
+│   ├── endpoints/               # POST /hermes/v1/ll-event webhook handler
+│   ├── db/                      # Portfolio SQLite schema + queries
+│   ├── persona.yaml             # Default persona template
+│   └── config.yaml              # Default config fragment
+├── commands/                    # /setup, /project, /persona edit slash command definitions
+└── tests/
+```
+
+Installed as `pip install little-loops-hermes` and registered as a Hermes skill. Consumes `little-loops` CLI for polling sync (`ll-issues list --json`, `ll-loop status --json`). Communicates with the extension via the Hermes webhook endpoint — the extension pushes events to Hermes, never the reverse.
+
+### Why not a single repo
+
+The extension and Hermes tools have different dependency trees, different consumers, and different release cadences. The extension is a thin bridge (~200 lines) that will be dormant once stable. The Hermes tools will iterate rapidly. Separating them keeps each repo's changelog and versioning honest — an extension fix for a little-loops API change doesn't force a Hermes tools release, and a new ritual doesn't force an extension release. The "one install" loss is mitigated by the extension being invisible to end users (auto-discovered via entry point) and the Hermes tools being a single `pip install`.
+
+---
+
 ## Implementation Phases (re-anchored for v4)
 
 Phases re-anchored: the infrastructure gap is much smaller than v3 assumed. Phase 1 is integration + wiring, not building from scratch.
@@ -407,14 +459,15 @@ The PM can see across all your projects in real time.
 
 **Deliverables:**
 
-1. **`hermes_little_loops` pip package** — `LLExtension` subclass registering on `little_loops.extensions` entry point. Subscribes to `issue.*` and FSM lifecycle events. Writes to Hermes webhook endpoint; falls back to JSONL when unreachable.
-2. **Hermes webhook endpoint** — `POST /hermes/v1/ll-event` accepting `{"project": "...", "events": [...]}`. Upserts into portfolio SQLite.
-3. **Portfolio model** in Hermes SQLite (`ll_projects` + `ll_events` tables). Event-driven updates + 5-minute polling sync + on-demand refresh.
-4. **Read tools**: `ll_portfolio`, `ll_briefing` (morning briefing only), `ll_status`, `ll_events`.
-5. **Action tool**: `ll_route` — forms goals, dispatches to loop-router. Passes `--model` from persona.
-6. **Slash commands**: `/setup`, `/project`, `/persona edit`.
-7. **Multi-project config** in `~/.hermes/config.yaml` (`little-loops.projects` map).
-8. **Basic persona** — `~/.hermes/pm-persona.yaml` with CEO name, project list, focus, model preferences.
+1. **little-loops extension** (`extensions/hermes/` in-tree) — `LLExtension` subclass registering on `little_loops.extensions` entry point. Subscribes to `issue.*` and FSM lifecycle events. Writes to Hermes webhook endpoint; falls back to JSONL when unreachable.
+2. **`little-loops-hermes` pip package** — Hermes tools (`ll_portfolio`, `ll_route`, `ll_briefing`, `ll_status`, `ll_events`, `ll_ritual`), webhook endpoint handler, portfolio SQLite schema, persona template, and slash command definitions. Registered as a Hermes skill.
+3. **Hermes webhook endpoint** — `POST /hermes/v1/ll-event` accepting `{"project": "...", "events": [...]}`. Upserts into portfolio SQLite.
+4. **Portfolio model** in Hermes SQLite (`ll_projects` + `ll_events` tables). Event-driven updates + 5-minute polling sync + on-demand refresh.
+5. **Read tools**: `ll_portfolio`, `ll_briefing` (morning briefing only), `ll_status`, `ll_events`.
+6. **Action tool**: `ll_route` — forms goals, dispatches to loop-router. Passes `--model` from persona.
+7. **Slash commands**: `/setup`, `/project`, `/persona edit`.
+8. **Multi-project config** in `~/.hermes/config.yaml` (`little-loops.projects` map).
+9. **Basic persona** — `~/.hermes/pm-persona.yaml` with CEO name, project list, focus, model preferences.
 
 **Phase 1 acceptance:**
 
@@ -532,7 +585,7 @@ little-loops:
 
 ## Open Questions for v4
 
-**Q1: Extension vs user install.** Does the user run `/setup` to install `hermes_little_loops`, or does Hermes add it to `ll-config.json`'s `extensions.paths` pointing to a Hermes-shipped module? Recommendation: **pip package** — `hermes_little_loops` installed once, discovered via entry points, works for all projects. The `/setup` command validates it's installed and configured.
+**Q1: How does the extension get installed?** The extension lives in-tree (`extensions/hermes/`) and ships with little-loops. Installed via `pip install little-loops[hermes]` (extras entry in `pyproject.toml`). The Hermes tools package is a separate `pip install little-loops-hermes`. The `/setup` slash command validates both are installed and configured.
 
 **Q2: Portfolio polling — Hermes cron or in-process thread?** 5-minute polling sync needs to run even when the user isn't chatting. Recommendation: **Hermes cron job** — cron is already robust for this. A dedicated `ll-sync` cron job runs on the polling interval.
 
