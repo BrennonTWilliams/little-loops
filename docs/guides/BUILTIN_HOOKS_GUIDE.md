@@ -65,6 +65,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
 | **Stop** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
 | **PreCompact** | precompact | Snapshots task state before compaction | exit 2 | on |
+| **PreCompact** | precompact-handoff | Writes session continuation prompt before compaction (passive path for `/ll:resume`) | — | on |
 
 The rest of this guide walks each event in firing order.
 
@@ -87,6 +88,10 @@ The tool finishes
   → PostToolUse (analytics, if enabled): records tool + file events to history.db
   → PostToolUse (context monitor): estimates context usage; nudges handoff near the limit
   → PostToolUse (issue completion log): if issue was just marked done, appends session log
+
+Context window fills up (Claude Code fires PreCompact before compacting)
+  → PreCompact (precompact.sh): snapshots task state to .ll/ll-precompact-state.json
+  → PreCompact (precompact-handoff.sh): reads state snapshot for idempotency, writes .ll/ll-continue-prompt.md; use /ll:resume after compaction to pick up work
 
 Session ends
   → Stop (cleanup): removes locks, temp files, orphaned worktrees
@@ -292,6 +297,14 @@ Fires just before Claude Code compacts the conversation. It snapshots task state
 > `[ll] Task state preserved before context compaction. Check .ll/ll-precompact-state.json if resuming work.`
 
 This is what lets a post-compaction context pick up mid-task. Always on; writes are atomic with a fail-open advisory lock. See [Session Handoff](SESSION_HANDOFF.md).
+
+**Hook:** `precompact-handoff.sh` → `little_loops.hooks.pre_compact_handoff.handle`
+
+Fires as a second PreCompact handler, after `precompact.sh`. Reads `.ll/ll-precompact-state.json` as an idempotency guard (skips if no state snapshot was written by `precompact.sh`), then writes `.ll/ll-continue-prompt.md` atomically with a 3s advisory lock, returning **exit 2**:
+
+> `[ll] Session continuation prompt written to .ll/ll-continue-prompt.md`
+
+Use `/ll:resume` after compaction to re-inject the continuation prompt. Always on; passive counterpart to the active `/ll:handoff` command. See [Session Handoff](SESSION_HANDOFF.md).
 
 ---
 

@@ -85,6 +85,9 @@ little-loops/
 │   │   └── optimize-prompt-hook.md          # Prompt optimization hook
 │   ├── adapters/            # Host-specific adapters → little_loops.hooks dispatcher
 │   │   ├── claude-code/
+│   │   │   ├── post-tool-use.sh
+│   │   │   ├── pre-tool-use.sh
+│   │   │   ├── precompact-handoff.sh
 │   │   │   ├── precompact.sh
 │   │   │   ├── session-end.sh
 │   │   │   └── session-start.sh
@@ -1109,7 +1112,7 @@ flowchart TB
         CHECK[Check threshold]
     end
 
-    subgraph Handoff["Automatic Handoff"]
+    subgraph Handoff["Active Handoff Path"]
         TRIGGER[Trigger /ll:handoff]
         WRITE[Write continuation prompt]
         SIGNAL[Output CONTEXT_HANDOFF signal]
@@ -1121,6 +1124,12 @@ flowchart TB
         SPAWN[Spawn fresh session]
     end
 
+    subgraph PassivePath["Passive Handoff Path (PreCompact)"]
+        PC_WRITE[precompact-handoff.sh writes continuation prompt]
+        COMPACT[Claude Code compacts context]
+        RESUME[/ll:resume re-injects context in current session]
+    end
+
     ESTIMATE --> CHECK
     CHECK -->|>= 80%| TRIGGER
     TRIGGER --> WRITE
@@ -1128,7 +1137,10 @@ flowchart TB
     SIGNAL --> DETECT
     DETECT --> READ
     READ --> SPAWN
-    SPAWN --> |Resume work| ESTIMATE
+    SPAWN -->|Resume work| ESTIMATE
+    PC_WRITE --> COMPACT
+    COMPACT --> RESUME
+    RESUME -->|Work continues| ESTIMATE
 ```
 
 **Context Estimation**: The hook uses a three-tier priority for token counts:

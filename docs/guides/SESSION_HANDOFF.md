@@ -369,6 +369,7 @@ The context monitor estimates the current-turn delta based on tool activity:
 | `.ll/ll-continue-prompt.md` | Generated continuation prompt |
 | `.ll/ll-context-state.json` | Running context usage state |
 | `.ll/ll-session-state.json` | Session metadata (fallback) |
+| `.ll/ll-precompact-state.json` | Idempotency guard written by `precompact.sh`; read by `precompact-handoff.sh` to prevent duplicate continuation-prompt writes |
 
 ### State File Format
 
@@ -493,6 +494,7 @@ The `/ll:handoff` command auto-generates prompts from conversation history. You 
 
 - **PostToolUse hook**: Monitors context usage and triggers handoff reminders
 - **Stop hook**: Cleans up context state when the session ends by deleting `.ll/ll-context-state.json` and `.ll/ll-session-state.json`; the continuation prompt `.ll/ll-continue-prompt.md` is preserved for use by `/ll:resume`
+- **PreCompact hook** (`precompact-handoff.sh`): Writes `.ll/ll-continue-prompt.md` passively before context compaction; use `/ll:resume` after compaction to re-inject the continuation prompt — passive counterpart to the active `/ll:handoff` command
 
 ### With Automation Tools
 

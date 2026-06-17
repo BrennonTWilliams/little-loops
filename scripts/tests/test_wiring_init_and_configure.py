@@ -15,7 +15,7 @@ import pytest
 # =============================================================================
 
 
-# -- 148 string-presence assertions -------------------------------
+# -- 149 string-presence assertions -------------------------------
 
 DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # (doc_path, expected_string, issue_id)
@@ -131,6 +131,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # REMOVED (stale/false-positive): ("skills/configure/show-output.md", "### `history`", "ENH-1916"),
     ("skills/configure/show-output.md", "velocity_window", "ENH-1916"),
     ("skills/configure/areas.md", "adapters/claude-code/precompact.sh", "FEAT-1457"),
+    ("skills/configure/areas.md", "adapters/claude-code/precompact-handoff.sh", "FEAT-1158"),
     ("skills/configure/areas.md", "hooks/adapters/", "FEAT-1457"),
     # REMOVED (stub ENH-1982): ("skills/init/SKILL.md", "hooks/adapters/claude-code/", "FEAT-1457"),
     # REMOVED (stale/false-positive): ("skills/init/SKILL.md", "scripts/little_loops/hooks/", "FEAT-1457"),

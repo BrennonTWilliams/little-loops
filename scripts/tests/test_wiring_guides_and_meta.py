@@ -15,7 +15,7 @@ import pytest
 # =============================================================================
 
 
-# -- 168 string-presence assertions -------------------------------
+# -- 175 string-presence assertions -------------------------------
 
 DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # (doc_path, expected_string, issue_id)
@@ -200,6 +200,41 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("README.md", "Run asynchronous agents until done", "README-STRUCTURE"),
     ("README.md", "Smart tools create smart processes.", "README-STRUCTURE"),
     ("README.md", "Harness-driven development", "README-STRUCTURE"),
+    (
+        "docs/ARCHITECTURE.md",
+        "precompact-handoff.sh",
+        "FEAT-1158",
+    ),
+    (
+        "docs/development/TROUBLESHOOTING.md",
+        "precompact-handoff.sh",
+        "FEAT-1158",
+    ),
+    (
+        "docs/guides/SESSION_HANDOFF.md",
+        "precompact-handoff.sh",
+        "FEAT-1158",
+    ),
+    (
+        "docs/guides/BUILTIN_HOOKS_GUIDE.md",
+        "precompact-handoff.sh",
+        "FEAT-1158",
+    ),
+    (
+        "docs/claude-code/write-a-hook.md",
+        "precompact-handoff.sh",
+        "FEAT-1158",
+    ),
+    (
+        "docs/reference/API.md",
+        "precompact-handoff.sh",
+        "FEAT-1158",
+    ),
+    (
+        "docs/reference/EVENT-SCHEMA.md",
+        "pre_compact_handoff",
+        "FEAT-1158",
+    ),
 ]
 
 

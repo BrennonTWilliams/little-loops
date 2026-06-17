@@ -2,9 +2,10 @@
 id: FEAT-1158
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
+completed_at: 2026-06-17 17:16:17+00:00
 blocked_by:
 - FEAT-1112
 - FEAT-1156
@@ -36,7 +37,7 @@ Decomposed from FEAT-1113: PreCompact Auto-Handoff Hook
 ## Acceptance Criteria
 
 - `docs/guides/SESSION_HANDOFF.md` describes automatic PreCompact trigger alongside manual `/ll:handoff`
-- `docs/ARCHITECTURE.md:86-90` (`claude-code/` adapter listing) includes `precompact-handoff.sh` alongside `precompact.sh`, `session-end.sh`, `session-start.sh`
+- `docs/ARCHITECTURE.md:87-90` (`claude-code/` adapter listing) lists all 6 adapter files: `post-tool-use.sh`, `pre-tool-use.sh`, `precompact-handoff.sh`, `precompact.sh`, `session-end.sh`, `session-start.sh`
 - `docs/ARCHITECTURE.md:1105-1132` (`### Context Monitor and Session Continuation` flowchart) shows PreCompact as a second handoff trigger path (not PostToolUse-only; currently shows only PostToolUse → handoff)
 - `docs/development/TROUBLESHOOTING.md:849` chmod list (lines 844–854) includes `hooks/adapters/claude-code/precompact-handoff.sh` after the existing `precompact.sh` entry
 - `docs/development/TROUBLESHOOTING.md:1058-1074` manual test invocation block has parallel entry for `pre_compact_handoff` (three variants: default, `LL_HOOK_HOST=opencode`, `LL_HOOK_HOST=codex`)
@@ -55,7 +56,7 @@ Decomposed from FEAT-1113: PreCompact Auto-Handoff Hook
 ### Documentation Updates
 
 1. `docs/guides/SESSION_HANDOFF.md` — add section explaining PreCompact auto-trigger; clarify `/ll:handoff` is now a manual override for the richer version; update `## Integration` (lines ~490-506) to mention PreCompact hook alongside PostToolUse; add `.ll/ll-precompact-state.json` to `## Files` table (lines ~365-371)
-2. `docs/ARCHITECTURE.md:86-91` — add `precompact-handoff.sh` to `claude-code/` adapter file listing after the `precompact.sh` entry at line 88 (currently missing from the `claude-code/` directory tree)
+2. `docs/ARCHITECTURE.md:87-90` — replace the 3-entry `claude-code/` block (lines 88-90: `precompact.sh`, `session-end.sh`, `session-start.sh`) with all 6 adapter files in alphabetical order; the tree currently omits `post-tool-use.sh`, `pre-tool-use.sh`, and `precompact-handoff.sh` — adding only `precompact-handoff.sh` would leave the tree incomplete with misleading appearance of completeness
 3. `docs/ARCHITECTURE.md:1105-1132` — update `### Context Monitor and Session Continuation` flowchart to show two handoff trigger paths: PostToolUse (existing) + PreCompact (new); the flowchart currently shows only PostToolUse → handoff with no PreCompact path
 4. `docs/development/TROUBLESHOOTING.md:849` — add `chmod +x hooks/adapters/claude-code/precompact-handoff.sh` after the existing `precompact.sh` entry at line 849 (within the chmod block at lines 844-854)
 5. `docs/development/TROUBLESHOOTING.md:1074` — add manual invocation block for `pre_compact_handoff` after the existing `pre_compact` block at lines 1058-1073; include three variants (default, `LL_HOOK_HOST=opencode`, `LL_HOOK_HOST=codex`) matching the `pre_compact` pattern
@@ -82,6 +83,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 13. Update `commands/handoff.md:239-244` — extend `## Integration` section; add bullet: `- PreCompact hook writes `.ll/ll-continue-prompt.md` automatically before context compaction (passive path); /ll:handoff is the active/richer manual override`
 14. Update `scripts/tests/test_wiring_guides_and_meta.py` — add to `DOC_STRINGS_PRESENT` list: `("docs/ARCHITECTURE.md", "precompact-handoff.sh", "FEAT-1158")`, `("docs/development/TROUBLESHOOTING.md", "precompact-handoff.sh", "FEAT-1158")`, `("docs/guides/SESSION_HANDOFF.md", "precompact-handoff.sh", "FEAT-1158")`; follow the tuple format `(doc_path, expected_string, issue_id)` used by existing entries (see lines 37-41)
 15. Update `scripts/tests/test_wiring_init_and_configure.py` — add to `DOC_STRINGS_PRESENT` list: `("skills/configure/areas.md", "precompact-handoff.sh", "FEAT-1158")`; follow existing entries at lines 133-134: `("skills/configure/areas.md", "adapters/claude-code/precompact.sh", "FEAT-1457")`
+16. Update `docs/reference/API.md` — (a) add `precompact-handoff.sh` to adapter file list in `main_hooks` "Adapter integration" note alongside `precompact.sh`, `post-tool-use.sh`, `session-end.sh`, `session-start.sh`; (b) add `pre_compact_handoff` to `LLHookIntentExtension` "Behavior" built-in shadow list (~line 7218) alongside `pre_compact`, `session_start`, `session_end`, `user_prompt_submit`, `post_tool_use`, `pre_tool_use`
+17. Update `docs/reference/EVENT-SCHEMA.md` — add per-intent payload note for `pre_compact_handoff` in "Per-intent payload notes" section following the pattern of the `pre_compact` entry: outputs `.ll/ll-continue-prompt.md`; reads `.ll/ll-precompact-state.json` as idempotency guard; exit 2 on success, 0 on skip
 
 ### Decision Rationale
 
@@ -116,6 +119,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/BUILTIN_HOOKS_GUIDE.md` — update "Lifecycle at a Glance" table (line 67), "PreCompact" section (lines 286-295), and session narrative (lines 71-94) to include `precompact-handoff.sh` as a second PreCompact entry alongside `precompact.sh`
 - `docs/claude-code/write-a-hook.md` — add `precompact-handoff.sh` to `Adapter files:` inline list (line 180) which lists Claude Code adapter scripts
 - `commands/handoff.md` — update `## Integration` section (lines 239-244) to mention PreCompact trigger path alongside the existing PostToolUse context monitor description
+- `docs/reference/API.md` — add `precompact-handoff.sh` to `main_hooks` "Adapter integration" adapter file list; add `pre_compact_handoff` to `LLHookIntentExtension` "Behavior" built-in shadow list (~line 7218)
+- `docs/reference/EVENT-SCHEMA.md` — add per-intent payload note for `pre_compact_handoff` in "Per-intent payload notes" section
 
 ## References
 
@@ -142,12 +147,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` — `context_monitor` description (line ~427) implies context_monitor is the sole automatic handoff path; add a clarifying cross-reference to SESSION_HANDOFF.md for the PreCompact trigger path [Agent 2 finding — low-force coupling]
+- `docs/reference/API.md` — built-ins list in two locations omits `pre_compact_handoff`: (a) `main_hooks` "Adapter integration" adapter file list; (b) `LLHookIntentExtension` "Behavior" built-in shadow list (~line 7218) [second wiring pass]
+- `docs/reference/EVENT-SCHEMA.md` — "Per-intent payload notes" section has no entry for `pre_compact_handoff` intent [second wiring pass]
+- `commands/resume.md` — "Integration" section at end of file names only `/ll:handoff` as prompt source; does not mention PreCompact hook (though "If Nothing Found" block at line 132 already does) [advisory]
 
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_wiring_guides_and_meta.py` — add `DOC_STRINGS_PRESENT` entries: `("docs/guides/SESSION_HANDOFF.md", "precompact-handoff.sh", "FEAT-1158")` (currently zero wiring test coverage for this file); add presence guards for `"precompact-handoff.sh"` in `docs/ARCHITECTURE.md` and `docs/development/TROUBLESHOOTING.md` after FEAT-1158 edits are applied; follow tuple format at lines 37-41
 - `scripts/tests/test_wiring_init_and_configure.py` — add `DOC_STRINGS_PRESENT` entry `("skills/configure/areas.md", "precompact-handoff.sh", "FEAT-1158")` to gate the new hook audit table row; add after existing lines 133-134 (`precompact.sh` entry for FEAT-1457)
+- Extend step 14 (`scripts/tests/test_wiring_guides_and_meta.py`) with 2 additional tuples for new doc files: `("docs/reference/API.md", "precompact-handoff.sh", "FEAT-1158")` and `("docs/reference/EVENT-SCHEMA.md", "pre_compact_handoff", "FEAT-1158")`; bump header count from 173 → 175 [second wiring pass]
+- `scripts/tests/test_wiring_skills_and_commands.py` — optional gap: `("commands/handoff.md", "precompact-handoff.sh", "FEAT-1158")` to gate step 13 insertion; not in original issue spec [optional]
 
 ### Codebase Research Findings
 
@@ -177,9 +187,15 @@ _Re-verified by `/ll:refine-issue` (full-rewrite pass, 2026-06-17) — all confi
 
 **Exact text to insert at each change site:**
 
-_Step 2 — `docs/ARCHITECTURE.md:88` (adapter listing — insert after `precompact.sh` line):_
+_Step 2 — `docs/ARCHITECTURE.md:87-90` (adapter listing — replace entire `claude-code/` block with all 6 adapter files):_
 ```
+│   │   ├── claude-code/
+│   │   │   ├── post-tool-use.sh
+│   │   │   ├── pre-tool-use.sh
 │   │   │   ├── precompact-handoff.sh
+│   │   │   ├── precompact.sh
+│   │   │   ├── session-end.sh
+│   │   │   └── session-start.sh
 ```
 
 _Step 3 — `docs/ARCHITECTURE.md:1105-1132` (flowchart — replace entire Mermaid block with):_
@@ -190,7 +206,7 @@ flowchart TB
         CHECK[Check threshold]
     end
 
-    subgraph Handoff["Automatic Handoff"]
+    subgraph Handoff["Active Handoff Path"]
         TRIGGER[Trigger /ll:handoff]
         WRITE[Write continuation prompt]
         SIGNAL[Output CONTEXT_HANDOFF signal]
@@ -202,8 +218,10 @@ flowchart TB
         SPAWN[Spawn fresh session]
     end
 
-    subgraph PreCompact["PreCompact Hook"]
-        PC_WRITE[Write continuation prompt]
+    subgraph PassivePath["Passive Handoff Path (PreCompact)"]
+        PC_WRITE[precompact-handoff.sh writes continuation prompt]
+        COMPACT[Claude Code compacts context]
+        RESUME[/ll:resume re-injects context in current session]
     end
 
     ESTIMATE --> CHECK
@@ -213,8 +231,10 @@ flowchart TB
     SIGNAL --> DETECT
     DETECT --> READ
     READ --> SPAWN
-    SPAWN --> |Resume work| ESTIMATE
-    PC_WRITE --> |/ll:resume| SPAWN
+    SPAWN -->|Resume work| ESTIMATE
+    PC_WRITE --> COMPACT
+    COMPACT --> RESUME
+    RESUME -->|Work continues| ESTIMATE
 ```
 
 _Step 4 — `docs/development/TROUBLESHOOTING.md:849` (chmod block — insert after `precompact.sh` chmod line):_
@@ -351,13 +371,13 @@ _Step 10 — `skills/configure/areas.md:878` (hook audit table — insert after 
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-06-17 (re-check #7; both blockers FEAT-1112 + FEAT-1156 confirmed done; all FEAT-1156 artifacts verified present; scores unchanged)_
+_Updated by `/ll:confidence-check` on 2026-06-17 (re-check #8; both blockers confirmed done; Go/No-Go errors corrected by refine-issue; scores unchanged)_
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 72/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Low test-coverage baseline** — 7 of 9 change sites are documentation files with no automated unit tests; wiring test entries (steps 14–15) are the only doc-accuracy guard and are co-deliverables of this issue; implement tests first so each subsequent doc change is immediately gated by an automated presence check
+- **Low test-coverage baseline** — 7 of 9+ change sites are documentation files with no automated unit tests; wiring test entries (steps 14–15) are the only doc-accuracy guard and are co-deliverables; implement tests first so each subsequent doc change is immediately gated by an automated presence check
 
 ## Go/No-Go Findings
 
@@ -376,7 +396,16 @@ _Added by `/ll:go-no-go` on 2026-06-17_ — **NO-GO (REFINE)**
 ### Rationale
 The hook is live and undocumented across 15 verified locations, making implementation genuinely valuable. However, the proposed Mermaid flowchart replacement contains a confirmed architectural error and the adapter tree issue perpetuates an existing incompleteness gap. Both are refinable: correct the Mermaid diagram so `PC_WRITE` connects to a `/ll:resume`-in-session node (not the CLI spawn node), and expand the adapter tree scope to include `post-tool-use.sh` and `pre-tool-use.sh` alongside `precompact-handoff.sh`.
 
+_Addressed by `/ll:refine-issue` on 2026-06-17:_
+- **Step 2 fix**: Changed from single-line insert to full `claude-code/` block replacement with all 6 adapter files (`post-tool-use.sh`, `pre-tool-use.sh`, `precompact-handoff.sh`, `precompact.sh`, `session-end.sh`, `session-start.sh`) in alphabetical order. Confirmed via `ls hooks/adapters/claude-code/`.
+- **Step 3 fix**: Replaced `PC_WRITE --> |/ll:resume| SPAWN` with a two-path diagram showing PreCompact as a separate "Passive Handoff Path" where `COMPACT → RESUME[/ll:resume re-injects context in current session]`. Confirmed: `commands/resume.md` contains zero references to "spawn" or "fresh session"; `/ll:resume` reads `.ll/ll-continue-prompt.md` and re-executes next steps in the current session turn.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-17T17:10:01 - `c71593f1-0d96-4ecc-b662-2a55426c32c3.jsonl`
+- `/ll:confidence-check` - 2026-06-17T00:00:00Z - `bd900763-0b23-45ee-b17a-764082740a6e.jsonl`
+- `/ll:wire-issue` - 2026-06-17T16:56:31 - `a27a16e0-4a9b-43f7-be41-8839fae042a6.jsonl`
+- `/ll:refine-issue` - 2026-06-17T16:44:53 - `2654b6c8-3d42-4077-91e4-bc9e69441c9e.jsonl`
+- `/ll:refine-issue` - 2026-06-17T16:32:52 - `b2ca9ab9-ae9a-445a-8889-96331c7bfcd4.jsonl`
 - `/ll:go-no-go` - 2026-06-17T11:00:00Z - `3e014459-c03a-4d48-a488-7848dee02558.jsonl`
 - `/ll:verify-issues` - 2026-06-17T15:48:21 - `3e014459-c03a-4d48-a488-7848dee02558.jsonl`
 - `/ll:confidence-check` - 2026-06-17T15:30:00Z - `f7d8c3bf-5136-4a23-ab1a-2b6d85d3aff6.jsonl`

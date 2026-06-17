@@ -876,6 +876,7 @@ Current Hook Configuration
   [Plugin]   PostToolUse       Write|Edit     issue-auto-commit.sh            5s       [exists/MISSING]
   [Plugin]   Stop              (no matcher)   session-cleanup.sh              15s      [exists/MISSING]
   [Plugin]   PreCompact        *              adapters/claude-code/precompact.sh       5s    [exists/MISSING]
+  [Plugin]   PreCompact        *              adapters/claude-code/precompact-handoff.sh  5s    [exists/MISSING]
   [Project]  ...               ...            ...                             ...      [exists/MISSING]
   [Local]    ...               ...            ...                             ...      [exists/MISSING]
 

@@ -242,3 +242,4 @@ $ARGUMENTS
 - Uses same file format as automation tools (`ll-auto`, `ll-parallel`)
 - Outputs `CONTEXT_HANDOFF` signal for automation detection
 - Works with PostToolUse context monitor hook for automatic reminders
+- PreCompact hook writes `.ll/ll-continue-prompt.md` automatically before context compaction (passive path); `/ll:handoff` is the active/richer manual override

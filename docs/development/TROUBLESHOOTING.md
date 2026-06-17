@@ -847,6 +847,7 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
    chmod +x hooks/scripts/user-prompt-check.sh
    chmod +x hooks/adapters/claude-code/post-tool-use.sh
    chmod +x hooks/adapters/claude-code/precompact.sh
+   chmod +x hooks/adapters/claude-code/precompact-handoff.sh
    chmod +x hooks/adapters/claude-code/session-end.sh
    chmod +x hooks/adapters/claude-code/session-start.sh
    chmod +x hooks/adapters/codex/session-start.sh
@@ -1071,6 +1072,23 @@ echo '{
 echo '{
   "transcript_path": "/tmp/test.jsonl"
 }' | LL_HOOK_HOST=codex python -m little_loops.hooks pre_compact
+
+# Test precompact-handoff handler (writes .ll/ll-continue-prompt.md; reads .ll/ll-precompact-state.json as idempotency guard)
+echo '{
+  "transcript_path": "/tmp/test.jsonl"
+}' | python -m little_loops.hooks pre_compact_handoff
+
+# Same handler from the OpenCode adapter's perspective: set LL_HOOK_HOST to
+# reproduce the host identifier the OpenCode plugin injects.
+echo '{
+  "transcript_path": "/tmp/test.jsonl"
+}' | LL_HOOK_HOST=opencode python -m little_loops.hooks pre_compact_handoff
+
+# Same handler from the Codex CLI adapter's perspective: set LL_HOOK_HOST=codex.
+# This also flips resolve_config_path() to probe .codex/ll-config.json first.
+echo '{
+  "transcript_path": "/tmp/test.jsonl"
+}' | LL_HOOK_HOST=codex python -m little_loops.hooks pre_compact_handoff
 ```
 
 ### Hook integration tests
@@ -1102,6 +1120,7 @@ python -m pytest scripts/tests/test_hooks_integration.py -v -s
    - check-duplicate-issue-id.sh: 3s timeout (PreToolUse lock)
    - check-duplicate-issue-id-post.sh: no lock (PostToolUse reactive deletion; overall hook timeout 5s)
    - little_loops.hooks.pre_compact: 3s lock timeout (Python handler invoked via hooks/adapters/claude-code/precompact.sh, hooks/adapters/opencode/index.ts on the `session.compacted` event, or hooks/adapters/codex/pre-compact.sh on Codex's `PreCompact` event)
+   - little_loops.hooks.pre_compact_handoff: 3s lock timeout (Python handler invoked via hooks/adapters/claude-code/precompact-handoff.sh; writes .ll/ll-continue-prompt.md atomically after reading .ll/ll-precompact-state.json idempotency guard)
 3. Monitor lock files during operation:
    ```bash
    watch -n 0.1 'find .claude .issues -name "*.lock*" 2>/dev/null'
