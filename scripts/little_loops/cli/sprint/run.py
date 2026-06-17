@@ -442,9 +442,10 @@ def _cmd_sprint_run(
 
                 wave_failed = False
                 _current_branch = _detect_current_branch()
+                _feature_branches_arg = getattr(args, "feature_branches", None)
                 effective_feature_branches = (
-                    args.feature_branches
-                    if args.feature_branches is not None
+                    _feature_branches_arg
+                    if _feature_branches_arg is not None
                     else config.parallel.use_feature_branches
                 )
                 if effective_feature_branches and not _fb_warning_emitted:
@@ -520,7 +521,7 @@ def _cmd_sprint_run(
                     serialize_overlapping=True,
                     base_branch=_base_branch,
                     clean_start=True,  # Sprint manages its own state; don't load stale orchestrator state
-                    use_feature_branches=args.feature_branches,
+                    use_feature_branches=getattr(args, "feature_branches", None),
                 )
 
                 from little_loops.events import EventBus
