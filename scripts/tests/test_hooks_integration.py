@@ -2111,6 +2111,118 @@ class TestPrecompactState:
             os.chdir(original_dir)
 
 
+class TestPrecompactHandoff:
+    """Integration tests for precompact-handoff.sh shell adapter.
+
+    Exercises the shell → dispatcher → pre_compact_handoff.handle() path.
+    Unit-level handler logic is covered by test_pre_compact_handoff.py.
+    """
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to the Claude Code precompact-handoff adapter."""
+        return Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/precompact-handoff.sh"
+
+    def test_produces_prompt_file_within_2kb(self, hook_script: Path, tmp_path: Path):
+        """(a) Hook writes ll-continue-prompt.md ≤ 2KB and exits 2."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps({}),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert result.returncode == 2
+            prompt_file = tmp_path / ".ll" / "ll-continue-prompt.md"
+            assert prompt_file.exists()
+            assert len(prompt_file.read_bytes()) <= 2048
+        finally:
+            os.chdir(original_dir)
+
+    def test_priority_tier_dropping_under_size_pressure(self, hook_script: Path, tmp_path: Path):
+        """(b) Output stays ≤ 2KB even with a large in-progress issues list."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            ll_dir = tmp_path / ".ll"
+            ll_dir.mkdir(exist_ok=True)
+            (ll_dir / "ll-session-events.jsonl").write_text(
+                '{"type": "tool_use"}\n' * 200
+            )
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps({}),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert result.returncode == 2
+            prompt_file = tmp_path / ".ll" / "ll-continue-prompt.md"
+            assert prompt_file.exists()
+            assert len(prompt_file.read_bytes()) <= 2048
+        finally:
+            os.chdir(original_dir)
+
+    def test_idempotency_skips_when_prompt_is_fresh(self, hook_script: Path, tmp_path: Path):
+        """(c) Exit 0 (no write) when ll-continue-prompt.md mtime > compacted_at."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            ll_dir = tmp_path / ".ll"
+            ll_dir.mkdir(exist_ok=True)
+
+            past_ts = "2000-01-01T00:00:00"
+            (ll_dir / "ll-precompact-state.json").write_text(
+                json.dumps({"compacted_at": past_ts, "preserved": True, "recent_plan_files": []})
+            )
+
+            prompt_file = ll_dir / "ll-continue-prompt.md"
+            prompt_file.write_text("---\nsession_date: today\n---\n## Intent\n\n## Next Steps\n")
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps({}),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert result.returncode == 0
+        finally:
+            os.chdir(original_dir)
+
+    def test_schema_has_required_resume_sections(self, hook_script: Path, tmp_path: Path):
+        """(d) Produced file has YAML frontmatter, ## Intent, and ## Next Steps."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps({}),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert result.returncode == 2
+            content = (tmp_path / ".ll" / "ll-continue-prompt.md").read_text(encoding="utf-8")
+            assert content.startswith("---")
+            assert "session_date:" in content
+            assert "## Intent" in content
+            assert "## Next Steps" in content
+        finally:
+            os.chdir(original_dir)
+
+
 class TestScratchPadRedirect:
     """Test scratch-pad-redirect.sh PreToolUse hook (ENH-1129)."""
 
