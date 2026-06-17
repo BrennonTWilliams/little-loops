@@ -1091,7 +1091,7 @@ class TestActiveWorktreeProtection:
         # Capture the worktree path that gets registered
         captured_worktree_path: list[Path] = []
 
-        def setup_and_capture(path: Path, branch: str) -> None:
+        def setup_and_capture(path: Path, branch: str, base_branch: str | None = None) -> None:
             # Capture the worktree path being set up
             captured_worktree_path.append(path)
 
@@ -2156,7 +2156,7 @@ CORRECTED
 
         captured: list[str] = []
 
-        def capture_setup(worktree_path: Path, branch_name: str) -> None:
+        def capture_setup(worktree_path: Path, branch_name: str, base_branch: str | None = None) -> None:
             captured.append(branch_name)
 
         with patch.object(pool, "_setup_worktree", side_effect=capture_setup):
