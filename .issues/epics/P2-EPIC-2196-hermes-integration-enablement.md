@@ -2,7 +2,7 @@
 id: EPIC-2196
 type: EPIC
 priority: P2
-status: open
+status: done
 captured_at: 2026-06-16T18:21:36Z
 discovered_date: 2026-06-16
 discovered_by: scope-epic
