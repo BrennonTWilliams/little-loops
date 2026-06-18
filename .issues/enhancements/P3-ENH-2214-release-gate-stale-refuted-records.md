@@ -127,7 +127,7 @@ learning_tests:
 
 **Note** (added by `/ll:audit-issue-conflicts`): The pre-release audit step must be skipped entirely when `learning_tests.enabled` is `false` (or absent), consistent with the opt-in pattern across all EPIC-2207 issues. ENH-2217 gates its output on `learning_tests.enabled`; this issue must do the same. A project that opts out of learning test tooling via `enabled: false` should not receive a release-gate warning table. Add this guard at the top of the pre-release step: "if not `lt_config.enabled`, skip the audit." See [[ENH-2217]].
 
-**Note** (added by `/ll:audit-issue-conflicts`): ENH-2214 and ENH-2216 both use `get_imported_packages(source_dirs)` from the shared `import_scan.py` utility. The `source_dirs` parameter must be driven by a single shared config key to avoid divergent behavior. Use `learning_tests.orphan_scope` (from ENH-2216, defaulting to `['scripts/']`) as the canonical key — ENH-2214 must read this key rather than hardcoding `scripts/`. If ENH-2216 renames the key to `learning_tests.scan_dirs`, this issue inherits that rename. See [[ENH-2216]].
+**Note** (added by `/ll:audit-issue-conflicts`; resolved by review-epic): The canonical config key is **`learning_tests.scan_dirs`** (defaulting to `['scripts/']`). Both this issue and ENH-2216 must use this key as the `source_dirs` argument to `get_imported_packages()` in `import_scan.py`. Do not hardcode `scripts/`. See [[ENH-2216]].
 
 ## Related Key Documentation
 

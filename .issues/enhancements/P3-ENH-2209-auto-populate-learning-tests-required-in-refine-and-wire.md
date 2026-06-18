@@ -32,10 +32,10 @@ Most issue authors don't know to add `learning_tests_required`. The field is onl
 
 ## Implementation Steps
 
-1. In the `/ll:refine-issue` skill (and `/ll:wire-issue`), after the implementation plan section is written, run an LLM extraction step: "List all external packages, SDKs, or third-party API surfaces that the plan assumes behavior of."
-2. Deduplicate and slugify to match registry lookup keys.
-3. For each extracted target, run `ll-learning-tests check "<target>"` to determine current registry status.
-4. Write the full list to `learning_tests_required:` frontmatter (overwrite if already present).
+1. Deliver `scripts/little_loops/learning_tests/extractor.py` exposing `extract_learning_targets(issue_text: str) -> list[str]`. This wraps the LLM extraction step ("List all external packages, SDKs, or third-party API surfaces that the plan assumes behavior of") and returns deduplicated, slugified target names. ENH-2210's fallback path imports this function directly — it must be a callable Python module, not only a skill prompt step.
+2. In the `/ll:refine-issue` skill (and `/ll:wire-issue`), after the implementation plan section is written, call `extract_learning_targets(issue_text)` (or shell out to the equivalent LLM step).
+3. For each extracted target, call the stale-aware gate function from `scripts/little_loops/learning_tests/gate.py` (exposed by ENH-2208) rather than `ll-learning-tests check` directly — calling the raw CLI bypasses the stale-age check.
+4. Write the full list to `learning_tests_required:` frontmatter using **union-merge semantics**: if the field already exists (e.g., populated by `/ll:scope-epic` per ENH-2220), append newly extracted targets rather than overwriting. Preserve existing entries.
 5. Surface a summary: "Found N external dependencies — M proven, K unproven. Added to `learning_tests_required`."
 6. If all are already proven, emit a brief confirmation and skip the field update if it was already correct.
 

@@ -61,7 +61,7 @@ ll-learning-tests orphans [--mark-stale] [--scope scripts/,src/]
 
 - **Default behavior**: Lists all orphaned records with their target package name and last modified date
 - **`--mark-stale`**: Atomically marks all orphaned records stale and reports the count
-- **`--scope`**: Comma-separated list of directories to scan for imports (default: `scripts/`)
+- **`--scope`**: Comma-separated list of directories to scan for imports (default: value of `learning_tests.scan_dirs` config key, fallback `scripts/`)
 - **Exit code**: 1 if orphans are found (informational), 0 if none found or `--mark-stale` used
 
 If Option B is chosen instead, no new CLI surface — the audit loop gains a `detect_orphans` state.
@@ -85,7 +85,7 @@ If Option B is chosen instead, no new CLI surface — the audit loop gains a `de
 - `docs/reference/API.md` — document `orphans` subcommand if Option A is selected
 
 ### Configuration
-- `.ll/ll-config.json` — optional `learning_tests.orphan_scope: ["scripts/", "src/"]` for customizing default scan directories
+- `.ll/ll-config.json` — `learning_tests.scan_dirs: ["scripts/"]` (canonical key, default `["scripts/"]`) — shared with ENH-2214's release gate to drive `get_imported_packages()` in both callers. Do not use `orphan_scope`; the key is named for the broader scan-dirs purpose.
 
 ## Implementation Steps
 
@@ -125,7 +125,7 @@ If Option B is chosen instead, no new CLI surface — the audit loop gains a `de
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `--mark-stale` flag writes `status: stale` to disk for orphaned records. ENH-2208 adds a parallel staleness channel: date-based staleness applied at runtime without disk mutation. These are distinct and intentionally separate — disk mutation is appropriate for orphans (packages no longer used), while age-based staleness is a runtime judgment on still-imported packages. Consumers that read `status: stale` from the registry (e.g., ENH-2214's release gate, ENH-2218's dashboard) must handle both channels: check `is_record_stale(record, lt_config)` for age-based staleness in addition to `record.status == "stale"` for disk-marked orphans. See [[ENH-2208]].
 
-**Note** (added by `/ll:audit-issue-conflicts`): ENH-2216 introduces `learning_tests.orphan_scope` to parameterize which directories `get_imported_packages()` scans. ENH-2214 hardcodes `scripts/` in its implementation. When the shared `import_scan.py` utility is built, both issues must use the same config key as the `source_dirs` argument. Designate `learning_tests.orphan_scope` (defaulting to `['scripts/']`) as that key, or rename it to `learning_tests.scan_dirs` for broader applicability — but the rename must be coordinated across both issues. See [[ENH-2214]].
+**Note** (added by `/ll:audit-issue-conflicts`; resolved by review-epic): The canonical config key is **`learning_tests.scan_dirs`** (defaulting to `['scripts/']`). Both this issue and ENH-2214 must use this key as the `source_dirs` argument to `get_imported_packages()` in `import_scan.py`. The former `orphan_scope` name is retired. See [[ENH-2214]].
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
