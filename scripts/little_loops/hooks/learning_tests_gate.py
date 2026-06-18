@@ -16,6 +16,7 @@ Config keys read from ``.ll/ll-config.json``:
 
 from __future__ import annotations
 
+import datetime
 import json
 import re
 from pathlib import Path
@@ -24,6 +25,7 @@ from little_loops.config.core import resolve_config_path
 from little_loops.config.features import LearningTestsConfig
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.learning_tests import check_learning_test
+from little_loops.learning_tests.gate import is_record_stale
 
 _PY_IMPORT_RE = re.compile(r"^(?:import|from)\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
 _JS_REQUIRE_RE = re.compile(r"""require\s*\(\s*['"]([^./'"][^'"]*)['"]\s*\)""")
@@ -114,6 +116,7 @@ def gate(event: LLHookEvent) -> LLHookResult:
     base_dir = cwd / ".ll" / "learning-tests"
 
     missing: list[str] = []
+    stale_ages: dict[str, int] = {}  # pkg -> age in days, for stale proven records
     for pkg in packages:
         if pkg in skip:
             continue
@@ -122,15 +125,33 @@ def gate(event: LLHookEvent) -> LLHookResult:
                 missing.append(pkg)
             continue
         record = check_learning_test(pkg, base_dir=base_dir)
-        proven = record is not None and record.status == "proven"
-        _SESSION_CACHE[pkg] = proven
-        if not proven:
-            missing.append(pkg)
+        if record is not None and record.status == "proven":
+            if is_record_stale(record, lt_config.stale_after_days):
+                _SESSION_CACHE[pkg] = False
+                try:
+                    age = (datetime.date.today() - datetime.date.fromisoformat(record.date)).days
+                    stale_ages[pkg] = age
+                except (ValueError, TypeError):
+                    pass
+                missing.append(pkg)
+            else:
+                _SESSION_CACHE[pkg] = True
+        else:
+            proven = record is not None and record.status == "proven"
+            _SESSION_CACHE[pkg] = proven
+            if not proven:
+                missing.append(pkg)
 
     if not missing:
         return LLHookResult(exit_code=0)
 
-    pkg_list = ", ".join(f'"{p}"' for p in missing)
+    parts = []
+    for pkg in missing:
+        if pkg in stale_ages:
+            parts.append(f'"{pkg}" (stale: {stale_ages[pkg]} days old)')
+        else:
+            parts.append(f'"{pkg}"')
+    pkg_list = ", ".join(parts)
     hint = (
         f"[ll: proof-first hint] No learning-test record found for {pkg_list}. "
         f"You're about to write integration code based on training-data assumptions. "

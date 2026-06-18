@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 from collections.abc import Generator
 from pathlib import Path
@@ -40,24 +41,32 @@ def _write_config(
     enabled: bool = True,
     mode: str = "warn",
     skip_packages: list[str] | None = None,
+    stale_after_days: int | None = None,
 ) -> None:
     ll_dir = project_dir / ".ll"
     ll_dir.mkdir(parents=True, exist_ok=True)
     disc: dict = {"mode": mode}
     if skip_packages is not None:
         disc["skip_packages"] = skip_packages
+    lt_config: dict = {"enabled": enabled, "discoverability": disc}
+    if stale_after_days is not None:
+        lt_config["stale_after_days"] = stale_after_days
     (ll_dir / "ll-config.json").write_text(
-        json.dumps({"learning_tests": {"enabled": enabled, "discoverability": disc}}),
+        json.dumps({"learning_tests": lt_config}),
         encoding="utf-8",
     )
 
 
-def _write_record(project_dir: Path, target: str, status: str) -> None:
-    """Write a minimal learning-test record as a frontmatter YAML file."""
+def _write_record(project_dir: Path, target: str, status: str, date: str | None = None) -> None:
+    """Write a minimal learning-test record as a frontmatter YAML file.
+
+    ``date`` defaults to today so proven records are fresh unless explicitly overridden.
+    """
     lt_dir = project_dir / ".ll" / "learning-tests"
     lt_dir.mkdir(parents=True, exist_ok=True)
     slug = target.lower()
-    content = f"---\ntarget: {target}\ndate: '2026-01-01'\nstatus: {status}\nassertions: []\n---\n"
+    record_date = date if date is not None else datetime.date.today().isoformat()
+    content = f"---\ntarget: {target}\ndate: '{record_date}'\nstatus: {status}\nassertions: []\n---\n"
     (lt_dir / f"{slug}.md").write_text(content, encoding="utf-8")
 
 
@@ -363,3 +372,127 @@ class TestExtractPackages:
         content = "import stripe\nimport stripe\nfrom stripe import Client\n"
         pkgs = _extract_packages(content, "foo.py")
         assert pkgs.count("stripe") == 1
+
+
+# ---------------------------------------------------------------------------
+# Stale-age gate (ENH-2208)
+# ---------------------------------------------------------------------------
+
+
+class TestStaleAgeGate:
+    def test_proven_record_older_than_threshold_triggers_gate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A proven record older than stale_after_days triggers the gate."""
+        _write_config(tmp_path, enabled=True, mode="warn", stale_after_days=30)
+        _write_record(tmp_path, "stripe", "proven", date="2020-01-01")
+        monkeypatch.chdir(tmp_path)
+        result = gate(_event(content="import stripe\n", cwd=str(tmp_path)))
+        assert result.exit_code == 0
+        assert result.feedback is not None
+        assert "stripe" in result.feedback
+
+    def test_proven_record_within_threshold_passes_silently(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A proven record within stale_after_days passes silently."""
+        _write_config(tmp_path, enabled=True, mode="warn", stale_after_days=30)
+        _write_record(tmp_path, "stripe", "proven")  # defaults to today (fresh)
+        monkeypatch.chdir(tmp_path)
+        result = gate(_event(content="import stripe\n", cwd=str(tmp_path)))
+        assert result.exit_code == 0
+        assert result.feedback is None
+
+    def test_stale_proven_record_cached_as_false(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stale proven record is cached as False so repeated checks short-circuit."""
+        _write_config(tmp_path, enabled=True, mode="warn", stale_after_days=30)
+        _write_record(tmp_path, "stripe", "proven", date="2020-01-01")
+        monkeypatch.chdir(tmp_path)
+        gate(_event(content="import stripe\n", cwd=str(tmp_path)))
+        assert _SESSION_CACHE.get("stripe") is False
+
+    def test_hint_includes_stale_age(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The hint message includes '(stale: N days old)' for stale records."""
+        _write_config(tmp_path, enabled=True, mode="warn", stale_after_days=30)
+        _write_record(tmp_path, "stripe", "proven", date="2020-01-01")
+        monkeypatch.chdir(tmp_path)
+        result = gate(_event(content="import stripe\n", cwd=str(tmp_path)))
+        assert result.feedback is not None
+        assert "stale" in result.feedback
+
+    def test_block_mode_rejects_stale_record(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Block mode returns exit_code=2 for stale proven records."""
+        _write_config(tmp_path, enabled=True, mode="block", stale_after_days=30)
+        _write_record(tmp_path, "stripe", "proven", date="2020-01-01")
+        monkeypatch.chdir(tmp_path)
+        result = gate(_event(content="import stripe\n", cwd=str(tmp_path)))
+        assert result.exit_code == 2
+        assert result.feedback is not None
+
+    def test_stale_after_days_zero_clamped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """stale_after_days=0 is clamped to 1; old records are still treated as stale."""
+        _write_config(tmp_path, enabled=True, mode="warn", stale_after_days=0)
+        _write_record(tmp_path, "stripe", "proven", date="2020-01-01")
+        monkeypatch.chdir(tmp_path)
+        result = gate(_event(content="import stripe\n", cwd=str(tmp_path)))
+        assert result.feedback is not None
+
+
+# ---------------------------------------------------------------------------
+# is_record_stale helper (ENH-2208)
+# ---------------------------------------------------------------------------
+
+
+class TestIsRecordStale:
+    """Tests for the is_record_stale helper in little_loops.learning_tests.gate."""
+
+    def _make_record(self, date: str) -> object:
+        from little_loops.learning_tests import LearnTestRecord
+
+        return LearnTestRecord(
+            target="stripe", date=date, status="proven", assertions=[], raw_output_path=None
+        )
+
+    def test_old_record_is_stale(self) -> None:
+        from little_loops.learning_tests.gate import is_record_stale
+
+        assert is_record_stale(self._make_record("2020-01-01"), 30) is True
+
+    def test_fresh_record_is_not_stale(self) -> None:
+        from little_loops.learning_tests.gate import is_record_stale
+
+        today = datetime.date.today().isoformat()
+        assert is_record_stale(self._make_record(today), 30) is False
+
+    def test_stale_after_days_zero_clamped_to_one(self) -> None:
+        from little_loops.learning_tests.gate import is_record_stale
+
+        assert is_record_stale(self._make_record("2020-01-01"), 0) is True
+
+    def test_invalid_date_treated_as_fresh(self) -> None:
+        from little_loops.learning_tests.gate import is_record_stale
+
+        assert is_record_stale(self._make_record("not-a-date"), 30) is False
+
+    def test_exactly_at_threshold_is_not_stale(self) -> None:
+        """A record exactly at the threshold (age_days == stale_after_days) is NOT stale."""
+        from little_loops.learning_tests.gate import is_record_stale
+
+        threshold = 30
+        edge_date = (datetime.date.today() - datetime.timedelta(days=threshold)).isoformat()
+        assert is_record_stale(self._make_record(edge_date), threshold) is False
+
+    def test_one_day_over_threshold_is_stale(self) -> None:
+        from little_loops.learning_tests.gate import is_record_stale
+
+        threshold = 30
+        stale_date = (datetime.date.today() - datetime.timedelta(days=threshold + 1)).isoformat()
+        assert is_record_stale(self._make_record(stale_date), threshold) is True

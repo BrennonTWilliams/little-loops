@@ -125,7 +125,10 @@ If Option B is chosen instead, no new CLI surface — the audit loop gains a `de
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `--mark-stale` flag writes `status: stale` to disk for orphaned records. ENH-2208 adds a parallel staleness channel: date-based staleness applied at runtime without disk mutation. These are distinct and intentionally separate — disk mutation is appropriate for orphans (packages no longer used), while age-based staleness is a runtime judgment on still-imported packages. Consumers that read `status: stale` from the registry (e.g., ENH-2214's release gate, ENH-2218's dashboard) must handle both channels: check `is_record_stale(record, lt_config)` for age-based staleness in addition to `record.status == "stale"` for disk-marked orphans. See [[ENH-2208]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2216 introduces `learning_tests.orphan_scope` to parameterize which directories `get_imported_packages()` scans. ENH-2214 hardcodes `scripts/` in its implementation. When the shared `import_scan.py` utility is built, both issues must use the same config key as the `source_dirs` argument. Designate `learning_tests.orphan_scope` (defaulting to `['scripts/']`) as that key, or rename it to `learning_tests.scan_dirs` for broader applicability — but the rename must be coordinated across both issues. See [[ENH-2214]].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:32:23 - `33db5684-2de8-4975-99ca-a0b1179e0b12.jsonl`

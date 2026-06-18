@@ -83,12 +83,19 @@ This issue is declared as `depends_on: ENH-2209` in frontmatter — soft orderin
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-2210's sprint pre-flight routes through `ll-loop run ready-to-implement-gate`, which runs via the FSM executor. `executor.py`'s `_execute_learning_state` calls `check_learning_test()` directly — bypassing ENH-2208's stale-age gate. After ENH-2208 ships, a date-old proven record will be passed by the sprint pre-flight even though the same record would block the discoverability hook. The integration map must include `scripts/little_loops/fsm/executor.py` with a note that `_execute_learning_state` must be updated to call `is_record_stale()` (exposed by ENH-2208). This issue is declared `depends_on: ENH-2208` in frontmatter as a hard dependency — the sprint pre-flight gives false confidence without ENH-2208's helper. See [[ENH-2208]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): The canonical path for the shared gate utility is `scripts/little_loops/learning_tests/gate.py` (confirmed by ENH-2208). Downstream calls from this issue should import from that path. See [[ENH-2208]].
+
+**Note** (added by `/ll:audit-issue-conflicts`): The Configuration section of this issue labels `learning_tests.enabled` as a "new config key." This is incorrect — the key already exists in `config-schema.json` (added in an earlier feature). ENH-2210 must not add a new schema entry for this key. Only the pre-flight logic wiring is new; the config key itself requires no schema changes. See [[ENH-2212]].
+
+**Note** (added by `/ll:audit-issue-conflicts`): The fallback for issues without `learning_tests_required` ("import the shared extraction utility from ENH-2209") requires ENH-2209 to deliver `scripts/little_loops/learning_tests/extractor.py` with `extract_learning_targets(issue_text: str) -> list[str]`. Without this helper, the fallback cannot be implemented as a Python import. Verify ENH-2209 has committed to this artifact before implementing the fallback. See [[ENH-2209]].
+
 ## API/Interface
 
 - **Config key**: `learning_tests.enabled` (boolean, default `false`) — enables the pre-flight assumption gate
 - **CLI flag**: `ll-sprint --skip-learning-gate` — bypasses the pre-flight check for emergency runs when `learning_tests.enabled: true`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:29 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:31:56 - `b3ad1547-68da-4676-8ad5-face35377857.jsonl`

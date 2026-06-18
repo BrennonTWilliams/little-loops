@@ -125,11 +125,16 @@ learning_tests:
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's implementation step 2 ("filter to `status: stale` or `status: refuted`") is insufficient after ENH-2208 ships. ENH-2208 adds date-based staleness at runtime without mutating `record.status` on disk — a record can be `status: proven` but date-old, and `ll-learning-tests list` would not surface it. The release gate would give a false clean signal. Replace step 2 with: filter to records where `record.status == 'refuted'` OR where `is_record_stale(record, lt_config)` returns True (using ENH-2208's exportable helper). Load `LearningTestsConfig` and apply the same threshold as the runtime gate. See [[ENH-2208]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): The pre-release audit step must be skipped entirely when `learning_tests.enabled` is `false` (or absent), consistent with the opt-in pattern across all EPIC-2207 issues. ENH-2217 gates its output on `learning_tests.enabled`; this issue must do the same. A project that opts out of learning test tooling via `enabled: false` should not receive a release-gate warning table. Add this guard at the top of the pre-release step: "if not `lt_config.enabled`, skip the audit." See [[ENH-2217]].
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2214 and ENH-2216 both use `get_imported_packages(source_dirs)` from the shared `import_scan.py` utility. The `source_dirs` parameter must be driven by a single shared config key to avoid divergent behavior. Use `learning_tests.orphan_scope` (from ENH-2216, defaulting to `['scripts/']`) as the canonical key — ENH-2214 must read this key rather than hardcoding `scripts/`. If ENH-2216 renames the key to `learning_tests.scan_dirs`, this issue inherits that rename. See [[ENH-2216]].
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:00 - `d32ab305-2ca5-4ecb-8748-da90ac6cd83b.jsonl`

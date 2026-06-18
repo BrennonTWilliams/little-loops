@@ -75,7 +75,10 @@ Most issue authors don't know to add `learning_tests_required`. The field is onl
 
 **Note** (added by `/ll:audit-issue-conflicts`): Implementation step 4 ("Write the full list to `learning_tests_required:` frontmatter (overwrite if already present)") must be changed to a union-merge. If `learning_tests_required` already exists in the issue frontmatter (e.g., populated by `/ll:scope-epic` per ENH-2220), the newly extracted targets must be merged into the existing list rather than overwriting it. A re-run of refine-issue on a scoped issue would otherwise silently narrow the package list, dropping targets the scope-epic pass identified. Use set-union semantics: new targets are appended; existing targets are preserved. See [[ENH-2220]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2210's sprint pre-flight includes a fallback that "imports the shared extraction utility from ENH-2209." For this to be importable, ENH-2209 must deliver a Python helper at `scripts/little_loops/learning_tests/extractor.py` exposing `extract_learning_targets(issue_text: str) -> list[str]`. This function wraps the LLM extraction step (or shells out to the assumption-firewall loop) and is what ENH-2210's fallback imports. Without it, ENH-2210's fallback is architecturally unimplementable — the extraction step lives inside a skill prompt, not in a callable Python module. See [[ENH-2210]].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:29 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:46 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T18:17:31 - `e95db64d-70ee-4f7f-87aa-5e8414c2d4c9.jsonl`

@@ -69,7 +69,12 @@ Loop authors writing integration loops currently must manually wire assumption-f
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2220 (scope-epic). When the wizard is run from a sub-issue created by ENH-2220's scope-epic flow, it should read `learning_tests_required` from the issue's frontmatter (already populated by ENH-2220) rather than asking the user a duplicate "does this involve external APIs?" question. See [[ENH-2220]] for the scope-epic data pipeline.
 
+**Note** (added by `/ll:audit-issue-conflicts`): The wizard must skip the "does this involve external APIs?" question whenever `learning_tests_required` is present and non-empty in the issue's frontmatter — regardless of which skill populated it. ENH-2220 (scope-epic) and ENH-2209 (refine-issue/wire-issue) are both valid sources. The prior scope note's "when the wizard is run from a sub-issue created by ENH-2220" phrasing is too narrow: a user who refines an issue via ENH-2209 and then runs create-loop would still be asked the redundant question. Check: if `learning_tests_required` is non-empty in frontmatter, auto-insert the assumption-firewall gate without prompting. See [[ENH-2209]].
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2215 and ENH-2217 both parse `learning_tests_required` from issue frontmatter independently. To prevent divergent field-name handling or fallback logic, both should use the same read mechanism: either `ll-issues show --json <ISSUE_ID> | jq '.learning_tests_required // []'` or a shared Python helper. Coordinate with [[ENH-2217]] to avoid two divergent parsing implementations.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:32:29 - `0ad50852-04aa-49ce-b1bf-d489adb4f465.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`
 

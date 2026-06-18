@@ -5,6 +5,7 @@ type: enhancement
 priority: P4
 status: open
 parent: EPIC-2207
+blocked_by: ENH-2208
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
@@ -114,7 +115,12 @@ When implementing this issue:
 
 `enhancement`, `learning-tests`, `ll-parallel`, `captured`
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2219 invokes `ll-loop run proof-first-task` which routes through `fsm/executor.py`'s `_execute_learning_state`. That function calls `check_learning_test()` directly, bypassing ENH-2208's stale-age check — the same bypass documented on ENH-2210 (`ready-to-implement-gate` → same executor path). ENH-2219 must not ship without ENH-2208's `is_record_stale()` fix to `_execute_learning_state`, or date-stale proven records will silently pass the per-worktree gate. This issue is declared `blocked_by: ENH-2208` in frontmatter. The integration map must include `scripts/little_loops/fsm/executor.py` with a note that `_execute_learning_state` must call `is_record_stale()` before proceeding. See [[ENH-2208]] and [[ENH-2210]].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:16 - `4072b9ee-5401-460f-9774-32c1e434c36f.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`
 
