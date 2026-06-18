@@ -192,12 +192,16 @@ class TestDiagnoseRouting:
         assert ".score_ambiguity" in action
         assert ".score_change_surface" in action
 
-    def test_diagnose_outputs_all_five_tokens(self) -> None:
-        """diagnose shell script contains all 5 routing tokens."""
+    def test_diagnose_outputs_all_routing_tokens(self) -> None:
+        """diagnose shell script contains all routing tokens including REFINE_LIGHT.
+
+        ENH-2223: the catch-all else branch now outputs REFINE_LIGHT (lighter
+        --auto refine without --full-rewrite) instead of REFINE.
+        """
         data = _load_loop()
         diag = data["states"]["diagnose"]
         action = diag["action"]
-        for token in ("IMPLEMENT", "DECIDE", "WIRE", "REFINE", "DECOMPOSE"):
+        for token in ("IMPLEMENT", "DECIDE", "WIRE", "REFINE", "REFINE_LIGHT", "DECOMPOSE"):
             assert f'echo "{token}"' in action or f'"{token}"' in action, (
                 f"diagnose must output {token}"
             )
@@ -217,8 +221,12 @@ class TestDiagnoseRouting:
         diag = data["states"]["diagnose"]
         assert diag["route"]["_error"] == "emit_implement_failed"
 
-    def test_diagnose_route_table_covers_all_five_tokens(self) -> None:
-        """diagnose route: table maps all 5 tokens + default + error to correct targets."""
+    def test_diagnose_route_table_covers_all_tokens(self) -> None:
+        """diagnose route: table maps all tokens + default + error to correct targets.
+
+        ENH-2223: REFINE_LIGHT token added — maps to refine_light (--auto without
+        --full-rewrite) for residual minor gaps in the catch-all branch.
+        """
         data = _load_loop()
         route = data["states"]["diagnose"]["route"]
         # IMPLEMENT goes through the marker-gate
@@ -226,6 +234,7 @@ class TestDiagnoseRouting:
         assert route["DECIDE"] == "decide"
         assert route["WIRE"] == "wire"
         assert route["REFINE"] == "refine"
+        assert route["REFINE_LIGHT"] == "refine_light"
         assert route["DECOMPOSE"] == "emit_needs_decompose"
         # unmatched token fallback
         assert route["_"] == "emit_implement_failed"
@@ -302,14 +311,15 @@ class TestRemediationActions:
         assert "/ll:wire-issue" in wire["action"]
         assert "--auto" in wire["action"]
 
-    def test_wire_routes_to_re_assess_on_success(self) -> None:
-        """wire routes through mark_wired to re_assess on yes/partial (BUG-2007 Defect 1).
+    def test_wire_routes_through_mark_wired_on_success(self) -> None:
+        """wire routes through mark_wired on yes/partial (BUG-2007 Defect 1).
 
         Marker-gate: on_yes/on_partial hop through mark_wired (which sets the wired
-        marker, then continues to re_assess) so the pre-implement gate can confirm
-        a wire ran. BUG-2007 intent is preserved — success still reaches re_assess,
-        not an unconditional --full-rewrite refine pass. on_no routes to refine
-        (a wiring decline still warrants a rewrite).
+        marker, then continues to check_decision_needed_post) so the pre-implement
+        gate can confirm a wire ran. BUG-2222: mark_wired continues to
+        check_decision_needed_post so wiring that sets decision_needed:true routes
+        to /ll:decide-issue automatically. on_no routes to refine (a wiring decline
+        still warrants a rewrite).
 
         BUG-2169: uses slash_command routing (on_yes/on_no/on_partial), not
         sub-loop delegation keys (on_success/on_error).
@@ -318,7 +328,7 @@ class TestRemediationActions:
         wire = data["states"]["wire"]
         assert wire["on_yes"] == "mark_wired"
         assert wire["on_partial"] == "mark_wired"
-        assert data["states"]["mark_wired"]["next"] == "re_assess"
+        assert data["states"]["mark_wired"]["next"] == "check_decision_needed_post"
         assert wire["on_no"] == "refine"
 
     def test_refine_uses_full_rewrite_flag(self) -> None:
@@ -327,16 +337,18 @@ class TestRemediationActions:
         ref = data["states"]["refine"]
         assert "--full-rewrite" in ref["action"]
 
-    def test_refine_routes_to_re_assess(self) -> None:
-        """refine routes through mark_refined to re_assess on yes/partial (marker-gate).
+    def test_refine_routes_through_mark_refined(self) -> None:
+        """refine routes through mark_refined on yes/partial (marker-gate).
 
         BUG-2169: uses slash_command routing (on_yes/on_partial), not on_success.
+        BUG-2222: mark_refined continues to check_decision_needed_post so refinement
+        that deposits decision options (decision_needed:true) routes to /ll:decide-issue.
         """
         data = _load_loop()
         ref = data["states"]["refine"]
         assert ref["on_yes"] == "mark_refined"
         assert ref["on_partial"] == "mark_refined"
-        assert data["states"]["mark_refined"]["next"] == "re_assess"
+        assert data["states"]["mark_refined"]["next"] == "check_decision_needed_post"
 
     def test_refine_failure_routes_to_failed(self) -> None:
         """refine routes to emit_implement_failed on no (slash_command on_no = LLM decline).
@@ -347,6 +359,61 @@ class TestRemediationActions:
         data = _load_loop()
         ref = data["states"]["refine"]
         assert ref["on_no"] == "emit_implement_failed"
+
+    def test_refine_light_exists_and_omits_full_rewrite(self) -> None:
+        """refine_light uses --auto without --full-rewrite (ENH-2223).
+
+        diagnose catch-all routes to refine_light so residual minor gaps don't
+        get the destructive full-rewrite action.
+        """
+        data = _load_loop()
+        rl = data["states"]["refine_light"]
+        assert "/ll:refine-issue" in rl["action"]
+        assert "--auto" in rl["action"]
+        assert "--full-rewrite" not in rl["action"]
+
+    def test_refine_light_routes_through_mark_refined(self) -> None:
+        """refine_light routes through mark_refined on yes/partial (same as refine).
+
+        Shares the same marker-gate path so gate_implement can confirm a refine
+        pass occurred regardless of whether full or light refine ran.
+        """
+        data = _load_loop()
+        rl = data["states"]["refine_light"]
+        assert rl["on_yes"] == "mark_refined"
+        assert rl["on_partial"] == "mark_refined"
+        assert rl["on_no"] == "emit_implement_failed"
+
+    def test_check_complexity_pre_implement_on_yes_routes_to_wire_check(self) -> None:
+        """check_complexity_pre_implement on_yes routes to check_wire_pre_implement (ENH-2223).
+
+        An issue that already passes the readiness gate (confidence >= 85, outcome >= 75)
+        does not need --full-rewrite even if complexity is high. Both branches now
+        route to check_wire_pre_implement; gate_implement enforces refine+wire markers
+        for above-minimal issues.
+        """
+        data = _load_loop()
+        ccpi = data["states"]["check_complexity_pre_implement"]
+        assert ccpi["on_yes"] == "check_wire_pre_implement"
+        assert ccpi["on_no"] == "check_wire_pre_implement"
+        assert ccpi["on_error"] == "check_wire_pre_implement"
+
+    def test_diagnose_catch_all_outputs_refine_light(self) -> None:
+        """diagnose catch-all else branch outputs REFINE_LIGHT, not REFINE (ENH-2223).
+
+        The final else branch applies only when no dimensional problem is detected
+        (no high ambiguity, no high complexity, no low confidence, no high
+        change_surface). A lighter --auto refine is appropriate for such minor gaps.
+        """
+        data = _load_loop()
+        action = data["states"]["diagnose"]["action"]
+        # The else block must output REFINE_LIGHT (not a bare REFINE)
+        assert 'echo "REFINE_LIGHT"' in action
+        # The bare catch-all REFINE must not appear after the DECOMPOSE branch
+        # (dimensional REFINE branches earlier in the script are still valid)
+        decompose_pos = action.index("DECOMPOSE")
+        catchall_pos = action.index("REFINE_LIGHT")
+        assert catchall_pos > decompose_pos, "REFINE_LIGHT catch-all must follow DECOMPOSE branch"
 
 
 # ---------------------------------------------------------------------------
@@ -374,15 +441,20 @@ class TestMarkerGate:
         assert "ABOVE_MINIMAL" in action
         assert "diagnose_complexity_threshold" in action
 
-    def test_marker_writers_are_monotonic_and_route_to_re_assess(self) -> None:
-        """mark_refined/mark_wired write a marker file and continue to re_assess."""
+    def test_marker_writers_are_monotonic_and_route_to_decision_check(self) -> None:
+        """mark_refined/mark_wired write a marker file and continue to check_decision_needed_post.
+
+        BUG-2222: markers route through check_decision_needed_post (not directly to
+        re_assess) so that a refinement/wiring pass that deposits decision options
+        triggers /ll:decide-issue before the redundant confidence check.
+        """
         data = _load_loop()
         mr = data["states"]["mark_refined"]
         mw = data["states"]["mark_wired"]
         assert "refined_" in mr["action"]
-        assert mr["next"] == "re_assess"
+        assert mr["next"] == "check_decision_needed_post"
         assert "wired_" in mw["action"]
-        assert mw["next"] == "re_assess"
+        assert mw["next"] == "check_decision_needed_post"
 
     def test_gate_emits_three_disjoint_tokens(self) -> None:
         """gate_implement emits IMPLEMENT / NEED_REFINE / NEED_WIRE and captures it."""

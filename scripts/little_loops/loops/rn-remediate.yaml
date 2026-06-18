@@ -131,13 +131,17 @@ states:
     on_error: check_outcome
 
   check_complexity_pre_implement:
+    # ENH-2223: issue already passed check_readiness (confidence >= 85, outcome >= 75).
+    # High complexity here does NOT imply content deficiency — route to the wire check
+    # the same as low-complexity issues. gate_implement enforces a refine+wire pass for
+    # above-minimal issues; --full-rewrite is not warranted for an already-ready issue.
     fragment: shell_exit
     action: |
       PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"
       COMPLEXITY=$(jq -r '.score_complexity // 0' "$PRE" 2>/dev/null || echo 0)
       THRESHOLD="${context.diagnose_complexity_threshold}"
       [ "$COMPLEXITY" -ge "$THRESHOLD" ] && exit 0 || exit 1
-    on_yes: refine
+    on_yes: check_wire_pre_implement
     on_no: check_wire_pre_implement
     on_error: check_wire_pre_implement
 
@@ -256,18 +260,21 @@ states:
       elif [ "$CHANGE_SURFACE" -ge "${context.diagnose_change_surface_threshold}" ]; then
         echo "DECOMPOSE"
       else
-        echo "REFINE"
+        # ENH-2223: residual minor gaps that don't match any dimensional rule get a
+        # lighter refine (--auto, no --full-rewrite) rather than the destructive default.
+        echo "REFINE_LIGHT"
       fi
     evaluate:
       type: classify
     route:
-      IMPLEMENT: gate_implement
-      DECIDE:    decide
-      WIRE:      wire
-      REFINE:    refine
-      DECOMPOSE: emit_needs_decompose
-      _:         emit_implement_failed
-      _error:    emit_implement_failed
+      IMPLEMENT:    gate_implement
+      DECIDE:       decide
+      WIRE:         wire
+      REFINE:       refine
+      REFINE_LIGHT: refine_light
+      DECOMPOSE:    emit_needs_decompose
+      _:            emit_implement_failed
+      _error:       emit_implement_failed
 
   # =========================================================================
   # Phase 3: Remediation Actions
@@ -367,6 +374,17 @@ states:
     # Marker-gate: route success through mark_refined (sets the refined marker
     # then continues to re_assess). BUG-2007 intent preserved — still re_assess.
     # on_partial: mark_refined — partial refine still marks; re_assess evaluates sufficiency.
+    on_yes: mark_refined
+    on_no: emit_implement_failed
+    on_partial: mark_refined
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  refine_light:
+    # ENH-2223: lighter refine for residual minor gaps (diagnose catch-all). Uses
+    # --auto without --full-rewrite so existing well-specified content is not destroyed.
+    fragment: with_rate_limit_handling
+    action: "/ll:refine-issue ${context.issue_id} --auto"
+    action_type: slash_command
     on_yes: mark_refined
     on_no: emit_implement_failed
     on_partial: mark_refined
