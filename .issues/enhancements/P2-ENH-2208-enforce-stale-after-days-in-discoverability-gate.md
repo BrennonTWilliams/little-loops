@@ -8,6 +8,12 @@ parent: EPIC-2207
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2208: Enforce `stale_after_days` threshold in discoverability gate
@@ -68,6 +74,12 @@ A "proven" record from 6 months ago may be based on an API that has since change
 ### Configuration
 - `config-schema.json` — `stale_after_days` field already defined; no schema changes needed
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue must expose a standalone `is_record_stale(record: LearnTestRecord, stale_after_days: int) -> bool` helper at module level in `learning_tests_gate.py` (or `scripts/little_loops/learning_tests/gate.py`). Without an importable helper, consumers — ENH-2209, ENH-2210, ENH-2212, ENH-2214, ENH-2217, ENH-2218, ENH-2221 — cannot apply stale-age logic without coupling to the hook-event-coupled `gate()` function or duplicating date arithmetic inline. This helper must be exported as part of this issue's implementation, not deferred to downstream consumers. See [[ENH-2210]] for the shared gate utility that wraps it.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:50:17 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
+- `/ll:confidence-check` - 2026-06-18T21:50:00 - `815571e6-48ba-47cc-b0be-7e908258e567.jsonl`
 - `/ll:format-issue` - 2026-06-18T18:16:43 - `2d07eba4-823a-4df3-b497-a1051dabda4c.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

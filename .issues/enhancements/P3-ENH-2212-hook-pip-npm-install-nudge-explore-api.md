@@ -5,6 +5,7 @@ type: enhancement
 priority: P3
 status: open
 parent: EPIC-2207
+relates_to: [ENH-2209]
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
@@ -77,7 +78,9 @@ Install-time is cheap. Proof-later is expensive. A nudge at install time — bef
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-2211 (debt marker) was cancelled per EPIC-2207 scoping review. This hook is now the sole PostToolUse detection path for unproven packages — no session-scoped cache coordination with a sibling hook is needed.
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2208 (stale-aware gate). The implementation should call the stale-aware gate function from `learning_tests_gate.py` (added by ENH-2208) rather than `check_learning_test()` directly. Without this, a stale record would still return "proven" from the raw registry call and the nudge would be silently skipped. See [[ENH-2208]].
+**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2208 (stale-aware gate). The implementation must use the standalone `is_record_stale(record, stale_after_days)` helper that ENH-2208 exposes in `learning_tests_gate.py` (or `scripts/little_loops/learning_tests/gate.py`), rather than calling `check_learning_test()` directly. `check_learning_test()` returns registry status without date arithmetic — a date-old proven record would return "proven" and the nudge would be silently skipped. The correct call sequence is: (1) call `check_learning_test(pkg)` to get the record; (2) call `is_record_stale(record, lt_config.stale_after_days)` to determine effective staleness; (3) emit the nudge if no record exists or `is_record_stale` returns True. See [[ENH-2208]].
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2209 (refine-issue/wire-issue auto-population) both produce a proven/unproven summary message. Without a shared format, users see inconsistent phrasing depending on whether they encounter an unproven package via an install hook or via refine-issue. The nudge message format must be defined once in the shared gate utility (`scripts/little_loops/learning_tests/gate.py`) and used by both issues. See [[ENH-2209]].
 
 ## Acceptance Signals
 
@@ -107,6 +110,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-06-18 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:32:41 - `ef0b05a4-a7e0-47d6-afa2-5f2b99558da6.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

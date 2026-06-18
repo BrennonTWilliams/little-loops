@@ -123,11 +123,14 @@ learning_tests:
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2217 (history context injection) both query the learning test registry for external display. The registry query pattern is identical (`list_records()`, `check_learning_test()`), but the formatting surface differs (CLI warning table vs Markdown table). No shared formatter needed, but share registry query awareness. See [[ENH-2217]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's implementation step 2 ("filter to `status: stale` or `status: refuted`") is insufficient after ENH-2208 ships. ENH-2208 adds date-based staleness at runtime without mutating `record.status` on disk — a record can be `status: proven` but date-old, and `ll-learning-tests list` would not surface it. The release gate would give a false clean signal. Replace step 2 with: filter to records where `record.status == 'refuted'` OR where `is_record_stale(record, lt_config)` returns True (using ENH-2208's exportable helper). Load `LearningTestsConfig` and apply the same threshold as the runtime gate. See [[ENH-2208]].
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:00 - `d32ab305-2ca5-4ecb-8748-da90ac6cd83b.jsonl`
 

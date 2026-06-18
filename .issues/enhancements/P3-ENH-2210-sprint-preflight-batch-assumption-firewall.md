@@ -5,7 +5,7 @@ type: enhancement
 priority: P3
 status: open
 parent: EPIC-2207
-depends_on: ENH-2209
+depends_on: [ENH-2209, ENH-2208]
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
@@ -81,12 +81,15 @@ Running an issue mid-sprint only to hit an unproven assumption wastes a full wor
 
 This issue is declared as `depends_on: ENH-2209` in frontmatter — soft ordering, not a hard block, because the fallback provides resilience. See [[ENH-2209]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2210's sprint pre-flight routes through `ll-loop run ready-to-implement-gate`, which runs via the FSM executor. `executor.py`'s `_execute_learning_state` calls `check_learning_test()` directly — bypassing ENH-2208's stale-age gate. After ENH-2208 ships, a date-old proven record will be passed by the sprint pre-flight even though the same record would block the discoverability hook. The integration map must include `scripts/little_loops/fsm/executor.py` with a note that `_execute_learning_state` must be updated to call `is_record_stale()` (exposed by ENH-2208). This issue is declared `depends_on: ENH-2208` in frontmatter as a hard dependency — the sprint pre-flight gives false confidence without ENH-2208's helper. See [[ENH-2208]].
+
 ## API/Interface
 
 - **Config key**: `learning_tests.enabled` (boolean, default `false`) — enables the pre-flight assumption gate
 - **CLI flag**: `ll-sprint --skip-learning-gate` — bypasses the pre-flight check for emergency runs when `learning_tests.enabled: true`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:50:29 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:31:56 - `b3ad1547-68da-4676-8ad5-face35377857.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

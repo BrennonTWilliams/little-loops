@@ -84,7 +84,10 @@ Agents starting a new session on an issue must either re-query the registry them
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2214 (release gate) both query the learning test registry for external display. The registry query pattern (`list_records()`, `check_learning_test()`) is shared, but the formatting differs (Markdown table here vs CLI warning table in ENH-2214). No shared formatter is needed, but coordination on registry query shape avoids divergence. See [[ENH-2214]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): Implementation step 3 calls `check_learning_test(target)` and displays its `status` field in the table. After ENH-2208, a record with `status: proven` on disk may be date-old and treated as stale by the runtime gate. The table would display "proven" while the gate blocks — actively misleading the implementing agent. After step 3, apply: `effective_status = "stale (age)" if is_record_stale(record, lt_config) else record.status`. Load `LearningTestsConfig` from project config (accessible via the existing `BRConfig` pattern in `history_context.py`). The acceptance signal "Stale records are visually distinguished" must explicitly cover date-stale records, not only records with `status: stale` on disk. See [[ENH-2208]].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:28 - `bd499794-07ed-4db0-8537-8038ebf61e47.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

@@ -5,6 +5,7 @@ type: enhancement
 priority: P4
 status: open
 parent: EPIC-2207
+depends_on: ENH-2208
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
@@ -127,7 +128,12 @@ The existing `ll-harness` evaluator framework already handles `exit_code` evalua
 - A complementary machine-checkable gate exists at the release stage (ENH-2214). That gate uses project-wide import scans and configurable `block`/`warn` behavior. This issue's gate uses issue-frontmatter targets and `exit_code` criteria in eval YAML. They are distinct lifecycle stages with different implementations. See [[ENH-2214]].
 - This issue consumes `learning_tests_required` frontmatter populated by ENH-2220's scope-epic flow. When ENH-2220 generates sub-issues with learning test prerequisites, those targets become available for eval criterion generation here. See [[ENH-2220]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): The `exit_code` criterion command `ll-learning-tests check "<target>"` calls `check_learning_test()` under the hood, which returns exit 0 for any record with `status: proven` regardless of age. After ENH-2208, a date-stale proven record returns PASS from the eval criterion while the runtime gate returns BLOCK — the two gates disagree. The criterion command must use a stale-aware invocation: either `ll-learning-tests check --stale-aware "<target>"` (if ENH-2208 extends the CLI flag) or a thin wrapper that calls `is_record_stale()`. This issue is declared `depends_on: ENH-2208` in frontmatter. See [[ENH-2208]].
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2219's per-worktree runtime gate (`ll-loop run proof-first-task`) and this issue's eval criterion use different mechanisms and will disagree on date-stale records unless both are stale-aware. A user who sees "eval: PASS" and then gets a blocked worktree will be confused about why the pre-flight passed. If this eval criterion is intended to serve as a pre-flight signal for `ll-parallel` execution (ENH-2219), the stale-aware fix above (from the ENH-2208 conflict) is a prerequisite — without it, the eval result is not a reliable indicator of what ENH-2219's gate will do. See [[ENH-2219]].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:39 - `eebe5815-0f5b-4c82-acb0-64597681c904.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`
 

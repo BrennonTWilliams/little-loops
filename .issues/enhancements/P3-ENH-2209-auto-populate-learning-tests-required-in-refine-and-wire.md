@@ -6,6 +6,7 @@ priority: P3
 status: open
 parent: EPIC-2207
 depends_on: ENH-2208
+relates_to: [ENH-2212]
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
@@ -70,7 +71,12 @@ Most issue authors don't know to add `learning_tests_required`. The field is onl
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2208 (stale-aware gate). The implementation should call the stale-aware gate function from `learning_tests_gate.py` (added by ENH-2208) rather than querying `ll-learning-tests check` directly. Calling the raw CLI bypasses the stale-age check, causing the proven/unproven summary to disagree with runtime gate behavior. See [[ENH-2208]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2212 (install hook) both produce a proven/unproven summary message for the same logical situation. Without a shared format, users see inconsistent phrasing depending on whether they encounter an unproven package via refine-issue or a `pip install`. The message format (nudge text, proven count, unproven count) must be defined once in the shared gate utility (`scripts/little_loops/learning_tests/gate.py`) and used by both issues. See [[ENH-2212]].
+
+**Note** (added by `/ll:audit-issue-conflicts`): Implementation step 4 ("Write the full list to `learning_tests_required:` frontmatter (overwrite if already present)") must be changed to a union-merge. If `learning_tests_required` already exists in the issue frontmatter (e.g., populated by `/ll:scope-epic` per ENH-2220), the newly extracted targets must be merged into the existing list rather than overwriting it. A re-run of refine-issue on a scoped issue would otherwise silently narrow the package list, dropping targets the scope-epic pass identified. Use set-union semantics: new targets are appended; existing targets are preserved. See [[ENH-2220]].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:50:29 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:46 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T18:17:31 - `e95db64d-70ee-4f7f-87aa-5e8414c2d4c9.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

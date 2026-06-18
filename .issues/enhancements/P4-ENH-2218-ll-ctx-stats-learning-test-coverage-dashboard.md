@@ -62,11 +62,18 @@ There's currently no at-a-glance view of registry health without running the ful
 - **Risk**: Low - Gated behind `learning_tests.enabled` config flag; no risk to existing stats output
 - **Breaking Change**: No - New optional section, gated by config
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Implementation step 1 ("Call `list_records()` → compute proven/stale/refuted counts") reads `record.status` from the registry. After ENH-2208, a record with `status: proven` may be date-old and would be treated as stale at runtime. The dashboard would show it as "proven" while the gate blocks — misleading users who check `ll-ctx-stats` before running the sprint. The proven/stale counts must apply date-aware arithmetic: call `is_record_stale(record, lt_config)` (from ENH-2208) for each proven record and reclassify date-old ones into a stale bucket. The stat output should reflect gate-truth, not raw registry status. See [[ENH-2208]].
+
+**Note** (added by `/ll:audit-issue-conflicts`): Implementation step 1 also includes "Grep `scripts/` for all imported packages" to build the gap list. ENH-2214 and ENH-2216 are already extracting a shared `get_imported_packages(source_dirs)` utility into `scripts/little_loops/learning_tests/import_scan.py`. ENH-2218 must call that utility rather than reimplementing the grep inline. If ENH-2218 ships before ENH-2214/ENH-2216, it should own `import_scan.py` creation and publish the utility for the others to consume. The regex must match the canonical pattern in `learning_tests_gate.py` to avoid a third divergent implementation. See [[ENH-2214]] and [[ENH-2216]].
+
 ## Labels
 
 `enhancement`, `captured`, `learning-tests`, `dashboard`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:27 - `0f6c8504-40cd-42d9-863b-234192efbe8e.jsonl`
 
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

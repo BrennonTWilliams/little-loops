@@ -123,7 +123,10 @@ If Option B is chosen instead, no new CLI surface — the audit loop gains a `de
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2214 (release gate) both independently implement grep-based import scanning of `scripts/`. To avoid duplicated code and divergent behavior, extract a shared `get_imported_packages(source_dirs)` utility into `scripts/little_loops/learning_tests/import_scan.py` that both issues call. See [[ENH-2214]].
 
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's `--mark-stale` flag writes `status: stale` to disk for orphaned records. ENH-2208 adds a parallel staleness channel: date-based staleness applied at runtime without disk mutation. These are distinct and intentionally separate — disk mutation is appropriate for orphans (packages no longer used), while age-based staleness is a runtime judgment on still-imported packages. Consumers that read `status: stale` from the registry (e.g., ENH-2214's release gate, ENH-2218's dashboard) must handle both channels: check `is_record_stale(record, lt_config)` for age-based staleness in addition to `record.status == "stale"` for disk-marked orphans. See [[ENH-2208]].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:32:23 - `33db5684-2de8-4975-99ca-a0b1179e0b12.jsonl`
 
