@@ -349,9 +349,7 @@ def run_with_continuation(
                             f"Branch: {sprint_context.branch}\n\n"
                         )
                     elif issue_path is not None:
-                        _id_match = re.search(
-                            r"(BUG|FEAT|ENH|EPIC)-\d+", issue_path.name
-                        )
+                        _id_match = re.search(r"(BUG|FEAT|ENH|EPIC)-\d+", issue_path.name)
                         if _id_match:
                             sprint_framing = (
                                 f"## Scope Constraint\n"

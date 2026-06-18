@@ -20,10 +20,9 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,10 +31,7 @@ import pytest
 
 def _runnable(spec: str) -> str:
     """Wrap a partial YAML spec in a minimal runnable FSM skeleton."""
-    return (
-        spec
-        + "\ninitial: done\nstates:\n  done:\n    terminal: true\n"
-    )
+    return spec + "\ninitial: done\nstates:\n  done:\n    terminal: true\n"
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +44,9 @@ class TestLoopListJsonContract:
 
     REQUIRED_FIELDS = {"name", "path", "category", "labels", "visibility", "description"}
 
-    def _cmd_list_json(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> list[dict[str, Any]]:
+    def _cmd_list_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> list[dict[str, Any]]:
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
@@ -58,9 +56,14 @@ class TestLoopListJsonContract:
         )
 
         args = argparse.Namespace(
-            running=False, status=None, json=True,
-            category=None, label=None, all=True,
-            internal=False, examples=False,
+            running=False,
+            status=None,
+            json=True,
+            category=None,
+            label=None,
+            all=True,
+            internal=False,
+            examples=False,
         )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
@@ -78,19 +81,17 @@ class TestLoopListJsonContract:
         assert items, "expected at least one loop in output"
         for item in items:
             for field in self.REQUIRED_FIELDS:
-                assert field in item, f"required field '{field}' missing from ll-loop list --json output"
+                assert field in item, (
+                    f"required field '{field}' missing from ll-loop list --json output"
+                )
 
-    def test_name_is_string(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_name_is_string(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """'name' field must be a string."""
         items = self._cmd_list_json(tmp_path, capsys)
         for item in items:
             assert isinstance(item["name"], str)
 
-    def test_labels_is_list(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_labels_is_list(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """'labels' field must be a list."""
         items = self._cmd_list_json(tmp_path, capsys)
         for item in items:
@@ -120,15 +121,19 @@ class TestLoopListJsonContract:
     ) -> None:
         """A built-in loop result includes built_in=True and all required fields."""
         from little_loops.cli.loop.info import cmd_list
-        from little_loops.cli.loop._helpers import get_builtin_loops_dir
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
 
         args = argparse.Namespace(
-            running=False, status=None, json=True,
-            category=None, label=None, all=True,
-            internal=False, examples=False,
+            running=False,
+            status=None,
+            json=True,
+            category=None,
+            label=None,
+            all=True,
+            internal=False,
+            examples=False,
         )
         result = cmd_list(args, loops_dir)
         assert result == 0
@@ -188,7 +193,14 @@ class TestLoopStatusJsonContract:
 
     def test_status_is_known_value(self) -> None:
         """'status' must be one of the documented values."""
-        known = {"running", "completed", "failed", "interrupted", "awaiting_continuation", "timed_out"}
+        known = {
+            "running",
+            "completed",
+            "failed",
+            "interrupted",
+            "awaiting_continuation",
+            "timed_out",
+        }
         for status_val in known:
             state = self._make_loop_state(status=status_val)
             assert state.to_dict()["status"] == status_val
@@ -237,7 +249,9 @@ class TestLoopStatusJsonContract:
         items = json.loads(capsys.readouterr().out)
         assert len(items) == 1
         for field in self.REQUIRED_FIELDS:
-            assert field in items[0], f"required field '{field}' missing from running-loop JSON output"
+            assert field in items[0], (
+                f"required field '{field}' missing from running-loop JSON output"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +301,9 @@ class TestIssuesListJsonContract:
         assert items, "expected at least one issue in output"
         for item in items:
             for field in self.REQUIRED_FIELDS:
-                assert field in item, f"required field '{field}' missing from ll-issues list --json output"
+                assert field in item, (
+                    f"required field '{field}' missing from ll-issues list --json output"
+                )
 
     def test_id_is_string(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

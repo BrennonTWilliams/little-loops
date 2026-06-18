@@ -966,9 +966,7 @@ class TestPersistentExecutor:
         assert state is not None
         assert state.status == "interrupted"
 
-    def test_final_status_interrupted_with_on_max_steps_summary(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_final_status_interrupted_with_on_max_steps_summary(self, tmp_loops_dir: Path) -> None:
         """Final status is 'interrupted' after on_max_steps summary state runs."""
         fsm = FSMLoop(
             name="summary-loop",

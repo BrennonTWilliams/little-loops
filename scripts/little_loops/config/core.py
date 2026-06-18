@@ -486,7 +486,9 @@ class BRConfig:
             worktree_copy_files=self._parallel.worktree_copy_files,
             require_code_changes=self._parallel.require_code_changes,
             use_feature_branches=(
-                use_feature_branches if use_feature_branches is not None else self._parallel.use_feature_branches
+                use_feature_branches
+                if use_feature_branches is not None
+                else self._parallel.use_feature_branches
             ),
             push_feature_branches=self._parallel.push_feature_branches,
             open_pr_for_feature_branches=self._parallel.open_pr_for_feature_branches,

@@ -1866,9 +1866,7 @@ class TestReconcilePrMerges:
 
         manager = GitHubSyncManager(sync_config, mock_logger)
 
-        with patch(
-            "little_loops.parallel.github_utils.subprocess.run"
-        ) as mock_run:
+        with patch("little_loops.parallel.github_utils.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
@@ -1894,9 +1892,7 @@ class TestReconcilePrMerges:
 
         manager = GitHubSyncManager(sync_config, mock_logger)
 
-        with patch(
-            "little_loops.parallel.github_utils.subprocess.run"
-        ) as mock_run:
+        with patch("little_loops.parallel.github_utils.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
@@ -1914,15 +1910,11 @@ class TestReconcilePrMerges:
     ) -> None:
         """An in_progress issue with no pr_url or branch is skipped."""
         issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-no-pr.md"
-        issue_file.write_text(
-            "---\nid: BUG-001\nstatus: in_progress\n---\n\n# BUG-001\n"
-        )
+        issue_file.write_text("---\nid: BUG-001\nstatus: in_progress\n---\n\n# BUG-001\n")
 
         manager = GitHubSyncManager(sync_config, mock_logger)
 
-        with patch(
-            "little_loops.parallel.github_utils.subprocess.run"
-        ) as mock_run:
+        with patch("little_loops.parallel.github_utils.subprocess.run") as mock_run:
             count = manager.reconcile_pr_merges()
 
         mock_run.assert_not_called()
@@ -1943,9 +1935,7 @@ class TestReconcilePrMerges:
             "pr_url: https://github.com/owner/repo/pull/11\n---\n\n# BUG-002\n"
         )
 
-        def fake_gh_run(
-            args: list[str], **kwargs: object
-        ) -> subprocess.CompletedProcess[str]:
+        def fake_gh_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             # Distinguish by the ref passed to `gh pr view`
             ref = args[3]
             if "pull/10" in ref:

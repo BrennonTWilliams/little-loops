@@ -57,9 +57,7 @@ def setup_worktree(
             timeout=10,
         )
         if verify_result.returncode != 0:
-            raise RuntimeError(
-                f"Branch '{base_branch}' does not resolve: {verify_result.stderr}"
-            )
+            raise RuntimeError(f"Branch '{base_branch}' does not resolve: {verify_result.stderr}")
 
     worktree_args = ["worktree", "add", "-b", branch_name, str(worktree_path)]
     if base_branch is not None:

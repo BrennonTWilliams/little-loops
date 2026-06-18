@@ -2156,7 +2156,9 @@ CORRECTED
 
         captured: list[str] = []
 
-        def capture_setup(worktree_path: Path, branch_name: str, base_branch: str | None = None) -> None:
+        def capture_setup(
+            worktree_path: Path, branch_name: str, base_branch: str | None = None
+        ) -> None:
             captured.append(branch_name)
 
         with patch.object(pool, "_setup_worktree", side_effect=capture_setup):
@@ -2837,9 +2839,7 @@ class TestPruneMergedFeatureBranches:
         assert pruned == ["feature/bug-001-fix"]
         assert skipped == []
         # Verify no branch -D call was made for the parallel branch
-        delete_calls = [
-            c for c in mock_run.call_args_list if c.args[0][:2] == ["branch", "-D"]
-        ]
+        delete_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["branch", "-D"]]
         assert all("parallel/" not in str(c) for c in delete_calls)
 
     def test_dry_run_lists_but_does_not_delete(
@@ -2855,16 +2855,12 @@ class TestPruneMergedFeatureBranches:
         )
         with patch("little_loops.parallel.github_utils.is_pr_merged", return_value=False):
             with patch.object(worker_pool._git_lock, "run", side_effect=side_effect) as mock_run:
-                pruned, skipped = worker_pool.prune_merged_feature_branches(
-                    "main", dry_run=True
-                )
+                pruned, skipped = worker_pool.prune_merged_feature_branches("main", dry_run=True)
 
         assert pruned == ["feature/bug-004-dry-test"]
         assert skipped == []
         # No destructive git branch -D call issued
-        delete_calls = [
-            c for c in mock_run.call_args_list if c.args[0][:2] == ["branch", "-D"]
-        ]
+        delete_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["branch", "-D"]]
         assert delete_calls == []
 
     def test_current_branch_is_never_deleted(
@@ -2897,9 +2893,7 @@ class TestPruneMergedFeatureBranches:
             merged_branches=["main"],  # git --merged misses squash merges
         )
         # Simulate gh reporting the PR as merged
-        with patch(
-            "little_loops.parallel.github_utils.is_pr_merged", return_value=True
-        ):
+        with patch("little_loops.parallel.github_utils.is_pr_merged", return_value=True):
             with patch.object(worker_pool._git_lock, "run", side_effect=side_effect):
                 pruned, skipped = worker_pool.prune_merged_feature_branches("main")
 

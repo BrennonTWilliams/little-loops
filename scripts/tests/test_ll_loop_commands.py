@@ -1045,7 +1045,9 @@ class TestLoopListVisibilityFilter:
         (loops_dir / "pub-tagged.yaml").write_text(
             _runnable("name: pub-tagged\nvisibility: public\nlabels: [hermes]\n")
         )
-        (loops_dir / "pub-plain.yaml").write_text(_runnable("name: pub-plain\nvisibility: public\n"))
+        (loops_dir / "pub-plain.yaml").write_text(
+            _runnable("name: pub-plain\nvisibility: public\n")
+        )
         (loops_dir / "int-tagged.yaml").write_text(
             _runnable("name: int-tagged\nvisibility: internal\nlabels: [hermes]\n")
         )

@@ -252,15 +252,12 @@ Examples:
             if pruned:
                 verb = "would delete" if args.dry_run else "deleted"
                 logger.success(
-                    f"Pruned {len(pruned)} merged feature branch(es) "
-                    f"({verb}): {', '.join(pruned)}"
+                    f"Pruned {len(pruned)} merged feature branch(es) ({verb}): {', '.join(pruned)}"
                 )
             else:
                 logger.info("No merged feature branches found to prune.")
             if skipped:
-                logger.warning(
-                    f"Could not delete {len(skipped)} branch(es): {', '.join(skipped)}"
-                )
+                logger.warning(f"Could not delete {len(skipped)} branch(es): {', '.join(skipped)}")
             return 0
 
         # Delete state file if not resuming

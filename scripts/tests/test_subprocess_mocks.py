@@ -629,7 +629,9 @@ class TestWorkerPoolSetupWorktree:
             captured_commands.append(cmd)
             if cmd[0] == "git" and cmd[1] == "config":
                 if "user.email" in cmd:
-                    return subprocess.CompletedProcess(cmd, 0, stdout="test@example.com\n", stderr="")
+                    return subprocess.CompletedProcess(
+                        cmd, 0, stdout="test@example.com\n", stderr=""
+                    )
                 if "user.name" in cmd:
                     return subprocess.CompletedProcess(cmd, 0, stdout="Test User\n", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="abc1234\n", stderr="")

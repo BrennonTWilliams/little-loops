@@ -17,13 +17,11 @@ import pytest
 
 from little_loops.hooks import pre_compact_handoff
 from little_loops.hooks.pre_compact_handoff import _build_content
-from little_loops.hooks.types import LLHookEvent, LLHookResult
+from little_loops.hooks.types import LLHookEvent
 
 
 def _event(**payload: object) -> LLHookEvent:
-    return LLHookEvent(
-        host="claude-code", intent="pre_compact_handoff", payload=dict(payload)
-    )
+    return LLHookEvent(host="claude-code", intent="pre_compact_handoff", payload=dict(payload))
 
 
 class TestBuildContent:
@@ -36,7 +34,7 @@ class TestBuildContent:
 
     def test_drops_last_section_when_over_limit(self) -> None:
         big = "x" * 1500
-        sections = [f"## Small\nshort", f"## Big\n{big}"]
+        sections = ["## Small\nshort", f"## Big\n{big}"]
         result = _build_content(sections, max_bytes=100)
         assert "## Small" in result
         assert "## Big" not in result
@@ -285,9 +283,7 @@ class TestOutputSchema:
         content = (tmp_path / ".ll" / "ll-continue-prompt.md").read_text(encoding="utf-8")
         assert "## Next Steps" in content
 
-    def test_output_within_2kb(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_output_within_2kb(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
 
         pre_compact_handoff.handle(_event())
@@ -295,9 +291,7 @@ class TestOutputSchema:
         content = (tmp_path / ".ll" / "ll-continue-prompt.md").read_bytes()
         assert len(content) <= 2048
 
-    def test_output_has_frontmatter(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_output_has_frontmatter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
 
         pre_compact_handoff.handle(_event())
@@ -365,10 +359,25 @@ class TestEventLogPath:
         """Multiple Write events for same file → exactly one entry in ll-continue-prompt.md."""
         monkeypatch.chdir(tmp_path)
         ll_dir = tmp_path / ".ll"
-        self._write_events(ll_dir, [
-            {"ts": "2026-06-17T10:00:00Z", "type": "file", "op": "Write", "subject": "scripts/foo.py", "status": ""},
-            {"ts": "2026-06-17T10:01:00Z", "type": "file", "op": "Write", "subject": "scripts/foo.py", "status": ""},
-        ])
+        self._write_events(
+            ll_dir,
+            [
+                {
+                    "ts": "2026-06-17T10:00:00Z",
+                    "type": "file",
+                    "op": "Write",
+                    "subject": "scripts/foo.py",
+                    "status": "",
+                },
+                {
+                    "ts": "2026-06-17T10:01:00Z",
+                    "type": "file",
+                    "op": "Write",
+                    "subject": "scripts/foo.py",
+                    "status": "",
+                },
+            ],
+        )
 
         result = pre_compact_handoff.handle(_event())
 
@@ -382,9 +391,18 @@ class TestEventLogPath:
         """type=error event with no subsequent same-subject event → appears in Unresolved Errors."""
         monkeypatch.chdir(tmp_path)
         ll_dir = tmp_path / ".ll"
-        self._write_events(ll_dir, [
-            {"ts": "2026-06-17T10:00:00Z", "type": "error", "op": "run", "subject": "ruff-check-failed", "status": ""},
-        ])
+        self._write_events(
+            ll_dir,
+            [
+                {
+                    "ts": "2026-06-17T10:00:00Z",
+                    "type": "error",
+                    "op": "run",
+                    "subject": "ruff-check-failed",
+                    "status": "",
+                },
+            ],
+        )
 
         result = pre_compact_handoff.handle(_event())
 
@@ -398,10 +416,25 @@ class TestEventLogPath:
         """type=error then later same-subject event → error absent from Unresolved Errors section."""
         monkeypatch.chdir(tmp_path)
         ll_dir = tmp_path / ".ll"
-        self._write_events(ll_dir, [
-            {"ts": "2026-06-17T10:00:00Z", "type": "error", "op": "run", "subject": "lint-failed", "status": ""},
-            {"ts": "2026-06-17T10:01:00Z", "type": "task", "op": "complete", "subject": "lint-failed", "status": "done"},
-        ])
+        self._write_events(
+            ll_dir,
+            [
+                {
+                    "ts": "2026-06-17T10:00:00Z",
+                    "type": "error",
+                    "op": "run",
+                    "subject": "lint-failed",
+                    "status": "",
+                },
+                {
+                    "ts": "2026-06-17T10:01:00Z",
+                    "type": "task",
+                    "op": "complete",
+                    "subject": "lint-failed",
+                    "status": "done",
+                },
+            ],
+        )
 
         result = pre_compact_handoff.handle(_event())
 
@@ -410,7 +443,9 @@ class TestEventLogPath:
         assert "## Unresolved Errors" in content
         errors_start = content.index("## Unresolved Errors")
         errors_end = content.find("## ", errors_start + 5)
-        errors_section = content[errors_start:errors_end] if errors_end != -1 else content[errors_start:]
+        errors_section = (
+            content[errors_start:errors_end] if errors_end != -1 else content[errors_start:]
+        )
         assert "lint-failed" not in errors_section
 
     def test_fallback_when_jsonl_absent(
@@ -431,10 +466,25 @@ class TestEventLogPath:
         """Two type=task events for same subject → only one entry, with the last status."""
         monkeypatch.chdir(tmp_path)
         ll_dir = tmp_path / ".ll"
-        self._write_events(ll_dir, [
-            {"ts": "2026-06-17T10:00:00Z", "type": "task", "op": "start", "subject": "FEAT-1264", "status": "in_progress"},
-            {"ts": "2026-06-17T10:01:00Z", "type": "task", "op": "complete", "subject": "FEAT-1264", "status": "done"},
-        ])
+        self._write_events(
+            ll_dir,
+            [
+                {
+                    "ts": "2026-06-17T10:00:00Z",
+                    "type": "task",
+                    "op": "start",
+                    "subject": "FEAT-1264",
+                    "status": "in_progress",
+                },
+                {
+                    "ts": "2026-06-17T10:01:00Z",
+                    "type": "task",
+                    "op": "complete",
+                    "subject": "FEAT-1264",
+                    "status": "done",
+                },
+            ],
+        )
 
         result = pre_compact_handoff.handle(_event())
 

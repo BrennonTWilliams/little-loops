@@ -126,8 +126,15 @@ Examples:
             default=None,
             help="If valid JSON object with keys matching defined context variables, unpacks into those keys; otherwise stored as a string in context[input_key]",
         )
-        run_parser.add_argument("--max-steps", "-n", type=int, help="Override step cap (max individual state transitions)")
-        run_parser.add_argument("--max-iterations", type=int, help="Override full-pass cap (max complete loop cycles)")
+        run_parser.add_argument(
+            "--max-steps",
+            "-n",
+            type=int,
+            help="Override step cap (max individual state transitions)",
+        )
+        run_parser.add_argument(
+            "--max-iterations", type=int, help="Override full-pass cap (max complete loop cycles)"
+        )
         run_parser.add_argument(
             "--delay",
             type=float,

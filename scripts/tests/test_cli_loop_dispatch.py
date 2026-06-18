@@ -564,9 +564,7 @@ class TestMainLoopShorthand:
 class TestMainLoopRunFlagForwarding:
     """Tests that run subcommand flags are parsed and forwarded correctly."""
 
-    def test_max_steps_forwarded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_max_steps_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--max-steps is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
         monkeypatch.chdir(project)
@@ -873,9 +871,7 @@ class TestMainLoopSimulateFlagForwarding:
         monkeypatch.chdir(project)
         mocks = _mock_handlers(monkeypatch)
 
-        with patch.object(
-            sys, "argv", ["ll-loop", "simulate", "test-loop", "--max-steps", "10"]
-        ):
+        with patch.object(sys, "argv", ["ll-loop", "simulate", "test-loop", "--max-steps", "10"]):
             result = main_loop()
 
         assert result == 0

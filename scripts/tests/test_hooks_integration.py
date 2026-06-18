@@ -2121,7 +2121,9 @@ class TestPrecompactHandoff:
     @pytest.fixture
     def hook_script(self) -> Path:
         """Path to the Claude Code precompact-handoff adapter."""
-        return Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/precompact-handoff.sh"
+        return (
+            Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/precompact-handoff.sh"
+        )
 
     def test_produces_prompt_file_within_2kb(self, hook_script: Path, tmp_path: Path):
         """(a) Hook writes ll-continue-prompt.md ≤ 2KB and exits 2."""
@@ -2153,9 +2155,7 @@ class TestPrecompactHandoff:
             os.chdir(tmp_path)
             ll_dir = tmp_path / ".ll"
             ll_dir.mkdir(exist_ok=True)
-            (ll_dir / "ll-session-events.jsonl").write_text(
-                '{"type": "tool_use"}\n' * 200
-            )
+            (ll_dir / "ll-session-events.jsonl").write_text('{"type": "tool_use"}\n' * 200)
             result = subprocess.run(
                 [str(hook_script)],
                 input=json.dumps({}),
@@ -2232,8 +2232,20 @@ class TestPrecompactHandoff:
             ll_dir = tmp_path / ".ll"
             ll_dir.mkdir(exist_ok=True)
             events = [
-                {"ts": "2026-06-17T10:00:00Z", "type": "file", "op": "Write", "subject": "scripts/bar.py", "status": ""},
-                {"ts": "2026-06-17T10:01:00Z", "type": "file", "op": "Write", "subject": "scripts/bar.py", "status": ""},
+                {
+                    "ts": "2026-06-17T10:00:00Z",
+                    "type": "file",
+                    "op": "Write",
+                    "subject": "scripts/bar.py",
+                    "status": "",
+                },
+                {
+                    "ts": "2026-06-17T10:01:00Z",
+                    "type": "file",
+                    "op": "Write",
+                    "subject": "scripts/bar.py",
+                    "status": "",
+                },
             ]
             (ll_dir / "ll-session-events.jsonl").write_text(
                 "\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8"
@@ -2262,7 +2274,13 @@ class TestPrecompactHandoff:
             ll_dir = tmp_path / ".ll"
             ll_dir.mkdir(exist_ok=True)
             events = [
-                {"ts": "2026-06-17T10:00:00Z", "type": "error", "op": "run", "subject": "mypy-type-error", "status": ""},
+                {
+                    "ts": "2026-06-17T10:00:00Z",
+                    "type": "error",
+                    "op": "run",
+                    "subject": "mypy-type-error",
+                    "status": "",
+                },
             ]
             (ll_dir / "ll-session-events.jsonl").write_text(
                 "\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8"
@@ -3219,9 +3237,7 @@ class TestSessionCapture:
         assert ev["op"] == "TaskCreate"
         assert "ts" in ev
 
-    def test_git_event_captured(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    ) -> None:
+    def test_git_event_captured(self, hook_script: Path, test_config: Path, tmp_path: Path) -> None:
         """Bash invocation with git produces a type=git event record."""
         import os
 
@@ -3273,9 +3289,7 @@ class TestSessionCapture:
         assert "pytest" in ev["subject"]
         assert "ts" in ev
 
-    def test_exits_zero_when_feature_disabled(
-        self, hook_script: Path, tmp_path: Path
-    ) -> None:
+    def test_exits_zero_when_feature_disabled(self, hook_script: Path, tmp_path: Path) -> None:
         """Hook exits 0 and produces no record when session_capture.enabled is false (default)."""
         import os
 

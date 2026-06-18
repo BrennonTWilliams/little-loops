@@ -200,9 +200,7 @@ class TestCmdSimulateScenarios:
 class TestCmdSimulateMaxSteps:
     """Tests for --max-steps flag in cmd_simulate."""
 
-    def test_max_steps_applied(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_max_steps_applied(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--max-steps overrides the FSM's max_steps."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()

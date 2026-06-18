@@ -1165,9 +1165,7 @@ class GitHubSyncManager:
                 if is_pr_merged(branch or "", pr_url):
                     issue_id = self._extract_issue_id(issue_path.name)
                     if self.dry_run:
-                        self.logger.info(
-                            f"[DRY RUN] Would promote {issue_id} to done (PR merged)"
-                        )
+                        self.logger.info(f"[DRY RUN] Would promote {issue_id} to done (PR merged)")
                         promoted += 1
                     else:
                         now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1178,8 +1176,6 @@ class GitHubSyncManager:
                         self.logger.success(f"Promoted {issue_id} to done (PR merged)")
                         promoted += 1
             except Exception as exc:
-                self.logger.warning(
-                    f"reconcile: error processing {issue_path.name}: {exc}"
-                )
+                self.logger.warning(f"reconcile: error processing {issue_path.name}: {exc}")
 
         return promoted

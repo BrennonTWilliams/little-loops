@@ -1551,9 +1551,7 @@ class WorkerPool:
         current_result = self._git_lock.run(
             ["rev-parse", "--abbrev-ref", "HEAD"], cwd=self.repo_path, timeout=10
         )
-        current_branch = (
-            current_result.stdout.strip() if current_result.returncode == 0 else ""
-        )
+        current_branch = current_result.stdout.strip() if current_result.returncode == 0 else ""
 
         all_result = self._git_lock.run(["branch"], cwd=self.repo_path, timeout=30)
         merged_result = self._git_lock.run(
@@ -1571,9 +1569,7 @@ class WorkerPool:
             return branches
 
         all_branches = _parse(all_result.stdout) if all_result.returncode == 0 else []
-        merged_set = set(
-            _parse(merged_result.stdout) if merged_result.returncode == 0 else []
-        )
+        merged_set = set(_parse(merged_result.stdout) if merged_result.returncode == 0 else [])
 
         pruned: list[str] = []
         skipped: list[str] = []

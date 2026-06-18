@@ -991,11 +991,15 @@ states:
         captured_model: list[str | None] = []
 
         class CapturingRunner:
-            def run(self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any) -> ActionResult:
+            def run(
+                self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any
+            ) -> ActionResult:
                 captured_model.append(kwargs.get("model"))
                 return ActionResult(output="", stderr="", exit_code=0, duration_ms=0)
 
-        executor = FSMExecutor(fsm, action_runner=CapturingRunner(), run_model="claude-haiku-4-5-20251001")
+        executor = FSMExecutor(
+            fsm, action_runner=CapturingRunner(), run_model="claude-haiku-4-5-20251001"
+        )
         executor.run()
 
         assert captured_model, "action runner was never called"
@@ -1018,11 +1022,15 @@ states:
         captured_model: list[str | None] = []
 
         class CapturingRunner:
-            def run(self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any) -> ActionResult:
+            def run(
+                self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any
+            ) -> ActionResult:
                 captured_model.append(kwargs.get("model"))
                 return ActionResult(output="", stderr="", exit_code=0, duration_ms=0)
 
-        executor = FSMExecutor(fsm, action_runner=CapturingRunner(), run_model="claude-haiku-4-5-20251001")
+        executor = FSMExecutor(
+            fsm, action_runner=CapturingRunner(), run_model="claude-haiku-4-5-20251001"
+        )
         executor.run()
 
         assert captured_model, "action runner was never called"

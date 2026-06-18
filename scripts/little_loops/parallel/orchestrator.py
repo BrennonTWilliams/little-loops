@@ -953,7 +953,9 @@ class ParallelOrchestrator:
                 # Hold issue at in_progress until PR is merged; ll-sync reconcile promotes to done (ENH-2182)
                 self.logger.info(f"{result.issue_id}: feature branch ready — {result.branch_name}")
                 self.queue.mark_completed(result.issue_id)
-                self._complete_issue_lifecycle_if_needed(result.issue_id, terminal_status="in_progress")
+                self._complete_issue_lifecycle_if_needed(
+                    result.issue_id, terminal_status="in_progress"
+                )
                 branch_state: dict[str, Any] = {
                     "branch_name": result.branch_name,
                     "pushed": False,
@@ -980,7 +982,9 @@ class ParallelOrchestrator:
                             f" to {self.parallel_config.remote_name}"
                         )
                         if self.parallel_config.open_pr_for_feature_branches:
-                            self._open_pr_for_branch(result.issue_id, result.branch_name, branch_state)
+                            self._open_pr_for_branch(
+                                result.issue_id, result.branch_name, branch_state
+                            )
                     else:
                         self.logger.warning(
                             f"{result.issue_id}: git push failed: {push_result.stderr.strip()}"
@@ -998,7 +1002,11 @@ class ParallelOrchestrator:
                         info.path.write_text(content)
                         self._git_lock.run(["add", "-A"], cwd=self.repo_path)
                         commit_result = self._git_lock.run(
-                            ["commit", "-m", f"{result.issue_id}: record feature branch in frontmatter"],
+                            [
+                                "commit",
+                                "-m",
+                                f"{result.issue_id}: record feature branch in frontmatter",
+                            ],
                             cwd=self.repo_path,
                         )
                         if (
@@ -1125,9 +1133,7 @@ class ParallelOrchestrator:
                 branch_state["pr_url"] = pr_result.stdout.strip()
                 self.logger.info(f"{issue_id}: PR opened: {branch_state['pr_url']}")
             else:
-                self.logger.warning(
-                    f"{issue_id}: gh pr create failed: {pr_result.stderr.strip()}"
-                )
+                self.logger.warning(f"{issue_id}: gh pr create failed: {pr_result.stderr.strip()}")
         except FileNotFoundError:
             self.logger.warning(f"{issue_id}: gh CLI not found, skipping PR creation")
         except subprocess.TimeoutExpired:

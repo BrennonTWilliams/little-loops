@@ -83,8 +83,7 @@ def _build_from_event_log(log_path: Path) -> list[str]:
 
     files_md = "\n".join(f"- {s}" for s in file_edits) or "(none)"
     errors_md = (
-        "\n".join(f"- {ev.payload.get('subject', '?')}" for ev in unresolved_errors)
-        or "(none)"
+        "\n".join(f"- {ev.payload.get('subject', '?')}" for ev in unresolved_errors) or "(none)"
     )
     tasks_md = (
         "\n".join(
@@ -166,9 +165,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         # Idempotency guard: skip write if prompt is already fresher than compacted_at.
         # Any parse error means we cannot verify freshness → proceed with write.
         try:
-            compacted_at_str = json.loads(
-                state_file.read_text(encoding="utf-8")
-            )["compacted_at"]
+            compacted_at_str = json.loads(state_file.read_text(encoding="utf-8"))["compacted_at"]
             compacted_epoch = datetime.fromisoformat(
                 compacted_at_str.replace("Z", "+00:00")
             ).timestamp()

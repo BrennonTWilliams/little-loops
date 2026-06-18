@@ -7791,41 +7791,32 @@ class TestMaxStepsSummaryHook:
 
         # Primary assertion: terminated_by must be "max_steps"
         assert result.terminated_by == "max_steps", (
-            f"Expected terminated_by='max_steps', got "
-            f"'{result.terminated_by}'"
+            f"Expected terminated_by='max_steps', got '{result.terminated_by}'"
         )
 
         # Final state must be the summary handler, not the intermediate gate
         complete_events = [e for e in events if e.get("event") == "loop_complete"]
         assert len(complete_events) == 1
         assert complete_events[0]["final_state"] == "summary_handler", (
-            f"Expected final_state='summary_handler', got "
-            f"'{complete_events[0]['final_state']}'"
+            f"Expected final_state='summary_handler', got '{complete_events[0]['final_state']}'"
         )
 
         # max_steps_summary event must be emitted
-        summary_events = [
-            e for e in events if e.get("event") == "max_steps_summary"
-        ]
+        summary_events = [e for e in events if e.get("event") == "max_steps_summary"]
         assert len(summary_events) == 1
         assert summary_events[0]["summary_state"] == "summary_handler"
 
         # The summary handler's action must have executed
-        assert runner.calls.count("summary.sh") == 1, (
-            "summary_handler action never executed"
-        )
+        assert runner.calls.count("summary.sh") == 1, "summary_handler action never executed"
 
         # The intermediate gate was reached at least once (its action was
         # flushed by the BUG-158 guard before the handler ran).
         gate_enter_events = [
             e
             for e in events
-            if e.get("event") == "state_enter"
-            and e.get("state") == "intermediate_gate"
+            if e.get("event") == "state_enter" and e.get("state") == "intermediate_gate"
         ]
-        assert len(gate_enter_events) >= 1, (
-            "intermediate_gate was never entered (or flushed)"
-        )
+        assert len(gate_enter_events) >= 1, "intermediate_gate was never entered (or flushed)"
 
     def test_sub_loop_on_error_without_handler_preserves_behavior(self) -> None:
         """BUG-158: when on_max_steps is not set, sub-loop on_error at
@@ -7868,9 +7859,7 @@ class TestMaxStepsSummaryHook:
         assert complete_events[0]["terminated_by"] == "max_steps"
 
         # No summary event (on_max_steps is None)
-        summary_events = [
-            e for e in events if e.get("event") == "max_steps_summary"
-        ]
+        summary_events = [e for e in events if e.get("event") == "max_steps_summary"]
         assert summary_events == []
 
 

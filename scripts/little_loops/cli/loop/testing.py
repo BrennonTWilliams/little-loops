@@ -207,9 +207,7 @@ def cmd_simulate(
     else:
         # Limit steps for simulation safety (cap at 20 unless overridden)
         if fsm.max_steps > 20:
-            logger.info(
-                f"Limiting simulation to 20 steps (max_steps: {fsm.max_steps})"
-            )
+            logger.info(f"Limiting simulation to 20 steps (max_steps: {fsm.max_steps})")
             fsm.max_steps = 20
 
     # Inject runner-managed context variables so ${context.run_dir} resolves during

@@ -1811,13 +1811,12 @@ class TestOnWorkerComplete:
             stderr="",
         )
 
-        with patch("little_loops.parallel.orchestrator.subprocess.run", return_value=push_completed) as mock_run:
+        with patch(
+            "little_loops.parallel.orchestrator.subprocess.run", return_value=push_completed
+        ) as mock_run:
             orchestrator._on_worker_complete(result)
 
-        push_calls = [
-            call for call in mock_run.call_args_list
-            if call[0] and "push" in call[0][0]
-        ]
+        push_calls = [call for call in mock_run.call_args_list if call[0] and "push" in call[0][0]]
         assert len(push_calls) == 1
         push_args = push_calls[0][0][0]
         assert push_args == ["git", "push", "--force-with-lease", "origin", "feature/bug-001-test"]
@@ -1854,13 +1853,18 @@ class TestOnWorkerComplete:
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
             if args[0] == "gh" and args[1] == "pr":
                 return subprocess.CompletedProcess(
-                    args=args, returncode=0,
+                    args=args,
+                    returncode=0,
                     stdout="https://github.com/owner/repo/pull/42",
                     stderr="",
                 )
-            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="unexpected")
+            return subprocess.CompletedProcess(
+                args=args, returncode=1, stdout="", stderr="unexpected"
+            )
 
-        with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run):
+        with patch(
+            "little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run
+        ):
             orchestrator._on_worker_complete(result)
 
         state = orchestrator._pr_ready_branches["BUG-001"]
@@ -2004,7 +2008,6 @@ class TestOnWorkerComplete:
         assert "pushed + PR opened" in combined
         assert "https://github.com/owner/repo/pull/42" in combined
 
-
     def test_on_worker_complete_feature_branch_records_branch_in_frontmatter(
         self,
         orchestrator: ParallelOrchestrator,
@@ -2112,7 +2115,8 @@ class TestOnWorkerComplete:
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
             if args[0] == "gh" and args[1] == "pr":
                 return subprocess.CompletedProcess(
-                    args=args, returncode=0,
+                    args=args,
+                    returncode=0,
                     stdout="https://github.com/owner/repo/pull/100",
                     stderr="",
                 )
@@ -2269,9 +2273,13 @@ class TestFeatureBranchE2E:
             if args[0] == "git" and "push" in args:
                 push_calls.append(args)
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="unexpected")
+            return subprocess.CompletedProcess(
+                args=args, returncode=1, stdout="", stderr="unexpected"
+            )
 
-        with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run):
+        with patch(
+            "little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run
+        ):
             for iid, branch in [
                 ("BUG-001", "feature/bug-001-test-bug"),
                 ("BUG-002", "feature/bug-002-another-bug"),
@@ -2299,7 +2307,9 @@ class TestFeatureBranchE2E:
             fm = parse_frontmatter(path.read_text())
             assert fm.get("branch") == branch, f"{path.name}: expected branch: {branch}"
             assert "pr_url" not in fm, f"{path.name}: pr_url should not be written without open_pr"
-            assert fm.get("status") == "in_progress", f"{path.name}: status must be held at in_progress"
+            assert fm.get("status") == "in_progress", (
+                f"{path.name}: status must be held at in_progress"
+            )
 
     def test_feature_branch_push_and_pr_two_issues(
         self,
@@ -2341,13 +2351,18 @@ class TestFeatureBranchE2E:
             if args[0] == "gh" and args[1] == "pr":
                 pr_counter[0] += 1
                 return subprocess.CompletedProcess(
-                    args=args, returncode=0,
+                    args=args,
+                    returncode=0,
                     stdout=f"https://github.com/owner/repo/pull/{pr_counter[0]}",
                     stderr="",
                 )
-            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="unexpected")
+            return subprocess.CompletedProcess(
+                args=args, returncode=1, stdout="", stderr="unexpected"
+            )
 
-        with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run):
+        with patch(
+            "little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run
+        ):
             for iid, branch in [
                 ("BUG-001", "feature/bug-001-test-bug"),
                 ("BUG-002", "feature/bug-002-another-bug"),
@@ -2630,7 +2645,9 @@ class TestCompleteIssueLifecycle:
         git_ok.stderr = ""
         orchestrator._git_lock.run = lambda *a, **kw: git_ok  # type: ignore[method-assign]
 
-        result = orchestrator._complete_issue_lifecycle_if_needed("BUG-001", terminal_status="in_progress")
+        result = orchestrator._complete_issue_lifecycle_if_needed(
+            "BUG-001", terminal_status="in_progress"
+        )
 
         assert result is True
         content = original_path.read_text()
