@@ -60,6 +60,14 @@ A `PostToolUse` hook should fire after Write/Edit tool invocations, detect the s
 
 - `enhancement`, `captured`
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2212 (pip/npm install hook). Both add `PostToolUse` hooks detecting unproven packages. The debt marker handler must consult a session-scoped cache to skip packages already nudged by ENH-2212, preventing duplicate entries. ENH-2212 should be implemented first; this issue depends on that caching infrastructure.
+
+Additionally, this issue writes to issue frontmatter (`learning_tests_required`) only — it does NOT create `LearningTestRecord` objects in the registry. ENH-2213 operates on registry records only. This separation is intentional: the debt marker records gaps in issue tracking; the verification loop verifies registry assertions. See [[ENH-2213]] for the registry-level verification.
+
 ## Session Log
 - `/ll:format-issue` - 2026-06-18T19:32:24 - `848f77db-a0fc-43be-8542-782afcbb1cd7.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

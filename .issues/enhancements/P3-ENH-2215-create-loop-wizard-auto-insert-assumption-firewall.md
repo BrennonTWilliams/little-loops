@@ -5,6 +5,7 @@ type: enhancement
 priority: P3
 status: open
 parent: EPIC-2207
+depends_on: ENH-2220
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
@@ -61,6 +62,12 @@ Loop authors writing integration loops currently must manually wire assumption-f
 ## Labels
 
 `enhancement`, `wizard`, `create-loop`, `assumption-firewall`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2220 (scope-epic). When the wizard is run from a sub-issue created by ENH-2220's scope-epic flow, it should read `learning_tests_required` from the issue's frontmatter (already populated by ENH-2220) rather than asking the user a duplicate "does this involve external APIs?" question. See [[ENH-2220]] for the scope-epic data pipeline.
 
 ## Session Log
 - `/ll:format-issue` - 2026-06-18T19:32:29 - `0ad50852-04aa-49ce-b1bf-d489adb4f465.jsonl`

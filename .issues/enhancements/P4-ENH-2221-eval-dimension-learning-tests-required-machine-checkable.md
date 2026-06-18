@@ -118,6 +118,15 @@ The existing `ll-harness` evaluator framework already handles `exit_code` evalua
 
 `enhancement`, `captured`, `eval`, `learning-tests`
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2214 (release gate) and ENH-2220 (scope-epic).
+
+- A complementary machine-checkable gate exists at the release stage (ENH-2214). That gate uses project-wide import scans and configurable `block`/`warn` behavior. This issue's gate uses issue-frontmatter targets and `exit_code` criteria in eval YAML. They are distinct lifecycle stages with different implementations. See [[ENH-2214]].
+- This issue consumes `learning_tests_required` frontmatter populated by ENH-2220's scope-epic flow. When ENH-2220 generates sub-issues with learning test prerequisites, those targets become available for eval criterion generation here. See [[ENH-2220]].
+
 ## Session Log
 - `/ll:format-issue` - 2026-06-18T19:33:39 - `eebe5815-0f5b-4c82-acb0-64597681c904.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

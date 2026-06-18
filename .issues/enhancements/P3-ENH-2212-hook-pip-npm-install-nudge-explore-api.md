@@ -71,6 +71,14 @@ Install-time is cheap. Proof-later is expensive. A nudge at install time — bef
 ### Configuration
 - `.ll/ll-config.json` — `learning_tests.enabled` gate (existing config key)
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2211 (debt marker). Both add `PostToolUse` hooks detecting unproven packages. The install-time nudge (this issue) is the preferred detection path; the debt marker (ENH-2211) is a backup for writes that bypass the install path. A session-scoped cache should track packages already nudged by this hook so ENH-2211 can skip them.
+
+Additionally, the registry query (`check_learning_test`) used by this hook must consider both `status: "proven"` and `status: "verified"` (the latter added by ENH-2213). If only `proven` is checked, adversarially-verified records would still trigger install nudges. ENH-2213's schema change should precede this issue so the query targets the updated schema. See [[ENH-2213]] for the `verified` result value.
+
 ## Acceptance Signals
 
 - `Bash("pip install httpx")` triggers a nudge: "No learning test for 'httpx'..."

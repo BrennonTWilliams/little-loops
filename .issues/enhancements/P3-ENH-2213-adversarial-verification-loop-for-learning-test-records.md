@@ -73,6 +73,15 @@ Key components:
 ### Configuration
 - N/A
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2211 (debt marker) and ENH-2212 (install hook). Key lifecycle separation:
+
+- ENH-2211 writes to issue frontmatter `learning_tests_required` only — it does NOT create `LearningTestRecord` objects. The verification loop here operates on registry records only, not on frontmatter fields.
+- The `verified` result value added by this issue must be recognized by ENH-2212's registry query so adversarially-verified records are treated as proven (suppressing install nudges). See [[ENH-2211]] and [[ENH-2212]] for the hook-layer integration.
+
 ## Acceptance Signals
 
 - Running the loop on a record with a correct `pass` assertion produces `verified` result

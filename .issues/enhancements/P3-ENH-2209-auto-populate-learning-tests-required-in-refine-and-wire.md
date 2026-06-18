@@ -5,6 +5,7 @@ type: enhancement
 priority: P3
 status: open
 parent: EPIC-2207
+depends_on: ENH-2208
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue

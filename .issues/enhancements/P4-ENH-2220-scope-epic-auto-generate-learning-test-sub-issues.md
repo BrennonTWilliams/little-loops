@@ -59,6 +59,17 @@ Learning test tasks are prerequisite work that's easy to forget when planning an
 - An epic mentioning `requests` where `requests` is already proven does not generate a sub-issue
 - Learning test sub-issues are marked as dependencies (`depends_on:`) for implementation sub-issues that require the same package
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2215 (create-loop wizard) and ENH-2221 (eval dimension).
+
+- This issue must populate `learning_tests_required` in the frontmatter of any generated sub-issues so that ENH-2215's wizard can read it (skipping its own API-detection question).
+- This issue also provides the data that ENH-2221 consumes: when `learning_tests_required` is populated on generated sub-issues, ENH-2221's eval generator automatically picks up those targets for `exit_code` criteria.
+
+This creates a defined data pipeline: `scope-epic` writes `learning_tests_required` → `create-loop` reads it → `create-eval-from-issues` consumes it. See [[ENH-2215]] and [[ENH-2221]].
+
 ## Session Log
 - `/ll:format-issue` - 2026-06-18T19:33:20 - `c65a1122-f4b2-4da5-8a84-b23a59357b7b.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

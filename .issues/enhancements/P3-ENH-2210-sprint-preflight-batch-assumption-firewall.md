@@ -5,6 +5,7 @@ type: enhancement
 priority: P3
 status: open
 parent: EPIC-2207
+depends_on: ENH-2209
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
@@ -60,6 +61,14 @@ Running an issue mid-sprint only to hit an unproven assumption wastes a full wor
 
 ### Configuration
 - `learning_tests.enabled` (boolean, default `false`) — new config key to opt into the pre-flight gate
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue depends on ENH-2209 (auto-population of `learning_tests_required`). The sprint pre-flight's effectiveness relies on `learning_tests_required` being reliably populated in issue frontmatter. To handle issues refined before ENH-2209 ships, the pre-flight should include a fallback: for issues without `learning_tests_required`, perform ad-hoc extraction (reusing ENH-2209's extraction logic inline) rather than silently skipping those issues.
+
+This issue is declared as `depends_on: ENH-2209` in frontmatter — soft ordering, not a hard block, because the fallback provides resilience. See [[ENH-2209]].
 
 ## API/Interface
 

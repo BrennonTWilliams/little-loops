@@ -113,6 +113,12 @@ learning_tests:
 
 `enhancement`, `learning-tests`, `release`, `quality-gate`
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue adds a machine-checkable learning test gate at the release stage. A complementary gate at the pre-implementation/eval stage is covered by ENH-2221. These are distinct lifecycle stages with different data sources (project-wide import scan vs issue-frontmatter targets) and different behaviors (`block`/`warn` config vs `exit_code` criterion in eval YAML). See [[ENH-2221]] for the pre-implementation gate.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
