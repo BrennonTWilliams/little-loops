@@ -143,6 +143,8 @@ little-loops/
 │   ├── issue-size-review/            # Evaluate issue complexity
 │   ├── issue-workflow/               # Issue lifecycle quick reference
 │   ├── link-epics/                   # Discover orphaned issues and propose EPIC assignments
+│   ├── ll-capture-issue/             # Codex bridge: capture issue from conversation
+│   ├── ll-go-no-go/                  # Codex bridge: adversarial GO/NO-GO assessment
 │   ├── manage-issue/                 # Manage issue lifecycle
 │   ├── map-dependencies/             # Discover and map issue dependencies
 │   ├── product-analyzer/             # Analyze codebase against product goals
