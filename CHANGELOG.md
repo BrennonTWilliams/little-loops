@@ -12,11 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
-## [1.126.0] - 2026-06-16
+## [1.126.0] - 2026-06-17
+
+### Added
+
+- **Feature branch workflow** — Full suite: `--feature-branches` CLI override for `ll-parallel`/`ll-sprint`, branch cut from `base_branch` (not `HEAD`), PR URL and branch name tracked in issue frontmatter, issues held at `in_progress` until PR merges, `--prune-merged-branches` for cleanup, sprint-wave awareness, end-to-end docs and integration test. (ENH-2173, ENH-2174, ENH-2175, ENH-2176, ENH-2177, ENH-2181, ENH-2182, ENH-2183)
+- **Pre-compact handoff** — Core Python hook, Claude Code adapter, `PostToolUse` session-capture event hook, docs/config wiring, and event-log read path integration. (FEAT-1113, FEAT-1156, FEAT-1157, FEAT-1158, FEAT-1262, FEAT-1264)
+- **Hermes integration enablement** — `ll-loop run` model/host action passthrough, `ll-loop list` visibility filter, JSON output contract stability, and integration docs transport fixes. (ENH-2197, ENH-2198, ENH-2199, ENH-2200)
+- **Session-end hook** — Sweeps stale cross-issue status references at session close. (FEAT-1680)
 
 ### Fixed
 
-- **Option J continuation scope guard for single-issue `ll-auto --only` runs (BUG-2201)** — When `sprint_context` is absent but `issue_path` is set, the guillotine prompt (both `run_dir` and non-`run_dir` paths) now includes a `## Scope Constraint` block identical in effect to sprint framing. Continuation sessions can no longer escape their single-issue scope and implement unrelated backlog issues. `rn-implement` also gains a `check_issue_status` pre-flight gate that skips issues already marked `done`/`cancelled` before delegating to `rn-remediate`. (BUG-2201)
+- **FSM `InterpolationError` crashes on bypass paths** — Built-in loops that reference captures from states that may not have executed on bypass paths now carry `:default=` guards; 10 loops patched across the capture-ordering fix series. (BUG-2094, BUG-2111, BUG-2112)
+- **`general-task` loop** — `verify_step` false-pass corrected for non-Python tasks; removed unbounded per-step retry spin. (BUG-2127)
+- **`sprint-refine-and-implement`** — Now accepts both named sprint files and EPIC ids, matching `goal-cluster`'s dual-shape resolver. (BUG-2136)
+- **Sprint test failures** — Fixed 21 test failures from stale monkeypatch targets and hintless-wave serialization edge cases. (BUG-2150)
+- **Feature branch PR readiness** — `use_feature_branches` PR-ready signal now accurately reflects push and PR creation status. (BUG-2172)
+- **Option J continuation scope-guard** — Single-issue `ll-auto --only` runs can no longer escape their scope and implement unrelated backlog issues; `rn-implement` gains a `check_issue_status` pre-flight gate. (BUG-2201)
+- **`rn-implement` deferred re-enqueue** — `deferred.txt` entries are now filtered by reason before the re-enqueue check. (BUG-2202)
+- **FSM dual-counter semantics** — `max_steps` counts total FSM steps while `max_iterations` counts loop body iterations; CLI flag renamed `max_iterations` → `max_steps` across CLI, tests, skills, docs, and loops. (BUG-2204, BUG-2205)
+
+### Changed
+
+- **FSM validator `:default=` guard recognition** — Validator now recognizes `:default=` guards in capture-reachability checks, eliminating false-positive `WARN` messages on bypass-path captures. (ENH-2128)
+- **`loop-composer` and `loop-composer-adaptive` error routing** — `re_decompose` wired to `on_error`; `check_auto_plan` error paths route to the HITL gate instead of failing silently. (ENH-2135)
+- **`loop-router` loop discovery** — `discover_loops` now passes `--visibility public` to filter hidden loops from selection. (ENH-2203)
 
 [1.126.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.125.0...v1.126.0
 
