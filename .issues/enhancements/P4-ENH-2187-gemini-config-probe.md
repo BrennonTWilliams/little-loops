@@ -60,4 +60,8 @@ they must use `.ll/ll-config.json` exclusively.
 
 ---
 
+## Verification Notes
+
+2026-06-18 (ACCURATE): `_config_candidates()` in `scripts/little_loops/config/core.py` does not include `.gemini/ll-config.json`. FEAT-2179 confirmed `.gemini/settings.json` as Gemini's settings file. Change is unimplemented; XS effort estimate appears correct.
+
 **Open** | Created: 2026-06-15 | Priority: P4

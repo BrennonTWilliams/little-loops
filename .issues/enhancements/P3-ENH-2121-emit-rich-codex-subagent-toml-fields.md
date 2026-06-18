@@ -153,6 +153,10 @@ parent session for omitted optional fields, so omission stays safe).
 | `docs/reference/HOST_COMPATIBILITY.md` | `[^agent]` footnote references this gap |
 | <https://developers.openai.com/codex/subagents> | Authoritative Codex subagent schema |
 
+## Verification Notes
+
+2026-06-18 (ACCURATE): `adapt_agents_for_codex.py` confirmed to emit only `name`, `description`, `model`, `developer_instructions` — none of `sandbox_mode`, `model_reasoning_effort`, `mcp_servers`, `skills.config`, or `nickname_candidates` are referenced. Current behavior claim is accurate.
+
 ## Status
 
 **Open** | Created: 2026-06-13 | Priority: P3

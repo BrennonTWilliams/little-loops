@@ -63,6 +63,10 @@ own bookkeeping standard.
 - **Risk**: Low
 - **Breaking Change**: No
 
+## Verification Notes
+
+2026-06-18 (ACCURATE): `HOST_COMPATIBILITY.md` line 28 shows `(deferred)` in the Codex column for `stop → session_end`. No footnote links to ENH-2105. The issue's goal of annotating the cell with a tracking link is still unmet.
+
 ## Status
 
 **Open** | Created: 2026-06-12 | Priority: P5

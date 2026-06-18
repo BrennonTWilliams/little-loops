@@ -76,4 +76,8 @@ Pattern: follow `PiRunner` in `host_runner.py` — it's the simplest existing st
 
 ---
 
+## Verification Notes
+
+2026-06-18 (UNSTARTED): `GeminiRunner` class does not exist in `host_runner.py`. Not in `_HOST_RUNNER_REGISTRY` or `_PROBE_ORDER`. FEAT-2179 is complete — `thoughts/research/gemini-cli-surface.md` confirms binary is `gemini`, version check is `gemini --version`, probe is `shutil.which("gemini")`. All research inputs for the stub are available.
+
 **Open** | Created: 2026-06-15 | Priority: P4

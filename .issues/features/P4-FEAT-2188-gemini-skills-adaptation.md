@@ -77,4 +77,8 @@ Codex analog: `ll-adapt-skills-for-codex` in `scripts/little_loops/adapt_skills_
 
 ---
 
+## Verification Notes
+
+2026-06-18 (UNSTARTED): `scripts/little_loops/adapt_gemini_skills.py` does not exist. No `ll-adapt-skills-for-gemini` entry point in `pyproject.toml`. FEAT-2179 (research spike) complete — Gemini's `.gemini/skills/<name>/SKILL.md` surface confirmed same format as Claude Code. Codex analog `adapt_skills_codex.py` exists as the reference pattern.
+
 **Open** | Created: 2026-06-15 | Priority: P4

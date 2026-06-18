@@ -172,6 +172,8 @@ For each ll intent, classify Pi coverage as:
 
 2026-06-13 (OUTDATED): Hook-event parity audit not performed. `thoughts/research/pi-hook-event-parity.md` does not exist. `hooks/adapters/pi/` directory does not exist (depends on FEAT-1478). Cannot start until FEAT-1719 (PostCompact wiring) and FEAT-1478 complete.
 
+2026-06-18 (BLOCKED): Still blocked. `hooks/adapters/pi/` does not exist (FEAT-1478 unstarted). `thoughts/research/pi-hook-event-parity.md` does not exist. FEAT-1719 (PostCompact wiring for Codex) remains open. Both blocking prerequisites unmet.
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5

@@ -72,4 +72,8 @@ loaded automatically on session start.
 
 ---
 
+## Verification Notes
+
+2026-06-18 (UNSTARTED): `templates/GEMINI.md.j2` does not exist. No `--gemini` branch in `scripts/little_loops/init/`. FEAT-2179 confirmed `GEMINI.md` is Gemini's exact analog of `CLAUDE.md`. Unstarted.
+
 **Open** | Created: 2026-06-15 | Priority: P4

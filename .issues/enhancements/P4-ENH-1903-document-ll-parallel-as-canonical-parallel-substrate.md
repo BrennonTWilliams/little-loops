@@ -83,6 +83,8 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 
 2026-06-13: FEAT-1902 is now done/cancelled — prerequisite satisfied. Removed FEAT-1902 from prerequisite language. Only FEAT-1899 completion remains required before doc updates can land.
 
+2026-06-18 (BLOCKED): FEAT-1899 still open. `docs/ARCHITECTURE.md` does not yet have the Layer 0/1/2/3 orchestration diagram. CLAUDE.md CLI Tools section does not note ll-parallel as "canonical parallel substrate." Pre-condition remains unmet.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-14T00:12:51 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`

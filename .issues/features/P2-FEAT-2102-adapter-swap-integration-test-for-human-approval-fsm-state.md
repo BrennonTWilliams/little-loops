@@ -75,6 +75,10 @@ core promise is asserted but never verified.
 - **Risk**: Low — test-only change
 - **Breaking Change**: No
 
+## Verification Notes
+
+2026-06-18 (BLOCKED): All three blockers remain open: FEAT-1930 (protocol, unstarted), FEAT-1931 (blocked on FEAT-1930), FEAT-1932 (blocked on FEAT-1930). `scripts/tests/test_hitl_adapter_swap.py` does not exist. Status correctly blocked; no action possible until FEAT-1930 lands.
+
 ## Status
 
 **Blocked** | Created: 2026-06-12 | Priority: P2

@@ -167,6 +167,8 @@ and file follow-up issues for any ✗ entries.
 
 2026-06-13 (OUTDATED): Conformance test suite not created. `scripts/tests/conformance/` directory does not exist. `docs/development/CONFORMANCE.md` does not exist. Cannot start until FEAT-1714 (Pi CLI audit) and FEAT-1480 (PiRunner wiring) are complete.
 
+2026-06-18 (BLOCKED): Still blocked. `scripts/tests/conformance/` does not exist. `docs/development/CONFORMANCE.md` does not exist. Both deps (FEAT-1714 and FEAT-1480) remain open and unstarted.
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5

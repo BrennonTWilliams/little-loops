@@ -88,6 +88,8 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - All 5 children (FEAT-1475, 1476, 1478, 1479, 1480) confirmed open ✓
 - Pi adapter implementation not started: `hooks/adapters/pi/` does not exist; PiRunner.build_*() still raises `HostNotConfigured` ✓
 
+2026-06-18 (ACCURATE): All 5 children still open. `hooks/adapters/pi/` does not exist. PiRunner still raises `HostNotConfigured` on all `build_*` calls. Cross-epic dep on FEAT-1714 (under EPIC-1713) also remains open. Tracking epic is accurate.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:03 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`

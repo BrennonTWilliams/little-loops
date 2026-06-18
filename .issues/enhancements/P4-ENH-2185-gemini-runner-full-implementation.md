@@ -81,4 +81,8 @@ Session resume: `-r latest` / `-r <index>` / `-r <session-id>` — wire if `Host
 
 ---
 
+## Verification Notes
+
+2026-06-18 (BLOCKED): ENH-2184 (stub) is not yet implemented — no `GeminiRunner` in `host_runner.py`. Full implementation cannot start until the stub lands.
+
 **Open** | Created: 2026-06-15 | Priority: P4

@@ -241,6 +241,8 @@ class TerminalAdapterExtension(CommunicationAdapterExtension):
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+2026-06-18 (UNSTARTED): `scripts/little_loops/fsm/communication_adapter.py` does not exist. No `CommunicationAdapterExtension` in `extension.py`. No `hitl.channel` config key. FEAT-1794, FEAT-1931, FEAT-1932 remain correctly blocked on this issue. Dependency graph is accurate.
+
 ## Status
 
 open

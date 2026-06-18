@@ -94,6 +94,10 @@ No test changes needed — these are all non-behavioral cleanup items.
 
 `enhancement`, `code-quality`, `cleanup`
 
+## Verification Notes
+
+2026-06-18 (ACCURATE): All three items confirmed unfixed. (1) Line 1590: `from little_loops.session_store import resolve_history_db` redundant local re-import still present alongside module-level import at line 24. (2) Line 957: `lines = f.readlines()` in `_cmd_scan_failures` still loads full JSONL into memory. (3) Line 1147: `Path(args.project)` double-wrap in `_cmd_stats` still present.
+
 ## Status
 
 **Open** | Created: 2026-06-14 | Priority: P5

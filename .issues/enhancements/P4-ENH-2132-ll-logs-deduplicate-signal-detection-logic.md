@@ -76,6 +76,10 @@ def _extract_tool_name(record: dict) -> str | None:
 - `scripts/little_loops/cli/logs.py` (lines 290–348 and 1405–1466)
 - `scripts/tests/test_ll_logs.py` (tests that call `_extract_tool_name` or `_extract_eval_invocation` directly)
 
+## Verification Notes
+
+2026-06-18 (ACCURATE): `_extract_tool_name` at line 290 and `_extract_eval_invocation` at line 1405 still exist as separate functions sharing the same three-signal detection logic. No `_detect_ll_signal` helper or `_InvocationSignal` dataclass exists. Duplication confirmed unfixed.
+
 ## Session Log
 - `/ll:format-issue` - 2026-06-14T01:58:22 - `98cfc879-7f76-4a33-b0d6-01898726102d.jsonl`
 - `/ll:capture-issue` - 2026-06-14T01:52:17Z - `audit-session`

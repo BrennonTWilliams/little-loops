@@ -107,4 +107,8 @@ alias is provided by Gemini for compatibility.
 
 ---
 
+## Verification Notes
+
+2026-06-18 (UNSTARTED): `hooks/adapters/gemini/` directory does not exist. FEAT-2179 (research spike) is complete — `thoughts/research/gemini-cli-surface.md` exists and confirms stdin/stdout JSON hook protocol identical to Claude Code. ENH-2184 (GeminiRunner stub) not yet implemented; this issue's `depends_on` correctly captures that ordering.
+
 **Open** | Created: 2026-06-15 | Priority: P4

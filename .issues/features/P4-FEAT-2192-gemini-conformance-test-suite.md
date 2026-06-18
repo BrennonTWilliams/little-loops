@@ -82,4 +82,8 @@ Codex analog: `scripts/tests/test_codex_conformance.py` (FEAT-1721).
 
 ---
 
+## Verification Notes
+
+2026-06-18 (BLOCKED): `scripts/tests/test_gemini_conformance.py` does not exist. `scripts/tests/conformance/` directory does not exist. All four dependencies (ENH-2184, ENH-2185, FEAT-2186, ENH-2187) remain unimplemented. Correctly blocked in practice.
+
 **Open** | Created: 2026-06-15 | Priority: P4

@@ -175,6 +175,8 @@ Acceptance gates:
 - The protocol interface is documented and a third-party adapter can be written
   against it without touching `executor.py`.
 
+2026-06-18 (BLOCKED): All five children remain open. FEAT-1930 (protocol, unstarted) is the gate — FEAT-1794, FEAT-1931, FEAT-1932, FEAT-2102 all blocked on it. `communication_adapter.py` does not exist. Epic accurately tracks the dependency chain.
+
 ---
 ## Status
 

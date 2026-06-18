@@ -71,6 +71,10 @@ At current ll usage scale (tens of sessions, hundreds of invocations) this is im
 
 `performance`, `refactor`, `ll-logs`
 
+## Verification Notes
+
+2026-06-18 (ACCURATE): `_compute_edges` at line 449 still rebuilds `all_transitions` and `out_degree` counters from scratch on every call (lines 458-464). `_build_chain_results` calls it once per `ChainResult` in the results loop (line 440). O(K·N) redundant work confirmed unfixed.
+
 ## Status
 
 **Open** | Created: 2026-06-14 | Priority: P5

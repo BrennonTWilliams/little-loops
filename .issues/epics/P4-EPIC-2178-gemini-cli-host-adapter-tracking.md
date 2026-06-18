@@ -150,6 +150,10 @@ every cell is ✓, ✗ (with a tracking issue), or N/A.
 | `scripts/little_loops/host_runner.py` | Implementation home for `GeminiRunner` |
 | `hooks/adapters/codex/README.md` | Adapter contract template to follow |
 
+## Verification Notes
+
+2026-06-18 (IN PROGRESS): FEAT-2179 (research spike) is complete — `thoughts/research/gemini-cli-surface.md` exists. All remaining 9 children still open. No `GeminiRunner` in `host_runner.py`; `hooks/adapters/gemini/` does not exist; no `.gemini` config probe; no skills/commands adaptation scripts. Next logical child: ENH-2184 (GeminiRunner stub, XS effort).
+
 ## Session Log
 - `/ll:format-issue` - 2026-06-15T20:17:24 - `7addc9bb-4a3e-4aad-bbbd-6f11fcae2b61.jsonl`
 - `/ll:capture-issue` - 2026-06-15T17:09:51Z - `63a402ce-7d2e-45a1-befc-4392e24ffc82.jsonl`

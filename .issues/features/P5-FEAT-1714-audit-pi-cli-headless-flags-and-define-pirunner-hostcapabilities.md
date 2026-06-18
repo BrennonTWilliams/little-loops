@@ -163,6 +163,8 @@ fallback strategies (e.g. tool allowlist via temp config file like
 
 2026-06-13 (OUTDATED): Research audit not yet performed. `thoughts/research/pi-headless-cli.md` does not exist. No PiRunner HostCapabilities defined. This is a prerequisite for FEAT-1480 — must be completed first.
 
+2026-06-18 (UNSTARTED): Still unstarted. `thoughts/research/pi-headless-cli.md` does not exist. PiRunner still raises `HostNotConfigured` on all `build_*` calls. ENH-1722 (per-host state directory) remains open — check its Decision section before finalizing Pi state-path recommendations as noted in Scope Boundary.
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5

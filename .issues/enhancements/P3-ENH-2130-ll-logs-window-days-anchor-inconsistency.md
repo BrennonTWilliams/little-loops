@@ -92,6 +92,10 @@ Predictable UX: `--window-days N` should mean the same thing across all subcomma
 
 `cli`, `ll-logs`, `ux-consistency`
 
+## Verification Notes
+
+2026-06-18 (ACCURATE): Confirmed in `cli/logs.py`. `_extract_ll_event_streams` (line 276-278) and `_aggregate_skill_stats` (lines 701-704) both use per-project latest event timestamp as the `--window-days` anchor. `_cmd_scan_failures` (lines 1046-1049) uses `latest_ts_overall` — the global max across all projects scanned. Option B (wall-clock anchor) not yet implemented.
+
 ## Status
 
 **Open** | Created: 2026-06-14 | Priority: P3

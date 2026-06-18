@@ -89,6 +89,10 @@ Recommend Option A now; open a follow-on ENH if error-rate data in stats becomes
 
 `code-cleanup`, `ll-logs`
 
+## Verification Notes
+
+2026-06-18 (ACCURATE): Lines 1187-1188 of `cli/logs.py` confirmed: `"errors": None, "error_rate": None` still emitted by `_cmd_stats`. No code path populates these fields. `test_stats_json_keys` validates null behavior. Option A (remove stubs) not yet applied.
+
 ## Status
 
 **Open** | Created: 2026-06-14 | Priority: P4

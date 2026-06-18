@@ -139,6 +139,8 @@ Template reference: `test_opencode_adapter.py:TestOpenCodeAdapterIntegration.tes
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+2026-06-18 (UNSTARTED): `hooks/adapters/pi/` directory does not exist. `scripts/tests/test_pi_adapter.py` does not exist. No blocking dependencies have changed status. Issue remains valid and unstarted.
+
 ---
 
 ## Scope Boundary
