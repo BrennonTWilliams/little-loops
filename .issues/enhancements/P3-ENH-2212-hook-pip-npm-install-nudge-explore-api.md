@@ -77,6 +77,8 @@ Install-time is cheap. Proof-later is expensive. A nudge at install time — bef
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-2211 (debt marker) was cancelled per EPIC-2207 scoping review. This hook is now the sole PostToolUse detection path for unproven packages — no session-scoped cache coordination with a sibling hook is needed.
 
+**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2208 (stale-aware gate). The implementation should call the stale-aware gate function from `learning_tests_gate.py` (added by ENH-2208) rather than `check_learning_test()` directly. Without this, a stale record would still return "proven" from the raw registry call and the nudge would be silently skipped. See [[ENH-2208]].
+
 ## Acceptance Signals
 
 - `Bash("pip install httpx")` triggers a nudge: "No learning test for 'httpx'..."
@@ -105,5 +107,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-06-18 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:32:41 - `ef0b05a4-a7e0-47d6-afa2-5f2b99558da6.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

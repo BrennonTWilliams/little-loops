@@ -119,11 +119,16 @@ learning_tests:
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue adds a machine-checkable learning test gate at the release stage. A complementary gate at the pre-implementation/eval stage is covered by ENH-2221. These are distinct lifecycle stages with different data sources (project-wide import scan vs issue-frontmatter targets) and different behaviors (`block`/`warn` config vs `exit_code` criterion in eval YAML). See [[ENH-2221]] for the pre-implementation gate.
 
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2216 (orphaned record detection) both independently implement grep-based import scanning of `scripts/`. To avoid duplicated code and divergent behavior, extract a shared `get_imported_packages(source_dirs)` utility into `scripts/little_loops/learning_tests/import_scan.py` that both issues call. See [[ENH-2216]].
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2217 (history context injection) both query the learning test registry for external display. The registry query pattern is identical (`list_records()`, `check_learning_test()`), but the formatting surface differs (CLI warning table vs Markdown table). No shared formatter needed, but share registry query awareness. See [[ENH-2217]].
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:00 - `d32ab305-2ca5-4ecb-8748-da90ac6cd83b.jsonl`
 
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

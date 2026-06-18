@@ -64,6 +64,13 @@ Most issue authors don't know to add `learning_tests_required`. The field is onl
 
 **Open** | Created: 2026-06-18 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue coordinates with ENH-2208 (stale-aware gate). The implementation should call the stale-aware gate function from `learning_tests_gate.py` (added by ENH-2208) rather than querying `ll-learning-tests check` directly. Calling the raw CLI bypasses the stale-age check, causing the proven/unproven summary to disagree with runtime gate behavior. See [[ENH-2208]].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:04:46 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T18:17:31 - `e95db64d-70ee-4f7f-87aa-5e8414c2d4c9.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

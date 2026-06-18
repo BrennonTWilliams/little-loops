@@ -75,7 +75,9 @@ Running an issue mid-sprint only to hit an unproven assumption wastes a full wor
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue depends on ENH-2209 (auto-population of `learning_tests_required`). The sprint pre-flight's effectiveness relies on `learning_tests_required` being reliably populated in issue frontmatter. To handle issues refined before ENH-2209 ships, the pre-flight should include a fallback: for issues without `learning_tests_required`, perform ad-hoc extraction (reusing ENH-2209's extraction logic inline) rather than silently skipping those issues.
+**Note** (added by `/ll:audit-issue-conflicts`): This issue depends on ENH-2209 (auto-population of `learning_tests_required`). The sprint pre-flight's effectiveness relies on `learning_tests_required` being reliably populated in issue frontmatter. To handle issues refined before ENH-2209 ships, the pre-flight should include a fallback: for issues without `learning_tests_required`, perform ad-hoc extraction by importing the shared extraction utility from ENH-2209 rather than duplicating the logic inline.
+
+**Lifecycle note**: The fallback is a temporary compatibility shim for issues refined before ENH-2209 ships. Once ENH-2209 is shipped and all active sprint issues have been re-refined, the fallback path should be flagged for removal via a `TODO(stale-after-ENH-2209)` comment.
 
 This issue is declared as `depends_on: ENH-2209` in frontmatter — soft ordering, not a hard block, because the fallback provides resilience. See [[ENH-2209]].
 
@@ -85,5 +87,6 @@ This issue is declared as `depends_on: ENH-2209` in frontmatter — soft orderin
 - **CLI flag**: `ll-sprint --skip-learning-gate` — bypasses the pre-flight check for emergency runs when `learning_tests.enabled: true`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:31:56 - `b3ad1547-68da-4676-8ad5-face35377857.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

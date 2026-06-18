@@ -78,6 +78,13 @@ Agents starting a new session on an issue must either re-query the registry them
 ### Configuration
 - `.ll/ll-config.json` — `learning_tests.enabled` gating already defined
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2214 (release gate) both query the learning test registry for external display. The registry query pattern (`list_records()`, `check_learning_test()`) is shared, but the formatting differs (Markdown table here vs CLI warning table in ENH-2214). No shared formatter is needed, but coordination on registry query shape avoids divergence. See [[ENH-2214]].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:28 - `bd499794-07ed-4db0-8537-8038ebf61e47.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`
