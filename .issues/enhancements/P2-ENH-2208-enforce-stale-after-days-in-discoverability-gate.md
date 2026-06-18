@@ -6,7 +6,6 @@ priority: P2
 status: done
 parent: EPIC-2207
 captured_at: '2026-06-18T15:38:06Z'
-completed_at: '2026-06-18T23:36:45Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
 confidence_score: 90
@@ -87,7 +86,35 @@ A "proven" record from 6 months ago may be based on an API that has since change
 
 **Note** (added by `/ll:audit-issue-conflicts`): The canonical module path for `is_record_stale()` is **`scripts/little_loops/learning_tests/gate.py`** — the "or" hedge in the note above is resolved here. ENH-2208 must create (or move) the helper to `scripts/little_loops/learning_tests/gate.py`. If `hooks/learning_tests_gate.py` already contains the gate logic, it should import `is_record_stale` from the new location rather than defining it twice. ENH-2210 and ENH-2219 both commit unconditionally to this path; if ENH-2208 ships to the wrong location, their imports break. See [[ENH-2210]] and [[ENH-2219]].
 
+**Note** (2026-06-18 audit): This issue was partially implemented and incorrectly closed as `done`. What shipped: `is_record_stale()` helper in `scripts/little_loops/learning_tests/gate.py`, stale-age check in `learning_tests_gate.py`, `_SESSION_CACHE` updates, and stale-path test coverage. What did NOT ship: **step 6 — the `--stale-aware` flag on `ll-learning-tests check`**. The current `cmd_check` in `scripts/little_loops/cli/learning_tests.py` accepts only `target` with no `--stale-aware` argument. ENH-2221 `depends_on` this flag to generate shell-verifiable eval criteria; it is blocked until this flag is added and exits 1 when the record is absent or date-stale.
+
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+### Verified Implementation Status (as of 2026-06-18)
+
+**Already shipped:**
+- `is_record_stale(record, stale_after_days) -> bool` in `scripts/little_loops/learning_tests/gate.py` — pure helper, clamps threshold to `max(1, stale_after_days)`
+- Stale-age check in `scripts/little_loops/hooks/learning_tests_gate.py:gate()` — calls `is_record_stale()` for `status == "proven"` records; caches stale packages as `_SESSION_CACHE[pkg] = False`; annotates hint with `(stale: N days old)`
+- Stale-path tests in `scripts/tests/test_learning_tests_discoverability.py:TestStaleAgeGate` and `TestIsRecordStale`
+
+**Still missing (the only remaining gap):**
+- `--stale-aware` flag on `ll-learning-tests check` CLI
+
+### `--stale-aware` Implementation Points
+
+**File to modify**: `scripts/little_loops/cli/learning_tests.py`
+
+- `cmd_check()` — add stale-aware branch after `print_json(record.to_dict())`; load `LearningTestsConfig` via `resolve_config_path(Path.cwd())`; call `is_record_stale(record, lt_config.stale_after_days)`; return 1 if `record.status != "proven"` or stale
+- `main_learning_tests()` → `check_parser` — add `check_parser.add_argument("--stale-aware", action="store_true", default=False, dest="stale_aware", ...)`
+
+**Exit code contract**: exit 1 if absent OR `record.status != "proven"` OR stale; exit 0 only if proven AND fresh; JSON is always printed when a record is found
+
+**Test file**: `scripts/tests/test_cli_learning_tests.py` — add `TestStaleAwareCLI` class; patch `sys.argv` + `little_loops.learning_tests.check_learning_test` + `little_loops.config.core.resolve_config_path`
+
 ## Session Log
+- `/ll:refine-issue` - 2026-06-18T23:48:07 - `20b4f837-ff6e-45b1-9716-b6493597a14f.jsonl`
 - `/ll:ready-issue` - 2026-06-18T23:21:01 - `e4f9f732-f67f-4a9e-95a0-0532c566fd9c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:17 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`

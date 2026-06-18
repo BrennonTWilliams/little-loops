@@ -18,7 +18,30 @@ def cmd_check(args: argparse.Namespace) -> int:
     if record is None:
         print(f"Error: no record found for {args.target!r}", file=sys.stderr)
         return 1
+
     print_json(record.to_dict())
+
+    if getattr(args, "stale_aware", False):
+        import json as _json
+        from pathlib import Path
+
+        from little_loops.config.core import resolve_config_path
+        from little_loops.config.features import LearningTestsConfig
+        from little_loops.learning_tests.gate import is_record_stale
+
+        config_path = resolve_config_path(Path.cwd())
+        lt_config = LearningTestsConfig()
+        if config_path is not None:
+            try:
+                data = _json.loads(config_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    lt_config = LearningTestsConfig.from_dict(data.get("learning_tests", {}))
+            except (OSError, _json.JSONDecodeError):
+                pass
+
+        if record.status != "proven" or is_record_stale(record, lt_config.stale_after_days):
+            return 1
+
     return 0
 
 
@@ -67,6 +90,16 @@ Examples:
             description="Look up a learning test record by target name and print as JSON",
         )
         check_parser.add_argument("target", help="Target name (e.g. 'Anthropic SDK streaming')")
+        check_parser.add_argument(
+            "--stale-aware",
+            action="store_true",
+            default=False,
+            dest="stale_aware",
+            help=(
+                "Exit 1 if the record is absent or date-stale "
+                "(even if status=proven); exit 0 only if proven and within stale_after_days threshold"
+            ),
+        )
 
         subparsers.add_parser(
             "list",

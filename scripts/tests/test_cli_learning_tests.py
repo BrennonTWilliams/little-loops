@@ -185,6 +185,108 @@ class TestMainLearningTestsMarkStale:
         assert slug == "anthropic-sdk-streaming"
 
 
+class TestStaleAwareCLI:
+    """Tests for ll-learning-tests check --stale-aware flag (ENH-2208)."""
+
+    def _make_record(
+        self, *, date: str = "2026-04-25", status: str = "proven"
+    ) -> LearnTestRecord:
+        return LearnTestRecord(
+            target="Anthropic SDK streaming",
+            date=date,
+            status=status,
+            assertions=[],
+            raw_output_path=None,
+        )
+
+    def test_stale_aware_fresh_proven_exits_0(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--stale-aware exits 0 for a proven record within the stale threshold."""
+        import datetime
+
+        fresh_date = datetime.date.today().isoformat()
+        record = self._make_record(date=fresh_date)
+        with patch(
+            "sys.argv",
+            ["ll-learning-tests", "check", "--stale-aware", "Anthropic SDK streaming"],
+        ):
+            with patch("little_loops.learning_tests.check_learning_test", return_value=record):
+                with patch("little_loops.config.core.resolve_config_path", return_value=None):
+                    result = main_learning_tests()
+        assert result == 0
+
+    def test_stale_aware_stale_proven_exits_1(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--stale-aware exits 1 for a proven record older than stale_after_days."""
+        record = self._make_record(date="2020-01-01")
+        with patch(
+            "sys.argv",
+            ["ll-learning-tests", "check", "--stale-aware", "Anthropic SDK streaming"],
+        ):
+            with patch("little_loops.learning_tests.check_learning_test", return_value=record):
+                with patch("little_loops.config.core.resolve_config_path", return_value=None):
+                    result = main_learning_tests()
+        assert result == 1
+
+    def test_stale_aware_absent_exits_1(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--stale-aware exits 1 when no record is found."""
+        with patch(
+            "sys.argv",
+            ["ll-learning-tests", "check", "--stale-aware", "missing target"],
+        ):
+            with patch("little_loops.learning_tests.check_learning_test", return_value=None):
+                result = main_learning_tests()
+        assert result == 1
+
+    def test_stale_aware_not_proven_exits_1(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--stale-aware exits 1 for a refuted record even with a fresh date."""
+        import datetime
+
+        fresh_date = datetime.date.today().isoformat()
+        record = self._make_record(date=fresh_date, status="refuted")
+        with patch(
+            "sys.argv",
+            ["ll-learning-tests", "check", "--stale-aware", "Anthropic SDK streaming"],
+        ):
+            with patch("little_loops.learning_tests.check_learning_test", return_value=record):
+                with patch("little_loops.config.core.resolve_config_path", return_value=None):
+                    result = main_learning_tests()
+        assert result == 1
+
+    def test_stale_aware_still_prints_json(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--stale-aware outputs record JSON to stdout even when stale."""
+        record = self._make_record(date="2020-01-01")
+        with patch(
+            "sys.argv",
+            ["ll-learning-tests", "check", "--stale-aware", "Anthropic SDK streaming"],
+        ):
+            with patch("little_loops.learning_tests.check_learning_test", return_value=record):
+                with patch("little_loops.config.core.resolve_config_path", return_value=None):
+                    main_learning_tests()
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["target"] == "Anthropic SDK streaming"
+
+    def test_without_stale_aware_stale_record_still_exits_0(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without --stale-aware, a stale proven record exits 0 (backward compat)."""
+        record = self._make_record(date="2020-01-01")
+        with patch(
+            "sys.argv",
+            ["ll-learning-tests", "check", "Anthropic SDK streaming"],
+        ):
+            with patch("little_loops.learning_tests.check_learning_test", return_value=record):
+                result = main_learning_tests()
+        assert result == 0
+
+
 class TestDocWiring:
     """Wiring assertions: ll-learning-tests must appear in help.md and CLI.md."""
 
