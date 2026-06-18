@@ -3,7 +3,7 @@ id: ENH-2213
 title: Adversarial verification loop for learning test records
 type: enhancement
 priority: P3
-status: open
+status: cancelled
 parent: EPIC-2207
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
@@ -117,6 +117,10 @@ Key components:
 `enhancement`, `captured`, `adversarial-verification`, `learning-tests`
 
 **Open** | Created: 2026-06-18 | Priority: P3
+
+## Cancellation Note
+
+Cancelled per EPIC-2207 scoping review. Learning tests are validated by real code execution, not LLM judgment — the proof script runs and produces observable results. A flawed proof script is caught by re-execution (which stale detection already covers). Spawning 3 LLM refuters per assertion has the same failure mode as the original proof script (SHOR applies to refuters too). The `verified` result value would add schema complexity for marginal trust gain. See EPIC-2207 for rationale.
 
 ## Session Log
 - `/ll:format-issue` - 2026-06-18T19:32:30 - `5a588f07-44ea-456b-a878-a98a2d1afc07.jsonl`

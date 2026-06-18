@@ -64,6 +64,15 @@ Running an issue mid-sprint only to hit an unproven assumption wastes a full wor
 
 ---
 
+## Cross-Reference: Shared Utility with ENH-2219
+
+**Note** (added by EPIC-2207 scoping review): The gating logic for sprint pre-flight should be extracted into a shared utility at `scripts/little_loops/learning_tests/gate.py` that both ENH-2210 (sprint-level batch gate) and ENH-2219 (per-worktree gate for `ll-parallel`) call. This avoids two separate implementations needing identical changes when gating behavior evolves.
+
+- **Shared API surface**: `run_proof_gate(issue_file: str) -> tuple[GateResult, list[str]]` where `GateResult` is a `ProofGate` enum (`PASS`, `BLOCKED`) and `list[str]` are the blocking target names
+- ENH-2210 calls this once per sprint (batch mode, aggregating all issues)
+- ENH-2219 calls this per worktree (single-issue mode)
+- `--skip-learning-gate` flag is handled at the caller level, not inside the utility
+
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue depends on ENH-2209 (auto-population of `learning_tests_required`). The sprint pre-flight's effectiveness relies on `learning_tests_required` being reliably populated in issue frontmatter. To handle issues refined before ENH-2209 ships, the pre-flight should include a fallback: for issues without `learning_tests_required`, perform ad-hoc extraction (reusing ENH-2209's extraction logic inline) rather than silently skipping those issues.

@@ -66,7 +66,14 @@ ll-parallel [--skip-learning-gate]
 
 - `--skip-learning-gate` — Bypass per-worktree learning test gating for emergency runs
 
-## Integration Map
+## Consolidation Note
+
+**Note** (added by EPIC-2207 scoping review): Per-worktree gating shares code with ENH-2210's sprint-level pre-flight. Both must call a shared utility at `scripts/little_loops/learning_tests/gate.py` rather than implementing independent gating logic. See ENH-2210 for the shared API design.
+
+When implementing this issue:
+1. The shared utility (`gate.py`) must be built first (owned by ENH-2210).
+2. This issue then calls the utility per-worktree rather than reimplementing the gate check.
+3. The `--skip-learning-gate` flag at the `ll-parallel` CLI level bypasses the per-worktree call.
 
 ### Files to Modify
 - `scripts/little_loops/cli/parallel.py` — `ParallelRunner` worktree invocation builder

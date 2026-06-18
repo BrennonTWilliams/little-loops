@@ -7,7 +7,7 @@ status: open
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
-relates_to: [ENH-2208, ENH-2209, ENH-2210, ENH-2211, ENH-2212, ENH-2213, ENH-2214, ENH-2215, ENH-2216, ENH-2217, ENH-2218, ENH-2219, ENH-2220, ENH-2221]
+relates_to: [ENH-2208, ENH-2209, ENH-2210, ENH-2212, ENH-2214, ENH-2215, ENH-2216, ENH-2217, ENH-2218, ENH-2219, ENH-2220, ENH-2221]
 ---
 
 # EPIC-2207: Learning Test Registry — Deep Integration Across ll Features
@@ -24,7 +24,6 @@ EPIC-1694 delivered the core registry, proof loops, and an opt-in discoverabilit
 - Authors manually declare `learning_tests_required`; refinement skills could auto-populate it
 - Sprint orchestration runs issues without pre-validating their external-API assumptions
 - No signal fires when a new package is `pip install`-ed into the project
-- No feedback loop when an agent ignores a discoverability nudge and writes code anyway
 - Learning test health is invisible in `ll-ctx-stats`, `ll-history-context`, and release prep
 
 ## Children
@@ -32,9 +31,7 @@ EPIC-1694 delivered the core registry, proof loops, and an opt-in discoverabilit
 - **ENH-2208** — Enforce `stale_after_days` threshold in discoverability gate
 - **ENH-2209** — Auto-populate `learning_tests_required` in refine-issue and wire-issue
 - **ENH-2210** — Sprint pre-flight: batch assumption-firewall before ll-sprint execution
-- **ENH-2211** — PostToolUse retroactive unproven-import debt marker
 - **ENH-2212** — Hook on pip/npm install to nudge explore-api for new dependencies
-- **ENH-2213** — Adversarial verification loop for learning test records
 - **ENH-2214** — Release gate: block ll-manage-release on stale/refuted active dependencies
 - **ENH-2215** — create-loop wizard: auto-insert assumption-firewall for external API loops
 - **ENH-2216** — Orphaned learning test record detection
@@ -54,6 +51,12 @@ EPIC-1694 delivered the core registry, proof loops, and an opt-in discoverabilit
 ## Status
 
 Open — no children started yet.
+
+## Changes from Scoping Review
+
+- **ENH-2211** (PostToolUse debt marker) — **Cancelled**. Only fires in `warn` mode where the agent already chose to proceed; simpler to have the PreToolUse gate write the debt itself if it matters.
+- **ENH-2213** (Adversarial verification loop) — **Cancelled**. Learning tests are validated by real code execution, not LLM judgment; re-running proof scripts (via existing stale detection) is the right mechanism. LLM refuters have the same failure mode as LLM provers.
+- **ENH-2219** (ll-parallel wrapper) — **Consolidated**. Gating logic now extracted into a shared utility (`learning_tests/gate.py`) used by both ENH-2210 and ENH-2219, avoiding dual maintenance.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`
