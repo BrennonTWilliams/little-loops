@@ -8,6 +8,7 @@ discovered_date: 2026-06-14
 discovered_by: capture-issue
 captured_at: "2026-06-14T01:52:17Z"
 parent: EPIC-1918
+depends_on: [ENH-2134]
 ---
 
 # ENH-2131: ll-logs stats JSON always-null errors/error_rate fields should be removed or implemented
@@ -98,6 +99,7 @@ Recommend Option A now; open a follow-on ENH if error-rate data in stats becomes
 **Open** | Created: 2026-06-14 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-18T15:18:48 - `1a9c4417-3e84-4834-8a7a-2109919401cc.jsonl`
 - `/ll:format-issue` - 2026-06-14T01:58:55 - `d9bff7da-ceab-4140-99fa-ea076f1863f3.jsonl`
 - `/ll:capture-issue` - 2026-06-14T01:52:17Z - `audit-session`
 - `/ll:format-issue` - 2026-06-14T00:00:00Z - `auto`
