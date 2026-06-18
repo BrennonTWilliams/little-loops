@@ -85,6 +85,11 @@ In `scripts/little_loops/host_runner.py` at `PiRunner` class (lines ~478–532):
 
 2026-06-13 (OUTDATED): Major line number drift — PiRunner is now at :698 in host_runner.py (issue estimates :478-532). CodexRunner/ClaudeCodeRunner locations also differ from body estimates. All 4 PiRunner.build_* methods still raise HostNotConfigured — implementation not yet started. Refresh all line number references before implementing. Blocked on FEAT-1714 (Pi CLI audit not yet done).
 
+2026-06-17: PiRunner confirmed at `host_runner.py:698` (issue body estimates :478-532 — significant drift). All 4 `build_*` methods still raise `HostNotConfigured`. `thoughts/research/pi-headless-cli.md` (FEAT-1714 prerequisite) does not exist. Refresh line references and ensure FEAT-1714 is complete before starting.
+
+## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
+
 ## Status
 
 **Open** | Created: 2026-05-15 | Priority: P5

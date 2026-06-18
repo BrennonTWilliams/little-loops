@@ -39,16 +39,13 @@ transcript format (we see real values, not placeholder ~9s).
 | BUG-2146 | BUG | SYSTEM_PROMPT_BASELINE double-counts when transcript available | P3 |
 | ENH-2148 | ENH | Use Status hook `used_percentage` as zero-cost authoritative source | P2 |
 
-## Suggested Implementation Order
+## Implementation Status
 
-1. **ENH-2148** first — adds the `Status` hook handler as a new code path
-   without touching the existing PostToolUse logic; can be validated
-   independently.
-2. **BUG-2145 + BUG-2146** together — the stale-baseline fix (2145) and the
-   double-count fix (2146) must ship together since 2146's overcounting
-   currently partially compensates for 2145's undercounting.
-3. Deprecate PostToolUse JSONL path for Claude Code host; keep as fallback
-   for OpenCode/Codex (see ENH-2148 migration notes).
+1. ~~**BUG-2145** — Transcript baseline never refreshed across turns~~ **done**
+2. ~~**BUG-2146** — SYSTEM_PROMPT_BASELINE double-counts when transcript available~~ **done**
+3. **ENH-2148** — Use Status hook `used_percentage` as zero-cost authoritative source — **deferred**
+4. Deprecate PostToolUse JSONL path for Claude Code host; keep as fallback
+   for OpenCode/Codex (depends on ENH-2148 — blocked while deferred).
 
 ## Potential Follow-On Work (not yet filed)
 
@@ -59,6 +56,15 @@ transcript format (we see real values, not placeholder ~9s).
   with 2–3 JSONL entries per API call, `-50` only covers ~17 turns.
 - Prometheus/OTel export bridge: research identified this as a greenfield gap
   (stdin JSON → gauge values → Prometheus HTTP endpoint → Grafana).
+
+## Verification Notes (2026-06-17)
+
+- BUG-2145 (mtime turn-boundary refresh) and BUG-2146 (double-count guard) are both `done` — fixes visible in `context-monitor.sh` lines 281-290 and 316-320. The epic body's Implementation Order section does not reflect this progress.
+- ENH-2148 (Status hook `used_percentage`) is `deferred` — epic still references it as a pending deliverable.
+- Update the Implementation Order section to mark BUG-2145/2146 complete and ENH-2148 deferred before resuming.
+
+## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 
 ## Success Criteria
 

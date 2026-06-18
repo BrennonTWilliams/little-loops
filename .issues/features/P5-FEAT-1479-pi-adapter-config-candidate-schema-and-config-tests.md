@@ -68,9 +68,9 @@ elif host == "pi" or state_dir == PI_CONFIG_DIR:
 
 Also update `OrchestrationConfig` docstring: remove `"pi" (reserved for FEAT-992)` annotation.
 
-### Step 3: Update Config Schema
+### ~~Step 3: Update Config Schema~~ **already done**
 
-In `config-schema.json`, add `"pi"` to `hooks.properties.host.enum` (around line 1102–1104). The `orchestration.host_cli` already includes `"pi"` — no change needed there.
+`"pi"` is already present in `hooks.properties.host.enum` in `config-schema.json` (confirmed at line 1356 as of 2026-06-17). Skip this step.
 
 ### Step 4: Write Config and Session-Start Tests
 
@@ -219,8 +219,10 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - `/ll:verify-issues` - 2026-06-05 - Partial progress: `config-schema.json` already has `"pi"` in the host enum (Step 1 of config candidate done). Remaining work: `config/core.py` needs `PI_CONFIG_DIR` constant, `elif host == "pi"` branch in `_config_candidates()`, and updated docstring. No tests written. Stale line numbers in body: CODEX_CONFIG_DIR is at line 40 (not 36). Update line references before starting.
 - `/ll:verify-issues` - 2026-06-13 - `"pi"` confirmed in `config-schema.json:1335` (schema step done). `config/core.py` still has no `PI_CONFIG_DIR` constant (CODEX_CONFIG_DIR is now at line 41). Test targeting schema enum assertion would pass immediately — scope down to config/core.py work only.
 - 2026-06-13: Schema enum step (adding 'pi' to hooks.host.enum in config-schema.json) is already done — step 1 is complete. Remaining work: add PI_CONFIG_DIR branch to scripts/little_loops/config/core.py. Stale line numbers: CODEX_CONFIG_DIR is now at :41 (issue may say :36), codex branch at :92-93. Tests not yet written.
+- 2026-06-17: Step 1 (config-schema.json enum) confirmed done — `"pi"` at `hooks.host.enum` (line 1356). Remaining: `PI_CONFIG_DIR` constant and `elif host == "pi"` branch still absent from `config/core.py` (CODEX_CONFIG_DIR is at line 41, codex branch at lines 92-93). Tests not written.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:14:07 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`

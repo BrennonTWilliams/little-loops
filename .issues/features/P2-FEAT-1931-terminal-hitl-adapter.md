@@ -117,8 +117,8 @@ only renders, not resolves, variables.
 
 ## Proposed Solution
 
-Wrap `input()` in an `_interruptible_sleep()`-style polling loop (existing
-pattern at `executor.py:1647`) that checks the shutdown signal between reads.
+Wrap `input()` in an `_interruptible_sleep()`-style polling loop (see
+`_interruptible_sleep()` in `executor.py`) that checks the shutdown signal between reads.
 Use `sys.stdin` directly rather than `input()` for finer control over blocking
 and signal handling.
 
@@ -206,6 +206,7 @@ open
 
 2026-06-13: Line number drift in executor.py: `_interruptible_sleep` now at :1766 (issue references :1647). Critical pre-implementation fix required: `send_alert()` signature in this issue shows `(prompt, context, timeout)` but FEAT-1930 protocol specifies `(loop_name, state_name, prompt, captured_context, timeout) -> str` — must align before implementation.
 
+2026-06-17: `_interruptible_sleep` has drifted further to :1886 (was :1766). `send_alert()` signature mismatch with FEAT-1930 protocol still unresolved — missing `loop_name`, `state_name` params. `scripts/little_loops/fsm/adapters/terminal_adapter.py` does not exist (expected).
 
 ---
 
@@ -214,6 +215,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The `API/Interface` section above shows `TerminalAdapter.send_alert(prompt, context, timeout)` but the `CommunicationAdapter` protocol in FEAT-1930 defines `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> None`. Align this issue's `send_alert()` signature with FEAT-1930's protocol **before** implementing — add `loop_name: str` and `state_name: str` as the first two parameters to match the base protocol. This allows the terminal adapter to display the state name in the formatted prompt output without requiring the caller to pre-interpolate it.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-18T02:52:53 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:51 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`

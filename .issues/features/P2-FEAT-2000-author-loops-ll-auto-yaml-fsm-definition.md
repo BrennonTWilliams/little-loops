@@ -7,7 +7,6 @@ status: open
 parent: EPIC-1867
 blocked_by:
 - FEAT-1901
-- ENH-2106
 relates_to:
 - FEAT-2001
 - FEAT-1902
@@ -162,6 +161,13 @@ the Python implementation.
 
 **Open** | Created: 2026-06-07 | Priority: P2
 
+## Verification Notes (2026-06-17)
+
+- `loops/ll-auto.yaml` does not exist (correctly unimplemented). `test_ll_auto_loop.py` does not exist.
+- `ENH-2106` was listed in `blocked_by` but its status is `done` — removed from the blockers list.
+- Remaining blocker: FEAT-1901 (`ll-issues next`/`verify-work` subcommands still unimplemented).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-18T02:52:53 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:format-issue` - 2026-06-07T20:58:15 - `cd20bf16-b103-4e35-9958-d8e7c9147ee9.jsonl`
 - `/ll:issue-size-review` - 2026-06-07T00:00:00Z - `5db94c28-db76-4bed-885c-95a49da744cb.jsonl`

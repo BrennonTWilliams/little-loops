@@ -143,6 +143,11 @@ evidence that proves it.
 
 **Open** | Created: 2026-06-13 | Priority: P3
 
+## Verification Notes (2026-06-17)
+
+- Code references accurate: `on_usage_detailed` callback in `subprocess_utils.py:289/446`, `CodexRunner` at `host_runner.py:351`, `OpenCodeRunner` at `:626` — all confirmed present.
+- The `[^tok]` footnote referencing EPIC-1744 is stale; EPIC-1744 is an unrelated completed epic. Verify that `HOST_COMPATIBILITY.md` footnote still links to this ID and update or remove.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:format-issue` - 2026-06-13T23:48:43 - `b252dabd-1baf-4665-95fb-2099fac23f7c.jsonl`

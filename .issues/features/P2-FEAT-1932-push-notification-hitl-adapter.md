@@ -237,7 +237,10 @@ open
 
 2026-06-13: Line number drift: `_interruptible_sleep` now at :1766 (was :1647). Signature mismatch with FEAT-1930 protocol (missing `loop_name`, `state_name` params, missing `alert_id` return). Hard blocker: `PushNotification` tool does not exist in the codebase — a concrete push transport must be identified or created before this issue can proceed.
 
+2026-06-17: `_interruptible_sleep` drifted further to :1886 (was :1766). `PushNotification` tool still absent. `send_alert()` signature mismatch remains unresolved (missing `loop_name`, `state_name`, `alert_id` return). Issue correctly blocked on FEAT-1930.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:58 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:decide-issue` - 2026-06-12T16:31:51 - `5f156fda-1001-478e-926c-73ffddf7e4b1.jsonl`

@@ -42,8 +42,12 @@ mapping:
 
 `HOST_COMPATIBILITY.md` marks both cells `✗[^runnercap]`; the footnote (added
 by this epic's matrix cleanup) explicitly states the cells are unresearched and
-points here. `describe_capabilities()` / `ll-doctor` report both unsupported
-for Codex.
+points here.
+
+**Note (2026-06-17)**: `CodexRunner.describe_capabilities()` in `host_runner.py`
+already returns `"full"` for `permission_skip` and `"partial"` for `tool_allowlist`
+(lines 590, 607). The code is ahead of the doc matrix — the research note and
+`HOST_COMPATIBILITY.md` update remain the outstanding deliverables.
 
 ## Expected Behavior
 
@@ -106,5 +110,12 @@ Conditional — `describe_capabilities()` return dict may include updated values
 | ENH-2121 | Rich subagent fields incl. `mcp_servers`/`skills.config` |
 
 
+## Verification Notes (2026-06-17)
+
+- `CodexRunner.describe_capabilities()` in `host_runner.py` already returns `"full"` for `permission_skip` and `"partial"` for `tool_allowlist` (lines 590, 607) — the code has progressed beyond what the "Current Behavior" section describes.
+- `HOST_COMPATIBILITY.md` still shows `✗[^runnercap]` for both Codex cells, and `[^runnercap]` still calls them unresearched — the doc matrix and `thoughts/research/codex-runner-capability-gaps.md` remain outstanding deliverables.
+- Update the "Current Behavior" section to reflect the implemented capability values; the research note and doc update are still needed.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:format-issue` - 2026-06-13T23:48:24 - `eef54360-d096-4a8c-a9e2-75102a87ce0d.jsonl`

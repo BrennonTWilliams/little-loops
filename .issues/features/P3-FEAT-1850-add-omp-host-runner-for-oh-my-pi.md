@@ -9,7 +9,7 @@ discovered_date: 2026-06-01
 discovered_by: capture-issue
 labels: [feat, captured, host-compat, pi-adapter, omp]
 relates_to: [FEAT-1480, FEAT-1714, FEAT-1715]
-parent: EPIC-1713
+parent: null
 ---
 
 # FEAT-1850: Add OmpRunner host runner for oh-my-pi (`omp` CLI)

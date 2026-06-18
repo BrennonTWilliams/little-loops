@@ -237,10 +237,10 @@ accept the default.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/schema.py:309` — `StateConfig` dataclass: add `on_edit: str | None`, `on_timeout: str | None` fields; add `"on_edit"` and `"on_timeout"` to `_known_on_keys` set (line ~485); update `to_dict()`/`from_dict()`/`get_referenced_states()` (lines 395-575)
-- `scripts/little_loops/fsm/executor.py:838` — `_execute_state()`: add dispatch branch for `action_type == "human_approval"` (before the generic action path, following the learning-state dispatch pattern at `executor.py:863`)
-- `scripts/little_loops/fsm/executor.py:1421` — `_action_mode()`: add `"human_approval"` to mode classification
-- `scripts/little_loops/fsm/executor.py:1053` — `_run_action()`: add branch for the new mode (emit `LLEvent`, block on external response, route by verdict)
+- `scripts/little_loops/fsm/schema.py` — `StateConfig` dataclass: add `on_edit: str | None`, `on_timeout: str | None` fields; add `"on_edit"` and `"on_timeout"` to `_known_on_keys` set; update `to_dict()`/`from_dict()`/`get_referenced_states()`
+- `scripts/little_loops/fsm/executor.py` — `_execute_state()`: add dispatch branch for `action_type == "human_approval"` (before the generic action path, following the learning-state dispatch pattern at the top of the method)
+- `scripts/little_loops/fsm/executor.py` — `_action_mode()`: add `"human_approval"` to mode classification
+- `scripts/little_loops/fsm/executor.py` — `_run_action()`: add branch for the new mode (emit `LLEvent`, block on external response, route by verdict)
 - `scripts/little_loops/fsm/validation.py:374` — `_validate_state_action()`: add human_approval validations (warn if no `timeout`, require `on_yes`/`on_no`)
 - `scripts/little_loops/fsm/validation.py:78` — Add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness (it IS a non-LLM evaluator per MR-1)
 - `scripts/little_loops/fsm/fsm-loop-schema.json:247` — Document `human_approval` as valid `action_type`, add `on_edit`/`on_timeout` properties
@@ -255,9 +255,9 @@ accept the default.
 - `scripts/little_loops/fsm/schema.py:539` — `get_referenced_states()`: must include `on_edit` and `on_timeout` targets
 
 ### Similar Patterns
-- `action_type: mcp_tool` was added across 4 files (schema + executor + validator + JSON schema) — the exact pattern to follow. See `executor.py:1421` for the `_action_mode()` branch, `executor.py:1053` for the `_run_action()` dispatch, `validation.py:388` for the `params`-only-with-mcp_tool check.
-- `executor.py:1766` — `_interruptible_sleep()`: existing polling-with-timeout pattern for blocking while respecting shutdown signals — directly reusable for the HITL wait loop
-- `executor.py:1642` — `_emit()`: existing event emission pattern — emit `human_approval_request` on state entry
+- `action_type: mcp_tool` was added across 4 files (schema + executor + validator + JSON schema) — the exact pattern to follow. See `_action_mode()` for the mode classification branch, `_run_action()` for the dispatch, `_validate_state_action()` in `validation.py` for the `params`-only-with-mcp_tool check.
+- `_interruptible_sleep()` in `executor.py` — polling-with-timeout pattern for blocking while respecting shutdown signals — directly reusable for the HITL wait loop
+- `_emit()` in `executor.py` — event emission pattern — emit `human_approval_request` on state entry
 - `events.py:70` — `EventBus` with `register()`/`emit()`/`add_transport()`: existing pub/sub infrastructure
 - `transport.py:115` — `UnixSocketTransport._accept_loop()`: socket polling with timeout — pattern for out-of-band response channel
 - `schema.py:389` — `extra_routes: dict[str, str]`: catches unrecognized `on_*` keys — `on_edit` could be handled via `extra_routes` instead of a dedicated field, simplifying the schema change
@@ -282,8 +282,8 @@ accept the default.
 1. **Schema** (`fsm/schema.py:309`): Add `on_edit: str | None` and `on_timeout: str | None` to `StateConfig`; add `"on_edit"` and `"on_timeout"` to `_known_on_keys` (~line 485); update `to_dict()`/`from_dict()`/`get_referenced_states()`. Also update `fsm-loop-schema.json:247` to document `human_approval` as valid `action_type`.
    - Alternative: use `extra_routes` (`schema.py:389`) for `on_edit`/`on_timeout` to avoid schema changes — unrecognized `on_*` keys are already captured there.
 2. **Validator** (`fsm/validation.py:374`): In `_validate_state_action()`, add: require `on_yes`/`on_no` when `action_type == "human_approval"`; WARNING if no `timeout` is set; add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness at line 78 (it IS a non-LLM evaluator per MR-1).
-3. **Executor dispatch** (`fsm/executor.py`): Add `"human_approval"` to `_action_mode()` (`executor.py:1421`, before the heuristic fallthrough). In `_execute_state()` (`executor.py:838`), add a dispatch branch before the generic action path — follow the learning-state dispatch pattern (`executor.py:863`): `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`.
-4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render prompt with `${captured.*}` interpolation, resolve the active `CommunicationAdapter` from config + extension registry (FEAT-1930), call `adapter.send_alert()` to deliver the prompt, call `adapter.await_response()` to block for verdict (using `_interruptible_sleep()`-style polling, existing pattern at `executor.py:1766`), route based on verdict/timeout. The executor never imports a specific adapter — it only calls the protocol methods.
+3. **Executor dispatch** (`fsm/executor.py`): Add `"human_approval"` to `_action_mode()` (before the heuristic fallthrough). In `_execute_state()`, add a dispatch branch before the generic action path — follow the learning-state dispatch pattern at the top of the method: `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`.
+4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render prompt with `${captured.*}` interpolation, resolve the active `CommunicationAdapter` from config + extension registry (FEAT-1930), call `adapter.send_alert()` to deliver the prompt, call `adapter.await_response()` to block for verdict (using `_interruptible_sleep()`-style polling — see `_interruptible_sleep()` in `executor.py`), route based on verdict/timeout. The executor never imports a specific adapter — it only calls the protocol methods.
 5. **Host capability** (`host_runner.py:74`): Add `interactive: bool` flag to `HostCapabilities`. Set based on `sys.stdin.isatty()` (existing pattern in `hooks/__init__.py:111`). In the HITL handler, if not interactive, short-circuit to `on_timeout`/`on_no`.
 6. **Tests**: Add `TestActionTypeHumanApproval` in `test_fsm_executor.py` (model after `TestActionTypeMcpTool` at line 401) — mock event callback, verify approve/reject/edit/timeout routing. Add `TestHumanApprovalSchema` in `test_fsm_schema.py` (model after `TestMcpToolSchema` at line 1801). Add timeout-warning test in `test_fsm_validation.py`.
 7. **Docs**: Add HITL phase section to `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`; document `human_approval` action_type and new routing fields in `skills/create-loop/reference.md:415`; add example loop under `loops/examples/`.
@@ -324,7 +324,10 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 2026-06-13: Line number drift detected in executor.py. `_interruptible_sleep` is now at :1766 (was :1647/1735). `_emit` at :1642, `_execute_state` at :838, `_action_mode` at :1421 are accurate. Core architectural assumptions remain sound. Issue correctly blocked on FEAT-1930.
 
+2026-06-17: Further drift — `_execute_state` :942 (was :838), `_run_action` :1157 (was :1053), `_action_mode` :1541 (was :1421), `_emit` :1762 (was :1642), `_interruptible_sleep` :1886 (was :1766). Use function-name anchors rather than line numbers when implementing.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:44 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

@@ -342,7 +342,10 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 
 2026-06-13: `AutoManager.run()` now at :1198 (issue references :1165, drift of +33 lines). All 6 test call-sites in test_issue_manager.py confirmed accurate. Issue correctly blocked on FEAT-2000 (loops/ll-auto.yaml does not exist yet).
 
+2026-06-17: Further drift — `AutoManager.run()` now at :1234 (was :1198/1165). All 6 `manager.run()` test call-sites have drifted ~149 lines (e.g. L2604→L2753, L2820→L2969). `--context` flag in `cli/loop/__init__.py` now at L234/382 (issue says L211). `loops/ll-auto.yaml` still does not exist; remains blocked on FEAT-2000.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:13:05 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`

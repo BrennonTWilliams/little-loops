@@ -81,3 +81,11 @@ This issue should be updated incrementally as children land. Final pass:
 ---
 
 **Open** | Created: 2026-06-15 | Priority: P4
+
+## Verification Notes (2026-06-17)
+
+- The Gemini column in `HOST_COMPATIBILITY.md` already contains `(deferred)[^gemini]` values populated by FEAT-2179 research — the issue description's claim that cells are `(unknown)` stubs is outdated.
+- The actual remaining work (flipping deferred/✗ cells to ✓ as child issues land) is still valid; update the issue body to reflect the current state of the column.
+
+## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`

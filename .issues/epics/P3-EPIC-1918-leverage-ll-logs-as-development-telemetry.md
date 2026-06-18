@@ -78,18 +78,32 @@ from the corpus instead of leaving it as a passive archive.
   [[EPIC-1880]]; consume `little_loops.pii` rather than building a separate
   privacy filter.
 
-## Implementation Order
+## Implementation Status
 
-1. ENH-1919 (sequences) and ENH-1921 (stats) first — both are read-only
-   aggregations over the corpus and establish shared parsing helpers.
-2. ENH-1922 (scan-failures) and ENH-1923 (dead-skill) build on the same helpers.
-3. FEAT-1920 (eval-export) and ENH-1924 (diff) are the higher-effort consumers.
+**Primary deliverables — all done:**
+1. ~~ENH-1919 (sequences)~~ **done**
+2. ~~ENH-1921 (stats)~~ **done**
+3. ~~ENH-1922 (scan-failures)~~ **done**
+4. ~~ENH-1923 (dead-skill)~~ **done**
+5. ~~FEAT-1920 (eval-export)~~ **done**
+6. ~~ENH-1924 (diff)~~ **done**
+7. ~~FEAT-1925 (ll-logs-telemetry-digest loop)~~ **done**
+8. ~~ENH-2103 (wire sequences → loop-suggester)~~ **done**
+9. ~~ENH-2104 (wire stats → ll-ctx-stats)~~ **done**
+
+**Remaining open work:**
+- ENH-2130 — `--window-days` anchor inconsistency across subcommands
+- ENH-2131 — Always-null errors/error_rate fields in stats JSON
+- ENH-2132 — Deduplicate signal detection logic
+- ENH-2133 — Redundant edge rebuild in sequences
+- ENH-2134 — Minor code cleanup bundle
+- ENH-2070/2071/2072 — Automation wiring (deferred)
 
 ## Success Metrics
 
-- At least one existing feature (loop-suggester, find-dead-code, or a meta-loop)
-  consumes an ll-logs telemetry subcommand as a real input.
-- A meta-loop can cite ll-logs-derived external evidence for an improvement.
+- ~~At least one existing feature (loop-suggester, find-dead-code, or a meta-loop)
+  consumes an ll-logs telemetry subcommand as a real input.~~ **met (ENH-2103)**
+- ~~A meta-loop can cite ll-logs-derived external evidence for an improvement.~~ **met (ENH-2104)**
 
 ## Labels
 
@@ -109,6 +123,9 @@ open
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+- `/ll:verify-issues` - 2026-06-17 - All 7 primary children (ENH-1919, FEAT-1920, ENH-1921/22/23/24, FEAT-1925) plus ENH-2103/2104 are `done` — both success metrics met. Remaining open children are ENH-2130/2131/2132/2133/2134 (code-quality fixes) and deferred ENH-2070/2071/2072. The Implementation Order section still reads as future work; update to reflect completed deliverables.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

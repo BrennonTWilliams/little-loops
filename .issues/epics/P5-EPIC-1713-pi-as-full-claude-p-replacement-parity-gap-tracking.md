@@ -7,7 +7,7 @@ priority: P5
 captured_at: "2026-05-26T02:06:59Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
-relates_to: [EPIC-1622, EPIC-1463, FEAT-992, FEAT-1480, FEAT-1850]
+relates_to: [EPIC-1622, EPIC-1463, FEAT-992, FEAT-1480]
 labels: [epic, captured, pi-adapter, host-compat, tracking, parity]
 ---
 
@@ -61,7 +61,6 @@ Out of scope (separately owned):
 - **FEAT-1714** — Audit Pi CLI headless flag surface & define `PiRunner` `HostCapabilities`
 - **FEAT-1715** — Pi hook-event parity gap (PreToolUse / PostToolUse / UserPromptSubmit / Stop / SessionEnd)
 - **FEAT-1716** — Pi `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden paths)
-- **FEAT-1850** — Add OmpRunner host runner for oh-my-pi (`omp` CLI)
 
 ## Motivation
 
@@ -129,7 +128,10 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - `docs/reference/HOST_COMPATIBILITY.md` exists and tracks parity ✓
 - Pi conformance test suite not created; Pi audit research docs not created ✓
 
+- `/ll:verify-issues` - 2026-06-17 - Structural inconsistency: FEAT-1850 is still listed in the Children section (line 64) despite the audit note (line 143) saying it was detached. FEAT-1850's `parent:` frontmatter still reads `EPIC-1713`. Either remove FEAT-1850 from the Children list and clear its parent link, or formalize the re-parenting with a concrete parent epic.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 
 - `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
