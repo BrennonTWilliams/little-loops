@@ -130,6 +130,8 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 
 - `/ll:verify-issues` - 2026-06-17 - Structural inconsistency: FEAT-1850 is still listed in the Children section (line 64) despite the audit note (line 143) saying it was detached. FEAT-1850's `parent:` frontmatter still reads `EPIC-1713`. Either remove FEAT-1850 from the Children list and clear its parent link, or formalize the re-parenting with a concrete parent epic.
 
+2026-06-18 (NEEDS_UPDATE): FEAT-1850 has been **re-attached** to this epic (frontmatter now shows `parent: EPIC-1713` and `blocked_by: [FEAT-1715]`). The 2026-06-12 audit note saying "FEAT-1850 detached" is now stale. Remove the audit note (or replace with a "re-attached 2026-06-18" entry), and verify the Children section lists FEAT-1850 alongside FEAT-1714/1715/1716.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

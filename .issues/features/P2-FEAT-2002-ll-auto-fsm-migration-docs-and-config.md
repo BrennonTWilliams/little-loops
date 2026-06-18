@@ -208,6 +208,8 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 
 2026-06-13: Wiring-test file references are accurate. Doc file line numbers cannot be pinned until FEAT-2001 merges — verify exact line numbers in ARCHITECTURE.md, API.md, CONFIGURATION.md, CLI.md, E2E_TESTING.md, TESTING.md before finalizing replacement text. Issue correctly blocked on FEAT-2001.
 
+2026-06-18 (NEEDS_UPDATE): FEAT-2001 is still open (blocked on FEAT-2000; `loops/ll-auto.yaml` doesn't exist). This issue remains correctly blocked; replacement text for the docs remains undetermined. No action needed until FEAT-2001 merges. Wiring-test anchor assertions (`test_wiring_guides_and_meta.py:128`, `test_wiring_reference_docs.py`) verified as still correct for current code state.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-14T00:13:12 - `a3378f94-e4e2-4f51-9e6c-9fff5f286332.jsonl`
 - `/ll:refine-issue` - 2026-06-07T18:28:24 - `50077b98-472a-456e-9164-a749267bb4f6.jsonl`

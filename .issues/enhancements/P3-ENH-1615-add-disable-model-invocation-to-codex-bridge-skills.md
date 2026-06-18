@@ -101,6 +101,8 @@ _Updated by `/ll:verify-issues` on 2026-06-09_
 
 **Verdict: VALID** — Integration Map now correctly lists all 30 ll-* bridge skill directories (confirmed via `ls skills/ | grep ^ll-`). The prior 2026-06-03 note that flagged "28 named skills" is stale — `ll-capture-issue` and `ll-go-no-go` were added to the Integration Map in a subsequent edit. Issue is accurate and ready to implement.
 
+2026-06-18 (OUTDATED): Minor stale count in the Proposed Solution section — line 33 still reads "all 28 `skills/ll-*/SKILL.md` files" while the correct count is 30 (confirmed by filesystem). All other sections correctly say 30. Fix "28" → "30" in the `Proposed Solution` prose before merging.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`

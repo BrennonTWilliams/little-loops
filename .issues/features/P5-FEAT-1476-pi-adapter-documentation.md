@@ -70,6 +70,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - No Pi sections added to ARCHITECTURE.md, TROUBLESHOOTING.md, API.md, or CONFIGURATION.md
 - Issue is blocked on FEAT-1478 (Pi adapter itself) which is also unstarted
 - 2026-06-13 (OUTDATED): Documentation updates cannot start until FEAT-1478 creates `hooks/adapters/pi/` and related files. HOST_COMPATIBILITY.md has no Pi rows; ARCHITECTURE.md, TROUBLESHOOTING.md, API.md, CONFIGURATION.md lack Pi sections — all confirmed missing as expected. No changes needed until FEAT-1478 merges.
+- 2026-06-18 (OUTDATED): No Pi rows in HOST_COMPATIBILITY.md; ARCHITECTURE.md, TROUBLESHOOTING.md, API.md, CONFIGURATION.md all still lack Pi sections. `hooks/adapters/pi/` does not exist (FEAT-1478 unstarted). Doc updates correctly gated on FEAT-1478. No new findings.
 
 ## Status
 

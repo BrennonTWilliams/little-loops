@@ -66,6 +66,8 @@ No test exercises `ll-auto`, `ll-sprint`, `ll-loop`, or `ll-action` end-to-end a
 
 2026-06-13 (OUTDATED): Conformance test suite not created. `scripts/tests/conformance/` directory does not exist. `docs/development/CONFORMANCE.md` does not exist. Mirrors FEAT-1716 structure for Codex. Blocked on FEAT-1719 (PostCompact/PermissionRequest) and ENH-1718.
 
+2026-06-18 (OUTDATED): `scripts/tests/conformance/` still does not exist. `docs/development/CONFORMANCE.md` still does not exist. FEAT-1719 (blocker) remains unimplemented. No progress since 2026-06-13.
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5

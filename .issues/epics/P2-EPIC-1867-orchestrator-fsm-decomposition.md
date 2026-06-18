@@ -157,6 +157,8 @@ _Added by `/ll:verify-issues` on 2026-06-09_
 - `loops/ll-auto.yaml` does not exist (correct — unimplemented).
 - FEAT-1902 is `cancelled` as described.
 
+2026-06-18 (OUTDATED): `loops/ll-auto.yaml` still does not exist. FEAT-1902 is confirmed `cancelled`. Children FEAT-2000/2001/2002 are `open` and correctly carry Layer 1 scope. Critical path (FEAT-1901 → FEAT-2000 → FEAT-2001 → FEAT-1899) still fully unstarted. Epic accurately describes work remaining.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T14:24:45 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`

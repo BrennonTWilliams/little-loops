@@ -86,3 +86,7 @@ Codex analog: `ll-adapt-agents-for-codex` / `ll-adapt-skills-for-codex` in
 ---
 
 **Open** | Created: 2026-06-15 | Priority: P4
+
+## Verification Notes
+
+2026-06-18 (NEEDS_UPDATE): Prerequisite FEAT-2179 is `done` — Gemini CLI research confirmed that `.gemini/commands/*.toml` is the correct discovery surface. The "Decision Needed" flag about the exact TOML schema remains open: FEAT-2179 confirmed the surface path but did not capture the full schema field list. Resolve the schema either by reading `~/.npm-global/lib/node_modules/@google/gemini-cli/bundle/docs/` during implementation (Option a), or file a sub-issue (Option b). No `adapt_gemini_commands.py` or test file exists yet. Implementation can begin once schema is confirmed.

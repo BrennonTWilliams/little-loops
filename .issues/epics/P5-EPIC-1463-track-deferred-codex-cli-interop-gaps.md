@@ -250,6 +250,8 @@ were filed for the genuine remaining depth gaps.
 
 **Verdict: NEEDS_UPDATE** — The 3 items previously listed as 'unfiled' (PostCompact, permission_request, conformance suite) are now captured as FEAT-1719, FEAT-1720, and FEAT-1721 respectively (filed 2026-05-26). Update the children list to reflect this — the epic body may already include them but the verification note should confirm.
 
+2026-06-18 (NEEDS_UPDATE): Body still contains a stale "5 of 12 children are done" footer (Update 2026-06-04). Current active children include ENH-2105 (added 2026-06-12) bringing the total to 13+ active children (FEAT-1720 cancelled). The relates_to list was synced 2026-06-12. Remove or update the "5 of 12" count note — use `ll-issues epic-progress EPIC-1463` for live counts.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`

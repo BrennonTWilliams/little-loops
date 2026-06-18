@@ -63,6 +63,8 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - No decision documented in `docs/reference/HOST_COMPATIBILITY.md`
 - Issue remains open as a research task; no progress since capture
 
+2026-06-18 (OUTDATED): `thoughts/research/codex-state-dir-redirection.md` still does not exist. `HOST_COMPATIBILITY.md` `[^state]` footnote still unresolved. No progress since capture (2026-05-26). Research task accurately described; no changes needed to issue body.
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5

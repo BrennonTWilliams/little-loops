@@ -75,6 +75,8 @@ FEAT-1489's resolution explicitly tied the opt-in/default decision to the benchm
 - No claims about current code behavior are contradicted by the codebase
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
+2026-06-18 (VALID): Confirmed — `hooks/adapters/codex/hooks.json` still has no `PreToolUse` entry (only SessionStart, PreCompact, UserPromptSubmit, PostToolUse). `hooks/adapters/codex/pre-tool-use.sh` does not exist (expected — to be created by this issue). `pre_tool_use` Codex cell in HOST_COMPATIBILITY.md still reads `(opt-in)[^hot]`. Issue accurately describes unimplemented work; all Current Behavior claims are correct.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
