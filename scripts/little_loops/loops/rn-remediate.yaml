@@ -375,18 +375,34 @@ states:
   mark_refined:
     # Marker-gate: record that >=1 refine pass ran for this issue. Write-once
     # (monotonic) so the pre-implement gate requires at most one refine detour.
+    # BUG-2222: route via check_decision_needed_post so refinement adding
+    # decision_needed:true triggers /ll:decide-issue automatically.
     action_type: shell
     action: |
       echo "1" > "${context.run_dir}/refined_${context.issue_id}.txt"
-    next: re_assess
+    next: check_decision_needed_post
 
   mark_wired:
     # Marker-gate: record that >=1 wire pass ran for this issue. Write-once
     # (monotonic) so the pre-implement gate requires at most one wire detour.
+    # BUG-2222: route via check_decision_needed_post so wiring adding
+    # decision_needed:true triggers /ll:decide-issue automatically.
     action_type: shell
     action: |
       echo "1" > "${context.run_dir}/wired_${context.issue_id}.txt"
-    next: re_assess
+    next: check_decision_needed_post
+
+  check_decision_needed_post:
+    # Post-refinement/wire gate: if the action just set decision_needed: true,
+    # route to /ll:decide-issue before the redundant confidence check.
+    # BUG-2222: /ll:refine-issue may deposit multiple solution options which
+    # sets decision_needed: true; without this gate the subloop runs another
+    # confidence check then blocks for manual review instead.
+    fragment: shell_exit
+    action: "ll-issues check-flag ${context.issue_id} decision_needed"
+    on_yes: decide
+    on_no: re_assess
+    on_error: re_assess
 
   # =========================================================================
   # Phase 4: Re-Assessment & Convergence
