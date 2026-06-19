@@ -448,28 +448,6 @@ def _build_chain_results(
     Returns:
         List of ``ChainResult`` sorted by count descending.
     """
-    results: list[ChainResult] = []
-    for ngram, count in counter.most_common():
-        if count < min_count:
-            continue
-        edges = _compute_edges(ngram, counter)
-        results.append(ChainResult(chain=list(ngram), count=count, edges=edges))
-
-    if top is not None:
-        results = results[:top]
-
-    return results
-
-
-def _compute_edges(ngram: tuple[str, ...], counter: Counter) -> list[Edge]:
-    """Compute per-edge transition frequencies for an n-gram chain.
-
-    For each adjacent pair ``(from, to)`` in the chain, computes the frequency
-    as the proportion of times ``from → to`` appears out of all transitions
-    originating from ``from`` across the entire corpus.
-    """
-    edges: list[Edge] = []
-    # Build a transition counter for all pairs in the corpus
     all_transitions: Counter = Counter()
     out_degree: Counter = Counter()
     for ngram_key, count in counter.items():
@@ -478,6 +456,31 @@ def _compute_edges(ngram: tuple[str, ...], counter: Counter) -> list[Edge]:
             all_transitions[pair] += count
             out_degree[ngram_key[i]] += count
 
+    results: list[ChainResult] = []
+    for ngram, count in counter.most_common():
+        if count < min_count:
+            continue
+        edges = _compute_edges(ngram, all_transitions, out_degree)
+        results.append(ChainResult(chain=list(ngram), count=count, edges=edges))
+
+    if top is not None:
+        results = results[:top]
+
+    return results
+
+
+def _compute_edges(
+    ngram: tuple[str, ...],
+    all_transitions: Counter,
+    out_degree: Counter,
+) -> list[Edge]:
+    """Compute per-edge transition frequencies for an n-gram chain.
+
+    For each adjacent pair ``(from, to)`` in the chain, computes the frequency
+    as the proportion of times ``from → to`` appears out of all transitions
+    originating from ``from`` across the entire corpus.
+    """
+    edges: list[Edge] = []
     for i in range(len(ngram) - 1):
         from_ = ngram[i]
         to = ngram[i + 1]
