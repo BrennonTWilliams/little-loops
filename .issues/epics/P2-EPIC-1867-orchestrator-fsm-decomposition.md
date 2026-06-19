@@ -104,12 +104,12 @@ When this epic is done:
 - **FEAT-2002** — Docs/config migration for the ll-auto FSM conversion (Layer 1)
 - **FEAT-1899** — Implement ll-sprint FSM wave driver and shim (Layer 2)
 - **ENH-1903** — Document ll-parallel as canonical parallel substrate (Layer 3)
-- **ENH-2106** — Decide: reusable sub-loop composition vs inlined per-issue states for Layers 1+2 (added 2026-06-12; resolves Open Question 1; blocks FEAT-2000 and FEAT-1899)
+- ✓ **ENH-2106** — Decide: reusable sub-loop composition vs inlined per-issue states for Layers 1+2 (added 2026-06-12; **done 2026-06-13** — decision recorded in `.ll/decisions.yaml`; blocker on FEAT-2000 and FEAT-1899 cleared)
 
 ### Critical path (audit note 2026-06-12)
 
 Four of the children are serialized: **FEAT-1901 → FEAT-2000 → FEAT-2001 →
-FEAT-1899** (FEAT-2000 also waits on ENH-2106's composition decision). Only
+FEAT-1899** (ENH-2106's composition decision was resolved 2026-06-13 — no longer blocking FEAT-2000). Only
 ENH-1903 and FEAT-2002 can proceed in parallel — and both touch the
 CLAUDE.md CLI Tools section, so they should coordinate (sequence ENH-1903
 after FEAT-2002, or batch the CLAUDE.md edits) to avoid divergent edits.
@@ -134,8 +134,8 @@ _Added by `/ll:verify-issues` on 2026-06-09_
 
 1. Should the per-issue states be a reusable sub-loop (`ll-loop` composition) so
    Layers 1 and 2 share one definition rather than duplicating states?
-   → **Tracked by ENH-2106** (added 2026-06-12); decision will be recorded in
-   `.ll/decisions.yaml` before FEAT-2000/FEAT-1899 authoring begins.
+   → **Resolved by ENH-2106** (done 2026-06-13); decision recorded in
+   `.ll/decisions.yaml`.
 2. Does `ll-issues next --respect-deps` need the full `DependencyGraph`, or is the
    lighter `get_ready_issues()` path sufficient for the `ll-auto` case?
 3. Keep `.auto-manage-state.json` semantics anywhere, or fully delegate resume to
@@ -159,7 +159,10 @@ _Added by `/ll:verify-issues` on 2026-06-09_
 
 2026-06-18 (OUTDATED): `loops/ll-auto.yaml` still does not exist. FEAT-1902 is confirmed `cancelled`. Children FEAT-2000/2001/2002 are `open` and correctly carry Layer 1 scope. Critical path (FEAT-1901 → FEAT-2000 → FEAT-2001 → FEAT-1899) still fully unstarted. Epic accurately describes work remaining.
 
+2026-06-19 — **NEEDS_UPDATE applied**: ENH-2106 completed 2026-06-13; references to it as a blocking dependency on FEAT-2000/FEAT-1899 were stale and have been corrected above. All other claims verified accurate: `loops/ll-auto.yaml` absent (expected), FEAT-1902 cancelled, all remaining children open/blocked with correct priorities and statuses, decomposition plan doc present.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-19T21:00:32 - `c40a6bfb-b2f9-4c35-89ae-2adc49a46c37.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T14:24:45 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
