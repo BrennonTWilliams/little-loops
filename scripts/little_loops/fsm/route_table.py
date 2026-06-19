@@ -7,6 +7,7 @@ import io
 import os
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +28,15 @@ _VERDICT_TO_FIELD: dict[str, str] = {
 }
 
 EMPTY_CELL = "—"
+
+
+@dataclass
+class ParsedTable:
+    """Result of parsing an edited route table."""
+
+    matrix: dict[str, dict[str, str]]
+    new_stubs: list[str]
+    deleted_states: list[str]
 
 
 class RouteTableExtractor:
@@ -112,8 +122,12 @@ class RouteTableParser:
     """Parse an edited markdown or CSV table back to a state×verdict matrix."""
 
     @staticmethod
-    def parse_markdown(text: str, known_states: set[str]) -> dict[str, dict[str, str]]:
-        """Parse a markdown table into {state: {verdict: target}}."""
+    def parse_markdown(text: str, known_states: set[str]) -> ParsedTable:
+        """Parse a markdown table into ParsedTable.
+
+        Unknown state names with all-empty verdict cells are classified as new_stubs.
+        Unknown state names with non-empty cells raise ValueError.
+        """
         lines = [ln.strip() for ln in text.splitlines() if ln.strip().startswith("|")]
         if len(lines) < 2:
             raise ValueError("No valid markdown table found in input")
@@ -122,42 +136,58 @@ class RouteTableParser:
         verdicts = header_cells[1:]  # skip "state" column
 
         result: dict[str, dict[str, str]] = {}
+        new_stubs: list[str] = []
         for line in lines[2:]:  # skip header + separator
             cells = [c.strip() for c in line.strip("|").split("|")]
             if not cells or not cells[0].strip():
                 continue
             state_name = cells[0].strip()
-            if state_name not in known_states:
-                raise ValueError(
-                    f"Unknown state in edited table: '{state_name}' "
-                    f"(known: {sorted(known_states)})"
-                )
             row: dict[str, str] = {}
             for i, verdict in enumerate(verdicts):
                 if i + 1 < len(cells):
                     val = cells[i + 1].strip()
                     if val and val not in (EMPTY_CELL, "-", ""):
                         row[verdict] = val
-            result[state_name] = row
-        return result
+            if state_name not in known_states:
+                if not row:
+                    new_stubs.append(state_name)
+                else:
+                    raise ValueError(
+                        f"Unknown state in edited table: '{state_name}' "
+                        f"(known: {sorted(known_states)})"
+                    )
+            else:
+                result[state_name] = row
+        deleted_states = [s for s in known_states if s not in result]
+        return ParsedTable(matrix=result, new_stubs=new_stubs, deleted_states=deleted_states)
 
     @staticmethod
-    def parse_csv(text: str, known_states: set[str]) -> dict[str, dict[str, str]]:
-        """Parse a CSV table into {state: {verdict: target}}."""
+    def parse_csv(text: str, known_states: set[str]) -> ParsedTable:
+        """Parse a CSV table into ParsedTable.
+
+        Unknown state names with all-empty verdict cells are classified as new_stubs.
+        Unknown state names with non-empty cells raise ValueError.
+        """
         reader = csv.DictReader(io.StringIO(text))
         result: dict[str, dict[str, str]] = {}
+        new_stubs: list[str] = []
         for csv_row in reader:
             state_name = csv_row.pop("state", "").strip()
             if not state_name:
                 continue
-            if state_name not in known_states:
-                raise ValueError(
-                    f"Unknown state in edited table: '{state_name}' "
-                    f"(known: {sorted(known_states)})"
-                )
             row = {k.strip(): v for k, v in csv_row.items() if v and v not in (EMPTY_CELL, "-")}
-            result[state_name] = row
-        return result
+            if state_name not in known_states:
+                if not row:
+                    new_stubs.append(state_name)
+                else:
+                    raise ValueError(
+                        f"Unknown state in edited table: '{state_name}' "
+                        f"(known: {sorted(known_states)})"
+                    )
+            else:
+                result[state_name] = row
+        deleted_states = [s for s in known_states if s not in result]
+        return ParsedTable(matrix=result, new_stubs=new_stubs, deleted_states=deleted_states)
 
 
 class RouteTableApplier:
@@ -168,11 +198,23 @@ class RouteTableApplier:
         path: Path,
         old_matrix: dict[str, dict[str, str]],
         new_matrix: dict[str, dict[str, str]],
+        new_stubs: list[str] | None = None,
+        allow_delete: bool = False,
     ) -> None:
-        """Write changed routes from new_matrix back to the YAML loop file."""
+        """Write changed routes from new_matrix back to the YAML loop file.
+
+        Args:
+            path: Path to the loop YAML file.
+            old_matrix: Original state×verdict matrix before editing.
+            new_matrix: Edited state×verdict matrix (excludes deleted states and new stubs).
+            new_stubs: State names to insert as terminal: true stubs.
+            allow_delete: When True, removes states absent from new_matrix from the YAML.
+                          When False, emits a warning but leaves absent states unchanged.
+        """
         from io import StringIO
 
         from ruamel.yaml import YAML
+        from ruamel.yaml.comments import CommentedMap
 
         from little_loops.file_utils import atomic_write
 
@@ -180,6 +222,30 @@ class RouteTableApplier:
         data = yaml.load(path)
         states_data = data.get("states", {})
         changed = False
+
+        # Detect deleted states (known states absent from the edited table)
+        deleted = set(old_matrix.keys()) - set(new_matrix.keys())
+
+        if deleted:
+            if allow_delete:
+                # Warn about dangling routes to deleted states
+                for remaining_state, remaining_routes in new_matrix.items():
+                    for verdict, target in remaining_routes.items():
+                        if target in deleted:
+                            print(
+                                f"⚠  Dangling route: '{remaining_state}' routes to "
+                                f"deleted state '{target}' via '{verdict}'"
+                            )
+                # Remove deleted states from YAML
+                for state_name in deleted:
+                    states_data.pop(state_name, None)
+                    changed = True
+            else:
+                for state_name in sorted(deleted):
+                    print(
+                        f"⚠  State '{state_name}' removed from table but "
+                        f"--allow-delete not set; skipping deletion"
+                    )
 
         for state_name, new_row in new_matrix.items():
             old_row = old_matrix.get(state_name, {})
@@ -204,6 +270,12 @@ class RouteTableApplier:
                 if verdict not in new_row:
                     _clear_route_field(state_data, verdict, uses_route_block)
                     changed = True
+
+        # Insert new terminal stubs
+        if new_stubs:
+            for stub_name in new_stubs:
+                states_data[stub_name] = CommentedMap({"terminal": True})
+                changed = True
 
         if changed:
             buf = StringIO()

@@ -788,6 +788,11 @@ Examples:
             action="store_true",
             help="Skip gap/conflict detection output",
         )
+        edit_routes_parser.add_argument(
+            "--allow-delete",
+            action="store_true",
+            help="Allow deletion of state blocks removed from the edited table",
+        )
 
         args = parser.parse_args(argv)
 

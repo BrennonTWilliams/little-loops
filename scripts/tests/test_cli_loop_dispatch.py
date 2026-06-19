@@ -925,3 +925,46 @@ class TestMainLoopNextLoopFlagForwarding:
 
         assert result == 0
         mocks["cmd_next_loop"].assert_called_once()
+
+
+class TestMainLoopEditRoutesFlagForwarding:
+    """Tests that edit-routes flags are parsed and forwarded correctly."""
+
+    def test_allow_delete_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--allow-delete is parsed and forwarded to cmd_edit_routes."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "edit-routes", "test-loop", "--allow-delete"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_edit_routes"].assert_called_once()
+        assert mocks["cmd_edit_routes"].call_args[0][1].allow_delete is True
+
+    def test_no_warnings_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--no-warnings is parsed and forwarded to cmd_edit_routes."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "edit-routes", "test-loop", "--no-warnings"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_edit_routes"].assert_called_once()
+        assert mocks["cmd_edit_routes"].call_args[0][1].no_warnings is True
+
+    def test_format_csv_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--format csv is parsed and forwarded to cmd_edit_routes."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "edit-routes", "test-loop", "--format", "csv"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_edit_routes"].assert_called_once()
+        assert mocks["cmd_edit_routes"].call_args[0][1].format == "csv"

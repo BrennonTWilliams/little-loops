@@ -35,6 +35,7 @@ def cmd_edit_routes(
     fmt = getattr(args, "format", "markdown")
     dry_run = getattr(args, "dry_run", False)
     no_warnings = getattr(args, "no_warnings", False)
+    allow_delete = getattr(args, "allow_delete", False)
 
     try:
         path = resolve_loop_path(loop_name, loops_dir)
@@ -75,13 +76,15 @@ def cmd_edit_routes(
     known_states = set(fsm.states.keys())
     try:
         if fmt == "csv":
-            new_matrix = RouteTableParser.parse_csv(edited, known_states)
+            parsed = RouteTableParser.parse_csv(edited, known_states)
         else:
-            new_matrix = RouteTableParser.parse_markdown(edited, known_states)
+            parsed = RouteTableParser.parse_markdown(edited, known_states)
     except ValueError as e:
         logger.error(f"Parse error: {e}")
         return 1
 
     # Apply changes
-    RouteTableApplier.apply(path, matrix, new_matrix)
+    RouteTableApplier.apply(
+        path, matrix, parsed.matrix, new_stubs=parsed.new_stubs, allow_delete=allow_delete
+    )
     return 0

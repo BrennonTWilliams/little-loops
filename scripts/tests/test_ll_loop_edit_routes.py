@@ -147,9 +147,9 @@ class TestRouteTableParser:
         )
         known = {"check", "done"}
         result = RouteTableParser.parse_markdown(md, known)
-        assert result["check"]["yes"] == "done"
-        assert result["check"]["no"] == "check"
-        assert result["done"] == {}
+        assert result.matrix["check"]["yes"] == "done"
+        assert result.matrix["check"]["no"] == "check"
+        assert result.matrix["done"] == {}
 
     def test_parse_markdown_raises_on_unknown_state(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser
@@ -167,8 +167,8 @@ class TestRouteTableParser:
 
         csv_text = "state,yes,no\ncheck,done,check\n"
         result = RouteTableParser.parse_csv(csv_text, {"check", "done"})
-        assert result["check"]["yes"] == "done"
-        assert result["check"]["no"] == "check"
+        assert result.matrix["check"]["yes"] == "done"
+        assert result.matrix["check"]["no"] == "check"
 
     def test_parse_csv_raises_on_unknown_state(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser
@@ -186,8 +186,8 @@ class TestRouteTableParser:
             "| check | done |  |\n"
         )
         result = RouteTableParser.parse_markdown(md, {"check", "done"})
-        assert "yes" in result["check"]
-        assert "no" not in result["check"]
+        assert "yes" in result.matrix["check"]
+        assert "no" not in result.matrix["check"]
 
     def test_parse_markdown_dash_excluded(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser
@@ -198,7 +198,7 @@ class TestRouteTableParser:
             "| check | done | — |\n"
         )
         result = RouteTableParser.parse_markdown(md, {"check", "done"})
-        assert "no" not in result["check"]
+        assert "no" not in result.matrix["check"]
 
     def test_round_trip_markdown(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser, RouteTableRenderer
@@ -210,7 +210,7 @@ class TestRouteTableParser:
         md = RouteTableRenderer.to_markdown(original)
         known = set(original.keys())
         parsed = RouteTableParser.parse_markdown(md, known)
-        assert parsed == original
+        assert parsed.matrix == original
 
     def test_round_trip_csv(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser, RouteTableRenderer
@@ -222,7 +222,52 @@ class TestRouteTableParser:
         csv_text = RouteTableRenderer.to_csv(original)
         known = set(original.keys())
         parsed = RouteTableParser.parse_csv(csv_text, known)
-        assert parsed == original
+        assert parsed.matrix == original
+
+    def test_parse_markdown_all_empty_stub(self) -> None:
+        from little_loops.fsm.route_table import RouteTableParser
+
+        md = (
+            "| state      | yes  | no |\n"
+            "|------------|------|----|\n"
+            "| check      | done |  — |\n"
+            "| done_stub  |  —   |  — |\n"
+        )
+        parsed = RouteTableParser.parse_markdown(md, {"check"})
+        assert "done_stub" not in parsed.matrix
+        assert "done_stub" in parsed.new_stubs
+
+    def test_parse_csv_all_empty_stub(self) -> None:
+        from little_loops.fsm.route_table import RouteTableParser
+
+        csv_text = "state,yes,no\ncheck,done,\ndone_stub,,\n"
+        parsed = RouteTableParser.parse_csv(csv_text, {"check"})
+        assert "done_stub" not in parsed.matrix
+        assert "done_stub" in parsed.new_stubs
+
+    def test_parse_markdown_deleted_states_field(self) -> None:
+        from little_loops.fsm.route_table import RouteTableParser
+
+        md = (
+            "| state | yes |\n"
+            "|-------|-----|\n"
+            "| check | done |\n"
+        )
+        # "done" is in known_states but absent from the table
+        parsed = RouteTableParser.parse_markdown(md, {"check", "done"})
+        assert "done" in parsed.deleted_states
+        assert "check" not in parsed.deleted_states
+
+    def test_parse_markdown_unknown_nonempty_raises(self) -> None:
+        from little_loops.fsm.route_table import RouteTableParser
+
+        md = (
+            "| state    | yes  |\n"
+            "|----------|------|\n"
+            "| new_state| done |\n"
+        )
+        with pytest.raises(ValueError, match="new_state"):
+            RouteTableParser.parse_markdown(md, {"check", "done"})
 
 
 class TestDetectRoutingGaps:
@@ -344,6 +389,166 @@ class TestRouteTableApplier:
         assert "description: My loop" in content
         assert "action: do something" in content
 
+    def test_apply_deletion_with_allow_delete(self, tmp_path: Path) -> None:
+        from little_loops.fsm.route_table import RouteTableApplier, RouteTableExtractor
+        from little_loops.fsm.validation import load_and_validate
+
+        loop_path = tmp_path / "test.yaml"
+        loop_path.write_text(
+            "name: test\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    action: test\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+            "  unused:\n"
+            "    terminal: true\n"
+        )
+        fsm, _ = load_and_validate(loop_path)
+        old_matrix = RouteTableExtractor.extract(fsm)
+        # Remove "unused" from new_matrix (simulate row deletion)
+        new_matrix = {k: dict(v) for k, v in old_matrix.items() if k != "unused"}
+
+        RouteTableApplier.apply(loop_path, old_matrix, new_matrix, allow_delete=True)
+
+        content = loop_path.read_text()
+        assert "unused" not in content
+        assert "done" in content
+
+    def test_apply_deletion_without_allow_delete_is_noop(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.fsm.route_table import RouteTableApplier, RouteTableExtractor
+        from little_loops.fsm.validation import load_and_validate
+
+        loop_path = tmp_path / "test.yaml"
+        loop_path.write_text(
+            "name: test\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    action: test\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        original_content = loop_path.read_text()
+        fsm, _ = load_and_validate(loop_path)
+        old_matrix = RouteTableExtractor.extract(fsm)
+        new_matrix = {k: dict(v) for k, v in old_matrix.items() if k != "done"}
+
+        RouteTableApplier.apply(loop_path, old_matrix, new_matrix, allow_delete=False)
+
+        # File unchanged (no deletion without flag)
+        assert loop_path.read_text() == original_content
+        captured = capsys.readouterr()
+        assert "⚠" in captured.out
+        assert "done" in captured.out
+        assert "--allow-delete" in captured.out
+
+    def test_apply_deletion_warns_dangling_route(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.fsm.route_table import RouteTableApplier, RouteTableExtractor
+        from little_loops.fsm.validation import load_and_validate
+
+        loop_path = tmp_path / "test.yaml"
+        loop_path.write_text(
+            "name: test\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    action: test\n"
+            "    on_yes: target\n"
+            "    on_no: check\n"
+            "  target:\n"
+            "    terminal: true\n"
+        )
+        fsm, _ = load_and_validate(loop_path)
+        old_matrix = RouteTableExtractor.extract(fsm)
+        # Delete "target" but "check" still routes to it
+        new_matrix = {k: dict(v) for k, v in old_matrix.items() if k != "target"}
+
+        RouteTableApplier.apply(loop_path, old_matrix, new_matrix, allow_delete=True)
+
+        captured = capsys.readouterr()
+        assert "⚠" in captured.out
+        assert "target" in captured.out
+        # Dangling route warning should mention "check" and "target"
+        assert "check" in captured.out
+
+    def test_apply_inserts_terminal_stub(self, tmp_path: Path) -> None:
+        from little_loops.fsm.route_table import RouteTableApplier, RouteTableExtractor
+        from little_loops.fsm.validation import load_and_validate
+
+        loop_path = tmp_path / "test.yaml"
+        loop_path.write_text(
+            "name: test\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    action: test\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        fsm, _ = load_and_validate(loop_path)
+        old_matrix = RouteTableExtractor.extract(fsm)
+
+        RouteTableApplier.apply(loop_path, old_matrix, old_matrix, new_stubs=["done_failure"])
+
+        content = loop_path.read_text()
+        assert "done_failure" in content
+        assert "terminal: true" in content
+
+    def test_apply_mixed_edit_delete_add(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.fsm.route_table import RouteTableApplier, RouteTableExtractor
+        from little_loops.fsm.validation import load_and_validate
+
+        loop_path = tmp_path / "test.yaml"
+        loop_path.write_text(
+            "name: test\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    action: test\n"
+            "    on_yes: pass\n"
+            "    on_no: fail\n"
+            "  pass:\n"
+            "    terminal: true\n"
+            "  fail:\n"
+            "    terminal: true\n"
+        )
+        fsm, _ = load_and_validate(loop_path)
+        old_matrix = RouteTableExtractor.extract(fsm)
+
+        # Edit: reroute check.no to "pass"; Delete: remove "fail"; Add: new stub "done_alt"
+        new_matrix = {k: dict(v) for k, v in old_matrix.items() if k != "fail"}
+        new_matrix["check"]["no"] = "pass"  # reroute away from deleted "fail"
+
+        RouteTableApplier.apply(
+            loop_path,
+            old_matrix,
+            new_matrix,
+            new_stubs=["done_alt"],
+            allow_delete=True,
+        )
+
+        content = loop_path.read_text()
+        # "fail" state block should be gone; "done_alt" stub should be present
+        assert "done_alt" in content
+        # "pass" still present (as a state and as a route target)
+        assert "pass" in content
+        # The fail state block is deleted
+        assert "  fail:\n" not in content
+
 
 class TestCmdEditRoutes:
     def _make_project(self, tmp_path: Path, loop_fixture: str = "valid-loop.yaml") -> Path:
@@ -359,7 +564,7 @@ class TestCmdEditRoutes:
         from little_loops.logger import Logger
 
         loops_dir = self._make_project(tmp_path)
-        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=False)
+        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=False, allow_delete=False)
         result = cmd_edit_routes("test-loop", args, loops_dir, Logger())
 
         assert result == 0
@@ -374,7 +579,7 @@ class TestCmdEditRoutes:
         from little_loops.logger import Logger
 
         loops_dir = self._make_project(tmp_path)
-        args = argparse.Namespace(format="csv", dry_run=True, no_warnings=False)
+        args = argparse.Namespace(format="csv", dry_run=True, no_warnings=False, allow_delete=False)
         result = cmd_edit_routes("test-loop", args, loops_dir, Logger())
 
         assert result == 0
@@ -386,7 +591,7 @@ class TestCmdEditRoutes:
         from little_loops.cli.loop.edit_routes import cmd_edit_routes
         from little_loops.logger import Logger
 
-        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=False)
+        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=False, allow_delete=False)
         result = cmd_edit_routes("nonexistent", args, tmp_path, Logger())
         assert result == 2
 
@@ -403,7 +608,7 @@ class TestCmdEditRoutes:
             FIXTURES / "loop-with-unreachable-state.yaml",
             loops_dir / "unreachable.yaml",
         )
-        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=False)
+        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=False, allow_delete=False)
         result = cmd_edit_routes("unreachable", args, loops_dir, Logger())
 
         assert result == 0
@@ -422,7 +627,7 @@ class TestCmdEditRoutes:
             FIXTURES / "loop-with-unreachable-state.yaml",
             loops_dir / "unreachable.yaml",
         )
-        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=True)
+        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=True, allow_delete=False)
         result = cmd_edit_routes("unreachable", args, loops_dir, Logger())
 
         assert result == 0
@@ -456,7 +661,7 @@ class TestCmdEditRoutes:
 
         monkeypatch.setattr("subprocess.call", fake_editor_call)
 
-        args = argparse.Namespace(format="markdown", dry_run=False, no_warnings=True)
+        args = argparse.Namespace(format="markdown", dry_run=False, no_warnings=True, allow_delete=False)
         result = cmd_edit_routes("test-loop", args, loops_dir, Logger())
 
         assert result == 0
@@ -480,6 +685,6 @@ class TestCmdEditRoutes:
 
         monkeypatch.setattr("subprocess.call", fake_editor_inject_unknown)
 
-        args = argparse.Namespace(format="markdown", dry_run=False, no_warnings=True)
+        args = argparse.Namespace(format="markdown", dry_run=False, no_warnings=True, allow_delete=False)
         result = cmd_edit_routes("test-loop", args, loops_dir, Logger())
         assert result == 1
