@@ -695,9 +695,58 @@ questions:
 
 ---
 
+### Step H5: External API Gate
+
+Before presenting this question, check `learning_tests.enabled` in `.ll/ll-config.json`:
+
+```bash
+LT_ENABLED=$(python3 -c "
+import json, pathlib
+p = pathlib.Path('.ll/ll-config.json')
+cfg = json.loads(p.read_text()) if p.exists() else {}
+print(str(cfg.get('learning_tests', {}).get('enabled', False)).lower())")
+```
+
+If `LT_ENABLED=false`, skip this step entirely — do not ask the question and do not inject the gate.
+
+If `LT_ENABLED=true`, check whether `learning_tests_required` is already set in the issue's frontmatter:
+
+```bash
+LT_TARGETS=$(ll-issues show "${ISSUE_ID}" --json 2>/dev/null | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+v = d.get('learning_tests_required')
+print(v or '')" 2>/dev/null || true)
+```
+
+If `LT_TARGETS` is non-empty, auto-insert the `assumption_gate` without asking (the field was already populated by `/ll:scope-epic` or `/ll:wire-issue`).
+
+Otherwise, ask:
+
+```yaml
+questions:
+  - question: "Does this loop invoke external packages or third-party APIs (e.g., Anthropic SDK, HTTP APIs, database drivers)?"
+    header: "External APIs"
+    multiSelect: false
+    options:
+      - label: "No (Recommended)"
+        description: "No external-API calls — skip the assumption firewall gate"
+      - label: "Yes — add assumption-firewall gate"
+        description: "Inject an assumption_gate state that proves external API assumptions before execution"
+```
+
+**If "Yes" (or `LT_TARGETS` is non-empty)**:
+- Set `initial: assumption_gate` (Variant A) or route `discover.on_yes: assumption_gate` (Variant B)
+- Add `context.issue_file: ""` as a required context variable (set via `--context issue_file=ISSUE-NNN` when running the loop)
+- Inject the `assumption_gate` and `blocked` states (marked `# include if external APIs selected` in templates below)
+
+**If "No"** (and `LT_TARGETS` is empty): Omit `assumption_gate` and `blocked`; `initial` and routing are unchanged.
+
+---
+
 ### Generate Harness FSM YAML
 
-Use the answers from Steps H1–H4 to generate the YAML. Three structural variants (see Specialist Pipeline Questions below for Variant C):
+Use the answers from Steps H1–H5 to generate the YAML. Three structural variants (see Specialist Pipeline Questions below for Variant C):
 
 #### Variant A: Single-Shot (no item discovery)
 
@@ -705,9 +754,21 @@ For "Single-shot" work item mode:
 
 ```yaml
 name: "<loop-name>"
-initial: execute
+initial: assumption_gate         # or execute if H5: No (no external APIs)
 max_steps: <per-item-retries>
+context:
+  issue_file: ""                 # required if assumption_gate included; set via --context issue_file=ISSUE-NNN
 states:
+  assumption_gate:               # include if external APIs selected (H5: Yes)
+    loop: assumption-firewall
+    with:
+      input: "${context.issue_file}"
+    on_success: execute
+    on_failure: blocked
+    on_error: blocked
+  blocked:                       # include if external APIs selected (H5: Yes)
+    terminal: true
+    message: "External API assumptions unproven. Run /ll:explore-api for each dependency."
   execute:
     action: "<skill-or-prompt>"
     action_type: prompt
@@ -773,6 +834,8 @@ For "Active issues list", "File glob pattern", or "Manual list" work item modes:
 name: "<loop-name>"
 initial: discover
 max_steps: <max-iterations>
+context:
+  issue_file: ""                 # required if assumption_gate included; set via --context issue_file=ISSUE-NNN
 states:
   discover:
     action: "<discovery-command>"   # see Discovery Commands table below
@@ -780,8 +843,18 @@ states:
     capture: "current_item"
     evaluate:
       type: exit_code
-    on_yes: execute
+    on_yes: assumption_gate      # or execute if H5: No (no external APIs)
     on_no: done
+  assumption_gate:               # include if external APIs selected (H5: Yes)
+    loop: assumption-firewall
+    with:
+      input: "${captured.current_item.output}"
+    on_success: execute
+    on_failure: blocked
+    on_error: blocked
+  blocked:                       # include if external APIs selected (H5: Yes)
+    terminal: true
+    message: "External API assumptions unproven. Run /ll:explore-api for each dependency."
   execute:
     action: "<skill-or-prompt> ${captured.current_item.output}"
     action_type: prompt

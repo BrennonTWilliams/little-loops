@@ -177,6 +177,8 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("agents/loop-specialist.md", "tools:", "FEAT-1532"),
     ("agents/loop-specialist.md", ".loops/diagnostics/", "FEAT-1532"),
     ("agents/loop-specialist.md", "ll-loop history", "FEAT-1532"),
+    ("skills/create-loop/loop-types.md", "assumption_gate", "ENH-2215"),
+    ("skills/create-loop/loop-types.md", "assumption-firewall", "ENH-2215"),
 ]
 
 

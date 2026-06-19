@@ -28,11 +28,12 @@ The hard problem in automated iteration isn't running the skill — it's knowing
   - [Diff Invariants (`check_invariants`)](#diff-invariants-check_invariants)
   - [Stall Detection (`check_stall`)](#stall-detection-check_stall)
 - [When to Use a Harness](#when-to-use-a-harness)
-- [Creating a Harness: The 4-Step Wizard](#creating-a-harness-the-4-step-wizard)
+- [Creating a Harness: The 5-Step Wizard](#creating-a-harness-the-5-step-wizard)
   - [Step H1: Choose a Target](#step-h1-choose-a-target)
   - [Step H2: Work Item Discovery](#step-h2-work-item-discovery)
   - [Step H3: Evaluation Phases](#step-h3-evaluation-phases)
   - [Step H4: Iteration Budget](#step-h4-iteration-budget)
+  - [Step H5: External API Gate](#step-h5-external-api-gate)
 - [Generated FSM Structure](#generated-fsm-structure)
   - [Variant A: Single-Shot](#variant-a-single-shot)
   - [Variant B: Multi-Item](#variant-b-multi-item)
@@ -512,7 +513,7 @@ The wizard generates a complete harness that covers the most common cases. Here'
 
 ---
 
-## Creating a Harness: The 4-Step Wizard
+## Creating a Harness: The 5-Step Wizard
 
 Run `/ll:create-loop` and select **"Harness a skill or prompt"** when prompted for loop type, or pass a description directly to skip the wizard — e.g., `/ll:create-loop harness the refine-issue skill and iterate until the issue is implementation-ready`.
 
@@ -604,6 +605,29 @@ What is the total iteration budget?
 | Code quality / fix | 50 | 5 |
 | Documentation | 100 | 3 |
 | Custom prompt | 50 | 3 |
+
+---
+
+### Step H5: External API Gate
+
+The wizard checks `learning_tests.enabled` in `.ll/ll-config.json` before presenting this question. If the flag is `false`, this step is skipped entirely.
+
+When enabled, the wizard also checks whether `learning_tests_required` is already set in the target issue's frontmatter (populated by `/ll:scope-epic` or `/ll:wire-issue`). If so, the gate is auto-inserted without asking.
+
+Otherwise, the wizard asks:
+
+```
+Does this loop invoke external packages or third-party APIs
+(e.g., Anthropic SDK, HTTP APIs, database drivers)?
+  ○ No (Recommended)              — Skip the assumption firewall gate
+  ○ Yes — add assumption-firewall gate  — Inject an assumption_gate state
+```
+
+**If "Yes"**: An `assumption_gate` sub-loop state is inserted before `execute`. The initial state becomes `assumption_gate`, and a required `context.issue_file` variable is added. The gate invokes the `assumption-firewall` built-in loop, which extracts and validates external-API assumptions before any implementation work runs.
+
+**If "No"**: The `initial` state remains `execute` (Variant A) or `discover` (Variant B), and no gate states are added.
+
+See [loop-types.md — Step H5](../../skills/create-loop/loop-types.md) for the full question flow and the generated YAML pattern.
 
 ---
 

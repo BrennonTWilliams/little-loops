@@ -17,6 +17,8 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+
 # =============================================================================
 # CLI Validation Tests
 # =============================================================================
@@ -340,3 +342,115 @@ class TestHarnessPlanResearchImplementReport:
     def test_description_field(self, scaffold: dict) -> None:
         """Variant C scaffold must have a non-empty description."""
         assert scaffold.get("description"), "description field must be non-empty"
+
+
+# =============================================================================
+# Harness Variant A with Assumption Gate Tests (ENH-2215)
+# =============================================================================
+
+HARNESS_VARIANT_A_WITH_ASSUMPTION_GATE_YAML = """
+name: harness-external-api
+initial: assumption_gate
+max_steps: 3
+context:
+  issue_file: ""
+states:
+  assumption_gate:
+    loop: assumption-firewall
+    with:
+      input: "${context.issue_file}"
+    on_success: execute
+    on_failure: blocked
+    on_error: blocked
+  blocked:
+    terminal: true
+  execute:
+    action: /ll:refine-issue --auto
+    action_type: prompt
+    timeout: 1500
+    capture: execute_result
+    next: done
+  done:
+    terminal: true
+"""
+
+HARNESS_VARIANT_A_NO_GATE_YAML = """
+name: harness-refine-issue-no-gate
+initial: execute
+max_steps: 3
+states:
+  execute:
+    action: /ll:refine-issue --auto
+    action_type: prompt
+    timeout: 1500
+    capture: execute_result
+    next: done
+  done:
+    terminal: true
+"""
+
+
+class TestHarnessVariantAWithAssumptionGate:
+    """Structural tests for a harness with assumption-firewall gate (ENH-2215)."""
+
+    @pytest.fixture
+    def harness(self) -> dict:
+        return yaml.safe_load(HARNESS_VARIANT_A_WITH_ASSUMPTION_GATE_YAML)
+
+    def test_parses_as_yaml(self, harness: dict) -> None:
+        assert isinstance(harness, dict)
+
+    def test_initial_state_is_assumption_gate(self, harness: dict) -> None:
+        assert harness.get("initial") == "assumption_gate"
+
+    def test_assumption_gate_state_exists(self, harness: dict) -> None:
+        assert "assumption_gate" in harness.get("states", {})
+
+    def test_assumption_gate_uses_assumption_firewall_loop(self, harness: dict) -> None:
+        gate = harness["states"]["assumption_gate"]
+        assert gate.get("loop") == "assumption-firewall"
+
+    def test_assumption_gate_with_input_is_context_issue_file(self, harness: dict) -> None:
+        gate = harness["states"]["assumption_gate"]
+        assert gate.get("with", {}).get("input") == "${context.issue_file}"
+
+    def test_assumption_gate_routes_on_failure_to_blocked(self, harness: dict) -> None:
+        gate = harness["states"]["assumption_gate"]
+        assert gate.get("on_failure") == "blocked"
+
+    def test_assumption_gate_routes_on_error_to_blocked(self, harness: dict) -> None:
+        gate = harness["states"]["assumption_gate"]
+        assert gate.get("on_error") == "blocked"
+
+    def test_blocked_state_exists(self, harness: dict) -> None:
+        assert "blocked" in harness.get("states", {})
+
+    def test_blocked_state_is_terminal(self, harness: dict) -> None:
+        assert harness["states"]["blocked"].get("terminal") is True
+
+    def test_passes_fsm_validation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        loops = tmp_path / ".loops"
+        loops.mkdir()
+        (loops / "harness-external-api.yaml").write_text(HARNESS_VARIANT_A_WITH_ASSUMPTION_GATE_YAML)
+        monkeypatch.chdir(tmp_path)
+        fsm, _ = load_and_validate(loops / "harness-external-api.yaml")
+        errors = validate_fsm(fsm)
+        hard_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not hard_errors, f"Assumption gate harness FSM errors: {[str(e) for e in hard_errors]}"
+
+
+class TestHarnessVariantAWithoutAssumptionGate:
+    """Regression: harnesses without external APIs must not include assumption_gate (ENH-2215)."""
+
+    @pytest.fixture
+    def harness(self) -> dict:
+        return yaml.safe_load(HARNESS_VARIANT_A_NO_GATE_YAML)
+
+    def test_initial_state_is_execute(self, harness: dict) -> None:
+        assert harness.get("initial") == "execute"
+
+    def test_no_assumption_gate_state(self, harness: dict) -> None:
+        assert "assumption_gate" not in harness.get("states", {})
+
+    def test_no_blocked_state(self, harness: dict) -> None:
+        assert "blocked" not in harness.get("states", {})
