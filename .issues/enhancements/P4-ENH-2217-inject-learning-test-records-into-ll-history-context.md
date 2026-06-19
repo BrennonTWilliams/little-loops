@@ -3,11 +3,18 @@ id: ENH-2217
 title: Inject learning test records into ll-history-context output
 type: enhancement
 priority: P4
-status: open
+status: done
 parent: EPIC-2207
 captured_at: '2026-06-18T15:38:06Z'
+completed_at: '2026-06-19T05:23:55Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
+confidence_score: 88
+outcome_confidence: 84
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 17
+score_change_surface: 25
 ---
 
 # ENH-2217: Inject learning test records into ll-history-context output
@@ -64,13 +71,17 @@ Agents starting a new session on an issue must either re-query the registry them
 - `scripts/little_loops/cli/history_context.py` — extend with learning test registry query and output formatting after the corrections/FTS block
 
 ### Dependent Files (Callers/Importers)
-- TBD - `grep -r "ll-history-context\|history_context" scripts/`
+- `scripts/little_loops/cli/__init__.py` — registers `main_history_context` entry point
+- `scripts/little_loops/init/writers.py` — generates `ll-history-context` allowlist entries
+- `scripts/tests/test_history_context_cli.py` — CLI integration tests for history context output
 
 ### Similar Patterns
-- TBD - `grep -r "check_learning_test\|LearningTestsRegistry" scripts/`
+- `scripts/little_loops/learning_tests/__init__.py:140` — `check_learning_test(target, base_dir)` registry query
+- `scripts/little_loops/learning_tests/gate.py:32` — `is_record_stale(record, stale_after_days)` staleness check
+- `scripts/little_loops/learning_tests/release_gate.py` — pattern for iterating targets and formatting status output
 
 ### Tests
-- TBD - identify test files for `ll-history-context` output
+- `scripts/tests/test_history_context_cli.py` — add tests for `## Learning Test Evidence` section presence/absence
 
 ### Documentation
 - `docs/reference/API.md` — may need updates for new output format
@@ -89,6 +100,8 @@ Agents starting a new session on an issue must either re-query the registry them
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-2217 and ENH-2215 both parse `learning_tests_required` from issue frontmatter independently. To prevent divergent field-name handling or fallback logic, use the same read mechanism as ENH-2215: `ll-issues show --json <ISSUE_ID> | jq '.learning_tests_required // []'` (or a shared Python helper if one is extracted). Coordinate with [[ENH-2215]] to avoid two divergent parsing implementations.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-19T05:16:17 - `330436d7-3e2b-43ef-a129-2c8346d50835.jsonl`
+- `/ll:confidence-check` - 2026-06-19T00:00:00Z - `19d86e05-f5a8-4ab9-bddc-73b416dfed97.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`

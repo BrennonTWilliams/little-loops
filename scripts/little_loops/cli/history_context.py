@@ -19,9 +19,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+import re
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+import yaml
 
 from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.config.core import resolve_config_path
@@ -46,6 +49,68 @@ _MAX_ROWS = 5
 
 def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def _render_learning_test_section(
+    targets: list[str],
+    *,
+    stale_after_days: int = 30,
+    base_dir: Path | None = None,
+) -> str | None:
+    """Build a ## Learning Test Evidence markdown table, or None if no records exist."""
+    from little_loops.learning_tests import check_learning_test
+    from little_loops.learning_tests.gate import is_record_stale
+
+    rows: list[str] = []
+    for target in targets:
+        record = check_learning_test(target, base_dir=base_dir)
+        if record is None:
+            continue
+        effective_status = "stale" if is_record_stale(record, stale_after_days) else record.status
+        passes = sum(1 for a in record.assertions if a.result == "pass")
+        fails = sum(1 for a in record.assertions if a.result == "fail")
+        untested = sum(1 for a in record.assertions if a.result == "untested")
+        rows.append(f"| {target} | {effective_status} | {record.date} | {passes}/{fails}/{untested} |")
+
+    if not rows:
+        return None
+
+    lines = [
+        "## Learning Test Evidence",
+        "",
+        "| Target | Status | Date | Pass/Fail/Untested |",
+        "|--------|--------|------|--------------------|",
+        *rows,
+    ]
+    return "\n".join(lines)
+
+
+def _get_issue_lt_targets(issue_id: str, cfg: object) -> list[str]:
+    """Read learning_tests_required from the issue file frontmatter."""
+    from little_loops.cli.issues.show import _resolve_issue_id
+
+    issue_path = _resolve_issue_id(cfg, issue_id)  # type: ignore[arg-type]
+    if issue_path is None:
+        return []
+    try:
+        content = issue_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    fm_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+    if not fm_match:
+        return []
+    try:
+        fm = yaml.safe_load(fm_match.group(1)) or {}
+    except yaml.YAMLError:
+        return []
+    raw = fm.get("learning_tests_required")
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [str(t) for t in raw]
+    if isinstance(raw, str):
+        return [raw]
+    return []
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -238,12 +303,36 @@ def main_history_context() -> int:
             except Exception:
                 pass
 
-        if not rows:
+        # Build Learning Test Evidence section if feature is enabled.
+        lt_section: str | None = None
+        try:
+            from little_loops.config import BRConfig
+
+            cfg = BRConfig(Path.cwd())
+            if cfg.learning_tests.enabled:
+                targets = _get_issue_lt_targets(args.issue_id, cfg)
+                if targets:
+                    lt_dir = Path.cwd() / ".ll" / "learning-tests"
+                    lt_section = _render_learning_test_section(
+                        targets,
+                        stale_after_days=cfg.learning_tests.stale_after_days,
+                        base_dir=lt_dir,
+                    )
+        except Exception:
+            pass
+
+        if not rows and lt_section is None:
             return 0
 
-        print("## Historical Context")
-        print()
-        for row in rows:
-            print(f"- {row}")
+        if rows:
+            print("## Historical Context")
+            print()
+            for row in rows:
+                print(f"- {row}")
+
+        if lt_section is not None:
+            if rows:
+                print()
+            print(lt_section)
 
         return 0
