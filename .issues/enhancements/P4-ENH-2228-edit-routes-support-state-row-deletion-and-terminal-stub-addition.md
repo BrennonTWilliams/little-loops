@@ -170,6 +170,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-19T18:14:48 - `d86af79c-3e1f-40cd-b9f4-115bb6646250.jsonl`
 - `/ll:confidence-check` - 2026-06-19T00:00:00Z - `09eb25b3-0a3b-4a28-8e52-2bbf0a723339.jsonl`
 - `/ll:wire-issue` - 2026-06-19T18:04:40 - `b1c3d65b-6e13-4490-822a-d67a820c4839.jsonl`
 - `/ll:refine-issue` - 2026-06-19T17:52:18 - `3df2b743-e772-4e4b-abbe-61eb8a219027.jsonl`
