@@ -101,3 +101,49 @@ class TestScopeEpicSkillExists:
         assert "max_children" in content, (
             "Skill must reference max_children config for above-threshold suggestion"
         )
+
+
+class TestScopeEpicLearningTestDetection:
+    """Verify scope-epic SKILL.md includes learning test detection (ENH-2220)."""
+
+    def test_learning_tests_enabled_gate_referenced(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "learning_tests.enabled" in content, (
+            "Skill must gate learning test detection behind learning_tests.enabled config"
+        )
+
+    def test_ll_learning_tests_check_referenced(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "ll-learning-tests check" in content, (
+            "Skill must call ll-learning-tests check to probe each extracted package"
+        )
+
+    def test_learning_test_sub_issue_proposal_referenced(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "learning test" in content.lower(), (
+            "Skill must propose learning test sub-issues for unproven packages"
+        )
+
+    def test_explore_api_body_referenced(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "explore-api" in content.lower(), (
+            "Skill must pre-fill learning test sub-issue body with /ll:explore-api"
+        )
+
+    def test_learning_tests_required_frontmatter_referenced(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "learning_tests_required" in content, (
+            "Skill must populate learning_tests_required on generated sub-issues (ENH-2220 data pipeline)"
+        )
+
+    def test_depends_on_for_learning_test_prerequisites(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "depends_on" in content, (
+            "Skill must wire depends_on from implementation sub-issues to learning test sub-issues"
+        )
+
+    def test_prerequisite_label_referenced(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "prerequisite" in content.lower(), (
+            "Skill must label learning test sub-issues as prerequisites in the scope output"
+        )

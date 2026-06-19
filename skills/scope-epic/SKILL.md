@@ -13,6 +13,7 @@ allowed-tools:
   - AskUserQuestion
   - Bash(ll-issues:*, git:*)
   - Bash(ll-history-context:*)
+  - Bash(ll-learning-tests:*)
 arguments:
   - name: theme
     description: Natural-language theme or goal description to decompose into an EPIC + children
@@ -149,6 +150,40 @@ IF child_count > MAX_CHILDREN:
 
 ---
 
+### Phase 2.5: Learning Test Detection
+
+**Skip this phase entirely if**: `config.learning_tests.enabled` is `false` (the default). When disabled, set `LT_PROPOSALS = []` and proceed to Phase 3 with no learning test proposals.
+
+When `learning_tests.enabled` is `true`:
+
+#### Step 1: Extract external packages from the epic description
+
+Analyze the THEME text (and `FROM_DOC` content when used) and identify all external packages, SDKs, or third-party APIs the epic depends on. Apply the same inclusion/exclusion rules as `extract_learning_targets()`:
+
+- **Include**: third-party Python packages (anthropic, requests, boto3, stripe), external APIs and services (Stripe webhooks, GitHub API), cloud SDKs, non-obvious stdlib components (asyncio, multiprocessing)
+- **Exclude**: internal project code, Python builtins (str, dict, list), contract-stable stdlib (os, sys, pathlib, json, re, datetime)
+
+Store the result as `DETECTED_PACKAGES` (list of canonical short names). If the epic has no external dependencies, set `DETECTED_PACKAGES = []` and proceed to Phase 3.
+
+#### Step 2: Check each package against the learning test registry
+
+For each package name in `DETECTED_PACKAGES`:
+
+```bash
+ll-learning-tests check "<package>" --stale-aware
+```
+
+- **Exit 0** → package is proven and current → add to `PROVEN_PACKAGES` list, skip
+- **Exit 1** → package is unproven, stale, or refuted → add to `UNPROVEN_PACKAGES` list
+
+#### Step 3: Build learning test sub-issue proposals
+
+For each package in `UNPROVEN_PACKAGES`, create a proposal with: type `ENH`, priority matching the EPIC, title `Explore and prove <package> API behavior`, summary `Run /ll:explore-api "<package>" to build a proven record of this API surface before implementing the dependent epic children.`, and flags `is_learning_test: true`, `package: <package>`.
+
+Store all proposals as `LT_PROPOSALS`. If `LT_PROPOSALS` is empty, proceed to Phase 3 unchanged.
+
+---
+
 ### Phase 3: Interactive Review
 
 > **Non-interactive (`--auto`) shortcut:** If `AUTO` is `true`, **skip Steps 2 and 3
@@ -160,12 +195,22 @@ IF child_count > MAX_CHILDREN:
 
 #### Step 1: Present the proposal
 
-Display a markdown table summarizing the EPIC and all proposed children:
+Display a markdown table summarizing the EPIC and all proposed children. When `LT_PROPOSALS` is non-empty, insert a **Prerequisites** section above the implementation children to surface learning test sub-issues prominently:
 
 ```markdown
 ## Proposed EPIC Decomposition
 
 **EPIC**: [EPIC title] (Priority: [PRIORITY])
+
+### Prerequisites (Learning Tests)
+
+| # | Type | Priority | Summary |
+|---|------|----------|---------|
+| LT1 | ENH | P[N] | Explore and prove <package> API behavior |
+
+These sub-issues must be completed before the implementation children that depend on the same packages.
+
+### Implementation Children
 
 | # | Type | Priority | Summary |
 |---|------|----------|---------|
@@ -174,19 +219,9 @@ Display a markdown table summarizing the EPIC and all proposed children:
 | 3 | FEAT | P3       | [summary] |
 ```
 
-Follow the table with per-child detail sections:
+When `LT_PROPOSALS` is empty, display only the implementation table (no prerequisites section).
 
-```markdown
-### Child 1: [Title]
-- **Type**: FEAT
-- **Priority**: P3
-- **Summary**: [summary]
-
-### Child 2: [Title]
-- **Type**: ENH
-- **Priority**: P3
-- **Summary**: [summary]
-```
+Follow the table with per-child detail sections in the same format as before: learning test proposals first (labeled `[Prerequisite]` with `Role: Prerequisite — must complete before dependent implementation children` and `Implementation: /ll:explore-api "<package>"`), then implementation children.
 
 #### Step 2: AskUserQuestion — select which children to keep
 
@@ -280,9 +315,36 @@ Write the EPIC first, then each child in order. Call `ll-issues next-id` **immed
 
 > **Duplicate-ID recovery**: If the PostToolUse hook reports the file was deleted (duplicate integer ID), call `ll-issues next-id` again, generate a new filename, and retry.
 
-#### Step 2: Write each child file
+#### Step 2a: Write learning test sub-issues (when LT_PROPOSALS is non-empty)
 
-For each selected child in order:
+**Skip if `LT_PROPOSALS` is empty.**
+
+For each proposal in `LT_PROPOSALS` (in order), write a learning test sub-issue **before** writing implementation children, so their IDs are known for `depends_on` wiring:
+
+1. **Get next ID:**
+   ```bash
+   ll-issues next-id
+   ```
+   Store as `LT_NNN` → e.g., `073` → `ENH-073`.
+
+2. **Generate filename**: `P[EPIC_PRIORITY]-ENH-[NNN]-explore-and-prove-[slugified-package]-api-behavior.md`
+
+3. **Build content** using the minimal ENH template:
+   - Frontmatter must include: `id: ENH-NNN`, `type: ENH`, `priority: [EPIC_PRIORITY]`, `status: open`, `captured_at` (ISO 8601 UTC), `discovered_date` (date-only), `discovered_by: scope-epic`, `parent: EPIC-NNN`, `learning_tests_required: ["<package>"]` (the single package this issue proves), `labels: learning-tests`.
+   - `## Summary`: `Explore and prove \`<package>\` API behavior before implementing dependent epic children.`
+   - `## Implementation`: `Run \`/ll:explore-api "<package>"\` to build a proven record of this API surface.`
+
+4. **Write the file** to `{{config.issues.base_dir}}/enhancements/`.
+
+5. **Append session log entry** to the file (same pattern as EPIC).
+
+6. **Store mapping**: `LT_IDS[package] = ENH-NNN` for use in implementation child wiring below.
+
+> **Duplicate-ID recovery**: Re-allocate and retry on ID collision.
+
+#### Step 2b: Write each implementation child file
+
+For each selected **implementation** child in order (the children from Phase 2, not learning test proposals):
 
 1. **Get next ID:**
    ```bash
@@ -296,6 +358,9 @@ For each selected child in order:
    - Read `templates/{type}-sections.json` for the child's type.
    - Use `variant="minimal"` with `assemble_issue_markdown()`.
    - Frontmatter must include: `id: TYPE-NNN`, `type: [TYPE]`, `priority: [priority]`, `status: open`, `captured_at` (ISO 8601 UTC), `discovered_date` (date-only), `discovered_by: scope-epic`, `parent: EPIC-NNN`.
+   - When `LT_IDS` is non-empty, also include:
+     - `learning_tests_required: [<pkg1>, <pkg2>, ...]` — all packages in `UNPROVEN_PACKAGES`
+     - `depends_on: [ENH-NNN, ...]` — all learning test sub-issue IDs from `LT_IDS`
    - `## Summary`: the child's one-sentence summary.
 
 4. **Write the file** to the appropriate type directory.
@@ -310,7 +375,9 @@ For each selected child in order:
 
 ### Phase 5: Wire EPIC ↔ Children
 
-For each child that was successfully written:
+Include learning test sub-issues (from Step 2a) alongside implementation children in all wiring below. Learning test sub-issues are full children of the EPIC and appear in the `relates_to` list and `## Children` section just like implementation children.
+
+For each child (learning test sub-issues first, then implementation children) that was successfully written:
 
 #### 5a: Add child ID to EPIC `relates_to:` frontmatter
 
@@ -358,12 +425,12 @@ Each child was written with `parent: EPIC-NNN` in its frontmatter during Phase 4
 
 ### Phase 6: Git Stage
 
-Stage the EPIC file and all child files:
+Stage the EPIC file, all learning test sub-issue files, and all implementation child files:
 
 ```bash
 git add "{{config.issues.base_dir}}/epics/[epic_filename]"
-git add "{{config.issues.base_dir}}/[category]/[child_filename]"
-# ... repeat for each child
+git add "{{config.issues.base_dir}}/enhancements/[lt_filename]"  # repeat for each learning test sub-issue
+git add "{{config.issues.base_dir}}/[category]/[child_filename]"  # repeat for each implementation child
 ```
 
 ---

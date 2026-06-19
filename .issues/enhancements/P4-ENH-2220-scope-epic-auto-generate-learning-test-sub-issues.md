@@ -3,12 +3,19 @@ id: ENH-2220
 title: scope-epic auto-generate learning test sub-issues for external API epics
 type: enhancement
 priority: P4
-status: open
+status: done
 parent: EPIC-2207
 captured_at: '2026-06-18T15:38:06Z'
+completed_at: '2026-06-19T04:31:59Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
 labels: enhancement, scope-epic, learning-tests
+confidence_score: 85
+outcome_confidence: 78
+score_complexity: 23
+score_test_coverage: 15
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # ENH-2220: scope-epic auto-generate learning test sub-issues for external API epics
@@ -71,8 +78,11 @@ Learning test tasks are prerequisite work that's easy to forget when planning an
 This creates a defined data pipeline: `scope-epic` writes `learning_tests_required` → `create-loop` reads it → `create-eval-from-issues` consumes it. See [[ENH-2215]] and [[ENH-2221]].
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-19T04:31:59Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:ready-issue` - 2026-06-19T04:12:17 - `38efc515-98f2-480c-afe5-74f4a949b89e.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:20 - `c65a1122-f4b2-4da5-8a84-b23a59357b7b.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`
+- `/ll:confidence-check` - 2026-06-18T00:00:00Z - `4005e487-6024-4da1-bf33-34fd5b9b569c.jsonl`
 
 ---
 
