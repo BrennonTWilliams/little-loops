@@ -5,7 +5,7 @@ args: "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"
 allowed-tools:
   - Read
   - Glob
-  - Edit
+  - Edit(.issues/**)
   - Task
   - Bash(git:*, ll-issues:*)
   - Bash(ll-history-context:*)

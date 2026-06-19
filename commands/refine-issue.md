@@ -4,7 +4,7 @@ argument-hint: "[issue-id]"
 allowed-tools:
   - Read
   - Glob
-  - Edit
+  - Edit(.issues/**)
   - Task
   - Bash(git:*, ll-issues:*)
   - Bash(ll-history-context:*)
@@ -235,6 +235,8 @@ For each knowledge gap category relevant to the issue type:
 ### 5a. Fill Gaps with Research Findings (Auto Mode)
 
 **Skip this section if**: `AUTO_MODE` is false (interactive mode uses Step 5b instead)
+
+**Scope boundary**: Only use `Edit` to modify files under `.issues/`. If research reveals a missing implementation (code, tests, config), document it in the issue — write it as a gap finding under `## Codebase Research Findings`. Do NOT implement code, even when the gap is small and the implementation is obvious. The `Edit` tool is restricted to `.issues/**` by the command's allowed-tools; attempting to edit code files will fail.
 
 For each **FILLABLE** gap, update the issue with research findings.
 

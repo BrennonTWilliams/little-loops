@@ -6,10 +6,19 @@ priority: P3
 status: open
 parent: EPIC-2207
 depends_on: ENH-2208
-relates_to: [ENH-2212]
+relates_to:
+- ENH-2212
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
+confidence_score: 92
+outcome_confidence: 73
+score_complexity: 17
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 20
+decision_needed: true
+implementation_order_risk: true
 ---
 
 # ENH-2209: Auto-populate `learning_tests_required` in refine-issue and wire-issue
@@ -77,7 +86,19 @@ Most issue authors don't know to add `learning_tests_required`. The field is onl
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-2210's sprint pre-flight includes a fallback that "imports the shared extraction utility from ENH-2209." For this to be importable, ENH-2209 must deliver a Python helper at `scripts/little_loops/learning_tests/extractor.py` exposing `extract_learning_targets(issue_text: str) -> list[str]`. This function wraps the LLM extraction step (or shells out to the assumption-firewall loop) and is what ENH-2210's fallback imports. Without it, ENH-2210's fallback is architecturally unimplementable — the extraction step lives inside a skill prompt, not in a callable Python module. See [[ENH-2210]].
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-18_
+
+**Readiness Score**: 92/100 → PROCEED
+**Outcome Confidence**: 73/100 → MODERATE
+
+### Outcome Risk Factors
+- Unresolved design decision — LLM invocation mechanism in `extractor.py`: Step 2 reads "call `extract_learning_targets(issue_text)` (or shell out to the equivalent LLM step)." These are meaningfully different: SDK-direct is mockable in unit tests; shell-out forces integration-test-only coverage. Resolve before implementing — the choice also determines whether ENH-2210 can import the function (callable module requirement from the Scope Boundary note).
+- Tests are co-deliverables with no scaffolding yet: `extractor.py` is new and no test scaffolding exists in `test_learning_tests.py` for the extraction API. Implement tests first so the LLM mock contract is defined before wiring the module into the two skills.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-18T00:00:00Z - `a3a4a976-6096-4453-8d75-4fcba78e7426.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:29 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:46 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
