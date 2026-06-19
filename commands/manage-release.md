@@ -277,6 +277,26 @@ git add {{config.project.src_dir}}pyproject.toml .claude-plugin/plugin.json {{co
 git commit -m "chore(release): bump version to NEW_VERSION"
 ```
 
+##### Pre-Release: Learning Test Audit
+
+Before creating a tag, run the learning-test pre-release audit if `learning_tests.enabled` is true in `.ll/ll-config.json`:
+
+```bash
+python -c "
+import sys, pathlib
+from little_loops.learning_tests.release_gate import run_release_gate
+sys.exit(run_release_gate(pathlib.Path.cwd()))
+"
+```
+
+- If the script exits **1**, abort the release and display the warning table output above.
+- If the script exits **0**, continue to tag creation.
+- If `learning_tests.enabled` is false or absent, skip this step silently.
+
+The audit behavior is controlled by `learning_tests.release_gate` in `.ll/ll-config.json`:
+- `warn` (default) — prints a warning table but continues
+- `block` — aborts the release with exit 1
+
 ##### Action: `tag`
 
 Create an annotated git tag:
@@ -364,7 +384,7 @@ git push origin vX.Y.Z
 
 ##### Action: `full`
 
-Execute all actions in sequence: bump → tag → changelog → release
+Execute all actions in sequence: bump → (learning test audit) → tag → changelog → release
 
 ---
 

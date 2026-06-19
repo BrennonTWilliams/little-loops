@@ -26,8 +26,8 @@ from little_loops.config.features import LearningTestsConfig
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.learning_tests import check_learning_test
 from little_loops.learning_tests.gate import is_record_stale
+from little_loops.learning_tests.import_scan import _PY_IMPORT_RE
 
-_PY_IMPORT_RE = re.compile(r"^(?:import|from)\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
 _JS_REQUIRE_RE = re.compile(r"""require\s*\(\s*['"]([^./'"][^'"]*)['"]\s*\)""")
 _JS_IMPORT_RE = re.compile(
     r"""(?:^|\n)\s*import\s+(?:.*?\s+from\s+)?['"]([^./'"][^'"]+)['"]""", re.MULTILINE

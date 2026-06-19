@@ -2334,6 +2334,26 @@ class TestLearningTestsConfig:
         assert config.discoverability.mode == "block"
         assert config.discoverability.skip_packages == ["std", "os"]
 
+    def test_release_gate_defaults_to_warn(self) -> None:
+        """release_gate defaults to 'warn' when absent (ENH-2214)."""
+        config = LearningTestsConfig.from_dict({})
+        assert config.release_gate == "warn"
+
+    def test_release_gate_block_from_dict(self) -> None:
+        """release_gate is read from config dict (ENH-2214)."""
+        config = LearningTestsConfig.from_dict({"release_gate": "block"})
+        assert config.release_gate == "block"
+
+    def test_scan_dirs_defaults(self) -> None:
+        """scan_dirs defaults to ['scripts/'] when absent (ENH-2214)."""
+        config = LearningTestsConfig.from_dict({})
+        assert config.scan_dirs == ["scripts/"]
+
+    def test_scan_dirs_from_dict(self) -> None:
+        """scan_dirs is read from config dict (ENH-2214)."""
+        config = LearningTestsConfig.from_dict({"scan_dirs": ["src/", "lib/"]})
+        assert config.scan_dirs == ["src/", "lib/"]
+
 
 class TestBRConfigLearningTestsIntegration:
     """Tests for BRConfig.learning_tests integration."""

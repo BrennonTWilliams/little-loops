@@ -967,6 +967,18 @@
             }
           },
           "additionalProperties": false
+        },
+        "release_gate": {
+          "type": "string",
+          "enum": ["block", "warn"],
+          "default": "warn",
+          "description": "Pre-release audit behavior when stale/refuted records are found for imported packages. 'block' aborts with exit 1; 'warn' (default) continues with a visible warning."
+        },
+        "scan_dirs": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": ["scripts/"],
+          "description": "Source directories to scan for Python imports during the pre-release audit (ENH-2214) and orphaned record detection (ENH-2216)."
         }
       },
       "additionalProperties": false

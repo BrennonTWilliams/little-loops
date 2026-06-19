@@ -395,6 +395,8 @@ class LearningTestsConfig:
     enabled: bool = False
     stale_after_days: int = 30
     discoverability: DiscoverabilityConfig = field(default_factory=DiscoverabilityConfig)
+    release_gate: str = "warn"
+    scan_dirs: list[str] = field(default_factory=lambda: ["scripts/"])
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LearningTestsConfig:
@@ -403,6 +405,8 @@ class LearningTestsConfig:
             enabled=data.get("enabled", False),
             stale_after_days=data.get("stale_after_days", 30),
             discoverability=DiscoverabilityConfig.from_dict(data.get("discoverability", {})),
+            release_gate=data.get("release_gate", "warn"),
+            scan_dirs=data.get("scan_dirs", ["scripts/"]),
         )
 
 
