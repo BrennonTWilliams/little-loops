@@ -1,13 +1,20 @@
 ---
 id: ENH-2228
-title: "edit-routes: support state row deletion and terminal stub addition"
+title: 'edit-routes: support state row deletion and terminal stub addition'
 type: ENH
 priority: P4
 status: open
-captured_at: "2026-06-19T17:41:31Z"
-discovered_date: "2026-06-19"
+captured_at: '2026-06-19T17:41:31Z'
+discovered_date: '2026-06-19'
 discovered_by: capture-issue
-relates_to: [ENH-2227]
+relates_to:
+- ENH-2227
+confidence_score: 98
+outcome_confidence: 82
+score_complexity: 18
+score_test_coverage: 23
+score_ambiguity: 21
+score_change_surface: 20
 ---
 
 # ENH-2228: edit-routes: support state row deletion and terminal stub addition
@@ -163,6 +170,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-19T00:00:00Z - `09eb25b3-0a3b-4a28-8e52-2bbf0a723339.jsonl`
 - `/ll:wire-issue` - 2026-06-19T18:04:40 - `b1c3d65b-6e13-4490-822a-d67a820c4839.jsonl`
 - `/ll:refine-issue` - 2026-06-19T17:52:18 - `3df2b743-e772-4e4b-abbe-61eb8a219027.jsonl`
 - `/ll:format-issue` - 2026-06-19T17:45:01 - `a44bb34f-9d7b-48aa-8669-1a25c60dc0d2.jsonl`
