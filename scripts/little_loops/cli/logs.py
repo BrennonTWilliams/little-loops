@@ -1178,21 +1178,19 @@ def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
                     if counts["invocations"] > 0
                     else 0.0
                 ),
-                "errors": None,
-                "error_rate": None,
             }
             for skill, counts in ranked
         ]
         print_json(rows_json)
         return 0
 
-    headers = ["Skill", "Invocations", "Corrections", "Corr%", "Errors"]
+    headers = ["Skill", "Invocations", "Corrections", "Corr%"]
     rows = []
     for skill, counts in ranked:
         inv = counts["invocations"]
         corr = counts["corrections"]
         corr_pct = f"{corr / inv * 100:.1f}%" if inv > 0 else "0.0%"
-        rows.append([skill, str(inv), str(corr), corr_pct, "N/A"])
+        rows.append([skill, str(inv), str(corr), corr_pct])
 
     print(table(headers, rows))
     return 0

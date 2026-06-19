@@ -1559,7 +1559,7 @@ class TestStats:
         assert "capture-issue" in skills
 
     def test_stats_json_keys(self, tmp_path: Path) -> None:
-        """JSON output includes invocations, corrections, correction_rate, errors, error_rate."""
+        """JSON output includes exactly: skill, invocations, corrections, correction_rate."""
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
@@ -1581,16 +1581,7 @@ class TestStats:
 
         data = json.loads("\n".join(captured))
         row = data[0]
-        assert {
-            "skill",
-            "invocations",
-            "corrections",
-            "correction_rate",
-            "errors",
-            "error_rate",
-        } == set(row.keys())
-        assert row["errors"] is None
-        assert row["error_rate"] is None
+        assert {"skill", "invocations", "corrections", "correction_rate"} == set(row.keys())
 
     def test_stats_correction_attribution(self, tmp_path: Path) -> None:
         """Corrections within 30s of a skill event are attributed to that skill."""

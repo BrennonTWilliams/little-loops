@@ -1905,7 +1905,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--project DIR` | | Working directory of the target project |
 | `--window-days D` | | Only consider records within D days of latest record |
 | `--sort {freq,corrections}` | | Sort by invocation frequency or correction count (default: freq) |
-| `--json` | `-j` | Output as JSON array |
+| `--json` | `-j` | Output as JSON: `[{"skill": str, "invocations": int, "corrections": int, "correction_rate": float}]` |
 
 **`dead-skills` flags:**
 
