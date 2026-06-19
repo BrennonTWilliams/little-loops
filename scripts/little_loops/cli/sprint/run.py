@@ -161,6 +161,81 @@ def _cleanup_sprint_state(logger: Logger) -> None:
         logger.info("Sprint state file cleaned up")
 
 
+def _run_learning_gate_preflight(
+    args: argparse.Namespace,
+    issue_infos: list[IssueInfo],
+    config: BRConfig,
+    logger: Logger,
+) -> int:
+    """Run the learning-test pre-flight gate before sprint execution (ENH-2210).
+
+    Aggregates all learning_tests_required targets across sprint issues,
+    deduplicates them (preserving first-occurrence order), and runs
+    ready-to-implement-gate once. If any target is unproven the sprint aborts
+    with a message identifying the blocking targets and the issue IDs that
+    contributed each one.
+
+    Returns:
+        0 if the gate passes or is skipped; 1 if the gate blocks the sprint.
+    """
+    if not config.learning_tests.enabled:
+        return 0
+
+    if getattr(args, "skip_learning_gate", False):
+        logger.info("Learning gate pre-flight skipped (--skip-learning-gate)")
+        return 0
+
+    from little_loops.learning_tests.extractor import extract_learning_targets
+
+    # Map target → contributing issue IDs (for attribution in error output)
+    target_to_issues: dict[str, list[str]] = {}
+    seen: set[str] = set()
+    all_targets: list[str] = []
+
+    for info in issue_infos:
+        if info.learning_tests_required is not None:
+            targets = info.learning_tests_required
+        else:
+            # TODO(stale-after-ENH-2209): remove fallback once all active sprint
+            # issues have been re-refined with ENH-2209 auto-population.
+            try:
+                targets = extract_learning_targets(info.path.read_text())
+            except OSError:
+                targets = []
+
+        for target in targets:
+            if target not in seen:
+                seen.add(target)
+                all_targets.append(target)
+            target_to_issues.setdefault(target, []).append(info.issue_id)
+
+    if not all_targets:
+        return 0
+
+    logger.info(
+        f"Learning gate pre-flight: checking {len(all_targets)} target(s): {', '.join(all_targets)}"
+    )
+
+    cmd = [
+        "ll-loop",
+        "run",
+        "ready-to-implement-gate",
+        "--context",
+        f"targets={','.join(all_targets)}",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        logger.error("Learning gate pre-flight FAILED — sprint aborted")
+        for target in all_targets:
+            contributing = ", ".join(target_to_issues.get(target, []))
+            logger.error(f"  Blocking target '{target}': required by {contributing}")
+        return 1
+
+    logger.info("Learning gate pre-flight: all targets proven")
+    return 0
+
+
 def _cmd_sprint_run(
     args: argparse.Namespace,
     manager: SprintManager,
@@ -293,6 +368,11 @@ def _cmd_sprint_run(
         if filtered > 0:
             logger.info(f"Filtered {filtered} issue(s) by label: {', '.join(sorted(label_filter))}")
         issues_to_process = [i.issue_id for i in issue_infos]
+
+    # Learning-test pre-flight gate (ENH-2210)
+    preflight_result = _run_learning_gate_preflight(args, issue_infos, config, logger)
+    if preflight_result != 0:
+        return preflight_result
 
     # Gather all issue IDs on disk to avoid false "nonexistent" warnings
     from little_loops.dependency_mapper import gather_all_issue_ids

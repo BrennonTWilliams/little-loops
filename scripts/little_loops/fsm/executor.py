@@ -760,6 +760,7 @@ class FSMExecutor:
         route is configured for the terminal verdict, mirroring ``_route``).
         """
         from little_loops.learning_tests import check_learning_test
+        from little_loops.learning_tests.gate import is_record_stale
 
         assert state.learning is not None  # guarded by caller
 
@@ -776,6 +777,20 @@ class FSMExecutor:
         else:
             max_retries = state.learning.max_retries
 
+        # Load learning_tests config once per state execution (ENH-2208).
+        # Staleness check is only active when learning_tests.enabled is True.
+        _lt_staleness_enabled = False
+        _lt_stale_days = 30
+        try:
+            from little_loops.config.core import BRConfig as _BRConfig
+
+            _lt_cfg = _BRConfig(Path.cwd()).learning_tests
+            if _lt_cfg.enabled:
+                _lt_staleness_enabled = True
+                _lt_stale_days = _lt_cfg.stale_after_days
+        except Exception:
+            pass
+
         def _blocked_target(reason: str, target: str) -> str | None:
             self._emit(
                 "learning_blocked",
@@ -786,6 +801,16 @@ class FSMExecutor:
 
         for target in targets:
             record = check_learning_test(target)
+            # Treat a date-stale proven record as absent so the retry path
+            # re-proves it (ENH-2208). Guard behind enabled to avoid breaking
+            # tests and projects that haven't opted into learning_tests.
+            if (
+                _lt_staleness_enabled
+                and record is not None
+                and record.status == "proven"
+                and is_record_stale(record, _lt_stale_days)
+            ):
+                record = None
 
             attempts = 0
             while record is None or record.status == "stale":

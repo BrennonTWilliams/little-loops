@@ -211,6 +211,15 @@ def add_skip_analysis_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_skip_learning_gate_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --skip-learning-gate argument to bypass the learning-test pre-flight gate."""
+    parser.add_argument(
+        "--skip-learning-gate",
+        action="store_true",
+        help="Skip learning-test pre-flight gate (for emergency runs when learning_tests.enabled is true)",
+    )
+
+
 def add_max_issues_arg(parser: argparse.ArgumentParser) -> None:
     """Add --max-issues/-m argument for limiting issues processed."""
     parser.add_argument(

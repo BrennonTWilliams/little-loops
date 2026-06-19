@@ -66,6 +66,7 @@ def main_sprint() -> int:
             add_resume_arg,
             add_skip_analysis_arg,
             add_skip_arg,
+            add_skip_learning_gate_arg,
             add_timeout_arg,
             add_type_arg,
         )
@@ -133,6 +134,7 @@ Examples:
         )
         add_only_arg(run_parser)
         add_skip_analysis_arg(run_parser)
+        add_skip_learning_gate_arg(run_parser)
         add_type_arg(run_parser)
         add_label_arg(run_parser)
         add_handoff_threshold_arg(run_parser)

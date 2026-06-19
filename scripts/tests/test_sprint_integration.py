@@ -1,12 +1,16 @@
 """Integration tests for sprint execution."""
 
+import argparse
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from little_loops.config import BRConfig
+from little_loops.issue_parser import IssueInfo
+from little_loops.logger import Logger
 from little_loops.sprint import SprintManager
 
 pytestmark = pytest.mark.integration
@@ -1877,3 +1881,152 @@ issues:
 
         # No issue should have been dispatched
         assert len(executed_issues) == 0
+
+
+# ---------------------------------------------------------------------------
+# ENH-2210: Sprint pre-flight learning gate tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def lt_enabled_config(tmp_path: Path) -> BRConfig:
+    """Create a BRConfig with learning_tests.enabled=True."""
+    issues_dir = tmp_path / ".issues"
+    issues_dir.mkdir(exist_ok=True)
+    for category in ["bugs", "features", "enhancements", "epics", "completed"]:
+        (issues_dir / category).mkdir(exist_ok=True)
+
+    config_dir = tmp_path / ".ll"
+    config_dir.mkdir(exist_ok=True)
+    config_data = {
+        "project": {"name": "test-project"},
+        "issues": {"base_dir": ".issues"},
+        "learning_tests": {"enabled": True, "stale_after_days": 30},
+    }
+    with open(config_dir / "ll-config.json", "w") as f:
+        json.dump(config_data, f)
+    return BRConfig(tmp_path)
+
+
+def _make_issue_info(
+    tmp_path: Path,
+    issue_id: str,
+    *,
+    learning_tests_required: list[str] | None = None,
+) -> IssueInfo:
+    """Create a stub IssueInfo for preflight tests."""
+    issue_path = tmp_path / f"P2-{issue_id}-stub.md"
+    issue_path.write_text(
+        f"---\nid: {issue_id}\ntitle: Stub\nstatus: open\n---\n# {issue_id}: Stub\n"
+    )
+    return IssueInfo(
+        path=issue_path,
+        issue_type="enhancements",
+        priority="P2",
+        issue_id=issue_id,
+        title="Stub issue",
+        learning_tests_required=learning_tests_required,
+    )
+
+
+class TestSprintPreflightGate:
+    """ENH-2210: Pre-flight batch assumption-firewall tests."""
+
+    def _logger(self) -> Logger:
+        return Logger(verbose=False, use_color=False)
+
+    def test_dedup_targets_across_issues(
+        self, lt_enabled_config: BRConfig, tmp_path: Path
+    ) -> None:
+        """Two issues listing the same target → gate called once with that target."""
+        from little_loops.cli.sprint.run import _run_learning_gate_preflight
+
+        issue1 = _make_issue_info(tmp_path, "ENH-001", learning_tests_required=["anthropic"])
+        issue2 = _make_issue_info(tmp_path, "ENH-002", learning_tests_required=["anthropic"])
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch(
+            "little_loops.cli.sprint.run.subprocess.run", return_value=mock_result
+        ) as mock_sub:
+            args = argparse.Namespace(skip_learning_gate=False)
+            result = _run_learning_gate_preflight(
+                args, [issue1, issue2], lt_enabled_config, self._logger()
+            )
+
+        assert result == 0
+        mock_sub.assert_called_once()
+        cmd_args = mock_sub.call_args[0][0]
+        assert "targets=anthropic" in cmd_args
+
+    def test_empty_target_noop(self, lt_enabled_config: BRConfig, tmp_path: Path) -> None:
+        """No learning_tests_required on any issue → gate subprocess not called."""
+        from little_loops.cli.sprint.run import _run_learning_gate_preflight
+
+        # issue1: None triggers the extractor fallback (mocked to return empty)
+        issue1 = _make_issue_info(tmp_path, "ENH-001", learning_tests_required=None)
+        # issue2: explicit empty list
+        issue2 = _make_issue_info(tmp_path, "ENH-002", learning_tests_required=[])
+
+        with patch("little_loops.cli.sprint.run.subprocess.run") as mock_sub, patch(
+            "little_loops.learning_tests.extractor.extract_learning_targets", return_value=[]
+        ):
+            args = argparse.Namespace(skip_learning_gate=False)
+            result = _run_learning_gate_preflight(
+                args, [issue1, issue2], lt_enabled_config, self._logger()
+            )
+
+        assert result == 0
+        mock_sub.assert_not_called()
+
+    def test_abort_on_unproven_target(self, lt_enabled_config: BRConfig, tmp_path: Path) -> None:
+        """Gate subprocess exits 1 → pre-flight returns 1."""
+        from little_loops.cli.sprint.run import _run_learning_gate_preflight
+
+        issue1 = _make_issue_info(tmp_path, "ENH-001", learning_tests_required=["anthropic"])
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = ""
+        mock_result.stdout = ""
+
+        with patch("little_loops.cli.sprint.run.subprocess.run", return_value=mock_result):
+            args = argparse.Namespace(skip_learning_gate=False)
+            result = _run_learning_gate_preflight(
+                args, [issue1], lt_enabled_config, self._logger()
+            )
+
+        assert result == 1
+
+    def test_skip_learning_gate_bypass(self, lt_enabled_config: BRConfig, tmp_path: Path) -> None:
+        """--skip-learning-gate → gate subprocess not called."""
+        from little_loops.cli.sprint.run import _run_learning_gate_preflight
+
+        issue1 = _make_issue_info(tmp_path, "ENH-001", learning_tests_required=["anthropic"])
+
+        with patch("little_loops.cli.sprint.run.subprocess.run") as mock_sub:
+            args = argparse.Namespace(skip_learning_gate=True)
+            result = _run_learning_gate_preflight(
+                args, [issue1], lt_enabled_config, self._logger()
+            )
+
+        assert result == 0
+        mock_sub.assert_not_called()
+
+    def test_disabled_lt_config_skips_preflight(
+        self, sprint_project: BRConfig, tmp_path: Path
+    ) -> None:
+        """learning_tests.enabled=False → gate subprocess not called."""
+        from little_loops.cli.sprint.run import _run_learning_gate_preflight
+
+        issue1 = _make_issue_info(tmp_path, "ENH-001", learning_tests_required=["anthropic"])
+
+        with patch("little_loops.cli.sprint.run.subprocess.run") as mock_sub:
+            args = argparse.Namespace(skip_learning_gate=False)
+            result = _run_learning_gate_preflight(
+                args, [issue1], sprint_project, self._logger()
+            )
+
+        assert result == 0
+        mock_sub.assert_not_called()
