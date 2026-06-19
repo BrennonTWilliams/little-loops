@@ -28,6 +28,7 @@ def _mock_handlers(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
     mocks: dict[str, MagicMock] = {}
     handler_specs: list[tuple[str, list[str]]] = [
         ("little_loops.cli.loop.config_cmds", ["cmd_validate", "cmd_install"]),
+        ("little_loops.cli.loop.edit_routes", ["cmd_edit_routes"]),
         (
             "little_loops.cli.loop.info",
             [

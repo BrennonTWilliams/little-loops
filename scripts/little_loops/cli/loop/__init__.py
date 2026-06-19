@@ -23,6 +23,7 @@ def main_loop() -> int:
     """
     with cli_event_context(DEFAULT_DB_PATH, "ll-loop", sys.argv[1:]):
         from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
+        from little_loops.cli.loop.edit_routes import cmd_edit_routes
         from little_loops.cli.loop.info import (
             cmd_audit_meta,
             cmd_calibrate_budget,
@@ -67,6 +68,7 @@ def main_loop() -> int:
             "calibrate-budget",
             "diagnose-evaluators",
             "promote-baseline",
+            "edit-routes",
             "monitor",
             # aliases
             "r",
@@ -762,6 +764,31 @@ Examples:
         promote_bl_parser.set_defaults(command="promote-baseline")
         promote_bl_parser.add_argument("loop", help="Loop name")
 
+        # Edit-routes subcommand
+        edit_routes_parser = subparsers.add_parser(
+            "edit-routes",
+            help="Render and edit a loop's routing logic as a decision table",
+        )
+        edit_routes_parser.set_defaults(command="edit-routes")
+        edit_routes_parser.add_argument("loop", help="Loop name or path")
+        edit_routes_parser.add_argument(
+            "--format",
+            choices=["markdown", "csv"],
+            default="markdown",
+            metavar="{markdown,csv}",
+            help="Output format for the table (default: markdown)",
+        )
+        edit_routes_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print table to stdout without opening editor",
+        )
+        edit_routes_parser.add_argument(
+            "--no-warnings",
+            action="store_true",
+            help="Skip gap/conflict detection output",
+        )
+
         args = parser.parse_args(argv)
 
         # Backfill run defaults from config when CLI flags are at their argparse defaults.
@@ -809,6 +836,8 @@ Examples:
             return cmd_diagnose_evaluators(args.loop, args, loops_dir)
         elif args.command == "promote-baseline":
             return cmd_promote_baseline(args.loop, args, loops_dir)
+        elif args.command == "edit-routes":
+            return cmd_edit_routes(args.loop, args, loops_dir, logger)
         elif args.command == "monitor":
             return cmd_monitor(args, loops_dir)
         else:

@@ -862,6 +862,30 @@ Promote the latest run's action output as the new comparator baseline. Reads `ac
 ll-loop promote-baseline my-loop    # Promote latest run as new baseline
 ```
 
+#### `ll-loop edit-routes`
+
+Render a loop's routing logic as an editable decision table (state × verdict → next-state). Opens the table in `$EDITOR` (or prints to stdout with `--dry-run`). On save, parses the edited table and writes changes back to the loop YAML, preserving all non-route fields, comments, and YAML structure.
+
+Before opening the editor, prints warnings for: unreachable states, dead-end states (no outbound routes and not terminal), and missing verdict arms (e.g. `on_yes` without `on_no` or `default`).
+
+**Arguments:**
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `loop` | | Loop name or path |
+| `--format {markdown,csv}` | `markdown` | Output format for the table |
+| `--dry-run` | | Print table to stdout without opening editor |
+| `--no-warnings` | | Skip gap/conflict detection output |
+
+**Exit codes:** 0 = success or no changes; 1 = parse error or unknown state in edited table; 2 = loop not found.
+
+**Examples:**
+```bash
+ll-loop edit-routes rn-implement             # Open routing table in $EDITOR
+ll-loop edit-routes rn-implement --dry-run   # Print table to stdout
+ll-loop edit-routes rn-implement --format csv --dry-run  # CSV format
+ll-loop edit-routes rn-implement --no-warnings           # Skip gap warnings
+```
+
 **Examples:**
 ```bash
 ll-loop fix-types                     # Run loop (shorthand for run)

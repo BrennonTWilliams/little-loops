@@ -1,0 +1,87 @@
+"""ll-loop edit-routes subcommand: render and edit FSM routing as a decision table."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from little_loops.cli.loop._helpers import resolve_loop_path
+from little_loops.logger import Logger
+
+
+def cmd_edit_routes(
+    loop_name: str,
+    args: argparse.Namespace,
+    loops_dir: Path,
+    logger: Logger,
+) -> int:
+    """Render a loop's routing as a decision table; open editor to modify routes.
+
+    Returns:
+        0 = success or no changes
+        1 = parse error or unknown state in edited table
+        2 = loop not found
+    """
+    from little_loops.fsm.route_table import (
+        RouteTableApplier,
+        RouteTableExtractor,
+        RouteTableParser,
+        RouteTableRenderer,
+        detect_routing_gaps,
+        open_in_editor,
+    )
+    from little_loops.fsm.validation import load_and_validate
+
+    fmt = getattr(args, "format", "markdown")
+    dry_run = getattr(args, "dry_run", False)
+    no_warnings = getattr(args, "no_warnings", False)
+
+    try:
+        path = resolve_loop_path(loop_name, loops_dir)
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        return 2
+
+    try:
+        fsm, _ = load_and_validate(path)
+    except ValueError as e:
+        logger.error(f"{loop_name} is invalid: {e}")
+        return 1
+
+    # Gap/conflict detection
+    if not no_warnings:
+        warnings = detect_routing_gaps(fsm)
+        for w in warnings:
+            print(f"⚠  {w}")
+
+    # Extract and render
+    matrix = RouteTableExtractor.extract(fsm)
+    if fmt == "csv":
+        table_text = RouteTableRenderer.to_csv(matrix)
+    else:
+        table_text = RouteTableRenderer.to_markdown(matrix)
+
+    if dry_run:
+        print(table_text, end="")
+        return 0
+
+    # Open editor
+    edited = open_in_editor(table_text, fmt)
+    if edited is None:
+        logger.error("Editor exited with non-zero status; no changes applied")
+        return 1
+
+    # Parse edited table
+    known_states = set(fsm.states.keys())
+    try:
+        if fmt == "csv":
+            new_matrix = RouteTableParser.parse_csv(edited, known_states)
+        else:
+            new_matrix = RouteTableParser.parse_markdown(edited, known_states)
+    except ValueError as e:
+        logger.error(f"Parse error: {e}")
+        return 1
+
+    # Apply changes
+    RouteTableApplier.apply(path, matrix, new_matrix)
+    return 0
