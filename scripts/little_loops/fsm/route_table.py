@@ -5,13 +5,15 @@ from __future__ import annotations
 import csv
 import io
 import os
+import re
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from little_loops.fsm.policy_rules import Rule
     from little_loops.fsm.schema import FSMLoop
 
 # Ordered standard verdict labels for column display
@@ -329,6 +331,257 @@ def _clear_route_field(
             state_data.pop(field, None)
         else:
             state_data.pop(f"on_{verdict}", None)
+
+
+# ---------------------------------------------------------------------------
+# Compound decision-table types and helpers (ENH-2233)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ParsedDecisionTable:
+    """Result of parsing an edited compound policy-rule decision table."""
+
+    rules: list[Rule]
+    warnings: list[str] = field(default_factory=list)
+
+
+def _all_dims(rules: list[Rule]) -> list[str]:
+    """Return sorted union of dimension names from all non-catch-all rules."""
+    seen: set[str] = set()
+    for rule in rules:
+        for pred in rule.predicates:
+            seen.add(pred.dim)
+    return sorted(seen)
+
+
+def _detect_shadows(rules: list[Rule]) -> list[str]:
+    """Return warning strings for rules that are subsumed by an earlier rule."""
+    warnings: list[str] = []
+    for i, later in enumerate(rules):
+        if later.is_catchall:
+            continue
+        later_preds = {(p.dim, p.op, p.value) for p in later.predicates}
+        for j, earlier in enumerate(rules[:i]):
+            if earlier.is_catchall:
+                warnings.append(
+                    f"Rule {i + 1} (→ {later.target}) is shadowed by catch-all rule {j + 1}"
+                )
+                break
+            earlier_preds = {(p.dim, p.op, p.value) for p in earlier.predicates}
+            if earlier_preds and earlier_preds.issubset(later_preds):
+                warnings.append(
+                    f"Rule {i + 1} (→ {later.target}) may be shadowed by rule {j + 1} "
+                    f"(→ {earlier.target}): earlier rule has fewer/equal constraints"
+                )
+                break
+    return warnings
+
+
+# Regex to parse a condition cell like ">=85", "<65", "==true"
+_COND_PATTERN = re.compile(r"^(>=|<=|==|!=|<|>)(.+)$")
+
+
+class PolicyRuleExtractor:
+    """Extract policy rules from a loop's context.policy_rules field."""
+
+    @staticmethod
+    def extract(fsm: FSMLoop) -> list[Rule]:
+        """Return parsed list of Rule from fsm.context['policy_rules']."""
+        from little_loops.fsm.policy_rules import parse_rules
+
+        text = str(fsm.context.get("policy_rules", ""))
+        return parse_rules(text)
+
+
+class CompoundGridRenderer:
+    """Render a policy rule list as a compound condition×action grid."""
+
+    @staticmethod
+    def to_markdown(rules: list[Rule]) -> str:
+        """Render rules as a markdown table with condition columns."""
+        dims = _all_dims(rules)
+        headers = ["#"] + dims + ["→ action"]
+        rows: list[list[str]] = []
+        for i, rule in enumerate(rules, 1):
+            if rule.is_catchall:
+                row = [str(i)] + ["*"] * len(dims) + [rule.target]
+            else:
+                pred_map = {p.dim: f"{p.op}{p.value}" for p in rule.predicates}
+                row = [str(i)] + [pred_map.get(d, EMPTY_CELL) for d in dims] + [rule.target]
+            rows.append(row)
+
+        widths = [
+            max(len(str(r[i])) for r in ([headers] + rows))
+            for i in range(len(headers))
+        ]
+
+        def fmt(cells: list[str]) -> str:
+            return "| " + " | ".join(str(c).ljust(widths[i]) for i, c in enumerate(cells)) + " |"
+
+        lines = [
+            fmt(headers),
+            "|" + "|".join("-" * (w + 2) for w in widths) + "|",
+        ]
+        lines.extend(fmt(row) for row in rows)
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def to_csv(rules: list[Rule]) -> str:
+        """Render rules as CSV with condition columns."""
+        dims = _all_dims(rules)
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=["#"] + dims + ["→ action"])
+        writer.writeheader()
+        for i, rule in enumerate(rules, 1):
+            if rule.is_catchall:
+                row: dict[str, str] = {"#": str(i), "→ action": rule.target}
+                for d in dims:
+                    row[d] = "*"
+            else:
+                pred_map = {p.dim: f"{p.op}{p.value}" for p in rule.predicates}
+                row = {"#": str(i), "→ action": rule.target}
+                for d in dims:
+                    row[d] = pred_map.get(d, "")
+            writer.writerow(row)
+        return buf.getvalue()
+
+
+def _parse_cond_cell(dim: str, val: str) -> Any:
+    """Parse a condition cell string (e.g. '>=85') into a Predicate."""
+    from little_loops.fsm.policy_rules import Predicate
+
+    m = _COND_PATTERN.match(val)
+    if not m:
+        raise ValueError(
+            f"Cannot parse condition cell {val!r} for dimension {dim!r}; "
+            f"expected operator prefix (>=, <=, ==, !=, <, >)"
+        )
+    return Predicate(dim=dim, op=m.group(1), value=m.group(2).strip())
+
+
+def _parse_rule_cells(dims: list[str], dim_cells: dict[str, str], action: str, known_states: set[str]) -> tuple[Any, list[str]]:
+    """Parse dimension cells into a Rule and return (rule, unknown_action_warnings)."""
+    from little_loops.fsm.policy_rules import Predicate
+    from little_loops.fsm.policy_rules import Rule as PolicyRule
+
+    warnings: list[str] = []
+    if known_states and action not in known_states:
+        warnings.append(f"Action state '{action}' is not a known state in this loop")
+
+    is_catchall = (
+        all(v in ("*", "", EMPTY_CELL, "-") for v in dim_cells.values())
+        and any(v == "*" for v in dim_cells.values())
+    )
+
+    if is_catchall:
+        return PolicyRule(predicates=[], target=action, is_catchall=True), warnings
+
+    preds: list[Predicate] = []
+    for dim in dims:
+        val = dim_cells.get(dim, "").strip()
+        if not val or val in (EMPTY_CELL, "-", ""):
+            continue
+        if val == "*":
+            continue
+        preds.append(_parse_cond_cell(dim, val))
+    return PolicyRule(predicates=preds, target=action, is_catchall=False), warnings
+
+
+class CompoundGridParser:
+    """Parse an edited compound grid (markdown or CSV) back to a list of Rule."""
+
+    @staticmethod
+    def parse_markdown(text: str, known_states: set[str]) -> ParsedDecisionTable:
+        """Parse edited markdown table back to a ParsedDecisionTable.
+
+        Validates action states, warns on missing catch-all and shadowed rows.
+        """
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip().startswith("|")]
+        if len(lines) < 2:
+            raise ValueError("No valid markdown table found in input")
+
+        header_cells = [c.strip() for c in lines[0].strip("|").split("|")]
+        if not header_cells or header_cells[-1] not in ("→ action",):
+            raise ValueError(
+                f"Decision table must end with a '→ action' column; got {header_cells[-1]!r}"
+            )
+        dims = header_cells[1:-1]
+
+        rules = []
+        all_warnings: list[str] = []
+        for line in lines[2:]:
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if not cells or not cells[0].strip():
+                continue
+            if len(cells) < len(dims) + 2:
+                continue
+            action = cells[-1].strip()
+            if not action or action in (EMPTY_CELL, "-"):
+                continue
+            dim_cells = {dims[k]: cells[k + 1].strip() for k in range(len(dims))}
+            rule, warns = _parse_rule_cells(dims, dim_cells, action, known_states)
+            rules.append(rule)
+            all_warnings.extend(warns)
+
+        if not rules or not rules[-1].is_catchall:
+            all_warnings.append(
+                "Decision table has no catch-all rule ('*'). "
+                "Unmatched inputs will produce no route."
+            )
+        all_warnings.extend(_detect_shadows(rules))
+        return ParsedDecisionTable(rules=rules, warnings=all_warnings)
+
+    @staticmethod
+    def parse_csv(text: str, known_states: set[str]) -> ParsedDecisionTable:
+        """Parse edited CSV table back to a ParsedDecisionTable."""
+        reader = csv.DictReader(io.StringIO(text))
+        fieldnames = list(reader.fieldnames or [])
+        if "→ action" not in fieldnames:
+            raise ValueError("CSV must have a '→ action' column")
+        dims = [f for f in fieldnames if f not in ("#", "→ action")]
+
+        rules = []
+        all_warnings: list[str] = []
+        for csv_row in reader:
+            action = csv_row.get("→ action", "").strip()
+            if not action:
+                continue
+            dim_cells = {d: csv_row.get(d, "").strip() for d in dims}
+            rule, warns = _parse_rule_cells(dims, dim_cells, action, known_states)
+            rules.append(rule)
+            all_warnings.extend(warns)
+
+        if not rules or not rules[-1].is_catchall:
+            all_warnings.append(
+                "Decision table has no catch-all rule ('*'). "
+                "Unmatched inputs will produce no route."
+            )
+        all_warnings.extend(_detect_shadows(rules))
+        return ParsedDecisionTable(rules=rules, warnings=all_warnings)
+
+
+class PolicyRuleApplier:
+    """Write edited policy rules back to a loop YAML file."""
+
+    @staticmethod
+    def apply(path: Path, rules: list[Rule]) -> None:
+        """Serialize rules and write back to context.policy_rules in the loop YAML."""
+        from io import StringIO
+
+        from ruamel.yaml import YAML
+        from ruamel.yaml.scalarstring import LiteralScalarString
+
+        from little_loops.file_utils import atomic_write
+        from little_loops.fsm.policy_rules import serialize_rules
+
+        yaml = YAML(typ="rt")
+        data = yaml.load(path)
+        serialized = serialize_rules(rules)
+        data["context"]["policy_rules"] = LiteralScalarString(serialized + "\n")
+        buf = StringIO()
+        yaml.dump(data, buf)
+        atomic_write(path, buf.getvalue())
 
 
 def detect_routing_gaps(fsm: FSMLoop) -> list[str]:

@@ -2,10 +2,11 @@
 id: ENH-2233
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: '2026-06-19'
 discovered_by: capture-issue
 captured_at: '2026-06-19T21:56:31Z'
+completed_at: '2026-06-19T23:32:11Z'
 decision_needed: false
 depends_on:
 - ENH-2164
@@ -224,7 +225,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Open** | Created: 2026-06-19 | Priority: P3
 
+## Resolution
+
+Implemented compound decision-table mode for `ll-loop edit-routes`:
+
+- `PolicyRuleExtractor`, `CompoundGridRenderer`, `CompoundGridParser`, `PolicyRuleApplier` classes added to `fsm/route_table.py`
+- Auto-detect: loops importing `lib/policy-router.yaml` with `context.policy_rules` use decision-table mode automatically; `--decision-table` flag forces it
+- Grid format: `#` + sorted dimension columns + `→ action`; catch-all row uses `*`; empty cells use `—`
+- Validation: warns on shadowed rules, missing catch-all, unknown action states
+- `PolicyRuleApplier` uses ruamel.yaml round-trip mode + `LiteralScalarString` to preserve block scalar style
+- 26 new tests covering all 5 new classes; round-trip fidelity verified against `policy-refine.yaml` fixture
+- Docs updated in `CLI.md` and `LOOPS_GUIDE.md`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-19T23:16:08 - `ca951f05-f8c9-47d5-b939-fe6a24ea52c2.jsonl`
 - `/ll:confidence-check` - 2026-06-19T23:30:00 - `a6f4ecd1-513b-4c76-aa79-8da3db5a3650.jsonl`
 - `/ll:wire-issue` - 2026-06-19T23:07:46 - `8ba0a80d-abe6-4c81-a1b3-b63381bfdc55.jsonl`
 - `/ll:refine-issue` - 2026-06-19T23:00:08 - `f41f18ea-05b2-4083-8bb7-09cec8e247f5.jsonl`

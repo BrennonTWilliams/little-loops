@@ -968,3 +968,16 @@ class TestMainLoopEditRoutesFlagForwarding:
         assert result == 0
         mocks["cmd_edit_routes"].assert_called_once()
         assert mocks["cmd_edit_routes"].call_args[0][1].format == "csv"
+
+    def test_decision_table_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--decision-table is parsed and forwarded to cmd_edit_routes."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "edit-routes", "test-loop", "--decision-table"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_edit_routes"].assert_called_once()
+        assert mocks["cmd_edit_routes"].call_args[0][1].decision_table is True

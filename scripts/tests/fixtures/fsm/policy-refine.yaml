@@ -1,0 +1,92 @@
+name: policy-refine
+description: |
+  Score an artifact on clarity/completeness/feasibility/security, then route via a
+  declarative policy rule table to tier-specific repair or escalation.
+  Demonstrates lib/policy-router.yaml multi-axis decision-table routing with
+  conjunctive predicates and a configurable policy_rules table.
+visibility: public
+max_steps: 20
+
+import:
+  - lib/rubric-router.yaml
+  - lib/policy-router.yaml
+
+context:
+  subject: "artifact.md"
+  rubric_dimensions: "clarity|completeness|feasibility|security"
+  threshold_high: "85"
+  threshold_medium: "65"
+  # Decision table: evaluated top-to-bottom; first match wins.
+  # Conjunctive rules use & to AND multiple predicates.
+  # Numeric coercion: "9" < "10" is True (float comparison).
+  # Override via --context policy_rules="..." to customize for your domain.
+  policy_rules: |
+    security:<65 -> escalate
+    completeness:<60 -> deep_repair
+    feasibility:<60 -> rethink
+    clarity:>=85 & completeness:>=85 & feasibility:>=85 -> done
+    aggregate:>=85 -> done
+    aggregate:>=60 -> light_repair
+    * -> deep_repair
+
+initial: score
+
+states:
+  score:
+    fragment: rubric_score
+    action: |
+      Evaluate ${context.subject} on these dimensions: ${context.rubric_dimensions}.
+      For each dimension output: DIMENSION: <name>: <score 0-100> — <one-sentence rationale>
+      Final line: AGGREGATE: <int 0-100>
+    capture: scores
+    next: parse_scores
+
+  parse_scores:
+    fragment: policy_parse_scores
+    next: policy_dispatch
+
+  policy_dispatch:
+    fragment: policy_table_dispatch
+    route:
+      escalate: escalate
+      deep_repair: deep_repair
+      light_repair: light_repair
+      rethink: rethink
+      done: done
+      _: deep_repair
+      _error: done
+
+  escalate:
+    action_type: prompt
+    action: |
+      SECURITY ESCALATION: ${context.subject} scored below the security threshold.
+      Flag this artifact for human security review. Document the specific security
+      concerns identified, and halt further automated refinement.
+    next: done
+
+  light_repair:
+    action_type: prompt
+    action: |
+      Apply targeted improvements to ${context.subject}.
+      The aggregate quality is acceptable but not optimal. Focus on dimensions
+      that scored below 85 — improve clarity and completeness without restructuring.
+    next: score
+
+  deep_repair:
+    action_type: prompt
+    action: |
+      Apply comprehensive repairs to ${context.subject}.
+      Multiple quality dimensions need significant improvement. Address all gaps:
+      improve structure, fill missing content, and resolve ambiguities.
+    next: score
+
+  rethink:
+    action_type: prompt
+    action: |
+      Rethink the approach for ${context.subject}.
+      Feasibility scored critically low — the current approach may not be viable.
+      Identify the root cause of the feasibility problem and propose an alternative.
+    next: done
+
+  done:
+    terminal: true

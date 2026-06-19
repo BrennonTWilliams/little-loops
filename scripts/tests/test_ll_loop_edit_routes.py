@@ -674,3 +674,373 @@ class TestCmdEditRoutes:
         )
         result = cmd_edit_routes("test-loop", args, loops_dir, Logger())
         assert result == 1
+
+
+# ---------------------------------------------------------------------------
+# Compound decision-table tests (ENH-2233)
+# ---------------------------------------------------------------------------
+
+POLICY_FIXTURE = FIXTURES / "policy-refine.yaml"
+
+# policy-refine.yaml has 7 rules; dimensions: aggregate, clarity, completeness, feasibility, security
+_POLICY_RULES_TEXT = (
+    "security:<65 -> escalate\n"
+    "completeness:<60 -> deep_repair\n"
+    "feasibility:<60 -> rethink\n"
+    "clarity:>=85 & completeness:>=85 & feasibility:>=85 -> done\n"
+    "aggregate:>=85 -> done\n"
+    "aggregate:>=60 -> light_repair\n"
+    "* -> deep_repair"
+)
+
+
+class TestPolicyRuleExtractor:
+    def test_extract_returns_rules(self) -> None:
+        from little_loops.fsm.route_table import PolicyRuleExtractor
+        from little_loops.fsm.validation import load_and_validate
+
+        fsm, _ = load_and_validate(POLICY_FIXTURE)
+        rules = PolicyRuleExtractor.extract(fsm)
+        assert len(rules) == 7
+
+    def test_extract_preserves_order(self) -> None:
+        from little_loops.fsm.route_table import PolicyRuleExtractor
+        from little_loops.fsm.validation import load_and_validate
+
+        fsm, _ = load_and_validate(POLICY_FIXTURE)
+        rules = PolicyRuleExtractor.extract(fsm)
+        assert rules[0].target == "escalate"
+        assert rules[-1].is_catchall
+        assert rules[-1].target == "deep_repair"
+
+    def test_extract_catchall_last(self) -> None:
+        from little_loops.fsm.route_table import PolicyRuleExtractor
+        from little_loops.fsm.validation import load_and_validate
+
+        fsm, _ = load_and_validate(POLICY_FIXTURE)
+        rules = PolicyRuleExtractor.extract(fsm)
+        catchalls = [r for r in rules if r.is_catchall]
+        assert len(catchalls) == 1
+        assert catchalls[0] is rules[-1]
+
+
+class TestCompoundGridRenderer:
+    def _sample_rules(self):
+        from little_loops.fsm.policy_rules import parse_rules
+
+        return parse_rules(_POLICY_RULES_TEXT)
+
+    def test_to_markdown_has_hash_column(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridRenderer
+
+        md = CompoundGridRenderer.to_markdown(self._sample_rules())
+        header_line = md.splitlines()[0]
+        assert "#" in header_line
+
+    def test_to_markdown_has_action_column(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridRenderer
+
+        md = CompoundGridRenderer.to_markdown(self._sample_rules())
+        header_line = md.splitlines()[0]
+        assert "→ action" in header_line
+
+    def test_to_markdown_has_dimension_columns(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridRenderer
+
+        md = CompoundGridRenderer.to_markdown(self._sample_rules())
+        header_line = md.splitlines()[0]
+        for dim in ("security", "completeness", "feasibility", "clarity", "aggregate"):
+            assert dim in header_line
+
+    def test_to_markdown_empty_cell_for_unconstrained(self) -> None:
+        from little_loops.fsm.route_table import EMPTY_CELL, CompoundGridRenderer
+
+        md = CompoundGridRenderer.to_markdown(self._sample_rules())
+        assert EMPTY_CELL in md
+
+    def test_to_markdown_star_for_catchall(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridRenderer
+
+        md = CompoundGridRenderer.to_markdown(self._sample_rules())
+        last_data_row = [ln for ln in md.splitlines() if ln.startswith("|")][-1]
+        assert "* " in last_data_row or "| *" in last_data_row
+
+    def test_to_markdown_has_7_data_rows(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridRenderer
+
+        md = CompoundGridRenderer.to_markdown(self._sample_rules())
+        # Header + separator + 7 data rows
+        table_lines = [ln for ln in md.splitlines() if ln.startswith("|")]
+        assert len(table_lines) == 9  # header + sep + 7 data
+
+    def test_to_csv_has_action_column(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridRenderer
+
+        csv_text = CompoundGridRenderer.to_csv(self._sample_rules())
+        reader = csv.DictReader(io.StringIO(csv_text))
+        assert reader.fieldnames is not None
+        assert "→ action" in reader.fieldnames
+
+    def test_to_csv_has_7_data_rows(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridRenderer
+
+        csv_text = CompoundGridRenderer.to_csv(self._sample_rules())
+        rows = list(csv.DictReader(io.StringIO(csv_text)))
+        assert len(rows) == 7
+
+    def test_to_csv_catchall_row_has_stars(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridRenderer
+
+        csv_text = CompoundGridRenderer.to_csv(self._sample_rules())
+        rows = list(csv.DictReader(io.StringIO(csv_text)))
+        last = rows[-1]
+        assert last["→ action"] == "deep_repair"
+        # All dimension cells should be "*" for the catch-all row
+        dims = [k for k in last if k not in ("#", "→ action")]
+        assert all(last[d] == "*" for d in dims)
+
+
+class TestCompoundGridParser:
+    def _sample_rules(self):
+        from little_loops.fsm.policy_rules import parse_rules
+
+        return parse_rules(_POLICY_RULES_TEXT)
+
+    def _known_states(self):
+        return {"escalate", "deep_repair", "rethink", "done", "light_repair", "score", "parse_scores", "policy_dispatch"}
+
+    def test_parse_markdown_round_trip(self) -> None:
+        from little_loops.fsm.policy_rules import serialize_rules
+        from little_loops.fsm.route_table import CompoundGridParser, CompoundGridRenderer
+
+        original = self._sample_rules()
+        md = CompoundGridRenderer.to_markdown(original)
+        parsed = CompoundGridParser.parse_markdown(md, self._known_states())
+        assert len(parsed.rules) == len(original)
+        assert serialize_rules(parsed.rules) == serialize_rules(original)
+
+    def test_parse_csv_round_trip(self) -> None:
+        from little_loops.fsm.policy_rules import serialize_rules
+        from little_loops.fsm.route_table import CompoundGridParser, CompoundGridRenderer
+
+        original = self._sample_rules()
+        csv_text = CompoundGridRenderer.to_csv(original)
+        parsed = CompoundGridParser.parse_csv(csv_text, self._known_states())
+        assert len(parsed.rules) == len(original)
+        assert serialize_rules(parsed.rules) == serialize_rules(original)
+
+    def test_parse_markdown_warns_missing_catchall(self) -> None:
+        from little_loops.fsm.policy_rules import parse_rules
+        from little_loops.fsm.route_table import CompoundGridParser, CompoundGridRenderer
+
+        rules_no_catchall = parse_rules(
+            "security:<65 -> escalate\naggregate:>=85 -> done"
+        )
+        md = CompoundGridRenderer.to_markdown(rules_no_catchall)
+        parsed = CompoundGridParser.parse_markdown(md, self._known_states())
+        assert any("catch-all" in w.lower() for w in parsed.warnings)
+
+    def test_parse_markdown_warns_unknown_action_state(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridParser
+
+        md = (
+            "| # | confidence | → action |\n"
+            "|---|------------|----------|\n"
+            "| 1 | >=85       | ghost_target |\n"
+            "| 2 | *          | done |\n"
+        )
+        parsed = CompoundGridParser.parse_markdown(md, {"done"})
+        assert any("ghost_target" in w for w in parsed.warnings)
+
+    def test_parse_markdown_warns_shadowed_rule(self) -> None:
+        from little_loops.fsm.policy_rules import parse_rules
+        from little_loops.fsm.route_table import CompoundGridParser, CompoundGridRenderer
+
+        # Rule 2 is a strict superset of rule 1 → rule 1 shadows rule 2
+        rules = parse_rules(
+            "confidence:>=85 -> done\n"
+            "confidence:>=85 & outcome:>=75 -> implement\n"
+            "* -> repair"
+        )
+        md = CompoundGridRenderer.to_markdown(rules)
+        parsed = CompoundGridParser.parse_markdown(md, {"done", "implement", "repair"})
+        assert any("shadow" in w.lower() for w in parsed.warnings)
+
+    def test_parse_markdown_raises_invalid_cell(self) -> None:
+        from little_loops.fsm.route_table import CompoundGridParser
+
+        md = (
+            "| # | confidence | → action |\n"
+            "|---|------------|----------|\n"
+            "| 1 | NOTVALID   | done |\n"
+            "| 2 | *          | done |\n"
+        )
+        with pytest.raises(ValueError, match="Cannot parse condition cell"):
+            CompoundGridParser.parse_markdown(md, {"done"})
+
+    def test_parse_csv_warns_missing_catchall(self) -> None:
+        from little_loops.fsm.policy_rules import parse_rules
+        from little_loops.fsm.route_table import CompoundGridParser, CompoundGridRenderer
+
+        rules_no_catchall = parse_rules("aggregate:>=85 -> done")
+        csv_text = CompoundGridRenderer.to_csv(rules_no_catchall)
+        parsed = CompoundGridParser.parse_csv(csv_text, {"done"})
+        assert any("catch-all" in w.lower() for w in parsed.warnings)
+
+
+class TestPolicyRuleApplier:
+    def test_apply_round_trip(self, tmp_path: Path) -> None:
+        from little_loops.fsm.policy_rules import serialize_rules
+        from little_loops.fsm.route_table import (
+            CompoundGridParser,
+            CompoundGridRenderer,
+            PolicyRuleApplier,
+            PolicyRuleExtractor,
+        )
+        from little_loops.fsm.validation import load_and_validate
+
+        # Copy fixture to tmp so we can modify it
+        fixture_copy = tmp_path / "policy-refine.yaml"
+        shutil.copy(POLICY_FIXTURE, fixture_copy)
+
+        # Extract original rules
+        fsm, _ = load_and_validate(fixture_copy)
+        original_rules = PolicyRuleExtractor.extract(fsm)
+        original_text = serialize_rules(original_rules)
+
+        # Render to markdown, parse back, apply
+        md = CompoundGridRenderer.to_markdown(original_rules)
+        known_states = set(fsm.states.keys())
+        parsed = CompoundGridParser.parse_markdown(md, known_states)
+        PolicyRuleApplier.apply(fixture_copy, parsed.rules)
+
+        # Reload and verify round-trip
+        fsm2, _ = load_and_validate(fixture_copy)
+        round_tripped = PolicyRuleExtractor.extract(fsm2)
+        assert serialize_rules(round_tripped) == original_text
+
+    def test_apply_preserves_other_context(self, tmp_path: Path) -> None:
+        from little_loops.fsm.policy_rules import parse_rules
+        from little_loops.fsm.route_table import PolicyRuleApplier
+        from little_loops.fsm.validation import load_and_validate
+
+        fixture_copy = tmp_path / "policy-refine.yaml"
+        shutil.copy(POLICY_FIXTURE, fixture_copy)
+
+        fsm_before, _ = load_and_validate(fixture_copy)
+        original_subject = fsm_before.context.get("subject")
+
+        rules = parse_rules("* -> deep_repair")
+        PolicyRuleApplier.apply(fixture_copy, rules)
+
+        fsm_after, _ = load_and_validate(fixture_copy)
+        assert fsm_after.context.get("subject") == original_subject
+
+
+class TestCmdEditRoutesDecisionTable:
+    """End-to-end tests for decision-table mode in cmd_edit_routes."""
+
+    def _make_policy_project(self, tmp_path: Path) -> Path:
+        """Set up a minimal project with a policy-router loop."""
+        project = tmp_path / "project"
+        project.mkdir()
+        loops_dir = project / "loops"
+        loops_dir.mkdir()
+        shutil.copy(POLICY_FIXTURE, loops_dir / "policy-refine.yaml")
+        (project / ".ll").mkdir()
+        (project / ".ll" / "ll-config.json").write_text('{"loops": {"dir": "loops"}}')
+        return loops_dir
+
+    def test_dry_run_decision_table_prints_table(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.cli.loop.edit_routes import cmd_edit_routes
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_policy_project(tmp_path)
+
+        args = argparse.Namespace(
+            format="markdown",
+            dry_run=True,
+            no_warnings=True,
+            allow_delete=False,
+            decision_table=True,
+        )
+        result = cmd_edit_routes("policy-refine", args, loops_dir, Logger())
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "→ action" in out
+        assert "#" in out
+
+    def test_dry_run_csv_decision_table(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.cli.loop.edit_routes import cmd_edit_routes
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_policy_project(tmp_path)
+
+        args = argparse.Namespace(
+            format="csv",
+            dry_run=True,
+            no_warnings=True,
+            allow_delete=False,
+            decision_table=True,
+        )
+        result = cmd_edit_routes("policy-refine", args, loops_dir, Logger())
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "→ action" in out
+
+    def test_auto_detect_policy_router(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Without --decision-table, auto-detects policy-router import."""
+        from little_loops.cli.loop.edit_routes import cmd_edit_routes
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_policy_project(tmp_path)
+
+        args = argparse.Namespace(
+            format="markdown",
+            dry_run=True,
+            no_warnings=True,
+            allow_delete=False,
+            decision_table=False,  # flag NOT set — should auto-detect
+        )
+        result = cmd_edit_routes("policy-refine", args, loops_dir, Logger())
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "→ action" in out  # compound table rendered, not state×verdict
+
+    def test_editor_round_trip_writes_policy_rules(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.cli.loop.edit_routes import cmd_edit_routes
+        from little_loops.fsm.route_table import PolicyRuleExtractor
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_policy_project(tmp_path)
+        loop_path = loops_dir / "policy-refine.yaml"
+
+        # Capture rendered table, then write it back unchanged (identity edit)
+        def fake_editor_identity(cmd: list[str]) -> int:
+            return 0  # leave tmp file unchanged
+
+        monkeypatch.setattr("subprocess.call", fake_editor_identity)
+
+        args = argparse.Namespace(
+            format="markdown",
+            dry_run=False,
+            no_warnings=True,
+            allow_delete=False,
+            decision_table=True,
+        )
+        result = cmd_edit_routes("policy-refine", args, loops_dir, Logger())
+        assert result == 0
+
+        # Reload and verify policy_rules still has all 7 rules
+        fsm, _ = load_and_validate(loop_path)
+        rules = PolicyRuleExtractor.extract(fsm)
+        assert len(rules) == 7

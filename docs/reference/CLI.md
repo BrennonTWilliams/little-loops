@@ -871,9 +871,14 @@ ll-loop promote-baseline my-loop    # Promote latest run as new baseline
 
 #### `ll-loop edit-routes`
 
-Render a loop's routing logic as an editable decision table (state × verdict → next-state). Opens the table in `$EDITOR` (or prints to stdout with `--dry-run`). On save, parses the edited table and writes changes back to the loop YAML, preserving all non-route fields, comments, and YAML structure.
+Render a loop's routing logic as an editable decision table. Opens the table in `$EDITOR` (or prints to stdout with `--dry-run`). On save, parses the edited table and writes changes back to the loop YAML, preserving all non-route fields, comments, and YAML structure.
 
-Before opening the editor, prints warnings for: unreachable states, dead-end states (no outbound routes and not terminal), and missing verdict arms (e.g. `on_yes` without `on_no` or `default`).
+**Two rendering modes:**
+
+- **State × verdict matrix** (default) — one row per state, one column per verdict. Used for standard loops.
+- **Compound decision table** (auto-detected or `--decision-table`) — used for loops that import `lib/policy-router.yaml` with a `context.policy_rules` block. Renders a condition-columns × action grid where each row is one conjunctive rule, columns are scored dimensions, and the final column is the target action state.
+
+Before opening the editor in verdict-matrix mode, prints warnings for: unreachable states, dead-end states (no outbound routes and not terminal), and missing verdict arms (e.g. `on_yes` without `on_no` or `default`). In decision-table mode, warns on shadowed rules, missing catch-all, and unknown action states.
 
 **Arguments:**
 | Argument | Default | Description |
@@ -883,11 +888,24 @@ Before opening the editor, prints warnings for: unreachable states, dead-end sta
 | `--dry-run` | | Print table to stdout without opening editor |
 | `--no-warnings` | | Skip gap/conflict detection output |
 | `--allow-delete` | | Allow deletion of state blocks that were removed from the edited table (default: removed rows are ignored) |
+| `--decision-table` | | Force compound policy-router decision table instead of state × verdict matrix |
 
-**State operations via the table:**
+**State operations via the verdict-matrix table:**
 - **Edit routes** — change any cell in the table; the corresponding `on_<verdict>` field is updated on save.
 - **Add a terminal stub** — add a new row with a state name that doesn't exist yet and leave all verdict cells empty. On save the state is inserted with `terminal: true` as a placeholder you can expand later.
 - **Delete a state** — remove a row entirely, then re-run with `--allow-delete`. Without `--allow-delete`, deleted rows are silently ignored.
+
+**Compound decision table format:**
+
+```
+| #  | confidence | outcome | security | aggregate | → action     |
+|----|------------|---------|----------|-----------|--------------|
+| 1  | —          | —       | <65      | —         | escalate     |
+| 2  | >=85       | >=75    | —        | —         | implement    |
+| 3  | *          | *       | *        | *         | deep_repair  |
+```
+
+Each condition cell is an operator+value (`>=85`, `<65`, `==true`). Empty cell (`—`) means dimension unconstrained in that rule. Catch-all row uses `*` in all condition columns (first-match-wins, catch-all should be last). Edit cells or reorder rows; save to write changes back to `context.policy_rules`.
 
 **Exit codes:** 0 = success or no changes; 1 = parse error or unknown state in edited table (when not a new stub); 2 = loop not found.
 
@@ -898,6 +916,8 @@ ll-loop edit-routes rn-implement --dry-run   # Print table to stdout
 ll-loop edit-routes rn-implement --format csv --dry-run   # CSV format
 ll-loop edit-routes rn-implement --no-warnings            # Skip gap warnings
 ll-loop edit-routes rn-implement --allow-delete           # Apply row deletions
+ll-loop edit-routes policy-refine --decision-table        # Compound table (explicit)
+ll-loop edit-routes policy-refine --dry-run               # Auto-detects decision-table mode
 ```
 
 **Examples:**

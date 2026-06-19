@@ -23,6 +23,10 @@ def cmd_edit_routes(
         2 = loop not found
     """
     from little_loops.fsm.route_table import (
+        CompoundGridParser,
+        CompoundGridRenderer,
+        PolicyRuleApplier,
+        PolicyRuleExtractor,
         RouteTableApplier,
         RouteTableExtractor,
         RouteTableParser,
@@ -49,7 +53,46 @@ def cmd_edit_routes(
         logger.error(f"{loop_name} is invalid: {e}")
         return 1
 
-    # Gap/conflict detection
+    # Auto-detect decision-table mode: explicit flag OR loop imports policy-router with policy_rules
+    decision_table = getattr(args, "decision_table", False) or (
+        any("lib/policy-router" in imp for imp in fsm.imports)
+        and "policy_rules" in fsm.context
+    )
+
+    if decision_table:
+        # Decision-table mode: compound condition×action grid for policy-router loops
+        rules = PolicyRuleExtractor.extract(fsm)
+        table_text = (
+            CompoundGridRenderer.to_csv(rules) if fmt == "csv"
+            else CompoundGridRenderer.to_markdown(rules)
+        )
+        if dry_run:
+            print(table_text, end="")
+            return 0
+
+        edited = open_in_editor(table_text, fmt)
+        if edited is None:
+            logger.error("Editor exited with non-zero status; no changes applied")
+            return 1
+
+        known_states = set(fsm.states.keys())
+        try:
+            parsed_dt = (
+                CompoundGridParser.parse_csv(edited, known_states) if fmt == "csv"
+                else CompoundGridParser.parse_markdown(edited, known_states)
+            )
+        except ValueError as e:
+            logger.error(f"Parse error: {e}")
+            return 1
+
+        if not no_warnings:
+            for w in parsed_dt.warnings:
+                print(f"⚠  {w}")
+
+        PolicyRuleApplier.apply(path, parsed_dt.rules)
+        return 0
+
+    # Gap/conflict detection (verdict-matrix mode only)
     if not no_warnings:
         warnings = detect_routing_gaps(fsm)
         for w in warnings:

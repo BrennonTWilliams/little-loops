@@ -793,6 +793,12 @@ Examples:
             action="store_true",
             help="Allow deletion of state blocks removed from the edited table",
         )
+        edit_routes_parser.add_argument(
+            "--decision-table",
+            action="store_true",
+            default=False,
+            help="Render compound policy-router decision table instead of state × verdict matrix",
+        )
 
         args = parser.parse_args(argv)
 
