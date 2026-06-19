@@ -2,9 +2,10 @@
 id: ENH-2232
 title: Wire learning tests into confidence-check rubric
 type: ENH
-status: open
+status: done
 priority: P2
 captured_at: '2026-06-19T21:33:27Z'
+completed_at: '2026-06-19T22:48:17Z'
 discovered_date: 2026-06-19
 discovered_by: capture-issue
 labels:
@@ -77,7 +78,7 @@ After this enhancement, `/ll:confidence-check` reads `learning_tests_required`, 
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-0. **Check SKILL.md line count before inserting Phase 1.5** — run `wc -l skills/confidence-check/SKILL.md`; the file is currently at the 500-line limit enforced by `test_enh494_skill_companions.py::TestSkillLineLimit`. If Phase 1.5 prose would push it over, place the verbose bash patterns and table in `rubric.md` and reference them from SKILL.md with a one-liner (`See rubric.md § Phase 1.5`).
+0. **Check SKILL.md line count before inserting Phase 1.5** — run `wc -l skills/confidence-check/SKILL.md`; the file is currently at 499 lines (1 line of headroom before the 500-line limit enforced by `test_enh494_skill_companions.py::TestSkillLineLimit`). Phase 1.5 prose will almost certainly exceed the limit; place the verbose bash patterns and table in `rubric.md` and reference them from SKILL.md with a one-liner (`See rubric.md § Phase 1.5`).
 6. **Write `TestConfidenceCheckLearningTestPrefetch` test class** in `scripts/tests/test_confidence_check_skill.py` — verify Phase 1.5 heading, `learning_tests_required` read, `ll-learning-tests check` call, `## Learning Test Context` table, and STOP override prose in Phase 3; mirror `TestConfidenceCheckHistoryContextInjection._phase_text()` pattern
 7. **Write `TestConfidenceCheckRubricLearningTestStatus` test class** in `scripts/tests/test_confidence_check_skill.py` — read `skills/confidence-check/rubric.md` and assert `−10` and `−5` penalty rows appear
 8. **Update `docs/reference/API.md` line 625** — add `confidence-check` alongside `ready-issue` as a consumer of `learning_tests_required`
@@ -110,7 +111,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Manual validation: run `/ll:confidence-check` on an issue with `learning_tests_required` containing a missing target to verify STOP behavior
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_enh494_skill_companions.py::TestSkillLineLimit.test_all_skills_within_limit` — **CRITICAL CONSTRAINT**: enforces 500-line limit on all `SKILL.md` files; `skills/confidence-check/SKILL.md` is currently exactly 500 lines — inserting Phase 1.5 will exceed the limit and fail this test unless content is placed in `rubric.md` or existing SKILL.md prose is trimmed [Agent 2]
+- `scripts/tests/test_enh494_skill_companions.py::TestSkillLineLimit.test_all_skills_within_limit` — **CRITICAL CONSTRAINT**: enforces 500-line limit on all `SKILL.md` files; `skills/confidence-check/SKILL.md` is currently 499 lines — inserting Phase 1.5 will exceed the limit and fail this test unless content is placed in `rubric.md` or existing SKILL.md prose is trimmed [Agent 2]
 - `scripts/tests/test_confidence_check_skill.py::TestConfidenceCheckHistoryContextInjection._phase_text` — Phase 1 section boundary will shift from `### Phase 2` to `### Phase 1.5` when the new heading is inserted; existing tests (`test_ll_history_context_command_present`, `test_hist_variable_present`) still pass because the checked strings remain in Phase 1 before the new heading [Agent 2]
 - New test class to write: `TestConfidenceCheckLearningTestPrefetch` in `test_confidence_check_skill.py` — assert Phase 1.5 heading exists, `learning_tests_required` read logic is present, `ll-learning-tests check` call appears, `## Learning Test Context` table header is present, STOP override prose appears in Phase 3; mirror `TestConfidenceCheckHistoryContextInjection`'s `_phase_text()` heading-slice pattern [Agent 3]
 - New test class to write: `TestConfidenceCheckRubricLearningTestStatus` in `test_confidence_check_skill.py` — read `skills/confidence-check/rubric.md` and assert the `−10` (missing/refuted) and `−5` (stale) penalty rows appear in the Learning Test Status scoring block [Agent 3]
@@ -181,6 +182,7 @@ The following external API assumptions are declared in this issue's frontmatter:
 **Note:** `skills/go-no-go/SKILL.md` currently also lacks `Bash(ll-learning-tests:*)` in its `allowed-tools` frontmatter (parity gap, out of scope for this issue).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-19T22:32:29 - `3e72939f-3636-4182-aff7-6a1b424e9a9b.jsonl`
 - `/ll:confidence-check` - 2026-06-19T22:30:00Z - `6f338ef8-c597-4d44-9a7b-545477d1aa47.jsonl`
 - `/ll:wire-issue` - 2026-06-19T22:00:58 - `8f311cd3-965b-4f21-b040-a28df4e62321.jsonl`
 - `/ll:refine-issue` - 2026-06-19T21:51:47 - `78b3360f-c8c1-4047-a7a6-869d669dd581.jsonl`

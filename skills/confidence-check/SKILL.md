@@ -11,6 +11,7 @@ allowed-tools:
   - Bash(find:*)
   - Bash(git:*)
   - Bash(ll-history-context:*)
+  - Bash(ll-learning-tests:*)
 metadata:
   short-description: Use when asked for a pre-implementation confidence check or whether an issue is 
 ---
@@ -116,6 +117,10 @@ HIST=$(ll-history-context {{issue_id}} 2>/dev/null || true)
 Each matched correction is a −0.1 signal on the Outcome Confidence Score. Cap: at most 5 corrections included; if 0 matches, Outcome Confidence Score is unaffected.
 
 If invoked within manage-issue: use the research findings already gathered in Phase 1.5.
+
+### Phase 1.5: Pre-Fetch Learning Test Context
+
+See [rubric.md](rubric.md) § Phase 1.5 for the full bash invocation pattern, Learning Test Context block format, and `ll-learning-tests check` status semantics.
 
 ### Phase 2: Five-Point Assessment
 
@@ -267,14 +272,9 @@ sites + `verification grep` + automated completeness test).
 
 ### Phase 3: Score and Recommend
 
-Sum all readiness criterion scores (max 100) and all outcome criterion scores (max 100).
+**Learning Test Hard Override**: if Phase 1.5 found any `missing` or `refuted` target, output `STOP — ADDRESS GAPS` regardless of aggregate score.
 
-See [rubric.md](rubric.md) for the score-to-recommendation tables: the
-**Readiness Score** tiers (PROCEED / PROCEED WITH CAUTION / STOP — ADDRESS GAPS
-/ STOP — NOT READY) and the **Outcome Confidence** labels (HIGH CONFIDENCE /
-MODERATE / LOW / VERY LOW).
-
-Combine both scores in the final output. The readiness score drives the go/no-go recommendation; the outcome confidence is informational context for planning.
+Sum all readiness and outcome criterion scores (max 100 each). See [rubric.md](rubric.md) for the score-to-recommendation tables and recommendation tiers. The readiness score drives the go/no-go recommendation; outcome confidence is informational.
 
 ### Phase 4: Update Frontmatter
 

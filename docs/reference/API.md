@@ -622,7 +622,7 @@ class IssueInfo:
     decision_needed: bool | None = None    # Set to true by /ll:refine-issue (2+ options) or /ll:confidence-check (unresolved decision); cleared by /ll:decide-issue
     missing_artifacts: bool | None = None  # Set to true by /ll:confidence-check (Phase 4.7) when absent pre-condition files detected; suppressed for co-deliverable files in Files to Create
     implementation_order_risk: bool | None = None  # Set to true by /ll:confidence-check (Phase 4.9) when ordering advice detected (e.g., "implement tests first"); not a wiring gap
-    learning_tests_required: list[str] | None = None  # Declared assumptions about external systems; /ll:ready-issue checks each via ll-learning-tests check
+    learning_tests_required: list[str] | None = None  # Declared assumptions about external systems; /ll:ready-issue and /ll:confidence-check (Phase 1.5) each check via ll-learning-tests check
     session_commands: list[str] = []       # Distinct /ll:* commands in ## Session Log
     session_command_counts: dict[str, int] = {}  # Per-command occurrence counts
     labels: list[str] = []                 # Labels from `labels:` frontmatter field

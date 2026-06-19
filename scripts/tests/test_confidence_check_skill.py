@@ -6,6 +6,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 SKILL_FILE = PROJECT_ROOT / "skills" / "confidence-check" / "SKILL.md"
+RUBRIC_FILE = PROJECT_ROOT / "skills" / "confidence-check" / "rubric.md"
 
 
 class TestConfidenceCheckPhase4CLI:
@@ -375,4 +376,68 @@ class TestConfidenceCheckHistoryContextInjection:
     def test_hist_variable_present(self) -> None:
         assert "HIST" in self._phase_text(), (
             "Phase 1 must assign ll-history-context output to HIST variable"
+        )
+
+
+class TestConfidenceCheckLearningTestPrefetch:
+    """Phase 1.5 must pre-fetch learning test context (ENH-2232)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 1.5:")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_1_5_heading_exists(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "### Phase 1.5:" in content, (
+            "SKILL.md must contain a '### Phase 1.5:' section for learning test pre-fetch (ENH-2232)"
+        )
+
+    def test_learning_tests_required_in_rubric(self) -> None:
+        assert "learning_tests_required" in RUBRIC_FILE.read_text(), (
+            "rubric.md must document the learning_tests_required read pattern (ENH-2232)"
+        )
+
+    def test_ll_learning_tests_check_in_rubric(self) -> None:
+        assert "ll-learning-tests check" in RUBRIC_FILE.read_text(), (
+            "rubric.md must include the ll-learning-tests check invocation (ENH-2232)"
+        )
+
+    def test_learning_test_context_block_in_rubric(self) -> None:
+        assert "## Learning Test Context" in RUBRIC_FILE.read_text(), (
+            "rubric.md must define the ## Learning Test Context block format (ENH-2232)"
+        )
+
+    def test_stop_override_in_phase_3(self) -> None:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 3:")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        phase_3_text = content[start:end]
+        assert "missing" in phase_3_text or "refuted" in phase_3_text, (
+            "Phase 3 must document the hard STOP override for missing/refuted targets (ENH-2232)"
+        )
+
+    def test_ll_learning_tests_in_allowed_tools(self) -> None:
+        content = SKILL_FILE.read_text()
+        frontmatter_end = content.index("\n---", 3)
+        frontmatter = content[:frontmatter_end]
+        assert "ll-learning-tests" in frontmatter, (
+            "SKILL.md allowed-tools frontmatter must include Bash(ll-learning-tests:*) (ENH-2232)"
+        )
+
+
+class TestConfidenceCheckRubricLearningTestStatus:
+    """rubric.md must include Learning Test Status scoring rows (ENH-2232)."""
+
+    def test_minus_10_penalty_present(self) -> None:
+        assert "−10" in RUBRIC_FILE.read_text(), (
+            "rubric.md must include the −10 penalty row for missing/refuted learning test targets (ENH-2232)"
+        )
+
+    def test_minus_5_penalty_present(self) -> None:
+        assert "−5" in RUBRIC_FILE.read_text(), (
+            "rubric.md must include the −5 penalty row for stale learning test targets (ENH-2232)"
         )

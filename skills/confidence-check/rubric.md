@@ -105,6 +105,72 @@ After building `ISSUE_FILES`, iterate and evaluate exactly as in Batch Mode. The
 
 ---
 
+## Phase 1.5 — Pre-Fetch Learning Test Context
+
+Check `learning_tests_required` from issue frontmatter; if present and non-empty, run `ll-learning-tests check` per target and build an injection block.
+
+```bash
+LT_TARGETS=$(ll-issues show "${ISSUE_ID}" --json 2>/dev/null | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+v = d.get('learning_tests_required')
+print(v or '')" 2>/dev/null || true)
+
+LT_STOP=false
+LT_ROWS=""
+
+if [ -n "$LT_TARGETS" ]; then
+    IFS=',' read -ra TARGETS <<< "$LT_TARGETS"
+    for target in "${TARGETS[@]}"; do
+        target=$(echo "$target" | xargs)
+        result=$(ll-learning-tests check "$target" 2>/dev/null)
+        if [ $? -eq 0 ] && [ -n "$result" ]; then
+            status=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','unknown'))")
+            notes=""
+            if [ "$status" = "refuted" ]; then
+                notes=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('refutation_summary',''))")
+                LT_STOP=true
+            fi
+        else
+            status="missing"
+            LT_STOP=true
+        fi
+        LT_ROWS+="| \"$target\" | $status | $notes |\n"
+    done
+fi
+```
+
+`ll-learning-tests check "<target>"` exit semantics: exit 0 + JSON stdout → record found (`status` is `"proven"`, `"stale"`, or `"refuted"`); exit 1 + no stdout → record not found (treat as `"missing"`). Do **not** use `--stale-aware`; that flag collapses stale+missing into a single exit 1 and loses the distinction needed for differential scoring.
+
+When `LT_ROWS` is non-empty, inject the following **Learning Test Context** block into Phase 2 assessment:
+
+```
+## Learning Test Context
+
+The following external API assumptions are declared in this issue's frontmatter:
+
+| Target | Status | Notes |
+|--------|--------|-------|
+| "<target>" | proven/stale/refuted/missing | [refutation summary if refuted] |
+```
+
+If `learning_tests_required` is absent or empty, omit this block entirely (no placeholder).
+
+### Learning Test Status Scoring (Criterion 1 Modifier)
+
+These modifiers apply on top of Criterion 1 when `learning_tests_required` is present:
+
+| Target Status | Score Modifier | Action |
+|---------------|----------------|--------|
+| proven | 0 | No penalty |
+| stale | −5 | API may have changed; verify before implementing |
+| refuted | −10 | Assumption disproven; forces STOP — ADDRESS GAPS |
+| missing | −10 | No test record found; forces STOP — ADDRESS GAPS |
+
+Any `missing` or `refuted` target triggers the **Phase 3 hard override**: output `STOP — ADDRESS GAPS` regardless of aggregate readiness score (see SKILL.md Phase 3).
+
+---
+
 ## Phase 2 — Readiness Scoring Tables (0-20 points each)
 
 ### Criterion 1: No Duplicate Implementations
