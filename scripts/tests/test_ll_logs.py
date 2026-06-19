@@ -19,10 +19,13 @@ from little_loops.cli.logs import (
     _classify_outcome,
     _cmd_tail,
     _compute_session_diff,
+    _detect_ll_signal,
     _EvalInvocation,
     _events_from_jsonl,
     _extract_eval_invocation,
+    _extract_tool_name,
     _fixture_to_harness_argv,
+    _InvocationSignal,
     _is_ll_relevant,
     _parse_args,
     _redact_input_context,
@@ -3210,3 +3213,139 @@ class TestEvalExportRoundTrip:
         assert len(fixtures) == 1
         assert fixtures[0]["target"] == "refine-issue"
         assert fixtures[0]["session_id"] == "sess-known"
+
+
+class TestDetectLlSignal:
+    """Unit tests for the shared _detect_ll_signal() helper and _InvocationSignal dataclass."""
+
+    def test_invocation_signal_fields(self) -> None:
+        """_InvocationSignal has expected fields and is constructable."""
+        sig = _InvocationSignal(
+            tool_name="scan-codebase",
+            runner="queue-operation",
+            input_context="/ll:scan-codebase",
+        )
+        assert sig.tool_name == "scan-codebase"
+        assert sig.runner == "queue-operation"
+        assert sig.input_context == "/ll:scan-codebase"
+
+    def test_detect_ll_signal_queue_enqueue(self) -> None:
+        """Signal (a): queue-operation enqueue with /ll:<name> content."""
+        record = {
+            "type": "queue-operation",
+            "operation": "enqueue",
+            "content": "/ll:scan-codebase --deep",
+        }
+        sig = _detect_ll_signal(record)
+        assert sig is not None
+        assert sig.tool_name == "scan-codebase"
+        assert sig.runner == "queue-operation"
+        assert sig.input_context == "/ll:scan-codebase --deep"
+
+    def test_detect_ll_signal_command_name_user_record(self) -> None:
+        """Signal (b): user record with <command-name>/ll:<name> pattern."""
+        record = {
+            "type": "user",
+            "message": {
+                "content": [
+                    {"text": "<command-name>/ll:refine-issue</command-name>\nENH-2132"}
+                ]
+            },
+        }
+        sig = _detect_ll_signal(record)
+        assert sig is not None
+        assert sig.tool_name == "refine-issue"
+        assert sig.runner == "user"
+        assert "<command-name>/ll:refine-issue" in sig.input_context
+
+    def test_detect_ll_signal_bash_tool_use(self) -> None:
+        """Signal (c): assistant Bash tool-use invoking ll-<tool>."""
+        record = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {"command": "ll-issues path ENH-2132"},
+                    }
+                ]
+            },
+        }
+        sig = _detect_ll_signal(record)
+        assert sig is not None
+        assert sig.tool_name == "ll-issues"
+        assert sig.runner == "bash"
+        assert sig.input_context == "ll-issues path ENH-2132"
+
+    def test_detect_ll_signal_returns_none_for_unrelated(self) -> None:
+        """Unrelated records return None."""
+        assert _detect_ll_signal({"type": "summary", "message": "hello"}) is None
+        assert _detect_ll_signal({"type": "user", "message": {"content": "no skill here"}}) is None
+        assert _detect_ll_signal({}) is None
+
+    def test_extract_tool_name_delegates_to_detect_ll_signal(self) -> None:
+        """Shim: _extract_tool_name returns the same value as _detect_ll_signal().tool_name."""
+        records = [
+            {"type": "queue-operation", "operation": "enqueue", "content": "/ll:check-code"},
+            {
+                "type": "user",
+                "message": {"content": "<command-name>/ll:wire-issue</command-name>"},
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Bash",
+                            "input": {"command": "ll-logs discover"},
+                        }
+                    ]
+                },
+            },
+            {"type": "summary"},
+        ]
+        for rec in records:
+            sig = _detect_ll_signal(rec)
+            expected = sig.tool_name if sig else None
+            assert _extract_tool_name(rec) == expected
+
+    def test_extract_eval_invocation_delegates_to_detect_ll_signal(self) -> None:
+        """Shim: _extract_eval_invocation runner/target/input_context come from _detect_ll_signal."""
+        record = {
+            "type": "user",
+            "sessionId": "sess-1",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {"content": "<command-name>/ll:wire-issue</command-name>\nENH-2132"},
+        }
+        sig = _detect_ll_signal(record)
+        inv = _extract_eval_invocation(record)
+        assert sig is not None
+        assert inv is not None
+        assert inv.target == sig.tool_name
+        assert inv.runner == "skill"
+        assert inv.input_context == sig.input_context
+
+    def test_extract_eval_invocation_bash_uses_full_command_as_target(self) -> None:
+        """Bash shim: _EvalInvocation target is the full command, runner is 'cmd'."""
+        cmd = "ll-issues path ENH-2132 2>/dev/null"
+        record = {
+            "type": "assistant",
+            "sessionId": "sess-bash",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "name": "Bash", "input": {"command": cmd}}
+                ]
+            },
+        }
+        sig = _detect_ll_signal(record)
+        inv = _extract_eval_invocation(record)
+        assert sig is not None
+        assert sig.runner == "bash"
+        assert sig.input_context == cmd
+        assert inv is not None
+        assert inv.runner == "cmd"
+        assert inv.target == cmd
+        assert inv.input_context == ""

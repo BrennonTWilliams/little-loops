@@ -281,13 +281,29 @@ def _extract_ll_event_streams(
     return events_by_session
 
 
-def _extract_tool_name(record: dict) -> str | None:
-    """Extract the ll tool/skill name from a JSONL record.
+@dataclass
+class _InvocationSignal:
+    """Raw ll invocation signal extracted from a JSONL record.
 
-    Detects three signal types (matching ``_is_ll_relevant``):
-    (a) queue-operation enqueue with ``/ll:<name>`` → skill name
-    (b) user records with ``<command-name>/ll:<name>`` → skill name
-    (c) assistant Bash tool-use invoking ``ll-<tool>`` → CLI tool name
+    Shared by ``_extract_tool_name`` and ``_extract_eval_invocation`` — single
+    source of truth for the three-signal detection logic.
+    """
+
+    tool_name: str  # matched skill/tool name, e.g. "scan-codebase" or "ll-issues"
+    runner: str  # signal source: "queue-operation" | "user" | "bash"
+    input_context: str  # raw matched text (full cmd for bash; user/queue text otherwise)
+
+
+def _detect_ll_signal(record: dict) -> _InvocationSignal | None:
+    """Extract the ll invocation signal from a JSONL record.
+
+    Detects three signal types:
+    (a) queue-operation enqueue with ``/ll:<name>`` → tool_name=name, runner=queue-operation
+    (b) user records with ``<command-name>/ll:<name>`` → tool_name=name, runner=user
+    (c) assistant Bash tool-use invoking ``ll-<tool>`` → tool_name=match, runner=bash
+
+    ``input_context`` holds the raw matched text used by eval-export consumers.
+    Returns ``None`` for records carrying no ll invocation signal.
     """
     record_type = record.get("type")
 
@@ -297,7 +313,7 @@ def _extract_tool_name(record: dict) -> str | None:
         if isinstance(content, str) and content.startswith("/ll:"):
             m = _QUEUE_SKILL_RE.match(content)
             if m:
-                return m.group(1)
+                return _InvocationSignal(m.group(1), "queue-operation", content)
 
     # (b) user records with <command-name>/ll: pattern
     if record_type == "user":
@@ -317,11 +333,10 @@ def _extract_tool_name(record: dict) -> str | None:
         if text:
             m = _COMMAND_NAME_SKILL_RE.search(text)
             if m:
-                # Extract skill name, stripping trailing </command-name> if present
                 name = m.group(1)
                 if name.endswith("</command-name>"):
                     name = name[: -len("</command-name>")]
-                return name
+                return _InvocationSignal(name, "user", text)
 
     # (c) assistant Bash tool-use invoking ll-<tool>
     if record_type == "assistant":
@@ -337,9 +352,15 @@ def _extract_tool_name(record: dict) -> str | None:
                     cmd = block.get("input", {}).get("command", "")
                     m = _LL_BASH_RE.search(cmd)
                     if m:
-                        return m.group(1)
+                        return _InvocationSignal(m.group(1), "bash", cmd)
 
     return None
+
+
+def _extract_tool_name(record: dict) -> str | None:
+    """Extract the ll tool/skill name from a JSONL record."""
+    sig = _detect_ll_signal(record)
+    return sig.tool_name if sig else None
 
 
 def _parse_iso_timestamp(ts: str) -> datetime:
@@ -1397,65 +1418,21 @@ class _EvalInvocation:
 def _extract_eval_invocation(record: dict) -> _EvalInvocation | None:
     """Reconstruct a single ll-harness invocation from a JSONL record.
 
-    Mirrors ``_extract_tool_name``'s three signals but also captures the runner
-    kind and raw input-context text needed for EvalFixture export:
-      (a) queue enqueue ``/ll:<name>``      -> runner=skill, target=name
-      (b) user ``<command-name>/ll:<name>`` -> runner=skill, target=name
-      (c) assistant Bash ``ll-<tool>``      -> runner=cmd,   target=<full command>
+    Delegates signal detection to ``_detect_ll_signal`` and wraps the result
+    in an ``_EvalInvocation`` with ``session_id`` and ``timestamp`` from the
+    record.  Runner mapping: queue-operation/user → "skill"; bash → "cmd"
+    (target becomes the full command; input_context is "").
 
     Returns None for records that carry no ll invocation signal.
     """
-    record_type = record.get("type")
+    sig = _detect_ll_signal(record)
+    if sig is None:
+        return None
     sid = record.get("sessionId", "")
     ts = record.get("timestamp", "")
-
-    # (a) queue-operation enqueue
-    if record_type == "queue-operation" and record.get("operation") == "enqueue":
-        content = record.get("content", "")
-        if isinstance(content, str) and content.startswith("/ll:"):
-            m = _QUEUE_SKILL_RE.match(content)
-            if m:
-                return _EvalInvocation("skill", m.group(1), sid, ts, content)
-
-    # (b) user records with <command-name>/ll: pattern
-    if record_type == "user":
-        message = record.get("message", {})
-        if not isinstance(message, dict):
-            return None
-        content = message.get("content")
-        text = ""
-        if isinstance(content, str):
-            text = content
-        elif isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict):
-                    text = block.get("text", "")
-                    if text:
-                        break
-        if text:
-            m = _COMMAND_NAME_SKILL_RE.search(text)
-            if m:
-                name = m.group(1)
-                if name.endswith("</command-name>"):
-                    name = name[: -len("</command-name>")]
-                return _EvalInvocation("skill", name, sid, ts, text)
-
-    # (c) assistant Bash tool-use invoking ll-<tool>
-    if record_type == "assistant":
-        message = record.get("message", {})
-        content = message.get("content", [])
-        if isinstance(content, list):
-            for block in content:
-                if (
-                    isinstance(block, dict)
-                    and block.get("type") == "tool_use"
-                    and block.get("name") == "Bash"
-                ):
-                    cmd = block.get("input", {}).get("command", "")
-                    if _LL_BASH_RE.search(cmd):
-                        return _EvalInvocation("cmd", cmd, sid, ts, "")
-
-    return None
+    if sig.runner == "bash":
+        return _EvalInvocation("cmd", sig.input_context, sid, ts, "")
+    return _EvalInvocation("skill", sig.tool_name, sid, ts, sig.input_context)
 
 
 def _record_has_error(record: dict) -> bool:
