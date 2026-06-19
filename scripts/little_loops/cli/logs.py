@@ -220,7 +220,7 @@ class InvocationEvent:
 
 
 def _extract_ll_event_streams(
-    project_folder: Path, *, window_days: int | None = None
+    project_folder: Path, *, cutoff: datetime | None = None
 ) -> dict[str, list[InvocationEvent]]:
     """Extract per-session ordered ll-invocation event streams from JSONL files.
 
@@ -230,7 +230,7 @@ def _extract_ll_event_streams(
 
     Args:
         project_folder: Path to the claude project session directory.
-        window_days: If set, filter records to within N days of the latest record.
+        cutoff: If set, exclude records with timestamps before this datetime.
 
     Returns:
         Dict of ``{session_id: [InvocationEvent, ...]}`` with events sorted by timestamp.
@@ -241,9 +241,7 @@ def _extract_ll_event_streams(
     if not jsonl_files:
         return events_by_session
 
-    # Collect all raw events first for window-days filtering
     all_events: list[InvocationEvent] = []
-    latest_ts: str | None = None
 
     for jsonl_file in jsonl_files:
         try:
@@ -266,15 +264,11 @@ def _extract_ll_event_streams(
 
                     evt = InvocationEvent(tool_name=tool_name, timestamp=ts, session_id=sid)
                     all_events.append(evt)
-
-                    if ts and (latest_ts is None or ts > latest_ts):
-                        latest_ts = ts
         except OSError:
             continue
 
-    # Apply window-days filter
-    if window_days is not None and latest_ts:
-        cutoff = _parse_iso_timestamp(latest_ts) - timedelta(days=window_days)
+    # Apply wall-clock cutoff filter
+    if cutoff is not None:
         all_events = [e for e in all_events if _parse_iso_timestamp(e.timestamp) >= cutoff]
 
     # Bucket by session and sort
@@ -491,10 +485,12 @@ def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
             if folder is not None:
                 project_items.append((decoded_path, folder))
 
+    cutoff = datetime.now(UTC) - timedelta(days=args.window_days) if args.window_days is not None else None
+
     # Aggregate events across all projects
     all_events: dict[str, list[InvocationEvent]] = {}
     for _cwd_path, project_folder in project_items:
-        events = _extract_ll_event_streams(project_folder, window_days=args.window_days)
+        events = _extract_ll_event_streams(project_folder, cutoff=cutoff)
         for sid, evt_list in events.items():
             all_events.setdefault(sid, []).extend(evt_list)
 
@@ -674,7 +670,7 @@ _CORRECTION_WINDOW_SEC = 30
 def _aggregate_skill_stats(
     db_path: Path,
     *,
-    window_days: int | None = None,
+    cutoff: datetime | None = None,
 ) -> dict[str, dict[str, int]] | None:
     """Aggregate per-skill invocation and correction counts from history.db.
 
@@ -698,9 +694,7 @@ def _aggregate_skill_stats(
         if not skill_rows:
             return {}
 
-        if window_days is not None:
-            latest_ts = skill_rows[-1]["ts"] or ""
-            cutoff = _parse_iso_timestamp(latest_ts) - timedelta(days=window_days)
+        if cutoff is not None:
             skill_rows = [r for r in skill_rows if _parse_iso_timestamp(r["ts"] or "") >= cutoff]
 
         stats: dict[str, dict[str, int]] = defaultdict(lambda: {"invocations": 0, "corrections": 0})
@@ -818,9 +812,11 @@ def _cmd_dead_skills(args: argparse.Namespace, logger: Logger) -> int:
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
         catalog_root = Path.cwd()
 
+    cutoff = datetime.now(UTC) - timedelta(days=args.window_days) if args.window_days is not None else None
+
     merged: dict[str, int] = defaultdict(int)
     for db_path in db_paths:
-        result = _aggregate_skill_stats(db_path, window_days=args.window_days)
+        result = _aggregate_skill_stats(db_path, cutoff=cutoff)
         if result is None:
             continue
         for skill, counts in result.items():
@@ -946,7 +942,6 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
 
     # raw_clusters maps (cwd_path, tool_name, normalized_sig) -> (count, sample_error, session_ids, latest_ts)
     raw_clusters: dict[tuple[Path, str, str], tuple[int, str, list[str], str]] = {}
-    latest_ts_overall: str = ""
 
     for _cwd_path, project_folder in project_items:
         jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
@@ -973,9 +968,6 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
                 record_type = record.get("type")
                 ts = record.get("timestamp", "")
                 session_id = record.get("sessionId", "")
-
-                if ts and ts > latest_ts_overall:
-                    latest_ts_overall = ts
 
                 if record_type == "assistant":
                     message = record.get("message", {})
@@ -1042,9 +1034,9 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
                         else:
                             raw_clusters[key] = (1, error_text[:500], [session_id], ts)
 
-    # Apply window-days filter using the latest seen timestamp as anchor
-    if args.window_days is not None and latest_ts_overall:
-        cutoff = _parse_iso_timestamp(latest_ts_overall) - timedelta(days=args.window_days)
+    # Apply wall-clock cutoff filter
+    if args.window_days is not None:
+        cutoff = datetime.now(UTC) - timedelta(days=args.window_days)
         raw_clusters = {
             k: v for k, v in raw_clusters.items() if _parse_iso_timestamp(v[3]) >= cutoff
         }
@@ -1149,10 +1141,12 @@ def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
         decoded_paths = discover_all_projects(logger)
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
 
+    cutoff = datetime.now(UTC) - timedelta(days=args.window_days) if args.window_days is not None else None
+
     merged: dict[str, dict[str, int]] = defaultdict(lambda: {"invocations": 0, "corrections": 0})
     found_any_db = False
     for db_path in db_paths:
-        result = _aggregate_skill_stats(db_path, window_days=args.window_days)
+        result = _aggregate_skill_stats(db_path, cutoff=cutoff)
         if result is None:
             continue
         found_any_db = True
@@ -1770,7 +1764,7 @@ Examples:
         type=int,
         default=None,
         metavar="D",
-        help="Only consider records within D days of latest record",
+        help="Only consider records within the last D calendar days",
     )
     add_json_arg(sequences_parser)
 
@@ -1795,7 +1789,7 @@ Examples:
         type=int,
         default=None,
         metavar="D",
-        help="Only consider records within D days of latest record",
+        help="Only consider records within the last D calendar days",
     )
     stats_parser.add_argument(
         "--sort",
@@ -1826,7 +1820,7 @@ Examples:
         type=int,
         default=None,
         metavar="D",
-        help="Only consider records within D days of latest record",
+        help="Only consider records within the last D calendar days",
     )
     scan_failures_parser.add_argument(
         "--capture",
@@ -1861,7 +1855,7 @@ Examples:
         type=int,
         default=None,
         metavar="D",
-        help="Only consider records within D days of latest record",
+        help="Only consider records within the last D calendar days",
     )
     dead_skills_parser.add_argument(
         "--threshold",

@@ -7,6 +7,7 @@ import json
 import logging
 import sqlite3
 import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -863,7 +864,11 @@ class TestSequences:
             assert "3" in out
 
     def test_sequences_window_days_filter(self, capsys) -> None:
-        """sequences --window-days filters records to within N days of latest."""
+        """sequences --window-days uses wall-clock anchor to exclude old records."""
+        now = datetime.now(UTC)
+        recent_ts = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_ts = (now - timedelta(days=100)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             output_cwd = Path(tmpdir) / "output"
@@ -878,15 +883,15 @@ class TestSequences:
                 [
                     {
                         **self._assistant_bash_record("ll-issues list", "s1"),
-                        "timestamp": "2026-06-01T10:00:00Z",
+                        "timestamp": recent_ts,
                     },
                     {
                         **self._assistant_bash_record("ll-issues show", "s1"),
-                        "timestamp": "2026-06-01T10:01:00Z",
+                        "timestamp": recent_ts,
                     },
                     {
                         **self._assistant_bash_record("ll-old-command", "s2"),
-                        "timestamp": "2020-01-01T00:00:00Z",
+                        "timestamp": old_ts,
                     },
                 ],
             )
@@ -1452,6 +1457,35 @@ class TestStats:
             args = _parse_args()
         assert args.window_days == 7
 
+    def test_stats_window_days_behavioral(self, tmp_path: Path) -> None:
+        """stats --window-days uses wall-clock anchor to exclude old records."""
+        now = datetime.now(UTC)
+        recent_ts = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_ts = (now - timedelta(days=100)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        _populate_skill_events(
+            db_path,
+            [
+                (old_ts, "s1", "old-skill", ""),
+                (recent_ts, "s1", "new-skill", ""),
+            ],
+        )
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--window-days", "10", "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        skill_names = {r["skill"] for r in data}
+        assert "new-skill" in skill_names
+        assert "old-skill" not in skill_names
+
     def test_stats_project_and_all_mutually_exclusive(self) -> None:
         """--project and --all cannot be combined."""
         with patch("sys.argv", ["ll-logs", "stats", "--project", "/tmp", "--all"]):
@@ -1692,17 +1726,22 @@ class TestStats:
         assert result["capture-issue"]["invocations"] == 1
 
     def test_aggregate_skill_stats_window_days(self, tmp_path: Path) -> None:
-        """window_days filters out older records."""
+        """cutoff parameter filters out records older than the cutoff datetime."""
+        now = datetime.now(UTC)
+        recent_ts = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_ts = (now - timedelta(days=100)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         db_path = tmp_path / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
         _populate_skill_events(
             db_path,
             [
-                ("2025-01-01T00:00:00Z", "s1", "old-skill", ""),
-                ("2026-06-01T00:00:00Z", "s1", "new-skill", ""),
+                (old_ts, "s1", "old-skill", ""),
+                (recent_ts, "s1", "new-skill", ""),
             ],
         )
-        result = _aggregate_skill_stats(db_path, window_days=30)
+        cutoff = now - timedelta(days=30)
+        result = _aggregate_skill_stats(db_path, cutoff=cutoff)
         assert result is not None
         assert "new-skill" in result
         assert "old-skill" not in result
@@ -1742,6 +1781,49 @@ class TestDeadSkills:
         with patch("sys.argv", ["ll-logs", "dead-skills", "--all", "--window-days", "7"]):
             args = _parse_args()
         assert args.window_days == 7
+
+    def test_dead_skills_window_days_behavioral(self, tmp_path: Path) -> None:
+        """dead-skills --window-days uses wall-clock anchor to exclude old invocations."""
+        now = datetime.now(UTC)
+        recent_ts = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_ts = (now - timedelta(days=100)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        skills_dir = tmp_path / "skills"
+        self._make_skill(skills_dir, "active-skill")
+        self._make_skill(skills_dir, "dormant-skill")
+        _populate_skill_events(
+            db_path,
+            [
+                (recent_ts, "s1", "active-skill", ""),
+                (recent_ts, "s1", "active-skill", ""),
+                (recent_ts, "s1", "active-skill", ""),
+                (recent_ts, "s1", "active-skill", ""),  # above threshold=3
+                (old_ts, "s1", "dormant-skill", ""),
+                (old_ts, "s1", "dormant-skill", ""),
+                (old_ts, "s1", "dormant-skill", ""),
+                (old_ts, "s1", "dormant-skill", ""),  # above threshold, but outside window
+            ],
+        )
+
+        captured: list[str] = []
+        with (
+            patch(
+                "sys.argv",
+                ["ll-logs", "dead-skills", "--project", str(tmp_path), "--window-days", "10", "--json"],
+            ),
+            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        skill_names = {r["skill"] for r in data}
+        # dormant-skill had all invocations outside the window → appears as dead
+        assert "dormant-skill" in skill_names
+        # active-skill had 4 recent invocations above threshold → absent from dead list
+        assert "active-skill" not in skill_names
 
     def test_dead_skills_project_and_all_mutually_exclusive(self) -> None:
         """--project and --all cannot be combined."""
@@ -2007,6 +2089,125 @@ class TestScanFailures:
         with patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--window-days", "7"]):
             args = _parse_args()
         assert args.window_days == 7
+
+    def test_scan_failures_window_days_behavioral(self, capsys) -> None:
+        """scan-failures --window-days uses wall-clock anchor to exclude old failures."""
+        now = datetime.now(UTC)
+        recent_ts = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_ts = (now - timedelta(days=100)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record(
+                        "ll-history --bad-flag", tool_use_id="t1", timestamp=recent_ts
+                    ),
+                    self._user_tool_result_record(
+                        tool_use_id="t1",
+                        content="ll-history: error: unrecognized arguments: --bad-flag",
+                        is_error=True,
+                        timestamp=recent_ts,
+                    ),
+                    self._assistant_bash_record(
+                        "ll-old-tool --bad", tool_use_id="t2", timestamp=old_ts
+                    ),
+                    self._user_tool_result_record(
+                        tool_use_id="t2",
+                        content="ll-old-tool: error: ancient failure signature",
+                        is_error=True,
+                        timestamp=old_ts,
+                    ),
+                ],
+            )
+
+            with (
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "scan-failures", "--project", str(project_path), "--window-days", "10"],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "ll-history" in captured.out
+        assert "ll-old-tool" not in captured.out
+
+    def test_scan_failures_window_days_cross_project(self, capsys) -> None:
+        """scan-failures --all --window-days uses the same calendar cutoff for all projects."""
+        now = datetime.now(UTC)
+        recent_ts = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_ts = (now - timedelta(days=100)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            # Project A: only recent activity
+            self._make_project_dir(
+                claude_projects,
+                home,
+                "project-a",
+                [
+                    self._assistant_bash_record(
+                        "ll-issues list --bad", tool_use_id="ta1", timestamp=recent_ts
+                    ),
+                    self._user_tool_result_record(
+                        tool_use_id="ta1",
+                        content="ll-issues: error: project-a recent failure",
+                        is_error=True,
+                        timestamp=recent_ts,
+                    ),
+                ],
+            )
+
+            # Project B: only old activity (no recent records at all)
+            self._make_project_dir(
+                claude_projects,
+                home,
+                "project-b",
+                [
+                    self._assistant_bash_record(
+                        "ll-sprint --bad", tool_use_id="tb1", timestamp=old_ts
+                    ),
+                    self._user_tool_result_record(
+                        tool_use_id="tb1",
+                        content="ll-sprint: error: project-b old failure",
+                        is_error=True,
+                        timestamp=old_ts,
+                    ),
+                ],
+            )
+
+            with (
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "scan-failures", "--all", "--window-days", "10"],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.discover_all_projects") as mock_discover,
+            ):
+                mock_discover.return_value = [
+                    home / "project-a",
+                    home / "project-b",
+                ]
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Project A recent failure should appear
+        assert "ll-issues" in captured.out
+        # Project B old failure should be excluded even though it's the only entry in project B
+        assert "ll-sprint" not in captured.out
 
     def test_scan_failures_project_and_all_mutually_exclusive(self) -> None:
         """--project and --all cannot be combined."""
