@@ -2,13 +2,21 @@
 id: ENH-2134
 type: ENH
 priority: P5
-status: open
-title: ll-logs minor code cleanup bundle (double import, readlines vs streaming, Path wrap)
+status: done
+title: ll-logs minor code cleanup bundle (double import, readlines vs streaming, Path
+  wrap)
 discovered_date: 2026-06-14
 discovered_by: capture-issue
-captured_at: "2026-06-14T01:52:17Z"
+captured_at: '2026-06-14T01:52:17Z'
+completed_at: '2026-06-19T20:08:23Z'
 parent: EPIC-1918
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 25
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2134: ll-logs minor code cleanup bundle (double import, readlines vs streaming, Path wrap)
@@ -58,9 +66,9 @@ Line 1147: `Path(args.project)` — `args.project` is declared `type=Path` in `s
 
 ## Implementation Steps
 
-1. **`_cmd_eval_export` (line 1559)**: Remove `from little_loops.session_store import resolve_history_db` — the module-level import at line 24 is already in scope.
-2. **`_cmd_scan_failures` (lines 972–980)**: Remove `lines = f.readlines()` (line 973) and change `for line in lines:` (line 980) to `for line in f:` — the `pending` dict (line 978) and all loop body variables are compatible with streaming; no other changes needed.
-3. **`_cmd_stats` (line 1160)**: Change `Path(args.project)` to `args.project` — `stats_parser` declares `--project` as `type=Path` (line 1753), so the value is already a `Path`.
+1. **`_cmd_eval_export` (line 1562)**: Remove `from little_loops.session_store import resolve_history_db` — the module-level import at line 24 is already in scope.
+2. **`_cmd_scan_failures` (lines 975–983)**: Remove `lines = f.readlines()` (line 976) and change `for line in lines:` (line 983) to `for line in f:` — the `pending` dict (line 981) and all loop body variables are compatible with streaming; no other changes needed.
+3. **`_cmd_stats` (line 1163)**: Change `Path(args.project)` to `args.project` — `stats_parser` declares `--project` as `type=Path` (line 1756), so the value is already a `Path`.
 
 No test changes needed — these are all non-behavioral cleanup items.
 
@@ -83,9 +91,9 @@ _Added by `/ll:refine-issue` — verified 2026-06-19 against current code:_
 
 | Item | Issue states | Actual line |
 |------|-------------|-------------|
-| `resolve_history_db` local re-import (`_cmd_eval_export`) | 1590 | **1559** |
-| `f.readlines()` in `_cmd_scan_failures` | 957 | **973** |
-| `Path(args.project)` double-wrap in `_cmd_stats` | 1147 | **1160** |
+| `resolve_history_db` local re-import (`_cmd_eval_export`) | 1590 | **1562** |
+| `f.readlines()` in `_cmd_scan_failures` | 957 | **976** |
+| `Path(args.project)` double-wrap in `_cmd_stats` | 1147 | **1163** |
 
 **Canonical streaming pattern (reference):**
 - `scripts/little_loops/cli/logs.py:495` — `_cmd_sequences`: `cwd_path: Path = args.project` (no wrap), feeds directly into `get_project_folder()`
@@ -130,6 +138,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Open** | Created: 2026-06-14 | Priority: P5
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-19T20:03:56 - `e218e52c-5ba7-40fd-8b57-a7c14401e498.jsonl`
+- `/ll:confidence-check` - 2026-06-19T22:00:00Z - `9295778d-0860-4ac9-a97e-a5ebc5aeb6ab.jsonl`
 - `/ll:wire-issue` - 2026-06-19T19:47:21 - `1ab8d550-7f64-413a-91f7-000380d1fda3.jsonl`
 - `/ll:refine-issue` - 2026-06-19T19:40:32 - `97db09a4-8f95-4735-af2a-f8a1ba636df4.jsonl`
 - `/ll:format-issue` - 2026-06-14T01:58:59 - `177b54d4-d59e-4c5f-b2ab-5b0d7849573b.jsonl`

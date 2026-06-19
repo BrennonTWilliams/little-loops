@@ -971,92 +971,90 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
         jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
 
         for jsonl_file in jsonl_files:
-            try:
-                with open(jsonl_file, encoding="utf-8") as f:
-                    lines = f.readlines()
-            except OSError:
-                continue
-
             # pending maps tool_use_id -> (ll_tool_name, timestamp)
             pending: dict[str, tuple[str, str]] = {}
 
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-
-                record_type = record.get("type")
-                ts = record.get("timestamp", "")
-                session_id = record.get("sessionId", "")
-
-                if record_type == "assistant":
-                    message = record.get("message", {})
-                    content = message.get("content", [])
-                    if not isinstance(content, list):
-                        continue
-                    for block in content:
-                        if not isinstance(block, dict):
+            try:
+                with open(jsonl_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
                             continue
-                        if block.get("type") != "tool_use" or block.get("name") != "Bash":
-                            continue
-                        cmd = block.get("input", {}).get("command", "")
-                        m = _LL_BASH_RE.search(cmd)
-                        if not m:
-                            continue
-                        tool_name = m.group(1)
-                        # Skip tokens that are not real ll CLIs (e.g. ll-labs, ll-marketing)
-                        if _cli_allowlist and tool_name not in _cli_allowlist:
-                            continue
-                        block_id = block.get("id", "")
-                        if block_id:
-                            pending[block_id] = (tool_name, ts)
-
-                elif record_type == "user":
-                    message = record.get("message", {})
-                    content = message.get("content", [])
-                    if not isinstance(content, list) or not content:
-                        continue
-                    for block in content:
-                        if not isinstance(block, dict):
-                            continue
-                        if block.get("type") != "tool_result":
-                            continue
-                        tool_use_id = block.get("tool_use_id", "")
-                        if tool_use_id not in pending:
-                            continue
-                        tool_name, _invoke_ts = pending.pop(tool_use_id)
-
-                        # Skip ll-verify-* tools — exit 1 is expected gate behavior
-                        if _LL_VERIFY_RE.match(tool_name):
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
                             continue
 
-                        is_error_flag = block.get("is_error") is True
-                        raw_content = block.get("content", "")
-                        error_text = _extract_error_text(raw_content)
-                        has_traceback = "Traceback (most recent call last)" in error_text
+                        record_type = record.get("type")
+                        ts = record.get("timestamp", "")
+                        session_id = record.get("sessionId", "")
 
-                        if not (is_error_flag or has_traceback):
-                            continue
+                        if record_type == "assistant":
+                            message = record.get("message", {})
+                            content = message.get("content", [])
+                            if not isinstance(content, list):
+                                continue
+                            for block in content:
+                                if not isinstance(block, dict):
+                                    continue
+                                if block.get("type") != "tool_use" or block.get("name") != "Bash":
+                                    continue
+                                cmd = block.get("input", {}).get("command", "")
+                                m = _LL_BASH_RE.search(cmd)
+                                if not m:
+                                    continue
+                                tool_name = m.group(1)
+                                # Skip tokens that are not real ll CLIs (e.g. ll-labs, ll-marketing)
+                                if _cli_allowlist and tool_name not in _cli_allowlist:
+                                    continue
+                                block_id = block.get("id", "")
+                                if block_id:
+                                    pending[block_id] = (tool_name, ts)
 
-                        returncode = 1 if is_error_flag else 0
-                        failure_type, _reason = classify_failure(error_text, returncode)
-                        if failure_type == FailureType.TRANSIENT:
-                            continue
+                        elif record_type == "user":
+                            message = record.get("message", {})
+                            content = message.get("content", [])
+                            if not isinstance(content, list) or not content:
+                                continue
+                            for block in content:
+                                if not isinstance(block, dict):
+                                    continue
+                                if block.get("type") != "tool_result":
+                                    continue
+                                tool_use_id = block.get("tool_use_id", "")
+                                if tool_use_id not in pending:
+                                    continue
+                                tool_name, _invoke_ts = pending.pop(tool_use_id)
 
-                        normalized_sig = _normalize_error_sig(error_text)
-                        key = (_cwd_path, tool_name, normalized_sig)
+                                # Skip ll-verify-* tools — exit 1 is expected gate behavior
+                                if _LL_VERIFY_RE.match(tool_name):
+                                    continue
 
-                        if key in raw_clusters:
-                            cnt, sample, sids, _lts = raw_clusters[key]
-                            if session_id not in sids:
-                                sids.append(session_id)
-                            raw_clusters[key] = (cnt + 1, sample, sids, ts)
-                        else:
-                            raw_clusters[key] = (1, error_text[:500], [session_id], ts)
+                                is_error_flag = block.get("is_error") is True
+                                raw_content = block.get("content", "")
+                                error_text = _extract_error_text(raw_content)
+                                has_traceback = "Traceback (most recent call last)" in error_text
+
+                                if not (is_error_flag or has_traceback):
+                                    continue
+
+                                returncode = 1 if is_error_flag else 0
+                                failure_type, _reason = classify_failure(error_text, returncode)
+                                if failure_type == FailureType.TRANSIENT:
+                                    continue
+
+                                normalized_sig = _normalize_error_sig(error_text)
+                                key = (_cwd_path, tool_name, normalized_sig)
+
+                                if key in raw_clusters:
+                                    cnt, sample, sids, _lts = raw_clusters[key]
+                                    if session_id not in sids:
+                                        sids.append(session_id)
+                                    raw_clusters[key] = (cnt + 1, sample, sids, ts)
+                                else:
+                                    raw_clusters[key] = (1, error_text[:500], [session_id], ts)
+            except OSError:
+                continue
 
     # Apply wall-clock cutoff filter
     if args.window_days is not None:
@@ -1160,7 +1158,7 @@ def _capture_failure_clusters(
 def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
     """Aggregate skill invocation frequency and correction rate from history.db."""
     if args.project:
-        db_paths = [Path(args.project) / ".ll" / "history.db"]
+        db_paths = [args.project / ".ll" / "history.db"]
     else:
         decoded_paths = discover_all_projects(logger)
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
@@ -1559,8 +1557,6 @@ def _cmd_eval_export(args: argparse.Namespace) -> int:
     if project_folder is None:
         print(f"No session project folder found for: {cwd_path}", file=sys.stderr)
         return 1
-    from little_loops.session_store import resolve_history_db
-
     db_path = resolve_history_db(cwd_path / ".ll" / "history.db")
 
     # Single JSONL pass: collect raw invocations + per-session error flags together
