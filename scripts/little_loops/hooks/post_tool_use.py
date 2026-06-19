@@ -201,4 +201,9 @@ def handle(event: LLHookEvent) -> LLHookResult:
     if config is not None and tool_name in {"Write", "Edit"} and raw_path:
         _maybe_auto_commit(config, cwd, raw_path, tool_name)
 
+    if tool_name == "Bash":
+        from little_loops.hooks import install_learning_gate
+
+        return install_learning_gate.gate(event)
+
     return LLHookResult(exit_code=0)

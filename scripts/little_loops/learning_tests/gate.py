@@ -1,7 +1,8 @@
 """Shared gate utilities for learning-test staleness checks (ENH-2208).
 
-Exposes ``is_record_stale()`` as a standalone importable helper consumed by
-the discoverability gate hook and downstream sprint/release gates
+Exposes ``is_record_stale()`` and ``format_nudge_message()`` as standalone
+importable helpers consumed by the discoverability gate hook, the install
+learning gate hook (ENH-2212), and downstream sprint/release gates
 (ENH-2209, ENH-2210, ENH-2214, ENH-2217).
 """
 
@@ -12,6 +13,20 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from little_loops.learning_tests import LearnTestRecord
+
+
+def format_nudge_message(pkg: str, stale: bool = False) -> str:
+    """Return a nudge message for a package with no proven or stale learning test.
+
+    Args:
+        pkg: The package name (already normalized).
+        stale: If True, the record exists but is stale; otherwise it is absent.
+    """
+    if stale:
+        body = f'Learning test for "{pkg}" is stale.'
+    else:
+        body = f'No learning test for "{pkg}".'
+    return f'[ll: new dependency] {body} Consider: /ll:explore-api "{pkg}"'
 
 
 def is_record_stale(record: LearnTestRecord, stale_after_days: int) -> bool:
