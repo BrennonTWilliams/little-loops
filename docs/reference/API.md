@@ -49,7 +49,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports: `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711) dataclasses; `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue(issue_id, *, limit, db)` (ENH-1711), `issue_effort(issue_id, *, db)`, `recent_issue_velocity(limit, *, db)` (ENH-1905), `lookup_session_metadata(session_id, *, db)` (ENH-1943), `conversation_turns(db_path, *, since, context_window)` (ENH-1942) query functions. All functions return empty lists or `None` on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports: `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711) dataclasses; `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue(issue_id, *, limit, db)` (ENH-1711), `issue_effort(issue_id, *, db)`, `recent_issue_velocity(limit, *, db)` (ENH-1905), `lookup_session_metadata(session_id, *, db)` (ENH-1943), `conversation_turns(db_path, *, since, context_window)` (ENH-1942), `condensed_nodes_for_issue(issue_id, *, limit, node_char_cap, db)` (ENH-2231) query functions. All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -6320,6 +6320,32 @@ Queries `message_events` and `assistant_messages` (requires schema ≥ v11), pai
 **Relationship to `extract_conversation_turns()`:** This function is the DB query path; `extract_conversation_turns()` in `user_messages.py` calls this function first (DB-first, `reader="auto"` mode) and falls back to `_extract_turn_pairs()` (JSONL parsing) when the DB is unavailable or returns no results. The temporal adjacency algorithm is identical in both paths; only the data source differs (SQLite vs. JSONL log files).
 
 **Used by:** `extract_conversation_turns()` in `user_messages.py`, which is called by `ll-messages --sft-format` to extract training examples from either the session DB or raw JSONL logs.
+
+### condensed_nodes_for_issue
+
+```python
+def condensed_nodes_for_issue(
+    issue_id: str,
+    *,
+    limit: int = 3,
+    node_char_cap: int = 500,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[SummaryNode]
+```
+
+Return level-0 condensed `summary_nodes` for an issue's sessions (ENH-2231).
+
+Joins the `issue_sessions` VIEW to `summary_nodes` filtering for `kind='condensed'` and `level=0` (per-session condensed nodes, one per session). Returns nodes newest-first, limited to `limit`. Each node's `content` is truncated to `node_char_cap` characters before returning.
+
+**Parameters:**
+- `issue_id` — the issue identifier (e.g., `"ENH-2231"`)
+- `limit` — maximum number of condensed nodes to return (default: 3)
+- `node_char_cap` — maximum characters per node's `content` field (default: 500)
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+
+**Returns:** List of `SummaryNode` objects (newest first). Returns `[]` when the DB is absent, the issue has no recorded sessions, no condensed nodes have been generated (requires `history.compaction.enabled: true`), or any query raises a SQL error.
+
+**Integration:** Called by `ll-history-context <issue_id>` when `history.compaction.enabled` is `true` to inject a `## Prior Work (condensed)` section. Output is byte-identical when compaction is disabled or no level-0 nodes exist for the issue's sessions. See ENH-2231 and `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` for the DAG architecture.
 
 ### issue_effort
 

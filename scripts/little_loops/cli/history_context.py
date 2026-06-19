@@ -323,7 +323,42 @@ def main_history_context() -> int:
         except Exception:
             pass
 
-        if not rows and lt_section is None:
+        # Build Prior Work (condensed) section if compaction is enabled (ENH-2231).
+        prior_work_section: str | None = None
+        _PRIOR_WORK_SECTION_BUDGET = 1000
+        _PRIOR_WORK_NODE_CHAR_CAP = 400
+        try:
+            from little_loops.config import BRConfig
+            from little_loops.history_reader import condensed_nodes_for_issue
+
+            _cfg = BRConfig(Path.cwd())
+            if _cfg.history.compaction.enabled:
+                _nodes = condensed_nodes_for_issue(
+                    args.issue_id,
+                    node_char_cap=_PRIOR_WORK_NODE_CHAR_CAP,
+                    db=args.db,
+                )
+                if _nodes:
+                    section_lines: list[str] = ["## Prior Work (condensed)", ""]
+                    budget = _PRIOR_WORK_SECTION_BUDGET
+                    for node in _nodes:
+                        text = (node.content or "").strip()
+                        provenance = (
+                            f"*(session: {node.session_id or 'unknown'},"
+                            f" ts_end: {node.ts_end or 'unknown'})*"
+                        )
+                        entry = f"{text}\n\n{provenance}"
+                        if budget <= 0:
+                            break
+                        section_lines.append(entry)
+                        section_lines.append("")
+                        budget -= len(entry)
+                    if len(section_lines) > 2:
+                        prior_work_section = "\n".join(section_lines).rstrip()
+        except Exception:
+            pass
+
+        if not rows and lt_section is None and prior_work_section is None:
             return 0
 
         if rows:
@@ -336,5 +371,10 @@ def main_history_context() -> int:
             if rows:
                 print()
             print(lt_section)
+
+        if prior_work_section is not None:
+            if rows or lt_section is not None:
+                print()
+            print(prior_work_section)
 
         return 0

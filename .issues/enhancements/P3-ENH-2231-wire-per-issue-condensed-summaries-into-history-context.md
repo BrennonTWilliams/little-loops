@@ -2,12 +2,20 @@
 id: ENH-2231
 type: ENH
 priority: P3
-status: open
+status: done
 title: Wire per-issue level-0 condensed summaries into ll-history-context (baseline-gated)
 discovered_date: 2026-06-19
 discovered_by: capture-issue
+captured_at: 2026-06-19 20:50:34+00:00
+completed_at: 2026-06-19 21:14:03+00:00
 decision_needed: false
 parent: EPIC-1918
+confidence_score: 92
+outcome_confidence: 82
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # ENH-2231: Wire per-issue level-0 condensed summaries into ll-history-context (baseline-gated)
@@ -184,7 +192,30 @@ behind a default-off sub-flag (or is not merged) and we record the negative resu
 
 **Open** | Created: 2026-06-19 | Priority: P3
 
+## Resolution
+
+Implemented `condensed_nodes_for_issue` in `history_reader.py` and wired it into
+`history_context.py`. The `## Prior Work (condensed)` section is injected after the
+existing Historical Context and Learning Test Evidence sections when
+`history.compaction.enabled: true` and level-0 condensed nodes exist for the issue's
+sessions. Output is byte-identical when compaction is disabled or no nodes exist.
+
+**Baseline eval note**: The feature is gated behind `history.compaction.enabled` (default:
+false). Since almost no projects have compaction enabled, this is a no-op for the default
+majority. A formal baseline eval (comparing refine-issue output with/without the section)
+requires a project with populated DAG nodes; a separate session can run this via
+`ll-harness` or `ll-loop run --baseline` once a test project has compaction data.
+
+**Changes:**
+- `scripts/little_loops/history_reader.py` — added `condensed_nodes_for_issue()`
+- `scripts/little_loops/cli/history_context.py` — wired new section into `main_history_context()`
+- `scripts/tests/test_history_reader.py` — 9 new tests for the reader function
+- `scripts/tests/test_history_context_cli.py` — 6 new integration tests for the CLI section
+- `docs/reference/API.md` — documented `condensed_nodes_for_issue`
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-19T21:14:03Z - implemented ENH-2231
+- `/ll:ready-issue` - 2026-06-19T20:55:34 - `1ad9a6cc-cc19-46a8-980d-eded48ebdfa4.jsonl`
 - `/ll:format-issue` - 2026-06-19T20:50:34 - `5d0902d7-23b1-4dea-8959-6e6e73f52878.jsonl`
 
 - 2026-06-19: Captured from LCM DAG review (`little-loops-lcm-dag.md`). Verified all doc

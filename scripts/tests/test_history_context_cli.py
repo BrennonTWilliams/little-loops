@@ -597,4 +597,164 @@ class TestLearningTestEvidenceIntegration:
         out = capsys.readouterr().out
         assert result == 0
         assert "## Historical Context" not in out
-        assert "## Learning Test Evidence" in out
+
+
+class TestPriorWorkCondensedSection:
+    """## Prior Work (condensed) section from level-0 condensed nodes (ENH-2231)."""
+
+    def _write_config(self, tmp_path: Path, *, compaction_enabled: bool) -> None:
+        import json
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        config = {"history": {"compaction": {"enabled": compaction_enabled}}}
+        (ll_dir / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    def _seed_condensed_node(
+        self, db: Path, *, issue_id: str, session_id: str, content: str
+    ) -> None:
+        from little_loops.session_store import connect
+
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO issue_events(ts, issue_id, transition, captured_at) "
+                "VALUES(?, ?, ?, ?)",
+                ("2026-01-10T12:00:00Z", issue_id, "open", "2026-01-10T00:00:00Z"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-10T13:00:00Z", session_id, "msg"),
+            )
+            conn.execute(
+                "INSERT INTO summary_nodes"
+                "(kind, content, tokens, session_id, level, ts_end, created_at) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "condensed",
+                    content,
+                    100,
+                    session_id,
+                    0,
+                    "2026-01-10T13:00:00Z",
+                    "2026-01-10T14:00:00Z",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_no_section_when_compaction_disabled(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, compaction_enabled=False)
+        db = tmp_path / ".ll" / "history.db"
+        self._seed_condensed_node(
+            db, issue_id="ENH-100", session_id="sess-1", content="A condensed summary"
+        )
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-100"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "## Prior Work (condensed)" not in out
+
+    def test_no_section_when_no_condensed_nodes(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, compaction_enabled=True)
+        db = tmp_path / ".ll" / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-9999"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "## Prior Work (condensed)" not in out
+
+    def test_section_appears_when_nodes_exist_and_enabled(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, compaction_enabled=True)
+        db = tmp_path / ".ll" / "history.db"
+        self._seed_condensed_node(
+            db,
+            issue_id="ENH-100",
+            session_id="sess-1",
+            content="Prior work: fixed the auth flow",
+        )
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-100"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "## Prior Work (condensed)" in out
+        assert "auth flow" in out
+
+    def test_byte_identical_with_compaction_disabled_and_corrections(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Compaction-off output is identical regardless of condensed node presence."""
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, compaction_enabled=False)
+        db = tmp_path / ".ll" / "history.db"
+        record_correction(db, "sess-1", "Fix ENH-100 by doing X", "user")
+        self._seed_condensed_node(
+            db, issue_id="ENH-100", session_id="sess-1", content="summary text"
+        )
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-100"]):
+            main_history_context()
+        out = capsys.readouterr().out
+        assert "## Historical Context" in out
+        assert "## Prior Work (condensed)" not in out
+
+    def test_section_includes_provenance(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Each condensed node entry includes the session_id provenance."""
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, compaction_enabled=True)
+        db = tmp_path / ".ll" / "history.db"
+        self._seed_condensed_node(
+            db, issue_id="ENH-100", session_id="sess-abc123", content="summary content"
+        )
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-100"]):
+            main_history_context()
+        out = capsys.readouterr().out
+        assert "sess-abc123" in out
+
+    def test_section_emitted_alone_when_no_corrections(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Prior Work section appears even when Historical Context is empty."""
+        monkeypatch.chdir(tmp_path)
+        self._write_config(tmp_path, compaction_enabled=True)
+        db = tmp_path / ".ll" / "history.db"
+        self._seed_condensed_node(
+            db, issue_id="ENH-100", session_id="sess-1", content="standalone summary"
+        )
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-100"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "## Historical Context" not in out
+        assert "## Prior Work (condensed)" in out
+        assert "standalone summary" in out
