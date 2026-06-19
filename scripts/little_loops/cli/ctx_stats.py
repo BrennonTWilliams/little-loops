@@ -24,6 +24,11 @@ from little_loops.cli.output import (
     terminal_width,
     use_color_enabled,
 )
+from little_loops.config.features import LearningTestsConfig
+from little_loops.issue_parser import slugify
+from little_loops.learning_tests import list_records
+from little_loops.learning_tests.gate import is_record_stale
+from little_loops.learning_tests.import_scan import get_imported_packages
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 from little_loops.user_messages import get_project_folder
@@ -241,6 +246,7 @@ def _render(
     logger: Logger,
     skill_stats: dict[str, dict[str, int]] | None = None,
     cache_rate: dict[str, Any] | None = None,
+    lt_stats: dict[str, Any] | None = None,
 ) -> None:
     """Print the savings report for an aggregated SQLite ``summary`` dict."""
     total_processed = int(summary["total_in"]) + int(summary["total_out"])
@@ -307,6 +313,9 @@ def _render(
     elif skill_stats is not None:
         logger.info("No skill events recorded yet.")
 
+    if lt_stats is not None:
+        _render_learning_tests_section(lt_stats)
+
 
 def _render_fallback(state: dict[str, Any], logger: Logger) -> None:
     """Render the ``.ll/ll-context-state.json`` fallback (token estimates)."""
@@ -333,6 +342,7 @@ def _print_json(
     state: dict[str, Any] | None,
     skill_stats: dict[str, dict[str, int]] | None = None,
     cache_rate: dict[str, Any] | None = None,
+    lt_stats: dict[str, Any] | None = None,
 ) -> None:
     """Emit a JSON document combining SQLite + fallback data."""
     if summary is not None:
@@ -370,6 +380,7 @@ def _print_json(
             "uncached_tokens": cache_rate["uncached"] if cache_rate else None,
             "per_tool": summary["per_tool"],
             "skill_health": skill_health,
+            "learning_tests": lt_stats,
         }
     elif state is not None:
         payload = {
@@ -377,10 +388,90 @@ def _print_json(
             "estimated_tokens": int(state.get("estimated_tokens") or 0),
             "tool_calls": int(state.get("tool_calls") or 0),
             "breakdown": state.get("breakdown") or {},
+            "learning_tests": lt_stats,
         }
     else:
         payload = {"source": "none"}
     print(json.dumps(payload, indent=2))
+
+
+def _load_lt_config(cwd: Path) -> LearningTestsConfig:
+    """Load LearningTestsConfig from .ll/ll-config.json, defaulting to disabled."""
+    config_path = cwd / ".ll" / "ll-config.json"
+    if not config_path.exists():
+        return LearningTestsConfig()
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        return LearningTestsConfig.from_dict(data.get("learning_tests", {}))
+    except (OSError, json.JSONDecodeError):
+        return LearningTestsConfig()
+
+
+def _compute_learning_tests_stats(
+    cwd: Path,
+    lt_config: LearningTestsConfig,
+) -> dict[str, Any] | None:
+    """Compute learning test registry stats.
+
+    Applies date-aware staleness reclassification: a record with status=proven
+    that exceeds stale_after_days is counted as stale, not proven (ENH-2208).
+    Returns None when learning_tests.enabled is False.
+    """
+    if not lt_config.enabled:
+        return None
+
+    records = list_records()
+
+    proven = 0
+    stale = 0
+    refuted = 0
+    last_date: str | None = None
+    known_slugs: set[str] = set()
+
+    for record in records:
+        if last_date is None or record.date > last_date:
+            last_date = record.date
+        known_slugs.add(slugify(record.target))
+
+        if record.status == "refuted":
+            refuted += 1
+        elif record.status == "stale" or (
+            record.status == "proven" and is_record_stale(record, lt_config.stale_after_days)
+        ):
+            stale += 1
+        else:
+            proven += 1
+
+    scan_dirs = [cwd / d for d in lt_config.scan_dirs]
+    imported = get_imported_packages(scan_dirs)
+    gaps = sorted(pkg for pkg in imported if slugify(pkg) not in known_slugs)
+
+    return {
+        "total": len(records),
+        "proven": proven,
+        "stale": stale,
+        "refuted": refuted,
+        "last_record": last_date,
+        "gaps": gaps,
+    }
+
+
+def _render_learning_tests_section(lt_stats: dict[str, Any]) -> None:
+    """Print the Learning Tests dashboard section."""
+    total = lt_stats["total"]
+    proven = lt_stats["proven"]
+    stale = lt_stats["stale"]
+    refuted = lt_stats["refuted"]
+    last_record = lt_stats["last_record"]
+    gaps: list[str] = lt_stats["gaps"]
+
+    print()
+    print("Learning tests:")
+    print(f"  {total} total ({proven} proven, {stale} stale, {refuted} refuted)")
+    if last_record:
+        print(f"  Last record: {last_record}")
+    if gaps:
+        print(f"  Coverage gaps: {', '.join(gaps)}")
 
 
 def main_ctx_stats(argv: list[str] | None = None) -> int:
@@ -403,9 +494,11 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         skill_stats = _aggregate_skill_stats(db_path)
         fallback = _load_fallback_state(state_path) if summary is None else None
         cache_rate = _compute_cache_rate_from_jsonl(cwd)
+        lt_config = _load_lt_config(cwd)
+        lt_stats = _compute_learning_tests_stats(cwd, lt_config)
 
         if args.json_mode:
-            _print_json(summary, fallback, skill_stats, cache_rate)
+            _print_json(summary, fallback, skill_stats, cache_rate, lt_stats)
             return 0 if (summary is not None or fallback is not None) else 1
 
         if summary is not None:
@@ -418,7 +511,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
                 if fallback is None:
                     fallback = _load_fallback_state(state_path)
             else:
-                _render(summary, logger, skill_stats, cache_rate)
+                _render(summary, logger, skill_stats, cache_rate, lt_stats)
                 return 0
 
         if fallback is not None:

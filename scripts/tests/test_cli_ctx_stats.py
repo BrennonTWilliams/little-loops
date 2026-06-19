@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import sqlite3
 from pathlib import Path
@@ -18,6 +19,7 @@ from little_loops.cli.ctx_stats import (
     _time_gained,
     main_ctx_stats,
 )
+from little_loops.learning_tests import LearnTestRecord, write_record
 from little_loops.session_store import connect, ensure_db
 
 
@@ -627,6 +629,207 @@ class TestCacheHitRateInOutput:
         assert rc == 0
         data = json.loads(output)
         assert data["cache_hit_rate_pct"] is None
+
+
+class TestLearningTestsSection:
+    """Learning tests dashboard section in ll-ctx-stats."""
+
+    def _write_config(self, tmp_path: Path, *, enabled: bool, stale_after_days: int = 30) -> None:
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps({"learning_tests": {"enabled": enabled, "stale_after_days": stale_after_days}}),
+            encoding="utf-8",
+        )
+
+    def _write_record(self, tmp_path: Path, target: str, status: str, date: str) -> None:
+        record = LearnTestRecord(
+            target=target, date=date, status=status, assertions=[], raw_output_path=None
+        )
+        write_record(record, base_dir=tmp_path / ".ll" / "learning-tests")
+
+    def _run(
+        self,
+        tmp_path: Path,
+        argv: list[str] | None = None,
+        imported: set[str] | None = None,
+    ) -> tuple[int, str]:
+        lines: list[str] = []
+        patch_targets = [
+            patch("sys.argv", ["ll-ctx-stats"] + (argv or [])),
+            patch("builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")),
+            patch("little_loops.cli.ctx_stats._compute_cache_rate_from_jsonl", return_value=None),
+        ]
+        if imported is not None:
+            patch_targets.append(
+                patch(
+                    "little_loops.cli.ctx_stats.get_imported_packages",
+                    return_value=imported,
+                )
+            )
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            for p in patch_targets:
+                stack.enter_context(p)
+            rc = main_ctx_stats()
+        return rc, "\n".join(lines)
+
+    def test_section_present_when_enabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Learning tests section appears when learning_tests.enabled: true."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        self._write_config(tmp_path, enabled=True)
+        self._write_record(tmp_path, "anthropic", "proven", "2026-06-01")
+
+        rc, output = self._run(tmp_path, imported=set())
+        assert rc == 0
+        assert "Learning tests:" in output
+
+    def test_section_absent_when_disabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Learning tests section is omitted when learning_tests.enabled: false."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        self._write_config(tmp_path, enabled=False)
+
+        rc, output = self._run(tmp_path)
+        assert rc == 0
+        assert "Learning tests:" not in output
+
+    def test_section_absent_when_no_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Learning tests section is omitted when no config file exists (default disabled)."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+
+        rc, output = self._run(tmp_path)
+        assert rc == 0
+        assert "Learning tests:" not in output
+
+    def test_counts_shown_correctly(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Proven/stale/refuted counts appear in the output."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        self._write_config(tmp_path, enabled=True)
+        self._write_record(tmp_path, "anthropic", "proven", "2026-06-01")
+        self._write_record(tmp_path, "boto3", "stale", "2026-05-01")
+        self._write_record(tmp_path, "stripe", "refuted", "2026-04-01")
+
+        rc, output = self._run(tmp_path, imported=set())
+        assert rc == 0
+        assert "3 total" in output
+        assert "1 proven" in output
+        assert "1 stale" in output
+        assert "1 refuted" in output
+
+    def test_date_aware_stale_reclassification(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A proven record beyond stale_after_days threshold is counted as stale."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        self._write_config(tmp_path, enabled=True, stale_after_days=10)
+        old_date = (datetime.date.today() - datetime.timedelta(days=60)).isoformat()
+        self._write_record(tmp_path, "requests", "proven", old_date)
+
+        rc, output = self._run(tmp_path, imported=set())
+        assert rc == 0
+        assert "0 proven" in output
+        assert "1 stale" in output
+
+    def test_gap_list_shows_unregistered_package(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Packages imported but absent from registry appear in coverage gaps."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        self._write_config(tmp_path, enabled=True)
+        self._write_record(tmp_path, "requests", "proven", "2026-06-01")
+
+        rc, output = self._run(tmp_path, imported={"boto3", "requests"})
+        assert rc == 0
+        assert "boto3" in output  # gap
+        # requests is covered — should NOT appear in gap list
+        # (just check it doesn't appear next to "gaps")
+        gap_line = next((ln for ln in output.splitlines() if "gaps" in ln.lower()), "")
+        assert "boto3" in gap_line
+        assert "requests" not in gap_line
+
+    def test_no_gap_line_when_all_covered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Coverage gaps line is omitted when all imported packages have records."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        self._write_config(tmp_path, enabled=True)
+        self._write_record(tmp_path, "anthropic", "proven", "2026-06-01")
+
+        rc, output = self._run(tmp_path, imported={"anthropic"})
+        assert rc == 0
+        assert "Coverage gaps" not in output
+
+    def test_json_mode_includes_learning_tests(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--json output includes learning_tests key when enabled."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        self._write_config(tmp_path, enabled=True)
+        self._write_record(tmp_path, "anthropic", "proven", "2026-06-01")
+
+        lines: list[str] = []
+        with (
+            patch("sys.argv", ["ll-ctx-stats", "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")),
+            patch("little_loops.cli.ctx_stats._compute_cache_rate_from_jsonl", return_value=None),
+            patch("little_loops.cli.ctx_stats.get_imported_packages", return_value={"boto3"}),
+        ):
+            rc = main_ctx_stats()
+        assert rc == 0
+        data = json.loads("\n".join(lines))
+        lt = data.get("learning_tests")
+        assert lt is not None
+        assert lt["total"] == 1
+        assert lt["proven"] == 1
+        assert lt["stale"] == 0
+        assert lt["refuted"] == 0
+        assert "boto3" in lt["gaps"]
+
+    def test_json_mode_learning_tests_null_when_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--json has learning_tests: null when disabled."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        self._write_config(tmp_path, enabled=False)
+
+        lines: list[str] = []
+        with (
+            patch("sys.argv", ["ll-ctx-stats", "--json"]),
+            patch("builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")),
+            patch("little_loops.cli.ctx_stats._compute_cache_rate_from_jsonl", return_value=None),
+        ):
+            rc = main_ctx_stats()
+        assert rc == 0
+        data = json.loads("\n".join(lines))
+        assert data.get("learning_tests") is None
 
 
 @pytest.fixture(autouse=True)

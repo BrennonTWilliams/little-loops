@@ -3,11 +3,18 @@ id: ENH-2218
 title: ll-ctx-stats learning test coverage dashboard section
 type: enhancement
 priority: P4
-status: open
+status: done
 parent: EPIC-2207
 captured_at: '2026-06-18T15:38:06Z'
+completed_at: '2026-06-19T05:56:36Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
+confidence_score: 90
+outcome_confidence: 81
+score_complexity: 20
+score_test_coverage: 18
+score_ambiguity: 20
+score_change_surface: 23
 ---
 
 # ENH-2218: ll-ctx-stats learning test coverage dashboard section
@@ -72,10 +79,23 @@ There's currently no at-a-glance view of registry health without running the ful
 
 `enhancement`, `captured`, `learning-tests`, `dashboard`
 
+## Resolution
+
+Added `## Learning Tests` section to `ll-ctx-stats` output:
+- `_load_lt_config()` reads `LearningTestsConfig` from `.ll/ll-config.json`
+- `_compute_learning_tests_stats()` applies date-aware staleness reclassification (proven records beyond `stale_after_days` counted as stale per ENH-2208), uses `get_imported_packages()` from `import_scan.py` (per ENH-2214/2216 note), and builds the gap list via `slugify()` cross-reference
+- `_render_learning_tests_section()` prints the section after Skill health
+- `lt_stats` threaded through `_render()` and `_print_json()` (JSON key: `learning_tests`)
+- Section gated behind `learning_tests.enabled`; omitted entirely when disabled
+- 9 new tests covering: enabled/disabled gating, count rendering, date-aware stale reclassification, gap list detection, no-gap case, JSON mode (enabled/disabled)
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-19T05:36:41 - `609c7567-dd74-4539-85d9-3c10cfd22637.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:27 - `0f6c8504-40cd-42d9-863b-234192efbe8e.jsonl`
 
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`
+
+- `/ll:manage-issue` - 2026-06-19T05:56:36Z - current session
 
 **Open** | Created: 2026-06-18 | Priority: P4
