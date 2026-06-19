@@ -287,6 +287,181 @@ class TestStaleAwareCLI:
         assert result == 0
 
 
+class TestMainLearningTestsOrphans:
+    """Tests for ll-learning-tests orphans subcommand (ENH-2216)."""
+
+    def _make_record(self, target: str, status: str = "proven") -> LearnTestRecord:
+        return LearnTestRecord(
+            target=target,
+            date="2026-04-25",
+            status=status,
+            assertions=[],
+            raw_output_path=None,
+        )
+
+    def test_no_orphans_exits_0(self, capsys: pytest.CaptureFixture[str]) -> None:
+        record = self._make_record("anthropic")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans"]),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value={"anthropic"},
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+        ):
+            result = main_learning_tests()
+        assert result == 0
+
+    def test_no_orphans_prints_message(self, capsys: pytest.CaptureFixture[str]) -> None:
+        record = self._make_record("anthropic")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans"]),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value={"anthropic"},
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+        ):
+            main_learning_tests()
+        assert "No orphaned" in capsys.readouterr().out
+
+    def test_orphaned_record_exits_1(self, capsys: pytest.CaptureFixture[str]) -> None:
+        record = self._make_record("boto3")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans"]),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value={"anthropic"},
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+        ):
+            result = main_learning_tests()
+        assert result == 1
+
+    def test_orphaned_record_prints_target(self, capsys: pytest.CaptureFixture[str]) -> None:
+        record = self._make_record("boto3")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans"]),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value={"anthropic"},
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+        ):
+            main_learning_tests()
+        assert "boto3" in capsys.readouterr().out
+
+    def test_non_orphaned_record_not_listed(self, capsys: pytest.CaptureFixture[str]) -> None:
+        record = self._make_record("anthropic")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans"]),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value={"anthropic"},
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+        ):
+            main_learning_tests()
+        out = capsys.readouterr().out
+        assert "No orphaned" in out
+
+    def test_mark_stale_marks_all_orphans(self) -> None:
+        record = self._make_record("boto3")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans", "--mark-stale"]),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value=set(),
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+            patch("little_loops.learning_tests.mark_stale") as mock_stale,
+        ):
+            result = main_learning_tests()
+        assert result == 0
+        mock_stale.assert_called_once()
+
+    def test_mark_stale_exits_0(self) -> None:
+        record = self._make_record("boto3")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans", "--mark-stale"]),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value=set(),
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+            patch("little_loops.learning_tests.mark_stale"),
+        ):
+            result = main_learning_tests()
+        assert result == 0
+
+    def test_mark_stale_reports_count(self, capsys: pytest.CaptureFixture[str]) -> None:
+        records = [self._make_record("boto3"), self._make_record("requests")]
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans", "--mark-stale"]),
+            patch("little_loops.learning_tests.list_records", return_value=records),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value=set(),
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+            patch("little_loops.learning_tests.mark_stale"),
+        ):
+            main_learning_tests()
+        assert "2" in capsys.readouterr().out
+
+    def test_scope_flag_uses_custom_directory(self, tmp_path: Path) -> None:
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "app.py").write_text("import boto3\n")
+
+        record = self._make_record("boto3")
+        with (
+            patch(
+                "sys.argv",
+                ["ll-learning-tests", "orphans", "--scope", str(src_dir)],
+            ),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+        ):
+            result = main_learning_tests()
+        # boto3 is imported in src_dir — not an orphan
+        assert result == 0
+
+    def test_multiword_target_uses_first_word(self, capsys: pytest.CaptureFixture[str]) -> None:
+        record = self._make_record("Anthropic SDK streaming")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans"]),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value={"anthropic"},
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+        ):
+            result = main_learning_tests()
+        assert result == 0
+
+    def test_empty_registry_exits_0(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans"]),
+            patch("little_loops.learning_tests.list_records", return_value=[]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value=set(),
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+        ):
+            result = main_learning_tests()
+        assert result == 0
+
+
 class TestDocWiring:
     """Wiring assertions: ll-learning-tests must appear in help.md and CLI.md."""
 

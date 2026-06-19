@@ -66,6 +66,53 @@ def cmd_mark_stale(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_orphans(args: argparse.Namespace) -> int:
+    import json as _json
+    from pathlib import Path
+
+    from little_loops.config.core import resolve_config_path
+    from little_loops.issue_parser import slugify
+    from little_loops.learning_tests import list_records, mark_stale
+    from little_loops.learning_tests.import_scan import get_imported_packages
+
+    source_dirs: list[Path]
+    if args.scope:
+        source_dirs = [Path(d.strip()) for d in args.scope.split(",")]
+    else:
+        resolved: list[Path] | None = None
+        config_path = resolve_config_path(Path.cwd())
+        if config_path is not None:
+            try:
+                data = _json.loads(config_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    raw = data.get("learning_tests", {}).get("scan_dirs")
+                    if raw:
+                        resolved = [Path(d) for d in raw]
+            except (OSError, _json.JSONDecodeError):
+                pass
+        source_dirs = resolved if resolved is not None else [Path("scripts/")]
+
+    imported = get_imported_packages(source_dirs)
+
+    records = list_records()
+    orphans = [r for r in records if r.target.split()[0].lower() not in imported]
+
+    if not orphans:
+        print("No orphaned records found.")
+        return 0
+
+    for record in orphans:
+        print(f"{record.target}  (status: {record.status}, date: {record.date})")
+
+    if args.mark_stale:
+        for record in orphans:
+            mark_stale(slugify(record.target))
+        print(f"\nMarked {len(orphans)} record(s) stale.")
+        return 0
+
+    return 1
+
+
 def main_learning_tests() -> int:
     """CLI handler for ll-learning-tests subcommands."""
     with cli_event_context(DEFAULT_DB_PATH, "ll-learning-tests", sys.argv[1:]):
@@ -114,6 +161,31 @@ Examples:
         )
         stale_parser.add_argument("target", help="Target name (e.g. 'Anthropic SDK streaming')")
 
+        orphans_parser = subparsers.add_parser(
+            "orphans",
+            help="List records for packages no longer imported; exit 1 if any found",
+            description=(
+                "Detect learning test records whose target package is no longer imported "
+                "anywhere in the configured source directories."
+            ),
+        )
+        orphans_parser.add_argument(
+            "--mark-stale",
+            action="store_true",
+            default=False,
+            dest="mark_stale",
+            help="Atomically mark all orphaned records stale and exit 0",
+        )
+        orphans_parser.add_argument(
+            "--scope",
+            default=None,
+            metavar="DIRS",
+            help=(
+                "Comma-separated list of directories to scan for imports "
+                "(default: learning_tests.scan_dirs config key, fallback 'scripts/')"
+            ),
+        )
+
         parsed = parser.parse_args()
 
         if parsed.command == "check":
@@ -122,6 +194,8 @@ Examples:
             return cmd_list(parsed)
         elif parsed.command == "mark-stale":
             return cmd_mark_stale(parsed)
+        elif parsed.command == "orphans":
+            return cmd_orphans(parsed)
         else:
             parser.print_help()
             return 1

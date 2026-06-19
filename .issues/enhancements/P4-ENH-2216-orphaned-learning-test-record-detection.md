@@ -3,11 +3,18 @@ id: ENH-2216
 title: Orphaned learning test record detection
 type: enhancement
 priority: P4
-status: open
+status: done
 parent: EPIC-2207
 captured_at: '2026-06-18T15:38:06Z'
+completed_at: '2026-06-19T05:09:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
+confidence_score: 97
+outcome_confidence: 84
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2216: Orphaned learning test record detection
@@ -73,7 +80,7 @@ If Option B is chosen instead, no new CLI surface — the audit loop gains a `de
 - If Option B: `.loops/learning-tests-audit.yaml` — add `detect_orphans` state between stale detection and report generation
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/learning_tests/registry.py` — `list_records()` and any bulk update functions used by `--mark-stale`
+- `scripts/little_loops/learning_tests/__init__.py` — `list_records()` and any bulk update functions used by `--mark-stale` (no `registry.py` exists; public API lives in `__init__.py`)
 
 ### Similar Patterns
 - The existing `mark-stale` subcommand in `learning_tests.py` serves as the implementation pattern for the `orphans` subcommand
@@ -127,7 +134,20 @@ If Option B is chosen instead, no new CLI surface — the audit loop gains a `de
 
 **Note** (added by `/ll:audit-issue-conflicts`; resolved by review-epic): The canonical config key is **`learning_tests.scan_dirs`** (defaulting to `['scripts/']`). Both this issue and ENH-2214 must use this key as the `source_dirs` argument to `get_imported_packages()` in `import_scan.py`. The former `orphan_scope` name is retired. See [[ENH-2214]].
 
+## Resolution
+
+Implemented Option A: new `ll-learning-tests orphans` CLI subcommand.
+
+- Added `cmd_orphans()` to `scripts/little_loops/cli/learning_tests.py`
+- Reuses `get_imported_packages()` from existing `import_scan.py` (shared with ENH-2214)
+- Package name extracted as first whitespace-delimited word of `record.target`, lowercased
+- `--mark-stale` atomically marks all orphans stale (exits 0); without flag exits 1 if orphans found
+- `--scope` overrides scan directories; falls back to `learning_tests.scan_dirs` config key, then `scripts/`
+- 11 new tests in `test_cli_learning_tests.py::TestMainLearningTestsOrphans`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-19T05:00:58 - `28912858-56a2-4740-bb0f-7162ee3ab912.jsonl`
+- `/ll:confidence-check` - 2026-06-18T23:00:00 - `7e33f84f-43f1-4a02-839a-6c08a435bb99.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:04:54 - `e8724251-0b1a-456e-af9e-59fd2df092b4.jsonl`
