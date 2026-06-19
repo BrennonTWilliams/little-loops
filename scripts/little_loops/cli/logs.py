@@ -509,7 +509,11 @@ def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
             if folder is not None:
                 project_items.append((decoded_path, folder))
 
-    cutoff = datetime.now(UTC) - timedelta(days=args.window_days) if args.window_days is not None else None
+    cutoff = (
+        datetime.now(UTC) - timedelta(days=args.window_days)
+        if args.window_days is not None
+        else None
+    )
 
     # Aggregate events across all projects
     all_events: dict[str, list[InvocationEvent]] = {}
@@ -836,7 +840,11 @@ def _cmd_dead_skills(args: argparse.Namespace, logger: Logger) -> int:
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
         catalog_root = Path.cwd()
 
-    cutoff = datetime.now(UTC) - timedelta(days=args.window_days) if args.window_days is not None else None
+    cutoff = (
+        datetime.now(UTC) - timedelta(days=args.window_days)
+        if args.window_days is not None
+        else None
+    )
 
     merged: dict[str, int] = defaultdict(int)
     for db_path in db_paths:
@@ -1163,7 +1171,11 @@ def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
         decoded_paths = discover_all_projects(logger)
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
 
-    cutoff = datetime.now(UTC) - timedelta(days=args.window_days) if args.window_days is not None else None
+    cutoff = (
+        datetime.now(UTC) - timedelta(days=args.window_days)
+        if args.window_days is not None
+        else None
+    )
 
     merged: dict[str, dict[str, int]] = defaultdict(lambda: {"invocations": 0, "corrections": 0})
     found_any_db = False

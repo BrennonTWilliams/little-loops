@@ -1478,8 +1478,14 @@ class TestStats:
 
         captured: list[str] = []
         with (
-            patch("sys.argv", ["ll-logs", "stats", "--project", str(tmp_path), "--window-days", "10", "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "sys.argv",
+                ["ll-logs", "stats", "--project", str(tmp_path), "--window-days", "10", "--json"],
+            ),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -1805,9 +1811,20 @@ class TestDeadSkills:
         with (
             patch(
                 "sys.argv",
-                ["ll-logs", "dead-skills", "--project", str(tmp_path), "--window-days", "10", "--json"],
+                [
+                    "ll-logs",
+                    "dead-skills",
+                    "--project",
+                    str(tmp_path),
+                    "--window-days",
+                    "10",
+                    "--json",
+                ],
             ),
-            patch("builtins.print", side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
         ):
             result = main_logs()
 
@@ -2124,7 +2141,14 @@ class TestScanFailures:
             with (
                 patch(
                     "sys.argv",
-                    ["ll-logs", "scan-failures", "--project", str(project_path), "--window-days", "10"],
+                    [
+                        "ll-logs",
+                        "scan-failures",
+                        "--project",
+                        str(project_path),
+                        "--window-days",
+                        "10",
+                    ],
                 ),
                 patch("pathlib.Path.home", return_value=home),
             ):
@@ -3247,9 +3271,7 @@ class TestDetectLlSignal:
         record = {
             "type": "user",
             "message": {
-                "content": [
-                    {"text": "<command-name>/ll:refine-issue</command-name>\nENH-2132"}
-                ]
+                "content": [{"text": "<command-name>/ll:refine-issue</command-name>\nENH-2132"}]
             },
         }
         sig = _detect_ll_signal(record)
@@ -3335,9 +3357,7 @@ class TestDetectLlSignal:
             "sessionId": "sess-bash",
             "timestamp": "2026-01-01T00:00:00Z",
             "message": {
-                "content": [
-                    {"type": "tool_use", "name": "Bash", "input": {"command": cmd}}
-                ]
+                "content": [{"type": "tool_use", "name": "Bash", "input": {"command": cmd}}]
             },
         }
         sig = _detect_ll_signal(record)

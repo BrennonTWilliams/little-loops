@@ -638,7 +638,9 @@ class TestLearningTestsSection:
         config_path = tmp_path / ".ll" / "ll-config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
-            json.dumps({"learning_tests": {"enabled": enabled, "stale_after_days": stale_after_days}}),
+            json.dumps(
+                {"learning_tests": {"enabled": enabled, "stale_after_days": stale_after_days}}
+            ),
             encoding="utf-8",
         )
 
@@ -657,7 +659,9 @@ class TestLearningTestsSection:
         lines: list[str] = []
         patch_targets = [
             patch("sys.argv", ["ll-ctx-stats"] + (argv or [])),
-            patch("builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")
+            ),
             patch("little_loops.cli.ctx_stats._compute_cache_rate_from_jsonl", return_value=None),
         ]
         if imported is not None:
@@ -675,7 +679,9 @@ class TestLearningTestsSection:
             rc = main_ctx_stats()
         return rc, "\n".join(lines)
 
-    def test_section_present_when_enabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_section_present_when_enabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Learning tests section appears when learning_tests.enabled: true."""
         monkeypatch.chdir(tmp_path)
         db = tmp_path / ".ll" / "history.db"
@@ -688,7 +694,9 @@ class TestLearningTestsSection:
         assert rc == 0
         assert "Learning tests:" in output
 
-    def test_section_absent_when_disabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_section_absent_when_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Learning tests section is omitted when learning_tests.enabled: false."""
         monkeypatch.chdir(tmp_path)
         db = tmp_path / ".ll" / "history.db"
@@ -700,7 +708,9 @@ class TestLearningTestsSection:
         assert rc == 0
         assert "Learning tests:" not in output
 
-    def test_section_absent_when_no_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_section_absent_when_no_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Learning tests section is omitted when no config file exists (default disabled)."""
         monkeypatch.chdir(tmp_path)
         db = tmp_path / ".ll" / "history.db"
@@ -795,7 +805,9 @@ class TestLearningTestsSection:
         lines: list[str] = []
         with (
             patch("sys.argv", ["ll-ctx-stats", "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")
+            ),
             patch("little_loops.cli.ctx_stats._compute_cache_rate_from_jsonl", return_value=None),
             patch("little_loops.cli.ctx_stats.get_imported_packages", return_value={"boto3"}),
         ):
@@ -823,7 +835,9 @@ class TestLearningTestsSection:
         lines: list[str] = []
         with (
             patch("sys.argv", ["ll-ctx-stats", "--json"]),
-            patch("builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")),
+            patch(
+                "builtins.print", side_effect=lambda *a, **_: lines.append(str(a[0]) if a else "")
+            ),
             patch("little_loops.cli.ctx_stats._compute_cache_rate_from_jsonl", return_value=None),
         ):
             rc = main_ctx_stats()

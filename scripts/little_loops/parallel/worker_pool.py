@@ -102,9 +102,7 @@ def _run_per_worktree_proof_first_gate(
     final_state = _read_loop_final_state(worktree_path, "proof-first-task")
 
     if gate_result.returncode != 0:
-        logger.warning(
-            f"[{issue.issue_id}] proof-first-task exited {gate_result.returncode}"
-        )
+        logger.warning(f"[{issue.issue_id}] proof-first-task exited {gate_result.returncode}")
         return False
 
     if final_state == "blocked":

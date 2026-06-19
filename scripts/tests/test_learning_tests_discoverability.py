@@ -66,7 +66,9 @@ def _write_record(project_dir: Path, target: str, status: str, date: str | None 
     lt_dir.mkdir(parents=True, exist_ok=True)
     slug = target.lower()
     record_date = date if date is not None else datetime.date.today().isoformat()
-    content = f"---\ntarget: {target}\ndate: '{record_date}'\nstatus: {status}\nassertions: []\n---\n"
+    content = (
+        f"---\ntarget: {target}\ndate: '{record_date}'\nstatus: {status}\nassertions: []\n---\n"
+    )
     (lt_dir / f"{slug}.md").write_text(content, encoding="utf-8")
 
 
@@ -413,9 +415,7 @@ class TestStaleAgeGate:
         gate(_event(content="import stripe\n", cwd=str(tmp_path)))
         assert _SESSION_CACHE.get("stripe") is False
 
-    def test_hint_includes_stale_age(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_hint_includes_stale_age(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """The hint message includes '(stale: N days old)' for stale records."""
         _write_config(tmp_path, enabled=True, mode="warn", stale_after_days=30)
         _write_record(tmp_path, "stripe", "proven", date="2020-01-01")

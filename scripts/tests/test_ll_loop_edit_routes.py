@@ -154,11 +154,7 @@ class TestRouteTableParser:
     def test_parse_markdown_raises_on_unknown_state(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser
 
-        md = (
-            "| state | yes |\n"
-            "|-------|-----|\n"
-            "| ghost | done |\n"
-        )
+        md = "| state | yes |\n|-------|-----|\n| ghost | done |\n"
         with pytest.raises(ValueError, match="ghost"):
             RouteTableParser.parse_markdown(md, {"check", "done"})
 
@@ -180,11 +176,7 @@ class TestRouteTableParser:
     def test_parse_markdown_empty_cells_excluded(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser
 
-        md = (
-            "| state | yes | no |\n"
-            "|-------|-----|----|\n"
-            "| check | done |  |\n"
-        )
+        md = "| state | yes | no |\n|-------|-----|----|\n| check | done |  |\n"
         result = RouteTableParser.parse_markdown(md, {"check", "done"})
         assert "yes" in result.matrix["check"]
         assert "no" not in result.matrix["check"]
@@ -192,11 +184,7 @@ class TestRouteTableParser:
     def test_parse_markdown_dash_excluded(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser
 
-        md = (
-            "| state | yes | no |\n"
-            "|-------|-----|----|\n"
-            "| check | done | — |\n"
-        )
+        md = "| state | yes | no |\n|-------|-----|----|\n| check | done | — |\n"
         result = RouteTableParser.parse_markdown(md, {"check", "done"})
         assert "no" not in result.matrix["check"]
 
@@ -248,11 +236,7 @@ class TestRouteTableParser:
     def test_parse_markdown_deleted_states_field(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser
 
-        md = (
-            "| state | yes |\n"
-            "|-------|-----|\n"
-            "| check | done |\n"
-        )
+        md = "| state | yes |\n|-------|-----|\n| check | done |\n"
         # "done" is in known_states but absent from the table
         parsed = RouteTableParser.parse_markdown(md, {"check", "done"})
         assert "done" in parsed.deleted_states
@@ -261,11 +245,7 @@ class TestRouteTableParser:
     def test_parse_markdown_unknown_nonempty_raises(self) -> None:
         from little_loops.fsm.route_table import RouteTableParser
 
-        md = (
-            "| state    | yes  |\n"
-            "|----------|------|\n"
-            "| new_state| done |\n"
-        )
+        md = "| state    | yes  |\n|----------|------|\n| new_state| done |\n"
         with pytest.raises(ValueError, match="new_state"):
             RouteTableParser.parse_markdown(md, {"check", "done"})
 
@@ -288,7 +268,9 @@ class TestDetectRoutingGaps:
         warnings = detect_routing_gaps(fsm)
         assert isinstance(warnings, list)
         # valid-loop has check→done via yes/no, no unreachable/dead-end states
-        gap_warnings = [w for w in warnings if "unreachable" in w.lower() or "dead-end" in w.lower()]
+        gap_warnings = [
+            w for w in warnings if "unreachable" in w.lower() or "dead-end" in w.lower()
+        ]
         assert gap_warnings == []
 
     def test_detects_missing_no_arm(self, tmp_path: Path) -> None:
@@ -320,7 +302,6 @@ class TestRouteTableApplier:
 
         loop_path = tmp_path / "test.yaml"
         shutil.copy(FIXTURES / "valid-loop.yaml", loop_path)
-        original_text = loop_path.read_text()
 
         fsm, _ = load_and_validate(loop_path)
         matrix = RouteTableExtractor.extract(fsm)
@@ -564,7 +545,9 @@ class TestCmdEditRoutes:
         from little_loops.logger import Logger
 
         loops_dir = self._make_project(tmp_path)
-        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=False, allow_delete=False)
+        args = argparse.Namespace(
+            format="markdown", dry_run=True, no_warnings=False, allow_delete=False
+        )
         result = cmd_edit_routes("test-loop", args, loops_dir, Logger())
 
         assert result == 0
@@ -572,9 +555,7 @@ class TestCmdEditRoutes:
         assert "check" in captured.out
         assert "|" in captured.out  # markdown table
 
-    def test_dry_run_prints_csv_table(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_dry_run_prints_csv_table(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         from little_loops.cli.loop.edit_routes import cmd_edit_routes
         from little_loops.logger import Logger
 
@@ -591,7 +572,9 @@ class TestCmdEditRoutes:
         from little_loops.cli.loop.edit_routes import cmd_edit_routes
         from little_loops.logger import Logger
 
-        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=False, allow_delete=False)
+        args = argparse.Namespace(
+            format="markdown", dry_run=True, no_warnings=False, allow_delete=False
+        )
         result = cmd_edit_routes("nonexistent", args, tmp_path, Logger())
         assert result == 2
 
@@ -608,7 +591,9 @@ class TestCmdEditRoutes:
             FIXTURES / "loop-with-unreachable-state.yaml",
             loops_dir / "unreachable.yaml",
         )
-        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=False, allow_delete=False)
+        args = argparse.Namespace(
+            format="markdown", dry_run=True, no_warnings=False, allow_delete=False
+        )
         result = cmd_edit_routes("unreachable", args, loops_dir, Logger())
 
         assert result == 0
@@ -627,7 +612,9 @@ class TestCmdEditRoutes:
             FIXTURES / "loop-with-unreachable-state.yaml",
             loops_dir / "unreachable.yaml",
         )
-        args = argparse.Namespace(format="markdown", dry_run=True, no_warnings=True, allow_delete=False)
+        args = argparse.Namespace(
+            format="markdown", dry_run=True, no_warnings=True, allow_delete=False
+        )
         result = cmd_edit_routes("unreachable", args, loops_dir, Logger())
 
         assert result == 0
@@ -641,12 +628,9 @@ class TestCmdEditRoutes:
     ) -> None:
         """When $EDITOR is invoked and user changes a route, changes are applied."""
         from little_loops.cli.loop.edit_routes import cmd_edit_routes
-        from little_loops.fsm.route_table import RouteTableExtractor
-        from little_loops.fsm.validation import load_and_validate
         from little_loops.logger import Logger
 
         loops_dir = self._make_project(tmp_path)
-        loop_path = loops_dir / "test-loop.yaml"
 
         # Capture the table that gets written to the temp file and write a modified version
         written_tables: list[str] = []
@@ -661,7 +645,9 @@ class TestCmdEditRoutes:
 
         monkeypatch.setattr("subprocess.call", fake_editor_call)
 
-        args = argparse.Namespace(format="markdown", dry_run=False, no_warnings=True, allow_delete=False)
+        args = argparse.Namespace(
+            format="markdown", dry_run=False, no_warnings=True, allow_delete=False
+        )
         result = cmd_edit_routes("test-loop", args, loops_dir, Logger())
 
         assert result == 0
@@ -678,13 +664,13 @@ class TestCmdEditRoutes:
 
         def fake_editor_inject_unknown(cmd: list[str]) -> int:
             # Inject a table with an unknown state
-            Path(cmd[-1]).write_text(
-                "| state | yes |\n|-------|-----|\n| ghost_state | done |\n"
-            )
+            Path(cmd[-1]).write_text("| state | yes |\n|-------|-----|\n| ghost_state | done |\n")
             return 0
 
         monkeypatch.setattr("subprocess.call", fake_editor_inject_unknown)
 
-        args = argparse.Namespace(format="markdown", dry_run=False, no_warnings=True, allow_delete=False)
+        args = argparse.Namespace(
+            format="markdown", dry_run=False, no_warnings=True, allow_delete=False
+        )
         result = cmd_edit_routes("test-loop", args, loops_dir, Logger())
         assert result == 1

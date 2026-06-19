@@ -1935,9 +1935,7 @@ class TestSprintPreflightGate:
     def _logger(self) -> Logger:
         return Logger(verbose=False, use_color=False)
 
-    def test_dedup_targets_across_issues(
-        self, lt_enabled_config: BRConfig, tmp_path: Path
-    ) -> None:
+    def test_dedup_targets_across_issues(self, lt_enabled_config: BRConfig, tmp_path: Path) -> None:
         """Two issues listing the same target → gate called once with that target."""
         from little_loops.cli.sprint.run import _run_learning_gate_preflight
 
@@ -1969,8 +1967,11 @@ class TestSprintPreflightGate:
         # issue2: explicit empty list
         issue2 = _make_issue_info(tmp_path, "ENH-002", learning_tests_required=[])
 
-        with patch("little_loops.cli.sprint.run.subprocess.run") as mock_sub, patch(
-            "little_loops.learning_tests.extractor.extract_learning_targets", return_value=[]
+        with (
+            patch("little_loops.cli.sprint.run.subprocess.run") as mock_sub,
+            patch(
+                "little_loops.learning_tests.extractor.extract_learning_targets", return_value=[]
+            ),
         ):
             args = argparse.Namespace(skip_learning_gate=False)
             result = _run_learning_gate_preflight(
@@ -1993,9 +1994,7 @@ class TestSprintPreflightGate:
 
         with patch("little_loops.cli.sprint.run.subprocess.run", return_value=mock_result):
             args = argparse.Namespace(skip_learning_gate=False)
-            result = _run_learning_gate_preflight(
-                args, [issue1], lt_enabled_config, self._logger()
-            )
+            result = _run_learning_gate_preflight(args, [issue1], lt_enabled_config, self._logger())
 
         assert result == 1
 
@@ -2007,9 +2006,7 @@ class TestSprintPreflightGate:
 
         with patch("little_loops.cli.sprint.run.subprocess.run") as mock_sub:
             args = argparse.Namespace(skip_learning_gate=True)
-            result = _run_learning_gate_preflight(
-                args, [issue1], lt_enabled_config, self._logger()
-            )
+            result = _run_learning_gate_preflight(args, [issue1], lt_enabled_config, self._logger())
 
         assert result == 0
         mock_sub.assert_not_called()
@@ -2024,9 +2021,7 @@ class TestSprintPreflightGate:
 
         with patch("little_loops.cli.sprint.run.subprocess.run") as mock_sub:
             args = argparse.Namespace(skip_learning_gate=False)
-            result = _run_learning_gate_preflight(
-                args, [issue1], sprint_project, self._logger()
-            )
+            result = _run_learning_gate_preflight(args, [issue1], sprint_project, self._logger())
 
         assert result == 0
         mock_sub.assert_not_called()

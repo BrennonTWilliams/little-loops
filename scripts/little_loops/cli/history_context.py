@@ -70,7 +70,9 @@ def _render_learning_test_section(
         passes = sum(1 for a in record.assertions if a.result == "pass")
         fails = sum(1 for a in record.assertions if a.result == "fail")
         untested = sum(1 for a in record.assertions if a.result == "untested")
-        rows.append(f"| {target} | {effective_status} | {record.date} | {passes}/{fails}/{untested} |")
+        rows.append(
+            f"| {target} | {effective_status} | {record.date} | {passes}/{fails}/{untested} |"
+        )
 
     if not rows:
         return None

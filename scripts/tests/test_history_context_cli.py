@@ -465,7 +465,9 @@ class TestRenderLearningTestSection:
 class TestLearningTestEvidenceIntegration:
     """Integration tests for Learning Test Evidence in ll-history-context (ENH-2217)."""
 
-    def _write_lt_config(self, tmp_path: Path, *, enabled: bool, stale_after_days: int = 30) -> None:
+    def _write_lt_config(
+        self, tmp_path: Path, *, enabled: bool, stale_after_days: int = 30
+    ) -> None:
         import json
 
         config = {"learning_tests": {"enabled": enabled, "stale_after_days": stale_after_days}}
@@ -474,8 +476,14 @@ class TestLearningTestEvidenceIntegration:
     def _write_issue_file(self, tmp_path: Path, issue_id: str, targets: list[str]) -> None:
         issues_dir = tmp_path / ".issues" / "enhancements"
         issues_dir.mkdir(parents=True)
-        lines = ["---", f"id: {issue_id}", "title: Test Issue", "type: enhancement",
-                 "priority: P4", "status: open"]
+        lines = [
+            "---",
+            f"id: {issue_id}",
+            "title: Test Issue",
+            "type: enhancement",
+            "priority: P4",
+            "status: open",
+        ]
         if targets:
             lines.append("learning_tests_required:")
             for t in targets:
@@ -483,9 +491,7 @@ class TestLearningTestEvidenceIntegration:
         lines += ["---", "", "# Test Issue", ""]
         (issues_dir / f"P4-{issue_id}-test-issue.md").write_text("\n".join(lines))
 
-    def _write_lt_record(
-        self, tmp_path: Path, target: str, status: str, date: str
-    ) -> None:
+    def _write_lt_record(self, tmp_path: Path, target: str, status: str, date: str) -> None:
         import yaml
 
         from little_loops.issue_parser import slugify

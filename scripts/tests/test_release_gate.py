@@ -6,12 +6,9 @@ import datetime
 import json
 from pathlib import Path
 
-import pytest
-
-from little_loops.learning_tests import write_record, LearnTestRecord
+from little_loops.learning_tests import LearnTestRecord, write_record
 from little_loops.learning_tests.import_scan import get_imported_packages
 from little_loops.learning_tests.release_gate import run_release_gate
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -151,9 +148,7 @@ class TestReleaseGateWarnMode:
         _write_config(tmp_path, enabled=True, release_gate="warn")
         _write_record_file(tmp_path, "requests", "proven", date="2020-01-01")
         _write_source_file(tmp_path, "scripts/main.py", "import requests\n")
-        result = run_release_gate(
-            tmp_path, base_dir=_base_dir(tmp_path)
-        )
+        result = run_release_gate(tmp_path, base_dir=_base_dir(tmp_path))
         assert result == 0
 
     def test_returns_0_on_refuted_imported_package(self, tmp_path: Path) -> None:

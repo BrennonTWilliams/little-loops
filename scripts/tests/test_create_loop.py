@@ -431,12 +431,16 @@ class TestHarnessVariantAWithAssumptionGate:
     def test_passes_fsm_validation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         loops = tmp_path / ".loops"
         loops.mkdir()
-        (loops / "harness-external-api.yaml").write_text(HARNESS_VARIANT_A_WITH_ASSUMPTION_GATE_YAML)
+        (loops / "harness-external-api.yaml").write_text(
+            HARNESS_VARIANT_A_WITH_ASSUMPTION_GATE_YAML
+        )
         monkeypatch.chdir(tmp_path)
         fsm, _ = load_and_validate(loops / "harness-external-api.yaml")
         errors = validate_fsm(fsm)
         hard_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
-        assert not hard_errors, f"Assumption gate harness FSM errors: {[str(e) for e in hard_errors]}"
+        assert not hard_errors, (
+            f"Assumption gate harness FSM errors: {[str(e) for e in hard_errors]}"
+        )
 
 
 class TestHarnessVariantAWithoutAssumptionGate:

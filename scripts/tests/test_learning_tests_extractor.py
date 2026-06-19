@@ -83,9 +83,7 @@ class TestExtractLearningTargets:
 
     def test_json_marker_can_appear_mid_response(self) -> None:
         resp = (
-            "Analyzing...\n"
-            "Found external deps.\n"
-            'TARGETS_JSON:{"targets": ["httpx"], "count": 1}\n'
+            'Analyzing...\nFound external deps.\nTARGETS_JSON:{"targets": ["httpx"], "count": 1}\n'
         )
         mock = _make_llm(resp)
         result = extract_learning_targets("uses httpx", llm_call=mock)

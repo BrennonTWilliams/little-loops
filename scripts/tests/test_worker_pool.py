@@ -2962,9 +2962,7 @@ class TestPerWorktreeProofFirstGate:
         mock.stderr = ""
         return mock
 
-    def test_gate_skipped_when_lt_disabled(
-        self, br_config: BRConfig, tmp_path: Path
-    ) -> None:
+    def test_gate_skipped_when_lt_disabled(self, br_config: BRConfig, tmp_path: Path) -> None:
         """Gate subprocess not called when learning_tests.enabled=False (default)."""
         from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
 

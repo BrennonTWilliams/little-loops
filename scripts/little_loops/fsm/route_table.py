@@ -89,13 +89,12 @@ class RouteTableRenderer:
     def to_markdown(matrix: dict[str, dict[str, str]]) -> str:
         verdicts = _all_verdicts(matrix)
         headers = ["state"] + verdicts
-        rows = [[state] + [row.get(v, EMPTY_CELL) for v in verdicts] for state, row in matrix.items()]
+        rows = [
+            [state] + [row.get(v, EMPTY_CELL) for v in verdicts] for state, row in matrix.items()
+        ]
 
         # Column widths
-        widths = [
-            max(len(str(r[i])) for r in ([headers] + rows))
-            for i in range(len(headers))
-        ]
+        widths = [max(len(str(r[i])) for r in ([headers] + rows)) for i in range(len(headers))]
 
         def fmt(cells: list[str]) -> str:
             return "| " + " | ".join(str(c).ljust(widths[i]) for i, c in enumerate(cells)) + " |"
@@ -341,9 +340,7 @@ def detect_routing_gaps(fsm: FSMLoop) -> list[str]:
 
     for state_name, state in fsm.states.items():
         if state_name not in reachable:
-            warnings.append(
-                f"Unreachable state: '{state_name}' has no route leading to it"
-            )
+            warnings.append(f"Unreachable state: '{state_name}' has no route leading to it")
 
         if state.terminal:
             continue

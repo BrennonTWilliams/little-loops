@@ -53,7 +53,8 @@ def run_release_gate(cwd: Path, *, base_dir: Path | None = None) -> int:
     records = list_records(base_dir=resolved_base)
 
     problem_records = [
-        r for r in records
+        r
+        for r in records
         if r.status == "refuted" or is_record_stale(r, lt_config.stale_after_days)
     ]
 
@@ -90,8 +91,5 @@ def run_release_gate(cwd: Path, *, base_dir: Path | None = None) -> int:
         )
         return 1
 
-    print(
-        "⚠ Continuing with warning "
-        "(set release_gate: block to abort on stale/refuted records)."
-    )
+    print("⚠ Continuing with warning (set release_gate: block to abort on stale/refuted records).")
     return 0
