@@ -14,6 +14,12 @@ relates_to:
 - ENH-2227
 - ENH-2228
 - EPIC-2167
+confidence_score: 98
+outcome_confidence: 85
+score_complexity: 18
+score_test_coverage: 23
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2233: edit-routes — render and edit compound (multi-dimension) decision tables
@@ -120,6 +126,15 @@ ll-loop edit-routes <loop-name> [--decision-table] [--format markdown|csv] [--dr
 5. Wire `--decision-table` flag and auto-detect logic into `edit_routes.py`
 6. Add round-trip tests to `test_ll_loop_edit_routes.py`
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Add `--decision-table` argument to `edit_routes_parser` in `scripts/little_loops/cli/loop/__init__.py` (lines 768–795) — `edit_routes_parser.add_argument("--decision-table", action="store_true", default=False, help="Render compound policy-router decision table instead of state × verdict matrix.")`
+8. Add `test_decision_table_forwarded` to `TestMainLoopEditRoutesFlagForwarding` in `scripts/tests/test_cli_loop_dispatch.py` — mirrors `test_allow_delete_forwarded` pattern, verifies `args.decision_table` is forwarded correctly
+9. Update `docs/reference/CLI.md` `#### ll-loop edit-routes` section — add `--decision-table` row to flag table and compound-table prose/examples
+10. Update `docs/guides/LOOPS_GUIDE.md` quick-reference table row for `ll-loop edit-routes` — mention `--decision-table` flag
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — concrete file/function references:_
@@ -150,9 +165,16 @@ _Added by `/ll:refine-issue` — concrete file/function references:_
 ### Files to Modify
 - `scripts/little_loops/cli/loop/edit_routes.py` — add `--decision-table` mode + auto-detect
 - `scripts/little_loops/fsm/route_table.py` — policy-rule extractor + grid renderer + serializer
+- `scripts/little_loops/cli/loop/__init__.py` — add `--decision-table` argument to `edit_routes_parser` (lines 768–795); also imports `cmd_edit_routes` at line 26 and dispatches at line 845
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `#### ll-loop edit-routes` section (line 872): add `--decision-table` flag row to the flag table and compound-table prose + examples alongside the existing verdict-matrix examples
+- `docs/guides/LOOPS_GUIDE.md` — `ll-loop edit-routes <name>` row in quick-reference table (~line 683): update cell to mention `--decision-table` and compound-table mode
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/__init__.py` — registers the `edit-routes` subcommand; no changes needed (additive flag)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- (No new callers — `__init__.py` moved to Files to Modify since it requires `--decision-table` arg addition)
 
 ### Similar Patterns
 - ENH-2227 / ENH-2228 — the existing `edit-routes` extractor/renderer/parser/applier to extend
@@ -160,8 +182,14 @@ _Added by `/ll:refine-issue` — concrete file/function references:_
 ### Tests
 - `scripts/tests/test_ll_loop_edit_routes.py` — round-trip tests for compound tables (new tests)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_dispatch.py` — `TestMainLoopEditRoutesFlagForwarding`: add `test_decision_table_forwarded` following the same pattern as `test_allow_delete_forwarded` / `test_no_warnings_forwarded` / `test_format_csv_forwarded` (lines 934–970); verifies `--decision-table` is correctly forwarded through `main_loop()` to `cmd_edit_routes`
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — add `--decision-table` flag documentation (see Files to Modify above)
+- `docs/guides/LOOPS_GUIDE.md` — update `edit-routes` quick-reference row (see Files to Modify above)
 
 ### Configuration
 - N/A
@@ -197,6 +225,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-06-19 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-19T23:30:00 - `a6f4ecd1-513b-4c76-aa79-8da3db5a3650.jsonl`
+- `/ll:wire-issue` - 2026-06-19T23:07:46 - `8ba0a80d-abe6-4c81-a1b3-b63381bfdc55.jsonl`
 - `/ll:refine-issue` - 2026-06-19T23:00:08 - `f41f18ea-05b2-4083-8bb7-09cec8e247f5.jsonl`
 - `/ll:format-issue` - 2026-06-19T22:52:50 - `f4c05632-020f-46ec-9644-de932e72069a.jsonl`
 - `/ll:capture-issue` - 2026-06-19T21:56:31Z - `7ad4c299-a78e-4069-93e8-64dd478cf18b.jsonl`
