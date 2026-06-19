@@ -95,6 +95,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `context-health-monitor` | Monitor context health via scratch file accumulation and session log size; compact scratch files and archive stale outputs when pressure is detected |
 | `outer-loop-eval` | Execute a target loop as a sub-loop, then delegate static and execution analysis to `/ll:debug-loop-run` and scoring/proposals to `/ll:audit-loop-run` to produce an improvement report |
 | `rubric-refine` | Converge loop that scores an artifact on a multi-dimension rubric, routes to tier-specific repair (light or deep), and re-scores until the aggregate meets `threshold_high`. Supply `subject` (path or description) and `rubric_dimensions` (pipe-separated). Demonstrates `lib/rubric-router.yaml` fragment usage. |
+| `policy-refine` | Score an artifact on clarity/completeness/feasibility/security, route via a declarative policy rule table to escalate/deep_repair/light_repair/done. Supply `subject` and optionally override `policy_rules`. Demonstrates `lib/policy-router.yaml` conjunctive decision-table routing. |
 
 ## Reinforcement Learning (RL)
 
@@ -201,6 +202,7 @@ Built-in fragment libraries are in `lib/`:
 | `lib/harness.yaml` | Harness evaluation fragments (`playwright_screenshot`, `ll_rubric_score`) — Playwright screenshot capture and LLM rubric scoring; used by `oracles/generator-evaluator` |
 | `lib/composer.yaml` | Orchestration fragments for loop-composer and loop-composer-adaptive (`discover_loops`, `validate_plan`, `present_plan`, `reassess`) — shared by loop-composer (FEAT-1808) and loop-composer-adaptive (FEAT-1983) |
 | `lib/rubric-router.yaml` | Score-on-rubric → 3-tier route → repair converge-loop fragments (`rubric_score`, `rubric_parse_scores`, `rubric_route_high`, `rubric_route_medium`) — implements the quality-gate pattern: score → parse aggregate → route high/medium/low → repair → re-score until threshold met |
+| `lib/policy-router.yaml` | General multi-axis decision-table routing fragments (`policy_parse_scores`, `policy_table_dispatch`) — declarative, priority-ordered rule table maps per-dimension scores to action states via conjunctive (`&`-joined) predicates; emits winning token via `classify` evaluator + `route:` dispatch; source-agnostic (any scorer may write the per-dim score files) |
 
 Import a library in any loop:
 

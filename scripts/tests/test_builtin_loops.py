@@ -157,6 +157,7 @@ class TestBuiltinLoopFiles:
             "rlhf-svg-generate",
             "cua-agent-desktop",
             "rubric-refine",
+            "policy-refine",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

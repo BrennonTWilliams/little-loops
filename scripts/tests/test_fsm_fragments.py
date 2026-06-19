@@ -2287,3 +2287,123 @@ class TestRubricRouterLib:
         assert not error_list, (
             f"rubric-refine.yaml validation errors: {[str(e) for e in error_list]}"
         )
+
+
+# ---------------------------------------------------------------------------
+
+
+class TestPolicyRouterLib:
+    """Tests that both policy-router fragments exist in lib/policy-router.yaml."""
+
+    @staticmethod
+    def _load_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "policy-router.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_policy_parse_scores_defined(self) -> None:
+        data = self._load_yaml()
+        assert "policy_parse_scores" in data["fragments"]
+
+    def test_policy_table_dispatch_defined(self) -> None:
+        data = self._load_yaml()
+        assert "policy_table_dispatch" in data["fragments"]
+
+    def test_policy_parse_scores_has_shell_action_type(self) -> None:
+        data = self._load_yaml()
+        assert data["fragments"]["policy_parse_scores"]["action_type"] == "shell"
+
+    def test_policy_table_dispatch_has_shell_action_type(self) -> None:
+        data = self._load_yaml()
+        assert data["fragments"]["policy_table_dispatch"]["action_type"] == "shell"
+
+    def test_policy_table_dispatch_has_classify_evaluator(self) -> None:
+        data = self._load_yaml()
+        evaluate = data["fragments"]["policy_table_dispatch"].get("evaluate", {})
+        assert evaluate.get("type") == "classify"
+
+    def test_all_fragments_have_description(self) -> None:
+        data = self._load_yaml()
+        for name, frag in data["fragments"].items():
+            assert isinstance(frag, dict), f"Fragment '{name}' should be a dict"
+            assert "description" in frag, f"Fragment '{name}' is missing a description"
+            assert frag["description"].strip(), f"Fragment '{name}' has an empty description"
+
+    def test_policy_parse_scores_uses_run_dir_for_artifacts(self) -> None:
+        data = self._load_yaml()
+        action = data["fragments"]["policy_parse_scores"]["action"]
+        assert "${context.run_dir}" in action
+
+    def test_policy_table_dispatch_uses_run_dir_for_artifacts(self) -> None:
+        data = self._load_yaml()
+        action = data["fragments"]["policy_table_dispatch"]["action"]
+        assert "${context.run_dir}" in action
+
+    def test_policy_table_dispatch_uses_policy_rules_context(self) -> None:
+        data = self._load_yaml()
+        action = data["fragments"]["policy_table_dispatch"]["action"]
+        assert "${context.policy_rules}" in action
+
+    def test_policy_table_dispatch_imports_policy_rules_module(self) -> None:
+        data = self._load_yaml()
+        action = data["fragments"]["policy_table_dispatch"]["action"]
+        assert "from little_loops.fsm.policy_rules import" in action
+
+    def test_policy_parse_scores_resolves_in_loop(self) -> None:
+        """Full resolve_fragments integration against lib/policy-router.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "parse",
+            "import": ["lib/policy-router.yaml"],
+            "states": {
+                "parse": {
+                    "fragment": "policy_parse_scores",
+                    "next": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["parse"]
+        assert state["action_type"] == "shell"
+        assert "fragment" not in state
+
+    def test_policy_table_dispatch_resolves_in_loop(self) -> None:
+        """resolve_fragments wires evaluate.type: classify from the fragment."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "dispatch",
+            "import": ["lib/policy-router.yaml"],
+            "states": {
+                "dispatch": {
+                    "fragment": "policy_table_dispatch",
+                    "route": {"repair": "done", "_": "done"},
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["dispatch"]
+        assert state["action_type"] == "shell"
+        assert state.get("evaluate", {}).get("type") == "classify"
+        assert "fragment" not in state
+
+    def test_policy_refine_loop_validates(self) -> None:
+        """policy-refine.yaml passes load_and_validate with no ERROR-severity items."""
+        from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        loop_path = loops_dir / "policy-refine.yaml"
+        assert loop_path.exists(), "policy-refine.yaml must exist"
+        fsm, _ = load_and_validate(loop_path)
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, (
+            f"policy-refine.yaml validation errors: {[str(e) for e in error_list]}"
+        )

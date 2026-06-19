@@ -2,10 +2,11 @@
 id: ENH-2164
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 captured_at: '2026-06-15T05:30:52Z'
+completed_at: '2026-06-19T23:01:54Z'
 parent: EPIC-2167
 blocked_by: []
 decision_needed: false
@@ -19,7 +20,7 @@ relates_to:
 - ENH-2154
 - ENH-2233
 - ENH-2234
-confidence_score: 98
+confidence_score: 99
 outcome_confidence: 80
 score_complexity: 17
 score_test_coverage: 20
@@ -60,6 +61,8 @@ There is no shared primitive for multi-axis conditional routing in FSM-based aut
 - A code review with critical *security* findings needs an escalation path regardless of aggregate score.
 
 Today there is no shared primitive for multi-axis conditional routing. Every loop that needs it either (a) fans out into a cascade of single-dimension `exit_code` evaluator states (verbose, hard to maintain) or (b) embeds the logic in an LLM prompt (untestable, non-deterministic). A declarative Decision Table fragment makes multi-axis routing a first-class, auditable, and testable pattern.
+
+**The concrete driver is extraction, not cascade-collapse.** ENH-2166 already collapsed `rn-remediate`'s multi-state `route_d_*` cascade onto a single `classify` + `route:` state — that consolidation is *done*. But the routing *decision* still lives as a hard-coded shell `if/elif` chain inside `diagnose` (`rn-remediate.yaml:241–266`): it cannot be unit-tested in isolation, cannot be reused by another loop, and cannot be inspected or edited as data. This engine's value is to **extract that inline `if/elif` into a reusable, auditable rule table** — a declarative `policy_rules` block parsed by a shared, independently-tested grammar module (`fsm/policy_rules.py`) that any loop can import and that ENH-2233's `edit-routes` lens can render and round-trip. The win is testability + reuse + data-level auditability of the routing logic, not collapsing states (that already happened).
 
 ## Relationship to ENH-2165, rn-remediate, and Conjunctive Rules
 
@@ -194,22 +197,22 @@ The fragment reads `context.policy_rules`, parses the rule table, evaluates each
 
 ## Acceptance Criteria
 
-- [ ] `scripts/little_loops/loops/lib/policy-router.yaml` exists and defines these named fragments:
+- [x] `scripts/little_loops/loops/lib/policy-router.yaml` exists and defines these named fragments:
   - `policy_table_dispatch` — `action_type: shell`; reads `${context.run_dir}/rubric-aggregate.txt` and per-dimension score files written by `rubric_parse_scores`; parses `${context.policy_rules}` rule table (top-to-bottom, first-match); writes the winning action state name to `${context.run_dir}/policy-action.txt`; prints `policy_action=<state>`; exits 0
   - `policy_table_dispatch` emits the winning action-state token on its final stdout line; the consuming state uses `evaluate: {type: classify}` (ENH-2165) + a `route:` table to dispatch to that state in one hop. No `policy_route_<name>` cascade and no `dynamic_next` executor convention (see "Layering" / ENH-2165). A `default:` route covers an unmatched/empty token.
-- [ ] Rule table syntax supports at minimum:
+- [x] Rule table syntax supports at minimum:
   - `<dim>:<op><value> -> <state>` where `<op>` ∈ `{>=, <=, ==, !=, <, >}` and `<dim>` is any dimension name from `rubric_dimensions` or the special token `aggregate`
   - **Conjunctive predicates** — multiple conditions joined with `&` in one rule, all of which must hold for the rule to match, e.g. `confidence:>=85 & outcome:>=75 -> implement`. This is required to express `rn-remediate`'s `diagnose` rules (ENH-2166) and is **in scope for v1**.
   - `* -> <state>` as a catch-all (must appear last)
   - **Numeric coercion** — comparison operators coerce both operands to numbers before comparing, so `"9" < "10"` evaluates `True` (numeric), not `False` (lexical). Non-numeric operands fall back to string comparison for `==` / `!=` only; ordered operators (`<`, `<=`, `>`, `>=`) on a non-numeric operand are a parse-time error.
-- [ ] **Shared grammar module** — the rule grammar's parse / serialize / evaluate logic lives in a **single importable module** `scripts/little_loops/fsm/policy_rules.py` (pure functions: `parse_rules(text) -> list[Rule]`, `serialize_rules(rules) -> str`, `evaluate_rules(rules, scores) -> str | None`), **not** inline in the fragment heredoc. The `policy_table_dispatch` fragment shells into it (`python3 -c "from little_loops.fsm.policy_rules import ..."`, the established pattern — cf. `auto-refine-and-implement.yaml:33`). ENH-2233's `edit-routes` lens imports the same module, so the grammar has one source of truth and round-trips losslessly (`parse → serialize → parse` is stable).
-- [ ] **Score-source-agnostic input** — `policy_table_dispatch` reads per-dimension score files (`rubric-dim-<name>.txt`) and `rubric-aggregate.txt` from `${context.run_dir}/` regardless of which scorer wrote them. The rubric path (`policy_parse_scores` over `rubric_score` output) is one supported source; a caller may instead write those files from a shell/deterministic scorer (e.g. `rn-remediate`'s `ll-issues show --json`). The dispatch fragment MUST NOT hard-depend on `lib/rubric-router`'s LLM scoring path.
-- [ ] `rubric_parse_scores` (from `lib/rubric-router.yaml`) is extended **or** a parallel `policy_parse_scores` fragment is added that writes per-dimension score files (`rubric-dim-<name>.txt`) to `${context.run_dir}/` in addition to `rubric-aggregate.txt` and `rubric-tier.txt` — required for per-dimension rule evaluation
-- [ ] Fragment context variables (`policy_rules`) are documented with defaults and override behavior
-- [ ] `ll-loop validate` passes on `lib/policy-router.yaml` with no errors or warnings (MR-1, MR-3, MR-4)
-- [ ] At least one runnable example loop (`loops/policy-refine.yaml`) imports both `lib/rubric-router.yaml` and `lib/policy-router.yaml` and exercises a multi-dimension decision table
-- [ ] `scripts/tests/test_builtin_loops.py` continues to pass after adding the fragment library and example loop
-- [ ] `scripts/tests/test_fsm_fragments.py` gains a `TestPolicyRouterLib` class asserting all fragment names are present and structured correctly; `scripts/tests/test_policy_rules.py` unit-tests the module functions — all documented operators, conjunctive `&`, catch-all `*`, **numeric-vs-lexical coercion** (`"9" < "10"` is `True`), and **`parse → serialize → parse` round-trip stability**
+- [x] **Shared grammar module** — the rule grammar's parse / serialize / evaluate logic lives in a **single importable module** `scripts/little_loops/fsm/policy_rules.py` (pure functions: `parse_rules(text) -> list[Rule]`, `serialize_rules(rules) -> str`, `evaluate_rules(rules, scores) -> str | None`), **not** inline in the fragment heredoc. The `policy_table_dispatch` fragment shells into it (using the `python3 << 'PYEOF'` heredoc pattern, the established convention). ENH-2233's `edit-routes` lens imports the same module, so the grammar has one source of truth and round-trips losslessly (`parse → serialize → parse` is stable).
+- [x] **Score-source-agnostic input** — `policy_table_dispatch` reads per-dimension score files (`rubric-dim-<name>.txt`) and `rubric-aggregate.txt` from `${context.run_dir}/` regardless of which scorer wrote them. The rubric path (`policy_parse_scores` over `rubric_score` output) is one supported source; a caller may instead write those files from a shell/deterministic scorer (e.g. `rn-remediate`'s `ll-issues show --json`). The dispatch fragment does NOT hard-depend on `lib/rubric-router`'s LLM scoring path.
+- [x] A parallel `policy_parse_scores` fragment is added in `lib/policy-router.yaml` that writes per-dimension score files (`rubric-dim-<name>.txt`) to `${context.run_dir}/` in addition to `rubric-aggregate.txt` — required for per-dimension rule evaluation. `lib/rubric-router.yaml` is left unchanged.
+- [x] Fragment context variables (`policy_rules`) are documented with defaults and override behavior
+- [x] `ll-loop validate policy-refine` passes with no errors or warnings (MR-1, MR-3, MR-4)
+- [x] At least one runnable example loop (`loops/policy-refine.yaml`) imports both `lib/rubric-router.yaml` and `lib/policy-router.yaml` and exercises a multi-dimension decision table
+- [x] `scripts/tests/test_builtin_loops.py` continues to pass after adding the fragment library and example loop
+- [x] `scripts/tests/test_fsm_fragments.py` gains a `TestPolicyRouterLib` class asserting all fragment names are present and structured correctly; `scripts/tests/test_policy_rules.py` unit-tests the module functions — all documented operators, conjunctive `&`, catch-all `*`, **numeric-vs-lexical coercion** (`"9" < "10"` is `True`), and **`parse → serialize → parse` round-trip stability**
 
 ## Implementation Steps
 
@@ -243,7 +246,7 @@ _Added by `/ll:refine-issue` — concrete implementation guidance:_
 
 **Step 7 (tests):** `TestPolicyRouterLib` models directly after `test_fsm_fragments.py:TestRubricRouterLib` (line 2178) — fragment name assertions (`policy_parse_scores`, `policy_table_dispatch`); `action_type: shell` for both; `description` presence; `${context.run_dir}` in action text; `resolve_fragments()` integration test using real `loops_dir`. Separately, `scripts/tests/test_policy_rules.py` unit-tests the module: operators `>=`,`<=`,`==`,`!=`,`<`,`>`, catch-all `*`, conjunctive `&`, numeric coercion (`"9" < "10"` → True), ordered-op-on-non-numeric raises at parse time, and `parse → serialize → parse` round-trip stability.
 
-**rn-remediate.yaml migration path (ENH-2166):** The `diagnose` state (line 204) + 5-state cascade (`route_d_implement` → `route_d_decide` → `route_d_wire` → `route_d_refine` → fallthrough) is the exact pattern this fragment replaces. `policy_table_dispatch` + `classify` + `route:` collapses those 5 states to 1. The `diagnose` shell action itself (scoring + priority-ordered token emit) becomes `policy_table_dispatch`'s caller-supplied rule table once ENH-2166 proceeds.
+**rn-remediate.yaml migration path (ENH-2166 — done; reframed as extraction):** ENH-2166 is complete and the 5-state `route_d_*` cascade no longer exists — `diagnose` (now `rn-remediate.yaml:208`) already dispatches in one hop via `evaluate: {type: classify}` + a `route:` table (lines 267–277). The state-collapse this fragment was framed to deliver has therefore already happened *inline*. What remains, and what this engine actually delivers, is **extracting `diagnose`'s hard-coded `if/elif` token-emit chain (lines 241–266) into a declarative, caller-supplied `policy_rules` table** parsed by `fsm/policy_rules.py`. That extraction is the future migration step (out of scope here; tracked as a follow-on) — and it is precisely why the v1 grammar must support conjunctive `&` predicates and score-source-agnostic input, since `diagnose`'s rules use both (`confidence:>=N & outcome:>=M`, scores from `ll-issues show --json`).
 
 ## Scope Boundaries
 
@@ -329,6 +332,31 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **ENH-2165 blocker resolved:**
 - `classify` evaluator (ENH-2165) status is `done`; `evaluate_classify()` is live at `evaluators.py:416` — this issue is no longer blocked
 
+### Codebase Research Findings (2026-06-19 refine pass)
+
+_Added by `/ll:refine-issue --auto` — re-validated anchors against current `main` and folded in the now-`done` ENH-2166:_
+
+**Greenfield confirmed.** None of the target artifacts exist yet — `scripts/little_loops/fsm/policy_rules.py`, `scripts/little_loops/loops/lib/policy-router.yaml`, `scripts/little_loops/loops/policy-refine.yaml`, `scripts/tests/test_policy_rules.py` are all absent. `lib/rubric-router.yaml` (ENH-2154) is present (`loops/lib/rubric-router.yaml`). The issue is correctly unimplemented; this is a clean build.
+
+**Anchor drift — line numbers moved since the 2026-06-16 pass; corrected references:**
+- `_route()` — `executor.py:1367` → now **`executor.py:1469`** (the route-table lookup logic is unchanged; only the line moved).
+- `_validate_classify_route_default()` — `validation.py:1564` → now **`validation.py:1574`** (called from `validation.py:1055`).
+- `is_runnable_loop()` — `validation.py:1999` → now **`validation.py:2032`**.
+- Shell-action capture `{"output": <str>}` — the reopening note cited `executor.py:713`, but line 713/714 captures *child-events*. The shell-action stdout capture relevant to `policy_table_dispatch` is **`executor.py:1268`** (`"output": result.output.rstrip("\n\r")`). Confirms `classify` reads from the trimmed shell stdout.
+- Still accurate (no change): `evaluate_classify()` @ `evaluators.py:416`; `EvaluateConfig.line` field @ `schema.py:94`; `TestRubricRouterLib` @ `test_fsm_fragments.py:2178`.
+
+**ENH-2166 is `done`, but it did NOT extract a shared engine — it inlined `classify` + `route:`.** This supersedes the "5-state cascade this fragment replaces" framing in the Implementation Steps findings above (line ~246) and in the reopening narrative. Current state of `rn-remediate.yaml`:
+- The 5-state `route_d_implement → route_d_decide → route_d_wire → route_d_refine → …` cascade **no longer exists** — grep for `route_d_` returns nothing.
+- `diagnose` (now **line 208**, not 204) emits a token via an inline shell `if/elif` chain (lines 241–266) and dispatches in a single state via `evaluate: {type: classify}` (line 267) + a `route:` table (lines 269–277, with `_:` and `_error:` fallbacks → `emit_implement_failed`). The cascade-collapse this issue promised is therefore already realized inline by ENH-2166.
+
+**The live value of this issue for rn-remediate is now extraction, not collapse.** `diagnose`'s inline `if/elif` chain is exactly the rule table `policy_rules` should express declaratively. Its rules map 1:1 onto the conjunctive v1 grammar and are the concrete proof the in-scope features are required:
+- `confidence >= READINESS & outcome >= OUTCOME -> IMPLEMENT` → `confidence:>=85 & outcome:>=75 -> IMPLEMENT` (validates **conjunctive `&`**).
+- `ambiguity >= N & change_surface == 0 -> WIRE`, and `complexity >= N & change_surface == 0 -> WIRE` (more conjunctions).
+- Scores come from `ll-issues show --json` parsed in shell (lines 217–233) — **not** an LLM `AGGREGATE` line — validating the **score-source-agnostic** AC: `policy_table_dispatch` must read per-dimension files written by *any* scorer, not hard-depend on `rubric_score`. (Note rn-remediate routes on `decision_needed`/`missing_artifacts` string flags too; the v1 `==`/`!=` string-compare fallback covers these.)
+- The future migration that swaps this inline chain for an imported `policy_rules` table is a follow-on (the issue already scopes the rn-remediate migration as out-of-scope here); ENH-2166 having shipped the inline form does not block building the reusable engine.
+
+**`auto-refine-and-implement.yaml` import precedent** — the cited "import-from-package" pattern (issue line 205/220) is at `auto-refine-and-implement.yaml:30–33`, which uses a `python3 << 'PYEOF'` heredoc importing `from little_loops.config import BRConfig`, not a `python3 -c` one-liner. Either form works for shelling into `little_loops.fsm.policy_rules`; the heredoc form is the established convention for multi-line logic.
+
 ## Related Key Documentation
 
 - [`scripts/little_loops/loops/lib/rubric-router.yaml`](../../scripts/little_loops/loops/lib/rubric-router.yaml) — direct predecessor (ENH-2154); policy-router imports and builds on it
@@ -379,6 +407,10 @@ here is the backend; ENH-2233 is the editing lens. ENH-2234 (deferred) tracks a
 pluggable operator registry layered on this engine's matcher vocabulary.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-19T22:47:15 - `afb38a86-6126-4fbd-862c-920c11753052.jsonl`
+- `/ll:confidence-check` - 2026-06-19T00:00:00Z - `9a628d90-212b-42dc-822d-72440bfc7b5b.jsonl`
+- `/ll:refine-issue` - 2026-06-19T22:39:52 - `2b7e645d-a1c7-4882-a697-d45ec064bbac.jsonl`
+- `/ll:confidence-check` - 2026-06-19T00:00:00Z - `ff830b15-e3cc-4c8e-b1f0-0192a42c6323.jsonl`
 - `/ll:capture-issue` - 2026-06-19T21:56:31Z - `7ad4c299-a78e-4069-93e8-64dd478cf18b.jsonl`
 - `/ll:confidence-check` - 2026-06-15T00:00:00Z - `36f09c2f-8598-41e8-8022-29d032bf584b.jsonl`
 - `/ll:refine-issue` - 2026-06-16T01:05:37 - `4868c01f-d653-4e88-92f4-0dfdaf0947d0.jsonl`

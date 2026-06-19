@@ -1,0 +1,178 @@
+# Policy-router fragment library for little-loops.
+#
+# Implements general multi-axis decision-table routing: a declarative,
+# priority-ordered rule table maps per-dimension scores to an action state,
+# enabling conjunctive (AND-joined) predicate routing without hard-coding
+# per-dimension branches.
+#
+# This is the L1 general engine in the 2-layer stack:
+#   L0 — classify evaluator (ENH-2165, evaluators.py:evaluate_classify)
+#   L1 — lib/policy-router.yaml (this file) — conjunctive rules, source-agnostic input
+#   Preset — lib/rubric-router.yaml (ENH-2154) — single-aggregate 3-tier path
+#
+# The rule grammar is implemented in fsm/policy_rules.py — a single importable
+# module that this fragment's policy_table_dispatch shells into, and that
+# ENH-2233's edit-routes lens imports for rendering and round-trip editing.
+#
+# Expected context variables (provided by the importing loop):
+#   context.policy_rules      — newline-separated rule table (required by
+#                               policy_table_dispatch; see rule syntax below)
+#   context.run_dir           — injected by the runner; used for all artifact files
+#
+# Optional context variables (consumed when lib/rubric-router is also imported):
+#   context.rubric_dimensions — pipe-separated dimension names (used by rubric_score)
+#
+# Rule syntax (in context.policy_rules):
+#   <dim>:<op><value>                                     -> <state>   single predicate
+#   <dim>:<op><value> & <dim2>:<op2><value2>             -> <state>   conjunctive (AND)
+#   <dim>:<op><val> & <dim2>:<op2><val2> & <dim3>:<op3><val3> -> <state>  3-way AND
+#   * -> <state>                                               catch-all (must be last)
+#   # comment lines and blank lines are skipped
+#   Operators: >=, <=, ==, !=, <, >
+#   Ordered operators (>=, <=, <, >) require numeric values (parse-time error if not).
+#   Numeric coercion: "9" < "10" evaluates True (float), not False (lexical).
+#   String compare: == and != fall back to string when both sides are non-numeric.
+#
+# Artifact files written to ${context.run_dir}/:
+#   rubric-aggregate.txt       — aggregate score integer (written by policy_parse_scores)
+#   rubric-dim-<name>.txt      — per-dimension score integer (lowercased, spaces→hyphens)
+#   policy-action.txt          — winning action state token from policy_table_dispatch
+#
+# Fragment names exported:
+#   policy_parse_scores        — parse rubric output; write aggregate + per-dim score files
+#   policy_table_dispatch      — evaluate rule table; emit winning token via classify
+#
+# Import in any loop with:
+#   import:
+#     - lib/rubric-router.yaml   # provides rubric_score; needed when using LLM scoring
+#     - lib/policy-router.yaml
+#
+# Routing handoff pattern (the policy_dispatch state in the caller):
+#
+#   policy_dispatch:
+#     fragment: policy_table_dispatch
+#     route:
+#       implement: implement      # token emitted when rule matches -> implement
+#       repair:    repair
+#       done:      done
+#       _: repair                 # required: catch-all for unrecognized tokens
+#       _error: done              # optional: error fallback
+#
+# Score-source agnosticism:
+#   policy_table_dispatch reads per-dimension files from ${context.run_dir}/ regardless
+#   of which scorer wrote them. The rubric path (policy_parse_scores over rubric_score
+#   output) is one supported source; callers may also write rubric-dim-*.txt from a
+#   deterministic shell scorer (e.g. rn-remediate's "ll-issues show --json" path).
+
+fragments:
+  policy_parse_scores:
+    description: |
+      Shell state that re-parses LLM rubric output (${captured.scores.output}) to
+      extract per-dimension scores and write individual score files to ${context.run_dir}/.
+      Files written:
+        rubric-aggregate.txt        — aggregate integer score
+        rubric-dim-<dim-name>.txt   — per-dimension integer (lowercased, spaces→hyphens)
+      These files are consumed by policy_table_dispatch.
+      Prints: aggregate=<N> and dim=<name> score=<S> for each dimension found.
+      State must supply: next (unconditional forward after parsing).
+      Dependency: ${captured.scores.output} must be set by a prior rubric_score state.
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import re, os, sys
+      output = """${captured.scores.output}"""
+      run_dir = "${context.run_dir}"
+      os.makedirs(run_dir, exist_ok=True)
+
+      # Extract aggregate score
+      agg_m = re.search(r'AGGREGATE:\s*(\d+)', output, re.IGNORECASE)
+      agg = int(agg_m.group(1)) if agg_m else 0
+      with open(os.path.join(run_dir, "rubric-aggregate.txt"), "w") as f:
+          f.write(str(agg))
+
+      # Extract per-dimension scores.
+      # Rubric output format: "DIMENSION: <name>: <score 0-100> — rationale"
+      dims_found = 0
+      for m in re.finditer(r'DIMENSION:\s*([\w][\w\s\-]+?):\s*(\d+)', output, re.IGNORECASE):
+          dim_name = re.sub(r'\s+', '-', m.group(1).strip().lower())
+          score = m.group(2).strip()
+          with open(os.path.join(run_dir, f"rubric-dim-{dim_name}.txt"), "w") as f:
+              f.write(score)
+          print(f"dim={dim_name} score={score}")
+          dims_found += 1
+
+      print(f"aggregate={agg}")
+      if dims_found == 0:
+          sys.stderr.write("policy_parse_scores: no DIMENSION lines found in scores output\n")
+      PYEOF
+
+  policy_table_dispatch:
+    description: |
+      Shell state that evaluates the declarative policy rule table (${context.policy_rules})
+      against per-dimension score files written by policy_parse_scores, and emits the
+      winning action-state token as its final stdout line for the classify evaluator.
+
+      Reads from ${context.run_dir}/:
+        rubric-aggregate.txt     — score for the "aggregate" dimension (float)
+        rubric-dim-<name>.txt    — score for each named dimension (float or string)
+
+      Rule grammar lives in fsm/policy_rules.py (parse_rules / evaluate_rules).
+      Emits the matching rule's target state as the last stdout line.
+      On no match (no catch-all rule): prints an empty line → route: _: fallback.
+      Writes the winning token to ${context.run_dir}/policy-action.txt.
+
+      State must supply:
+        evaluate: {type: classify}   — reads the emitted token as verdict
+        route:                       — maps tokens to states; MUST include _: default
+      State may supply: timeout.
+
+      Rule syntax examples (set via context.policy_rules):
+        security:<65 -> escalate
+        confidence:>=85 & outcome:>=75 -> implement
+        * -> repair
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import os, sys
+      from little_loops.fsm.policy_rules import parse_rules, evaluate_rules
+
+      run_dir = "${context.run_dir}"
+      policy_rules_text = """${context.policy_rules}"""
+
+      # Load scores from run_dir artifact files (source-agnostic: any scorer may write them)
+      scores = {}
+      agg_path = os.path.join(run_dir, "rubric-aggregate.txt")
+      if os.path.exists(agg_path):
+          try:
+              scores["aggregate"] = float(open(agg_path).read().strip())
+          except ValueError:
+              scores["aggregate"] = open(agg_path).read().strip()
+
+      try:
+          for fname in sorted(os.listdir(run_dir)):
+              if fname.startswith("rubric-dim-") and fname.endswith(".txt"):
+                  dim = fname[len("rubric-dim-"):-len(".txt")]
+                  raw = open(os.path.join(run_dir, fname)).read().strip()
+                  try:
+                      scores[dim] = float(raw)
+                  except ValueError:
+                      scores[dim] = raw
+      except FileNotFoundError:
+          sys.stderr.write(f"policy_table_dispatch: run_dir not found: {run_dir}\n")
+
+      rules = parse_rules(policy_rules_text)
+      result = evaluate_rules(rules, scores)
+
+      action_file = os.path.join(run_dir, "policy-action.txt")
+      if result:
+          with open(action_file, "w") as f:
+              f.write(result)
+          print(result)
+      else:
+          # No match and no catch-all — empty line routes to route: _: default
+          with open(action_file, "w") as f:
+              f.write("")
+          print("")
+      PYEOF
+    evaluate:
+      type: classify
