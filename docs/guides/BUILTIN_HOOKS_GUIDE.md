@@ -201,6 +201,16 @@ Keeps large tool output out of the conversation. On `Bash`, it rewrites allowlis
 - `scratch_pad.command_allowlist` (default `["cat", "pytest", "mypy", "ruff", "ls", "grep", "find"]`)
 - `scratch_pad.file_extension_filters` (default `[".log", ".txt", ".json", ".md", ".py", ".ts", ".tsx", ".js"]`)
 
+### Install-nudge gate (warn)
+
+**Hook:** `pre-tool-use.sh` → `little_loops.hooks.install_learning_gate.gate`
+
+When Claude Code is about to run a `Bash` command that invokes a package-install tool (`pip install`, `pip3 install`, `uv pip install`, `npm install`, `pnpm add`, `yarn add`), this hook emits a one-line nudge suggesting you run `/ll:explore-api` to prove the newly-installed package's API assumptions before writing integration code:
+
+> `[ll: explore-api nudge] About to install stripe — consider /ll:explore-api "stripe" to prove its API before writing integration code.`
+
+Never blocks (always advisory, exit 0). Gated by `learning_tests.enabled` (default **false**) — the nudge is silent unless learning tests are enabled. No additional configuration keys beyond the parent `learning_tests` block.
+
 ---
 
 ## PostToolUse

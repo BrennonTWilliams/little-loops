@@ -142,14 +142,18 @@ raw_output_path: .ll/learning-tests/raw/anthropic-sdk-streaming.txt
 
 | Subcommand | Purpose | Exit |
 |---|---|---|
-| `check "<target>"` | Print the matching record as JSON | `0` if found, `1` if missing |
+| `check "<target>" [--stale-aware]` | Print the matching record as JSON. With `--stale-aware`, exits `1` if the record exists but is stale (age exceeds `learning_tests.stale_after_days`). Used by gates that treat stale records as "needs re-proof". | `0` if found (and not stale), `1` if missing or stale |
 | `list` | Print every record as a JSON array | always `0` |
 | `mark-stale "<target>"` | Set `status: stale` on an existing record | `0` on success, `1` if not found |
+| `orphans [--mark-stale]` | List records whose target package is not imported by any project file. Orphaned records accumulate when you remove a dependency or rename an integration. With `--mark-stale`, atomically sets `status: stale` on all orphans and exits `0`. | always `0` |
 
 ```bash
 ll-learning-tests check "Anthropic SDK streaming"
+ll-learning-tests check "Anthropic SDK streaming" --stale-aware   # exit 1 if stale
 ll-learning-tests list | jq -r '.[] | "\(.status)\t\(.target)"'
 ll-learning-tests mark-stale "Anthropic SDK streaming"
+ll-learning-tests orphans                # list orphaned records
+ll-learning-tests orphans --mark-stale   # mark them stale
 ```
 
 ## Pre-Seeding Assumptions with `--assume`
@@ -358,6 +362,32 @@ Or, to suppress the hint for a specific package without adding it to the skip li
 ### Caching
 
 The gate caches each package lookup for the lifetime of the Python process (one Claude Code session). Re-running `/ll:explore-api "<target>"` while in the same session will not clear the cache; start a new session to pick up freshly-proven records.
+
+---
+
+## Release Gate
+
+When `learning_tests.enabled` is `true`, `ll-manage-release` runs a pre-release check that blocks tagging if any issue in the current sprint (or in the set of recently completed issues) declares `learning_tests_required` targets that are stale or refuted.
+
+**What it blocks on:**
+
+| Record state | `--stale-aware` check result | Gate decision |
+|---|---|---|
+| `proven` and not stale | pass | allow |
+| `proven` but age > `stale_after_days` | stale | **block** |
+| `refuted` | refuted | **block** |
+| missing | not found | **block** |
+
+**Example output:**
+```
+[ll-manage-release] Learning-test gate: BLOCK
+  ✗ stale:   "Anthropic SDK streaming"  (last proven 2026-05-01, stale after 30 days)
+  ✗ refuted: "GitHub webhook delivery guarantees"
+
+Run /ll:explore-api to re-prove stale targets before tagging.
+```
+
+The gate can be bypassed for emergency releases with `ll-manage-release --skip-learning-gate`.
 
 ---
 

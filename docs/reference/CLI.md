@@ -252,9 +252,11 @@ ll-doctor --json
 
 Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Also surfaces skill-health signals (per-skill invocation frequency and correction rate) from `ll-logs stats` (ENH-1921). Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent so first-time users still get useful output.
 
+When `learning_tests.enabled` is `true`, the report also includes a **Learning Test Coverage** section (ENH-2218) showing total record count, breakdown by status (proven / stale / refuted), and the number of orphaned records (targets with no matching import in the project). Use this section to spot stale coverage before a release.
+
 **Flags:**
 - `--db PATH` — Use a non-default session database (default `.ll/history.db`).
-- `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not.
+- `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not. When learning tests are enabled it also includes a `learning_tests` key with `{total, proven, stale, refuted, orphans}`.
 
 **Exit codes:** `0` = report rendered (data present or fallback used), `1` = no data found in either the SQLite store or the fallback file.
 
@@ -350,6 +352,8 @@ Process issues concurrently using isolated git worktrees.
 | `--context-limit` | | Override context window token estimate |
 | `--skip-learning-gate` | | Bypass per-worktree `proof-first-task` gate (emergency runs when `learning_tests.enabled` is true) |
 
+**Per-worktree proof-first gate (ENH-2219):** When `learning_tests.enabled` is `true`, each worktree runs a `proof-first-task` gate before handing off to the implementation loop. The gate reads `learning_tests_required` from the issue file and verifies that every declared API assumption has a proven (non-stale) record in the registry. Issues that fail the gate are retried once after `/ll:explore-api` completes; if the retry also fails the issue is skipped and marked `blocked`. Use `--skip-learning-gate` for emergency runs when the registry is unavailable.
+
 > **Config tip:** Branch naming and merge behavior are controlled by `parallel.use_feature_branches` in `ll-config.json`. When `true`, branches are named `feature/<id>-<slug>` and auto-merge is skipped, leaving PR-ready branches for review. Set `parallel.push_feature_branches: true` to also push branches to remote after success, and `parallel.open_pr_for_feature_branches: true` to open a draft PR via `gh` and record `pr_url:` on the issue. See [Configuration reference](CONFIGURATION.md#parallel) and the [Feature-Branch / PR-Based Workflow](../guides/SPRINT_GUIDE.md#feature-branch--pr-based-workflow) guide.
 
 **Examples:**
@@ -409,8 +413,11 @@ Execute a sprint or resolve an EPIC's active children as a sprint.
 | `--save` | | Write the resolved sprint YAML to `.ll/sprints/epic-NNN.yaml` before executing (useful for inspect/edit workflows) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
+| `--skip-learning-gate` | | Bypass the pre-flight learning-test batch gate (see below) |
 
 When an EPIC ID is passed, resolution is the union of the EPIC's `relates_to:` field (forward) and any issue with `parent: EPIC-NNN` (backward), deduplicated and filtered to active statuses (`open`, `in_progress`, `blocked`). Resume works using the normalized `epic-NNN` name stored in `.sprint-state.json`.
+
+**Pre-flight learning-test gate (ENH-2210):** When `learning_tests.enabled` is `true`, `ll-sprint run` aggregates all `learning_tests_required` targets across every issue in the sprint before the first wave runs, checks each target via `ll-learning-tests check --stale-aware`, and blocks execution if any are missing or stale. This catches assumption gaps for the entire sprint in a single pre-flight pass rather than discovering them mid-wave. Use `--skip-learning-gate` to bypass when the registry is unavailable.
 
 > **Milestone write-back**: When `ll-sprint run` starts, it writes `milestone: <sprint-name>` to the frontmatter of every issue in the sprint. This makes the sprint assignment visible on each issue file and enables `ll-issues list --milestone` filtering and `ll-sync` milestone assignment.
 
@@ -875,15 +882,22 @@ Before opening the editor, prints warnings for: unreachable states, dead-end sta
 | `--format {markdown,csv}` | `markdown` | Output format for the table |
 | `--dry-run` | | Print table to stdout without opening editor |
 | `--no-warnings` | | Skip gap/conflict detection output |
+| `--allow-delete` | | Allow deletion of state blocks that were removed from the edited table (default: removed rows are ignored) |
 
-**Exit codes:** 0 = success or no changes; 1 = parse error or unknown state in edited table; 2 = loop not found.
+**State operations via the table:**
+- **Edit routes** — change any cell in the table; the corresponding `on_<verdict>` field is updated on save.
+- **Add a terminal stub** — add a new row with a state name that doesn't exist yet and leave all verdict cells empty. On save the state is inserted with `terminal: true` as a placeholder you can expand later.
+- **Delete a state** — remove a row entirely, then re-run with `--allow-delete`. Without `--allow-delete`, deleted rows are silently ignored.
+
+**Exit codes:** 0 = success or no changes; 1 = parse error or unknown state in edited table (when not a new stub); 2 = loop not found.
 
 **Examples:**
 ```bash
 ll-loop edit-routes rn-implement             # Open routing table in $EDITOR
 ll-loop edit-routes rn-implement --dry-run   # Print table to stdout
-ll-loop edit-routes rn-implement --format csv --dry-run  # CSV format
-ll-loop edit-routes rn-implement --no-warnings           # Skip gap warnings
+ll-loop edit-routes rn-implement --format csv --dry-run   # CSV format
+ll-loop edit-routes rn-implement --no-warnings            # Skip gap warnings
+ll-loop edit-routes rn-implement --allow-delete           # Apply row deletions
 ```
 
 **Examples:**
@@ -2128,6 +2142,8 @@ Pass `--project` instead of an issue ID to print the project-wide context digest
 | `--effort` | Output a `## Effort Context` block with per-issue session count and cycle time (ENH-1905) |
 | `--for-skill NAME` | Exit 0 with no output if NAME is not in `history.planning_skills` (ENH-1909) |
 
+When `learning_tests.enabled` is `true` and the queried issue has `learning_tests_required` declared, an additional `## Learning Test Evidence` block is appended (ENH-2217). The block lists each declared target with its current registry status (proven / stale / refuted / missing), so planning skills that call `ll-history-context` automatically surface assumption coverage without an extra `ll-learning-tests check` call.
+
 **Output cap:** At most 5 rows are rendered in issue mode. Project mode respects `history.session_digest.char_cap` (default 1200 chars).
 
 **Effort Context block:** When `--effort` is passed, a `## Effort Context` section is appended after the `## Historical Context` block (or emitted alone when no corrections/FTS matches exist). It includes the session count and cycle time (first-to-last session span in days) for the queried issue, plus a velocity table of recently completed issues drawn from `recent_issue_velocity()`. Returns empty output when the DB is absent or the issue has no recorded sessions.
@@ -2608,19 +2624,24 @@ Query and manage the learning test registry. Skills and loops call this via `Bas
 
 | Subcommand | Description |
 |------------|-------------|
-| `check <target>` | Print record JSON; exit 1 if not found |
+| `check <target> [--stale-aware]` | Print record JSON; exit 1 if not found or (with `--stale-aware`) if the record is stale |
 | `list` | Print all records as a JSON array |
 | `mark-stale <target>` | Set status=stale; exit 1 if not found |
+| `orphans [--mark-stale]` | List records whose target package is not imported by any project file; optionally mark them all stale |
 
 **Examples:**
 ```bash
 ll-learning-tests check "Anthropic SDK streaming"
+ll-learning-tests check "Anthropic SDK streaming" --stale-aware   # exit 1 if stale
 ll-learning-tests list
+ll-learning-tests list | jq -r '.[] | "\(.status)\t\(.target)"'
 ll-learning-tests mark-stale "Anthropic SDK streaming"
+ll-learning-tests orphans                # list orphaned records
+ll-learning-tests orphans --mark-stale   # atomically mark all orphans stale
 ll-learning-tests --help
 ```
 
-**Exit codes:** `0` = success, `1` = target not found
+**Exit codes:** `0` = success, `1` = target not found (or stale with `--stale-aware`)
 
 ---
 
