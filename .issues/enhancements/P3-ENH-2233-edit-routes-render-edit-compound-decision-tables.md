@@ -111,19 +111,75 @@ ll-loop edit-routes <loop-name> [--decision-table] [--format markdown|csv] [--dr
   `RouteTableApplier` in `scripts/little_loops/cli/loop/edit_routes.py` +
   `fsm/route_table.py`, adding a policy-rule extractor/serializer alongside them.
 
+## Implementation Steps
+
+1. Add policy-rule parser to `route_table.py` — convert `dim:op:value [& ...] -> state` strings into row objects
+2. Add compound-grid renderer — build condition-columns × action table (markdown + CSV), column set = union of dimensions across all rules
+3. Add grid serializer — convert edited table back to rule syntax, preserving row order (first-match-wins)
+4. Add validators — shadowed rows, missing catch-all, unknown action state
+5. Wire `--decision-table` flag and auto-detect logic into `edit_routes.py`
+6. Add round-trip tests to `test_ll_loop_edit_routes.py`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete file/function references:_
+
+1. **`route_table.py` — new classes to add** (alongside existing `RouteTableExtractor` etc.):
+   - `PolicyRuleExtractor` — reads `fsm.context["policy_rules"]`, calls `parse_rules()` from `policy_rules.py`, returns `list[Rule]`
+   - `CompoundGridRenderer` — takes `list[Rule]`, builds condition-columns × action table: columns = `["#"] + sorted(union of dims) + ["→ action"]`; catch-all row rendered as `*` in all condition cells. Mirrors `RouteTableRenderer.to_markdown/to_csv()` structure.
+   - `CompoundGridParser` — parses edited markdown/CSV back to `list[Rule]`; validates all action-column values are real states (`known_states`); emits shadow warnings and missing-catch-all warnings. Returns a `ParsedDecisionTable(rules, warnings)` dataclass.
+   - `PolicyRuleApplier` — writes serialized rules back via `serialize_rules(rules)` into `data["context"]["policy_rules"]` using `YAML(typ="rt")` + `atomic_write`; same round-trip-preserving pattern as `RouteTableApplier.apply()`.
+   - Import: `from little_loops.fsm.policy_rules import parse_rules, serialize_rules, Rule, Predicate`
+
+2. **`edit_routes.py` — branch in `cmd_edit_routes()`**: after `load_and_validate(path)` returns `fsm`, check `decision_table = getattr(args, "decision_table", False) or ("lib/policy-router" in fsm.imports and "policy_rules" in fsm.context)`. When `True`, route to `PolicyRuleExtractor` / `CompoundGridRenderer` / `CompoundGridParser` / `PolicyRuleApplier`; otherwise keep existing `RouteTableExtractor` path unchanged.
+
+3. **`__init__.py` lines 768–795** — add one line: `edit_routes_parser.add_argument("--decision-table", action="store_true", default=False, help="Render compound policy-router decision table instead of state × verdict matrix.")`
+
+4. **Tests in `test_ll_loop_edit_routes.py`**:
+   - New fixture: copy or inline the `policy-refine.yaml` content (7-rule `context.policy_rules` with 4 dimensions) into a fixture under `scripts/tests/fixtures/fsm/`
+   - `TestPolicyRuleExtractor` — round-trip: `PolicyRuleExtractor.extract(fsm)` against the fixture → verify rule count and catch-all
+   - `TestCompoundGridRenderer` — markdown and CSV rendering of a `list[Rule]`; verify column headers and `—` empty cells
+   - `TestCompoundGridParser` — parse rendered markdown back to `list[Rule]`; verify rule order preserved
+   - `TestPolicyRuleApplier` — write to a temp fixture YAML, reload, verify `context.policy_rules` round-trips
+   - `TestCmdEditRoutesDecisionTable` — end-to-end with `decision_table=True` and monkeypatched `subprocess.call`; also test auto-detect (no `--decision-table` flag, loop imports `lib/policy-router`)
+
+5. **Operator grammar note**: `policy_rules.py` supports `>=`, `<=`, `==`, `!=`, `<`, `>` only. The `in[hot,warm]` example in the "Numeric/typed cells" section below does **not** match the actual grammar — `in[...]` is not implemented. Cells with `==` or `!=` handle string-equality comparisons; `in`-style matching would require a future operator extension (ENH-2234 territory).
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/cli/loop/edit_routes.py` — add `--decision-table` mode + auto-detect
 - `scripts/little_loops/fsm/route_table.py` — policy-rule extractor + grid renderer + serializer
-- `scripts/tests/test_ll_loop_edit_routes.py` — round-trip tests for compound tables
 
-### Dependencies
-- **ENH-2164** (`lib/policy-router.yaml`) — defines the `context.policy_rules` grammar
-  this lens reads/writes; **must land first** (this issue is its authoring surface)
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/__init__.py` — registers the `edit-routes` subcommand; no changes needed (additive flag)
 
 ### Similar Patterns
 - ENH-2227 / ENH-2228 — the existing `edit-routes` extractor/renderer/parser/applier to extend
+
+### Tests
+- `scripts/tests/test_ll_loop_edit_routes.py` — round-trip tests for compound tables (new tests)
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+### Issue Dependencies
+- **ENH-2164** (`lib/policy-router.yaml`) — defines the `context.policy_rules` grammar this lens reads/writes; must land first (this issue is its authoring surface)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/fsm/policy_rules.py` — **already exists** (ENH-2164 partially implemented). Public API: `parse_rules(text: str) -> list[Rule]`, `serialize_rules(rules: list[Rule]) -> str`, `evaluate_rules(rules, scores) -> str | None`; dataclasses `Predicate(dim, op, value)` and `Rule(predicates, target, is_catchall)`. Import this module — do not reimplement the grammar.
+- `scripts/little_loops/loops/lib/policy-router.yaml` — **already exists**. The fragment library this issue builds the editing lens for; fragments: `policy_parse_scores`, `policy_table_dispatch`.
+- `scripts/little_loops/loops/policy-refine.yaml` — **already exists**. Concrete example loop importing `lib/policy-router.yaml` with a multi-rule `context.policy_rules` block (7 rules covering 4 dimensions). Use as round-trip test fixture input.
+- `scripts/tests/test_policy_rules.py` — **already exists**. Unit tests for `policy_rules.py`; reference for test scope and structure of new compound-table tests.
+- `scripts/little_loops/cli/loop/__init__.py` lines 768–795 — `edit-routes` subparser. Add `--decision-table` flag here: `edit_routes_parser.add_argument("--decision-table", action="store_true", ...)`. Dispatch unchanged; `cmd_edit_routes` reads via `getattr(args, "decision_table", False)`.
+- `scripts/little_loops/fsm/schema.py` — `FSMLoop.imports: list[str]` holds the raw `import:` list; `FSMLoop.context: dict[str, Any]` holds the `context:` block. Auto-detect predicate: `"lib/policy-router" in fsm.imports and "policy_rules" in fsm.context`.
+- `scripts/tests/test_fsm_fragments.py:TestRubricRouterLib` — exact structural model for a new `TestPolicyRouterLib` test class (fragment presence, description required, `${context.run_dir}` artifact path, and `resolve_fragments()` integration).
 
 ## Impact
 
@@ -141,4 +197,6 @@ ll-loop edit-routes <loop-name> [--decision-table] [--format markdown|csv] [--dr
 **Open** | Created: 2026-06-19 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-19T23:00:08 - `f41f18ea-05b2-4083-8bb7-09cec8e247f5.jsonl`
+- `/ll:format-issue` - 2026-06-19T22:52:50 - `f4c05632-020f-46ec-9644-de932e72069a.jsonl`
 - `/ll:capture-issue` - 2026-06-19T21:56:31Z - `7ad4c299-a78e-4069-93e8-64dd478cf18b.jsonl`
