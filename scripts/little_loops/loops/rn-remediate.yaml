@@ -255,7 +255,7 @@ states:
           && [ "$CHANGE_SURFACE" -eq 0 ]; then
         # High complexity + no integration map → wire before refining
         echo "WIRE"
-      elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] || [ "$CONFIDENCE" -lt "${context.diagnose_confidence_floor}" ]; then
+      elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] || [ "$CONFIDENCE" -lt "${context.readiness_threshold}" ] || [ "$OUTCOME" -lt "${context.outcome_threshold}" ]; then
         echo "REFINE"
       elif [ "$CHANGE_SURFACE" -ge "${context.diagnose_change_surface_threshold}" ]; then
         echo "DECOMPOSE"
