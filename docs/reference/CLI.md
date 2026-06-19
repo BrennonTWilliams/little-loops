@@ -348,6 +348,7 @@ Process issues concurrently using isolated git worktrees.
 | `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
+| `--skip-learning-gate` | | Bypass per-worktree `proof-first-task` gate (emergency runs when `learning_tests.enabled` is true) |
 
 > **Config tip:** Branch naming and merge behavior are controlled by `parallel.use_feature_branches` in `ll-config.json`. When `true`, branches are named `feature/<id>-<slug>` and auto-merge is skipped, leaving PR-ready branches for review. Set `parallel.push_feature_branches: true` to also push branches to remote after success, and `parallel.open_pr_for_feature_branches: true` to open a draft PR via `gh` and record `pr_url:` on the issue. See [Configuration reference](CONFIGURATION.md#parallel) and the [Feature-Branch / PR-Based Workflow](../guides/SPRINT_GUIDE.md#feature-branch--pr-based-workflow) guide.
 

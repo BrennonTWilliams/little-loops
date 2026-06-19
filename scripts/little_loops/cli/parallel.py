@@ -20,6 +20,7 @@ from little_loops.cli_args import (
     add_quiet_arg,
     add_resume_arg,
     add_skip_arg,
+    add_skip_learning_gate_arg,
     add_timeout_arg,
     add_type_arg,
     parse_issue_ids,
@@ -158,6 +159,7 @@ Examples:
         add_skip_arg(parser)
         add_type_arg(parser)
         add_label_arg(parser)
+        add_skip_learning_gate_arg(parser)
 
         # Add max-issues and config individually (different help text needed)
         add_max_issues_arg(parser)
@@ -236,6 +238,7 @@ Examples:
             serialize_overlapping=not args.warn_only,
             base_branch=_base_branch,
             use_feature_branches=args.feature_branches,
+            skip_learning_gate=args.skip_learning_gate,
         )
 
         # Handle prune mode

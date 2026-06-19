@@ -435,6 +435,7 @@ class BRConfig:
         base_branch: str | None = None,
         remote_name: str | None = None,
         use_feature_branches: bool | None = None,
+        skip_learning_gate: bool = False,
     ) -> ParallelConfig:
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
@@ -454,6 +455,7 @@ class BRConfig:
             ignore_pending: Report pending work but continue (default: False)
             overlap_detection: Enable pre-flight overlap detection (default: False)
             serialize_overlapping: If True, defer overlapping issues; if False, just warn
+            skip_learning_gate: Bypass per-worktree proof-first-task gate (default: False)
 
         Returns:
             ParallelConfig configured from BRConfig
@@ -497,6 +499,7 @@ class BRConfig:
             ignore_pending=ignore_pending,
             overlap_detection=overlap_detection,
             serialize_overlapping=serialize_overlapping,
+            skip_learning_gate=skip_learning_gate,
             base_branch=base_branch if base_branch is not None else self._parallel.base_branch,
             remote_name=remote_name if remote_name is not None else self._parallel.remote_name,
         )

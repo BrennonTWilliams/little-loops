@@ -27,6 +27,7 @@ import pytest
 
 from little_loops.config import BRConfig
 from little_loops.fsm.schema import DEFAULT_LLM_MODEL
+from little_loops.issue_parser import IssueInfo
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
 from little_loops.parallel.worker_pool import WorkerPool
@@ -2918,3 +2919,138 @@ class TestPruneMergedFeatureBranches:
 
         assert pruned == []
         assert skipped == ["feature/bug-007-fail"]
+
+
+class TestPerWorktreeProofFirstGate:
+    """ENH-2219: Per-worktree proof-first-task gate tests."""
+
+    @pytest.fixture
+    def lt_enabled_br_config(self, tmp_path: Path) -> BRConfig:
+        """BRConfig with learning_tests.enabled=True."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        config_data = {"learning_tests": {"enabled": True, "stale_after_days": 30}}
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_data))
+        return BRConfig(tmp_path)
+
+    def _make_issue(
+        self,
+        tmp_path: Path,
+        issue_id: str,
+        *,
+        learning_tests_required: list[str] | None = None,
+    ) -> IssueInfo:
+        """Create a stub IssueInfo for gate tests."""
+        issue_path = tmp_path / f"P2-{issue_id}-stub.md"
+        issue_path.write_text(
+            f"---\nid: {issue_id}\ntitle: Stub\nstatus: open\n---\n# {issue_id}: Stub\n"
+        )
+        return IssueInfo(
+            path=issue_path,
+            issue_type="enhancements",
+            priority="P2",
+            issue_id=issue_id,
+            title="Stub issue",
+            learning_tests_required=learning_tests_required,
+        )
+
+    def _gate_ok_result(self) -> MagicMock:
+        """Subprocess result simulating gate exit 0 (all terminal states)."""
+        mock = MagicMock()
+        mock.returncode = 0
+        mock.stdout = ""
+        mock.stderr = ""
+        return mock
+
+    def test_gate_skipped_when_lt_disabled(
+        self, br_config: BRConfig, tmp_path: Path
+    ) -> None:
+        """Gate subprocess not called when learning_tests.enabled=False (default)."""
+        from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
+
+        issue = self._make_issue(tmp_path, "ENH-001", learning_tests_required=["httpx"])
+
+        with patch("little_loops.parallel.worker_pool.subprocess.run") as mock_sub:
+            result = _run_per_worktree_proof_first_gate(
+                issue,
+                tmp_path,
+                br_config,  # learning_tests.enabled=False by default
+                ParallelConfig(),
+                MagicMock(),
+            )
+
+        assert result is True
+        mock_sub.assert_not_called()
+
+    def test_gate_skipped_when_no_learning_tests_required(
+        self, lt_enabled_br_config: BRConfig, tmp_path: Path
+    ) -> None:
+        """Gate subprocess not called when issue.learning_tests_required is None."""
+        from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
+
+        issue = self._make_issue(tmp_path, "ENH-001", learning_tests_required=None)
+
+        with patch("little_loops.parallel.worker_pool.subprocess.run") as mock_sub:
+            result = _run_per_worktree_proof_first_gate(
+                issue,
+                tmp_path,
+                lt_enabled_br_config,
+                ParallelConfig(),
+                MagicMock(),
+            )
+
+        assert result is True
+        mock_sub.assert_not_called()
+
+    def test_blocked_result_skips_manage_issue(
+        self, lt_enabled_br_config: BRConfig, tmp_path: Path
+    ) -> None:
+        """Gate returning blocked state skips manage-issue; WorkerResult.success=False."""
+        from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
+
+        issue = self._make_issue(tmp_path, "ENH-002", learning_tests_required=["httpx"])
+
+        # Write state file that simulates proof-first-task landing in "blocked" state
+        loops_running = tmp_path / ".loops" / ".running"
+        loops_running.mkdir(parents=True, exist_ok=True)
+        state_data = {"current_state": "blocked", "status": "completed"}
+        (loops_running / "proof-first-task.state.json").write_text(json.dumps(state_data))
+
+        with patch(
+            "little_loops.parallel.worker_pool.subprocess.run",
+            return_value=self._gate_ok_result(),
+        ) as mock_sub:
+            result = _run_per_worktree_proof_first_gate(
+                issue,
+                tmp_path,
+                lt_enabled_br_config,
+                ParallelConfig(),
+                MagicMock(),
+            )
+
+        assert result is False
+        mock_sub.assert_called_once()
+        cmd = mock_sub.call_args[0][0]
+        assert "proof-first-task" in cmd
+        assert f"issue_file={issue.path}" in " ".join(cmd)
+
+    def test_skip_learning_gate_flag_bypasses_gate(
+        self, lt_enabled_br_config: BRConfig, tmp_path: Path
+    ) -> None:
+        """--skip-learning-gate bypasses gate subprocess even with learning_tests_required."""
+        from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
+
+        issue = self._make_issue(tmp_path, "ENH-003", learning_tests_required=["httpx"])
+        parallel_config = ParallelConfig(skip_learning_gate=True)
+
+        with patch("little_loops.parallel.worker_pool.subprocess.run") as mock_sub:
+            result = _run_per_worktree_proof_first_gate(
+                issue,
+                tmp_path,
+                lt_enabled_br_config,
+                parallel_config,
+                MagicMock(),
+            )
+
+        assert result is True
+        mock_sub.assert_not_called()

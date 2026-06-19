@@ -393,6 +393,7 @@ class TestWorkerStage:
         """All expected stage values exist."""
         assert WorkerStage.SETUP.value == "setup"
         assert WorkerStage.VALIDATING.value == "validating"
+        assert WorkerStage.PROVING.value == "proving"
         assert WorkerStage.IMPLEMENTING.value == "implementing"
         assert WorkerStage.VERIFYING.value == "verifying"
         assert WorkerStage.MERGING.value == "merging"
@@ -401,8 +402,8 @@ class TestWorkerStage:
         assert WorkerStage.INTERRUPTED.value == "interrupted"
 
     def test_enum_member_count(self) -> None:
-        """WorkerStage has exactly 8 members."""
-        assert len(WorkerStage) == 8
+        """WorkerStage has exactly 9 members (includes PROVING added by ENH-2219)."""
+        assert len(WorkerStage) == 9
 
 
 # =============================================================================

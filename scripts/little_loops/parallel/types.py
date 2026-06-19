@@ -173,6 +173,7 @@ class WorkerStage(Enum):
     Stages progress in order:
     - SETUP: Creating git worktree and copying .claude/ directory
     - VALIDATING: Running ready-issue command
+    - PROVING: Running proof-first-task assumption-firewall gate (ENH-2219)
     - IMPLEMENTING: Running manage-issue command
     - VERIFYING: Checking work was done and updating branch base
     - MERGING: Awaiting merge coordination
@@ -183,6 +184,7 @@ class WorkerStage(Enum):
 
     SETUP = "setup"
     VALIDATING = "validating"
+    PROVING = "proving"
     IMPLEMENTING = "implementing"
     VERIFYING = "verifying"
     MERGING = "merging"
@@ -374,6 +376,8 @@ class ParallelConfig:
     # Overlap detection settings (ENH-143)
     overlap_detection: bool = False  # Enable pre-flight overlap detection
     serialize_overlapping: bool = True  # If True, defer overlapping issues; if False, just warn
+    # Learning test gate (ENH-2219)
+    skip_learning_gate: bool = False  # Bypass per-worktree proof-first-task gate
     # Base branch for rebase/merge operations (auto-detected at startup)
     base_branch: str = "main"
     # Git remote name for fetch/pull operations
@@ -455,6 +459,7 @@ class ParallelConfig:
             "ignore_pending": self.ignore_pending,
             "overlap_detection": self.overlap_detection,
             "serialize_overlapping": self.serialize_overlapping,
+            "skip_learning_gate": self.skip_learning_gate,
             "base_branch": self.base_branch,
             "remote_name": self.remote_name,
         }
@@ -500,6 +505,7 @@ class ParallelConfig:
             ignore_pending=data.get("ignore_pending", False),
             overlap_detection=data.get("overlap_detection", False),
             serialize_overlapping=data.get("serialize_overlapping", True),
+            skip_learning_gate=data.get("skip_learning_gate", False),
             base_branch=data.get("base_branch", "main"),
             remote_name=data.get("remote_name", "origin"),
         )

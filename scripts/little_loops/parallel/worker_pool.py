@@ -42,6 +42,79 @@ if TYPE_CHECKING:
     from little_loops.parallel.types import SprintWorkerContext
 
 
+def _read_loop_final_state(worktree_path: Path, loop_name: str) -> str | None:
+    """Read the final state from a completed loop's running state file.
+
+    After ``ll-loop run`` exits, the state file remains at
+    ``<worktree>/.loops/.running/<loop_name>.state.json``.  The
+    ``current_state`` field holds the terminal state name (e.g. ``"done"``,
+    ``"blocked"``, ``"impl_failed"``).
+    """
+    state_file = worktree_path / ".loops" / ".running" / f"{loop_name}.state.json"
+    if not state_file.exists():
+        return None
+    try:
+        data = json.loads(state_file.read_text())
+        return data.get("current_state")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _run_per_worktree_proof_first_gate(
+    issue: IssueInfo,
+    worktree_path: Path,
+    br_config: BRConfig,
+    parallel_config: ParallelConfig,
+    logger: Logger,
+) -> bool:
+    """Run proof-first-task gate for learning_tests_required issues (ENH-2219).
+
+    Called in WorkerPool._process_issue() between VALIDATING and IMPLEMENTING.
+    Returns True if implementation may proceed, False if blocked or errored.
+    """
+    if issue.learning_tests_required is None:
+        return True
+    if not br_config.learning_tests.enabled:
+        return True
+    if parallel_config.skip_learning_gate:
+        logger.info(f"[{issue.issue_id}] Learning gate skipped (--skip-learning-gate)")
+        return True
+
+    logger.info(
+        f"[{issue.issue_id}] Running proof-first-task gate "
+        f"(targets: {', '.join(issue.learning_tests_required)})"
+    )
+    gate_result = subprocess.run(
+        [
+            "ll-loop",
+            "run",
+            "proof-first-task",
+            "--context",
+            f"issue_file={issue.path}",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=worktree_path,
+    )
+
+    # All terminal states (done, blocked, impl_failed) exit 0 — distinguish
+    # blocked from done by reading the state file left after execution.
+    final_state = _read_loop_final_state(worktree_path, "proof-first-task")
+
+    if gate_result.returncode != 0:
+        logger.warning(
+            f"[{issue.issue_id}] proof-first-task exited {gate_result.returncode}"
+        )
+        return False
+
+    if final_state == "blocked":
+        logger.info(f"[{issue.issue_id}] proof-first-task gate: blocked")
+        return False
+
+    logger.info(f"[{issue.issue_id}] proof-first-task gate: passed (state={final_state!r})")
+    return True
+
+
 class WorkerPool:
     """Thread pool for processing issues in isolated git worktrees.
 
@@ -377,6 +450,20 @@ class WorkerPool:
             # Track if issue was corrected (corrections stay in worktree)
             was_corrected = ready_parsed.get("was_corrected", False)
             corrections = ready_parsed.get("corrections", [])
+
+            # Learning test gate: per-worktree proof-first-task wrapper (ENH-2219)
+            self.set_worker_stage(issue.issue_id, WorkerStage.PROVING)
+            if not _run_per_worktree_proof_first_gate(
+                issue, worktree_path, self.br_config, self.parallel_config, self.logger
+            ):
+                return WorkerResult(
+                    issue_id=issue.issue_id,
+                    success=False,
+                    branch_name=branch_name,
+                    worktree_path=worktree_path,
+                    duration=time.time() - start_time,
+                    error="proof-first-task gate blocked",
+                )
 
             # Update stage for progress tracking (ENH-262)
             self.set_worker_stage(issue.issue_id, WorkerStage.IMPLEMENTING)
