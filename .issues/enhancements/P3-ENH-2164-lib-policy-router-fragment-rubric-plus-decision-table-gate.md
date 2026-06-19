@@ -2,7 +2,7 @@
 id: ENH-2164
 type: ENH
 priority: P3
-status: deferred
+status: open
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 captured_at: '2026-06-15T05:30:52Z'
@@ -11,10 +11,14 @@ blocked_by: []
 decision_needed: false
 blocks:
 - ENH-2166
+- ENH-2233
+- ENH-2234
 relates_to:
 - ENH-2165
 - ENH-2166
 - ENH-2154
+- ENH-2233
+- ENH-2234
 confidence_score: 98
 outcome_confidence: 80
 score_complexity: 17
@@ -197,13 +201,15 @@ The fragment reads `context.policy_rules`, parses the rule table, evaluates each
   - `<dim>:<op><value> -> <state>` where `<op>` ∈ `{>=, <=, ==, !=, <, >}` and `<dim>` is any dimension name from `rubric_dimensions` or the special token `aggregate`
   - **Conjunctive predicates** — multiple conditions joined with `&` in one rule, all of which must hold for the rule to match, e.g. `confidence:>=85 & outcome:>=75 -> implement`. This is required to express `rn-remediate`'s `diagnose` rules (ENH-2166) and is **in scope for v1**.
   - `* -> <state>` as a catch-all (must appear last)
+  - **Numeric coercion** — comparison operators coerce both operands to numbers before comparing, so `"9" < "10"` evaluates `True` (numeric), not `False` (lexical). Non-numeric operands fall back to string comparison for `==` / `!=` only; ordered operators (`<`, `<=`, `>`, `>=`) on a non-numeric operand are a parse-time error.
+- [ ] **Shared grammar module** — the rule grammar's parse / serialize / evaluate logic lives in a **single importable module** `scripts/little_loops/fsm/policy_rules.py` (pure functions: `parse_rules(text) -> list[Rule]`, `serialize_rules(rules) -> str`, `evaluate_rules(rules, scores) -> str | None`), **not** inline in the fragment heredoc. The `policy_table_dispatch` fragment shells into it (`python3 -c "from little_loops.fsm.policy_rules import ..."`, the established pattern — cf. `auto-refine-and-implement.yaml:33`). ENH-2233's `edit-routes` lens imports the same module, so the grammar has one source of truth and round-trips losslessly (`parse → serialize → parse` is stable).
 - [ ] **Score-source-agnostic input** — `policy_table_dispatch` reads per-dimension score files (`rubric-dim-<name>.txt`) and `rubric-aggregate.txt` from `${context.run_dir}/` regardless of which scorer wrote them. The rubric path (`policy_parse_scores` over `rubric_score` output) is one supported source; a caller may instead write those files from a shell/deterministic scorer (e.g. `rn-remediate`'s `ll-issues show --json`). The dispatch fragment MUST NOT hard-depend on `lib/rubric-router`'s LLM scoring path.
 - [ ] `rubric_parse_scores` (from `lib/rubric-router.yaml`) is extended **or** a parallel `policy_parse_scores` fragment is added that writes per-dimension score files (`rubric-dim-<name>.txt`) to `${context.run_dir}/` in addition to `rubric-aggregate.txt` and `rubric-tier.txt` — required for per-dimension rule evaluation
 - [ ] Fragment context variables (`policy_rules`) are documented with defaults and override behavior
 - [ ] `ll-loop validate` passes on `lib/policy-router.yaml` with no errors or warnings (MR-1, MR-3, MR-4)
 - [ ] At least one runnable example loop (`loops/policy-refine.yaml`) imports both `lib/rubric-router.yaml` and `lib/policy-router.yaml` and exercises a multi-dimension decision table
 - [ ] `scripts/tests/test_builtin_loops.py` continues to pass after adding the fragment library and example loop
-- [ ] `scripts/tests/test_fsm_fragments.py` gains a `TestPolicyRouterLib` class asserting all fragment names are present and the rule-parser handles the documented operators and catch-all correctly
+- [ ] `scripts/tests/test_fsm_fragments.py` gains a `TestPolicyRouterLib` class asserting all fragment names are present and structured correctly; `scripts/tests/test_policy_rules.py` unit-tests the module functions — all documented operators, conjunctive `&`, catch-all `*`, **numeric-vs-lexical coercion** (`"9" < "10"` is `True`), and **`parse → serialize → parse` round-trip stability**
 
 ## Implementation Steps
 
@@ -211,7 +217,7 @@ The fragment reads `context.policy_rules`, parses the rule table, evaluates each
 
 2. **Implement `policy_parse_scores` shell action** — regex-extract all `DIMENSION: <score>` lines from `${captured.scores.output}`, write each to `${context.run_dir}/rubric-dim-<name>.txt` (lowercased name, spaces→hyphens). Reuse the `AGGREGATE` extraction from `rubric_parse_scores`.
 
-3. **Implement `policy_table_dispatch` shell action** — parse `${context.policy_rules}` line by line; for each rule parse `dim:op:value -> state`; load the appropriate score file (`rubric-aggregate.txt` for `aggregate`, `rubric-dim-<dim>.txt` for a named dimension); evaluate the condition; on first match write the state name to `${context.run_dir}/policy-action.txt` and exit 0. Handle `* -> <state>` as the default catch-all.
+3. **Implement the rule grammar as a shared module** — create `scripts/little_loops/fsm/policy_rules.py` with pure functions: `parse_rules(text) -> list[Rule]` (each `Rule` carries an ordered list of `(dim, op, value)` predicates + target state, or a catch-all marker; preserves source order), `serialize_rules(rules) -> str` (lossless inverse), and `evaluate_rules(rules, scores: dict[str, float]) -> str | None` (first-match-wins; numeric coercion per operator). Then **`policy_table_dispatch` shell action** loads the score files (`rubric-aggregate.txt` → `aggregate`, `rubric-dim-<dim>.txt` → named dims) into a dict and calls `python3 -c "from little_loops.fsm.policy_rules import parse_rules, evaluate_rules; ..."` — **no parsing/evaluation logic in the heredoc.** On match, write the state name to `${context.run_dir}/policy-action.txt` and print it as the final stdout line; unmatched + no `*` → empty line (falls to `route.default`). Rationale: ENH-2233's `edit-routes` imports this exact module, so the grammar is defined, parsed, and serialized in one place.
 
 4. **Design routing handoff** — because the FSM executor routes via `on_yes`/`on_no`/`route:`, the fragment cannot dynamically redirect to an arbitrary state name via shell exit code alone. Two options: (a) `policy_table_dispatch` writes the action name and the consuming loop reads it via individual `policy_route_<name>` exit-code fragments; (b) introduce a `dynamic_next` convention where the shell writes a state name to a well-known path and the executor reads it. Evaluate what the FSM executor supports today and pick the cleanest fit. Document the chosen approach in the fragment file header.
 
@@ -219,7 +225,7 @@ The fragment reads `context.policy_rules`, parses the rule table, evaluates each
 
 6. **Update `loops/README.md`** — list `lib/policy-router.yaml` and its exported fragments.
 
-7. **Add `TestPolicyRouterLib`** to `scripts/tests/test_fsm_fragments.py` — assert all fragment names present; unit-test the rule parser Python logic extracted into a helper function.
+7. **Add tests** — `TestPolicyRouterLib` in `scripts/tests/test_fsm_fragments.py` (fragment-name + structure assertions, `${context.run_dir}` usage, `resolve_fragments()` integration); plus `scripts/tests/test_policy_rules.py` covering the module directly: `parse_rules` / `serialize_rules` / `evaluate_rules` across all operators, conjunctive `&`, catch-all, numeric coercion (`"9" < "10"`), ordered-op-on-non-numeric parse error, and round-trip stability.
 
 8. **Validate and test** — `ll-loop validate lib/policy-router.yaml`, then `python -m pytest scripts/tests/` passing.
 
@@ -231,11 +237,11 @@ _Added by `/ll:refine-issue` — concrete implementation guidance:_
 
 **Step 2 (policy_parse_scores shell action):** Follow the Python heredoc pattern from `lib/rubric-router.yaml:rubric_parse_scores`. Regex pattern for aggregate: `re.search(r'AGGREGATE:\s*(\d+)', output)`. Per-dimension: iterate lines matching `r'(\w[\w\s]+):\s*(\d+)'`, exclude `AGGREGATE`, lowercaseify name + replace spaces with hyphens → write to `${context.run_dir}/rubric-dim-<name>.txt`. The `rubric_parse_scores` aggregate extraction + file write is the exact template; extend it.
 
-**Step 3 (policy_table_dispatch shell action):** Python heredoc; parse `${context.policy_rules}` line by line; skip blank/comment lines. Rule parser: `<dim>:<op><value> -> <state>` (single predicate) or `<dim>:<op><value> & <dim2>:<op2><value2> -> <state>` (conjunctive). Special `* -> <state>` as catch-all. Score lookup: `${context.run_dir}/rubric-aggregate.txt` for `aggregate`, `${context.run_dir}/rubric-dim-<dim>.txt` for named dims. On first match: `print(state_name)` on last stdout line, exit 0. If no match + no catch-all: print empty line or error token (falls to `route.default`).
+**Step 3 (shared module + policy_table_dispatch):** Put parse/serialize/evaluate in `scripts/little_loops/fsm/policy_rules.py` — NOT in a heredoc — so ENH-2233's `edit-routes` can import the same grammar. Functions: `parse_rules(text)` skips blank/comment lines; rule = `<dim>:<op><value> -> <state>` (single) or `<dim>:<op><value> & <dim2>:<op2><value2> -> <state>` (conjunctive), with `* -> <state>` catch-all; `serialize_rules` is the lossless inverse (preserves order); `evaluate_rules(rules, scores)` coerces operands to `float` for `<`,`<=`,`>`,`>=` (numeric, so `"9" < "10"`), falls back to string compare for `==`/`!=` only, first-match-wins. The fragment's shell action loads score files (`${context.run_dir}/rubric-aggregate.txt` → `aggregate`, `rubric-dim-<dim>.txt` → named dims) into a dict and shells `python3 -c "from little_loops.fsm.policy_rules import parse_rules, evaluate_rules; ..."` (cf. `auto-refine-and-implement.yaml:33` for the import-from-package precedent). On first match: `print(state_name)` on last stdout line, exit 0; no match + no catch-all → empty line (falls to `route.default`).
 
 **Step 4 (routing handoff — RESOLVED):** ENH-2165 is `done`. `classify` evaluator is live at `evaluators.py:evaluate_classify()` (line 416). Use option (c): `policy_table_dispatch` prints the winning state token as its last stdout line; the consuming loop state uses `evaluate: {type: classify}` + `route:` table to dispatch. Required: include `default:` in the `route:` table or `ll-loop validate` will emit WARNING (`validation.py:_validate_classify_route_default()` line 1564). The `route.routes[verdict]` lookup in `executor.py:_route()` (line 1367) handles dispatch.
 
-**Step 7 (TestPolicyRouterLib pattern):** Model directly after `test_fsm_fragments.py:TestRubricRouterLib` (line 2178). Required coverage: fragment name assertions (`policy_parse_scores`, `policy_table_dispatch`); `action_type: shell` for both; `description` presence for all; `${context.run_dir}` in action text; `resolve_fragments()` integration test using real `loops_dir`. Add a unit test for the rule-parser Python helper extracted from the fragment (operators `>=`, `<=`, `==`, `!=`, `<`, `>`, catch-all `*`, conjunctive `&`).
+**Step 7 (tests):** `TestPolicyRouterLib` models directly after `test_fsm_fragments.py:TestRubricRouterLib` (line 2178) — fragment name assertions (`policy_parse_scores`, `policy_table_dispatch`); `action_type: shell` for both; `description` presence; `${context.run_dir}` in action text; `resolve_fragments()` integration test using real `loops_dir`. Separately, `scripts/tests/test_policy_rules.py` unit-tests the module: operators `>=`,`<=`,`==`,`!=`,`<`,`>`, catch-all `*`, conjunctive `&`, numeric coercion (`"9" < "10"` → True), ordered-op-on-non-numeric raises at parse time, and `parse → serialize → parse` round-trip stability.
 
 **rn-remediate.yaml migration path (ENH-2166):** The `diagnose` state (line 204) + 5-state cascade (`route_d_implement` → `route_d_decide` → `route_d_wire` → `route_d_refine` → fallthrough) is the exact pattern this fragment replaces. `policy_table_dispatch` + `classify` + `route:` collapses those 5 states to 1. The `diagnose` shell action itself (scoring + priority-ordered token emit) becomes `policy_table_dispatch`'s caller-supplied rule table once ENH-2166 proceeds.
 
@@ -273,16 +279,18 @@ Per-run artifact files written:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/lib/policy-router.yaml` (new — fragment library)
+- `scripts/little_loops/fsm/policy_rules.py` (new — shared rule grammar: `parse_rules` / `serialize_rules` / `evaluate_rules`; single source of truth imported by both the fragment and ENH-2233's edit-routes)
+- `scripts/little_loops/loops/lib/policy-router.yaml` (new — fragment library; `policy_table_dispatch` shells into `policy_rules`)
 - `scripts/little_loops/loops/policy-refine.yaml` (new — runnable example loop)
 - `scripts/little_loops/loops/README.md` (update — add policy-router to lib listing)
 - `scripts/tests/test_fsm_fragments.py` (update — add `TestPolicyRouterLib`)
+- `scripts/tests/test_policy_rules.py` (new — unit tests for the grammar module)
 
 ### Dependencies
 - `scripts/little_loops/loops/lib/rubric-router.yaml` (ENH-2154) — must be imported alongside; `policy_parse_scores` consumes `captured.scores.output` written by `rubric_score`
 
 ### Dependent Files (Callers/Importers)
-- N/A — all files are new; no existing callers at time of creation
+- `scripts/little_loops/cli/loop/edit_routes.py` + `fsm/route_table.py` — **future** (ENH-2233) importers of `fsm/policy_rules.py`; this issue must expose the grammar as an importable module, not heredoc-local logic, to unblock that lens
 
 ### Similar Patterns
 - `scripts/little_loops/loops/lib/rubric-router.yaml` — direct predecessor; follow same `fragments:` block conventions
@@ -291,7 +299,8 @@ Per-run artifact files written:
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — `policy-refine.yaml` must pass the universal `TestBuiltinLoopFiles` fixture; `lib/policy-router.yaml` excluded by `is_runnable_loop()`
-- `scripts/tests/test_fsm_fragments.py` — `TestPolicyRouterLib`: assert fragment names, test rule-parser helper with all operators and catch-all
+- `scripts/tests/test_fsm_fragments.py` — `TestPolicyRouterLib`: assert fragment names + structure
+- `scripts/tests/test_policy_rules.py` — grammar module: all operators, conjunctive `&`, catch-all, numeric coercion (`"9" < "10"`), round-trip stability
 
 ### Documentation
 - `scripts/little_loops/loops/README.md` — list `lib/policy-router.yaml` and its exported fragment names
@@ -335,7 +344,42 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Open** | Created: 2026-06-15 | Priority: P3
 
+---
+
+## Reopened
+
+- **Date**: 2026-06-19
+- **By**: capture-issue
+- **Reason**: Un-deferred — EPIC-2167's "prove before mandate" gate is now met.
+
+### New Findings
+
+EPIC-2167 deliberately deferred this general engine until the pattern was validated
+on a real loop. That gate is now satisfied: **ENH-2166** (migrate `rn-remediate`'s
+routing cascades onto `classify` + decision-table) is `done`, and the `classify`
+evaluator (ENH-2165) is live (`evaluators.py:416`). The general conjunctive engine is
+therefore ripe to build.
+
+Two considerations surfaced in a design discussion that this issue should fold in:
+
+1. **Typed inputs / coercion.** Captured values are stored stringified
+   (`executor.py:713` stores `{"output": <str>}`). The rule matcher should treat
+   numeric comparisons as numeric (not lexical string) comparisons — the parser
+   already coerces `value` per-operator, but document this explicitly and add a test
+   for `"9" < "10"` numeric-vs-string correctness.
+2. **Optional `expr:` escape hatch (consider, not required for v1).** The locked
+   grammar is conjunctive (`&`-joined) predicates, first-match-wins. A future
+   extension could allow a single per-rule free expression for predicates the
+   `dim:op:value` grammar can't express — opt-in, kept off the common path. Track
+   under the operator-registry follow-on (ENH-2234) if pursued.
+
+**Companion issue:** ENH-2233 covers surfacing/authoring these compound tables
+through `ll-loop edit-routes` (rendering, round-trip, dimension columns) — the engine
+here is the backend; ENH-2233 is the editing lens. ENH-2234 (deferred) tracks a
+pluggable operator registry layered on this engine's matcher vocabulary.
+
 ## Session Log
+- `/ll:capture-issue` - 2026-06-19T21:56:31Z - `7ad4c299-a78e-4069-93e8-64dd478cf18b.jsonl`
 - `/ll:confidence-check` - 2026-06-15T00:00:00Z - `36f09c2f-8598-41e8-8022-29d032bf584b.jsonl`
 - `/ll:refine-issue` - 2026-06-16T01:05:37 - `4868c01f-d653-4e88-92f4-0dfdaf0947d0.jsonl`
 - `/ll:confidence-check` - 2026-06-15T00:00:00Z - `534b43f7-8b8b-4649-8a48-fd91433994bd.jsonl`
