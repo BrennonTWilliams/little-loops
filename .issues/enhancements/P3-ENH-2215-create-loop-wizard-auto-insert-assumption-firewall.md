@@ -9,6 +9,14 @@ depends_on: ENH-2220
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
+confidence_score: 88
+outcome_confidence: 70
+score_complexity: 20
+score_test_coverage: 15
+score_ambiguity: 15
+score_change_surface: 20
+decision_needed: true
+implementation_order_risk: true
 ---
 
 # ENH-2215: create-loop wizard auto-insert assumption-firewall gate for external API loops
@@ -73,7 +81,21 @@ Loop authors writing integration loops currently must manually wire assumption-f
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-2215 and ENH-2217 both parse `learning_tests_required` from issue frontmatter independently. To prevent divergent field-name handling or fallback logic, both should use the same read mechanism: either `ll-issues show --json <ISSUE_ID> | jq '.learning_tests_required // []'` or a shared Python helper. Coordinate with [[ENH-2217]] to avoid two divergent parsing implementations.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-18_
+
+**Readiness Score**: 88/100 → PROCEED
+**Outcome Confidence**: 70/100 → MODERATE
+
+### Outcome Risk Factors
+- Open parsing-mechanism decision for `learning_tests_required` — the Scope Boundary notes present an explicit either/or (`ll-issues show --json | jq` vs. a shared Python helper) with no resolution; requires coordination with ENH-2217 — resolve before implementing the short-circuit logic.
+- Test coverage gap — the `learning_tests_required` short-circuit path and `assumption_gate` YAML injection are not covered by existing tests in `test_create_loop.py`; implement tests first alongside the wizard changes.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-18T00:00:00Z - `ba01ebda-9b55-48e3-a4d0-95c052e2a66f.jsonl`
+- `/ll:decide-issue` - 2026-06-19T04:39:25 - `d5f66b54-9071-4911-b643-659288034a28.jsonl`
+- `/ll:confidence-check` - 2026-06-18T00:00:00Z - `c6102fe7-10de-413b-a21c-9b13c3dce608.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:32:29 - `0ad50852-04aa-49ce-b1bf-d489adb4f465.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

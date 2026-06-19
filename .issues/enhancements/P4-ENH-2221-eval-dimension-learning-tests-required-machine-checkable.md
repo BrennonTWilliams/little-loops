@@ -1,15 +1,22 @@
 ---
 id: ENH-2221
-title: Eval dimension — learning_tests_required as machine-checkable criterion
+title: "Eval dimension \u2014 learning_tests_required as machine-checkable criterion"
 type: enhancement
 priority: P4
-status: open
+status: done
 parent: EPIC-2207
 depends_on: ENH-2208
 captured_at: '2026-06-18T15:38:06Z'
+completed_at: '2026-06-19T04:54:38Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
 decision_needed: false
+confidence_score: 94
+outcome_confidence: 88
+score_complexity: 23
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 25
 ---
 
 # ENH-2221: Eval dimension — learning_tests_required as machine-checkable criterion
@@ -186,6 +193,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-2219's per-worktree runtime gate (`ll-loop run proof-first-task`) and this issue's eval criterion use different mechanisms and will disagree on date-stale records unless both are stale-aware. A user who sees "eval: PASS" and then gets a blocked worktree will be confused about why the pre-flight passed. If this eval criterion is intended to serve as a pre-flight signal for `ll-parallel` execution (ENH-2219), the stale-aware fix above (from the ENH-2208 conflict) is a prerequisite — without it, the eval result is not a reliable indicator of what ENH-2219's gate will do. See [[ENH-2219]].
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-19T04:49:09 - `daf9a32e-660c-4710-b23d-24823ec6193a.jsonl`
+- `/ll:confidence-check` - 2026-06-18T00:00:00Z - `0827a1e9-9f7c-4389-aebb-874540da2178.jsonl`
 - `/ll:refine-issue` - 2026-06-18T23:53:26 - `20b4f837-ff6e-45b1-9716-b6493597a14f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:39 - `eebe5815-0f5b-4c82-acb0-64597681c904.jsonl`

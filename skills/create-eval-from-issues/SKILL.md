@@ -191,8 +191,23 @@ For each resolved issue file, read the file directly and extract:
 2. **Expected Behavior section** — the `## Expected Behavior` section body (steps describing what happens)
 3. **Use Case section** — the `## Use Case` section body (who the user is, workflow, goal, outcome)
 4. **Acceptance Criteria section** — the `## Acceptance Criteria` section body (checkboxes with observable conditions)
+5. **Learning test targets** — the `learning_tests_required:` list from YAML frontmatter (may be absent or empty)
 
 If a section is absent, note it and proceed with what is available. Prioritize Acceptance Criteria for evaluation criteria synthesis; prioritize Expected Behavior + Use Case for execute prompt synthesis.
+
+### Proof-First Gate Config
+
+After extracting issue data, check whether the proof-first gate feature is enabled:
+
+```bash
+LT_ENABLED=$(python3 -c "
+import json, pathlib
+p = pathlib.Path('.ll/ll-config.json')
+cfg = json.loads(p.read_text()) if p.exists() else {}
+print(str(cfg.get('learning_tests', {}).get('enabled', False)).lower())")
+```
+
+If `LT_ENABLED` is `false`, treat `learning_tests_required` as empty for all issues (skip proof state injection).
 
 ## Step 3: Synthesize Harness Prompts
 
@@ -260,7 +275,7 @@ states:
       <synthesized execute prompt from Step 3>
     action_type: prompt
     timeout: 300
-    next: check_skill
+    next: check_skill   # see Proof-First Gates below — this may change
 
   check_skill:
     action: >
@@ -277,6 +292,29 @@ states:
   done:
     terminal: true
 ```
+
+### Variant A — Proof-First Gates
+
+When `LT_ENABLED=true` and the issue has a non-empty `learning_tests_required` list:
+
+1. For each target in the list, compute a slug: lowercase the target, replace spaces and any non-alphanumeric characters with underscores (e.g. `"anthropic"` → `anthropic`, `"my lib"` → `my_lib`).
+2. Generate one `check_proof_<slug>` state per target, using this template:
+   ```yaml
+     check_proof_<slug>:
+       action: |
+         ll-learning-tests check --stale-aware "<target>"
+       action_type: shell
+       evaluate:
+         type: exit_code
+       on_yes: <next_proof_state_or_check_skill>
+       on_no: done
+       on_error: done
+   ```
+3. Chain targets in order: `check_proof_t1.on_yes: check_proof_t2`, …, `check_proof_tN.on_yes: check_skill`.
+4. Change `execute.next:` from `check_skill` to the **first** proof state (`check_proof_<slug-of-first-target>`).
+5. Insert all proof states **before** `check_skill` in the states block.
+
+When `LT_ENABLED=false` or `learning_tests_required` is absent/empty, omit proof states entirely and keep `execute.next: check_skill`.
 
 ### Variant B (multiple issues)
 
@@ -354,6 +392,24 @@ states:
 
 **For Variant B**: in the `discover` action, embed the actual issue IDs at generation time (e.g., `ids = ['FEAT-919', 'ENH-950']`). In the `execute` and `check_skill` prompts, include all per-issue prompts/criteria in the action text so the running agent can select the right one based on `${captured.current_item.output}`.
 
+### Variant B — Proof-First Gates
+
+When `LT_ENABLED=true` and any issue has `learning_tests_required` targets, inject proof states between `execute` and `check_skill`. Because Variant B iterates over multiple issues (some may lack targets for a given proof state), guard each proof state with a Bash conditional so it only runs for issues that declared that target:
+
+```yaml
+  check_proof_<slug>:
+    action: |
+      [ "${captured.current_item.output}" = "<ISSUE-ID>" ] && ll-learning-tests check --stale-aware "<target>" || exit 0
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: <next_proof_state_or_check_skill>
+    on_no: done
+    on_error: done
+```
+
+Change `execute.next:` to the first proof state. Chain proof states in order; the last routes `on_yes: check_skill`. When `LT_ENABLED=false` or no issues declare targets, omit proof states.
+
 **No `check_invariants`**: eval harnesses measure user experience quality, not code diff size. Do not include `check_stall`, `check_concrete`, `check_semantic`, or `check_invariants` states.
 
 ## Step 6: Write and Validate
@@ -385,6 +441,11 @@ Issues included:
 
 Variant: <A (single-shot) | B (multi-item)>
 States: execute → check_skill → done [→ discover + advance (Variant B)]
+Proof-First Gates: <N proof states injected, or "none (learning_tests.enabled=false)" or "none (no learning_tests_required)">
+
+## Proof-First Gates
+<List each injected proof state: "  - check_proof_<slug>: ll-learning-tests check --stale-aware \"<target>\"">
+<Omit this section entirely if no proof states were injected.>
 
 Validation: PASS / FAIL
   [validation output if FAIL]
