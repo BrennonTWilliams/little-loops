@@ -404,11 +404,11 @@ If `ll-issues` is not available, append manually:
 - `/ll:wire-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
 ```
 
-Stage the updated file:
-
 ```bash
 git add "{{config.issues.base_dir}}/[category]/[filename]"
 ```
+
+After staging, extract learning targets per [learning-targets.md](learning-targets.md) (identify deps, check registry with `--stale-aware`, union-merge `learning_tests_required`, emit summary). Skip if `testable: false` or `--dry-run`.
 
 ---
 

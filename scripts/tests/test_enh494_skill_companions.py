@@ -27,6 +27,7 @@ EXPECTED_COMPANIONS = [
     SKILLS_DIR / "debug-loop-run" / "reference.md",
     SKILLS_DIR / "review-loop" / "reference.md",
     SKILLS_DIR / "manage-issue" / "templates.md",
+    SKILLS_DIR / "wire-issue" / "learning-targets.md",
 ]
 
 

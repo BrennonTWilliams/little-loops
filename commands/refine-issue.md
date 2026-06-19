@@ -518,6 +518,39 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 - `/ll:refine-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
 ```
 
+### 7.5. Extract Learning Targets (ENH-2209)
+
+After appending the session log, extract external API dependencies from the issue text and auto-populate `learning_tests_required` in frontmatter.
+
+**Skip this step** if the issue frontmatter contains `testable: false` or if `--dry-run` is set.
+
+1. **Identify external dependencies** — Analyze the full issue text (frontmatter + body) to list all third-party packages, SDKs, and external API surfaces the implementation plan assumes behavior of. Exclude project-internal code and contract-stable stdlib (os, sys, pathlib, json, re, datetime, builtins). Return a deduplicated list of short target names (e.g. `["anthropic", "requests", "stripe"]`).
+
+2. **Check each target against the registry** — For each extracted target, run:
+   ```bash
+   ll-learning-tests check --stale-aware "<target>"
+   ```
+   Exit 0 = proven and fresh (M proven). Exit 1 = missing, stale, or refuted (K unproven).
+
+3. **Write to frontmatter with union-merge** — If at least one target was found:
+   - Read the current `learning_tests_required` value from frontmatter (may be absent, a list, or a string).
+   - Build the merged list: `existing_targets ∪ new_targets` (preserve existing entries; append new ones; deduplicate by order of first appearance).
+   - Update the issue file using `update_frontmatter` with `{"learning_tests_required": merged_list}`.
+   - If no targets were found, **do not** write `learning_tests_required: []` — omit the field entirely.
+
+4. **Surface summary** — Emit a one-line summary before the output report:
+   ```
+   Learning targets: Found N external dependencies — M proven, K unproven. Added to `learning_tests_required`.
+   ```
+   If all were already proven and the frontmatter was already correct, emit:
+   ```
+   Learning targets: All N proven — `learning_tests_required` unchanged.
+   ```
+   If no external dependencies were found:
+   ```
+   Learning targets: None detected — `learning_tests_required` field omitted.
+   ```
+
 ### 8. Output Report
 
 ```

@@ -3,21 +3,22 @@ id: ENH-2209
 title: Auto-populate `learning_tests_required` in refine-issue and wire-issue
 type: enhancement
 priority: P3
-status: open
+status: done
 parent: EPIC-2207
 depends_on: ENH-2208
 relates_to:
 - ENH-2212
 captured_at: '2026-06-18T15:38:06Z'
+completed_at: '2026-06-19T00:40:48Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
-confidence_score: 92
-outcome_confidence: 73
+confidence_score: 98
+outcome_confidence: 77
 score_complexity: 17
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 22
 score_change_surface: 20
-decision_needed: true
+decision_needed: false
 implementation_order_risk: true
 ---
 
@@ -42,7 +43,7 @@ Most issue authors don't know to add `learning_tests_required`. The field is onl
 ## Implementation Steps
 
 1. Deliver `scripts/little_loops/learning_tests/extractor.py` exposing `extract_learning_targets(issue_text: str) -> list[str]`. This wraps the LLM extraction step ("List all external packages, SDKs, or third-party API surfaces that the plan assumes behavior of") and returns deduplicated, slugified target names. ENH-2210's fallback path imports this function directly — it must be a callable Python module, not only a skill prompt step.
-2. In the `/ll:refine-issue` skill (and `/ll:wire-issue`), after the implementation plan section is written, call `extract_learning_targets(issue_text)` (or shell out to the equivalent LLM step).
+2. In the `/ll:refine-issue` skill (and `/ll:wire-issue`), after the implementation plan section is written, call `extract_learning_targets(issue_text)` from `scripts/little_loops/learning_tests/extractor.py` using SDK-direct invocation. Shell-out is explicitly ruled out: ENH-2210 imports this as a callable Python module, and a shell-out wrapper would make that import architecturally unimplementable. Follow the same pattern as `gate.py` (`is_record_stale`) — importable helper, unit-testable with mock injection.
 3. For each extracted target, call the stale-aware gate function from `scripts/little_loops/learning_tests/gate.py` (exposed by ENH-2208) rather than `ll-learning-tests check` directly — calling the raw CLI bypasses the stale-age check.
 4. Write the full list to `learning_tests_required:` frontmatter using **union-merge semantics**: if the field already exists (e.g., populated by `/ll:scope-epic` per ENH-2220), append newly extracted targets rather than overwriting. Preserve existing entries.
 5. Surface a summary: "Found N external dependencies — M proven, K unproven. Added to `learning_tests_required`."
@@ -97,7 +98,23 @@ _Added by `/ll:confidence-check` on 2026-06-18_
 - Unresolved design decision — LLM invocation mechanism in `extractor.py`: Step 2 reads "call `extract_learning_targets(issue_text)` (or shell out to the equivalent LLM step)." These are meaningfully different: SDK-direct is mockable in unit tests; shell-out forces integration-test-only coverage. Resolve before implementing — the choice also determines whether ENH-2210 can import the function (callable module requirement from the Scope Boundary note).
 - Tests are co-deliverables with no scaffolding yet: `extractor.py` is new and no test scaffolding exists in `test_learning_tests.py` for the extraction API. Implement tests first so the LLM mock contract is defined before wiring the module into the two skills.
 
+## Resolution
+
+Implemented SDK-direct via Anthropic SDK with mock injection pattern (same as `gate.py`):
+
+- **`scripts/little_loops/learning_tests/extractor.py`** — `extract_learning_targets(issue_text, *, llm_call=None)` uses `TARGETS_JSON:` marker, deduplicates by slug, returns target names for ENH-2210 to import directly.
+- **`scripts/tests/test_learning_tests_extractor.py`** — 11 unit tests covering extraction, deduplication, malformed responses, mock injection.
+- **`commands/refine-issue.md`** — Step 7.5 added: identify deps, check via `ll-learning-tests check --stale-aware`, union-merge `learning_tests_required`, emit summary.
+- **`skills/wire-issue/SKILL.md`** — Phase 9 extended with pointer to `learning-targets.md`.
+- **`skills/wire-issue/learning-targets.md`** — New companion file (ENH-494 pattern) with full Phase 9.5 procedure.
+- **`scripts/tests/test_enh494_skill_companions.py`** — `wire-issue/learning-targets.md` added to `EXPECTED_COMPANIONS`.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-19T00:41:17 - `290f2042-9bc9-405c-9c04-cc60e0dcbb6c.jsonl`
+- `/ll:manage-issue` - 2026-06-19T00:41:09 - `290f2042-9bc9-405c-9c04-cc60e0dcbb6c.jsonl`
+- `/ll:ready-issue` - 2026-06-19T00:15:09 - `e5db18ba-b03b-4bcf-9cc9-e67512d1ab50.jsonl`
+- `/ll:confidence-check` - 2026-06-18T00:00:00Z - `981f38d7-187e-47ea-a862-fe65abaef619.jsonl`
+- `/ll:decide-issue` - 2026-06-19T00:07:24 - `985c1815-2b19-4838-a780-0e1bf899fd2d.jsonl`
 - `/ll:confidence-check` - 2026-06-18T00:00:00Z - `a3a4a976-6096-4453-8d75-4fcba78e7426.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T21:17:06 - `23eb26e5-163c-41e9-bc83-173b75524706.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:29 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
