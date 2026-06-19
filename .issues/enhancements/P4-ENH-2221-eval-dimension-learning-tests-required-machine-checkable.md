@@ -186,6 +186,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-2219's per-worktree runtime gate (`ll-loop run proof-first-task`) and this issue's eval criterion use different mechanisms and will disagree on date-stale records unless both are stale-aware. A user who sees "eval: PASS" and then gets a blocked worktree will be confused about why the pre-flight passed. If this eval criterion is intended to serve as a pre-flight signal for `ll-parallel` execution (ENH-2219), the stale-aware fix above (from the ENH-2208 conflict) is a prerequisite — without it, the eval result is not a reliable indicator of what ENH-2219's gate will do. See [[ENH-2219]].
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-18T23:53:26 - `20b4f837-ff6e-45b1-9716-b6493597a14f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-18T20:50:30 - `2a1b4900-886d-46f7-9096-478aa4b8e4b3.jsonl`
 - `/ll:format-issue` - 2026-06-18T19:33:39 - `eebe5815-0f5b-4c82-acb0-64597681c904.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`
