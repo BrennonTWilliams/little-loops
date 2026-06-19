@@ -424,7 +424,13 @@ class TestSelectStepShellAction:
 
 
 class TestVerifyStepShellAction:
-    """Shell execution tests for the verify_step action (ENH-1732)."""
+    """Shell execution tests for the verify_step per-step smoke gate.
+
+    ENH-2225: verify_step is a language-agnostic per-step smoke gate that confirms
+    the step's claimed files exist — it no longer runs the whole-suite test command
+    (that moved to run_final_tests). These tests exercise the real smoke-gate
+    contract, not a trivial always-pass.
+    """
 
     def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
         run_dir = _setup_run_dir(tmp_path)
@@ -434,7 +440,7 @@ class TestVerifyStepShellAction:
 
     def test_missing_last_files_emits_verify_pass(self, tmp_path: Path) -> None:
         _setup_run_dir(tmp_path)
-        # No last-files.txt written
+        # No last-files.txt written → nothing claimed → smoke gate passes.
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "VERIFY_PASS" in result.stdout
@@ -446,12 +452,34 @@ class TestVerifyStepShellAction:
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "VERIFY_PASS" in result.stdout
 
-    def test_non_python_files_emits_verify_pass(self, tmp_path: Path) -> None:
+    def test_non_python_files_that_exist_emit_verify_pass(self, tmp_path: Path) -> None:
+        # Language-agnostic (cf. BUG-2127): non-Python files that exist on disk pass.
         run_dir = _setup_run_dir(tmp_path)
+        (tmp_path / "README.md").write_text("# readme\n")
+        (tmp_path / "some-loop.yaml").write_text("name: x\n")
         (run_dir / "last-files.txt").write_text("LAST_FILES: README.md some-loop.yaml\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "VERIFY_PASS" in result.stdout
+
+    def test_missing_claimed_file_emits_verify_fail(self, tmp_path: Path) -> None:
+        # A step that reports a file it did not actually produce fails the smoke gate.
+        run_dir = _setup_run_dir(tmp_path)
+        (tmp_path / "README.md").write_text("# readme\n")
+        (run_dir / "last-files.txt").write_text("LAST_FILES: README.md does-not-exist.py\n")
+        result = self._run(tmp_path)
+        assert "VERIFY_PASS" not in result.stdout
+        assert "VERIFY_FAIL" in result.stdout
+
+    def test_verify_step_does_not_resolve_test_cmd(self) -> None:
+        # ENH-2225: per-step gate must NOT run the whole-suite command. Assert on the
+        # functional resolution/execution markers (not prose, which may reference the
+        # behavior in comments).
+        script = _load_state_script("verify_step")
+        assert "cfg.get('project'" not in script, (
+            "verify_step must not read project.test_cmd from config"
+        )
+        assert 'eval "$CMD"' not in script, "verify_step must not execute a resolved test command"
 
 
 class TestMarkDoneShellAction:
@@ -941,8 +969,10 @@ class TestChange8FinalVerifyGate:
     def test_final_verify_action_type_is_prompt(self, raw_data: dict) -> None:
         assert raw_data["states"]["final_verify"]["action_type"] == "prompt"
 
-    def test_final_verify_routes_next_to_count_final(self, raw_data: dict) -> None:
-        assert raw_data["states"]["final_verify"]["next"] == "count_final"
+    def test_final_verify_routes_next_to_run_final_tests(self, raw_data: dict) -> None:
+        # ENH-2225: run_final_tests (the final-only whole-suite gate) is inserted
+        # between final_verify and count_final.
+        assert raw_data["states"]["final_verify"]["next"] == "run_final_tests"
 
     def test_final_verify_routes_error_to_diagnose(self, raw_data: dict) -> None:
         assert raw_data["states"]["final_verify"]["on_error"] == "diagnose"
@@ -1065,6 +1095,91 @@ class TestCountFinalShellScript:
         script = _load_count_final_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode != 0, "Script must exit non-zero when DoD file is missing"
+
+
+class TestENH2225FinalOnlyGate:
+    """ENH-2225: whole-suite test command runs only at completion (run_final_tests),
+    not per-step (verify_step). Whole-artifact gates (coverage thresholds) no longer
+    block every individual step mid-implementation."""
+
+    def test_import_includes_common_lib(self, raw_data: dict) -> None:
+        assert "lib/common.yaml" in raw_data.get("import", [])
+
+    def test_verify_step_does_not_resolve_test_cmd(self, raw_data: dict) -> None:
+        # Per-step gate must not run the configured/whole-suite test command. Assert on
+        # functional resolution/execution markers, not prose (comments may describe it).
+        action = raw_data["states"]["verify_step"]["action"]
+        assert "cfg.get('project'" not in action
+        assert 'eval "$CMD"' not in action
+
+    def test_verify_step_keeps_output_contains_evaluator(self, raw_data: dict) -> None:
+        # Preserve the VERIFY_PASS / output_contains contract (BUG-1732).
+        evaluate = raw_data["states"]["verify_step"]["evaluate"]
+        assert evaluate["type"] == "output_contains"
+        assert evaluate["pattern"] == "VERIFY_PASS"
+
+    def test_run_final_tests_state_exists(self, raw_data: dict) -> None:
+        assert "run_final_tests" in raw_data["states"]
+
+    def test_run_final_tests_uses_shell_exit_fragment(self, raw_data: dict) -> None:
+        state = raw_data["states"]["run_final_tests"]
+        assert state.get("fragment") == "shell_exit"
+
+    def test_run_final_tests_resolves_test_cmd(self, raw_data: dict) -> None:
+        # The whole-suite gate IS the place the resolved test command runs.
+        action = raw_data["states"]["run_final_tests"]["action"]
+        assert "${context.test_cmd}" in action
+        assert "ll-config.json" in action
+        assert "pytest" in action
+
+    def test_run_final_tests_routing(self, raw_data: dict) -> None:
+        state = raw_data["states"]["run_final_tests"]
+        assert state["on_yes"] == "count_final"
+        assert state["on_no"] == "continue_work"
+        assert state["on_error"] == "diagnose"
+
+    def test_final_verify_routes_to_run_final_tests(self, raw_data: dict) -> None:
+        assert raw_data["states"]["final_verify"]["next"] == "run_final_tests"
+
+
+class TestRunFinalTestsShellAction:
+    """Shell execution tests for run_final_tests — the final-only whole-suite gate
+    (ENH-2225). Pattern mirrors TestCountFinalShellScript / TestVerifyStepShellAction."""
+
+    def _load(self, run_dir: Path, test_cmd: str = "") -> str:
+        with open(LOOP_FILE) as f:
+            data = yaml.safe_load(f)
+        script = data["states"]["run_final_tests"]["action"]
+        script = script.replace("${context.test_cmd}", test_cmd)
+        script = script.replace("${context.run_dir}", str(run_dir))
+        return script
+
+    def test_passing_command_exits_zero(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        script = self._load(run_dir, test_cmd="true")
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        # output is captured for continue_work to read.
+        assert (run_dir / "verify-output.txt").exists()
+
+    def test_failing_command_exits_nonzero(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        # Simulate a whole-suite gate failing (e.g. coverage below threshold).
+        script = self._load(run_dir, test_cmd="echo 'coverage too low' && false")
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode != 0, (
+            "run_final_tests must propagate the test command's failure exit code"
+        )
+        assert "coverage too low" in (run_dir / "verify-output.txt").read_text()
+
+    def test_falls_back_to_config_test_cmd(self, tmp_path: Path) -> None:
+        # Empty test_cmd → read project.test_cmd from .ll/ll-config.json.
+        run_dir = _setup_run_dir(tmp_path)
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "true"}}')
+        script = self._load(run_dir, test_cmd="")
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
 
 
 class TestENH1631SummarizePartial:

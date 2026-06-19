@@ -765,6 +765,17 @@ class TestSafeInterpolation:
         )
         interpolate(action, ctx)
 
+    def test_general_task_run_final_tests_safe_with_empty_context(self) -> None:
+        """run_final_tests (ENH-2225) must not raise when test_cmd is unset (default "")."""
+        loop_path = Path("scripts/little_loops/loops/general-task.yaml")
+        data = yaml.safe_load(loop_path.read_text())
+        action = data["states"]["run_final_tests"]["action"]
+        ctx = InterpolationContext(
+            captured={},
+            context={"run_dir": "/tmp/test-run", "test_cmd": ""},
+        )
+        interpolate(action, ctx)
+
     def test_loop_router_present_choices_safe_with_empty_captured(self) -> None:
         """present_choices must not raise when project_score/builtin_score were bypassed."""
         loop_path = Path("scripts/little_loops/loops/loop-router.yaml")

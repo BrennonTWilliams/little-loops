@@ -4,7 +4,7 @@ title: "general-task \u2014 scope per-step verify_step so whole-suite gates don'
   \ block every step"
 type: enhancement
 priority: P3
-status: open
+status: done
 relates_to:
 - BUG-2127
 - BUG-1766
@@ -14,17 +14,15 @@ labels:
 - verification
 - efficiency
 captured_at: '2026-06-19T02:56:50Z'
+completed_at: '2026-06-19T03:54:04Z'
 discovered_date: '2026-06-19'
 discovered_by: capture-issue
 decision_needed: false
-learning_tests_required:
-- pytest
-- pytest-cov
-confidence_score: 88
-outcome_confidence: 66
-score_complexity: 22
-score_test_coverage: 15
-score_ambiguity: 7
+confidence_score: 91
+outcome_confidence: 78
+score_complexity: 19
+score_test_coverage: 18
+score_ambiguity: 19
 score_change_surface: 22
 implementation_order_risk: true
 ---
@@ -348,7 +346,53 @@ _Added by `/ll:confidence-check` on 2026-06-18_
 - **Test fixture project with coverage gate does not exist in-repo** — implement tests first so the verify_step fix is validated against the actual failure mode (`addopts = "--cov-fail-under=80"`). This is the co-deliverable for Success Metric #1.
 - **pytest-cov API behaviors unproven** (conditional on Option 2): `-o addopts=` and `--no-cov` have not been exercised via `/ll:explore-api`; confirm before choosing Option 2.
 
+## Resolution
+
+_Implemented 2026-06-19 (Option 3 — whole-suite gating made explicit and final-only)._
+
+Per-step verification (`verify_step`) no longer runs the project test command. It is now
+a **language-agnostic per-step smoke gate**: it confirms every file the step claimed in
+`LAST_FILES` exists on disk (passing when nothing is claimed), and never resolves
+`${context.test_cmd}` / reads `.ll/ll-config.json`. This removes the category error where a
+whole-suite gate embedded in the test command (the canonical case: `--cov-fail-under=N`
+injected via `pyproject.toml addopts`) failed for *every* step until the whole task was
+done, abandoning otherwise-correct steps.
+
+The whole-suite command now runs in a new final-only state, **`run_final_tests`**, inserted
+into the terminal gate chain `count_done → final_verify → run_final_tests → count_final`. It
+reuses the shared `shell_exit` fragment (`lib/common.yaml`, added via a new `import:` block),
+resolves the test command (`${context.test_cmd}` → `project.test_cmd` → bare `pytest`), and
+gates on exit code — so the coverage criterion is still enforced before terminal `done`
+(`on_no: continue_work` remediates, capturing output to `verify-output.txt`).
+
+**Changes:**
+- `scripts/little_loops/loops/general-task.yaml` — `import: lib/common.yaml`; rewrote
+  `verify_step` as a file-existence smoke gate (kept `output_contains`/`VERIFY_PASS`);
+  added `run_final_tests`; repointed `final_verify.next`; updated the `context.test_cmd`
+  comment and the `diagnose` state-name list.
+- `scripts/tests/test_general_task_loop.py` — updated `TestVerifyStepShellAction` to test
+  the real smoke-gate contract (existing/missing files); repointed the `final_verify`
+  routing test; added `TestENH2225FinalOnlyGate` and `TestRunFinalTestsShellAction`.
+- `scripts/tests/test_fsm_interpolation.py` — added
+  `test_general_task_run_final_tests_safe_with_empty_context`.
+- `docs/guides/LOOPS_REFERENCE.md` — rewrote the `verify_step` bullet (also fixing stale
+  BUG-2127 prose), the terminal-gate paragraph (now three-state), and the iteration math.
+
+**Verification:** `ll-loop validate general-task` passes; `test_general_task_loop.py`,
+`test_fsm_interpolation.py`, and `test_builtin_loops.py` all green (1100 passed); ruff
+lint/format clean.
+
+**Success Metrics #2 and #3 are satisfied** (whole-suite gate still enforced at completion;
+no language-specific regression — the smoke gate is file-existence, not a runner call).
+**Success Metric #1** (a live run against a project with `--cov-fail-under` in `addopts`)
+is not reproducible in-repo (this repo's `pyproject.toml` sets no `--cov-fail-under`); it is
+covered structurally by `TestRunFinalTestsShellAction` (exit-code pass/fail) and the
+`verify_step` non-resolution assertions rather than an end-to-end fixture run.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-19T03:54:04 - `ce9febac-e415-4b5c-85e3-0f5a682c5850.jsonl`
+- `/ll:ready-issue` - 2026-06-19T03:43:52 - `97b0c60d-916e-4a38-bece-7a5beb2d49b0.jsonl`
+- `/ll:confidence-check` - 2026-06-19T04:00:00 - `d082cbd6-c225-4896-a54f-a56ca835feb8.jsonl`
 - `/ll:wire-issue` - 2026-06-19T03:27:20 - `2403a95e-6aec-4f51-850f-42597ab89472.jsonl`
 - `/ll:decide-issue` - 2026-06-19T03:18:57 - `aebe692c-d6ef-4f0d-a27f-423135e8f4c5.jsonl`
 - `/ll:refine-issue` - 2026-06-19T03:03:59 - `d025886e-68c1-41de-8b12-16f2bb5ae5a7.jsonl`
@@ -359,5 +403,6 @@ _Added by `/ll:confidence-check` on 2026-06-18_
 
 ## Status
 
-- **Status**: open
+- **Status**: done
 - **Created**: 2026-06-19 via capture-issue
+- **Completed**: 2026-06-19 via manage-issue

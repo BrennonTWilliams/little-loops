@@ -8,10 +8,17 @@ on_handoff: spawn
 artifact_versioning_ok: true
 on_max_steps: summarize_partial
 
+import:
+  - lib/common.yaml
+
 context:
   min_pass_rate: 0.95
   hard_criteria_tags: "hard"
-  test_cmd: ""            # verify_step command; empty = read project.test_cmd from .ll/ll-config.json
+  # Whole-suite test command, run ONLY by the final-only gate (run_final_tests),
+  # NOT per-step (ENH-2225). Empty = read project.test_cmd from .ll/ll-config.json,
+  # else fall back to bare "pytest". A whole-artifact gate embedded here (e.g. a
+  # coverage threshold) is enforced at completion time, not after every step.
+  test_cmd: ""
   max_step_attempts: 3    # max verify attempts per step before abandoning it (Fix #2)
 
 circuit:
@@ -203,27 +210,30 @@ states:
         echo "VERIFY_PASS"
         exit 0
       fi
-      # Resolve the test command (Fix #1): explicit ${context.test_cmd} override,
-      # else project.test_cmd from .ll/ll-config.json, else a bare "pytest"
-      # fallback. Gating on the configured command's EXIT CODE keeps this step
-      # language-agnostic — the old hardcoded `python -m pytest $FILES` was a
-      # silent no-op for any non-Python task (pytest collected nothing → matched
-      # "no tests ran" → false VERIFY_PASS).
-      if [ -n "${context.test_cmd}" ]; then
-        CMD="${context.test_cmd}"
-      else
-        CMD=$(python3 -c "
-      import json, pathlib
-      p = pathlib.Path('.ll/ll-config.json')
-      cfg = json.loads(p.read_text()) if p.exists() else {}
-      raw = cfg.get('project', {}).get('test_cmd')
-      print(raw if raw else 'pytest')
-      ")
-      fi
-      if eval "$CMD" > "${context.run_dir}/verify-output.txt" 2>&1; then
-        echo "VERIFY_PASS"
-      else
+      # ENH-2225: verify_step is a per-step SMOKE gate, not a whole-suite gate.
+      # It deliberately does NOT resolve/run ${context.test_cmd} (or project.test_cmd
+      # from .ll/ll-config.json) — that whole-artifact command runs only at completion
+      # time in run_final_tests. Running it per-step meant a whole-suite gate embedded
+      # in the command (the canonical case: pytest --cov-fail-under=N injected via
+      # pyproject.toml addopts) failed for EVERY step until the entire task was done,
+      # because total coverage stays below threshold during partial implementation —
+      # a category error that abandoned otherwise-correct steps.
+      #
+      # The smoke check is language-agnostic (cf. BUG-2127): confirm that every file
+      # the step claimed to create/modify in LAST_FILES actually exists on disk. A
+      # step that reported work but produced nothing fails here; per-step CORRECTNESS
+      # (DoD criteria affected by this step) is verified separately by check_done, and
+      # the whole suite is enforced by run_final_tests before terminal done.
+      MISSING=""
+      for f in $FILES; do
+        [ ! -e "$f" ] && MISSING="$MISSING $f"
+      done
+      if [ -n "$MISSING" ]; then
+        echo "VERIFY_FAIL: step reported files that do not exist:$MISSING" \
+          > "${context.run_dir}/verify-output.txt"
         echo "VERIFY_FAIL"
+      else
+        echo "VERIFY_PASS"
       fi
     action_type: shell
     capture: verify_result
@@ -399,7 +409,35 @@ states:
 
       Print the full DoD file to stdout.
     action_type: prompt
-    next: count_final
+    next: run_final_tests
+    on_error: diagnose
+
+  run_final_tests:
+    # ENH-2225: final-only whole-suite gate. Whole-artifact criteria (full test
+    # suite, coverage thresholds) are enforced HERE — at completion time — not
+    # per-step, where they would block every step mid-implementation. Reuses the
+    # shared shell_exit fragment (lib/common.yaml): gates on the resolved test
+    # command's EXIT CODE so any config-sourced gate (e.g. --cov-fail-under via
+    # pyproject.toml addopts) is honored before terminal done.
+    fragment: shell_exit
+    timeout: 1800
+    action: |
+      # Resolve the whole-suite test command: explicit ${context.test_cmd}
+      # override, else project.test_cmd from .ll/ll-config.json, else bare "pytest".
+      if [ -n "${context.test_cmd}" ]; then
+        CMD="${context.test_cmd}"
+      else
+        CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.ll/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      raw = cfg.get('project', {}).get('test_cmd')
+      print(raw if raw else 'pytest')
+      ")
+      fi
+      eval "$CMD" > "${context.run_dir}/verify-output.txt" 2>&1
+    on_yes: count_final
+    on_no: continue_work
     on_error: diagnose
 
   count_final:
@@ -429,6 +467,19 @@ states:
   continue_work:
     action: |
       Your task is: ${context.input}
+
+      The last verify step may have failed. If ${context.run_dir}/verify-output.txt
+      exists, read it FIRST to understand WHY — it holds the captured stdout/stderr of
+      the resolved test command. Use it to classify the failure before deciding how to
+      remediate:
+      - A genuine test/assertion failure → a real step is missing or wrong; append a
+        remediation step (below).
+      - A whole-suite gate that no single step can satisfy mid-implementation (e.g. a
+        coverage threshold like "Required test coverage of N% not reached" while all
+        listed tests pass) → this is NOT a per-step failure. Do NOT append a step for
+        it; that criterion belongs to final verification. Note that the failure is a
+        whole-artifact gate and stop.
+      - A lint/type/build error → append a step scoped to the specific code change needed.
 
       Read both files:
       - ${context.run_dir}/plan.md — Task Plan (steps)
@@ -479,7 +530,7 @@ states:
       Diagnose what happened:
       - If ${context.run_dir}/plan.md exists, read it and summarize completed steps.
       - If ${context.run_dir}/dod.md exists, report which done-criteria were met.
-      - Identify the most likely failure cause and which state failed (define_done, plan, resume_check, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, count_final, continue_work, or summarize_partial).
+      - Identify the most likely failure cause and which state failed (define_done, plan, resume_check, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, run_final_tests, count_final, continue_work, or summarize_partial).
 
       Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the task description.
     next: failed
