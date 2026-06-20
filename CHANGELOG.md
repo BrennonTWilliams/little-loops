@@ -12,6 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.128.0] - 2026-06-20
+
+### Added
+
+- **Brainstorm built-in FSM loop** — New `brainstorm` loop for structured ideation with FSM-driven phases. (FEAT-2248)
+- **`ll-init` wizard improvements** — Wizard pre-populates from existing `ll-config.json`; surfaces `decisions`, `scratch_pad`, `session_capture`, and `prompt_optimization` toggles; `--clear` and `--show-diagrams` are now recommended defaults. (ENH-2240, ENH-2241, ENH-2243)
+- **`general-task` pre-flight test baseline** — Runs a test baseline before task work begins to surface pre-existing failures. (ENH-2244)
+- **FSM recurrent-window circuit breaker** — Detects non-consecutive repeated state failures and halts runaway loops early. (ENH-2245)
+- **Auto-invoke `explore-api` at learning test gate** — Missing or refuted learning test targets automatically trigger `explore-api` at the gate. (ENH-2242)
+
+### Fixed
+
+- **`rn-remediate` over-triggers `--full-rewrite`** — `refine_first`/`refine_followup` paths added; complexity gate and catch-all diagnose no longer route to `--full-rewrite`. (ENH-2247)
+- **`rn-implement` diagnostic conflation** — `SCORES_MISSING` and `SIZE_REVIEW_FAILED` split into distinct diagnostic record states. (ENH-2250)
+- **`continue_work` timeout detection** — `do_work` exit code 124 now detected and the oversized step is split automatically. (ENH-2246)
+- **`ll-init` stale subdirectory references** — Replaced stale `completed`/`deferred` subdirs with `epics` in `_ISSUE_SUBDIRS`.
+
+### Changed
+
+- **`decisions.auto_generate` prefix filter** — `generate_from_completed` now respects the `auto_generate` prefix filter in config. (ENH-2239)
+- **EPIC-1929 rescoped post-Hermes** — HITL adapter scope refined after Hermes integration; curated `.ll` artifacts tracked. (ENH-2249)
+- **Harness optimization guide** — Added missing MR-2 row to design rules table; fixed incorrect MR-1 routing chain in canonical example. (ENH-2236, ENH-2237)
+- **Policy router guide** — Corrected inaccurate `simulate` claim for policy-router loops. (ENH-2238)
+- **Learning tests guide** — Fixed Release Gate section. (ENH-2235)
+
 ## [1.127.0] - 2026-06-19
 
 ### Added
@@ -60,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`loop-composer` and `loop-composer-adaptive` error routing** — `re_decompose` wired to `on_error`; `check_auto_plan` error paths route to the HITL gate instead of failing silently. (ENH-2135)
 - **`loop-router` loop discovery** — `discover_loops` now passes `--visibility public` to filter hidden loops from selection. (ENH-2203)
 
+[1.128.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.127.0...v1.128.0
 [1.127.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.126.0...v1.127.0
 [1.126.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.125.0...v1.126.0
 
