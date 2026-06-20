@@ -860,18 +860,26 @@ class RepeatedFailureConfig:
     `(state_name, exit_code, eval_verdict)` triple, the FSM either
     aborts the run or routes to a configured recovery state.
 
+    Optionally, ``recurrent_window`` (ENH-2245) fires the same circuit
+    breaker when the triple has been seen that many times in total across
+    the run (non-consecutive), catching loops that cycle through
+    intermediate states between each failure.
+
     Attributes:
         window: Consecutive iterations with identical triple required to
             fire (default 3).
         on_repeated_failure: Either the literal ``"abort"`` (terminate
             with ``terminated_by="stall_detected"``) or the name of a
             declared state to route to.
+        recurrent_window: Total occurrences of the same triple required
+            to fire (non-consecutive). None = disabled (default).
     """
 
     window: int = 3
     on_repeated_failure: str = "abort"
     progress_paths: list[str] = field(default_factory=list)
     exclude_paths: list[str] = field(default_factory=list)
+    recurrent_window: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization (skip-if-default)."""
@@ -884,6 +892,8 @@ class RepeatedFailureConfig:
             result["progress_paths"] = self.progress_paths
         if self.exclude_paths:
             result["exclude_paths"] = self.exclude_paths
+        if self.recurrent_window is not None:
+            result["recurrent_window"] = self.recurrent_window
         return result
 
     @classmethod
@@ -894,6 +904,7 @@ class RepeatedFailureConfig:
             on_repeated_failure=data.get("on_repeated_failure", "abort"),
             progress_paths=data.get("progress_paths", []),
             exclude_paths=data.get("exclude_paths", []),
+            recurrent_window=data.get("recurrent_window", None),
         )
 
 

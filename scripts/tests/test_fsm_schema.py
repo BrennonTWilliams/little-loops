@@ -3099,6 +3099,27 @@ class TestCircuitConfig:
         restored = RepeatedFailureConfig.from_dict({})
         assert restored.exclude_paths == []
 
+    # --- recurrent_window tests (ENH-2245) ---
+
+    def test_recurrent_window_round_trip(self) -> None:
+        """ENH-2245: recurrent_window serializes and deserializes correctly."""
+        original = RepeatedFailureConfig(window=3, on_repeated_failure="abort", recurrent_window=5)
+        d = original.to_dict()
+        assert d["recurrent_window"] == 5
+        restored = RepeatedFailureConfig.from_dict(d)
+        assert restored.recurrent_window == 5
+
+    def test_recurrent_window_none_omitted_from_dict(self) -> None:
+        """recurrent_window=None (default) is omitted from to_dict()."""
+        original = RepeatedFailureConfig()
+        d = original.to_dict()
+        assert "recurrent_window" not in d
+
+    def test_recurrent_window_default_is_none(self) -> None:
+        """Default recurrent_window is None (disabled)."""
+        restored = RepeatedFailureConfig.from_dict({})
+        assert restored.recurrent_window is None
+
 
 class TestMetaSelfEvalOk:
     """ENH-1665: meta_self_eval_ok field round-trip serialization."""

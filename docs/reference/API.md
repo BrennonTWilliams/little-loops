@@ -4249,6 +4249,7 @@ class RepeatedFailureConfig:
     on_repeated_failure: str = "abort"     # "abort" or name of a declared recovery state
     progress_paths: list[str] = field(default_factory=list)  # BUG-1674: opt-in fingerprint paths
     exclude_paths: list[str] = field(default_factory=list)   # BUG-1767: paths to exclude from fingerprint
+    recurrent_window: int | None = None    # ENH-2245: total occurrences threshold (non-consecutive); None = disabled
 
 @dataclass
 class CircuitConfig:
@@ -4260,6 +4261,8 @@ The stall detector records `(state_name, exit_code, eval_verdict)` after every t
 **`progress_paths` — fingerprint-based reset (BUG-1674):** Loops with a check↔work ping-pong where the work state uses `next:` (no `evaluate:`) are invisible to the detector — only the eval-bearing state records triples, so three identical `check` verdicts fire the stall even when `work` made real file-level progress. Set `progress_paths` to a list of paths (supports `${env.PWD}` interpolation) to watch: if any path's `(mtime, size)` changes between two consecutive records for the same eval-bearing state, the rolling window resets. Empty by default — existing loops without this field retain current semantics.
 
 **`exclude_paths` — bookkeeping file exclusion (BUG-1767):** When a loop's own internal tracking files (plan, DoD, scratchpad) are listed in `progress_paths`, every append to those files resets the stall window, silently disabling stall detection. Add such files to `exclude_paths` so the executor filters them out before computing the fingerprint. Paths support `${env.PWD}` interpolation. `ll-loop validate` emits a WARNING when a state action references a `progress_paths` file that is not also in `exclude_paths`.
+
+**`recurrent_window` — non-consecutive stall detection (ENH-2245):** The consecutive detector only fires when the same triple appears N times *in a row*. Loops that cycle through intermediate states between each failure (e.g., `run_final_tests → continue_work → select_step → run_final_tests → ...`) never produce consecutive triples, so the consecutive guard never fires regardless of how many times the failure occurs. Set `recurrent_window: N` to also fire the circuit breaker when the same `(state, exit_code, verdict)` triple has been seen N times *total* across the run (non-consecutive). The same `on_repeated_failure` target and `stall_detected` event are reused; the event payload uses `recurrent` (total count) instead of `consecutive`. `null` (default) disables this check — existing loops are unaffected. Minimum value: 2.
 
 **Methods:**
 

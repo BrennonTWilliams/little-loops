@@ -744,3 +744,52 @@ load_goals → normalize_goals → plan_batches → [approve_plan] → execute_b
 ### Dispatch guard
 
 `loop-router` and `loop-composer` variants exclude `goal-cluster` from their catalogs. `goal-cluster` excludes `loop-composer` and `loop-router` from its own dispatch suggestions. This prevents recursive orchestration cycles.
+
+---
+
+## Circuit Breaker (`circuit:`)
+
+The `circuit:` top-level key groups loop-level safety guards. Currently it exposes `repeated_failure`, the stall detector (FEAT-1637).
+
+### `circuit.repeated_failure`
+
+Fires when the FSM keeps producing the same `(state, exit_code, verdict)` triple, indicating the loop is stuck. When triggered, either aborts the run (`terminated_by="stall_detected"`) or routes to a named recovery state. A `stall_detected` event is emitted to the event bus.
+
+```yaml
+circuit:
+  repeated_failure:
+    window: 3                      # consecutive identical triples required (default: 3)
+    on_repeated_failure: abort     # "abort" or a declared state name
+    progress_paths: []             # BUG-1674: reset window when any path changes
+    exclude_paths: []              # BUG-1767: exclude bookkeeping files from fingerprint
+    recurrent_window: null         # ENH-2245: total-occurrence threshold (non-consecutive)
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `window` | `3` | Consecutive identical triples required to fire the consecutive stall guard |
+| `on_repeated_failure` | `"abort"` | `"abort"` terminates the run; any declared state name routes there instead |
+| `progress_paths` | `[]` | Paths to watch for `(mtime, size)` changes; a change resets the consecutive window |
+| `exclude_paths` | `[]` | Paths excluded from the fingerprint (loop bookkeeping files that shouldn't reset the window) |
+| `recurrent_window` | `null` | **ENH-2245**: Fire when the same triple has been seen this many times *total* in the run (non-consecutive). `null` = disabled. Minimum: 2 |
+
+#### `recurrent_window` — catching cycling loops
+
+The consecutive guard (`window`) only fires when the same triple appears N times *in a row*. Loops that rotate through intermediate states between each failure are never flagged:
+
+```
+run_final_tests(fail) → continue_work → select_step → do_work → verify_step
+  → run_final_tests(fail) → ...   (8 states between each failure — never consecutive)
+```
+
+`recurrent_window: 5` catches this: after the 5th total occurrence of `(run_final_tests, 1, no)`, the circuit fires and routes to `on_repeated_failure`. The `stall_detected` event payload uses `recurrent` (total count) instead of `consecutive`.
+
+```yaml
+circuit:
+  repeated_failure:
+    on_repeated_failure: diagnose
+    recurrent_window: 5
+    exclude_paths:
+      - "${context.run_dir}/plan.md"
+      - "${context.run_dir}/dod.md"
+```

@@ -824,6 +824,56 @@ class TestCircuitValidation:
         ]
         assert unknown_warnings == []
 
+    def test_recurrent_window_valid_value_accepted(self) -> None:
+        """ENH-2245: recurrent_window >= 2 produces no validation errors."""
+        fsm = self._make_fsm(RepeatedFailureConfig(window=3, on_repeated_failure="abort", recurrent_window=5))
+        errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
+        circuit_errors = [e for e in errors if "recurrent_window" in (e.path or "")]
+        assert circuit_errors == []
+
+    def test_recurrent_window_below_minimum_rejected(self) -> None:
+        """ENH-2245: recurrent_window=1 is rejected (minimum is 2)."""
+        fsm = self._make_fsm(RepeatedFailureConfig(window=3, on_repeated_failure="abort", recurrent_window=1))
+        errors = validate_fsm(fsm)
+        assert any(
+            "recurrent_window" in (e.path or "") and ">= 2" in e.message
+            for e in errors
+        )
+
+    def test_recurrent_window_none_accepted(self) -> None:
+        """ENH-2245: recurrent_window=None (default/disabled) produces no errors."""
+        fsm = self._make_fsm(RepeatedFailureConfig(window=3, on_repeated_failure="abort", recurrent_window=None))
+        errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
+        circuit_errors = [e for e in errors if "recurrent_window" in (e.path or "")]
+        assert circuit_errors == []
+
+    def test_recurrent_window_in_yaml_no_unknown_key_warning(self, tmp_path: Path) -> None:
+        """ENH-2245: recurrent_window in YAML produces no unknown-key warnings."""
+        loop_yaml = self._write_yaml(
+            tmp_path,
+            (
+                "name: test-loop\n"
+                "description: A loop with recurrent_window\n"
+                "initial: work\n"
+                "states:\n"
+                "  work:\n"
+                "    action: run.sh\n"
+                "    on_yes: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+                "circuit:\n"
+                "  repeated_failure:\n"
+                "    window: 3\n"
+                "    on_repeated_failure: abort\n"
+                "    recurrent_window: 5\n"
+            ),
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [
+            w for w in warnings if "Unknown" in w.message or "additional" in w.message.lower()
+        ]
+        assert unknown_warnings == []
+
 
 class TestVisibilityValidation:
     """Visibility tier field: recognized top-level key + value validation."""

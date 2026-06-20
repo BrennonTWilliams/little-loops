@@ -276,6 +276,11 @@ class FSMExecutor:
         # checked by run() to terminate via _finish("stall_detected", ...).
         self._pending_stall_abort: Stall | None = None
 
+        # Recurrent-window counter (ENH-2245). Tracks total occurrences of each
+        # (state, exit_code, verdict) triple across the run (non-consecutive).
+        # Enabled only when circuit.repeated_failure.recurrent_window is set.
+        self._recurrent_counts: dict[tuple[str, int, str], int] = {}
+
         # Nesting depth for sub-loop event forwarding (0 = top-level, 1+ = sub-loop).
         # Set by the parent executor when constructing child executors.
         self._depth: int = 0
@@ -1070,13 +1075,14 @@ class FSMExecutor:
         # Route based on verdict
         verdict = eval_result.verdict if eval_result else "yes"
 
-        # Stall detection (FEAT-1637). Record this transition's triple and
-        # check whether the last `window` triples are identical. On stall,
-        # either abort (set _pending_stall_abort for run() to catch) or
+        # Stall detection (FEAT-1637 + ENH-2245). Record this transition's triple and
+        # check whether the last `window` triples are identical (consecutive), or
+        # whether the triple has been seen recurrent_window times total (non-consecutive).
+        # On stall, either abort (set _pending_stall_abort for run() to catch) or
         # override next_state to the configured recovery target.
+        stall_exit_code = action_result.exit_code if action_result else 0
         stall_route_target: str | None = None
         if self._stall_detector is not None:
-            stall_exit_code = action_result.exit_code if action_result else 0
             stall_fingerprint = self._compute_progress_fingerprint(ctx)
             self._stall_detector.record(
                 self.current_state, stall_exit_code, verdict, stall_fingerprint
@@ -1101,6 +1107,35 @@ class FSMExecutor:
                     return None
                 # Route to recovery target; bypass _route() entirely so the
                 # eval verdict does not pull us elsewhere first.
+                stall_route_target = cfg_action
+
+        # Recurrent-window check (ENH-2245): fire when the same (state, exit_code, verdict)
+        # triple has been seen recurrent_window times total in this run (non-consecutive).
+        # Only fires if the consecutive detector did not already route this iteration.
+        if (
+            stall_route_target is None
+            and self.fsm.circuit is not None
+            and self.fsm.circuit.repeated_failure is not None
+            and self.fsm.circuit.repeated_failure.recurrent_window is not None
+        ):
+            rw_triple = (self.current_state, stall_exit_code, verdict)
+            self._recurrent_counts[rw_triple] = self._recurrent_counts.get(rw_triple, 0) + 1
+            rw_count = self._recurrent_counts[rw_triple]
+            if rw_count >= self.fsm.circuit.repeated_failure.recurrent_window:
+                cfg_action = self.fsm.circuit.repeated_failure.on_repeated_failure
+                self._emit(
+                    STALL_DETECTED_EVENT,
+                    {
+                        "state": self.current_state,
+                        "exit_code": stall_exit_code,
+                        "verdict": verdict,
+                        "recurrent": rw_count,
+                        "action": "abort" if cfg_action == "abort" else f"route:{cfg_action}",
+                    },
+                )
+                if cfg_action == "abort":
+                    self._pending_stall_abort = Stall(triple=rw_triple, count=rw_count)
+                    return None
                 stall_route_target = cfg_action
 
         route_ctx = RouteContext(

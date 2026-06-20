@@ -1685,6 +1685,17 @@ def _validate_circuit(fsm: FSMLoop, defined_states: set[str]) -> list[Validation
             )
         )
 
+    if rf.recurrent_window is not None and rf.recurrent_window < 2:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"circuit.repeated_failure.recurrent_window must be >= 2, "
+                    f"got {rf.recurrent_window}"
+                ),
+                path="circuit.repeated_failure.recurrent_window",
+            )
+        )
+
     target = rf.on_repeated_failure
     if target not in STALL_SPECIAL_TOKENS and target not in defined_states:
         errors.append(

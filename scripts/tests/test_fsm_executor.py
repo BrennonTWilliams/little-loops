@@ -7660,6 +7660,150 @@ class TestStallDetector:
         assert len(stall_events) == 1
 
 
+class TestRecurrentWindowDetector:
+    """ENH-2245: recurrent-window circuit breaker for non-consecutive repeated state failures."""
+
+    def _make_cycling_fsm(
+        self,
+        on_repeated_failure: str = "abort",
+        window: int = 20,
+        recurrent_window: int | None = None,
+        max_steps: int = 100,
+    ) -> "FSMLoop":
+        """FSM that cycles check → work → check repeatedly; check always fails."""
+        from little_loops.fsm.schema import CircuitConfig, RepeatedFailureConfig
+
+        fsm = FSMLoop(
+            name="recurrent-test",
+            initial="check",
+            states={
+                "check": StateConfig(action="check.sh", on_yes="done", on_no="work"),
+                "work": StateConfig(action="work.sh", next="check"),
+                "recover": StateConfig(action="echo recover", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            max_steps=max_steps,
+        )
+        fsm.circuit = CircuitConfig(
+            repeated_failure=RepeatedFailureConfig(
+                window=window,
+                on_repeated_failure=on_repeated_failure,
+                recurrent_window=recurrent_window,
+            )
+        )
+        return fsm
+
+    def test_recurrent_window_fires_on_nonconsecutive_failures(self) -> None:
+        """ENH-2245: recurrent_window=5 fires after same triple seen 5 times total."""
+        fsm = self._make_cycling_fsm(recurrent_window=5)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "stall_detected"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert len(stall_events) == 1
+        e = stall_events[0]
+        assert e["state"] == "check"
+        assert e["exit_code"] == 1
+        assert e["verdict"] == "no"
+        assert e["recurrent"] == 5
+        assert e["action"] == "abort"
+
+    def test_recurrent_window_not_fired_without_config(self) -> None:
+        """Loops without recurrent_window are unaffected (backward compat)."""
+        fsm = self._make_cycling_fsm(recurrent_window=None, max_steps=12)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        # No recurrent_window → runs to max_steps (or consecutive, whichever fires first)
+        # window=20 consecutive never fires in 12 steps, so max_steps terminates
+        assert result.terminated_by == "max_steps"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert stall_events == []
+
+    def test_recurrent_window_routes_to_recovery_state(self) -> None:
+        """recurrent_window fires and routes to on_repeated_failure state."""
+        fsm = self._make_cycling_fsm(on_repeated_failure="recover", recurrent_window=3)
+        runner = MockActionRunner()
+        runner.set_result("check.sh", exit_code=1)
+        runner.set_result("work.sh", exit_code=0)
+        runner.set_result("echo recover", exit_code=0)
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "done"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert len(stall_events) == 1
+        assert stall_events[0]["recurrent"] == 3
+        assert stall_events[0]["action"] == "route:recover"
+
+    def test_recurrent_event_has_recurrent_key_not_consecutive(self) -> None:
+        """stall_detected event from recurrent path has 'recurrent' key, not 'consecutive'."""
+        fsm = self._make_cycling_fsm(recurrent_window=4)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        executor.run()
+
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert len(stall_events) == 1
+        assert "recurrent" in stall_events[0]
+        assert "consecutive" not in stall_events[0]
+
+    def test_recurrent_window_different_verdicts_counted_separately(self) -> None:
+        """Different (exit_code, verdict) combinations are tracked independently."""
+        from little_loops.fsm.schema import CircuitConfig, RepeatedFailureConfig
+
+        # FSM where check sometimes passes; only failures should count toward recurrent_window=5
+        fsm = FSMLoop(
+            name="mixed-results",
+            initial="check",
+            states={
+                "check": StateConfig(action="check.sh", on_yes="done", on_no="work"),
+                "work": StateConfig(action="work.sh", next="check"),
+                "done": StateConfig(terminal=True),
+            },
+            max_steps=100,
+        )
+        fsm.circuit = CircuitConfig(
+            repeated_failure=RepeatedFailureConfig(
+                window=20, on_repeated_failure="abort", recurrent_window=5
+            )
+        )
+        runner = MockActionRunner()
+        # Sequence: fail, fail, pass (done). Only 2 failures → recurrent_window=5 not reached.
+        runner.results = [
+            ("check.sh", {"exit_code": 1}),
+            ("work.sh", {"exit_code": 0}),
+            ("check.sh", {"exit_code": 1}),
+            ("work.sh", {"exit_code": 0}),
+            ("check.sh", {"exit_code": 0}),  # passes → terminal
+        ]
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "done"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert stall_events == []
+
+
 class TestMaxStepsSummaryHook:
     """Tests for ENH-1631 / BUG-2204: on_max_steps summary hook (step cap)."""
 

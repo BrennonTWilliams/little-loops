@@ -258,6 +258,12 @@
               "type": "array",
               "items": {"type": "string"},
               "description": "Paths to exclude from the progress_paths fingerprint (BUG-1767). Use this to list the loop's own internal bookkeeping files (plan, DoD, scratchpad) so that appending to them does not reset the stall window. Supports ${env.PWD} interpolation."
+            },
+            "recurrent_window": {
+              "type": ["integer", "null"],
+              "minimum": 2,
+              "default": null,
+              "description": "ENH-2245: Fire circuit breaker when the same (state, exit_code, verdict) triple has been seen this many times total in the run (non-consecutive). null = disabled (default). Useful for loops that cycle through intermediate states between each failure."
             }
           },
           "additionalProperties": false
