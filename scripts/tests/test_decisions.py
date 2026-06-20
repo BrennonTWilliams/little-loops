@@ -546,6 +546,89 @@ class TestGenerateFromCompleted:
         entries = load_decisions(decisions_path)
         assert len(entries) == 1
 
+    def test_auto_generate_prefix_filter_skips_excluded_types(
+        self,
+        decisions_path: Path,
+        temp_project_dir: Path,
+    ) -> None:
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.decisions import generate_from_completed
+        from little_loops.issue_history.models import CompletedIssue
+
+        completed = [
+            CompletedIssue(
+                path=temp_project_dir / ".issues/features/P3-FEAT-001-test.md",
+                issue_type="FEAT",
+                priority="P3",
+                issue_id="FEAT-001",
+                completed_at=datetime(2026, 6, 3, tzinfo=UTC),
+            ),
+            CompletedIssue(
+                path=temp_project_dir / ".issues/bugs/P2-BUG-001-test.md",
+                issue_type="BUG",
+                priority="P2",
+                issue_id="BUG-001",
+                completed_at=datetime(2026, 6, 3, tzinfo=UTC),
+            ),
+        ]
+        config = MagicMock()
+        config.project_root = temp_project_dir
+        config.decisions.log_path = ".ll/decisions.yaml"
+        config.decisions.auto_generate = ["FEAT"]
+        config.issues.base_dir = ".issues"
+
+        with patch(
+            "little_loops.issue_history.parsing.scan_completed_issues", return_value=completed
+        ):
+            count = generate_from_completed(config)
+
+        assert count == 1
+        entries = load_decisions(decisions_path)
+        assert len(entries) == 1
+        assert entries[0].issue == "FEAT-001"  # type: ignore[union-attr]
+
+    def test_auto_generate_empty_list_processes_all_types(
+        self,
+        decisions_path: Path,
+        temp_project_dir: Path,
+    ) -> None:
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.decisions import generate_from_completed
+        from little_loops.issue_history.models import CompletedIssue
+
+        completed = [
+            CompletedIssue(
+                path=temp_project_dir / ".issues/features/P3-FEAT-001-test.md",
+                issue_type="FEAT",
+                priority="P3",
+                issue_id="FEAT-001",
+                completed_at=datetime(2026, 6, 3, tzinfo=UTC),
+            ),
+            CompletedIssue(
+                path=temp_project_dir / ".issues/bugs/P2-BUG-001-test.md",
+                issue_type="BUG",
+                priority="P2",
+                issue_id="BUG-001",
+                completed_at=datetime(2026, 6, 3, tzinfo=UTC),
+            ),
+        ]
+        config = MagicMock()
+        config.project_root = temp_project_dir
+        config.decisions.log_path = ".ll/decisions.yaml"
+        config.decisions.auto_generate = []
+        config.issues.base_dir = ".issues"
+
+        with patch(
+            "little_loops.issue_history.parsing.scan_completed_issues", return_value=completed
+        ):
+            count = generate_from_completed(config)
+
+        assert count == 2
+
 
 # =============================================================================
 # TestIsNearDuplicate

@@ -539,7 +539,7 @@
         },
         "auto_generate": {
           "type": "array",
-          "description": "Entry IDs to auto-generate on init",
+          "description": "Issue type prefixes to include during 'll-issues decisions generate' (e.g. [\"FEAT\", \"ENH\"] skips BUG entries; empty list processes all types)",
           "items": {
             "type": "string"
           },

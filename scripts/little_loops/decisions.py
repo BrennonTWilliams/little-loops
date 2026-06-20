@@ -383,7 +383,10 @@ def generate_from_completed(config: BRConfig) -> int:
     """Generate DecisionEntry records from completed issues and persist to the log.
 
     Prefers the SQLite history DB when present; falls back to filesystem scanning.
-    Skips issues that already have an entry in the log. Returns the count added.
+    Skips issues that already have an entry in the log. When
+    ``config.decisions.auto_generate`` is non-empty, only issues whose type
+    prefix appears in the list are processed (e.g. ``["FEAT", "ENH"]`` skips
+    BUG entries). Returns the count added.
     """
     from little_loops.issue_history.parsing import (
         scan_completed_issues,
@@ -399,11 +402,15 @@ def generate_from_completed(config: BRConfig) -> int:
     else:
         completed = scan_completed_issues(project_root / config.issues.base_dir)
 
+    type_filter: set[str] = set(config.decisions.auto_generate)
+
     existing = load_decisions(log_path)
     existing_issue_ids = {e.issue for e in existing if isinstance(e, DecisionEntry) and e.issue}
 
     count = 0
     for issue in completed:
+        if type_filter and issue.issue_type not in type_filter:
+            continue
         if issue.issue_id in existing_issue_ids:
             continue
         ts = ""

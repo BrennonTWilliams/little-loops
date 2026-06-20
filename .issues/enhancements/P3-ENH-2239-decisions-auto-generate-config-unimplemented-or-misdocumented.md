@@ -1,11 +1,15 @@
 ---
 id: ENH-2239
-title: "decisions.auto_generate config: unimplemented filter or misdocumented field"
+title: 'decisions.auto_generate config: unimplemented filter or misdocumented field'
 type: ENH
 priority: P3
-status: open
-labels: [decisions, config, docs]
+status: done
+labels:
+- decisions
+- config
+- docs
 testable: false
+completed_at: 2026-06-20 04:18:42+00:00
 ---
 
 ## Summary
@@ -94,4 +98,5 @@ Needs investigation to determine intended design before implementing.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T04:11:51 - `dde47d98-d5ef-4b37-99fc-398674473e68.jsonl`
 - `/ll:format-issue` - 2026-06-20T03:52:16 - `944d4086-6e38-4faf-af3e-429f91e88def.jsonl`

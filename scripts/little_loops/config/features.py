@@ -417,6 +417,12 @@ class DecisionsConfig:
     enabled: bool = False
     log_path: str = ".ll/decisions.yaml"
     auto_generate: list[str] = field(default_factory=list)
+    """Issue type prefixes to include during ``ll-issues decisions generate``.
+
+    Empty list (default) generates entries for all completed issue types.
+    Non-empty list restricts to the listed prefixes (e.g. ``["FEAT", "ENH"]``
+    skips BUG entries).
+    """
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DecisionsConfig:
