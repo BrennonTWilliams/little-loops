@@ -3,12 +3,14 @@ id: ENH-2247
 title: "rn-remediate overuses --full-rewrite in refine state"
 type: ENH
 priority: P3
-status: open
-confidence_score: 0
-outcome_confidence: 0
+status: done
+confidence_score: 100
+outcome_confidence: 85
 captured_at: "2026-06-20T19:17:49Z"
+completed_at: 2026-06-20T20:24:58Z
 discovered_date: "2026-06-20"
 discovered_by: capture-issue
+relates_to: [ENH-2250]
 ---
 
 # ENH-2247: rn-remediate overuses --full-rewrite in refine state
@@ -199,6 +201,26 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Labels
 
 `loop`, `fsm`, `rn-remediate`, `enhancement`
+
+## Resolution
+
+Implemented and verified 2026-06-20. Split the destructive `refine` state into
+`refine_first` (`--auto`) and `refine_followup` (`--auto --gap-analysis`) alongside the
+existing `refine_light`, and re-routed every non-diagnostic caller off the full-rewrite
+path. The audit also closed a gap the original spec missed: `check_wire_needed_outcome.on_no`
+and `on_error` (the confidence-gap path) were a 6th/7th route into `refine` and now use
+`refine_first`. After the change, the destructive `refine` (`--full-rewrite`) is
+reachable **only** from `diagnose → REFINE`, guarded by
+`test_only_diagnose_route_reaches_destructive_refine`.
+
+- **Files**: `scripts/little_loops/loops/rn-remediate.yaml`; tests in
+  `scripts/tests/test_rn_remediate.py` and `scripts/tests/test_builtin_loops.py`
+  (`TestRnRemediateAssessRouting`); doc refresh in `docs/guides/LOOPS_REFERENCE.md`
+  (Phase 3 FSM flow + marker note).
+- **Verification**: `ll-loop validate rn-remediate` passes (incl. MR-4 dead-end check);
+  full suite green (12,189 passed).
+- **Sibling work**: the `rn-implement` diagnostic record-state split surfaced in the same
+  audit is tracked and completed under [[ENH-2250]].
 
 ## Session Log
 - `/ll:wire-issue` - 2026-06-20T19:47:37 - `bc99fa17-1bb8-4be8-ae8b-d96c05dd6c44.jsonl`
