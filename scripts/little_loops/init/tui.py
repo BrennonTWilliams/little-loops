@@ -365,7 +365,9 @@ def run_tui(
         questionary.Choice("inline", value="inline"),
         questionary.Choice("Disabled", value="__disabled__"),
     ]
-    _ex_sd = existing_config.get("loops", {}).get("run_defaults", {}).get("show_diagrams") or "clean"
+    _ex_sd = (
+        existing_config.get("loops", {}).get("run_defaults", {}).get("show_diagrams") or "clean"
+    )
     _raw_sd: str | None = questionary.select(
         "Default diagram mode for ll-loop run:",
         choices=_SHOW_DIAGRAMS_CHOICES,

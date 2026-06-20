@@ -7501,7 +7501,9 @@ class TestGeneralTaskLoop:
             "continue_work prompt must instruct step-splitting for the timeout case"
         )
 
-    def test_continue_work_prompt_preserves_dod_remediation_for_non_timeout(self, data: dict) -> None:
+    def test_continue_work_prompt_preserves_dod_remediation_for_non_timeout(
+        self, data: dict
+    ) -> None:
         """continue_work prompt must still instruct DoD remediation for non-timeout failures (ENH-2246)."""
         state = data["states"].get("continue_work", {})
         action = state.get("action", "")

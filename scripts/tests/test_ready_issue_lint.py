@@ -170,9 +170,12 @@ class TestReadyIssueLearningTestAutoProvision:
         assert "explore-api" in text, (
             "Learning Test Gate must reference explore-api for refuted targets (ENH-2242)"
         )
-        assert "Auto-invoke" in text or "auto-invoke" in text or "Auto-provision" in text or "auto-provision" in text, (
-            "Learning Test Gate must describe auto-invocation for refuted targets (ENH-2242)"
-        )
+        assert (
+            "Auto-invoke" in text
+            or "auto-invoke" in text
+            or "Auto-provision" in text
+            or "auto-provision" in text
+        ), "Learning Test Gate must describe auto-invocation for refuted targets (ENH-2242)"
 
     def test_ready_issue_missing_auto_invokes_explore_api(self) -> None:
         text = self._gate_text()

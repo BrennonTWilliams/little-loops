@@ -116,6 +116,7 @@ def _run_yes(
     feature_choices: dict[str, Any] | None = None,
 ) -> int:
     """Execute the non-interactive --yes init flow."""
+    from little_loops.config.core import resolve_config_path
     from little_loops.init.core import build_config
     from little_loops.init.detect import detect_project_type
     from little_loops.init.validate import validate_deps
@@ -129,8 +130,6 @@ def _run_yes(
         write_claude_md,
         write_config,
     )
-
-    from little_loops.config.core import resolve_config_path
 
     ll_dir = project_root / ".ll"
     config_path = ll_dir / "ll-config.json"

@@ -462,8 +462,14 @@ class TestRemediationActions:
         """
         data = _load_loop()
         transition_keys = (
-            "on_yes", "on_no", "on_partial", "on_success", "on_error",
-            "on_failure", "on_rate_limit_exhausted", "next",
+            "on_yes",
+            "on_no",
+            "on_partial",
+            "on_success",
+            "on_error",
+            "on_failure",
+            "on_rate_limit_exhausted",
+            "next",
         )
         offenders = []
         for name, state in data["states"].items():

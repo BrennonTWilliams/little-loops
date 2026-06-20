@@ -54,10 +54,21 @@ class TestBrainstormYaml:
 
     def test_required_states_exist(self, data: dict) -> None:
         required = {
-            "init", "frame", "pop_lens", "diverge", "dedup_novelty",
-            "saturation_gate", "cluster", "rank", "converge",
-            "route_sink", "sink_file", "sink_issue", "sink_decision",
-            "done", "failed",
+            "init",
+            "frame",
+            "pop_lens",
+            "diverge",
+            "dedup_novelty",
+            "saturation_gate",
+            "cluster",
+            "rank",
+            "converge",
+            "route_sink",
+            "sink_file",
+            "sink_issue",
+            "sink_decision",
+            "done",
+            "failed",
         }
         actual = set(data["states"].keys())
         missing = required - actual
@@ -65,9 +76,17 @@ class TestBrainstormYaml:
 
     def test_context_has_required_knobs(self, data: dict) -> None:
         ctx = data.get("context", {})
-        for key in ("brief", "sink", "output_path", "decision_target",
-                    "ideas_per_round", "top_k", "novelty_threshold",
-                    "max_saturation", "novelty_backend"):
+        for key in (
+            "brief",
+            "sink",
+            "output_path",
+            "decision_target",
+            "ideas_per_round",
+            "top_k",
+            "novelty_threshold",
+            "max_saturation",
+            "novelty_backend",
+        ):
             assert key in ctx, f"context must have key '{key}'"
 
     def test_context_defaults(self, data: dict) -> None:
@@ -92,9 +111,19 @@ class TestBrainstormYaml:
     def test_no_issue_system_writes_in_core_states(self, data: dict) -> None:
         """Core states must not reference .issues/ — Issue writes are opt-in via sinks only."""
         core_states = {
-            "init", "frame", "pop_lens", "diverge", "dedup_novelty",
-            "saturation_gate", "cluster", "rank", "converge",
-            "route_sink", "sink_file", "done", "failed",
+            "init",
+            "frame",
+            "pop_lens",
+            "diverge",
+            "dedup_novelty",
+            "saturation_gate",
+            "cluster",
+            "rank",
+            "converge",
+            "route_sink",
+            "sink_file",
+            "done",
+            "failed",
         }
         for name in core_states:
             state = data["states"].get(name, {})
@@ -216,23 +245,26 @@ class TestBrainstormDryRun:
             for category, pattern in RATCHETED_PATTERNS.items():
                 if pattern in w.message:
                     violations.append(f"[{category}] {w.path}: {w.message}")
-        assert not violations, (
-            "brainstorm.yaml has ratcheted-category warnings:\n" + "\n".join(violations)
+        assert not violations, "brainstorm.yaml has ratcheted-category warnings:\n" + "\n".join(
+            violations
         )
 
     def test_all_states_reachable(self) -> None:
         """Ensure ll-loop validate reports no unreachable states."""
         result = subprocess.run(
             ["ll-loop", "validate", "brainstorm"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
-        assert result.returncode == 0, f"ll-loop validate brainstorm failed:\n{result.stdout}\n{result.stderr}"
+        assert result.returncode == 0, (
+            f"ll-loop validate brainstorm failed:\n{result.stdout}\n{result.stderr}"
+        )
         assert "unreachable" not in result.stdout.lower()
 
     def test_required_inputs_declared(self) -> None:
         data = yaml.safe_load(LOOP_FILE.read_text())
         assert data.get("required_inputs") == ["brief"], (
-            "brainstorm must declare required_inputs: [\"brief\"]"
+            'brainstorm must declare required_inputs: ["brief"]'
         )
 
 
@@ -308,7 +340,9 @@ print(json.dumps({{"novel": [i["text"] for i in novel], "count": len(novel)}}))
 
     def test_semantically_different_idea_passes(self) -> None:
         existing = ["Use mutation testing to find untested branches"]
-        new = [{"text": "Introduce chaos engineering to surface resilience gaps", "rationale": "..."}]
+        new = [
+            {"text": "Introduce chaos engineering to surface resilience gaps", "rationale": "..."}
+        ]
         out = self._run_dedup(new, existing=existing, threshold=0.80)
         assert out["count"] == 1, f"Semantically different idea should pass, got: {out}"
 
@@ -415,7 +449,9 @@ print(count)
         result = subprocess.run(["python3", "-c", script], capture_output=True, text=True)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         final_count = int(result.stdout.strip())
-        assert final_count == 0, f"Saturation counter should reset to 0 after novel idea, got: {final_count}"
+        assert final_count == 0, (
+            f"Saturation counter should reset to 0 after novel idea, got: {final_count}"
+        )
 
     def test_empty_ideas_json_handled_gracefully(self) -> None:
         """An LLM that produces no IDEAS_JSON tag yields 0 novel ideas without crashing."""

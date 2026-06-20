@@ -7669,7 +7669,7 @@ class TestRecurrentWindowDetector:
         window: int = 20,
         recurrent_window: int | None = None,
         max_steps: int = 100,
-    ) -> "FSMLoop":
+    ) -> FSMLoop:
         """FSM that cycles check → work → check repeatedly; check always fails."""
         from little_loops.fsm.schema import CircuitConfig, RepeatedFailureConfig
 
