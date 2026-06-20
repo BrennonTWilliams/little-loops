@@ -1,9 +1,10 @@
 ---
 id: ENH-2238
-title: "POLICY_ROUTER_GUIDE: simulate claim inaccurate for policy-router loops"
+title: 'POLICY_ROUTER_GUIDE: simulate claim inaccurate for policy-router loops'
 type: ENH
 priority: P3
-status: open
+status: done
+completed_at: 2026-06-20 04:09:46+00:00
 area: docs
 file: docs/guides/POLICY_ROUTER_GUIDE.md
 testable: false
@@ -114,4 +115,5 @@ present in the paragraph above).
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T04:08:45 - `9dd6ef7f-7695-469a-9db5-31c9d7c492ba.jsonl`
 - `/ll:format-issue` - 2026-06-20T03:51:39 - `26736b38-8a55-4123-887a-77a72b341010.jsonl`

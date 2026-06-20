@@ -156,9 +156,11 @@ security=88, aggregate=86`. The dispatcher walks the table:
 
 The `classify` evaluator reads `done` and the `route:` map sends the loop to the `done` state.
 
-You don't have to trace the table by hand — `ll-loop simulate policy-refine` walks FSM
-execution interactively without invoking real commands, so you can confirm which rule fires
-for a given score set before committing to a real run.
+You don't have to trace the table by hand — the worked trace above shows the step-by-step
+evaluation. `ll-loop simulate policy-refine` can trace FSM state connectivity without
+running real LLM calls, but it cannot evaluate policy rules (shell actions are not
+executed in simulation). To confirm which rule fires for a given score set, trace the
+table manually or run the loop with a real or mocked artifact.
 
 ## Editing the Table with `ll-loop edit-routes`
 
