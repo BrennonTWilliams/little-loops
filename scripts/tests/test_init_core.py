@@ -452,6 +452,17 @@ class TestBuildConfig:
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match)
         rd = config["loops"]["run_defaults"]
+        assert rd["clear"] is True
+        assert rd["show_diagrams"] == "clean"
+        assert rd["mode"] is None
+
+    def test_loops_run_defaults_override_via_choices(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"loop_clear_default": False, "loop_show_diagrams_default": None})
+        rd = config["loops"]["run_defaults"]
         assert rd["clear"] is False
         assert rd["show_diagrams"] is None
         assert rd["mode"] is None

@@ -349,6 +349,32 @@ def run_tui(
     if prompt_optimization_enabled is None:
         return 130
 
+    # Loop run defaults — --clear
+    _ex_loop_clear = existing_config.get("loops", {}).get("run_defaults", {}).get("clear", True)
+    loop_clear_default: bool | None = questionary.confirm(
+        "Enable --clear by default for ll-loop run? (recommended)", default=_ex_loop_clear
+    ).ask()
+    if loop_clear_default is None:
+        return 130
+
+    # Loop run defaults — --show-diagrams
+    _SHOW_DIAGRAMS_CHOICES = [
+        questionary.Choice("clean  (recommended)", value="clean"),
+        questionary.Choice("summary", value="summary"),
+        questionary.Choice("layered", value="layered"),
+        questionary.Choice("inline", value="inline"),
+        questionary.Choice("Disabled", value="__disabled__"),
+    ]
+    _ex_sd = existing_config.get("loops", {}).get("run_defaults", {}).get("show_diagrams") or "clean"
+    _raw_sd: str | None = questionary.select(
+        "Default diagram mode for ll-loop run:",
+        choices=_SHOW_DIAGRAMS_CHOICES,
+        default=_ex_sd if _ex_sd in ("clean", "summary", "layered", "inline") else "clean",
+    ).ask()
+    if _raw_sd is None:
+        return 130
+    loop_show_diagrams_default: str | None = None if _raw_sd == "__disabled__" else _raw_sd
+
     # --- Screen 4 / 6: Hosts ---
     console.print()
     console.rule("[bold]4 / 6  Hosts[/bold]")
@@ -451,6 +477,8 @@ def run_tui(
         documents_categories=documents_categories,
         session_digest_enabled=bool(session_digest_enabled),
         prompt_optimization_enabled=bool(prompt_optimization_enabled),
+        loop_clear_default=bool(loop_clear_default),
+        loop_show_diagrams_default=loop_show_diagrams_default,
     )
 
     # --- Summary ---
@@ -509,6 +537,8 @@ def _build_final_config(
     documents_categories: dict[str, Any] | None = None,
     session_digest_enabled: bool = True,
     prompt_optimization_enabled: bool = True,
+    loop_clear_default: bool = True,
+    loop_show_diagrams_default: str | None = "clean",
 ) -> dict[str, Any]:
     """Build the ll-config.json dict from TUI answers."""
     from little_loops.init.core import build_config
@@ -527,6 +557,8 @@ def _build_final_config(
             "session_capture_enabled": "session_capture" in selected_set,
             "session_digest_enabled": session_digest_enabled,
             "prompt_optimization_enabled": prompt_optimization_enabled,
+            "loop_clear_default": loop_clear_default,
+            "loop_show_diagrams_default": loop_show_diagrams_default,
         },
     )
 
@@ -663,6 +695,15 @@ def _render_summary(
     # Prompt optimization (default-on; only written when opted out)
     if config.get("prompt_optimization", {}).get("enabled") is False:
         table.add_row("Prompt optim.", "off")
+
+    # Loop run defaults
+    rd = config.get("loops", {}).get("run_defaults", {})
+    rd_parts = []
+    if rd.get("clear"):
+        rd_parts.append("--clear")
+    if rd.get("show_diagrams"):
+        rd_parts.append(f"--show-diagrams {rd['show_diagrams']}")
+    table.add_row("Loop defaults", " ".join(rd_parts) if rd_parts else "none")
 
     if settings_target == "skip":
         sf = "Skip — no permissions written"

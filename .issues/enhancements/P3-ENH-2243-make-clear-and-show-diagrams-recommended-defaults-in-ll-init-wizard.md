@@ -2,9 +2,10 @@
 id: ENH-2243
 title: Make --clear and --show-diagrams recommended defaults in ll-init wizard
 type: ENH
-status: open
+status: done
 priority: P3
 captured_at: '2026-06-20T06:11:34Z'
+completed_at: '2026-06-20T06:30:44Z'
 discovered_date: '2026-06-20'
 discovered_by: capture-issue
 relates_to:
@@ -212,6 +213,7 @@ Manual: run `ll-init` in a temp directory — Screen 3 should show the two loop-
 `enhancement`, `ll-init`, `tui`, `ux`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T06:26:55 - `a70cb0f8-9591-414f-a7e2-c74077338c34.jsonl`
 - `/ll:confidence-check` - 2026-06-20T00:00:00Z - `d17616de-870c-483a-8d41-e20429beb8b2.jsonl`
 - `/ll:refine-issue` - 2026-06-20T06:21:08 - `e8fdda7f-8b2b-4ece-a637-8dec3548b5c5.jsonl`
 - `/ll:format-issue` - 2026-06-20T06:15:17 - `82ae2197-fe4a-47b4-a984-2693281650dd.jsonl`

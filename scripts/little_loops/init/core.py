@@ -41,6 +41,8 @@ def build_config(
             - ``session_capture_enabled`` (bool, default False): include session_capture.
             - ``prompt_optimization_enabled`` (bool, default True): when False, write
               prompt_optimization.enabled=false (opt-out of a default-on feature).
+            - ``loop_clear_default`` (bool, default True): write loops.run_defaults.clear.
+            - ``loop_show_diagrams_default`` (str | None, default "clean"): write loops.run_defaults.show_diagrams.
 
     Returns:
         Complete config dict (``$schema`` key first, then sections).
@@ -115,10 +117,12 @@ def build_config(
     }
 
     # --- loops.run_defaults (always written; exposes the feature at init time) ---
+    loop_clear = bool(choices.get("loop_clear_default", True))
+    loop_show_diagrams = choices.get("loop_show_diagrams_default", "clean")
     config["loops"] = {
         "run_defaults": {
-            "clear": False,
-            "show_diagrams": None,
+            "clear": loop_clear,
+            "show_diagrams": loop_show_diagrams,
             "mode": None,
         }
     }
