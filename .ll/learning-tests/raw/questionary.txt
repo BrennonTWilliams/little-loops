@@ -1,0 +1,21 @@
+? prompt? fallback                  [PASS] Claim 1: Choice(title='Foo').value == 'Foo'
+         expected: 'Foo'
+         actual:   'Foo'
+[PASS] Claim 2: Choice(title='Foo', value='bar').value == 'bar'
+         expected: 'bar'
+         actual:   'bar'
+[PASS] Claim 3: Choice(title='X', checked=True).checked == True
+         expected: True
+         actual:   True
+[PASS] Claim 4: Choice(title='X', disabled='Coming soon').disabled == 'Coming soon'
+         expected: 'Coming soon'
+         actual:   'Coming soon'
+? prompt? fallback
+? proceed? (Y/n)                 [PASS] Claim 5: text().ask() raises EOFError (not returns default) on exhausted stdin
+         raised EOFError as expected
+? proceed? (Y/n)
+[PASS] Claim 6: confirm().ask() raises EOFError (not returns True) on exhausted stdin
+         raised EOFError as expected
+
+=== SUMMARY ===
+PASS: 6  FAIL: 0

@@ -1,0 +1,27 @@
+[claim1] rt loads CommentedMap: True
+  type = CommentedMap
+[claim2] yaml.load(Path) OK: True
+[claim3] LiteralScalarString forces '|': True
+[claim4] rt preserves comments: True
+[claim5] safe loads plain dict: True
+  type = dict
+[claim6] dump to StringIO produces str: True
+  type = str
+[claim7] sibling key unchanged after modification: True
+  first action = 'echo hello\necho world\n'
+  second action = 'replaced\n'
+
+--- Full dump output (claim3 data) ---
+# top-level comment
+name: my-loop
+states:
+  first:
+    action: |
+      echo hello
+      echo world
+  second:
+    action: |
+      line one
+      line two
+terminal: false
+

@@ -1,0 +1,1163 @@
+- id: ARCHITECTURE-001
+  type: decision
+  timestamp: '2026-06-04T05:38:50Z'
+  category: architecture
+  labels: []
+  rationale: 'New 25-state FSM loop combining patterns from recursive-refine, rn-refine,
+    and autodev to fill four gaps: no iterative deepening, no dimensional reactivity,
+    no multi-pass wire↔refine feedback, and decisions that may never get resolved'
+  rule: 'Captured: Create rn-implement recursive plan-and-implement FSM loop'
+  scope: issue
+  issue: FEAT-1933
+- id: ARCHITECTURE-002
+  type: decision
+  timestamp: '2026-06-04T14:56:21Z'
+  category: architecture
+  labels: []
+  rationale: 32-state monolith mixes queue management, remediation, and decomposition.
+    FSM executor supports native sub-loop spawning; ~30 existing loops use this pattern.
+    Extracting sub-loops improves testability, timeout isolation, and reusability.
+  rule: Decompose rn-implement.yaml into sub-loops (rn-remediate + rn-decompose)
+  scope: issue
+  issue: ENH-1936
+- id: ARCHITECTURE-003
+  type: decision
+  timestamp: '2026-06-04T16:59:53Z'
+  category: architecture
+  labels: []
+  rationale: ENH-1942 provides session-tagged turn-pairs natively via history_reader.conversation_turns(),
+    giving the enrich state a direct session_id key without content-matching hacks.
+    This is the cleanest path and avoids changing extract_conversation_turns() return
+    type.
+  rule: Implement ENH-1942 first for session-ID recovery
+  scope: issue
+  alternatives_rejected: filename extraction from raw.jsonl, ll-session path reverse-mapping
+  issue: ENH-1941
+- id: ARCHITECTURE-004
+  type: decision
+  timestamp: '2026-06-04T23:32:01Z'
+  category: architecture
+  labels: []
+  rationale: Option A scored 11/12 vs Option B 5/12. _config_candidates() at config/core.py:74
+    is a near-identical precedent with the same keyword-only host parameter pattern.
+    Backward-compatible parameter addition with zero call site breakage.
+  rule: 'Option A: Host-aware get_project_folder()'
+  scope: issue
+  alternatives_rejected: 'Option B: New resolve_session_dir() wrapper'
+  issue: ENH-1945
+- id: ARCHITECTURE-005
+  type: decision
+  timestamp: '2026-06-05T00:22:40Z'
+  category: architecture
+  labels: []
+  rationale: Least risk, reuses existing Patterns 1/2/17 directly with minimal new
+    code. Scores 11/12 vs 10/12 (Option B) and 2/12 (Option C).
+  rule: 'Option A: Extend _compact_sessions() inline'
+  scope: issue
+  alternatives_rejected: Option B (separate function), Option C (recursive helper)
+  issue: ENH-1927
+- id: ARCHITECTURE-006
+  type: decision
+  timestamp: '2026-06-05T04:06:58Z'
+  category: architecture
+  labels: []
+  rationale: 70+ FSM loops overwrite artifacts on every iteration; adding per-iteration
+    snapshots via oracle fix (7 loops at once) + targeted YAML updates + MR-5 validation
+    rule to prevent regression
+  rule: 'Captured: Add Per-Iteration Artifact Versioning to Built-in FSM Loops'
+  scope: issue
+  issue: ENH-1957
+- id: ARCHITECTURE-007
+  type: decision
+  timestamp: '2026-06-05T18:08:18Z'
+  category: architecture
+  labels: []
+  rationale: Prevents terminal loop crashes when captured variables from bypassed
+    states are referenced. Adds :default= and ? syntax to interpolation engine.
+  rule: 'Captured: Add safe/fallible interpolation syntax for missing captured variables'
+  scope: issue
+  issue: ENH-1958
+- id: ARCHITECTURE-008
+  type: decision
+  timestamp: '2026-06-05T18:08:21Z'
+  category: architecture
+  labels: []
+  rationale: Runner already injects run_dir; adding input_hash (SHA-256 truncated)
+    prevents cross-task checkpoint contamination with zero platform-specific shell
+    code.
+  rule: 'Captured: Auto-inject input_hash into FSM loop context for checkpoint fingerprinting'
+  scope: issue
+  issue: ENH-1959
+- id: ARCHITECTURE-009
+  type: decision
+  timestamp: '2026-06-05T18:08:23Z'
+  category: architecture
+  labels: []
+  rationale: Dominance-based static analysis warns when captured variable references
+    may be missing on some code paths. Complements safe interpolation (ENH-1958) as
+    a shift-left guard.
+  rule: 'Captured: Add static validation of captured variable reachability in FSM
+    validator'
+  scope: issue
+  issue: ENH-1961
+- id: ARCHITECTURE-010
+  type: decision
+  timestamp: '2026-06-05T21:21:41Z'
+  category: architecture
+  labels: []
+  rationale: 59 doc-wiring test files (23.4% of suite) inflate test count and mask
+    real coverage gaps. Consolidate into parametrized tests or lint rules.
+  rule: 'Captured: Audit and Consolidate Doc-Wiring Tests'
+  scope: issue
+  issue: ENH-1963
+- id: ARCHITECTURE-011
+  type: decision
+  timestamp: '2026-06-05T21:21:41Z'
+  category: architecture
+  labels: []
+  rationale: ~6,500 lines of user-facing CLI code have zero test coverage. Sprint
+    CLI first, then loop TUI, then loop dispatch.
+  rule: 'Captured: Add CLI Layer Tests for Sprint and Loop Subpackages'
+  scope: issue
+  issue: ENH-1964
+- id: ARCHITECTURE-012
+  type: decision
+  timestamp: '2026-06-05T21:21:41Z'
+  category: architecture
+  labels: []
+  rationale: No snapshot testing exists for CLI output. Prerequisite for safely testing
+    the TUI rendering engine.
+  rule: 'Captured: Add Snapshot/Golden-File Testing for CLI Output'
+  scope: issue
+  issue: ENH-1965
+- id: ARCHITECTURE-013
+  type: decision
+  timestamp: '2026-06-05T21:21:41Z'
+  category: architecture
+  labels: []
+  rationale: Six modules totaling ~2,620 lines have zero dedicated tests. FSM runner
+    first (runtime risk), then analytics, then CLI.
+  rule: 'Captured: Fill P1 Test Gaps in fsm/runners, issue_history, and CLI Modules'
+  scope: issue
+  issue: ENH-1966
+- id: TRADEOFF-014
+  type: decision
+  timestamp: '2026-06-05T22:31:23Z'
+  category: tradeoff
+  labels: []
+  rationale: Third review. MEDIUM utility, LOW effort, blocked on ENH-1618/ENH-1615.
+    Still waiting on dependencies.
+  rule: update-first
+  scope: issue
+  alternatives_rejected: implement (blocked on deps), close/defer (valid value, just
+    stalled)
+  issue: ENH-1617
+- id: ARCHITECTURE-015
+  type: decision
+  timestamp: '2026-06-05T23:01:29Z'
+  category: architecture
+  labels: []
+  rationale: Option A scores 9/12 vs 6/12 for B and C. Parametrize is battle-tested
+    (50 call sites, 19 files) with direct structural precedent in test_builtin_loops.py.
+    Option B would require building a new string-presence checker from scratch with
+    8-9 file touchpoints. Option C delivers zero structural benefit without CI.
+  rule: 'Option A: Parametrize'
+  scope: issue
+  alternatives_rejected: Option B (Lint Rule Replacement), Option C (Separate Test
+    Suite)
+  issue: ENH-1963
+- id: ARCHITECTURE-016
+  type: decision
+  timestamp: '2026-06-06T01:30:31Z'
+  category: architecture
+  labels: []
+  rationale: Option B reuses _aggregate_tool_events() template, skill_events DB, and
+    _populate_tool_events() fixture shape (10/12 vs 8/12 for Option A). Option A requires
+    a new second JSONL pass for correction attribution with no existing per-event
+    proximity-window helper.
+  rule: Option B — SQLite-first (mirrors ctx_stats._aggregate_tool_events())
+  scope: issue
+  alternatives_rejected: 'Option A — JSONL-first (8/12): requires new second JSONL
+    pass; _extract_ll_event_streams() strips user-type records forcing a separate
+    scan.'
+  issue: ENH-1921
+- id: ARCHITECTURE-017
+  type: decision
+  timestamp: '2026-06-06T04:47:05Z'
+  category: architecture
+  labels:
+  - eval
+  - ll-logs
+  - design
+  - eval-export
+  rationale: 'Unblocks FEAT-1969/1970/1971 with a confirmed fixture contract before
+    any code is written. Resolves the issue false-premise that ll-harness loads fixtures:
+    cli/harness.py:32 (_build_harness_parser) is argument-only with no fixture-loading
+    dataclass. Reuses existing utilities (pii.redact_pii at pii.py:39, logs._ABS_PATH_RE
+    at logs.py:867, history_reader.lookup_session_metadata) instead of inventing new
+    extraction. The execution-outcome taxonomy is chosen because session logs expose
+    only execution signals (corrections, errors), never an output-quality judgment.'
+  rule: 'EvalFixture v1 schema (ll-logs eval-export -> ll-harness): one YAML record
+    per reconstructed ll-harness invocation. ll-harness has NO fixture loader; fixtures
+    are an EXPORT artifact replayed by serializing fields back into `ll-harness <runner>
+    <target> [runner_args...] [--exit-code N] [--semantic TEXT] [--timeout S]`. FIELDS
+    — runner (required; one of skill|cmd|mcp|prompt), target (required str), runner_args
+    (optional list[str], default []), exit_code (optional int, null=unchecked), semantic
+    (optional str, null=unchecked), timeout (int seconds, default 120); PROVENANCE
+    — session_id (required), timestamp (required ISO8601), input_context (optional,
+    redacted user-message text), issue_id (optional, regex [A-Z]+-\d+ from input_context),
+    skill_name (optional; == target when runner==skill), outcome (required enum),
+    pii_detected (bool, default false). Required set = {runner, target, session_id,
+    timestamp, outcome}. OUTCOME taxonomy is EXECUTION not QUALITY (logs carry no
+    output-quality signal): accepted (has_corrections=False and no error), corrected
+    (has_corrections=True), failed (a tool_result with is_error or a traceback present
+    in the session), unknown (lookup_session_metadata returned {}); precedence failed
+    > corrected > accepted. Source outcome from history_reader.lookup_session_metadata(session_id)
+    (DB-backed: has_corrections, issue_outcome, tool_count, files_modified), NOT by
+    re-parsing JSONL. INPUT CONTEXT = the raw user-message text (message.content[].text)
+    of the user-type JSONL record that _extract_tool_name() matched (cli/logs.py:291),
+    after redaction. REDACTION is best-effort and NON-BLOCKING: apply pii.redact_pii()
+    (email/phone/SSN) then logs._ABS_PATH_RE.sub("<path>", text) for absolute paths;
+    set pii_detected=true if either fires; never skip a session for unredactable content.'
+  scope: project
+  alternatives_rejected: '(1) Quality-outcome labels (was the skill output good?)
+    — rejected: logs carry no quality signal, only execution evidence. (2) Re-parsing
+    JSONL to derive outcome — rejected in favor of DB-backed lookup_session_metadata()
+    to avoid double-parsing and signal drift. (3) Blocking redaction that skips sessions
+    with unredactable PII — rejected for MVP; best-effort regex + pii_detected flag
+    avoids silent data loss. (4) Adding a --fixture FILE input mode to ll-harness
+    — rejected/out-of-scope: fixtures replay by serializing into the existing CLI
+    arg surface.'
+  issue: FEAT-1968
+- id: ARCHITECTURE-018
+  type: decision
+  timestamp: '2026-06-07T01:54:15Z'
+  category: architecture
+  labels: []
+  rationale: Matches established LL_* env-var override convention (LL_HOST_CLI, LL_HOOK_HOST,
+    LL_STATE_DIR); single-point fix at session_store.py:644; survives import-binding
+    problem; adds real product feature
+  rule: 'Option A: env-var resolution in cli_event_context via LL_HISTORY_DB'
+  scope: issue
+  alternatives_rejected: Option B (autouse chdir breaks 7+ repo-root-dependent tests),
+    Option C (29-module hardcoded list silently regresses)
+  issue: BUG-1995
+- id: ARCHITECTURE-019
+  type: decision
+  timestamp: '2026-06-08T20:01:50Z'
+  category: architecture
+  labels: []
+  rationale: 'input_key: used by 27 loops; hitl-compare.yaml provides exact whitespace-separated
+    file path precedent; zero CLI changes needed; Option B adds scope to 4 files for
+    functionality already coverable via --context files=...'
+  rule: 'Option A (no CLI changes): use input_key: files with space-separated string'
+  scope: issue
+  alternatives_rejected: 'Option B (new CLI work): new --files flag adds scope to
+    __init__.py, run.py, and two test files'
+  issue: FEAT-2024
+- id: IMPLEMENTATION-020
+  type: decision
+  timestamp: '2026-06-08T20:26:50Z'
+  category: implementation
+  labels: []
+  rationale: Problem already solved by ENH-1394; ENH-1615 eliminates the last audit
+    Tier-1 entry; spec uses non-existent llm_discoverable key; ENH-1617 (sole downstream
+    consumer) is cancelled. Overtaken by events — closed as invalid.
+  rule: NO-GO
+  scope: issue
+  issue: ENH-1618
+- id: ARCHITECTURE-021
+  type: decision
+  timestamp: '2026-06-09T04:41:19Z'
+  category: architecture
+  labels: []
+  rationale: Optional, skippable post-init flow that walks new users through picking
+    and running their first built-in loop to drive first-run activation.
+  rule: 'Captured: Guided first-loop onboarding after ll init'
+  scope: issue
+  issue: FEAT-2041
+- id: ARCHITECTURE-022
+  type: decision
+  timestamp: '2026-06-09T19:01:34Z'
+  category: architecture
+  labels: []
+  rationale: improve-claude-md already documents ENH-1911 Evolution Trigger intake
+    (lines 179-186); extending with --consume-triggers formalizes existing design
+    intent. Option B thin-wrapper has no hand-authored precedent.
+  rule: Extend improve-claude-md with --consume-triggers flag (Option A)
+  scope: issue
+  alternatives_rejected: 'Option B: New /ll:self-improve skill'
+  issue: ENH-2046
+- id: IMPLEMENTATION-023
+  type: decision
+  timestamp: '2026-06-10T18:07:52Z'
+  category: implementation
+  labels: []
+  rationale: 'Unresolved content conflict with ENH-2023 (same 70-line MR-1-MR-5 block,
+    different destinations) and unevaluated .claude/rules/paths: native mechanism
+    that may render nested-CLAUDE.md approach unnecessary.'
+  rule: NO-GO
+  scope: issue
+  issue: ENH-2060
+- id: IMPLEMENTATION-024
+  type: decision
+  timestamp: '2026-06-10T18:13:29Z'
+  category: implementation
+  labels: []
+  rationale: 'AC #2 has no implementable FSM mechanism without LLM self-reporting
+    (MR-1 violation) or unacknowledged FSM core changes; issue needs refinement to
+    resolve before implementation.'
+  rule: NO-GO
+  scope: issue
+  issue: ENH-2047
+- id: IMPLEMENTATION-025
+  type: decision
+  timestamp: '2026-06-11T14:13:50Z'
+  category: implementation
+  labels: []
+  rationale: ll-loop validate --json does not exist (loop/__init__.py:266-270); harness.py
+    has no --model flag making acceptance criterion 3 unimplementable as designed.
+    Needs refinement of both blockers before proceeding.
+  rule: NO-GO
+  scope: issue
+  issue: ENH-2081
+- id: ARCHITECTURE-026
+  type: decision
+  timestamp: '2026-06-11T19:04:07Z'
+  category: architecture
+  labels: []
+  rationale: TUI must expose every config-producing question before ENH-1982 retires
+    the /ll:init skill; enrichment is TUI-side only, --yes defaults unchanged.
+  rule: 'Captured: Bring ll-init TUI to config-capability parity with /ll:init'
+  scope: issue
+  issue: ENH-2092
+- id: ARCHITECTURE-027
+  type: decision
+  timestamp: '2026-06-12T16:30:50Z'
+  category: architecture
+  labels: []
+  rationale: Matches the one-Protocol-per-capability convention (4 precedents in extension.py;
+    LLHookIntentExtension was likewise added as a new Protocol). ActionProviderExtension's
+    contributed-action dispatch is action_type-keyed and cannot serve hitl.channel
+    config-keyed adapter resolution; net-new infrastructure is identical either way.
+  rule: HITL adapters register via a new CommunicationAdapterExtension Protocol (provided_adapters()),
+    not by extending ActionProviderExtension
+  scope: issue
+  alternatives_rejected: Extend ActionProviderExtension with provided_adapters() (7/12
+    vs 11/12)
+  issue: FEAT-1930
+- id: ARCHITECTURE-028
+  type: decision
+  timestamp: '2026-06-12T16:31:50Z'
+  category: architecture
+  labels: []
+  rationale: Off-terminal operators have no path into the in-process EventBus without
+    a new inbound transport; file-poller is cross-host, zero new infrastructure, and
+    matches the issue's specified polling loop. Event-bus delivery can layer on later
+    without protocol changes.
+  rule: Push HITL adapter response callback uses a file-poller (.ll/hitl-responses/<alert-id>.json),
+    not an event-bus subscription
+  scope: issue
+  alternatives_rejected: EventBus.register() subscription for human_response events
+    (5/12 vs 11/12)
+  issue: FEAT-1932
+- id: IMPLEMENTATION-029
+  type: decision
+  timestamp: '2026-06-13T13:42:00Z'
+  category: implementation
+  labels: []
+  rationale: 'YAML skeleton uses invalid FSM constructs (llm_unstructured, llm_structured
+    as action_type, predicate: transitions); product infrastructure not configured
+    for dogfooding; use case partially served by loop-composer+deep-research'
+  rule: NO-GO
+  scope: issue
+  issue: FEAT-1806
+- id: ARCHITECTURE-030
+  type: decision
+  timestamp: '2026-06-13T14:09:08Z'
+  category: architecture
+  labels: []
+  rationale: '46 loop: call sites establish this as the codebase orchestration primitive.
+    sprint-refine-and-implement.yaml (74 lines, 5 states) vs autodev.yaml (593 lines,
+    30+ states) makes the cost of inlining concrete. Silent drift risk across two
+    files with no lint guard disqualifies Option B.'
+  rule: 'Per-issue states: use reusable sub-loop composition (loop: field) not inline
+    duplication'
+  scope: issue
+  alternatives_rejected: 'Option B: Inline per-issue states — 12-16 identical state
+    blocks duplicated across ll-auto.yaml and ll-sprint.yaml with no divergence detection'
+  issue: EPIC-1867
+- id: IMPLEMENTATION-031
+  type: decision
+  timestamp: '2026-06-13T14:22:11Z'
+  category: implementation
+  labels: []
+  rationale: loop-composer already handles competitive analysis dynamically; bespoke
+    6-state FSM is a redundant hardcoding; evaluators are toothless (p*(1-p)≈0.0);
+    skeleton unfixed relative-path bug at line 287
+  rule: NO-GO
+  scope: issue
+  issue: FEAT-1806
+- id: ARCHITECTURE-032
+  type: decision
+  timestamp: '2026-06-14T00:11:10Z'
+  category: architecture
+  labels: []
+  rationale: No tooling exists to convert a type:decision entry to type:rule; requires
+    hand-editing YAML
+  rule: 'Captured: Add ll-issues decisions promote subcommand'
+  scope: issue
+  issue: ENH-2125
+- id: ARCHITECTURE-033
+  type: decision
+  timestamp: '2026-06-14T00:11:10Z'
+  category: architecture
+  labels: []
+  rationale: No automated cross-issue pattern analysis to surface promotion candidates;
+    rules stay invisible indefinitely
+  rule: 'Captured: Surface rule-candidate suggestions from decisions list'
+  scope: issue
+  issue: ENH-2126
+- id: ARCH-001
+  type: rule
+  timestamp: '2026-06-14T23:11:47Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: ENH-2153 showed that meeting confidence/outcome score thresholds silently
+    bypassed refine and wire steps for high-complexity issues with unmapped change
+    surfaces. Threshold scores can be stale or manually set, so structural conditions
+    must be checked independently.
+  rule: Fast-path routing must validate structural prerequisites (integration map,
+    complexity) before skipping preparation state
+  enforcement: advisory
+  issue: ENH-2153
+- id: ARCH-002
+  type: rule
+  timestamp: '2026-06-14T23:11:47Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Refining an issue without an integration map produces improvements that
+    don't account for wiring gaps. ENH-2153 fixed this ordering in both the diagnose
+    routing table and the check_outcome path.
+  rule: Wire (integration map) steps must be scheduled before refine steps when score_change_surface
+    == 0.
+  enforcement: advisory
+  issue: ENH-2153
+- id: ARCH-003
+  type: rule
+  timestamp: '2026-06-14T23:11:47Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The diagnose state conflated 'complexity high + no surface map' into
+    the generic complexity-REFINE branch. Compound conditions (e.g., high complexity
+    AND zero change surface) require their own priority-ordered branches to route
+    correctly.
+  rule: 'FSM routing tables must enumerate explicit branches for all significant compound
+    conditions, not rely on fallthrough to '
+  enforcement: advisory
+  issue: ENH-2153
+- id: PERF-004
+  type: rule
+  timestamp: '2026-06-14T23:11:47Z'
+  category: performance
+  labels:
+  - extracted
+  - global
+  rationale: The two new pre-implement check states in ENH-2153 read pre_scores_<ID>.json
+    already persisted by verify_scores_persisted, avoiding redundant ll-issues show
+    calls and ensuring consistency with the data that drove the initial scoring.
+  rule: New FSM states should read artifacts already written by earlier states rather
+    than re-issuing CLI calls for the same dat
+  enforcement: advisory
+  issue: ENH-2153
+- id: ARCH-005
+  type: rule
+  timestamp: '2026-06-14T23:11:47Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: ENH-2153 added check_complexity_pre_implement and check_wire_pre_implement
+    by changing check_readiness on_yes from 'implement' to 'check_complexity_pre_implement'.
+    Forgetting to update the predecessor pointer leaves the new state unreachable.
+  rule: 'When inserting guard states into an existing FSM path, redirect the predecessor''s
+    on_yes/on_no to the new state, not to '
+  enforcement: advisory
+  issue: ENH-2153
+- id: ARCH-006
+  type: rule
+  timestamp: '2026-06-14T23:18:29Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Targeting a single PID leaves grandchildren alive. pgrep -P follows parent-PID
+    relationships and crosses process group boundaries that os.killpg misses.
+  rule: When stopping a subprocess, traverse the full descendant tree (via pgrep -P)
+    rather than signaling only the root PID.
+  enforcement: advisory
+  issue: BUG-2147
+- id: ARCH-007
+  type: rule
+  timestamp: '2026-06-14T23:18:29Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: If the root receives SIGTERM first and forks before dying, new children
+    escape the kill wave. Leaves-first ordering prevents this race.
+  rule: Send SIGTERM/SIGKILL to descendant processes before the root so the root cannot
+    respawn children after receiving the sig
+  enforcement: advisory
+  issue: BUG-2147
+- id: ARCH-008
+  type: rule
+  timestamp: '2026-06-14T23:18:29Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: start_new_session=True makes the child a new session leader in PG2; os.killpg
+    on PG1 never reaches PG2 or its children.
+  rule: Any subprocess launched with start_new_session=True lives in its own process
+    group; use PID-ancestry traversal, not os.k
+  enforcement: advisory
+  issue: BUG-2147
+- id: OTHE-009
+  type: rule
+  timestamp: '2026-06-14T23:18:29Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: _kill_process_group correctly solved the group-kill problem but was only
+    reachable from internal timeout handling, not from cmd_stop, leaving the user-facing
+    stop path broken.
+  rule: When a utility function solves a general problem, audit every code path that
+    needs it and wire them all up at implementa
+  enforcement: advisory
+  issue: BUG-2147
+- id: ARCH-010
+  type: rule
+  timestamp: '2026-06-14T23:18:29Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: os.killpg is scoped to a single process group. pgrep -P follows parent-PID
+    relationships and is not bounded by group membership, making it the correct tool
+    for heterogeneous subprocess trees.
+  rule: Prefer pgrep -P over os.killpg for process cleanup when subprocesses may span
+    multiple process groups.
+  enforcement: advisory
+  issue: BUG-2147
+- id: TEST-011
+  type: rule
+  timestamp: '2026-06-15T00:43:33Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: rn-remediate.yaml added intermediate states that changed routing targets,
+    but tests were not co-updated, causing silent drift that only surfaced on the
+    next test run.
+  rule: When changing an FSM state's on_yes/on_no routing target, update all test
+    assertions referencing that target in the same
+  enforcement: advisory
+  issue: BUG-2155
+- id: TEST-012
+  type: rule
+  timestamp: '2026-06-15T00:43:33Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: Adding check_complexity_pre_implement and check_wire_needed_outcome broke
+    two tests because callers (tests) expected the old direct targets. Intermediate-state
+    insertions silently change observable routing behavior.
+  rule: Inserting an intermediate state into an FSM routing chain is a breaking change
+    for tests — treat it like an API rename.
+  enforcement: advisory
+  issue: BUG-2155
+- id: ARCH-013
+  type: rule
+  timestamp: '2026-06-15T05:22:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Without markers, a convergence short-circuit can reach `implement` after
+    only one action (or zero), skipping mandatory preparation steps. Write-once markers
+    bound the detour to exactly one visit per required state.
+  rule: Use write-once marker files in FSM loops to guarantee that required states
+    were visited before a terminal state.
+  enforcement: advisory
+  issue: ENH-2163
+- id: ARCH-014
+  type: rule
+  timestamp: '2026-06-15T05:22:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Pre-remediation scores are overwritten each pass by `check_convergence`.
+    Reading the live file for complexity-band routing would yield a post-remediation
+    value, making the gate inconsistent across iterations.
+  rule: Snapshot volatile metrics into an immutable file at loop entry; never re-read
+    the mutable source for routing decisions m
+  enforcement: advisory
+  issue: ENH-2163
+- id: ARCH-015
+  type: rule
+  timestamp: '2026-06-15T05:22:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: An unbounded gate (check → retry → check → retry…) can loop indefinitely
+    if the condition is never met. Bounding the detour count (at most one refine +
+    one wire) gives a provable termination guarantee.
+  rule: 'Any new mandatory enforcement gate must be bounded: it may insert at most
+    N detours, then proceed unconditionally.'
+  enforcement: advisory
+  issue: ENH-2163
+- id: ARCH-016
+  type: rule
+  timestamp: '2026-06-15T05:22:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: '`rn-implement` passes `require_refine_and_wire: false` to opt out. Without
+    a toggle, any parent loop that intentionally short-circuits would be broken by
+    the change.'
+  rule: Expose new mandatory behavior as an opt-out context toggle so existing callers
+    can preserve prior single-dimension behav
+  enforcement: advisory
+  issue: ENH-2163
+- id: ARCH-017
+  type: rule
+  timestamp: '2026-06-15T05:22:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Inserting a marker writer between `refine.on_success` and `re_assess`
+    is safe only if the marker state unconditionally continues to `re_assess`. Introducing
+    new routing from a side-effect state changes observable behavior and breaks downstream
+    assumptions.
+  rule: Side-effect pass-through states (e.g., mark_refined) must route to the same
+    next state as the original success path, not
+  enforcement: advisory
+  issue: ENH-2163
+- id: ARCHITECTURE-034
+  type: decision
+  timestamp: '2026-06-15T05:49:14Z'
+  category: architecture
+  labels:
+  - loops
+  - fsm
+  - routing
+  - decision-table
+  rationale: The decision-list routing pattern is reimplemented ad-hoc across rn-remediate,
+    loop-router, and rn-plan-apo as bespoke shell if/elif fanned into fragile output_contains
+    cascades. A shared engine makes routing declarative, diffable, unit-testable,
+    and health-checkable. Follows the EPIC-1663 playbook (prove -> document -> codify
+    as validate rule + wizard branch) so the pattern propagates to new loops by construction
+    rather than aspirationally. Kept provisional to avoid standardizing an unproven
+    abstraction (the SHOR/meta-loop premature-standardization failure mode).
+  rule: 'Standardize converge/refine/score-and-route loop routing on the policy-based
+    router + decision-table pattern (classify evaluator + route: table over a declarative,
+    priority-ordered, conjunctive rule table), with deterministic shell/Python routing
+    over LLM-or-shell-written per-dimension scores. PROVISIONAL — pending validation
+    by ENH-2166 (rn-remediate migration); promote to an advisory rule + create-loop
+    default + ll-loop validate nudge in EPIC-2167 Phase 3.'
+  scope: project
+  alternatives_rejected: Lone P5 backlog issue (rots/pruned, can't track multi-loop
+    adoption); 3-layer split with a separate lib/decision-router fragment (speculative,
+    YAGNI — folded engine into ENH-2164 instead); mandating the pattern fleet-wide
+    before validation (rejected — prove on rn-remediate first)
+  issue: EPIC-2167
+- id: SECU-018
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: security
+  labels:
+  - extracted
+  - global
+  rationale: JSONL/LLM output embedded in Python triple-quoted string literals breaks
+    on embedded quotes, backslashes, or newlines. The fix (read from disk) already
+    existed in lib/composer.yaml but was never propagated to states that reused the
+    same pattern.
+  rule: Never interpolate captured/external output directly into code or string literals;
+    read from disk or escape properly.
+  enforcement: advisory
+  issue: ENH-2168
+- id: ARCH-019
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: replace_step_ref looked up step-step_1_output.json (full brace contents)
+    but the file was step-step_1.json. Any interpolation system where the reference
+    syntax adds a suffix must strip that suffix before the store lookup.
+  rule: Template key extraction must strip only the suffix, not include it — the lookup
+    key must match what the store uses.
+  enforcement: advisory
+  issue: ENH-2168
+- id: ARCH-020
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: write_step_failed incremented replan count unconditionally before reassess
+    decided anything, so CONTINUE decisions still burned quota. Consuming a finite
+    resource before confirming consumption is warranted is a logic error with one-directional
+    consequences.
+  rule: Increment budget/quota only after the decision to consume has been made, not
+    before.
+  enforcement: advisory
+  issue: ENH-2168
+- id: OTHE-021
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: check_replan_budget used count < max_replans (2), so count=2 aborted
+    — only 1 replan ever executed. Off-by-one in quota checks silently halve (or otherwise
+    reduce) effective capacity.
+  rule: Use >= (not >) when comparing a counter against a max limit to get exactly
+    max attempts.
+  enforcement: advisory
+  issue: ENH-2168
+- id: ARCH-022
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: apply_replan wrote a new tail plan directly to disk without the catalog-membership,
+    node-cap, cycle, and duplicate-step_id checks that validate_plan applies to the
+    initial plan. Bypassing validation on updates creates a gap that grows as the
+    validation logic evolves.
+  rule: Replan and update paths must pass through the same validation as the initial
+    creation path.
+  enforcement: advisory
+  issue: ENH-2168
+- id: ARCH-023
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: apply_replan wrote topo-order in raw array order rather than running
+    Kahn sort on the full updated graph, silently violating the depends_on constraints
+    that the tail steps declared.
+  rule: When modifying a DAG, always recompute topological order from the full updated
+    graph rather than using raw insertion ord
+  enforcement: advisory
+  issue: ENH-2168
+- id: SECU-024
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: security
+  labels:
+  - extracted
+  - global
+  rationale: 'check_auto_plan on_error: execute_plan silently skipped the HITL approval
+    gate on genuine errors. Fail-open error routing is a class of bug where the worst-case
+    path (error) gets the least oversight.'
+  rule: Error branches must not bypass approval or safety gates; fail-safe (fail-closed)
+    is required.
+  enforcement: advisory
+  issue: ENH-2168
+- id: ARCH-025
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: write_step_failed appended the failing step to completed-steps.txt, which
+    apply_replan treated as the immutable boundary — so REPLAN_TAIL could never retry
+    the step that actually failed. Mixing failure records into the completion ledger
+    permanently closes the retry window.
+  rule: Failed items must not be written to the completed/immutable boundary; only
+    successful items should be committed there.
+  enforcement: advisory
+  issue: ENH-2168
+- id: PERF-026
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: performance
+  labels:
+  - extracted
+  - global
+  rationale: decompose_goal and review_chain ran an LLM grading round-trip but routed
+    all outcomes identically, making the call pure waste. An evaluator whose verdict
+    never changes behavior is dead code and should be deleted or replaced with a direct
+    transition.
+  rule: Remove evaluator states where all verdict branches (yes/no/partial) route
+    to the same next state.
+  enforcement: advisory
+  issue: ENH-2168
+- id: ARCH-027
+  type: rule
+  timestamp: '2026-06-15T15:44:38Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The disk-read fix for JSONL interpolation existed in lib/composer.yaml
+    but was never applied to the states in loop-composer-adaptive.yaml that used the
+    same anti-pattern. Siloed fixes create version drift between siblings and cause
+    the same bug to re-surface.
+  rule: Propagate bug fixes to all sibling files that share the same pattern, not
+    just the file where the fix was first applied.
+  enforcement: advisory
+  issue: ENH-2168
+- id: IMPLEMENTATION-035
+  type: decision
+  timestamp: '2026-06-17T16:10:29Z'
+  category: implementation
+  labels: []
+  rationale: Step 3 Mermaid diagram contains architectural error (PC_WRITE --> SPAWN
+    implies fresh session spawn; /ll:resume operates in current session). Adapter
+    tree scope also needs expansion to cover post-tool-use.sh and pre-tool-use.sh.
+  rule: NO-GO
+  scope: issue
+  issue: FEAT-1158
+- id: SECU-028
+  type: rule
+  timestamp: '2026-06-19T00:05:39Z'
+  category: security
+  labels:
+  - extracted
+  - global
+  rationale: An unrestricted `Edit` tool allows the LLM to edit any file in the repo.
+    When research surfaces a small, implementable gap, the LLM will use the available
+    tool to close it — even when the command's intent is documentation-only. A path
+    glob is the hard gate that prevents this regardless of instruction quality.
+  rule: Restrict `Edit` in `allowed-tools` to the directory glob the command is authorized
+    to modify (e.g., `Edit(.issues/**)`).
+  enforcement: advisory
+  issue: BUG-2224
+- id: ARCH-029
+  type: rule
+  timestamp: '2026-06-19T00:05:39Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: BUG-2224 was fixed with both `Edit(.issues/**)` (hard gate) and a prose
+    prohibition ('do not implement code'). The tool restriction stops doomed calls;
+    the instruction prevents the LLM from attempting them in the first place and reduces
+    confusion when the tool is later widened.
+  rule: Pair tool-level path restrictions with an explicit scope-boundary instruction
+    stating what the command must NOT do.
+  enforcement: advisory
+  issue: BUG-2224
+- id: ARCH-030
+  type: rule
+  timestamp: '2026-06-19T00:05:39Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: When a research command surfaces an exact, small implementation gap,
+    the LLM will pivot from 'document this' to 'implement this' unless explicitly
+    prohibited. The command's purpose is knowledge capture, not code change — conflating
+    the two breaks the refine→implement pipeline.
+  rule: Research and refine commands must document gaps discovered in code; they must
+    never implement them.
+  enforcement: advisory
+  issue: BUG-2224
+- id: ARCHITECTURE-036
+  type: decision
+  timestamp: '2026-06-19T02:53:59Z'
+  category: architecture
+  labels: []
+  rationale: Zero double-execution overhead; mirrors pre_tool_use delegation pattern;
+    fewest files changed. Option B fires 4 hook invocations per Bash call with no
+    deduplication mechanism.
+  rule: 'Option A: Delegate from existing post_tool_use.handle()'
+  scope: issue
+  alternatives_rejected: 'Option B: Separate hook entry with new intent and adapter
+    script'
+  issue: ENH-2212
+- id: ARCHITECTURE-037
+  type: decision
+  timestamp: '2026-06-19T03:18:57Z'
+  category: architecture
+  labels: []
+  rationale: Only direction preserving verify_step's language-agnostic contract (BUG-2127);
+    reuses shell_exit fragment; keeps coverage gate at final_verify. Options 1/2 reintroduce
+    runner-specific logic BUG-2127 removed.
+  rule: Option 3 — whole-suite gating final-only in general-task verify_step
+  scope: issue
+  alternatives_rejected: Option 1 (per-step pytest $FILES scoping); Option 2 (strip
+    --cov-fail-under at verify_step)
+  issue: ENH-2225
+- id: ARCH-031
+  type: rule
+  timestamp: '2026-06-19T18:14:50Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: diagnose_confidence_floor (50) shadowed readiness_threshold (85), letting
+    issues with confidence 50–84 bypass REFINE. Referencing canonical variables ensures
+    threshold overrides propagate uniformly across all states.
+  rule: FSM routing conditions that gate the same terminal state must reference canonical
+    context variables, not local hardcoded
+  enforcement: advisory
+  issue: ENH-2229
+- id: ARCH-032
+  type: rule
+  timestamp: '2026-06-19T18:14:50Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: diagnose only checked confidence, but check_readiness and check_convergence
+    also gate on outcome. The entry routing to REFINE must mirror the exit criteria
+    so no dimension is silently skipped.
+  rule: 'A routing branch that sends work to a refinement state must check all quality
+    dimensions that the downstream acceptance '
+  enforcement: advisory
+  issue: ENH-2229
+- id: ARCH-033
+  type: rule
+  timestamp: '2026-06-19T18:14:50Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'Adding diagnose_confidence_floor as a separate variable created drift:
+    it had a different default (50 vs 85) and was not updated when readiness_threshold
+    was tuned. One canonical variable per quality dimension prevents silent divergence.'
+  rule: Do not introduce loop-local threshold variables whose role overlaps with an
+    existing canonical threshold; extend the can
+  enforcement: advisory
+  issue: ENH-2229
+- id: ARCH-034
+  type: rule
+  timestamp: '2026-06-19T20:23:43Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The diagnose state reused readiness_threshold (the IMPLEMENT gate, default
+    85) as the REFINE lower-bound floor, when diagnose_confidence_floor (default 50)
+    was already defined for that purpose. Conflating thresholds across states silently
+    breaks routing for scores in the gap between the two values.
+  rule: Each FSM routing branch must reference its own purpose-specific context threshold,
+    not a threshold from another state.
+  enforcement: advisory
+  issue: BUG-2230
+- id: STYL-035
+  type: rule
+  timestamp: '2026-06-19T20:23:43Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: Having both readiness_threshold and diagnose_confidence_floor in the
+    same loop context made the error detectable by variable name alone. Generic names
+    like confidence_floor or threshold are ambiguous when multiple routing gates share
+    the same numeric type.
+  rule: Name FSM context threshold variables after the state or routing decision they
+    govern, not generically.
+  enforcement: advisory
+  issue: BUG-2230
+- id: TEST-036
+  type: rule
+  timestamp: '2026-06-19T20:23:43Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: The bug existed undetected until a test named test_diagnose_uses_context_thresholds_not_literals
+    caught it. Routing conditions that silently substitute one threshold for another
+    produce correct-looking behavior for most inputs while breaking edge cases.
+  rule: Write tests that assert each FSM routing branch uses the expected context
+    variable, not a literal or wrong variable.
+  enforcement: advisory
+  issue: BUG-2230
+- id: ARCH-037
+  type: rule
+  timestamp: '2026-06-20T05:02:16Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'Writing `enabled: false` for opt-in features adds noise to generated
+    config and diverges from schema defaults. Absence is the natural representation
+    of ''not opted in'', while an explicit false is meaningful only when overriding
+    a true default.'
+  rule: 'Omit opt-in config sections entirely when disabled; write `{enabled: false}`
+    only for default-on features opted out.'
+  enforcement: advisory
+  issue: ENH-2241
+- id: ARCH-038
+  type: rule
+  timestamp: '2026-06-20T05:02:16Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: If a feature is on by default but only reachable via a post-init editor,
+    users who want to opt out must do extra work after initialization. Parity at init
+    time avoids config drift and silent feature activation.
+  rule: Every default-on feature must offer an opt-out at init/wizard time, not only
+    in post-init config editors.
+  enforcement: advisory
+  issue: ENH-2241
+- id: ARCH-039
+  type: rule
+  timestamp: '2026-06-20T05:02:16Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Without an allowlist, typos silently pass through and produce unexpected
+    config. Strict validation at the CLI boundary catches mistakes early and makes
+    the contract explicit.
+  rule: Headless CLI toggle flags (`--enable`/`--disable`) must be backed by an explicit
+    allowlist; unknown names must exit non-
+  enforcement: advisory
+  issue: ENH-2241
+- id: ARCH-040
+  type: rule
+  timestamp: '2026-06-20T05:02:16Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Mode-gating prevents flags designed for non-interactive paths from silently
+    being ignored or misapplied in interactive mode, making mis-use immediately visible.
+  rule: Guard headless-only flags (e.g. `--enable`/`--disable`) so they exit 2 when
+    used outside a headless mode.
+  enforcement: advisory
+  issue: ENH-2241
+- id: ARCH-041
+  type: rule
+  timestamp: '2026-06-20T05:02:16Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Sub-config features require context and tradeoff decisions that a flag
+    cannot convey cleanly. Limiting headless flags to pure booleans keeps the CLI
+    surface manageable and avoids half-configured complex features.
+  rule: Simple boolean toggles can be exposed headlessly; features with sub-config
+    should remain interactive-only.
+  enforcement: advisory
+  issue: ENH-2241
+- id: ARCH-042
+  type: rule
+  timestamp: '2026-06-20T05:02:16Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Runtime output (e.g. session event logs) changes constantly and carries
+    no project-level value in version history. Committed artifacts (e.g. decisions
+    log) are intentional and should be tracked. Conflating the two pollutes git history
+    or loses important records.
+  rule: Ephemeral/runtime-written files must be added to .gitignore; user-curated
+    committed artifacts must not be.
+  enforcement: advisory
+  issue: ENH-2241
+- id: TEST-043
+  type: rule
+  timestamp: '2026-06-20T05:02:16Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: If `--plan` ignores flags that the real run honors, users cannot trust
+    the plan to preview what will happen, defeating its purpose.
+  rule: '`--plan` / dry-run output must reflect the same flags and options as the
+    actual execution path.'
+  enforcement: advisory
+  issue: ENH-2241
+- id: SCOPE-038
+  type: decision
+  timestamp: '2026-06-20T19:17:00Z'
+  category: scope
+  labels:
+  - hermes
+  - hitl
+  rationale: 'Superseded by the Hermes integration (EPIC-2196, done): Hermes already
+    reaches the operator on text/Telegram/etc. and consumes ll events via its webhook
+    + EventBus, so a bespoke push transport is duplicate work. It also depended on
+    a PushNotification tool that never existed in the codebase (hard blocker since
+    2026-06-05). Replaced by an EventBus adapter folded into the re-scoped FEAT-1930.'
+  rule: Cancel FEAT-1932 (PushNotification HITL adapter)
+  scope: issue
+  alternatives_rejected: 'Defer (keep alive) — rejected: the bespoke-push design is
+    permanently obsolete under Hermes, not merely paused.'
+  issue: FEAT-1932
+- id: SCOPE-039
+  type: decision
+  timestamp: '2026-06-20T19:17:00Z'
+  category: scope
+  labels:
+  - hermes
+  - hitl
+  - testing
+  rationale: Its config-only-swap test needs two adapters; with FEAT-1932 cancelled,
+    only terminal remains. The acceptance gate it owns is still EPIC-1929's core promise,
+    so deferral (not cancellation) preserves it. Revive and retarget terminal<->eventbus
+    once FEAT-1930's eventbus adapter lands; drop FEAT-1932 from blocked_by then.
+  rule: Defer FEAT-2102 (adapter-swap integration test)
+  scope: issue
+  alternatives_rejected: 'Cancel — rejected: the config-only-swap acceptance gate
+    remains valuable once a second (eventbus) adapter exists.'
+  issue: FEAT-2102
+- id: ARCHITECTURE-040
+  type: decision
+  timestamp: '2026-06-20T19:17:00Z'
+  category: architecture
+  labels:
+  - hermes
+  - hitl
+  - fsm
+  rationale: 'Post-Hermes (EPIC-2196), little-loops no longer needs to own per-channel
+    transports (push/Slack/Telegram/SMS). The protocol must prove itself against terminal
+    (fallback) + eventbus (emit human_approval_requested, resume on human_response)
+    which Hermes relays. This resolves the issue''s Open Question #2 (event-bus vs
+    file-poller) in favor of the event bus, the surface Hermes already subscribes
+    to. Protocol surface and the CommunicationAdapterExtension (Option B) decision
+    are unchanged.'
+  rule: 'Re-scope FEAT-1930 to two adapters: terminal + eventbus (not bespoke multi-transport)'
+  scope: issue
+  alternatives_rejected: 'Keep the full multi-transport protocol (terminal/push/Slack/Telegram/webhook)
+    — rejected: Hermes owns those channels; file-poller callback — rejected: event
+    bus needs no new inbound transport given Hermes.'
+  issue: FEAT-1930
+- id: ARCHITECTURE-041
+  type: decision
+  timestamp: '2026-06-20T19:19:49Z'
+  category: architecture
+  labels: []
+  rationale: Portable divergent->convergent ideation loop with non-LLM difflib novelty
+    gate; decoupled from Issue system, opt-in sinks.
+  rule: 'Captured: brainstorm built-in FSM loop'
+  scope: issue
+  issue: FEAT-2248

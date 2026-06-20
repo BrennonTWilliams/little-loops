@@ -117,8 +117,11 @@ thoughts/
 Archive/
 _Archive/
 
-# Nested .ll/ directories (e.g. .issues/epics/.ll/)
+# Nested .ll/ directories (e.g. .issues/epics/.ll/) — ignore at any depth,
+# but keep the repo-root .ll/ tracked (its noisy files are ignored individually
+# above; .ll/decisions.yaml is a curated, committed artifact).
 **/.ll/
+!/.ll/
 .codegraph/
 
 # Debug output logs
