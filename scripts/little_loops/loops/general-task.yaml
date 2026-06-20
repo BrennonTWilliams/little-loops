@@ -209,8 +209,15 @@ states:
     next: verify_step
     on_error: do_work
     max_retries: 2
-    on_retry_exhausted: continue_work
+    on_retry_exhausted: capture_work_exit
     timeout: 900
+
+  capture_work_exit:
+    action: |
+      echo "${captured.work_result.exit_code:default=0}" > "${context.run_dir}/last-exit-code.txt"
+    action_type: shell
+    next: continue_work
+    on_error: continue_work
 
   verify_step:
     action: |
@@ -482,10 +489,19 @@ states:
     action: |
       Your task is: ${context.input}
 
-      The last verify step may have failed. If ${context.run_dir}/verify-output.txt
-      exists, read it FIRST to understand WHY — it holds the captured stdout/stderr of
-      the resolved test command. Use it to classify the failure before deciding how to
-      remediate:
+      The previous do_work exit code was: ${captured.work_result.exit_code:default=0}
+
+      If the exit code is 124 (timeout): the previous step was too large to complete
+      within the timeout window. Read ${context.run_dir}/current-step.txt to see
+      which step timed out, then split it into 2–3 smaller independently-completable
+      sub-steps and insert them (as unchecked - [ ] lines) before the next unchecked
+      step in ${context.run_dir}/plan.md. Do NOT append a remediation step for a DoD
+      criterion — the step was sound but oversized. Print a summary of the split.
+
+      Otherwise (exit code is not 124): the last verify step may have failed. If
+      ${context.run_dir}/verify-output.txt exists, read it FIRST to understand WHY —
+      it holds the captured stdout/stderr of the resolved test command. Use it to
+      classify the failure before deciding how to remediate:
       - A genuine test/assertion failure → a real step is missing or wrong; append a
         remediation step (below).
       - A whole-suite gate that no single step can satisfy mid-implementation (e.g. a

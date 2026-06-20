@@ -7359,3 +7359,73 @@ class TestGeneralTaskLoop:
         assert "FINAL_EXIT" in action, (
             "run_final_tests must capture FINAL_EXIT from the test command"
         )
+
+    # ENH-2246: timeout-split tests
+    def test_do_work_retry_exhausted_routes_to_capture_work_exit(self, data: dict) -> None:
+        """do_work.on_retry_exhausted must route to capture_work_exit, not continue_work (ENH-2246)."""
+        state = data["states"].get("do_work", {})
+        assert state.get("on_retry_exhausted") == "capture_work_exit", (
+            f"do_work.on_retry_exhausted should be 'capture_work_exit', got {state.get('on_retry_exhausted')!r}"
+        )
+
+    def test_capture_work_exit_state_exists(self, data: dict) -> None:
+        """capture_work_exit state must be present (ENH-2246)."""
+        assert "capture_work_exit" in data["states"], (
+            "capture_work_exit state must exist in general-task.yaml (ENH-2246)"
+        )
+
+    def test_capture_work_exit_is_shell_type(self, data: dict) -> None:
+        """capture_work_exit must be action_type: shell (ENH-2246)."""
+        state = data["states"].get("capture_work_exit", {})
+        assert state.get("action_type") == "shell", (
+            f"capture_work_exit.action_type should be 'shell', got {state.get('action_type')!r}"
+        )
+
+    def test_capture_work_exit_writes_last_exit_code_to_run_dir(self, data: dict) -> None:
+        """capture_work_exit must write last-exit-code.txt under ${context.run_dir} (ENH-2246)."""
+        state = data["states"].get("capture_work_exit", {})
+        action = state.get("action", "")
+        assert "${context.run_dir}/last-exit-code.txt" in action, (
+            "capture_work_exit action must write to ${context.run_dir}/last-exit-code.txt"
+        )
+
+    def test_capture_work_exit_routes_to_continue_work(self, data: dict) -> None:
+        """capture_work_exit.next must route to continue_work (ENH-2246)."""
+        state = data["states"].get("capture_work_exit", {})
+        assert state.get("next") == "continue_work", (
+            f"capture_work_exit.next should be 'continue_work', got {state.get('next')!r}"
+        )
+
+    def test_capture_work_exit_on_error_routes_to_continue_work(self, data: dict) -> None:
+        """capture_work_exit.on_error must route to continue_work so errors don't stall (ENH-2246)."""
+        state = data["states"].get("capture_work_exit", {})
+        assert state.get("on_error") == "continue_work", (
+            f"capture_work_exit.on_error should be 'continue_work', got {state.get('on_error')!r}"
+        )
+
+    def test_continue_work_prompt_detects_timeout_exit_code(self, data: dict) -> None:
+        """continue_work prompt must reference the do_work exit code for timeout detection (ENH-2246)."""
+        state = data["states"].get("continue_work", {})
+        action = state.get("action", "")
+        assert "work_result.exit_code" in action, (
+            "continue_work prompt must reference captured.work_result.exit_code to detect timeout"
+        )
+
+    def test_continue_work_prompt_instructs_step_split_on_timeout(self, data: dict) -> None:
+        """continue_work prompt must instruct step-splitting when exit code is 124 (ENH-2246)."""
+        state = data["states"].get("continue_work", {})
+        action = state.get("action", "")
+        assert "124" in action, (
+            "continue_work prompt must mention exit code 124 for timeout-split branch"
+        )
+        assert "split" in action.lower(), (
+            "continue_work prompt must instruct step-splitting for the timeout case"
+        )
+
+    def test_continue_work_prompt_preserves_dod_remediation_for_non_timeout(self, data: dict) -> None:
+        """continue_work prompt must still instruct DoD remediation for non-timeout failures (ENH-2246)."""
+        state = data["states"].get("continue_work", {})
+        action = state.get("action", "")
+        assert "DoD" in action or "remediation" in action or "unchecked" in action, (
+            "continue_work prompt must preserve DoD-criterion remediation logic for non-timeout failures"
+        )

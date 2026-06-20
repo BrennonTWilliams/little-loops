@@ -2,14 +2,21 @@
 id: ENH-2246
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-20T00:00:00Z'
+completed_at: '2026-06-20T18:17:22Z'
 discovered_date: 2026-06-20
 discovered_by: audit-loop-run
 labels:
 - enhancement
 - general-task
 - fsm
+confidence_score: 90
+outcome_confidence: 79
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 15
+score_change_surface: 22
 ---
 
 # ENH-2246: continue_work should detect do_work timeout (exit_code=124) and split the step
@@ -125,5 +132,14 @@ Observed in loop run `2026-06-20T035602-general-task` (audit-loop-run assessment
 - `continue_work` had no signal to split rather than append
 
 
+## Resolution
+
+- Added `capture_work_exit` shell state that writes `${context.run_dir}/last-exit-code.txt` with the do_work exit code
+- Changed `do_work.on_retry_exhausted` to route through `capture_work_exit` before `continue_work`
+- Updated `continue_work` prompt to reference `${captured.work_result.exit_code:default=0}` and branch on exit code 124 (split step) vs other failures (DoD remediation)
+- Added 10 unit tests in `TestGeneralTaskLoop` covering all acceptance criteria
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T18:07:28 - `33967be3-0f13-4771-a0c5-e16f36d02d59.jsonl`
 - `/ll:format-issue` - 2026-06-20T14:25:58 - `bee582da-5285-4690-892c-a09d1cfe4553.jsonl`
+- `/ll:manage-issue` - 2026-06-20T18:17:22 - implementation complete
