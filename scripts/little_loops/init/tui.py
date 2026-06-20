@@ -23,6 +23,9 @@ _FEATURE_CHOICES: list[tuple[str, str]] = [
     ("GitHub sync  (ll-sync)", "github_sync"),
     ("Confidence gate", "confidence_gate"),
     ("TDD mode", "tdd"),
+    ("Decisions & rules log  (ll-issues decisions)", "decisions"),
+    ("Scratch pad  (automation context masking)", "scratch_pad"),
+    ("Session event capture  (PreCompact handoff)", "session_capture"),
 ]
 
 _DEFAULT_FEATURES: frozenset[str] = frozenset(
@@ -40,6 +43,9 @@ _FEATURE_LABELS: dict[str, str] = {
     "github_sync": "GitHub sync",
     "confidence_gate": "Confidence gate",
     "tdd": "TDD mode",
+    "decisions": "Decisions & rules log",
+    "scratch_pad": "Scratch pad",
+    "session_capture": "Session event capture",
 }
 
 # Host choices for the multi-select screen
@@ -280,6 +286,13 @@ def run_tui(
     if session_digest_enabled is None:
         return 130
 
+    # Prompt optimization opt-out (default-on feature; always asked)
+    prompt_optimization_enabled: bool | None = questionary.confirm(
+        "Enable automatic prompt optimization?", default=True
+    ).ask()
+    if prompt_optimization_enabled is None:
+        return 130
+
     # --- Screen 4 / 6: Hosts ---
     console.print()
     console.rule("[bold]4 / 6  Hosts[/bold]")
@@ -381,6 +394,7 @@ def run_tui(
         design_token_profile=design_token_profile,
         documents_categories=documents_categories,
         session_digest_enabled=bool(session_digest_enabled),
+        prompt_optimization_enabled=bool(prompt_optimization_enabled),
     )
 
     # --- Summary ---
@@ -438,6 +452,7 @@ def _build_final_config(
     design_token_profile: str = "default",
     documents_categories: dict[str, Any] | None = None,
     session_digest_enabled: bool = True,
+    prompt_optimization_enabled: bool = True,
 ) -> dict[str, Any]:
     """Build the ll-config.json dict from TUI answers."""
     from little_loops.init.core import build_config
@@ -451,7 +466,11 @@ def _build_final_config(
             "analytics_enabled": "analytics" in selected_set,
             "context_monitor_enabled": "context_monitor" in selected_set,
             "learning_tests_enabled": "learning_tests" in selected_set,
+            "decisions_enabled": "decisions" in selected_set,
+            "scratch_pad_enabled": "scratch_pad" in selected_set,
+            "session_capture_enabled": "session_capture" in selected_set,
             "session_digest_enabled": session_digest_enabled,
+            "prompt_optimization_enabled": prompt_optimization_enabled,
         },
     )
 
@@ -576,6 +595,18 @@ def _render_summary(
     # Session digest
     sd_enabled = config.get("history", {}).get("session_digest", {}).get("enabled", True)
     table.add_row("Session digest", "on" if sd_enabled else "off")
+
+    # Opt-in feature sections written by the new toggles
+    if config.get("decisions", {}).get("enabled"):
+        table.add_row("Decisions", "rules log enabled")
+    if config.get("scratch_pad", {}).get("enabled"):
+        table.add_row("Scratch pad", "enabled")
+    if config.get("session_capture", {}).get("enabled"):
+        table.add_row("Session capture", "enabled")
+
+    # Prompt optimization (default-on; only written when opted out)
+    if config.get("prompt_optimization", {}).get("enabled") is False:
+        table.add_row("Prompt optim.", "off")
 
     if settings_target == "skip":
         sf = "Skip — no permissions written"

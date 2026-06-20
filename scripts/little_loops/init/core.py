@@ -36,6 +36,11 @@ def build_config(
             - ``analytics_enabled`` (bool, default True): include analytics section.
             - ``context_monitor_enabled`` (bool, default True): include context_monitor.
             - ``learning_tests_enabled`` (bool, default True): include learning_tests.
+            - ``decisions_enabled`` (bool, default False): include decisions section.
+            - ``scratch_pad_enabled`` (bool, default False): include scratch_pad section.
+            - ``session_capture_enabled`` (bool, default False): include session_capture.
+            - ``prompt_optimization_enabled`` (bool, default True): when False, write
+              prompt_optimization.enabled=false (opt-out of a default-on feature).
 
     Returns:
         Complete config dict (``$schema`` key first, then sections).
@@ -82,6 +87,22 @@ def build_config(
     product_enabled = bool(choices.get("product_enabled", True))
     if product_enabled:
         config["product"] = {"enabled": True}
+
+    # --- decisions (opt-in; omit if disabled) ---
+    if choices.get("decisions_enabled"):
+        config["decisions"] = {"enabled": True}
+
+    # --- scratch_pad (opt-in; omit if disabled) ---
+    if choices.get("scratch_pad_enabled"):
+        config["scratch_pad"] = {"enabled": True}
+
+    # --- session_capture (opt-in; omit if disabled) ---
+    if choices.get("session_capture_enabled"):
+        config["session_capture"] = {"enabled": True}
+
+    # --- prompt_optimization (default-on; only write when opting out) ---
+    if choices.get("prompt_optimization_enabled", True) is False:
+        config["prompt_optimization"] = {"enabled": False}
 
     # --- history.session_digest (always written) ---
     session_digest_enabled = bool(choices.get("session_digest_enabled", True))

@@ -44,6 +44,7 @@ def _wire_q(
     worktree_files: list[str] | None = None,
     use_feature_branches: bool = False,
     session_digest: bool = True,
+    prompt_optimization: bool = True,
     hosts: list[str] | None = None,
     settings: str = "local",
     confirmed: bool | None = True,
@@ -54,7 +55,8 @@ def _wire_q(
       1. Project Basics: name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd (text)
       2. Scan: focus_dirs (text), add_excludes (confirm), [custom_excludes (text) if add_excludes]
       3. Features: features (checkbox), [workers (text) + worktree_files (checkbox) if parallel],
-                   [use_feature_branches (confirm) if parallel], session_digest (confirm)
+                   [use_feature_branches (confirm) if parallel], session_digest (confirm),
+                   prompt_optimization (confirm)
       4. Hosts: hosts (checkbox)
       5. Settings: settings (select)
       6. CLAUDE.md: (select, via select return_value)
@@ -88,11 +90,11 @@ def _wire_q(
     mock_q.select.return_value.ask.return_value = settings
 
     # Confirm: add_excludes (screen 2), [use_feature_branches if parallel] (screen 3),
-    # session_digest (screen 3), apply (final)
+    # session_digest (screen 3), prompt_optimization (screen 3), apply (final)
     confirm_returns = [add_excludes]
     if "parallel" in features:
         confirm_returns.append(use_feature_branches)
-    confirm_returns.extend([session_digest, confirmed])
+    confirm_returns.extend([session_digest, prompt_optimization, confirmed])
     mock_q.confirm.side_effect = [_mock_ask(v) for v in confirm_returns]
 
     # Choice is used only to build checkbox/select lists; let it return a plain MagicMock
@@ -522,6 +524,7 @@ class TestHostSelection:
             mock_q.confirm.side_effect = [
                 _mock_ask(False),  # add_excludes
                 _mock_ask(True),  # session_digest
+                _mock_ask(True),  # prompt_optimization
             ]
             mock_q.checkbox.side_effect = [
                 _mock_ask(["analytics"]),  # features
@@ -627,6 +630,78 @@ class TestNewFeatureToggles:
         assert config["commands"]["confidence_gate"]["enabled"] is True
         assert config["commands"]["tdd_mode"] is True
 
+    @patch("little_loops.init.tui.questionary")
+    def test_decisions_toggle_produces_decisions_key(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["decisions", "analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["decisions"] == {"enabled": True}
+
+    @patch("little_loops.init.tui.questionary")
+    def test_scratch_pad_toggle_produces_scratch_pad_key(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["scratch_pad", "analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["scratch_pad"] == {"enabled": True}
+
+    @patch("little_loops.init.tui.questionary")
+    def test_session_capture_toggle_produces_session_capture_key(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["session_capture", "analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["session_capture"] == {"enabled": True}
+
+    @patch("little_loops.init.tui.questionary")
+    def test_new_toggles_omitted_when_not_selected(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert "decisions" not in config
+        assert "scratch_pad" not in config
+        assert "session_capture" not in config
+
+    @patch("little_loops.init.tui.questionary")
+    def test_prompt_optimization_opt_out_writes_disabled(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], prompt_optimization=False)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["prompt_optimization"] == {"enabled": False}
+
+    @patch("little_loops.init.tui.questionary")
+    def test_prompt_optimization_default_on_omits_key(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], prompt_optimization=True)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert "prompt_optimization" not in config
+
 
 # ---------------------------------------------------------------------------
 # Design-token profile picker
@@ -663,6 +738,7 @@ class TestDesignTokenProfilePicker:
             mock_q.confirm.side_effect = [
                 _mock_ask(False),  # add_excludes
                 _mock_ask(True),  # session_digest
+                _mock_ask(True),  # prompt_optimization
                 _mock_ask(True),  # apply
             ]
             mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()

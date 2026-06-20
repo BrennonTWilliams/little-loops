@@ -16,6 +16,7 @@ _GITIGNORE_ENTRIES: tuple[str, ...] = (
     ".parallel-manage-state.json",
     ".ll/ll-context-state.json",
     ".ll/ll-sync-state.json",
+    ".ll/ll-session-events.jsonl",
 )
 
 # Canonical permission entries for .claude/settings*.json (Step 10 of the skill)

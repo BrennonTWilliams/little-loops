@@ -456,6 +456,76 @@ class TestBuildConfig:
         assert rd["show_diagrams"] is None
         assert rd["mode"] is None
 
+    # --- opt-in toggles (decisions / scratch_pad / session_capture) ---
+
+    def test_decisions_omitted_by_default(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)
+        assert "decisions" not in config
+
+    def test_decisions_written_when_enabled(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"decisions_enabled": True})
+        assert config["decisions"] == {"enabled": True}
+
+    def test_scratch_pad_omitted_by_default(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)
+        assert "scratch_pad" not in config
+
+    def test_scratch_pad_written_when_enabled(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"scratch_pad_enabled": True})
+        assert config["scratch_pad"] == {"enabled": True}
+
+    def test_session_capture_omitted_by_default(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)
+        assert "session_capture" not in config
+
+    def test_session_capture_written_when_enabled(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"session_capture_enabled": True})
+        assert config["session_capture"] == {"enabled": True}
+
+    # --- prompt_optimization opt-out (default-on feature) ---
+
+    def test_prompt_optimization_omitted_by_default(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)
+        assert "prompt_optimization" not in config
+
+    def test_prompt_optimization_omitted_when_explicitly_enabled(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"prompt_optimization_enabled": True})
+        assert "prompt_optimization" not in config
+
+    def test_prompt_optimization_disabled_writes_enabled_false(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"prompt_optimization_enabled": False})
+        assert config["prompt_optimization"] == {"enabled": False}
+
 
 # ===========================================================================
 # TestWriteConfig
@@ -1055,6 +1125,70 @@ class TestMainInit:
         assert "proposed_config" in plan
         assert "host_options" in plan
         assert "warnings" in plan
+
+    def test_yes_enable_feature_flags_write_sections(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                [
+                    "--yes",
+                    "--enable",
+                    "decisions",
+                    "--enable",
+                    "session_capture",
+                    "--root",
+                    str(tmp_project),
+                ]
+            )
+        assert code == 0
+        data = json.loads((tmp_project / ".ll" / "ll-config.json").read_text())
+        assert data["decisions"] == {"enabled": True}
+        assert data["session_capture"] == {"enabled": True}
+        assert "prompt_optimization" not in data
+
+    def test_yes_disable_prompt_optimization_writes_disabled(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                ["--yes", "--disable", "prompt_optimization", "--root", str(tmp_project)]
+            )
+        assert code == 0
+        data = json.loads((tmp_project / ".ll" / "ll-config.json").read_text())
+        assert data["prompt_optimization"] == {"enabled": False}
+
+    def test_unknown_feature_flag_exits_2(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--enable", "bogus", "--root", str(tmp_project)])
+        assert code == 2
+        assert "Unknown feature" in capsys.readouterr().err
+        assert not (tmp_project / ".ll" / "ll-config.json").exists()
+
+    def test_feature_flags_require_headless_mode(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--enable", "decisions", "--root", str(tmp_project)])
+        assert code == 2
+        assert "--yes" in capsys.readouterr().err
+
+    def test_plan_reflects_feature_flags(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--plan", "--enable", "scratch_pad", "--root", str(tmp_project)])
+        assert code == 0
+        plan = json.loads(capsys.readouterr().out)
+        assert plan["proposed_config"]["scratch_pad"] == {"enabled": True}
 
     def test_apply_from_plan(self, tmp_project: Path, tmp_path: Path) -> None:
         import io

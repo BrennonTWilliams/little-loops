@@ -11,6 +11,24 @@ from typing import Any
 
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
+# Feature keys toggleable via --enable/--disable in the headless path. These map
+# to the ``*_enabled`` choice keys honored by build_config(). Richer features
+# (parallel, sync, documents, design_tokens, confidence_gate, tdd) carry
+# sub-config and remain interactive-only.
+_TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
+    {
+        "product",
+        "analytics",
+        "context_monitor",
+        "learning_tests",
+        "decisions",
+        "scratch_pad",
+        "session_capture",
+        "session_digest",
+        "prompt_optimization",
+    }
+)
+
 
 def _plugin_version() -> str:
     from little_loops import __version__
@@ -61,6 +79,33 @@ def _dispatch_host_adapters(
         # claude-code: no adapter file needed; plugin hooks fire when globally enabled
 
 
+def _feature_choices_from_args(enable: list[str], disable: list[str]) -> dict[str, Any]:
+    """Translate --enable/--disable feature names into build_config choice keys.
+
+    Args:
+        enable: Feature names to turn on.
+        disable: Feature names to turn off.
+
+    Returns:
+        Mapping of ``{name}_enabled`` -> bool for recognized features.
+
+    Raises:
+        ValueError: If any name is not a known toggleable feature.
+    """
+    choices: dict[str, Any] = {}
+    unknown = sorted({f for f in (*enable, *disable) if f not in _TOGGLEABLE_FEATURES})
+    if unknown:
+        raise ValueError(
+            f"Unknown feature(s): {', '.join(unknown)}. "
+            f"Valid features: {', '.join(sorted(_TOGGLEABLE_FEATURES))}"
+        )
+    for f in enable:
+        choices[f"{f}_enabled"] = True
+    for f in disable:
+        choices[f"{f}_enabled"] = False
+    return choices
+
+
 def _run_yes(
     project_root: Path,
     templates_dir: Path,
@@ -68,6 +113,7 @@ def _run_yes(
     force: bool,
     dry_run: bool,
     hosts: list[str],
+    feature_choices: dict[str, Any] | None = None,
 ) -> int:
     """Execute the non-interactive --yes init flow."""
     from little_loops.init.core import build_config
@@ -101,7 +147,10 @@ def _run_yes(
     template = detect_project_type(project_root, templates_dir)
     print(f"Detected project type: {template.name}")
 
-    config = build_config(template, {"project_name": project_root.name})
+    choices: dict[str, Any] = {"project_name": project_root.name}
+    if feature_choices:
+        choices.update(feature_choices)
+    config = build_config(template, choices)
 
     if dry_run:
         _print_dry_run(config, project_root, ll_dir, hosts=hosts)
@@ -176,14 +225,21 @@ def _print_dry_run(
     print("\n=== END DRY RUN (no changes made) ===")
 
 
-def _run_plan(project_root: Path, templates_dir: Path) -> int:
+def _run_plan(
+    project_root: Path,
+    templates_dir: Path,
+    feature_choices: dict[str, Any] | None = None,
+) -> int:
     """Emit a machine-readable JSON plan without writing anything."""
     from little_loops.init.core import build_config
     from little_loops.init.detect import detect_project_type
     from little_loops.init.validate import validate_deps
 
     template = detect_project_type(project_root, templates_dir)
-    config = build_config(template, {"project_name": project_root.name})
+    choices: dict[str, Any] = {"project_name": project_root.name}
+    if feature_choices:
+        choices.update(feature_choices)
+    config = build_config(template, choices)
     warnings = validate_deps(config, _plugin_version(), project_root)
 
     plan: dict[str, Any] = {
@@ -278,6 +334,15 @@ Examples:
   %(prog)s --yes --force              # Overwrite existing configuration
   %(prog)s --plan                     # Emit JSON plan without writing
   %(prog)s apply --config plan.json   # Apply writes from a --plan output
+  %(prog)s --yes --enable decisions --enable session_capture
+  %(prog)s --yes --disable prompt_optimization
+
+Feature flags (headless --yes / --plan only):
+  --enable / --disable accept: product, analytics, context_monitor,
+  learning_tests, decisions, scratch_pad, session_capture, session_digest,
+  prompt_optimization. Richer features (parallel, sync, documents,
+  design_tokens, confidence_gate, tdd) carry sub-config and are
+  interactive-only.
 
 Exit codes:
   0 - Success
@@ -319,6 +384,28 @@ Exit codes:
             help=(
                 "Host harnesses to install adapters for "
                 "(claude-code, codex, pi). Defaults to auto-detected hosts."
+            ),
+        )
+        parser.add_argument(
+            "--enable",
+            action="append",
+            default=[],
+            metavar="FEATURE",
+            help=(
+                "Enable a feature in the headless config (repeatable). "
+                "Valid: decisions, scratch_pad, session_capture, product, "
+                "analytics, context_monitor, learning_tests, session_digest, "
+                "prompt_optimization."
+            ),
+        )
+        parser.add_argument(
+            "--disable",
+            action="append",
+            default=[],
+            metavar="FEATURE",
+            help=(
+                "Disable a feature in the headless config (repeatable). "
+                "Same valid names as --enable."
             ),
         )
         parser.add_argument(
@@ -380,8 +467,22 @@ Exit codes:
                 force=getattr(args, "force", False),
             )
 
+        # Resolve --enable/--disable feature flags (headless / plan paths only).
+        try:
+            feature_choices = _feature_choices_from_args(args.enable, args.disable)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+        if feature_choices and not (args.plan or args.yes or args.dry_run):
+            print(
+                "Error: --enable/--disable require --yes, --dry-run, or --plan "
+                "(the interactive wizard uses its own feature checkboxes).",
+                file=sys.stderr,
+            )
+            return 2
+
         if args.plan:
-            return _run_plan(project_root, templates_dir)
+            return _run_plan(project_root, templates_dir, feature_choices=feature_choices)
 
         if args.yes or args.dry_run:
             return _run_yes(
@@ -391,6 +492,7 @@ Exit codes:
                 force=args.force,
                 dry_run=args.dry_run,
                 hosts=hosts,
+                feature_choices=feature_choices,
             )
 
         from little_loops.init.tui import run_tui
