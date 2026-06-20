@@ -204,6 +204,8 @@ ll-sprint run sprint-name --type bug,feat                 # filter by issue type
 ll-sprint run sprint-name --skip-analysis                 # bypass pre-execution dependency analysis
 ll-sprint run sprint-name --quiet                         # suppress progress output
 ll-sprint run sprint-name --handoff-threshold 80          # context window handoff threshold (1–100)
+ll-sprint run sprint-name --feature-branches              # enable feature-branch mode (overrides config)
+ll-sprint run sprint-name --skip-learning-gate            # bypass learning-test gate checks
 ```
 
 The `--handoff-threshold` flag controls when Claude Code hands off to a fresh session mid-issue. During a long-running issue, Claude's context window fills up as it reads files, runs tools, and accumulates output. When context usage reaches the threshold (expressed as a percentage from 1 to 100), the runner writes a continuation prompt and starts a new session to complete the remaining work. Lower values trigger handoff earlier and more conservatively; higher values let sessions run longer before handing off. The default is 80 (hand off at 80% context usage).
@@ -441,6 +443,7 @@ Sprint behavior is configured in `.ll/ll-config.json` under the `sprints` key:
 | `sprints_dir` | `.sprints` | Directory where sprint YAML files are stored |
 | `default_timeout` | `3600` | Per-issue timeout in seconds (1 hour) |
 | `default_max_workers` | `2` | Max parallel workers per wave |
+| `max_issue_wall_clock_time` | `2700` | Hard wall-clock cap per issue in seconds (45 min); enforced via SIGALRM |
 
 Per-sprint options (in the YAML `options` block) override the project config for that sprint. CLI flags (`--max-workers`, `--timeout`) override both.
 

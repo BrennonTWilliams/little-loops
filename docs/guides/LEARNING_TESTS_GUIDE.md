@@ -142,7 +142,7 @@ raw_output_path: .ll/learning-tests/raw/anthropic-sdk-streaming.txt
 
 | Subcommand | Purpose | Exit |
 |---|---|---|
-| `check "<target>" [--stale-aware]` | Print the matching record as JSON. With `--stale-aware`, exits `1` if the record exists but is stale (age exceeds `learning_tests.stale_after_days`). Used by gates that treat stale records as "needs re-proof". | `0` if found (and not stale), `1` if missing or stale |
+| `check "<target>" [--stale-aware]` | Print the matching record as JSON. With `--stale-aware`, exits `1` if the record is missing, has a non-proven status (`refuted` or `stale`), or is proven but age exceeds `learning_tests.stale_after_days`. Exits `0` only when status is `proven` and within the threshold. Used by gates that treat non-proven or aged records as "needs re-proof". | `0` if found and not stale, `1` if missing, non-proven, or date-stale |
 | `list` | Print every record as a JSON array | always `0` |
 | `mark-stale "<target>"` | Set `status: stale` on an existing record | `0` on success, `1` if not found |
 | `orphans [--mark-stale] [--scope DIRS]` | List records whose target package is not imported by any project file. Orphaned records accumulate when you remove a dependency or rename an integration. With `--mark-stale`, atomically sets `status: stale` on all orphans. `--scope DIRS` overrides the default import-scan directories (comma-separated; defaults to `learning_tests.scan_dirs` config key or `scripts/`). | `0` if no orphans found, or with `--mark-stale`; `1` if orphans exist |

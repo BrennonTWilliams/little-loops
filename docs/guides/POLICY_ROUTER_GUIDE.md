@@ -243,8 +243,9 @@ evaluation is first-match-wins, row order is significant — reorder rows to cha
 
 ## Warnings: Gaps, Shadows, and Catch-alls
 
-Before opening the editor, `edit-routes` prints a gap/conflict report (suppress with
-`--no-warnings`):
+In verdict-matrix mode, `edit-routes` prints a gap/conflict report **before** opening the
+editor. In compound mode, warnings are reported after you save and close the editor — they
+reflect validation of the edited table. Either way, suppress with `--no-warnings`.
 
 - **Verdict-matrix mode** warns on **unreachable states** (no route leads there), **dead-end
   states** (non-terminal with no outbound routes), and **missing verdict arms** (e.g. `on_yes`

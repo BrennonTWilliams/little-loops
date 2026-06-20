@@ -95,7 +95,8 @@ Output shows counts per table:
   "assistant_messages": 401,
   "sessions": 23,
   "corrections": 17,
-  "summaries": 0
+  "summaries": 0,
+  "snapshots": 0
 }
 ```
 
@@ -386,14 +387,14 @@ ll-session prune             # apply
 
 Pruning is guarded by two minimums to prevent accidental data loss on young or small projects:
 
-- `history.retention.min_project_age_days` (default: 365) — don't prune if the project is younger than this
-- `history.retention.min_db_size_mb` (default: 800) — don't prune if the database is smaller than this
+- `analytics.retention.min_project_age_days` (default: 365) — don't prune if the project is younger than this
+- `analytics.retention.min_db_size_mb` (default: 800) — don't prune if the database is smaller than this
 
 The raw event max age:
 
 ```json
 {
-  "history": {
+  "analytics": {
     "retention": {
       "raw_event_max_age_days": 90
     }
@@ -412,15 +413,15 @@ All keys live under `history.*` and `analytics.*` in `.ll/ll-config.json`.
 | `history.planning_skills` | `["create-sprint", "scope-epic", "manage-issue", "review-epic"]` | Skills that trigger `## Historical Context` injection |
 | `history.velocity_window` | `10` | Issue count window for velocity calculations |
 | `history.max_age_days` | `null` | Global max age for all history queries (null = no limit) |
-| `history.session_digest.enabled` | `false` | Inject project-wide digest block at session start |
+| `history.session_digest.enabled` | `true` | Inject project-wide digest block at session start |
 | `history.session_digest.days` | `7` | Lookback window for session digest |
-| `history.session_digest.char_cap` | `1200` | Max characters in injected context block |
+| `history.session_digest.char_cap` | `800` | Max characters in injected context block |
 | `history.compaction.enabled` | `false` | LCM summarization during backfill |
 | `history.compaction.budget_tokens` | `4096` | Token budget per summary node |
 | `history.compaction.cross_session_enabled` | `true` | Build cross-session condensed nodes |
-| `history.retention.min_project_age_days` | `365` | Min project age before pruning is allowed |
-| `history.retention.min_db_size_mb` | `800` | Min DB size before pruning is allowed |
-| `history.retention.raw_event_max_age_days` | `90` | Age threshold for raw event deletion |
+| `analytics.retention.min_project_age_days` | `365` | Min project age before pruning is allowed |
+| `analytics.retention.min_db_size_mb` | `800` | Min DB size before pruning is allowed |
+| `analytics.retention.raw_event_max_age_days` | `90` | Age threshold for raw event deletion |
 | `analytics.capture.file_events` | `true` | Record file reads/writes |
 | `analytics.capture.corrections` | `true` | Record user correction messages |
 | `analytics.capture.correction_patterns` | `[]` | Additional regex patterns for correction detection |

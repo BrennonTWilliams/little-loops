@@ -680,6 +680,7 @@ check_stall:
 | `ll-loop next-loop` | Suggest next loop(s) from execution history |
 | `ll-loop diagnose-evaluators <name>` | Scan evaluator history for non-discriminating states (Bernoulli variance `p*(1-p)` below 0.05); exits 1 if any flagged |
 | `ll-loop calibrate-budget <name>` | Check whether raising `max_steps` will earn its token cost; reports `⚠ WARN` when evaluator variance is too low |
+| `ll-loop audit-meta <name>` | Summarize meta-eval agreement stats for a harness loop; `--json` for structured output |
 | `ll-loop edit-routes <name>` | Render routing as a decision table and open in `$EDITOR`; `--dry-run` to print only; `--format csv` for CSV output; `--decision-table` to render compound policy-router condition×action grid (auto-detected for loops importing `lib/policy-router.yaml`); `--no-warnings` to skip gap/conflict output; `--allow-delete` to permit removal of states deleted from the table |
 
 Common run flags: `--dry-run` (plan only), `-n <N>` (override `max_steps`), `--queue` (wait on scope conflicts), `-b` (background), `-f` (stream transitions), `--show-diagrams` (live FSM diagram; add `--clear` for a pinned dashboard), `--delay <s>` (sleep between iterations), `--context KEY=VALUE` (override context, repeatable), `--no-llm` (deterministic evaluators only), `--program-md PATH` (load a steering directive; see [program.md convention](../reference/program-md.md)). Run `ll-loop run --help` for the full list.

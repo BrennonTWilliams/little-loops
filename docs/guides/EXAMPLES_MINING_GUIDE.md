@@ -506,7 +506,7 @@ Copy the reference implementation and adapt for your skill:
 
 ```bash
 mkdir -p .loops/oracles
-cp loops/oracles/oracle-capture-issue.yaml .loops/oracles/oracle-<skill>.yaml
+cp scripts/little_loops/loops/oracles/oracle-capture-issue.yaml .loops/oracles/oracle-<skill>.yaml
 ```
 
 Edit `.loops/oracles/oracle-<skill>.yaml`:
@@ -597,8 +597,6 @@ The loop exits at `done` (terminal). If it exits early via `on_blocked: done` on
 
 ---
 
----
-
 ## End-to-End Example
 
 Here's what the artifacts look like at each stage for a `capture-issue` skill run:
@@ -637,7 +635,7 @@ The `source` field distinguishes harvested real examples from synthesized target
 
 ## See Also
 
-- [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — quick-reference section for `examples-miner`: context variables table, FSM flow diagram, perturbation taxonomy, basic invocations
+- [LOOPS_REFERENCE.md](LOOPS_REFERENCE.md) — quick-reference section for `examples-miner`: context variables table, FSM flow diagram, perturbation taxonomy, basic invocations
 - [`scripts/little_loops/loops/examples-miner.yaml`](../../scripts/little_loops/loops/examples-miner.yaml) — full annotated loop source (12 states with complete action prompts)
 - [`scripts/little_loops/loops/oracles/oracle-capture-issue.yaml`](../../scripts/little_loops/loops/oracles/oracle-capture-issue.yaml) — reference implementation for the v2 oracle sub-loop (two-phase: shell mechanical checks + LLM semantic scoring)
 - [`scripts/little_loops/loops/apo-textgrad.yaml`](../../scripts/little_loops/loops/apo-textgrad.yaml) — inner optimizer loop invoked by `run_optimizer`; reads `examples_file`, emits `FAILURE_PATTERN` / `ROOT_CAUSE` / `GRADIENT`

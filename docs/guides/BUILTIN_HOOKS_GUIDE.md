@@ -54,6 +54,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **UserPromptSubmit** | user-prompt-check | Optimizes vague prompts; records corrections & skill calls | — | on (opt-in for recording) |
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
 | **PreToolUse** | learning-tests gate | Warns (or blocks) on imports with no Learning Test record | warn/block | off |
+| **PreToolUse** | install-nudge gate | Nudges `/ll:explore-api` when a package-install Bash command is detected | — | off |
 | **PreToolUse** | scratch-pad-redirect | Redirects oversized Bash/Read output to a scratch file | **yes** | off |
 | **PostToolUse** | post-tool-use | Records tool & file events to `history.db` | — | opt-in |
 | **PostToolUse** | context-monitor | Estimates context usage; nudges a handoff near the limit | exit 2 | on |
@@ -83,6 +84,9 @@ You submit a prompt
 You use the Write or Edit tool
   → PreToolUse (duplicate-ID guard): blocks if the issue ID collides with an existing one
   → PreToolUse (learning-tests gate, if enabled): warns if import has no proven record
+
+You run a Bash install command (pip install, npm install, etc.)
+  → PreToolUse (install-nudge gate, if learning_tests.enabled): suggests /ll:explore-api for the new package
 
 The tool finishes
   → PostToolUse (analytics, if enabled): records tool + file events to history.db

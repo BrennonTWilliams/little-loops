@@ -274,7 +274,7 @@ ll-issues decisions add \
   --issue FEAT-700
 ```
 
-Entry IDs are auto-generated based on type and category (e.g., `ARCHITECTURE-005`, `RULE-TESTING-002`). Override with `--id` if you need a specific ID.
+Entry IDs are auto-generated based on category (e.g., `ARCHITECTURE-005`, `TESTING-002`). Override with `--id` if you need a specific ID.
 
 **List all entries with filtering:**
 
@@ -353,7 +353,7 @@ ll-issues decisions extract-from-completed --dry-run            # Preview withou
 ll-issues decisions extract-from-completed --min-confidence 0.85  # Stricter quality gate
 ```
 
-Each accepted candidate becomes a `RuleEntry` with `enforcement: advisory`, labeled `extracted`, and linked back to the source issue via the `issue:` field.
+Each accepted candidate becomes a `RuleEntry` with `enforcement: advisory`, labeled `extracted` and the candidate's scope value (`global` or `issue`), and linked back to the source issue via the `issue:` field.
 
 **Deduplication** runs at two levels:
 1. **Issue-level**: if any existing entry references the issue ID, that issue is skipped entirely.
@@ -402,7 +402,7 @@ ll-issues decisions suggest-rules
 
 The `[high-signal]` tag appears when a category has 3+ decisions sharing common tokens. Without the tag, the cluster was detected via pairwise token overlap in a smaller group.
 
-> `suggest-rules` requires at least 3 `DecisionEntry` records to run. It exits 1 with no output if fewer exist, or if all decisions are one-off choices (entries whose `rule` text starts with `Option A`, `Option B`, `NO-GO`, or `Captured:`). It operates only on `DecisionEntry` records — existing `RuleEntry` records are not considered for promotion.
+> `suggest-rules` requires at least 3 `DecisionEntry` records to run. It exits 1 if fewer exist, or if all decisions are one-off choices (entries whose `rule` text starts with `Option A`, `Option B`, `Option C`, `NO-GO`, or `Captured:`). It operates only on `DecisionEntry` records — existing `RuleEntry` records are not considered for promotion.
 
 ### Promoting to a Standing Rule: `promote`
 
