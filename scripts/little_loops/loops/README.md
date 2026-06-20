@@ -56,6 +56,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 
 | Loop | Description | Primary Inputs |
 |---|---|---|
+| `brainstorm` | Double-diamond ideation loop — diverges under forced lenses (contrarian, first-principles, end-user, ops-cost, invert-the-goal, cross-domain analogy, plus 2–3 brief-derived lenses), deduplicates via difflib, clusters survivors, relative-ranks top-k ideas, and synthesizes a best-of hybrid into brainstorm.md | `brief` (ideation prompt), `sink` (none/file/issue/decision), `top_k` (default 3), `novelty_threshold` (default 0.80), `max_saturation` (default 2) |
 | `rn-plan` | Recursive-N planning loop — builds a structured plan from scratch with iterative rubric-driven refinement | `task` (natural language description) |
 | `rn-refine` | Recursive-N refinement loop — improves an existing plan document using the same rubric cycle | `plan_file` (path to `.md`) |
 | `rn-plan-apo` | Plan-quality gradient optimization for the `rn-plan` recursive planner — refines the planning prompt via text gradient until `target_plan_quality` is reached | `target_plan_quality` |

@@ -158,6 +158,7 @@ class TestBuiltinLoopFiles:
             "cua-agent-desktop",
             "rubric-refine",
             "policy-refine",
+            "brainstorm",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

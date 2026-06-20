@@ -3,8 +3,9 @@ id: FEAT-2248
 title: brainstorm built-in FSM loop
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-20T19:18:10Z'
+completed_at: '2026-06-20T20:48:55Z'
 discovered_date: 2026-06-20
 discovered_by: capture-issue
 labels:
@@ -204,7 +205,7 @@ Note the `capture: round_ideas` on the `diverge` state is required so `dedup_nov
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- `scripts/tests/test_builtin_loops.py:74–163` — `test_expected_loops_exist()` is at lines 74–163; the `expected` frozenset is defined there. Add `"brainstorm"` to that set.
+- `scripts/tests/test_builtin_loops.py:74–163` — `test_expected_loops_exist()` is at lines 74–163; the `expected` set is defined there. Add `"brainstorm"` to that set.
 - `scripts/little_loops/loops/README.md:55–64` — Planning section rows are at lines 55–64 (after the `rn-*` rows); insert new row there.
 - `scripts/little_loops/loops/apo-contrastive.yaml` — canonical relative-ranking reference for the `rank` state's apo-contrastive idiom.
 - `scripts/little_loops/loops/assumption-firewall.yaml:states.parse_assumptions` — working `parse_tagged_json` caller pattern: Python heredoc embedding FSM interpolation via `"""${captured.<name>.output}"""`.
@@ -236,7 +237,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 
-- `scripts/tests/test_builtin_loops.py` — already in scope: add `"brainstorm"` to `expected` set (plain `set` literal, **not** a frozenset) in `TestBuiltinLoopFiles.test_expected_loops_exist()` — the set spans lines 76–161, insert `"brainstorm",` before the closing `}`; also: `test_deterministic_warning_categories_do_not_regrow()` (lines 7199–7297) auto-covers brainstorm.yaml — will fail if it introduces uncategorized warnings in the ratcheted categories. [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — already in scope: add `"brainstorm"` to `expected` set (plain `set` literal, **not** a frozenset) in `TestBuiltinLoopFiles.test_expected_loops_exist()` — the set spans lines 76–161, insert `"brainstorm",` before the closing `}`; also: `test_deterministic_warning_categories_do_not_regrow()` (class `TestValidatorWarningBudget` at line 7277, method at line 7351) auto-covers brainstorm.yaml — will fail if it introduces uncategorized warnings in the ratcheted categories. [Agent 3 finding]
 - `scripts/tests/test_brainstorm.py` — **new test file needed** (no existing dedicated test); follow the `test_deep_research.py` pattern (`TestBrainstormYaml`, `TestBrainstormShellStates`, `TestBrainstormDryRun` classes). Critically, a `TestBrainstormDedup` class is needed: the `dedup_novelty` difflib novelty gate has **zero existing test coverage** — model after `TestDedup.test_dedup_shell_logic_removes_duplicates()` in `test_loops_sft_corpus.py:1054`, **but use `difflib.SequenceMatcher` ratio (not `calculate_word_overlap`/Jaccard)** — the test's Python heredoc must mirror the actual `dedup_novelty` shell action logic. [Agent 3 finding]
 - **Warning-ratchet authoring constraint** (`TestValidatorWarningBudget.test_deterministic_warning_categories_do_not_regrow`, lines 7277–7377): `brainstorm.yaml` must not trigger warnings in any of the 7 ratcheted categories at author time — `shared-tmp`, `partial-route`, `required-inputs`, `unreachable`, `failure-terminal`, `artifact-versioning`, `capture-ordering`. Most likely risks: `partial-route` (LLM `prompt`/`slash_command` states with `on_yes` but no `on_no`/`on_partial`) and `required-inputs` (omitting `required_inputs: ["brief"]` declaration). Run `ll-loop validate brainstorm` and confirm zero ratcheted-category warnings before merging; add `ALLOWLIST` entries keyed `("brainstorm", "<category>")` only if a violation is intentional. Note: step 4 says "0 errors" — this constraint extends to 0 ratcheted-category warnings. [Agent 2/3 finding, 2nd wire pass]
 
@@ -320,6 +321,8 @@ being toothless — mitigated by the explicit discrimination check.
   the autonomous novelty-gated path is the chosen direction.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T20:37:00 - `8ff9d10c-4d74-4b3e-b348-e5e901e3c770.jsonl`
+- `/ll:confidence-check` - 2026-06-20T22:00:00Z - `ef0b21ae-5944-468a-84c2-45873580c703.jsonl`
 - `/ll:confidence-check` - 2026-06-20T21:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:refine-issue` - 2026-06-20T20:05:50 - `fc1788a4-667f-4b39-a1e2-6445777c429b.jsonl`
 - `/ll:confidence-check` - 2026-06-20T20:00:00Z - `9738b7dd-b6f3-4159-beb5-1d8c74a52054.jsonl`

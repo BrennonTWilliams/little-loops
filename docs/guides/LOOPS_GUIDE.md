@@ -79,6 +79,9 @@ What do you need?
 ├─ Nightly / recurring quality scan ────────────→ /ll:create-loop (maintain-constraints pattern)
 │     pair with --background and maintain: true
 │
+├─ Brainstorm ideas under multiple lenses ───────→ brainstorm
+│     ll-loop run brainstorm "ways to reduce flaky tests"
+│
 ├─ Refine or implement backlog issues ──────────→ rn-implement, recursive-refine, autodev
 │
 ├─ Build a project from a spec file ────────────→ rn-build

@@ -1,0 +1,376 @@
+name: brainstorm
+category: planning
+input_key: brief
+required_inputs: ["brief"]
+description: |
+  Double-diamond ideation loop: diverges under forced lenses before converging.
+  Generates ideas under universal + task-specific lenses, deduplicates via difflib,
+  clusters survivors, relative-ranks them, and synthesizes a best-of hybrid.
+  Produces brainstorm.md + ideas.jsonl in run_dir. No Issue-system writes unless
+  sink=issue or sink=decision is explicitly set. Run as:
+  ll-loop run brainstorm "your brief"
+initial: init
+max_steps: 60
+timeout: 3600
+import:
+  - lib/common.yaml
+
+context:
+  brief: ""              # populated from positional CLI arg via input_key: brief
+  sink: "none"           # none | file | issue | decision
+  output_path: ""        # destination for sink=file
+  decision_target: ""    # issue ID, required when sink=decision
+  ideas_per_round: "5"
+  top_k: "3"
+  novelty_threshold: "0.80"  # difflib ratio at/above which an idea is a duplicate
+  max_saturation: "2"        # consecutive zero-novel rounds before early convergence
+  novelty_backend: "difflib" # future opt-in: "embeddings"
+
+states:
+
+  init:
+    # Setup phase — create per-run artifact files in the runner-injected run_dir.
+    # Captures the absolute path so all subsequent states can write to it.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      : > "$DIR/ideas.jsonl"
+      echo 0 > "$DIR/saturation.txt"
+      : > "$DIR/lenses.txt"
+      : > "$DIR/brainstorm.md"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: frame
+
+  frame:
+    # Derive 2-3 task-specific lenses and union with the fixed universal catalog.
+    # Writes all lenses to lenses.txt (one per line) for queue-pop iteration.
+    action_type: prompt
+    action: |
+      Your task is to prepare the ideation workspace for this brief:
+      "${context.brief}"
+
+      Step 1: Identify 2–3 lenses that are particularly relevant to this specific brief.
+      These should be domain-specific angles that a generic thinker would miss.
+
+      Step 2: Write ALL lenses (your task-specific ones first, then the universal catalog)
+      to ${captured.run_dir.output}/lenses.txt, one lens name per line, no blank lines.
+
+      Universal catalog to append after your task-specific lenses:
+        contrarian
+        first-principles
+        end-user
+        ops-cost
+        invert-the-goal
+        cross-domain-analogy
+
+      The file must contain only lens names, one per line.
+    next: pop_lens
+
+  pop_lens:
+    # Atomically pops the head of lenses.txt; exits 1 when the queue is empty.
+    fragment: queue_pop
+    action: |
+      QUEUE="${captured.run_dir.output}/lenses.txt"
+      ITEM=$(head -1 "$QUEUE" 2>/dev/null)
+      if [ -z "$ITEM" ]; then
+        exit 1
+      fi
+      tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
+      echo "$ITEM"
+    capture: current_lens
+    on_yes: diverge
+    on_no: cluster
+
+  diverge:
+    # Generates ideas_per_round ideas under the current lens.
+    # Emits IDEAS_JSON on the last line for dedup_novelty to parse.
+    action_type: prompt
+    action: |
+      You are a structured ideation engine working under the **${captured.current_lens.output}** lens.
+
+      Brief: "${context.brief}"
+
+      Generate exactly ${context.ideas_per_round} distinct ideas through this lens.
+      Push against cognitive anchoring: each idea should be genuinely different from the others,
+      not a minor restatement of the same concept.
+
+      For each idea provide:
+      - "text": a concise one-sentence description of the idea
+      - "rationale": one sentence explaining why this lens unlocks this specific idea
+
+      After your analysis, output EXACTLY this on the LAST LINE of your response:
+      IDEAS_JSON: [{"text": "...", "rationale": "..."}, ...]
+
+      The IDEAS_JSON line must be valid JSON — an array of objects each with "text" and "rationale".
+    capture: round_ideas
+    next: dedup_novelty
+
+  dedup_novelty:
+    # Extracts IDEAS_JSON from diverge output, deduplicates via difflib.SequenceMatcher,
+    # appends novel ideas to ideas.jsonl, and updates the saturation counter.
+    # saturation.txt is reset to 0 on any novel idea; incremented otherwise.
+    fragment: parse_tagged_json
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, difflib
+
+      raw = """${captured.round_ideas.output}"""
+      ideas_json_str = None
+      for line in reversed(raw.split('\n')):
+          line = line.strip()
+          if line.startswith('IDEAS_JSON:'):
+              ideas_json_str = line[len('IDEAS_JSON:'):]
+              break
+
+      if not ideas_json_str:
+          # No IDEAS_JSON tag found; treat as zero novel ideas
+          print(0)
+          sys.exit(0)
+
+      try:
+          new_ideas = json.loads(ideas_json_str)
+          if not isinstance(new_ideas, list):
+              new_ideas = []
+      except (json.JSONDecodeError, ValueError):
+          print(0)
+          sys.exit(0)
+
+      ideas_file = "${captured.run_dir.output}/ideas.jsonl"
+      existing_texts = []
+      try:
+          with open(ideas_file, 'r') as f:
+              for line in f:
+                  line = line.strip()
+                  if line:
+                      existing_texts.append(json.loads(line).get('text', ''))
+      except (FileNotFoundError, json.JSONDecodeError):
+          pass
+
+      threshold = float("${context.novelty_threshold}")
+      novel = []
+      for idea in new_ideas:
+          text = idea.get('text', str(idea))
+          is_dup = any(
+              difflib.SequenceMatcher(None, text.lower(), ex.lower()).ratio() >= threshold
+              for ex in existing_texts
+          ) if existing_texts else False
+          if not is_dup:
+              novel.append(idea)
+              existing_texts.append(text)
+
+      with open(ideas_file, 'a') as f:
+          for idea in novel:
+              f.write(json.dumps(idea) + '\n')
+
+      sat_file = "${captured.run_dir.output}/saturation.txt"
+      try:
+          with open(sat_file, 'r') as f:
+              count = int(f.read().strip() or '0')
+      except (FileNotFoundError, ValueError):
+          count = 0
+
+      count = 0 if novel else count + 1
+
+      with open(sat_file, 'w') as f:
+          f.write(str(count))
+
+      print(len(novel))
+      PYEOF
+    evaluate:
+      type: exit_code
+    on_yes: saturation_gate
+    on_no: cluster
+    on_error: cluster
+
+  saturation_gate:
+    # Reads the saturation counter and routes: if below max_saturation, continue
+    # with the next lens; if at/above, early-exit to cluster.
+    action_type: shell
+    action: |
+      cat "${captured.run_dir.output}/saturation.txt" 2>/dev/null || echo 0
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_saturation}"
+    on_yes: pop_lens
+    on_no: cluster
+
+  cluster:
+    # Groups ideas.jsonl into thematic clusters; drops dominated ideas.
+    action_type: prompt
+    action: |
+      Read the full idea set from ${captured.run_dir.output}/ideas.jsonl (one JSON object per line).
+
+      Group the ideas into 3–6 thematic clusters. Within each cluster:
+      - Name the cluster theme (5 words or fewer)
+      - List the ideas that belong to it
+      - If two ideas within a cluster are dominated by a third (one subsumes both), drop the dominated ones
+
+      Write the result to ${captured.run_dir.output}/clusters.md in this format:
+      ## Cluster: <theme>
+      - <idea text>
+      - <idea text>
+      (one cluster per section)
+    next: rank
+    on_error: failed
+
+  rank:
+    # Relative ranking of the full idea set — no absolute scores.
+    # Uses pairwise narrative arguments (apo-contrastive idiom) for top_k ideas.
+    action_type: prompt
+    action: |
+      Read the clusters from ${captured.run_dir.output}/clusters.md.
+      Read the full idea list from ${captured.run_dir.output}/ideas.jsonl.
+
+      Produce a RELATIVE ranking of the top ${context.top_k} ideas from best to worst.
+      Do NOT assign numerical scores. Rank by comparing ideas to each other:
+      "Idea A beats Idea B because..." — a pairwise narrative argument.
+
+      Ideas that merely restate the brief belong at the bottom.
+      Ideas that unlock a non-obvious, high-leverage path belong at the top.
+
+      Write the result to ${captured.run_dir.output}/ranked.md:
+      # Ranked Ideas (best → worst)
+      ## Rank 1: <idea text>
+      Why it wins: <pairwise argument vs. runners-up>
+
+      ## Rank 2: <idea text>
+      Why it ranks here: <pairwise argument>
+
+      (continue for all ${context.top_k} ideas)
+    next: converge
+    on_error: failed
+
+  converge:
+    # Synthesizes a best-of hybrid from the ranked shortlist and writes brainstorm.md.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/ranked.md to identify the top ${context.top_k} ideas.
+      Read ${captured.run_dir.output}/clusters.md for thematic context.
+      Read the full idea set from ${captured.run_dir.output}/ideas.jsonl.
+
+      Synthesize a best-of hybrid:
+      1. Take the core unlock from Rank 1
+      2. Graft the strongest complementary element from Rank 2 (if compatible)
+      3. Note any further element from Rank 3+ worth preserving (if not redundant)
+
+      Write ${captured.run_dir.output}/brainstorm.md:
+      # Brainstorm: ${context.brief}
+
+      ## Top Idea
+      <one paragraph: the hybrid concept>
+
+      ## Why This Wins
+      <rationale: what lens unlocked it, what makes it non-obvious>
+
+      ## Ranked Shortlist
+      <copy ranked.md content here>
+
+      ## All Ideas by Cluster
+      <copy clusters.md content here>
+
+      Also write ${captured.run_dir.output}/winners.md with exactly the top ${context.top_k} ideas
+      as a JSON array (one object per line, same schema as ideas.jsonl) for downstream sinks.
+    next: route_sink
+
+  route_sink:
+    # Routes to the appropriate sink handler based on context.sink.
+    # Uses classify evaluator: reads last non-empty stdout line as the route token.
+    action_type: shell
+    action: echo "${context.sink}"
+    evaluate:
+      type: classify
+    route:
+      none: done
+      file: sink_file
+      issue: sink_issue
+      decision: sink_decision
+      _: done
+
+  sink_file:
+    # Copies brainstorm.md to the caller-supplied output_path.
+    # Degrades gracefully when output_path is unset.
+    fragment: shell_exit
+    action: |
+      SRC="${captured.run_dir.output}/brainstorm.md"
+      DEST="${context.output_path}"
+      if [ -z "$DEST" ]; then
+        echo "NOTICE: sink=file but output_path is unset — brainstorm.md remains in run_dir only"
+        exit 0
+      fi
+      cp "$SRC" "$DEST" && echo "Copied brainstorm.md to $DEST"
+    on_yes: done
+    on_no: done
+
+  sink_issue:
+    # Invokes /ll:capture-issue per winner; collects created IDs.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/winners.md — each line is a JSON object with "text" and "rationale".
+
+      For each winner, invoke /ll:capture-issue with the idea "text" as the title and
+      "rationale" as the summary. Collect the issue IDs created.
+
+      After capturing all winners, report the list of created issue IDs.
+    next: done
+
+  sink_decision:
+    # Appends ranked winners as decision options on decision_target issue.
+    # Sets decision_needed: true so /ll:decide-issue can be run next.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/winners.md — each line is a JSON object with "text" and "rationale".
+      The decision target issue is: "${context.decision_target}"
+
+      If decision_target is empty or blank, output:
+        NOTICE: sink=decision but decision_target is unset — skipping decision population.
+      Then stop without making any file edits.
+
+      Otherwise:
+      1. Use ll-issues path to locate the issue file for ${context.decision_target}.
+      2. Under the "## Proposed Solution" section, append option blocks:
+         ### Option A: <winner 1 text>
+         <winner 1 rationale>
+
+         ### Option B: <winner 2 text>
+         <winner 2 rationale>
+
+         (etc. for all top ${context.top_k} winners)
+      3. Set decision_needed: true in the issue frontmatter using ll-issues set-flag.
+      4. Report: "Decision options added to ${context.decision_target}; decision_needed set to true."
+    next: done
+
+  done:
+    action_type: prompt
+    action: |
+      The brainstorm loop has completed for brief: "${context.brief}"
+
+      Output artifacts (in ${captured.run_dir.output}/):
+      - brainstorm.md  — synthesized report with top idea, ranked shortlist, and full cluster map
+      - ranked.md      — relative ranking of top ${context.top_k} ideas (best → worst)
+      - ideas.jsonl    — full idea set (one JSON object per line)
+      - clusters.md    — ideas grouped by theme
+
+      Sink: ${context.sink}
+
+      Read ${captured.run_dir.output}/brainstorm.md and summarise the Top Idea
+      and its rationale for the user.
+    terminal: true
+
+  failed:
+    action_type: prompt
+    action: |
+      The brainstorm loop encountered an unrecoverable error during the convergence phase
+      (cluster or rank step).
+
+      Diagnose what happened:
+      - If ${captured.run_dir.output}/ideas.jsonl exists and has content,
+        report how many ideas were collected before the failure.
+      - If ${captured.run_dir.output}/clusters.md exists, report whether clustering completed.
+      - Identify the most likely failure state (cluster or rank LLM error).
+
+      The divergence phase may have completed successfully; check
+      ${captured.run_dir.output}/ideas.jsonl for partial results that can be reused.
+    terminal: true
