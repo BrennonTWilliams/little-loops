@@ -53,24 +53,30 @@ Default listing (no `--visibility` flag) returns only `"public"` loops. Pass
 
 ## `ll-loop status --json`
 
-Returns a JSON array of running-loop state objects. Each element corresponds to
-one active or interrupted loop instance.
+Returns the state of one or more instances of the named loop. The shape depends
+on the number of instances found:
+
+- **One instance**: returns a JSON object for that instance (plus `pid`,
+  `pid_source`, `log_file`, `log_updated_ago`, `last_event`, and `events_file`
+  diagnostic fields that are not in the base contract).
+- **Multiple instances**: returns a JSON array of state objects, one per
+  instance (without the diagnostic fields above).
+
+Each state object corresponds to one active or interrupted loop instance.
 
 ```json
-[
-  {
-    "loop_name": "rn-implement",
-    "current_state": "run_remediation",
-    "iteration": 4,
-    "captured": {},
-    "prev_result": null,
-    "last_result": null,
-    "started_at": "2026-06-16T12:00:00+00:00",
-    "updated_at": "2026-06-16T12:05:00+00:00",
-    "status": "running",
-    "accumulated_ms": 300000
-  }
-]
+{
+  "loop_name": "rn-implement",
+  "current_state": "run_remediation",
+  "iteration": 4,
+  "captured": {},
+  "prev_result": null,
+  "last_result": null,
+  "started_at": "2026-06-16T12:00:00+00:00",
+  "updated_at": "2026-06-16T12:05:00+00:00",
+  "status": "running",
+  "accumulated_ms": 300000
+}
 ```
 
 ### Field reference

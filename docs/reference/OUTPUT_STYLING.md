@@ -65,7 +65,7 @@ Edge colors (used in FSM diagrams — applied to both label text and connector l
 | `partial` | `33` | Yellow |
 | `retry_exhausted` | `38;5;208` | Orange |
 | `rate_limit_exhausted` | `38;5;214` | Amber |
-| `rate_limit_waiting` | `38;5;214` | Amber |
+| `throttle_hard` | `38;5;196` | Bold red |
 | `next`, `_` | `2` | Dim |
 
 ### Startup configuration
@@ -213,25 +213,25 @@ Transition edges are colored by semantic type — both connector line characters
 
 - Color is applied **at draw time**: each grid character (pipe, dash, arrowhead, corner) is wrapped in `colorize(ch, code)` via the `_edge_line_color(label)` helper.
 - `_colorize_diagram_labels(diagram)` additionally post-processes the rendered string to colorize label words when bounded by box-drawing or whitespace characters.
-- `_collect_edges()` includes `on_blocked` (`"blocked"`), `on_retry_exhausted` (`"retry_exhausted"`), and `on_rate_limit_exhausted` (`"rate_limit_exhausted"`) transitions in addition to the standard fields.
+- `_collect_edges()` includes `on_blocked` (`"blocked"`), `on_retry_exhausted` (`"retry_exhausted"`), `on_rate_limit_exhausted` (`"rate_limit_exhausted"`), and `on_throttle_hard` (`"throttle_hard"`) transitions in addition to the standard fields.
 
 Default edge color mapping (see `Output Color Reference > Edge colors` above for ANSI codes):
 
 | Label keyword | Color |
 |---------------|-------|
-| `yes` / `success` | Green |
-| `no` / `failure` | Orange |
+| `yes` | Green |
+| `no` | Orange |
 | `error` | Red |
 | `blocked` | Red |
 | `partial` | Yellow |
 | `retry_exhausted` | Orange |
 | `rate_limit_exhausted` | Amber |
-| `rate_limit_waiting` | Amber |
+| `throttle_hard` | Bold red |
 | `next` / `_` (default) | Dim |
 
 Edge label colors are **user-configurable** via `cli.colors.fsm_edge_labels` in `ll-config.json`. See [`CONFIGURATION.md → cli.colors.fsm_edge_labels`](CONFIGURATION.md#clicolorsfsm_edge_labels).
 
-> **Note:** `rate_limit_waiting` is a heartbeat event (not a diagram edge label), but it shares the Amber styling with `rate_limit_exhausted` so rate-limit activity is visually consistent across diagrams and event logs.
+> **Note:** `rate_limit_waiting` is a heartbeat event emitted during rate-limit backoff, not an FSM transition edge label. It does not appear in the `_EDGE_LABEL_COLORS` dict and is not colorized in diagrams. Rate-limit activity is visually indicated by the `rate_limit_exhausted` edge (Amber) when the retry budget runs out.
 
 > **Note:** `cli.colors.fsm_edge_labels` governs more than diagram arrows. As of ENH-1050, the same config key also controls:
 > - The `✓`/`✗` verdict symbol colors in `StateFeedRenderer.handle_event()` (the `yes`, `no`, and `error` keys map to checkmark and x-mark colors during evaluate events)

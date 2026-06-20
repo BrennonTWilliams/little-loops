@@ -183,7 +183,9 @@ Controls design system token injection into FSM loops. See [CONFIGURATION.md →
 | `primitives_file` | `str` | `"primitives.json"` | Filename for primitive (raw) token values within `path`. |
 | `semantic_file` | `str` | `"semantic.json"` | Filename for semantic (aliased) token values within `path`. |
 | `themes_dir` | `str` | `"themes"` | Subdirectory of `path` containing per-theme override files. |
-| `active_theme` | `str` | `"light"` | Name of the active theme; must match a file in `themes_dir`. |
+| `active_theme` | `str` | `"dark"` | Name of the active theme; must match a file in `themes_dir`. |
+| `active` | `str` | `"default"` | Active design token profile name; selects a bundled profile under `<path>/<profiles_dir>/<active>/`. |
+| `profiles_dir` | `str \| None` | `None` | Subdirectory of `path` containing per-profile layouts (ENH-1768). `None` falls back to the legacy flat layout (`<path>/primitives.json`, etc.). |
 
 #### DecisionsConfig
 
@@ -193,7 +195,7 @@ Controls the decisions and rules log. See [CONFIGURATION.md → `decisions`](CON
 |-----|------|---------|-------------|
 | `enabled` | `bool` | `False` | Enable the decisions log feature. When `False`, all integrations gracefully skip. |
 | `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file, relative to the project root. |
-| `auto_generate` | `list[str]` | `[]` | Sources to auto-generate decision entries from (e.g., `["completed"]`). |
+| `auto_generate` | `list[str]` | `[]` | Issue type prefixes to include during `ll-issues decisions generate` (e.g., `["FEAT", "ENH"]`). Empty list (default) generates entries for all completed issue types. |
 
 #### Methods
 
@@ -281,12 +283,16 @@ def create_parallel_config(
     only_ids: set[str] | None = None,
     skip_ids: set[str] | None = None,
     type_prefixes: set[str] | None = None,
+    label_filter: set[str] | None = None,
     merge_pending: bool = False,
     clean_start: bool = False,
     ignore_pending: bool = False,
     overlap_detection: bool = False,
     serialize_overlapping: bool = True,
-    base_branch: str = "main",
+    base_branch: str | None = None,
+    remote_name: str | None = None,
+    use_feature_branches: bool | None = None,
+    skip_learning_gate: bool = False,
 ) -> ParallelConfig
 ```
 
@@ -304,12 +310,16 @@ Create a `ParallelConfig` from BRConfig settings with optional overrides.
 - `only_ids` - If provided, only process these issue IDs
 - `skip_ids` - Issue IDs to skip (in addition to completed/failed)
 - `type_prefixes` - If provided, only process issues with these type prefixes
+- `label_filter` - If provided, only process issues with one of these labels
 - `merge_pending` - Attempt to merge pending worktrees from previous runs
 - `clean_start` - Remove all worktrees without checking for pending work
 - `ignore_pending` - Report pending work but continue without merging
 - `overlap_detection` - Enable pre-flight overlap detection
 - `serialize_overlapping` - If True, defer overlapping issues; if False, just warn
-- `base_branch` - Base branch for rebase/merge operations
+- `base_branch` - Base branch for rebase/merge operations (default: from `parallel.base_branch` config)
+- `remote_name` - Git remote name (default: from `parallel.remote_name` config)
+- `use_feature_branches` - Override `parallel.use_feature_branches` config
+- `skip_learning_gate` - Bypass per-worktree proof-first-task gate
 
 **Returns:** Configured `ParallelConfig`
 
@@ -381,6 +391,8 @@ class IssuesConfig:
     capture_template: str = "full"
     duplicate_detection: DuplicateDetectionConfig  # thresholds for skip/update/create
     next_issue: NextIssueConfig  # selection strategy for ll-issues next-issue / next-issues
+    auto_commit: bool = False
+    auto_commit_prefix: str = "chore(issues)"
 ```
 
 ### DuplicateDetectionConfig
@@ -463,16 +475,24 @@ class ParallelAutomationConfig:
     command_prefix: str = "/ll:"
     ready_command: str = "ready-issue {{issue_id}}"
     manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
+    decide_command: str = "decide-issue {{issue_id}}"
     worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env"])
     require_code_changes: bool = True
     use_feature_branches: bool = False
+    push_feature_branches: bool = False
+    open_pr_for_feature_branches: bool = False
+    base_branch: str = "main"
     remote_name: str = "origin"
 ```
 
 **Fields:**
+- `decide_command` - Command template for automated decision resolution
 - `worktree_copy_files` - Files copied from main repo to each worktree
 - `require_code_changes` - Fail issues that don't produce code changes
 - `use_feature_branches` - Create `feature/<id>-<slug>` branches instead of auto-merged worktree branches; skips auto-merge, leaving branches as PR-ready
+- `push_feature_branches` - Push feature branches to remote after creation
+- `open_pr_for_feature_branches` - Open a PR automatically for each feature branch
+- `base_branch` - Base branch for rebase/merge operations (default: `"main"`)
 - `remote_name` - Git remote name for fetch/pull operations (default: `"origin"`)
 
 **Note:** Shared fields from `AutomationConfig` are accessed via `base.*`:
@@ -489,9 +509,10 @@ Sprint management configuration.
 ```python
 @dataclass
 class SprintsConfig:
-    sprints_dir: str = ".sprints"        # Directory for sprint YAML files
-    default_timeout: int = 3600          # Default per-issue timeout in seconds
-    default_max_workers: int = 2         # Default worker count for wave execution
+    sprints_dir: str = ".sprints"                 # Directory for sprint YAML files
+    default_timeout: int = 3600                   # Default per-issue timeout in seconds
+    default_max_workers: int = 2                  # Default worker count for wave execution
+    max_issue_wall_clock_time: int = 2700         # Max wall-clock seconds per issue before forced handoff
 ```
 
 ### LoopsConfig
@@ -501,7 +522,10 @@ FSM loop configuration.
 ```python
 @dataclass
 class LoopsConfig:
-    loops_dir: str = ".loops"    # Directory for loop YAML definitions
+    loops_dir: str = ".loops"                    # Directory for loop YAML definitions
+    queue_wait_timeout_seconds: int = 86400      # Max seconds to wait for a queue item
+    glyphs: LoopsGlyphsConfig                    # Unicode badge overrides for FSM box diagrams
+    run_defaults: LoopRunDefaults                # Persistent CLI defaults for ll-loop run
 ```
 
 ### GitHubSyncConfig
@@ -824,16 +848,18 @@ Find the highest priority issue.
 #### get_next_issue_number
 
 ```python
-def get_next_issue_number(config: BRConfig, category: str) -> int
+def get_next_issue_number(config: BRConfig, category: str | None = None) -> int
 ```
 
-Determine the next issue number for a category.
+Determine the next globally unique issue number across all issue types.
+
+Scans ALL issue directories (active and any legacy completed/deferred) to find the highest existing number across ALL issue types (BUG, FEAT, ENH, EPIC). Issue numbers are globally unique regardless of type.
 
 **Parameters:**
 - `config` - Project configuration
-- `category` - Category key
+- `category` - Unused; kept for backwards compatibility
 
-**Returns:** Next available issue number
+**Returns:** Next available issue number (globally unique across all types)
 
 #### slugify
 

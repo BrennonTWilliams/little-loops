@@ -166,7 +166,7 @@ For interactive editing, use `/ll:configure`.
     "primitives_file": "primitives.json",
     "semantic_file": "semantic.json",
     "themes_dir": "themes",
-    "active_theme": "light"
+    "active_theme": "dark"
   },
 
   "loops": {
@@ -334,6 +334,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `use_feature_branches` | `false` | Create a `feature/<id>-<slug>` branch per issue instead of `parallel/<id>-<timestamp>`. When `true`, auto-merge is skipped and branches survive as PR-ready. Use for PR-based CI/CD workflows. |
 | `push_feature_branches` | `false` | Push the feature branch to `remote_name` after worker success using `git push --force-with-lease`. Requires `use_feature_branches: true`. |
 | `open_pr_for_feature_branches` | `false` | Open a draft PR via `gh pr create` after push and record `pr_url:` on the issue. Requires `push_feature_branches: true` and `gh auth status`. |
+| `base_branch` | `"main"` | Base branch targeted by PR creation when `open_pr_for_feature_branches` is `true`. Also used as the rebase target for worktree updates. |
 | `remote_name` | `"origin"` | Git remote name for fetch/pull operations. Set if your remote is not named `origin` (e.g., `"upstream"`). |
 
 ### `product`
@@ -370,6 +371,15 @@ Command customization for `/ll:manage-issue`:
 | `rate_limits.long_wait_ladder` | `[300, 900, 1800, 3600]` | Long-wait tier backoff ladder (seconds): 5 min → 15 min → 30 min → 1 h. Each 429 after the short-burst tier advances the index, capped at the last entry |
 | `rate_limits.circuit_breaker_enabled` | `true` | Enable cross-worktree circuit breaker: prompt-mode actions pre-sleep until `estimated_recovery_at` when a peer worker has observed a 429 |
 | `rate_limits.circuit_breaker_path` | `".loops/tmp/rate-limit-circuit.json"` | Path to the shared circuit-breaker sidecar file read/written by all `ll-parallel` workers |
+
+#### `commands.review_epic`
+
+Configuration for the `/ll:review-epic` skill:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `review_epic.stale_days` | `14` | Days without activity before a child issue is considered stalled. |
+| `review_epic.enable_scope_drift_check` | `true` | Enable LLM-based scope-drift and missing-coverage passes. |
 
 When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `readiness_threshold`, implementation halts. Use `--force-implement` to bypass.
 
@@ -583,6 +593,7 @@ Sprint management settings (ll-sprint, `/ll:create-sprint`):
 | `sprints_dir` | `.sprints` | Directory for sprint definitions |
 | `default_timeout` | `3600` | Default timeout per issue in seconds |
 | `default_max_workers` | `2` | Worker count for parallel execution within waves (1-8) |
+| `max_issue_wall_clock_time` | `2700` | Hard per-issue wall-clock timeout in seconds. If an issue (including continuations) exceeds this limit, the orchestrator kills it and proceeds to the next issue. |
 
 ### `sync`
 
@@ -597,6 +608,7 @@ GitHub Issues synchronization for `/ll:sync-issues`:
 | `github.priority_labels` | `true` | Add priority as GitHub label (e.g., "P1") |
 | `github.sync_completed` | `false` | Also sync completed issues (close on GitHub) |
 | `github.state_file` | `.ll/ll-sync-state.json` | File to track sync state |
+| `github.pull_template` | `"minimal"` | Creation variant for issues pulled from GitHub (`"full"`, `"minimal"`, or `"legacy"`). Determines section structure of the generated issue file. |
 
 To enable sync, set `sync.enabled: true`. The repository is auto-detected from your git remote; set `sync.github.repo` to override.
 
@@ -685,7 +697,7 @@ When no `profiles/` directory is present, the resolver falls back to the flat la
 | `primitives_file` | `str` | `"primitives.json"` | Filename for primitive (raw) token values within `path`. |
 | `semantic_file` | `str` | `"semantic.json"` | Filename for semantic (aliased) token values within `path`. |
 | `themes_dir` | `str` | `"themes"` | Subdirectory of `path` containing per-theme override files. |
-| `active_theme` | `str` | `"light"` | Name of the active theme; must match a file in `themes_dir`. |
+| `active_theme` | `str` | `"dark"` | Name of the active theme; must match a file in `themes_dir`. |
 
 ```json
 {
@@ -725,6 +737,23 @@ Decisions and rules log configuration (FEAT-1891). When enabled, architectural d
 | `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file. |
 | `auto_generate` | `list[str]` | `[]` | Sources to auto-generate `decision` entries from on session start. Supported value: `"completed"` — scans `.issues/completed/` and appends entries for issues not yet logged. Equivalent to running `ll-issues decisions generate --from completed`. |
 
+### `epics`
+
+EPIC lifecycle and scoping settings:
+
+#### `epics.scope`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `scope.min_children` | `integer` | `3` | Minimum EPIC children. Fewer proposals triggers a warning to consider `/ll:capture-issue` instead of creating an EPIC. |
+| `scope.max_children` | `integer` | `8` | Maximum EPIC children. More proposals triggers a sub-EPIC decomposition suggestion. |
+
+#### `epics.cascade`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `cascade.default_status` | `string` | `"deferred"` | Default status applied to child issues when cascading EPIC closure via `--cascade` (without explicit `--cascade-to`). Valid values: `"deferred"`, `"cancelled"`, `"done"`. |
+
 ### `learning_tests`
 
 Master switch for the learning test registry feature. When enabled, skills and loops can query `.ll/learning-tests/` via `ll-learning-tests` to check whether a target API or pattern is already proven before re-doing the work. Records are stored as YAML-frontmatter markdown files under `.ll/learning-tests/<slug>.md`.
@@ -735,6 +764,8 @@ Master switch for the learning test registry feature. When enabled, skills and l
 | `stale_after_days` | `int` | `30` | Days after which a record is considered stale and should be re-validated. |
 | `discoverability.mode` | `str` | `"warn"` | How learning-test gaps are surfaced: `"off"` — silent; `"warn"` — emits a one-line hint and allows the tool call; `"block"` — injects feedback into model context and blocks the `Write`/`Edit`. **Hook behavior**: the `PreToolUse` gate (active for Claude Code; opt-in for Codex/OpenCode) fires on every `Write` or `Edit` call, detects unknown external imports, and consults the registry. |
 | `discoverability.skip_packages` | `list[str]` | `["std", "typing", "os", "sys"]` | Packages whose imports are never flagged by the `PreToolUse` gate. Add internal packages or well-known stdlib re-exports here to suppress false positives. |
+| `release_gate` | `str` | `"warn"` | Pre-release audit behavior when stale/refuted records are found for imported packages: `"block"` aborts with exit 1; `"warn"` (default) continues with a visible warning. |
+| `scan_dirs` | `list[str]` | `["scripts/"]` | Source directories to scan for Python imports during the pre-release audit and orphaned record detection. |
 
 ```json
 {
@@ -793,6 +824,16 @@ Override individual glyphs to customize how FSM box diagrams render state type b
   }
 }
 ```
+
+#### `loops.run_defaults`
+
+Persistent CLI defaults for `ll-loop run`. Values are backfilled when the corresponding flag is absent; explicit CLI flags always take precedence. Set once in `ll-init` via `loops.run_defaults` in the generated config.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `run_defaults.clear` | `boolean` | `false` | If `true`, inject `--clear` into every `ll-loop run` invocation. |
+| `run_defaults.show_diagrams` | `string\|null` | `null` | Inject `--show-diagrams <value>` into every invocation. Valid values: `layered`, `neighborhood`, `inline`, `detailed`, `summary`, `clean`, `local`, `slim`, `oneline`, `default`. `null` disables. |
+| `run_defaults.mode` | `string\|null` | `null` | Reserved for a future `--mode` flag on `ll-loop run`. No effect until that flag is added. |
 
 ### `scratch_pad`
 
@@ -1025,6 +1066,7 @@ Settings for hook adapter selection.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `host` | (auto-detected) | Host agent identifier for hook adapters: `"claude-code"`, `"opencode"`, or `"codex"`. Adapters translate between the host's native hook protocol and `LLHookEvent`/`LLHookResult`. |
+| `stale_ref_fix` | `"report"` | Session-end stale-ref sweep mode: `"report"` prints findings to stderr; `"auto"` also rewrites them in-place. |
 
 ### `extensions`
 

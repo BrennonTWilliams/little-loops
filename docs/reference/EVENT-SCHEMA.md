@@ -139,11 +139,12 @@ Emitted when the executor enters a state, before the state's action is executed.
 | Field | Type | Description |
 |-------|------|-------------|
 | `state` | `str` | Name of the state being entered |
-| `iteration` | `int` | Current iteration count (1-based) |
+| `iteration` | `int` | Step count (1-based); increments on every state entry regardless of loop passes |
+| `iteration_count` | `int` | Full-pass (maintain-mode) restart count (0-based); increments after each complete loop pass via a terminal state; always `0` for loops that do not use `maintain` |
 
 **Example:**
 ```json
-{"event": "state_enter", "ts": "...", "state": "build", "iteration": 1}
+{"event": "state_enter", "ts": "...", "state": "build", "iteration": 1, "iteration_count": 0}
 ```
 
 ---
@@ -583,7 +584,7 @@ Emitted once when the executor finishes, regardless of how it terminated.
 |-------|------|-------------|
 | `final_state` | `str` | Name of the state at termination. Usually the last state entered; when `terminated_by="timeout"` this may be a state that was routed to but never entered. **Exception (BUG-1226):** when that pending state is a shell action, the executor flushes it — emitting `state_enter` with `flushed: true` and running its action — before honoring the timeout, so `state_enter` for `final_state` is always emitted before `loop_complete`. Slash commands and sub-loops are not flushed. |
 | `iterations` | `int` | Total number of iterations completed |
-| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), `"cycle_detected"` (same edge traversed more than `max_edge_revisits` times), `"max_steps"` (step cap reached), `"max_iterations_reached"` (full-pass cap reached), or the terminal state name |
+| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"timeout"` (wall-clock timeout elapsed), `"terminal"` (a terminal state was reached), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), `"cycle_detected"` (same edge traversed more than `max_edge_revisits` times), `"max_steps"` (step cap reached), or `"max_iterations_reached"` (full-pass cap reached) |
 
 **Example:**
 ```json
@@ -592,7 +593,7 @@ Emitted once when the executor finishes, regardless of how it terminated.
   "ts": "...",
   "final_state": "done",
   "iterations": 5,
-  "terminated_by": "done"
+  "terminated_by": "terminal"
 }
 ```
 
@@ -1083,7 +1084,7 @@ When `OTelTransport` is active (`events.transports: ["otel"]`), the following ev
 | Event | OTel action | Field used |
 |-------|-------------|------------|
 | `action_complete` | Closes action span | — |
-| `loop_complete` | Closes state + action spans; sets loop span status; closes loop span | `outcome` → status code (`"error"` / `"failed"` / `"exhausted"` → `ERROR`, all others → `OK`) |
+| `loop_complete` | Closes state + action spans; sets loop span status; closes loop span | `terminated_by` → status code (`"error"` → `ERROR`, all others → `OK`) |
 
 ### Span event records
 

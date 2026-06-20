@@ -45,7 +45,11 @@ Initialize little-loops for a project. Detects the project root, selects host ad
 | `--dry-run` | `-n` | Preview actions without writing files |
 | `--plan` | | Emit a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything |
 | `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `pi`). Defaults to auto-detected hosts. |
+| `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`. |
+| `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--disable prompt_optimization` to opt out of the default-on prompt optimizer. |
 | `--root ROOT` | `-C` | Project root directory (default: current directory) |
+
+Richer features (`parallel`, `sync`, `documents`, `design_tokens`, `confidence_gate`, `tdd`) carry sub-config and remain interactive-only; they are not accepted by `--enable`/`--disable`. Unknown feature names exit `2`.
 
 **Subcommands:**
 
@@ -62,7 +66,7 @@ Initialize little-loops for a project. Detects the project root, selects host ad
 | 1 / 6  | Project type template | Auto-detected from repo contents |
 | 2 / 6  | Project name, src dir, test/lint/format commands | Pre-filled from detection; command fields offer curated-menu select with "Custom…" fallthrough |
 | 3 / 6  | Scan settings | `focus_dirs` text entry; confirm/override exclude patterns |
-| 4 / 6  | Features | Checkboxes for `github_sync`, `confidence_gate`, `tdd` (all opt-in); profile picker for `design_tokens`; worktree copy-files toggle; session-digest confirm |
+| 4 / 6  | Features | Opt-in checkboxes including `github_sync`, `confidence_gate`, `tdd`, `decisions` (rules log), `scratch_pad` (automation context masking), `session_capture` (PreCompact handoff); profile picker for `design_tokens`; worktree copy-files toggle; session-digest confirm; prompt-optimization opt-out confirm (default on) |
 | 5 / 6  | Host adapters + settings target | Defaults to detected hosts; third "Skip" option skips `merge_settings` entirely |
 | 6 / 6  | CLAUDE.md update | Offers to create `.claude/CLAUDE.md` (or append to an existing one) with ll CLI command stubs; skipped if a `## little-loops` section is already present (ENH-2043, ENH-2092) |
 
@@ -73,6 +77,8 @@ ll-init --yes --dry-run            # Preview without writing files
 ll-init --yes --force              # Overwrite existing configuration
 ll-init --plan                     # Emit JSON plan without writing
 ll-init --hosts claude-code codex  # Install adapters for specific hosts
+ll-init --yes --enable decisions --enable session_capture  # Opt in to extra features
+ll-init --yes --disable prompt_optimization                # Opt out of prompt optimizer
 ll-init apply --config plan.json   # Apply writes from a --plan output
 ```
 
@@ -329,6 +335,7 @@ Process issues concurrently using isolated git worktrees.
 | `--priority` | `-p` | Comma-separated priorities to process (e.g., `P1,P2`) |
 | `--worktree-base` | | Base directory for git worktrees |
 | `--cleanup` | `-c` | Clean up all worktrees and exit |
+| `--prune-merged-branches` | | Delete local `feature/*` branches already merged into the base branch; use with `--dry-run` to preview. Squash/rebase-merged branches require the `gh` CLI for detection. |
 | `--merge-pending` | | Attempt to merge pending work from interrupted runs |
 | `--clean-start` | | Remove all worktrees and start fresh |
 | `--ignore-pending` | | Report pending work but continue without merging |
@@ -350,6 +357,7 @@ Process issues concurrently using isolated git worktrees.
 | `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
+| `--verbose` | `-v` | Enable verbose output |
 | `--skip-learning-gate` | | Bypass per-worktree `proof-first-task` gate (emergency runs when `learning_tests.enabled` is true) |
 
 **Per-worktree proof-first gate (ENH-2219):** When `learning_tests.enabled` is `true`, each worktree runs a `proof-first-task` gate before handing off to the implementation loop. The gate reads `learning_tests_required` from the issue file and verifies that every declared API assumption has a proven (non-stale) record in the registry. Issues that fail the gate are retried once after `/ll:explore-api` completes; if the retry also fails the issue is skipped and marked `blocked`. Use `--skip-learning-gate` for emergency runs when the registry is unavailable.
@@ -505,7 +513,8 @@ Run a loop.
 | `--max-iterations` | | Override full-pass cap (complete loop cycles) |
 | `--delay` | | Sleep N seconds between iterations (useful for recording) |
 | `--no-llm` | | Disable LLM evaluation |
-| `--llm-model` | | Override LLM model |
+| `--model` | | Default model for host-CLI action states (`prompt`/`slash_command`). Per-state `model:` key overrides this. |
+| `--llm-model` | | Override model for FSM evaluator/judge states (distinct from `--model`) |
 | `--dry-run` | | Show execution plan without running. Diagram rendering is not suppressed — combine with `--show-diagrams` to preview both the FSM diagram and the execution plan. |
 | `--background` | `-b` | Run as background daemon |
 | `--follow` | `-f` | Stream FSM state transitions to stdout as they fire, in `ll-loop history` format. **Cannot be combined with `--background`** — passing both exits with an error; use `ll-logs tail` to watch a background loop instead. |
@@ -636,12 +645,14 @@ For nested loops, the displayed identifier is the **relative path** without the 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--running` | | Only show currently running loops |
+| `--status STATUS` | | With `--running`, filter to loops with the given status (e.g. `interrupted`, `awaiting_continuation`) |
 | `--builtin` | | Only show built-in loops (exclude project `.loops/`) |
 | `--category <cat>` | `-c` | Filter to loops with the given category (e.g. `apo`, `issue-management`, `code-quality`) |
 | `--label <tag>` | `-l` | Filter to loops that carry the given label tag; repeat for multiple tags (OR match) |
 | `--all` / `-a` | `-a` | Show all loops including internal sub-loops and examples (hidden by default) |
 | `--internal` | | Show only internal (delegated-only) sub-loops |
 | `--examples` | | Show only example/template loops |
+| `--visibility {public,internal,example,all}` | | Filter loops by visibility tier: `public` (routable, default view), `internal`, `example`, or `all`. Composes with `--label` and `--json`. |
 | `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name` (relative-path identifier — e.g. `oracles/oracle-capture-issue` for nested loops, `fix-quality-and-tests` for top-level), `path`, `category`, `labels`, `visibility` (`"public"` \| `"internal"` \| `"example"`), `description`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
 
 #### `ll-loop status <loop>` / `ll-loop st <loop>`
@@ -1159,6 +1170,28 @@ ll-issues skip FEAT-955                                          # Deprioritize 
 ll-issues skip 955 --priority P4                                 # Deprioritize to P4
 ll-issues skip BUG-042 --reason "retry after CI fix"             # With reason
 ll-issues sk ENH-123 -p P3 --reason "blocked on upstream change"
+```
+
+---
+
+#### `ll-issues finalize-decomposition <parent> [children...]` / `ll-issues fd`
+
+Close a decomposed parent issue and re-link its children to the parent's EPIC. Sets the parent's status to `done`, optionally moves it to its type directory, and updates the EPIC's child references.
+
+| Argument/Flag | Description |
+|---------------|-------------|
+| `parent` | Decomposed parent issue ID (e.g., `ENH-123`) |
+| `children` | (Optional) Child issue IDs as positional arguments |
+| `--children-file PATH` | File with one child ID per line (e.g., the `children_<id>.txt` artifact from `rn-decompose`) |
+| `--issues-dir DIR` | Issues base directory (default: `.issues`) |
+| `--no-move` | Do not move the closed parent into the completed directory; update status only |
+| `--config` | Path to project root |
+
+**Examples:**
+```bash
+ll-issues finalize-decomposition ENH-123 ENH-124 ENH-125     # Close ENH-123; re-link children
+ll-issues fd ENH-123 --children-file run_dir/children_ENH-123.txt  # Load children from file
+ll-issues fd ENH-123 --no-move                                # Status-only close; no file move
 ```
 
 ---

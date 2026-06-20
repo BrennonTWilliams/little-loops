@@ -15,6 +15,7 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics` |
 | `--gap-analysis` | Additive-only enrichment: fill gaps, never remove content; exempt from `max_refine_count` | `refine-issue` |
 | `--full-rewrite` | Full-rewrite mode (legacy): overwrites sections with research findings | `refine-issue` |
+| `--check` | Check-only mode for FSM loop evaluators: run scoring/validation without writes, exit 1 if any fail | `ready-issue`, `verify-issues`, `confidence-check`, `issue-size-review`, `go-no-go` |
 | `--verbose` | Include detailed output | `align-issues` |
 | `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
 | `--sprint <name>` | Scope to issues in a named sprint definition | `map-dependencies`, `confidence-check`, `issue-size-review` |
@@ -172,18 +173,24 @@ Validate issue file for accuracy and auto-correct problems.
 
 **Arguments:** `issue_id` (optional)
 
+**Flags:**
+- `--deep` — Use sub-agents for comprehensive validation (verifies file paths, line numbers, code snippets against actual codebase)
+- `--check` — Check-only mode for FSM loop evaluators: run validation without auto-corrections, print `[ID] ready: [verdict]`, exit 0 if READY/CORRECTED, exit 1 otherwise
+
 **Learning Test Gate:** When the issue contains a `learning_tests_required` frontmatter field, each declared target is checked against the learning test registry (`ll-learning-tests check`). Proven targets emit a PASS row in the VALIDATION table; stale targets emit a WARN; missing or refuted targets block readiness with `❌ Unproven assumption: "<target>" — run /ll:explore-api "<target>"`. Issues without `learning_tests_required` are unaffected.
 
 ### `/ll:verify-issues`
 Verify all issue files against current codebase state.
 
-**Flags:** `--auto` (non-interactive: skips user approval, does not move resolved issues)
+**Flags:**
+- `--auto` — Non-interactive: applies all non-destructive changes without prompting; skips setting resolved issue status
+- `--check` — Check-only mode for FSM loop evaluators: run verification without applying changes, print `[ID] verify: [verdict]` per non-VALID issue, exit 1 if any non-VALID, exit 0 if all valid (implies `--auto`)
 
 ### `/ll:align-issues`
 Validate active issues against key documents for relevance and alignment.
 
 **Arguments:**
-- `category`: Document category (`architecture`, `product`, or `--all`)
+- `category` (optional): Document category name (e.g., `architecture`, `product`), a `.md` file path (checks all issues against that document), or `--all` (all configured categories). When omitted, checks each issue against its own linked documents (`linked_docs:` frontmatter).
 - `issues` (optional): Comma-separated issue IDs to limit processing (e.g., `ENH-1362,BUG-123`). When omitted, all active issues are processed.
 - `flags` (optional): `--verbose` (detailed analysis), `--dry-run` (report only, no auto-fixing)
 
@@ -720,6 +727,25 @@ SR-* findings are listed alongside FA-* findings in the Issues section of the ou
 
 **See also:** `/ll:create-loop`, `ll-loop validate`, `ll-loop show`, `ll-loop simulate`
 
+### `/ll:simplify-loop`
+Refactor an existing FSM loop into fewer, more readable, more reusable units without changing its behavior. Applies two behavior-preserving transforms:
+
+1. **Flow collapse** — collapses a linear chain of states (each unconditionally `next:`-ing the following one) into a `flow:` list + `state_defs:` bodies. The `resolve_flow()` parser expands it back into an identical `states:` map.
+2. **Sub-loop extraction** — extracts a cohesive region (one entry, clean success/failure exits) into a separate child loop invoked via `loop:` + `with:` + `on_success`/`on_failure`/`on_error`.
+
+**Arguments:**
+- `name` (optional): Loop to simplify. If omitted, lists available loops and prompts for selection.
+
+**Flags:**
+- `--dry-run` — Detect and report candidates only; make no changes
+- `--auto` / `--yes` — Skip per-change approval prompts (still validates)
+- `--flows-only` — Only apply flow collapse; skip sub-loop extraction
+- `--subloops-only` — Only apply sub-loop extraction; skip flow collapse
+
+**Trigger keywords:** "simplify loop", "decompose loop into sub-loops", "collapse state chain", "extract sub-loop", "refactor loop"
+
+**See also:** `/ll:create-loop`, `/ll:review-loop`, `/ll:rename-loop`
+
 ### `/ll:debug-loop-run`
 Analyze loop execution history to synthesize actionable issues from fault signals (BUG-class anomalies that broke the run) and effectiveness signals (ENH-class observations that the run completed but did not do useful work). Auto-selects the most recently interrupted/failed loop, or analyzes a named loop when specified.
 
@@ -1005,6 +1031,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `adversarial-verify-loop`^ | Generate adversarial verification loop YAML that tries to break a feature |
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop`^ | Review and improve existing FSM loop configurations |
+| `simplify-loop`^ | Refactor a loop: collapse linear state chains to flows, extract sub-loops — behavior-preserving |
 | `debug-loop-run`^ | Analyze loop execution history: synthesizes an Execution Summary (goal alignment, observed path) and extracts actionable issues from fault and effectiveness signals |
 | `audit-loop-run`^ | Audit loop goal achievement: checks artifact mutations, threshold contracts, phantom convergence, and produces ranked improvement proposals |
 | `cleanup-loops`^ | Find and clean stuck or stale loop processes |

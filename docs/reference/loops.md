@@ -49,7 +49,7 @@ See [`.ll/program.md` convention](program-md.md) for the steering file format an
 | `tasks_dir` | `""` | **Required.** Path to Harbor task directory passed to scorer. |
 | `scorer` | `""` | **Required.** Scorer command that prints a bare float to stdout on exit 0. |
 | `target_score` | `1.0` | Early-stop threshold. `1.0` means "never early-stop on target reached". |
-| `max_steps` | `30` | Hard budget ceiling. |
+| `max_iterations` | `30` | Hard budget ceiling (context variable mirroring the top-level `max_steps`). |
 | `STATE_NAME` | — | State-mode only. Name of the state being optimized; set by `dequeue_state` and read by `propose`, `apply`, and `write_trajectory_*`. |
 | `EXAMPLES_FILE` | — | State-mode only. Path to the examples file for the current state; set by `dequeue_state` and injected into the `propose` prompt. |
 
@@ -123,7 +123,7 @@ In addition to trajectory JSONL files written under `${context.run_dir}/states/`
 **Category**: research
 **File**: `scripts/little_loops/loops/deep-research.yaml`
 
-Iterative web research synthesis loop. Accepts a research topic or question, generates an initial set of faceted search queries, performs web searches, evaluates and deduplicates sources, scores per-facet coverage, and iterates until coverage is sufficient or `max_steps` is exhausted. Produces a structured Markdown report with executive summary, key findings, source table, coverage gaps, and conclusion.
+Iterative web research synthesis loop. Accepts a research topic or question and delegates to the `oracles/research-coverage` oracle, which generates faceted search queries, performs web searches, evaluates and deduplicates sources, scores per-facet coverage, and iterates until coverage is sufficient. Produces a structured Markdown report with executive summary, key findings, source table, coverage gaps, and conclusion. Supports both general web research (default) and arxiv-only academic mode via `academic_mode=true`.
 
 ### Invocation
 
@@ -131,10 +131,10 @@ Iterative web research synthesis loop. Accepts a research topic or question, gen
 # Basic — positional arg injected into context.topic via input_key: topic
 ll-loop run deep-research "What are the trade-offs of CRDT vs OT for collaborative editing?"
 
-# Deeper research with higher coverage target
+# Academic (arxiv-only) mode
 ll-loop run deep-research "your research topic" \
-  --context depth=5 \
-  --context coverage_threshold_pct=90
+  --context source_filter="site:arxiv.org" \
+  --context academic_mode=true
 ```
 
 ### Context Variables
@@ -143,27 +143,25 @@ ll-loop run deep-research "your research topic" \
 |----------|---------|-------------|
 | `topic` | `""` | **Required.** Research question or topic (injected from positional arg via `input_key: topic`). |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/deep-research-{timestamp}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location. |
-| `depth` | `3` | Minimum number of search rounds before accepting convergence. |
-| `coverage_threshold_pct` | `85` | Target coverage percentage; surfaced in the `score_coverage` prompt. |
+| `source_filter` | `""` | Site constraint appended to every search query (e.g. `"site:arxiv.org"`); empty string = web-wide. Forwarded to the `oracles/research-coverage` oracle. |
+| `academic_mode` | `false` | Enable academic-specific behaviors: recency scoring axis, arxiv ID dedup, BibTeX section in the report, academic query terminology. Forwarded to the oracle. |
+| `depth` | `3` | Declared in `deep-research` context but **not currently forwarded** to `oracles/research-coverage`; overriding via `--context depth=N` has no effect. Configure on the oracle directly if needed. |
+| `coverage_threshold_pct` | `85` | Declared in `deep-research` context but **not currently forwarded** to `oracles/research-coverage`; overriding via `--context coverage_threshold_pct=N` has no effect. Configure on the oracle directly if needed. |
 
 ### State Graph
 
+`deep-research` is a thin wrapper that delegates the full research FSM to `oracles/research-coverage`:
+
 ```
 init  (shell: mkdir run_dir, touch 4 artifact files, capture run_dir)
-  → generate_queries  (prompt: write 3–5 faceted queries to query-log.md;
-                       initialize coverage.md with facet list)
-    → search_web  (prompt: WebSearch/WebFetch; append findings + [Source: <url>] to knowledge-base.md)
-      → evaluate_sources  (prompt: score relevance/credibility, deduplicate, mark LOW-QUALITY)
-        → score_coverage  (prompt: score facets 1–5, update coverage.md;
-                           emit COVERAGE_SUFFICIENT or NEED_MORE)
-          on_yes (COVERAGE_SUFFICIENT) → synthesize
-          on_no  (NEED_MORE)           → plan_next
-          on_error                     → synthesize  (graceful degradation)
-            → plan_next  (prompt: generate gap-filling queries, append to query-log.md)
-              → search_web  (loop back)
-  synthesize  (prompt: consolidate knowledge-base.md into structured report.md)
-    → done  (terminal: report final output paths and facet scores)
+  → run_research  (oracle: oracles/research-coverage;
+                   passes run_dir, topic, source_filter, academic_mode)
+      on_success → done  (terminal)
+      on_failure → failed  (terminal)
+      on_error   → failed  (terminal)
 ```
+
+The oracle's internal chain is: `generate_queries → search_web → evaluate_sources → score_coverage → [plan_next →]* synthesize → done`.
 
 ### Output Artifacts
 
@@ -178,9 +176,9 @@ All artifacts are written to `${context.run_dir}` (the per-run directory injecte
 
 ### Convergence
 
-`score_coverage` uses the **inline sentinel** pattern (Option A, `rn-plan`-style):
+Handled by `oracles/research-coverage`. The `score_coverage` state uses the **inline sentinel** pattern:
 
-- Emits `COVERAGE_SUFFICIENT` when: average facet score ≥ 4.0 AND iteration ≥ `depth`
+- Emits `COVERAGE_SUFFICIENT` when: average facet score ≥ 4.0 AND iteration ≥ `depth` (oracle default: 3)
 - Emits `NEED_MORE` otherwise
 - `on_error` routes to `synthesize` (write what we have; don't stall)
 
@@ -427,10 +425,25 @@ run_gen_eval:
 ### Internal state machine
 
 ```
-generate → evaluate (playwright_screenshot fragment) → score (ll_rubric_score fragment)
-  score.on_yes → done (terminal)
-  score.on_no  → generate
-  evaluate.on_yes/no/error → score   # graceful degradation if Playwright unavailable
+generate  (prompt: LLM renders artifact)
+  on_yes/no/partial → evaluate    # route all verdicts to evaluate; on_error → failed
+  on_error          → failed
+
+evaluate  (fragment: playwright_screenshot)
+  on_yes/no/error → snapshot      # graceful degradation if Playwright unavailable
+
+snapshot  (shell: copy artifact + screenshot to iter-N/ subdir for versioning)
+  → score  (unconditional)
+
+score  (fragment: ll_rubric_score)
+  on_yes  → done  (terminal)
+  on_no   → check_stall
+  on_error → generate
+
+check_stall  (fragment: diff_stall_gate; max_stall=3)
+  on_yes (new changes observed) → generate
+  on_no  (plateaued)            → done  (accept best-so-far)
+  on_error                      → generate
 ```
 
 ### Fragment dependency
@@ -536,7 +549,7 @@ implement_issue  (shell: ll-auto --only <issue-id>; fragment: with_rate_limit_ha
 
 ### Notes
 
-- `shared_state_ok: true` is set at the loop level — the oracle reads `.loops/tmp/recursive-refine-passed.txt` written by the calling loop's `recursive-refine` sub-loop. This cross-run dependency is intentional.
+- `shared_state_ok: true` is set at the loop level — the oracle reads `${context.run_dir}/recursive-refine-passed.txt` written by the calling loop's `recursive-refine` sub-loop. This cross-run dependency is intentional.
 - Issues already in `.issues/completed/` are silently skipped without calling `ll-auto`.
 
 ### Fragment dependency
