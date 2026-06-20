@@ -4124,6 +4124,8 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 | `little_loops.fsm.signal_detector` | Pattern-based signal detection in action output |
 | `little_loops.fsm.stall_detector` | `StallDetector` and `Stall` dataclass for circuit-breaker stall detection |
 | `little_loops.fsm.fragments` | Fragment composition: `resolve_fragments()`, `resolve_inheritance()`, `resolve_flow()` |
+| `little_loops.fsm.policy_rules` | Shared policy-rule grammar for decision-table routing: `parse_rules()`, `serialize_rules()`, `evaluate_rules()`, `Rule`, `Predicate` dataclasses. Single source of truth used by both `lib/policy-router.yaml` and `edit-routes` compound mode (ENH-2164) |
+| `little_loops.fsm.route_table` | Route-table extraction, rendering, parsing, and application for `ll-loop edit-routes`. Includes standard matrix classes (`RouteTableExtractor`, `RouteTableRenderer`, `RouteTableParser`, `RouteTableApplier`) and compound decision-table classes added in ENH-2233 (`PolicyRuleExtractor`, `CompoundGridRenderer`, `CompoundGridParser`, `PolicyRuleApplier`) |
 
 ### Quick Import
 
