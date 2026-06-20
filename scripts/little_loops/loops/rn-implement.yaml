@@ -692,7 +692,21 @@ states:
       source: "${captured.rem_outcome.output}"
       pattern: "RATE_LIMITED"
     on_yes: rate_limit_diagnostic
-    on_no: record_failure   # IMPLEMENT_FAILED / SCORES_MISSING → recorded failure
+    on_no: route_rem_scores_missing
+    on_error: route_rem_scores_missing
+
+  route_rem_scores_missing:
+    # Split SCORES_MISSING out of the generic record_failure bucket: it is a
+    # diagnostic/tooling failure (confidence/outcome frontmatter unreadable after a
+    # scoring pass), not a genuine implementation failure. Tagging it distinctly lets
+    # operators triage scoring errors from real ll-auto failures. on_no falls through
+    # to record_failure for the remaining IMPLEMENT_FAILED outcome.
+    evaluate:
+      type: output_contains
+      source: "${captured.rem_outcome.output}"
+      pattern: "SCORES_MISSING"
+    on_yes: record_scores_missing
+    on_no: record_failure   # genuine IMPLEMENT_FAILED → recorded failure
     on_error: record_failure
 
   run_decomposition:
@@ -763,7 +777,20 @@ states:
       source: "${captured.dec_outcome.output}"
       pattern: "RATE_LIMITED"
     on_yes: rate_limit_diagnostic
-    on_no: record_failure   # SIZE_REVIEW_FAILED → recorded failure
+    on_no: route_dec_size_review_failed
+    on_error: route_dec_size_review_failed
+
+  route_dec_size_review_failed:
+    # Split SIZE_REVIEW_FAILED out of the generic record_failure bucket: it is a
+    # diagnostic/tooling failure (/ll:issue-size-review errored or was inconclusive),
+    # not a genuine decomposition/implementation failure. Tagging it distinctly lets
+    # operators triage size-review errors from real failures.
+    evaluate:
+      type: output_contains
+      source: "${captured.dec_outcome.output}"
+      pattern: "SIZE_REVIEW_FAILED"
+    on_yes: record_size_review_failed
+    on_no: record_failure
     on_error: record_failure
 
   # =========================================================================
@@ -793,6 +820,29 @@ states:
       ID="${captured.input.output}"
       echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} SUB_LOOP_CRASH" >> "${captured.run_dir.output}/failures.txt"
       echo "[SUB_LOOP_CRASH] $ID — sub-loop infrastructure failure (crash/timeout/context error)"
+    next: dequeue_next
+
+  record_scores_missing:
+    # rn-remediate emitted SCORES_MISSING: confidence/outcome frontmatter could not
+    # be read after a scoring pass. A diagnostic/tooling failure, distinct from a
+    # genuine implementation failure — tag it (like SUB_LOOP_CRASH) so report tallies
+    # it separately and operators can triage scoring errors from real failures.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} SCORES_MISSING" >> "${captured.run_dir.output}/failures.txt"
+      echo "[SCORES_MISSING] $ID — scores could not be read after remediation"
+    next: dequeue_next
+
+  record_size_review_failed:
+    # rn-decompose emitted SIZE_REVIEW_FAILED: /ll:issue-size-review errored or was
+    # inconclusive. Diagnostic, distinct from a real decomposition/implementation
+    # failure — tag it so report tallies it separately for operator triage.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} SIZE_REVIEW_FAILED" >> "${captured.run_dir.output}/failures.txt"
+      echo "[SIZE_REVIEW_FAILED] $ID — size review errored or was inconclusive"
     next: dequeue_next
 
   mark_blocked:
@@ -874,8 +924,12 @@ states:
       # separately so "failed" reflects only implementation failures and
       # operators can triage crashes distinctly.
       SUB_LOOP_CRASHES=$(grep -c "SUB_LOOP_CRASH" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      # Diagnostic outcomes tagged into failures.txt — tally separately so "failed"
+      # reflects only genuine implementation failures (operator triage).
+      SCORES_MISSING=$(grep -c "SCORES_MISSING" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      SIZE_REVIEW_FAILED=$(grep -c "SIZE_REVIEW_FAILED" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
       TOTAL_FAILURES=$(wc -l < "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      FAILURES=$((TOTAL_FAILURES - SUB_LOOP_CRASHES))
+      FAILURES=$((TOTAL_FAILURES - SUB_LOOP_CRASHES - SCORES_MISSING - SIZE_REVIEW_FAILED))
       RATE_LIMITED=$(wc -l < "$RUN_DIR/rate_limits.txt" 2>/dev/null | tr -d ' ' || echo 0)
 
       printf '{\n'
@@ -888,12 +942,14 @@ states:
       printf '  "depth_capped": %s,\n' "$DEPTH_CAPPED"
       printf '  "failed": %s,\n' "$FAILURES"
       printf '  "sub_loop_crashes": %s,\n' "$SUB_LOOP_CRASHES"
+      printf '  "scores_missing": %s,\n' "$SCORES_MISSING"
+      printf '  "size_review_failed": %s,\n' "$SIZE_REVIEW_FAILED"
       printf '  "rate_limited": %s\n' "$RATE_LIMITED"
       printf '}\n' > "$RUN_DIR/summary.json"
 
       echo "=== rn-implement Complete ==="
       echo "  Processed: $DEQUEUE_COUNT | Implemented: $IMPLEMENTED | Decomposed: $DECOMPOSED"
-      echo "  Skipped: $SKIPPED | Deferred: $DEFERRED | Blocked: $BLOCKED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES | Sub-loop crashes: $SUB_LOOP_CRASHES | Rate-limited: $RATE_LIMITED"
+      echo "  Skipped: $SKIPPED | Deferred: $DEFERRED | Blocked: $BLOCKED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES | Sub-loop crashes: $SUB_LOOP_CRASHES | Scores-missing: $SCORES_MISSING | Size-review-failed: $SIZE_REVIEW_FAILED | Rate-limited: $RATE_LIMITED"
       echo "  Summary written to: $RUN_DIR/summary.json"
     next: done
 

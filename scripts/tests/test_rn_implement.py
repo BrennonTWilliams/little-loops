@@ -577,10 +577,13 @@ class TestValidation:
         BUG-2006 added route_dec_stalled_origin + mark_deferred (+2), raising it to 28.
         ENH-2008 added check_blocked_by + route_blocked_by (+2), raising it to 30.
         ENH-2195 added re_enqueue_unblocked (+1), raising it to 31.
+        ENH-2247 added route_rem_scores_missing + route_dec_size_review_failed +
+        record_scores_missing + record_size_review_failed (+4), raising it to 35 —
+        splitting SCORES_MISSING / SIZE_REVIEW_FAILED diagnostics out of record_failure.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 31, f"Expected ≤31 states in orchestrator, got {state_count}"
+        assert state_count <= 35, f"Expected ≤35 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
