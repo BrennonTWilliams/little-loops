@@ -156,6 +156,10 @@ security=88, aggregate=86`. The dispatcher walks the table:
 
 The `classify` evaluator reads `done` and the `route:` map sends the loop to the `done` state.
 
+You don't have to trace the table by hand — `ll-loop simulate policy-refine` walks FSM
+execution interactively without invoking real commands, so you can confirm which rule fires
+for a given score set before committing to a real run.
+
 ## Editing the Table with `ll-loop edit-routes`
 
 `ll-loop edit-routes` renders a loop's routing as a table, opens it in `$EDITOR`, and writes
@@ -293,10 +297,20 @@ Tune `policy-refine` to be stricter — require a high security score before dec
    `security` columns. The loop now routes a high-aggregate-but-low-security artifact to repair
    instead of `done`, with no state rewiring — only a table edit.
 
+4. **Validate, then run.** Before executing, validate the loop — `ll-loop validate` enforces
+   the [MR-4 dead-end rule](HARNESS_OPTIMIZATION_GUIDE.md) and warns on missing catch-alls and
+   shadowed rules, catching the routing gaps the table edit might have introduced:
+
+   ```bash
+   ll-loop validate policy-refine
+   ll-loop run policy-refine
+   ```
+
 ## See Also
 
 - [Loops Guide](LOOPS_GUIDE.md) — FSM authoring fundamentals, evaluators, the `/ll:create-loop` wizard
 - [Built-in Loops Reference](LOOPS_REFERENCE.md#built-in-fragment-libraries) — the full fragment-library catalog, including `lib/policy-router.yaml` and `lib/rubric-router.yaml`
 - [Harness Optimization Guide](HARNESS_OPTIMIZATION_GUIDE.md) — the MR-4 routing rule and other meta-loop guardrails
 - [CLI Reference: `ll-loop edit-routes`](../reference/CLI.md) — complete flag and exit-code reference
+- [CLI Reference: `ll-loop validate` / `ll-loop run`](../reference/CLI.md) — validate routing before executing the loop
 - [API Reference](../reference/API.md) — `little_loops.fsm.policy_rules` (rule grammar) and `little_loops.fsm.route_table` (the edit-routes lens)
