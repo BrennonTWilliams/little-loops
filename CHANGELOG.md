@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.127.0] - 2026-06-19
+
+### Added
+
+- **Learning test suite integration** — `learning_tests_required` auto-populated by `refine-issue` and `wire-issue`; `ll-sprint` pre-flight batch gate; `ll-parallel` per-worktree proof-first-task wrapper; `ll-manage-release` blocks on stale/refuted dependencies; `create-loop` wizard inserts assumption-firewall for external API loops; `scope-epic` auto-generates learning test sub-issues; eval harness adds `learning_tests_required` as machine-checkable criterion. (ENH-2209, ENH-2210, ENH-2212, ENH-2214, ENH-2215, ENH-2219, ENH-2220, ENH-2221)
+- **Learning test observability** — Orphaned record detection via `ll-learning-tests orphans`; records injected into `ll-history-context` output; `ll-ctx-stats` adds a learning test coverage dashboard section; `confidence-check` rubric wires in learning test evidence; `ll-history-context` adds per-issue level-0 condensed summaries. (ENH-2216, ENH-2217, ENH-2218, ENH-2231, ENH-2232)
+- **FSM decision-table editor** — `edit-routes` adds a decision-table view for route configuration, state row deletion, terminal stub addition, and compound (multi-dimension) decision-table mode; `lib/policy-router` fragment provides a rubric + conjunctive decision table gate. (ENH-2164, ENH-2227, ENH-2228, ENH-2233)
+- **`general-task` per-step `verify_step`** — Whole-suite gates no longer block every loop step; scoped per-step verification reduces false-positive gate failures. (ENH-2225)
+
+### Fixed
+
+- **`refine-issue` scope guard** — Edit tool restricted to `.issues/**`; refine-issue was implementing code in source files instead of documenting gaps. (BUG-2224)
+- **`rn-remediate` diagnose routing** — Wrong confidence threshold caused the diagnose state to route `REFINE` on ready issues; now uses `diagnose_confidence_floor`. (BUG-2230)
+- **`ll-logs --window-days` anchor semantics** — Standardized anchor to wall-clock time across all subcommands. (ENH-2130)
+- **`ll-logs` stats JSON null fields** — Removed always-null `errors`/`error_rate` stubs from stats output. (ENH-2131)
+
+### Changed
+
+- **`ll-logs` signal detection** — Deduplicated `_extract_tool_name` / `_extract_eval_invocation` into a shared `_detect_ll_signal` helper. (ENH-2132)
+- **`ll-logs` edge computation** — `_compute_edges` transition counter hoisted out of the per-n-gram loop; reduces complexity from O(K·N²) to O(K·N). (ENH-2133)
+- **`ll-logs` code cleanup** — Removed double import, replaced `readlines()` with streaming read, wrapped bare string paths with `Path`. (ENH-2134)
+
 ## [1.126.0] - 2026-06-17
 
 ### Added
@@ -38,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`loop-composer` and `loop-composer-adaptive` error routing** — `re_decompose` wired to `on_error`; `check_auto_plan` error paths route to the HITL gate instead of failing silently. (ENH-2135)
 - **`loop-router` loop discovery** — `discover_loops` now passes `--visibility public` to filter hidden loops from selection. (ENH-2203)
 
+[1.127.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.126.0...v1.127.0
 [1.126.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.125.0...v1.126.0
 
 ## [1.125.0] - 2026-06-15
