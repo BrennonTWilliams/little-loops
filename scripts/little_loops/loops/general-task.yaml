@@ -1,7 +1,7 @@
 name: "general-task"
 description: "General-purpose task loop: writes a Definition of Done, decomposes the task into steps, executes one step at a time, and loops until all DoD criteria are verified."
 category: harness
-initial: define_done
+initial: check_baseline_tests
 max_steps: 200
 default_timeout: 1800
 on_handoff: spawn
@@ -30,6 +30,15 @@ circuit:
       - "${context.run_dir}/dod.md"
 
 states:
+  check_baseline_tests:
+    action: |
+      CMD=$(python3 -c "import json,pathlib; p=pathlib.Path('.ll/ll-config.json'); cfg=json.loads(p.read_text()) if p.exists() else {}; print(cfg.get('project',{}).get('test_cmd','pytest'))")
+      eval "$CMD" > "${context.run_dir}/baseline-test-output.txt" 2>&1
+      echo $? > "${context.run_dir}/baseline-exit.txt"
+    action_type: shell
+    next: define_done
+    on_error: define_done
+
   define_done:
     action: >
       Your task is: ${context.input}
@@ -419,6 +428,8 @@ states:
     # shared shell_exit fragment (lib/common.yaml): gates on the resolved test
     # command's EXIT CODE so any config-sourced gate (e.g. --cov-fail-under via
     # pyproject.toml addopts) is honored before terminal done.
+    # ENH-2244: compare against baseline to avoid treating pre-existing failures
+    # as regressions (exit 0 if no regression: final=0 OR final=baseline).
     fragment: shell_exit
     timeout: 1800
     action: |
@@ -436,6 +447,9 @@ states:
       ")
       fi
       eval "$CMD" > "${context.run_dir}/verify-output.txt" 2>&1
+      FINAL_EXIT=$?
+      BASELINE_EXIT=$(cat "${context.run_dir}/baseline-exit.txt" 2>/dev/null || echo "0")
+      [ "$FINAL_EXIT" = "0" ] || [ "$FINAL_EXIT" = "$BASELINE_EXIT" ]
     on_yes: count_final
     on_no: continue_work
     on_error: diagnose

@@ -7297,3 +7297,65 @@ class TestValidatorWarningBudget:
             "Allowlist entries no longer produce warnings - remove them to lock in the fix:\n"
             + "\n".join(stale)
         )
+
+
+class TestGeneralTaskLoop:
+    """Tests for general-task.yaml — pre-flight baseline and routing correctness."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "general-task.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_initial_state_is_check_baseline_tests(self, data: dict) -> None:
+        """Loop must start at check_baseline_tests, not define_done (ENH-2244)."""
+        assert data.get("initial") == "check_baseline_tests", (
+            f"initial should be 'check_baseline_tests', got {data.get('initial')!r}"
+        )
+
+    def test_check_baseline_tests_state_exists(self, data: dict) -> None:
+        """check_baseline_tests state must be present (ENH-2244)."""
+        assert "check_baseline_tests" in data["states"]
+
+    def test_check_baseline_tests_routes_to_define_done(self, data: dict) -> None:
+        """check_baseline_tests.next must route to define_done (ENH-2244)."""
+        state = data["states"].get("check_baseline_tests", {})
+        assert state.get("next") == "define_done", (
+            f"check_baseline_tests.next should be 'define_done', got {state.get('next')!r}"
+        )
+
+    def test_check_baseline_tests_on_error_routes_to_define_done(self, data: dict) -> None:
+        """check_baseline_tests.on_error must route to define_done so errors don't block the loop."""
+        state = data["states"].get("check_baseline_tests", {})
+        assert state.get("on_error") == "define_done", (
+            f"check_baseline_tests.on_error should be 'define_done', got {state.get('on_error')!r}"
+        )
+
+    def test_check_baseline_tests_writes_baseline_exit_to_run_dir(self, data: dict) -> None:
+        """check_baseline_tests must write baseline-exit.txt under ${context.run_dir} (ENH-2244)."""
+        state = data["states"].get("check_baseline_tests", {})
+        action = state.get("action", "")
+        assert "${context.run_dir}/baseline-exit.txt" in action, (
+            "check_baseline_tests action must write to ${context.run_dir}/baseline-exit.txt"
+        )
+
+    def test_run_final_tests_reads_baseline_exit(self, data: dict) -> None:
+        """run_final_tests must read baseline-exit.txt for regression comparison (ENH-2244)."""
+        state = data["states"].get("run_final_tests", {})
+        action = state.get("action", "")
+        assert "baseline-exit.txt" in action, (
+            "run_final_tests action must reference baseline-exit.txt for baseline comparison"
+        )
+
+    def test_run_final_tests_compares_final_to_baseline(self, data: dict) -> None:
+        """run_final_tests must exit 0 when final exit code matches baseline (ENH-2244)."""
+        state = data["states"].get("run_final_tests", {})
+        action = state.get("action", "")
+        assert "BASELINE_EXIT" in action, (
+            "run_final_tests must capture BASELINE_EXIT and compare against final exit code"
+        )
+        assert "FINAL_EXIT" in action, (
+            "run_final_tests must capture FINAL_EXIT from the test command"
+        )
