@@ -124,6 +124,12 @@ follow stricter design rules than data-operating loops:
 `meta_self_eval_ok: true` at the loop top-level to suppress the check in
 the rare case where you have a justified reason. See ENH-1665.
 
+`ll-loop validate` enforces rule MR-2 as WARNING severity. A meta-loop that
+captures a baseline value but never references it in a later evaluator lacks
+the measure→propose→apply→re-measure spine — without that comparison the loop
+cannot tell whether an edit helped or hurt. Use `meta_self_eval_ok: true` at
+the loop top-level to suppress when baseline comparison is intentionally absent.
+
 `ll-loop validate` enforces rule 3 as WARNING severity (rule MR-3). Use
 `shared_state_ok: true` at the loop top-level to suppress the check when
 cross-run sharing is intentional.

@@ -1,9 +1,10 @@
 ---
 id: ENH-2236
 type: ENH
-status: open
+status: done
 priority: P3
 discovered_date: 2026-06-19
+completed_at: 2026-06-20 04:02:49+00:00
 discovered_by: audit-docs
 testable: false
 labels:
@@ -71,4 +72,5 @@ The CLAUDE.md § Loop Authoring section should also gain a corresponding `ll-loo
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T03:59:52 - `6b60262f-083d-4f87-9704-56923badc408.jsonl`
 - `/ll:format-issue` - 2026-06-20T03:50:37 - `0f099cd8-b3d8-4868-a874-14d98dd66159.jsonl`
