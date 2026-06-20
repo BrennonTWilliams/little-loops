@@ -89,8 +89,11 @@ ll-init
 | `--yes` | Accepts all auto-detected defaults without any confirmation prompts | Fastest path when auto-detection gets it right |
 | `--force` | Overwrites an existing `.ll/ll-config.json` (TUI now pre-populates from existing values automatically, so `--force` is rarely needed) | Forcing a full template reset regardless of existing config |
 | `--dry-run` | Previews what would be generated without writing any files | Checking what `ll-init` would produce before committing |
-
-> **More options:** `--hosts HOST…` wires adapters for additional host CLIs (Claude Code, Codex, OpenCode). Only needed if you use little-loops with multiple AI coding tools.
+| `--plan` | Emits a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything | CI pipelines, inspection before applying, or piping into `ll-init apply --config` |
+| `--enable FEATURE` | Enable an optional feature in the headless config (repeatable). Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization` | Activating optional features without the TUI |
+| `--disable FEATURE` | Disable a feature (same valid names as `--enable`) | Turning off a feature that was auto-enabled |
+| `--root / -C` | Set the project root directory (default: current directory) | Running `ll-init` from a different working directory |
+| `--hosts HOST…` | Wire adapters for additional host CLIs: `claude-code`, `codex`, `opencode`, `pi` | Only needed if you use little-loops with multiple AI coding tools |
 
 ### Key Config Fields
 
