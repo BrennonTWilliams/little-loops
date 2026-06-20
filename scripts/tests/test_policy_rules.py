@@ -14,12 +14,10 @@ import pytest
 
 from little_loops.fsm.policy_rules import (
     Predicate,
-    Rule,
     evaluate_rules,
     parse_rules,
     serialize_rules,
 )
-
 
 # ---------------------------------------------------------------------------
 # parse_rules
@@ -64,14 +62,16 @@ class TestParseRules:
         assert len(rules[0].predicates) == 3
 
     def test_all_operators_parsed(self) -> None:
-        text = "\n".join([
-            "a:>=10 -> s1",
-            "b:<=10 -> s2",
-            "c:==10 -> s3",
-            "d:!=10 -> s4",
-            "e:<10  -> s5",
-            "f:>10  -> s6",
-        ])
+        text = "\n".join(
+            [
+                "a:>=10 -> s1",
+                "b:<=10 -> s2",
+                "c:==10 -> s3",
+                "d:!=10 -> s4",
+                "e:<10  -> s5",
+                "f:>10  -> s6",
+            ]
+        )
         rules = parse_rules(text)
         assert len(rules) == 6
         ops = [r.predicates[0].op for r in rules]
@@ -163,11 +163,7 @@ class TestSerializeRules:
         assert serialize_rules(parse_rules(text)) == text
 
     def test_multi_rule_table_roundtrip(self) -> None:
-        text = (
-            "security:<65 -> escalate\n"
-            "completeness:<60 -> deep_repair\n"
-            "* -> light_repair"
-        )
+        text = "security:<65 -> escalate\ncompleteness:<60 -> deep_repair\n* -> light_repair"
         assert serialize_rules(parse_rules(text)) == text
 
     def test_parse_serialize_parse_stability(self) -> None:
@@ -182,7 +178,7 @@ class TestSerializeRules:
         text2 = serialize_rules(rules1)
         rules2 = parse_rules(text2)
         assert len(rules1) == len(rules2)
-        for r1, r2 in zip(rules1, rules2):
+        for r1, r2 in zip(rules1, rules2, strict=True):
             assert r1.is_catchall == r2.is_catchall
             assert r1.target == r2.target
             assert r1.predicates == r2.predicates
@@ -307,22 +303,33 @@ class TestEvaluateRules:
         )
         rules = parse_rules(text)
         # IMPLEMENT: both thresholds met
-        assert evaluate_rules(rules, {
-            "confidence": 90, "outcome": 80, "ambiguity": 5, "change-surface": 5
-        }) == "IMPLEMENT"
+        assert (
+            evaluate_rules(
+                rules, {"confidence": 90, "outcome": 80, "ambiguity": 5, "change-surface": 5}
+            )
+            == "IMPLEMENT"
+        )
         # DECIDE: decision_needed flag
-        assert evaluate_rules(rules, {
-            "confidence": 70, "outcome": 70, "decision_needed": "true"
-        }) == "DECIDE"
+        assert (
+            evaluate_rules(rules, {"confidence": 70, "outcome": 70, "decision_needed": "true"})
+            == "DECIDE"
+        )
         # WIRE via MISSING_ARTIFACTS
-        assert evaluate_rules(rules, {
-            "confidence": 70, "outcome": 70, "missing_artifacts": "true"
-        }) == "WIRE"
+        assert (
+            evaluate_rules(rules, {"confidence": 70, "outcome": 70, "missing_artifacts": "true"})
+            == "WIRE"
+        )
         # WIRE via ambiguity + no change-surface (change-surface == 0)
-        assert evaluate_rules(rules, {
-            "confidence": 70, "outcome": 70, "ambiguity": 20, "change-surface": 0
-        }) == "WIRE"
+        assert (
+            evaluate_rules(
+                rules, {"confidence": 70, "outcome": 70, "ambiguity": 20, "change-surface": 0}
+            )
+            == "WIRE"
+        )
         # REFINE via high ambiguity alone (change-surface != 0)
-        assert evaluate_rules(rules, {
-            "confidence": 70, "outcome": 70, "ambiguity": 20, "change-surface": 5
-        }) == "REFINE"
+        assert (
+            evaluate_rules(
+                rules, {"confidence": 70, "outcome": 70, "ambiguity": 20, "change-surface": 5}
+            )
+            == "REFINE"
+        )

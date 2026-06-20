@@ -55,15 +55,15 @@ def cmd_edit_routes(
 
     # Auto-detect decision-table mode: explicit flag OR loop imports policy-router with policy_rules
     decision_table = getattr(args, "decision_table", False) or (
-        any("lib/policy-router" in imp for imp in fsm.imports)
-        and "policy_rules" in fsm.context
+        any("lib/policy-router" in imp for imp in fsm.imports) and "policy_rules" in fsm.context
     )
 
     if decision_table:
         # Decision-table mode: compound condition×action grid for policy-router loops
         rules = PolicyRuleExtractor.extract(fsm)
         table_text = (
-            CompoundGridRenderer.to_csv(rules) if fmt == "csv"
+            CompoundGridRenderer.to_csv(rules)
+            if fmt == "csv"
             else CompoundGridRenderer.to_markdown(rules)
         )
         if dry_run:
@@ -78,7 +78,8 @@ def cmd_edit_routes(
         known_states = set(fsm.states.keys())
         try:
             parsed_dt = (
-                CompoundGridParser.parse_csv(edited, known_states) if fmt == "csv"
+                CompoundGridParser.parse_csv(edited, known_states)
+                if fmt == "csv"
                 else CompoundGridParser.parse_markdown(edited, known_states)
             )
         except ValueError as e:

@@ -807,7 +807,16 @@ class TestCompoundGridParser:
         return parse_rules(_POLICY_RULES_TEXT)
 
     def _known_states(self):
-        return {"escalate", "deep_repair", "rethink", "done", "light_repair", "score", "parse_scores", "policy_dispatch"}
+        return {
+            "escalate",
+            "deep_repair",
+            "rethink",
+            "done",
+            "light_repair",
+            "score",
+            "parse_scores",
+            "policy_dispatch",
+        }
 
     def test_parse_markdown_round_trip(self) -> None:
         from little_loops.fsm.policy_rules import serialize_rules
@@ -833,9 +842,7 @@ class TestCompoundGridParser:
         from little_loops.fsm.policy_rules import parse_rules
         from little_loops.fsm.route_table import CompoundGridParser, CompoundGridRenderer
 
-        rules_no_catchall = parse_rules(
-            "security:<65 -> escalate\naggregate:>=85 -> done"
-        )
+        rules_no_catchall = parse_rules("security:<65 -> escalate\naggregate:>=85 -> done")
         md = CompoundGridRenderer.to_markdown(rules_no_catchall)
         parsed = CompoundGridParser.parse_markdown(md, self._known_states())
         assert any("catch-all" in w.lower() for w in parsed.warnings)
@@ -858,9 +865,7 @@ class TestCompoundGridParser:
 
         # Rule 2 is a strict superset of rule 1 → rule 1 shadows rule 2
         rules = parse_rules(
-            "confidence:>=85 -> done\n"
-            "confidence:>=85 & outcome:>=75 -> implement\n"
-            "* -> repair"
+            "confidence:>=85 -> done\nconfidence:>=85 & outcome:>=75 -> implement\n* -> repair"
         )
         md = CompoundGridRenderer.to_markdown(rules)
         parsed = CompoundGridParser.parse_markdown(md, {"done", "implement", "repair"})
@@ -992,9 +997,7 @@ class TestCmdEditRoutesDecisionTable:
         out = capsys.readouterr().out
         assert "→ action" in out
 
-    def test_auto_detect_policy_router(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_auto_detect_policy_router(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Without --decision-table, auto-detects policy-router import."""
         from little_loops.cli.loop.edit_routes import cmd_edit_routes
         from little_loops.logger import Logger

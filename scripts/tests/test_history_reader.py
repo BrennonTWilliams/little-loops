@@ -1321,7 +1321,15 @@ class TestCondensedNodesForIssue:
                 "INSERT INTO summary_nodes"
                 "(kind, content, tokens, session_id, level, ts_end, created_at) "
                 "VALUES(?, ?, ?, ?, ?, ?, ?)",
-                ("condensed", "old summary", 50, "sess-old", 0, "2026-01-10T13:00:00Z", "2026-01-10T14:00:00Z"),
+                (
+                    "condensed",
+                    "old summary",
+                    50,
+                    "sess-old",
+                    0,
+                    "2026-01-10T13:00:00Z",
+                    "2026-01-10T14:00:00Z",
+                ),
             )
             conn.execute(
                 "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
@@ -1331,7 +1339,15 @@ class TestCondensedNodesForIssue:
                 "INSERT INTO summary_nodes"
                 "(kind, content, tokens, session_id, level, ts_end, created_at) "
                 "VALUES(?, ?, ?, ?, ?, ?, ?)",
-                ("condensed", "new summary", 50, "sess-new", 0, "2026-01-12T13:00:00Z", "2026-01-10T14:00:00Z"),
+                (
+                    "condensed",
+                    "new summary",
+                    50,
+                    "sess-new",
+                    0,
+                    "2026-01-12T13:00:00Z",
+                    "2026-01-10T14:00:00Z",
+                ),
             )
             conn.commit()
         finally:

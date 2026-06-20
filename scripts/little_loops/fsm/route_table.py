@@ -411,10 +411,7 @@ class CompoundGridRenderer:
                 row = [str(i)] + [pred_map.get(d, EMPTY_CELL) for d in dims] + [rule.target]
             rows.append(row)
 
-        widths = [
-            max(len(str(r[i])) for r in ([headers] + rows))
-            for i in range(len(headers))
-        ]
+        widths = [max(len(str(r[i])) for r in ([headers] + rows)) for i in range(len(headers))]
 
         def fmt(cells: list[str]) -> str:
             return "| " + " | ".join(str(c).ljust(widths[i]) for i, c in enumerate(cells)) + " |"
@@ -460,7 +457,9 @@ def _parse_cond_cell(dim: str, val: str) -> Any:
     return Predicate(dim=dim, op=m.group(1), value=m.group(2).strip())
 
 
-def _parse_rule_cells(dims: list[str], dim_cells: dict[str, str], action: str, known_states: set[str]) -> tuple[Any, list[str]]:
+def _parse_rule_cells(
+    dims: list[str], dim_cells: dict[str, str], action: str, known_states: set[str]
+) -> tuple[Any, list[str]]:
     """Parse dimension cells into a Rule and return (rule, unknown_action_warnings)."""
     from little_loops.fsm.policy_rules import Predicate
     from little_loops.fsm.policy_rules import Rule as PolicyRule
@@ -469,9 +468,8 @@ def _parse_rule_cells(dims: list[str], dim_cells: dict[str, str], action: str, k
     if known_states and action not in known_states:
         warnings.append(f"Action state '{action}' is not a known state in this loop")
 
-    is_catchall = (
-        all(v in ("*", "", EMPTY_CELL, "-") for v in dim_cells.values())
-        and any(v == "*" for v in dim_cells.values())
+    is_catchall = all(v in ("*", "", EMPTY_CELL, "-") for v in dim_cells.values()) and any(
+        v == "*" for v in dim_cells.values()
     )
 
     if is_catchall:

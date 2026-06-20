@@ -47,7 +47,7 @@ class Predicate:
     """Single comparison in a rule LHS."""
 
     dim: str
-    op: str    # one of: >=, <=, ==, !=, <, >
+    op: str  # one of: >=, <=, ==, !=, <, >
     value: str  # raw string from rule text; numeric for ordered ops
 
 
@@ -87,11 +87,11 @@ def _parse_predicate(text: str) -> Predicate:
     if op in _ORDERED_OPS:
         try:
             float(value)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Ordered operator {op!r} requires a numeric value; "
                 f"got {value!r} in predicate {text!r}"
-            )
+            ) from err
     return Predicate(dim=dim, op=op, value=value)
 
 
