@@ -101,12 +101,16 @@ MR-1 is the load-bearing one: an optimizer's self-assessment is no better than a
 flip, so pair the LLM judge with something it cannot talk its way around — an exit code, a
 numeric score, a diff stall, or a convergence gate.
 
-**Canonical MR-1 example — `loop-composer-adaptive`'s `reassess` gate**: The `reassess`
-state (`llm_structured`) is preceded in the routing chain by `check_replan_budget`
-(`output_numeric`, operator: `lt`). The budget counter is a non-LLM signal the LLM cannot
-self-inflate, so it gates access to the reassess prompt. Full routing chain:
-`increment_replan_count → check_replan_budget (output_numeric) → read_completed_summaries
-→ read_last_verdict → reassess (llm_structured)`. This matches the
+**Canonical MR-1 example — `loop-composer-adaptive`'s `reassess` gate**: When a
+sub-loop fails, `reassess` (`llm_structured`) is reached unconditionally via
+`write_step_failed → read_completed_summaries → read_last_verdict → reassess`.
+If `reassess` decides to replan, `check_replan_budget` (`output_numeric`, operator: `lt`)
+gates *re-entry*: `reassess → parse_reassess_decision → route_reassess_replan (on_yes)
+→ check_replan_budget → increment_replan_count → apply_replan → (sub-loop re-runs)
+→ … → reassess`. The budget counter is a non-LLM signal the LLM cannot self-inflate,
+so it enforces a hard ceiling on how many times the LLM judge can decide to replan —
+satisfying MR-1's requirement that every `llm_structured` state be paired with a
+non-LLM evaluator in its routing chain. This matches the
 `harness-single-shot.yaml:check_semantic → check_invariants` pattern — a measurable
 external signal gates entry to the LLM judge. See
 [`loops/loop-composer-adaptive.yaml`](../../scripts/little_loops/loops/loop-composer-adaptive.yaml).

@@ -1,11 +1,12 @@
 ---
 id: ENH-2237
 type: ENH
-status: open
+status: done
 priority: P3
 discovered_date: 2026-06-19
 discovered_by: audit-docs
 testable: false
+completed_at: 2026-06-20 04:06:26+00:00
 labels:
 - docs
 - loops
@@ -96,4 +97,5 @@ non-LLM evaluator in its routing chain.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T04:05:28 - `f8d4add9-958f-4e0b-9238-74f3df289581.jsonl`
 - `/ll:format-issue` - 2026-06-20T03:51:02 - `d0cf3b86-358f-4c2f-ba19-f4565d61ace4.jsonl`
