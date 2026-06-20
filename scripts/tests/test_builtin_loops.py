@@ -6968,11 +6968,12 @@ class TestRnRemediateAssessRouting:
             f"assess.on_partial should be 'verify_scores_persisted', got {state.get('on_partial')!r}"
         )
 
-    def test_assess_on_no_routes_to_refine(self, data: dict) -> None:
-        """assess.on_no must route to refine (genuine not-ready verdict → remediate, don't crash)."""
+    def test_assess_on_no_routes_to_refine_first(self, data: dict) -> None:
+        """assess.on_no must route to refine_first (ENH-2247: first-pass scoring is not a
+        content diagnosis → lighter --auto refine, not the destructive --full-rewrite)."""
         state = data["states"].get("assess", {})
-        assert state.get("on_no") == "refine", (
-            f"assess.on_no should be 'refine', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "refine_first", (
+            f"assess.on_no should be 'refine_first', got {state.get('on_no')!r}"
         )
 
     # decide state tests (BUG-2169)
@@ -7007,11 +7008,12 @@ class TestRnRemediateAssessRouting:
             f"wire.on_yes should be 'mark_wired', got {state.get('on_yes')!r}"
         )
 
-    def test_wire_on_no_routes_to_refine(self, data: dict) -> None:
-        """wire.on_no must route to refine (wire failure → rewrite warranted)."""
+    def test_wire_on_no_routes_to_refine_first(self, data: dict) -> None:
+        """wire.on_no must route to refine_first (ENH-2247: a wire failure is an
+        integration-map problem, not prose-content → lighter --auto refine)."""
         state = data["states"].get("wire", {})
-        assert state.get("on_no") == "refine", (
-            f"wire.on_no should be 'refine', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "refine_first", (
+            f"wire.on_no should be 'refine_first', got {state.get('on_no')!r}"
         )
 
     def test_wire_on_partial_routes_to_mark_wired(self, data: dict) -> None:
@@ -7050,6 +7052,82 @@ class TestRnRemediateAssessRouting:
             "partial_route_ok should be absent or false now that decide/wire/refine all "
             "define on_yes/on_no/on_partial; remove it so MR-4 validation catches regressions"
         )
+
+
+class TestRnImplementDiagnosticOutcomes:
+    """rn-implement splits SCORES_MISSING / SIZE_REVIEW_FAILED out of the generic
+    record_failure bucket into distinct diagnostic record states for operator triage."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-implement.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_rem_rate_limited_on_no_routes_to_scores_missing_router(self, data: dict) -> None:
+        """route_rem_rate_limited.on_no must hand off to route_rem_scores_missing
+        (instead of collapsing SCORES_MISSING into record_failure)."""
+        state = data["states"]["route_rem_rate_limited"]
+        assert state["on_no"] == "route_rem_scores_missing"
+        assert state["on_error"] == "route_rem_scores_missing"
+
+    def test_route_rem_scores_missing_splits_to_record_state(self, data: dict) -> None:
+        """route_rem_scores_missing matches the SCORES_MISSING token and routes it to
+        record_scores_missing; everything else falls through to record_failure."""
+        state = data["states"]["route_rem_scores_missing"]
+        assert state["evaluate"]["type"] == "output_contains"
+        assert state["evaluate"]["pattern"] == "SCORES_MISSING"
+        assert "${captured.rem_outcome.output}" in state["evaluate"]["source"]
+        assert state["on_yes"] == "record_scores_missing"
+        assert state["on_no"] == "record_failure"
+        assert state["on_error"] == "record_failure"
+
+    def test_dec_rate_limited_on_no_routes_to_size_review_router(self, data: dict) -> None:
+        """route_dec_rate_limited.on_no must hand off to route_dec_size_review_failed."""
+        state = data["states"]["route_dec_rate_limited"]
+        assert state["on_no"] == "route_dec_size_review_failed"
+        assert state["on_error"] == "route_dec_size_review_failed"
+
+    def test_route_dec_size_review_failed_splits_to_record_state(self, data: dict) -> None:
+        """route_dec_size_review_failed matches SIZE_REVIEW_FAILED and routes it to
+        record_size_review_failed; else record_failure."""
+        state = data["states"]["route_dec_size_review_failed"]
+        assert state["evaluate"]["type"] == "output_contains"
+        assert state["evaluate"]["pattern"] == "SIZE_REVIEW_FAILED"
+        assert "${captured.dec_outcome.output}" in state["evaluate"]["source"]
+        assert state["on_yes"] == "record_size_review_failed"
+        assert state["on_no"] == "record_failure"
+        assert state["on_error"] == "record_failure"
+
+    @pytest.mark.parametrize(
+        "state_name,tag",
+        [
+            ("record_scores_missing", "SCORES_MISSING"),
+            ("record_size_review_failed", "SIZE_REVIEW_FAILED"),
+        ],
+    )
+    def test_diagnostic_record_states_tag_and_continue(
+        self, data: dict, state_name: str, tag: str
+    ) -> None:
+        """Each diagnostic record state writes a tagged line to failures.txt (so report
+        can tally it separately) and continues the queue via next: dequeue_next —
+        mirroring the record_sub_loop_crash convention."""
+        state = data["states"][state_name]
+        assert state["action_type"] == "shell"
+        assert tag in state["action"]
+        assert "failures.txt" in state["action"]
+        assert state["next"] == "dequeue_next"
+
+    def test_report_tallies_diagnostics_separately_from_failures(self, data: dict) -> None:
+        """report subtracts SCORES_MISSING and SIZE_REVIEW_FAILED from the headline
+        failure count and surfaces them as distinct summary.json keys."""
+        action = data["states"]["report"]["action"]
+        assert 'grep -c "SCORES_MISSING"' in action
+        assert 'grep -c "SIZE_REVIEW_FAILED"' in action
+        assert "- SCORES_MISSING - SIZE_REVIEW_FAILED" in action
+        assert '"scores_missing"' in action
+        assert '"size_review_failed"' in action
 
 
 class TestCheckSubstrateOptionalState:

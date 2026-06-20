@@ -77,7 +77,7 @@ states:
     action_type: slash_command
     on_success: verify_scores_persisted
     on_partial: verify_scores_persisted
-    on_no: refine
+    on_no: refine_first
     on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 
@@ -191,8 +191,11 @@ states:
       CHANGE_SURFACE=$(jq -r '.score_change_surface // 0' "$PRE" 2>/dev/null || echo 0)
       [ "$CHANGE_SURFACE" -eq 0 ] && exit 0 || exit 1
     on_yes: wire
-    on_no: refine
-    on_error: refine
+    # ENH-2247: confidence-gap path (outcome already >= threshold, integration map
+    # present) is a score-threshold trigger, not a content diagnosis — route to the
+    # lighter refine_first (--auto) rather than the destructive --full-rewrite.
+    on_no: refine_first
+    on_error: refine_first
 
   check_decision_needed:
     fragment: shell_exit
@@ -314,7 +317,7 @@ states:
       type: output_contains
       source: "${captured.gate_decision.output}"
       pattern: "NEED_REFINE"
-    on_yes: refine
+    on_yes: refine_first
     on_no: route_gate_wire
     on_error: implement
 
@@ -356,14 +359,16 @@ states:
     # refine. If wiring alone resolves the condition, re_assess → check_convergence
     # routes back to refine/diagnose only if ambiguity/artifacts remain — avoiding
     # a wasted --full-rewrite pass that could overwrite valid wiring changes.
-    # on_error still falls back to refine: a wiring failure warrants a rewrite.
+    # ENH-2247: on_no falls back to refine_first (--auto), not the destructive
+    # refine (--full-rewrite): a wiring failure is an integration-map problem, not
+    # an issue-prose-content problem, so a full rewrite is not warranted.
     # Marker-gate: route success through mark_wired (which sets the wired marker
     # then continues to re_assess) so the pre-implement gate can confirm a wire
     # ran. BUG-2007 intent is preserved — success still reaches re_assess, never
     # unconditionally bounces back to refine.
     # on_partial: mark_wired — partial wire still marks; re_assess → check_convergence decides sufficiency.
     on_yes: mark_wired
-    on_no: refine
+    on_no: refine_first
     on_partial: mark_wired
     on_rate_limit_exhausted: rate_limit_diagnostic
 
@@ -384,6 +389,32 @@ states:
     # --auto without --full-rewrite so existing well-specified content is not destroyed.
     fragment: with_rate_limit_handling
     action: "/ll:refine-issue ${context.issue_id} --auto"
+    action_type: slash_command
+    on_yes: mark_refined
+    on_no: emit_implement_failed
+    on_partial: mark_refined
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  refine_first:
+    # ENH-2247: lighter refine for first-pass / policy-gate / wire-failure /
+    # confidence-gap paths (assess on_no, gate_implement NEED_REFINE, wire on_no,
+    # check_wire_needed_outcome on_no/on_error). --auto only (no --full-rewrite) so
+    # partially-correct content is patched, not bulldozed. Only diagnose → REFINE
+    # (a confirmed dimensional/content diagnosis) retains the destructive refine.
+    fragment: with_rate_limit_handling
+    action: "/ll:refine-issue ${context.issue_id} --auto"
+    action_type: slash_command
+    on_yes: mark_refined
+    on_no: emit_implement_failed
+    on_partial: mark_refined
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  refine_followup:
+    # ENH-2247: additive-only refine for re_assess on_no — a full-rewrite pass
+    # already ran this cycle, so patch remaining gaps (--auto --gap-analysis)
+    # instead of re-bulldozing the first pass's improvements.
+    fragment: with_rate_limit_handling
+    action: "/ll:refine-issue ${context.issue_id} --auto --gap-analysis"
     action_type: slash_command
     on_yes: mark_refined
     on_no: emit_implement_failed
@@ -432,7 +463,10 @@ states:
     action_type: slash_command
     on_success: verify_re_assess_scores
     on_partial: verify_re_assess_scores
-    on_no: refine
+    # ENH-2247: a full-rewrite pass already ran this cycle; the follow-up should
+    # patch remaining gaps additively (refine_followup, --auto --gap-analysis)
+    # rather than bulldoze the first pass's improvements with another --full-rewrite.
+    on_no: refine_followup
     on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 

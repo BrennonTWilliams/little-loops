@@ -540,8 +540,11 @@ Phase 2 — Dimensional Diagnosis:
 Phase 3 — Remediation Actions:
   implement (shell: ll-auto --only) → done
   decide    (slash_command: /ll:decide-issue --auto) → re_assess
-  wire      (slash_command: /ll:wire-issue --auto) → refine
-  refine    (slash_command: /ll:refine-issue --auto --full-rewrite) → re_assess
+  wire      (slash_command: /ll:wire-issue --auto) → mark_wired (on_no → refine_first)
+  refine          (slash_command: /ll:refine-issue --auto --full-rewrite)   → mark_refined → re_assess  [ONLY diagnose → REFINE]
+  refine_first    (slash_command: /ll:refine-issue --auto)                   → mark_refined → re_assess  [assess/gate/wire/check_wire_needed_outcome]
+  refine_followup (slash_command: /ll:refine-issue --auto --gap-analysis)    → mark_refined → re_assess  [re_assess on_no]
+  refine_light    (slash_command: /ll:refine-issue --auto)                   → mark_refined → re_assess  [diagnose → REFINE_LIGHT]
 
 Phase 4 — Re-Assessment:
   re_assess → verify_re_assess_scores → check_convergence
@@ -553,7 +556,7 @@ Phase 5 — Convergence:
     (under budget → diagnose; exhausted → emit_stalled_needs_decompose → failed)
 ```
 
-**`gate_implement` marker-gate (ENH-2163)**: Both `IMPLEMENT` (from `diagnose`) and `CONVERGED_PASS` (from `check_convergence`) route through `gate_implement` before reaching `implement`. This choke point checks whether an above-minimal-complexity issue (`score_complexity ≥ diagnose_complexity_threshold`, default 15) has been through *at least one* `/ll:refine-issue` pass **and** *at least one* `/ll:wire-issue` pass in this run. If not, it forces the missing step first — adding at most one refine detour and one wire detour per issue, bounded, not a loop. Minimal-complexity issues and callers that set `require_refine_and_wire: false` pass straight through. Fail-open: any gate error routes directly to `implement` rather than blocking. Markers (`refined_<ID>.txt` and `wired_<ID>.txt`) are written to `${context.run_dir}` by the `refine` and `wire` states and persist for the duration of the run.
+**`gate_implement` marker-gate (ENH-2163)**: Both `IMPLEMENT` (from `diagnose`) and `CONVERGED_PASS` (from `check_convergence`) route through `gate_implement` before reaching `implement`. This choke point checks whether an above-minimal-complexity issue (`score_complexity ≥ diagnose_complexity_threshold`, default 15) has been through *at least one* `/ll:refine-issue` pass **and** *at least one* `/ll:wire-issue` pass in this run. If not, it forces the missing step first — adding at most one refine detour and one wire detour per issue, bounded, not a loop. Minimal-complexity issues and callers that set `require_refine_and_wire: false` pass straight through. Fail-open: any gate error routes directly to `implement` rather than blocking. Markers (`refined_<ID>.txt` and `wired_<ID>.txt`) are written to `${context.run_dir}` by the refine-family states (`refine`, `refine_first`, `refine_followup`, `refine_light` — all via the shared `mark_refined` hop) and the `wire` state (via `mark_wired`), and persist for the duration of the run.
 
 **Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > DECOMPOSE). The `DECOMPOSE` token is a terminal diagnosis — it falls through the routing chain to `failed`, signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_steps: 100`, `timeout: 14400`, `on_handoff: spawn`.
 

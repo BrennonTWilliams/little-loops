@@ -55,6 +55,16 @@ class TestAssessAndScorePersistence:
         assess = data["states"]["assess"]
         assert assess["on_rate_limit_exhausted"] == "rate_limit_diagnostic"
 
+    def test_assess_on_no_routes_to_refine_first(self) -> None:
+        """assess routes no → refine_first (ENH-2247).
+
+        First-pass scoring on an unscored issue is not a content diagnosis, so it
+        uses the lighter refine_first (--auto), not the destructive refine.
+        """
+        data = _load_loop()
+        assess = data["states"]["assess"]
+        assert assess["on_no"] == "refine_first"
+
     def test_verify_scores_persisted_uses_exit_code_evaluator(self) -> None:
         """verify_scores_persisted uses exit_code evaluator (not output_numeric)."""
         data = _load_loop()
@@ -139,6 +149,20 @@ class TestReadinessAndDecisionGates:
         data = _load_loop()
         co = data["states"]["check_outcome"]
         assert co["on_no"] == "check_decision_needed"
+
+    def test_check_wire_needed_outcome_routes_no_and_error_to_refine_first(self) -> None:
+        """check_wire_needed_outcome routes no/error → refine_first (ENH-2247).
+
+        Reached when outcome already passes but readiness fails (confidence is the
+        gap) and an integration map is present — a score-threshold trigger, not a
+        content diagnosis. ENH-2247 closed this gap (the issue's original caller list
+        omitted it) so it no longer hits the destructive refine.
+        """
+        data = _load_loop()
+        cwno = data["states"]["check_wire_needed_outcome"]
+        assert cwno["on_yes"] == "wire"
+        assert cwno["on_no"] == "refine_first"
+        assert cwno["on_error"] == "refine_first"
 
     def test_check_decision_needed_uses_check_flag(self) -> None:
         """check_decision_needed uses ll-issues check-flag."""
@@ -318,8 +342,9 @@ class TestRemediationActions:
         marker, then continues to check_decision_needed_post) so the pre-implement
         gate can confirm a wire ran. BUG-2222: mark_wired continues to
         check_decision_needed_post so wiring that sets decision_needed:true routes
-        to /ll:decide-issue automatically. on_no routes to refine (a wiring decline
-        still warrants a rewrite).
+        to /ll:decide-issue automatically. ENH-2247: on_no routes to refine_first
+        (--auto), not the destructive refine — a wiring failure is an integration-map
+        problem, not a prose-content problem, so a full rewrite is not warranted.
 
         BUG-2169: uses slash_command routing (on_yes/on_no/on_partial), not
         sub-loop delegation keys (on_success/on_error).
@@ -329,7 +354,7 @@ class TestRemediationActions:
         assert wire["on_yes"] == "mark_wired"
         assert wire["on_partial"] == "mark_wired"
         assert data["states"]["mark_wired"]["next"] == "check_decision_needed_post"
-        assert wire["on_no"] == "refine"
+        assert wire["on_no"] == "refine_first"
 
     def test_refine_uses_full_rewrite_flag(self) -> None:
         """refine uses --full-rewrite flag."""
@@ -383,6 +408,77 @@ class TestRemediationActions:
         assert rl["on_yes"] == "mark_refined"
         assert rl["on_partial"] == "mark_refined"
         assert rl["on_no"] == "emit_implement_failed"
+
+    def test_refine_first_exists_and_omits_full_rewrite(self) -> None:
+        """refine_first uses --auto without --full-rewrite (ENH-2247).
+
+        First-pass / policy-gate / wire-failure / confidence-gap callers route here
+        so partially-correct content is patched, not bulldozed.
+        """
+        data = _load_loop()
+        rf = data["states"]["refine_first"]
+        assert "/ll:refine-issue" in rf["action"]
+        assert "--auto" in rf["action"]
+        assert "--full-rewrite" not in rf["action"]
+
+    def test_refine_first_routes_through_mark_refined(self) -> None:
+        """refine_first shares the marker-gate path (mark_refined on yes/partial)."""
+        data = _load_loop()
+        rf = data["states"]["refine_first"]
+        assert rf["on_yes"] == "mark_refined"
+        assert rf["on_partial"] == "mark_refined"
+        assert rf["on_no"] == "emit_implement_failed"
+        assert data["states"]["mark_refined"]["next"] == "check_decision_needed_post"
+
+    def test_refine_followup_uses_gap_analysis_not_full_rewrite(self) -> None:
+        """refine_followup uses --auto --gap-analysis without --full-rewrite (ENH-2247).
+
+        re_assess on_no routes here: a full-rewrite already ran this cycle, so the
+        follow-up patches remaining gaps additively instead of re-bulldozing.
+        """
+        data = _load_loop()
+        rfu = data["states"]["refine_followup"]
+        assert "/ll:refine-issue" in rfu["action"]
+        assert "--auto" in rfu["action"]
+        assert "--gap-analysis" in rfu["action"]
+        assert "--full-rewrite" not in rfu["action"]
+
+    def test_refine_followup_routes_through_mark_refined(self) -> None:
+        """refine_followup shares the marker-gate path (mark_refined on yes/partial)."""
+        data = _load_loop()
+        rfu = data["states"]["refine_followup"]
+        assert rfu["on_yes"] == "mark_refined"
+        assert rfu["on_partial"] == "mark_refined"
+        assert rfu["on_no"] == "emit_implement_failed"
+
+    def test_only_diagnose_route_reaches_destructive_refine(self) -> None:
+        """The destructive refine (--full-rewrite) is reachable ONLY from diagnose → REFINE.
+
+        ENH-2247: every other caller (assess, gate_implement, wire,
+        check_wire_needed_outcome, re_assess) routes to a lighter variant. This guards
+        against a future re-route accidentally re-pointing a caller at the destructive
+        state. Walk every transition key on every state and assert no state other than
+        the diagnose route-table targets `refine`.
+        """
+        data = _load_loop()
+        transition_keys = (
+            "on_yes", "on_no", "on_partial", "on_success", "on_error",
+            "on_failure", "on_rate_limit_exhausted", "next",
+        )
+        offenders = []
+        for name, state in data["states"].items():
+            if not isinstance(state, dict):
+                continue
+            for key in transition_keys:
+                if state.get(key) == "refine":
+                    offenders.append(f"{name}.{key}")
+            # route: tables — only diagnose's REFINE entry is allowed
+            for token, target in (state.get("route") or {}).items():
+                if target == "refine" and not (name == "diagnose" and token == "REFINE"):
+                    offenders.append(f"{name}.route.{token}")
+        assert offenders == [], f"unexpected routes into destructive refine: {offenders}"
+        # And confirm the one allowed route is intact.
+        assert data["states"]["diagnose"]["route"]["REFINE"] == "refine"
 
     def test_check_complexity_pre_implement_on_yes_routes_to_wire_check(self) -> None:
         """check_complexity_pre_implement on_yes routes to check_wire_pre_implement (ENH-2223).
@@ -479,7 +575,11 @@ class TestMarkerGate:
         assert "wired_" in action
 
     def test_gate_router_cascade_forces_refine_then_wire_then_implement(self) -> None:
-        """route_gate_refine → refine; else route_gate_wire → wire; else implement."""
+        """route_gate_refine → refine_first; else route_gate_wire → wire; else implement.
+
+        ENH-2247: the marker-policy gate is not a content diagnosis, so NEED_REFINE
+        routes to the lighter refine_first (--auto), not the destructive refine.
+        """
         data = _load_loop()
         gate = data["states"]["gate_implement"]
         assert gate["next"] == "route_gate_refine"
@@ -487,7 +587,7 @@ class TestMarkerGate:
         assert rgr["evaluate"]["type"] == "output_contains"
         assert "${captured.gate_decision.output}" in rgr["evaluate"]["source"]
         assert rgr["evaluate"]["pattern"] == "NEED_REFINE"
-        assert rgr["on_yes"] == "refine"
+        assert rgr["on_yes"] == "refine_first"
         assert rgr["on_no"] == "route_gate_wire"
         assert rgr["on_error"] == "implement"
         rgw = data["states"]["route_gate_wire"]
@@ -543,10 +643,15 @@ class TestReassessAndConvergence:
         assert reassess.get("on_partial") == "verify_re_assess_scores"
 
     def test_re_assess_has_on_no_route(self) -> None:
-        """re_assess routes no → refine (MR-4 — BUG-2115)."""
+        """re_assess routes no → refine_followup (MR-4 — BUG-2115; ENH-2247).
+
+        ENH-2247: a full-rewrite pass already ran this cycle, so the follow-up
+        patches remaining gaps additively (refine_followup, --auto --gap-analysis)
+        rather than re-bulldozing the first pass's improvements.
+        """
         data = _load_loop()
         reassess = data["states"]["re_assess"]
-        assert reassess.get("on_no") == "refine"
+        assert reassess.get("on_no") == "refine_followup"
 
     def test_verify_re_assess_scores_uses_exit_code_evaluator(self) -> None:
         """verify_re_assess_scores uses exit_code evaluator (not output_numeric)."""
