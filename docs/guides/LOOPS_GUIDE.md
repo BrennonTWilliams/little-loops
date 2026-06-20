@@ -680,7 +680,7 @@ check_stall:
 | `ll-loop next-loop` | Suggest next loop(s) from execution history |
 | `ll-loop diagnose-evaluators <name>` | Scan evaluator history for non-discriminating states (Bernoulli variance `p*(1-p)` below 0.05); exits 1 if any flagged |
 | `ll-loop calibrate-budget <name>` | Check whether raising `max_steps` will earn its token cost; reports `⚠ WARN` when evaluator variance is too low |
-| `ll-loop edit-routes <name>` | Render routing as a decision table and open in `$EDITOR`; `--dry-run` to print only; `--format csv` for CSV output; `--decision-table` to render compound policy-router condition×action grid (auto-detected for loops importing `lib/policy-router.yaml`) |
+| `ll-loop edit-routes <name>` | Render routing as a decision table and open in `$EDITOR`; `--dry-run` to print only; `--format csv` for CSV output; `--decision-table` to render compound policy-router condition×action grid (auto-detected for loops importing `lib/policy-router.yaml`); `--no-warnings` to skip gap/conflict output; `--allow-delete` to permit removal of states deleted from the table |
 
 Common run flags: `--dry-run` (plan only), `-n <N>` (override `max_steps`), `--queue` (wait on scope conflicts), `-b` (background), `-f` (stream transitions), `--show-diagrams` (live FSM diagram; add `--clear` for a pinned dashboard), `--delay <s>` (sleep between iterations), `--context KEY=VALUE` (override context, repeatable), `--no-llm` (deterministic evaluators only), `--program-md PATH` (load a steering directive; see [program.md convention](../reference/program-md.md)). Run `ll-loop run --help` for the full list.
 
@@ -860,7 +860,7 @@ ll-loop fragments lib/common.yaml
 
 **Mine fragments from history instead of hand-writing them**: the `/ll:distill-traces` skill mines `.loops/.history/` for a named loop and writes ranked state templates, transition patterns, and a human-readable catalogue to `scripts/little_loops/loops/lib/<loop-name>/`. Use its output as the starting point for a new library.
 
-Seven built-in libraries ship in `scripts/little_loops/loops/lib/` — `common.yaml` (type-pattern gates), `cli.yaml` (pre-filled ll- CLI states), `benchmark.yaml`, `score-plan-quality.yaml`, `prompt-fragments.yaml`, `harness.yaml` (Playwright screenshot + rubric scoring), and `apo-base.yaml` (a `from:` template, not a fragment collection). They resolve automatically from user loops — no copying needed. Full fragment tables: [Built-in Fragment Libraries](LOOPS_REFERENCE.md#built-in-fragment-libraries).
+Built-in libraries ship in `scripts/little_loops/loops/lib/` — `common.yaml` (type-pattern gates), `cli.yaml` (pre-filled ll- CLI states), `benchmark.yaml`, `score-plan-quality.yaml`, `prompt-fragments.yaml`, `harness.yaml` (Playwright screenshot + rubric scoring), `composer.yaml`, `policy-router.yaml`, `rubric-router.yaml`, `apo-base.yaml` (a `from:` template, not a fragment collection), and `apo-shape-a.yaml`. They resolve automatically from user loops — no copying needed. Full fragment tables: [Built-in Fragment Libraries](LOOPS_REFERENCE.md#built-in-fragment-libraries).
 
 | Approach | Best for |
 |----------|----------|
