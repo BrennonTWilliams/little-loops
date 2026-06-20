@@ -989,6 +989,7 @@ Fix toothless evaluators _before_ raising `max_steps`, or the extra budget is wa
 ## Further Reading
 
 - [Built-in Loops Reference](LOOPS_REFERENCE.md) — full catalog: every built-in loop's context variables, FSM flow, and invocation examples
+- [Recursive Loops Guide](RECURSIVE_LOOPS_GUIDE.md) — how the `rn-*` family (`rn-plan`, `rn-refine`, `rn-implement`, `rn-remediate`, `rn-decompose`) works and hands off between loops
 - [FSM Loop System Design](../generalized-fsm-loop.md) — FSM schema, evaluators, variable interpolation, and full YAML reference
 - [Automatic Harnessing Guide](AUTOMATIC_HARNESSING_GUIDE.md) — harness evaluation pipeline deep-dive, MCP gates, skill-as-judge, worked examples
 - [Harness Optimization Guide](HARNESS_OPTIMIZATION_GUIDE.md) — meta-loop design rules and the optimizer error taxonomy

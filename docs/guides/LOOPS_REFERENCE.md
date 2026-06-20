@@ -178,6 +178,8 @@ ll-loop run integrate-sdk --context target="anthropic" --context goal="streaming
 
 *Choose these when the deliverable is knowledge — a cited research report, issues distilled from local documents, or a recursively self-scored plan — rather than a code change.*
 
+> **Tip**: For how the `rn-*` loops below (`rn-plan`, `rn-refine`, `rn-implement`, `rn-remediate`, `rn-decompose`) fit together and hand off to each other, see the narrative [Recursive Loops Guide](RECURSIVE_LOOPS_GUIDE.md).
+
 | Loop | Description |
 |------|-------------|
 | `deep-research` | Iterative web research synthesis — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured Markdown report with citations; delegates inner FSM chain to `oracles/research-coverage` (ENH-1876) |
