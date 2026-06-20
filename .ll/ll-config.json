@@ -70,6 +70,12 @@
       }
     }
   },
+  "loops": {
+    "run_defaults": {
+      "clear": true,
+      "show_diagrams": "clean"
+    }
+  },
   "history": {
     "session_digest": {
       "enabled": true,

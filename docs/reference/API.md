@@ -632,6 +632,7 @@ class IssueInfo:
     relates_to: list[str] = []            # Thematically related issue IDs (no ordering constraint)
     duplicate_of: str | None = None        # Issue ID this duplicates; set when closing a duplicate
     discovered_by: str | None = None       # Source command/workflow that created this issue
+    epic: str | None = None                # Epic issue ID this child belongs to (e.g., "EPIC-001")
     product_impact: ProductImpact | None = None  # Product impact assessment
     effort: int | None = None              # Effort estimate (1=low, 2=medium, 3=high)
     impact: int | None = None              # Impact estimate (1=low, 2=medium, 3=high)
@@ -2085,8 +2086,8 @@ AutoManager(
     skip_ids: set[str] | None = None,
     type_prefixes: set[str] | None = None,
     priority_filter: set[str] | None = None,
-    verbose: bool = True,
     label_filter: set[str] | None = None,
+    verbose: bool = True,
     preview_full: bool = False,
     db_path: Path | None = None,
 )
@@ -2102,8 +2103,8 @@ AutoManager(
 - `skip_ids` - Issue IDs to skip (in addition to attempted issues)
 - `type_prefixes` - If provided, only process issues with these type prefixes
 - `priority_filter` - If provided, only process issues with these priority levels (e.g., `{"P0", "P1"}`)
-- `verbose` - Whether to output progress messages
 - `label_filter` - If provided, only process issues carrying one of these labels
+- `verbose` - Whether to output progress messages
 - `preview_full` - Show full issue body in dry-run preview (default: summary only)
 - `db_path` - Override path for the SQLite session store (default: `.ll/history.db`)
 
@@ -2133,13 +2134,13 @@ def run_claude_command(
     stream_output: bool = True,
     idle_timeout: int = 0,
     on_model_detected: Callable[[str], None] | None = None,
-    on_usage: UsageCallback | None = None,
-    agent: str | None = None,
-    tools: list[str] | None = None,
+    on_usage: Callable[[int, int], None] | None = None,
+    preview_full: bool = False,
+    resume_session: bool = False,
 ) -> subprocess.CompletedProcess[str]
 ```
 
-Host-agnostic CLI command invocation with output streaming (delegates to `host_runner.resolve_host().build_streaming()`; retained as a public alias for the pre-`host_runner` call surface).
+Preview and invoke a Claude CLI command with output streaming. This is the `issue_manager`-local wrapper that logs and truncates the command before delegating to `subprocess_utils.run_claude_command`.
 
 **Parameters:**
 - `command` - Command to pass to Claude CLI
@@ -2148,9 +2149,9 @@ Host-agnostic CLI command invocation with output streaming (delegates to `host_r
 - `stream_output` - Whether to stream output to console
 - `idle_timeout` - Kill process if no output for this many seconds (0 to disable)
 - `on_model_detected` - Optional callback invoked with the model name from the stream-json system/init event
-- `on_usage` - Optional callback invoked with `(input_tokens, output_tokens)` from the stream-json result event. `input_tokens` includes `cache_read_input_tokens`.
-- `agent` - Claude agent model override; appended as `--agent <value>` to CLI invocation
-- `tools` - Restrict available tools; appended as `--tools <value>` to CLI invocation
+- `on_usage` - Optional callback invoked with `(input_tokens, output_tokens)` from the stream-json result event
+- `preview_full` - If `True`, display the full command without truncation (for `--verbose`)
+- `resume_session` - If `True`, passes `--continue` to the Claude CLI to continue the most recent conversation
 
 **Returns:** `CompletedProcess` with stdout/stderr captured. When a `result` event with `is_error=True` is present in the stream-json output, `CompletedProcess.stderr` will include a `[result] <error>` line containing the error text from the result event's `error` field (falling back to the `result` field).
 
@@ -2168,14 +2169,16 @@ def verify_issue_completed(
 ) -> bool
 ```
 
-Verify that an issue was moved to completed directory.
+Verify that an issue was marked as completed via frontmatter status check.
+
+Reads the issue file's `status:` frontmatter field; `done` or `cancelled` means the close lifecycle ran successfully. Issues are updated in-place rather than moved, so this is a pure frontmatter check.
 
 **Parameters:**
 - `info` - Issue info
-- `config` - Project configuration
+- `config` - Project configuration (unused; kept for signature stability)
 - `logger` - Logger for output
 
-**Returns:** `True` if issue is in completed directory
+**Returns:** `True` if issue's frontmatter `status` is `done` or `cancelled`
 
 #### close_issue
 
@@ -2251,9 +2254,9 @@ def defer_issue(
 ) -> bool
 ```
 
-Move an issue from its active category directory to `deferred/`.
+Defer an issue by writing `status: deferred` to its frontmatter.
 
-Appends a `## Deferred` section to the issue file with the reason and date, then commits the move.
+The file remains in its type directory; only the `status:` field changes. Appends a `## Deferred` section with the reason and date, then commits the update.
 
 **Parameters:**
 - `info` - Parsed issue info
@@ -2280,7 +2283,7 @@ Update a deferred issue in-place: sets status to `open` and emits `issue.started
 
 **Parameters:**
 - `config` - Project configuration
-- `deferred_issue_path` - Path to the issue file in `deferred/`
+- `deferred_issue_path` - Path to the issue file (in its type directory, e.g. `.issues/features/`)
 - `logger` - Logger for output
 - `reason` - Reason for undeferring (optional)
 - `event_bus` - Optional `EventBus` for emitting `issue.started` lifecycle event
@@ -2305,7 +2308,7 @@ info = parser.parse_file(Path(".issues/features/P3-FEAT-042-example.md"))
 defer_issue(info, config, logger, reason="Blocked pending design review")
 
 # Undefer later
-new_path = undefer_issue(config, Path(".issues/deferred/P3-FEAT-042-example.md"), logger)
+new_path = undefer_issue(config, Path(".issues/features/P3-FEAT-042-example.md"), logger)
 ```
 
 ---
@@ -2328,6 +2331,7 @@ class ProcessingState:
     failed_issues: dict[str, str] = field(default_factory=dict)
     attempted_issues: set[str] = field(default_factory=set)
     timing: dict[str, dict[str, float]] = field(default_factory=dict)
+    corrections: dict[str, list[str]] = field(default_factory=dict)
 ```
 
 #### Attributes
@@ -2341,6 +2345,7 @@ class ProcessingState:
 | `failed_issues` | `dict[str, str]` | Mapping of issue ID to failure reason |
 | `attempted_issues` | `set[str]` | Set of issues already attempted |
 | `timing` | `dict` | Per-issue timing breakdown |
+| `corrections` | `dict[str, list[str]]` | Mapping of issue ID to list of auto-corrections made |
 
 #### Methods
 
@@ -2368,12 +2373,13 @@ manager.save()
 #### Constructor
 
 ```python
-StateManager(state_file: Path, logger: Logger)
+StateManager(state_file: Path, logger: Logger, event_bus: EventBus | None = None)
 ```
 
 **Parameters:**
 - `state_file` - Path to the state file
 - `logger` - Logger instance for output
+- `event_bus` - Optional `EventBus` for emitting state transition events
 
 #### Properties
 
@@ -2474,13 +2480,14 @@ Extracted user message with metadata.
 ```python
 @dataclass
 class UserMessage:
-    content: str           # The text content of the message
-    timestamp: datetime    # When the message was sent
-    session_id: str        # Claude Code session identifier
-    uuid: str              # Unique message identifier
-    cwd: str | None        # Working directory when sent
-    git_branch: str | None # Git branch active when sent
-    is_sidechain: bool     # Whether this was a sidechain message
+    content: str                                       # The text content of the message
+    timestamp: datetime                                # When the message was sent
+    session_id: str                                    # Claude Code session identifier
+    uuid: str                                          # Unique message identifier
+    cwd: str | None = None                             # Working directory when sent
+    git_branch: str | None = None                      # Git branch active when sent
+    is_sidechain: bool = False                         # Whether this was a sidechain message
+    response_metadata: ResponseMetadata | None = None  # Metadata extracted from the assistant response
 ```
 
 #### Methods
@@ -2737,6 +2744,8 @@ ParallelOrchestrator(
     br_config: BRConfig,
     repo_path: Path | None = None,
     verbose: bool = True,
+    wave_label: str | None = None,
+    event_bus: EventBus | None = None,
 )
 ```
 
@@ -2745,6 +2754,8 @@ ParallelOrchestrator(
 - `br_config` - Project configuration
 - `repo_path` - Path to the git repository (default: current directory)
 - `verbose` - Whether to output progress messages
+- `wave_label` - Optional label for wave-based execution (e.g., `"Wave 1"`)
+- `event_bus` - Optional `EventBus` for emitting worker completion events
 
 #### Methods
 
@@ -2929,10 +2940,10 @@ class ParallelConfig:
     max_workers: int = 2
     p0_sequential: bool = True
     merge_interval: float = 30.0
-    worktree_base: Path
-    state_file: Path
+    worktree_base: Path = field(default_factory=lambda: Path(".worktrees"))
+    state_file: Path = field(default_factory=lambda: Path(".parallel-manage-state.json"))
     max_merge_retries: int = 2
-    priority_filter: list[str]
+    priority_filter: list[str] = field(default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"])
     max_issues: int = 0
     dry_run: bool = False
     timeout_per_issue: int = 3600
@@ -2943,17 +2954,24 @@ class ParallelConfig:
     command_prefix: str = "/ll:"
     ready_command: str = "ready-issue {{issue_id}}"
     manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
+    decide_command: str = "decide-issue {{issue_id}}"
     only_ids: set[str] | None = None
     skip_ids: set[str] | None = None
     type_prefixes: set[str] | None = None
+    label_filter: set[str] | None = None
     require_code_changes: bool = True
-    worktree_copy_files: list[str]
+    use_feature_branches: bool = False
+    push_feature_branches: bool = False
+    open_pr_for_feature_branches: bool = False
+    worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env"])
     merge_pending: bool = False
     clean_start: bool = False
     ignore_pending: bool = False
     overlap_detection: bool = False
     serialize_overlapping: bool = True
+    skip_learning_gate: bool = False
     base_branch: str = "main"
+    remote_name: str = "origin"
 ```
 
 #### Methods
@@ -3115,6 +3133,7 @@ class OrchestratorState:
 class WorkerStage(Enum):
     SETUP = "setup"                # Creating git worktree and copying .claude/
     VALIDATING = "validating"      # Running ready-issue command
+    PROVING = "proving"            # Running proof-first-task assumption-firewall gate
     IMPLEMENTING = "implementing"  # Running manage-issue command
     VERIFYING = "verifying"        # Checking work was done and updating branch base
     MERGING = "merging"            # Awaiting merge coordination
@@ -3522,9 +3541,9 @@ Entry point for `ll-parallel` command. Process issues concurrently using isolate
 **Returns:** Exit code
 
 **CLI Arguments:**
-- `--max-workers` - Number of parallel workers
+- `--workers` - Number of parallel workers (short: `-w`)
 - `--timeout` - Per-issue timeout in seconds
-- `--issues` - Specific issue IDs to process
+- `--only` - Comma-separated issue IDs to process exclusively
 
 ### main_sync
 
@@ -3628,11 +3647,15 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 - `--db PATH` — Path to the session database (default: `.ll/history.db`)
 
 **Subcommands:**
-- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--limit N` (default 20)
-- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli}`, optional `--limit N` (default 20)
-- `backfill` — Seed the database from existing on-disk sources; `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830); output includes `corrections=N` count of user-correction rows mined from `message_events` (ENH-1904). `--host {claude-code,codex,opencode,pi}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945)
+- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind {tool,file,issue,loop,correction,message,skill,cli}`, `--limit N` (default 20), `--json`
+- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli}` (or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
+- `backfill` — Seed the database from existing on-disk sources; `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830); output includes `corrections=N` count of user-correction rows mined from `message_events` (ENH-1904). `--host {claude-code,codex,opencode,pi}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945). `--extract-decisions` runs decision mining after backfill (ENH-2152). `--snapshots` hydrates the `issue_snapshots` table from existing `.issues/` files (ENH-2151)
 - `related` — Issue events for a given issue ID; requires `ISSUE_ID` positional arg, optional `--limit N` and `--json`
 - `path` — Resolve and print the JSONL file path for a session ID; exits non-zero if unknown
+- `grep` — Regex search over `message_events` with optional summary-node context; requires `PATTERN`, optional `--summary-id ID`, `--limit N` (default 50), `--json`
+- `expand` — Return `message_events` covered by a summary node; requires `SUMMARY_ID`, optional `--json`
+- `describe` — Show metadata for a summary node; requires `NODE_ID`, optional `--json`
+- `prune` — Prune raw event rows older than configured max-age and VACUUM the database; optional `--dry-run`, `--json`
 
 ---
 
@@ -4211,6 +4234,9 @@ class FSMLoop:
     meta_self_eval_ok: bool = False       # Suppress MR-1/MR-2 meta-loop lint rules (ENH-1665)
     shared_state_ok: bool = False         # Suppress MR-3 artifact-isolation lint rule
     partial_route_ok: bool = False        # Suppress MR-4 partial-route dead-end lint rule (ENH-1917)
+    artifact_versioning: bool = False     # Declare that this loop versions artifacts per-iteration (satisfies MR-5)
+    artifact_versioning_ok: bool = False  # Suppress MR-5 artifact-versioning lint rule (ENH-1957)
+    generator_fix_ok: bool = False        # Suppress MR-6 generator-fix discipline lint rule (ENH-2079)
     imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
 
@@ -4311,20 +4337,35 @@ Configuration for a single FSM state.
 @dataclass
 class StateConfig:
     action: str | None = None          # Command to execute
-    evaluate: EvaluateConfig | None    # Evaluator configuration
-    route: RouteConfig | None          # Full routing table
-    on_yes: str | None = None      # Shorthand routing
-    on_no: str | None = None      # Shorthand routing
+    action_type: str | None = None     # How to run action: "prompt", "slash_command", "shell", "mcp_tool"
+    params: dict[str, Any] = field(default_factory=dict)  # MCP tool arguments (mcp_tool only)
+    evaluate: EvaluateConfig | None = None  # Evaluator configuration
+    route: RouteConfig | None = None   # Full routing table
+    on_yes: str | None = None          # Shorthand routing
+    on_no: str | None = None           # Shorthand routing
     on_error: str | None = None        # Shorthand routing
+    on_partial: str | None = None      # Shorthand routing for partial verdict
+    on_blocked: str | None = None      # Shorthand routing for blocked verdict
     next: str | None = None            # Unconditional transition
     terminal: bool = False             # End state marker
     capture: str | None = None         # Variable name to store output
+    append_to_messages: str | None = None  # Append captured value to message history
     timeout: int | None = None         # Action timeout in seconds
     on_maintain: str | None = None     # State for maintain mode restart
+    max_retries: int | None = None     # Max consecutive re-entries before on_retry_exhausted
+    on_retry_exhausted: str | None = None  # State when max_retries exceeded
+    retryable_exit_codes: list[int] | None = None  # Exit codes that trigger retry (for shell states)
     loop: str | None = None            # Sub-loop to invoke (name from .loops/<name>.yaml)
     context_passthrough: bool = False  # Pass parent context vars to child; merge child captures back
+    with_: dict[str, Any] = field(default_factory=dict)  # Explicit parameter bindings for sub-loop calls
+    fragment_name: str | None = None   # Original fragment name (populated by resolve_fragments)
+    fragment_bindings: dict[str, Any] = field(default_factory=dict)  # Parameter bindings for fragment references
+    fragment_parameters: dict[str, Any] = field(default_factory=dict)  # Parsed ParameterSpec declarations
     agent: str | None = None           # Subprocess agent name; passes --agent <name> to Claude CLI (prompt states only)
     tools: list[str] | None = None     # Subprocess tool scope; passes --tools <csv> to Claude CLI (prompt states only)
+    model: str | None = None           # Model override for this state's LLM action
+    extra_routes: dict[str, str] = field(default_factory=dict)  # Additional on_<verdict> → state mappings
+    type: str | None = None            # State type marker (e.g., "learning")
     max_rate_limit_retries: int | None = None        # Short-burst tier budget; requires on_rate_limit_exhausted
     on_rate_limit_exhausted: str | None = None       # Target state when total wall-clock budget spent
     rate_limit_backoff_base_seconds: int | None = None  # Short-tier backoff base (default 30); delay = base * 2^n + jitter
@@ -4434,10 +4475,12 @@ class EvaluateConfig:
         "mcp_result",       # Parse MCP tool call response envelope
         "harbor_scorer",    # Harbor-format benchmark scorer (exit code + float stdout)
         "comparator",       # Blind A/B comparison against stored baseline via LLM judge
+        "contract",         # Validate producer/consumer pairs
+        "classify",         # Classify a single line of output
     ]
     operator: str | None = None        # Comparison: eq, ne, lt, le, gt, ge
-    target: int | float | str | None   # Target value
-    tolerance: float | str | None      # For convergence
+    target: int | float | str | None = None  # Target value
+    tolerance: float | str | None = None     # For convergence
     pattern: str | None = None         # For output_contains
     negate: bool = False               # Invert match result
     path: str | None = None            # JSON path for output_json
@@ -4448,9 +4491,15 @@ class EvaluateConfig:
     source: str | None = None          # Override default source
     previous: str | None = None        # Previous value reference
     direction: Literal["minimize", "maximize"] = "minimize"
+    scope: list[str] | None = None     # For diff_stall: limit git diff to these paths
+    max_stall: int = 1                 # For diff_stall: consecutive no-change iterations before failure
+    track: list[str] | None = None    # For action_stall: context keys to track (default: ["action"])
+    max_repeat: int = 2               # For action_stall: consecutive identical iterations before failure
     baseline_path: str | None = None   # For comparator: path to .loops/baselines/<loop>/ dir
-    auto_promote: bool = False          # For comparator: write output to baseline on yes verdict
-    min_pairs: int = 1                  # For comparator: number of blind A/B comparison pairs
+    auto_promote: bool = False         # For comparator: write output to baseline on yes verdict
+    min_pairs: int = 1                 # For comparator: number of blind A/B comparison pairs
+    pairs: list[dict] | None = None    # For contract: list of producer/consumer pair dicts
+    line: str | int | None = None      # For classify: which line to read (last/first/<int index>)
 ```
 
 #### RouteConfig
@@ -4693,6 +4742,9 @@ class ActionRunner(Protocol):
         on_output_line: Callable[[str], None] | None = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        on_usage: UsageCallback | None = None,
+        on_usage_detailed: DetailedUsageCallback | None = None,
+        model: str | None = None,
     ) -> ActionResult: ...
 ```
 
@@ -4824,6 +4876,8 @@ Validate FSM structure and return list of errors.
 - **MR-2 (WARNING)**: meta-loop should reference a captured baseline value in a later evaluator (measure→propose→apply→re-measure spine); suppress with `meta_self_eval_ok: true` (ENH-1665)
 - **MR-3 (WARNING)**: loop writes intermediate artifacts to shared `.loops/tmp/` instead of `${context.run_dir}/`; suppress with `shared_state_ok: true`
 - **MR-4 (WARNING)**: LLM-judged state maps `on_yes` but has no route for `no`/`partial` verdicts with no `next:` or `route:` table — dead-ends the loop; suppress with `partial_route_ok: true` (ENH-1917)
+- **MR-5 (WARNING)**: harness-category loop writes artifact files to a flat path in an iterative generate→evaluate→generate cycle — only the final iteration's output survives; add per-iteration snapshots and declare `artifact_versioning: true`, or set `artifact_versioning_ok: true` to suppress when intentional overwrite is desired (ENH-1957)
+- **MR-6 (WARNING)**: meta-loop has a `shell`-type state that writes to the same file path as an LLM-generator state — hand-patching creates fragile output that diverges from the generator on the next run; fix the generator action so every run produces correct output automatically, or set `generator_fix_ok: true` for intentional post-processing (ENH-2079)
 
 **Example:**
 ```python
