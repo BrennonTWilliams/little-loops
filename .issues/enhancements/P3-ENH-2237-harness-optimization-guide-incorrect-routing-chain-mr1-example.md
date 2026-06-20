@@ -5,6 +5,7 @@ status: open
 priority: P3
 discovered_date: 2026-06-19
 discovered_by: audit-docs
+testable: false
 labels:
 - docs
 - loops
@@ -16,7 +17,11 @@ relates_to:
 
 # ENH-2237: Fix incorrect routing chain in HARNESS_OPTIMIZATION_GUIDE MR-1 canonical example
 
-## Problem
+## Summary
+
+The MR-1 canonical example in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (lines 104–108) describes the routing chain for `loop-composer-adaptive.yaml` incorrectly — it reverses `check_replan_budget` and `increment_replan_count`, omits intermediate states, and mischaracterizes when the budget gate fires. The example needs to be rewritten to reflect the actual YAML routing.
+
+## Current Behavior
 
 `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` lines 107–108 describe the MR-1 canonical example routing chain for `loop-composer-adaptive.yaml`:
 
@@ -65,8 +70,30 @@ satisfying MR-1's requirement that every `llm_structured` state be paired with a
 non-LLM evaluator in its routing chain.
 ```
 
-## Implementation Notes
+## Scope Boundaries
 
-- Verify routing by reading `scripts/little_loops/loops/loop-composer-adaptive.yaml` states: `check_replan_budget` (line 442), `increment_replan_count` (line 431), `write_step_failed` (line 368), `read_completed_summaries` (line 457), `reassess` (line 496)
-- The replacement text should keep the example concise — the key point is that the non-LLM gate enforces a ceiling on LLM-decided replans, not that it blocks first entry
-- Cross-check with the `harness-single-shot.yaml:check_semantic → check_invariants` pattern claim on the same lines (verified accurate; don't change that)
+- Only update lines 104–108 of `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (the MR-1 canonical example block)
+- Do not change any other sections of the guide
+- Do not modify `loop-composer-adaptive.yaml` or any loop YAML files
+- Cross-check of the `harness-single-shot.yaml:check_semantic → check_invariants` pattern on the same lines is read-only; do not alter it
+
+## Implementation Steps
+
+1. Read `loop-composer-adaptive.yaml` states `check_replan_budget`, `increment_replan_count`, `write_step_failed`, `read_completed_summaries`, `reassess` to confirm actual routing order
+2. Replace lines 104–108 in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` with the corrected example text from `## Expected Behavior`
+3. Verify the `harness-single-shot.yaml:check_semantic → check_invariants` claim on the same lines is unchanged
+
+## Impact
+
+- **Priority**: P3 — Low; incorrect example causes confusion when authors model new loops on it, but does not break any runtime behavior
+- **Effort**: Small — single prose block replacement in one doc file; no code changes
+- **Risk**: Low — documentation-only change; no functional or behavioral impact
+- **Breaking Change**: No
+
+## Status
+
+**Open** | Created: 2026-06-19 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-20T03:51:02 - `d0cf3b86-358f-4c2f-ba19-f4565d61ace4.jsonl`

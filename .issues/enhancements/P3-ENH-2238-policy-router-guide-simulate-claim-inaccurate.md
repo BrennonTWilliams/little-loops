@@ -6,11 +6,16 @@ priority: P3
 status: open
 area: docs
 file: docs/guides/POLICY_ROUTER_GUIDE.md
+testable: false
 ---
 
-## Problem
+## Summary
 
-`docs/guides/POLICY_ROUTER_GUIDE.md` line 159–161 says:
+The POLICY_ROUTER_GUIDE incorrectly claims that `ll-loop simulate` lets users confirm which routing rule fires for a given score set in policy-router loops. Simulation only traces FSM state connectivity — it cannot execute shell actions, so policy rule evaluation never occurs.
+
+## Current Behavior
+
+`docs/guides/POLICY_ROUTER_GUIDE.md` lines 159–161 say:
 
 > You don't have to trace the table by hand — `ll-loop simulate policy-refine` walks FSM
 > execution interactively without invoking real commands, so you can confirm which rule fires
@@ -36,7 +41,17 @@ rule evaluation outcomes.
   returns `output="[simulated output for: ...]"`
 - `scripts/little_loops/loops/lib/policy-router.yaml` — both fragments are `action_type: shell`
 
-## Proposed Fix
+## Expected Behavior
+
+The guide accurately describes what `ll-loop simulate` can and cannot do for policy-router loops. Users who want to validate rule routing are directed to the correct approach (manual trace or real/mocked artifact run).
+
+## Motivation
+
+This enhancement would:
+- **User trust**: Users who follow the guide and try `ll-loop simulate` to validate routing always see the `_:` catch-all fire regardless of their score set — confusing behavior with no explanation in the current text.
+- **Documentation accuracy**: The POLICY_ROUTER_GUIDE is the primary reference for policy-router loop authoring; inaccurate guidance about available validation tools misleads loop authors.
+
+## Proposed Solution
 
 Replace the misleading sentence with accurate guidance. Options:
 
@@ -51,8 +66,52 @@ Replace the misleading sentence with accurate guidance. Options:
 **Option B** — Remove the simulate sentence and keep only the manual trace guidance (already
 present in the paragraph above).
 
+## Scope Boundaries
+
+- **In scope**: Correcting the inaccurate claim on lines 159–161 of `POLICY_ROUTER_GUIDE.md`
+- **Out of scope**: Changing how `ll-loop simulate` works; updating other guides that reference simulate; adding new simulation capabilities for policy routing
+
+## Integration Map
+
+### Files to Modify
+- `docs/guides/POLICY_ROUTER_GUIDE.md` — lines 159–161 (the misleading simulate claim)
+
+### Dependent Files (Callers/Importers)
+- N/A — documentation-only change; no code imports this file
+
+### Similar Patterns
+- Other guide docs that reference `ll-loop simulate` may warrant accuracy review (not in scope)
+
+### Tests
+- N/A — documentation-only change; no automated tests to update
+
+### Documentation
+- `docs/guides/POLICY_ROUTER_GUIDE.md` — primary file to modify
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. Choose Option A or Option B from Proposed Solution (Option A preferred — retains simulate context and redirects correctly)
+2. Edit `docs/guides/POLICY_ROUTER_GUIDE.md` lines 159–161 with the corrected text
+3. Read surrounding paragraph to confirm it flows cohesively
+
 ## Impact
 
-Low-priority documentation correction. Users who try to use simulate to validate policy
-routing will see it always route to `_:` (deep_repair in policy-refine) regardless of scores,
-which is confusing but not harmful.
+- **Priority**: P3 — Low-priority documentation correction; confusing but not harmful
+- **Effort**: Small — Single paragraph edit in one file
+- **Risk**: Low — Documentation-only; no code execution paths affected
+- **Breaking Change**: No
+
+## Labels
+
+`docs`, `documentation-fix`, `policy-router`
+
+## Status
+
+**Open** | Created: 2026-06-19 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-20T03:51:39 - `26736b38-8a55-4123-887a-77a72b341010.jsonl`
