@@ -12,6 +12,7 @@ description: |
 initial: init
 max_steps: 60
 timeout: 3600
+on_handoff: spawn   # autonomous loop (no human-in-the-loop states) — auto-continue on context handoff
 import:
   - lib/common.yaml
 
@@ -67,6 +68,7 @@ states:
 
       The file must contain only lens names, one per line.
     next: pop_lens
+    on_error: failed
 
   pop_lens:
     # Atomically pops the head of lenses.txt; exits 1 when the queue is empty.
@@ -106,6 +108,7 @@ states:
       The IDEAS_JSON line must be valid JSON — an array of objects each with "text" and "rationale".
     capture: round_ideas
     next: dedup_novelty
+    on_error: failed
 
   dedup_novelty:
     # Extracts IDEAS_JSON from diverge output, deduplicates via difflib.SequenceMatcher,
@@ -196,6 +199,7 @@ states:
       target: "${context.max_saturation}"
     on_yes: pop_lens
     on_no: cluster
+    on_error: cluster
 
   cluster:
     # Groups ideas.jsonl into thematic clusters; drops dominated ideas.
@@ -274,6 +278,7 @@ states:
       Also write ${captured.run_dir.output}/winners.md with exactly the top ${context.top_k} ideas
       as a JSON array (one object per line, same schema as ideas.jsonl) for downstream sinks.
     next: route_sink
+    on_error: failed
 
   route_sink:
     # Routes to the appropriate sink handler based on context.sink.

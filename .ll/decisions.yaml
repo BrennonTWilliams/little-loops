@@ -1329,3 +1329,59 @@
     and a matching human-readable echo line in r
   enforcement: advisory
   issue: ENH-2250
+- id: ARCH-056
+  type: rule
+  timestamp: '2026-06-20T22:55:31Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 64/65 built-in loops use spawn; pause requires manual resume which contributes
+    nothing when the loop has no human decision points. Every planning-category sibling
+    uses spawn.
+  rule: 'Autonomous loops (no human-in-the-loop states) must set `on_handoff: spawn`,
+    not `pause`.'
+  enforcement: advisory
+  issue: ENH-2251
+- id: ARCH-057
+  type: rule
+  timestamp: '2026-06-20T22:55:31Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'Without on_error, an LLM or evaluator failure halts the FSM with no
+    recovery path. Simulation confirmed this gap: saturation_gate errored and terminated
+    the loop because no on_error route existed.'
+  rule: LLM-executed prompt states must include `on_error` routing to a terminal state
+    (e.g., `failed`).
+  enforcement: advisory
+  issue: ENH-2251
+- id: ARCH-058
+  type: rule
+  timestamp: '2026-06-20T22:55:31Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Evaluator errors (e.g., output_numeric failing to parse) surface as FSM
+    errors, not just bad verdicts. Without on_error the loop halts rather than falling
+    back to a safe state.
+  rule: States with numeric or structured evaluators must include an `on_error` route
+    to prevent silent FSM termination.
+  enforcement: advisory
+  issue: ENH-2251
+- id: TEST-059
+  type: rule
+  timestamp: '2026-06-20T22:55:31Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: QC-6 flagged missing on_handoff but not a pause/spawn mismatch. A check
+    that only verifies presence misses semantic errors when a convention (spawn for
+    autonomous loops) exists.
+  rule: Loop QC checks that flag a missing field should also validate the field's
+    value against codebase convention.
+  enforcement: advisory
+  issue: ENH-2251
