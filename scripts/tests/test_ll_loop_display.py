@@ -3693,9 +3693,9 @@ class TestShowDiagramsArgparse:
         args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=neighborhood"])
         assert args.show_diagrams == "neighborhood"
 
-    def test_show_diagrams_absent_is_none(self) -> None:
+    def test_show_diagrams_absent_is_clean(self) -> None:
         args = self._parse_run_args(["ll-loop", "run", "my-loop"])
-        assert args.show_diagrams is None
+        assert args.show_diagrams == "clean"
 
     def test_legacy_main_raises_migration_hint(self) -> None:
         err = self._parse_run_args_expect_error(

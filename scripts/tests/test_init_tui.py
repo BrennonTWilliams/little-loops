@@ -45,6 +45,7 @@ def _wire_q(
     use_feature_branches: bool = False,
     session_digest: bool = True,
     prompt_optimization: bool = True,
+    loop_clear_default: bool = True,
     hosts: list[str] | None = None,
     settings: str = "local",
     confirmed: bool | None = True,
@@ -56,10 +57,11 @@ def _wire_q(
       2. Scan: focus_dirs (text), add_excludes (confirm), [custom_excludes (text) if add_excludes]
       3. Features: features (checkbox), [workers (text) + worktree_files (checkbox) if parallel],
                    [use_feature_branches (confirm) if parallel], session_digest (confirm),
-                   prompt_optimization (confirm)
+                   prompt_optimization (confirm), loop_clear_default (confirm)
+      3b. Loop run defaults: loop_show_diagrams_default (select, via shared return_value)
       4. Hosts: hosts (checkbox)
-      5. Settings: settings (select)
-      6. CLAUDE.md: (select, via select return_value)
+      5. Settings: settings (select, via shared return_value)
+      6. CLAUDE.md: (select, via shared return_value)
     """
     if features is None:
         features = ["parallel", "product", "learning_tests", "analytics", "context_monitor"]
@@ -84,17 +86,20 @@ def _wire_q(
     checkbox_returns.append(hosts)
     mock_q.checkbox.side_effect = [_mock_ask(v) for v in checkbox_returns]
 
-    # Select: settings (screen 5) + CLAUDE.md (screen 6) — shared return_value
+    # Select: loop_show_diagrams_default (screen 3b) + settings (screen 5) + CLAUDE.md (screen 6)
+    # — shared return_value means all three get the same value; "local" is a valid diagram preset
+    # so this works for both the new loop_show_diagrams question and the settings/CLAUDE.md selects.
     # (no curated menus since tests use generic.json which has no command_options;
     #  and design_tokens not in default features so no profile select)
     mock_q.select.return_value.ask.return_value = settings
 
     # Confirm: add_excludes (screen 2), [use_feature_branches if parallel] (screen 3),
-    # session_digest (screen 3), prompt_optimization (screen 3), apply (final)
+    # session_digest (screen 3), prompt_optimization (screen 3),
+    # loop_clear_default (screen 3, ENH-2243), apply (final)
     confirm_returns = [add_excludes]
     if "parallel" in features:
         confirm_returns.append(use_feature_branches)
-    confirm_returns.extend([session_digest, prompt_optimization, confirmed])
+    confirm_returns.extend([session_digest, prompt_optimization, loop_clear_default, confirmed])
     mock_q.confirm.side_effect = [_mock_ask(v) for v in confirm_returns]
 
     # Choice is used only to build checkbox/select lists; let it return a plain MagicMock
@@ -562,6 +567,7 @@ class TestHostSelection:
                 _mock_ask(False),  # add_excludes
                 _mock_ask(True),  # session_digest
                 _mock_ask(True),  # prompt_optimization
+                _mock_ask(True),  # loop_clear_default (ENH-2243)
             ]
             mock_q.checkbox.side_effect = [
                 _mock_ask(["analytics"]),  # features
@@ -769,6 +775,7 @@ class TestDesignTokenProfilePicker:
             ]
             mock_q.select.side_effect = [
                 _mock_ask("warm-paper"),  # profile picker (screen 3)
+                _mock_ask("clean"),  # loop_show_diagrams_default (ENH-2243)
                 _mock_ask("local"),  # settings (screen 5)
                 _mock_ask("skip"),  # CLAUDE.md (screen 6)
             ]
@@ -776,6 +783,7 @@ class TestDesignTokenProfilePicker:
                 _mock_ask(False),  # add_excludes
                 _mock_ask(True),  # session_digest
                 _mock_ask(True),  # prompt_optimization
+                _mock_ask(True),  # loop_clear_default (ENH-2243)
                 _mock_ask(True),  # apply
             ]
             mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
