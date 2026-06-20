@@ -3,18 +3,22 @@ id: FEAT-2102
 title: Adapter-swap integration test for `human_approval` FSM state
 type: FEAT
 priority: P2
-status: blocked
-captured_at: "2026-06-12T00:00:00Z"
+status: deferred
+captured_at: '2026-06-12T00:00:00Z'
 discovered_date: 2026-06-12
 discovered_by: review-epic
 parent: EPIC-1929
-blocked_by: [FEAT-1930, FEAT-1931, FEAT-1932]
-relates_to: [FEAT-1794]
+blocked_by:
+- FEAT-1930
+- FEAT-1931
+- FEAT-1932
+relates_to:
+- FEAT-1794
 labels:
-  - fsm
-  - hitl
-  - testing
-  - integration
+- fsm
+- hitl
+- testing
+- integration
 ---
 
 # FEAT-2102: Adapter-swap integration test for `human_approval` FSM state
@@ -81,7 +85,24 @@ core promise is asserted but never verified.
 
 ## Status
 
-**Blocked** | Created: 2026-06-12 | Priority: P2
+deferred
 
-Blocked by FEAT-1930 (protocol), FEAT-1931 (terminal adapter), and FEAT-1932
-(push adapter) — all three must land before this test can be written.
+## Deferral Rationale (2026-06-20)
+
+This test proves adapter swapping is **config-only** by running one loop YAML
+against two adapters (terminal ↔ push). One of those two adapters, FEAT-1932
+(push), was **cancelled** when the Hermes integration (EPIC-2196) made a bespoke
+push transport redundant. With only the terminal adapter remaining, there is no
+second channel to swap to, so the test's premise temporarily collapses.
+
+Deferred rather than cancelled because the acceptance gate it owns — "switching
+adapters is a config change, not a loop YAML change" — is still EPIC-1929's core
+promise and still worth verifying. **Revive this issue once the re-scoped
+FEAT-1930 lands its EventBus adapter**, retargeting the swap from terminal↔push to
+**terminal↔eventbus**. Update `blocked_by` to `[FEAT-1930, FEAT-1931]` (drop the
+cancelled FEAT-1932) at that time.
+
+---
+
+_Previously: Blocked by FEAT-1930 (protocol), FEAT-1931 (terminal adapter), and
+FEAT-1932 (push adapter)._

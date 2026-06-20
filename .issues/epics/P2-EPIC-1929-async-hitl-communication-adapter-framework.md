@@ -177,6 +177,29 @@ Acceptance gates:
 
 2026-06-18 (BLOCKED): All five children remain open. FEAT-1930 (protocol, unstarted) is the gate — FEAT-1794, FEAT-1931, FEAT-1932, FEAT-2102 all blocked on it. `communication_adapter.py` does not exist. Epic accurately tracks the dependency chain.
 
+2026-06-20 (RE-SCOPED post-Hermes): The Hermes integration (EPIC-2196, `done`) made
+little-loops owning bespoke transports redundant — Hermes already reaches the
+operator on text, Telegram, etc., and consumes ll events via its webhook + the
+EventBus. The epic's transport-building half is therefore superseded; its
+FSM-state core is not (Hermes cannot pause/resume an FSM mid-run — that primitive
+lives in `executor.py`). Resulting changes to scope below:
+
+- **FEAT-1794** (`human_approval` FSM state) — KEEP. Transport-agnostic core,
+  unaffected; arguably higher priority now that it has a real async transport.
+- **FEAT-1930** (protocol) — RE-SCOPED to two adapters: `terminal` (fallback) +
+  `eventbus` (Hermes-relayed). Open Question #2 resolved → event bus. See its
+  2026-06-20 re-scope section.
+- **FEAT-1931** (terminal adapter) — KEEP, unchanged.
+- **FEAT-1932** (PushNotification adapter) — **CANCELLED**. Bespoke push transport
+  duplicates Hermes; depended on a `PushNotification` tool that never existed.
+  Replaced by the `eventbus` adapter folded into FEAT-1930.
+- **FEAT-2102** (adapter-swap test) — **DEFERRED**. Revive and retarget
+  terminal↔eventbus once FEAT-1930's eventbus adapter lands.
+
+The "In scope → PushNotification adapter" and the second Acceptance gate
+(`...with the PushNotification adapter configured`) above are superseded by the
+EventBus adapter; read "PushNotification" as "EventBus / Hermes-relay" throughout.
+
 ---
 ## Status
 

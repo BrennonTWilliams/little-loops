@@ -8,7 +8,7 @@ discovered_date: 2026-06-04
 discovered_by: scope-epic
 status: open
 parent: EPIC-1929
-relates_to: [FEAT-1794, FEAT-1931, FEAT-1932]
+relates_to: [FEAT-1794, FEAT-1931, EPIC-2196]
 blocks:
 - FEAT-2102
 labels:
@@ -28,9 +28,38 @@ operations — `send_alert()` for outbound delivery and `await_response()` for
 inbound verdict collection — and registers through the extension system so
 adapters are discoverable and config-swappable.
 
-This is the **foundational child** of EPIC-1929. FEAT-1794 (FSM state), FEAT-1931
-(terminal adapter), and FEAT-1932 (PushNotification adapter) all depend on this
-interface being stabilized first.
+This is the **foundational child** of EPIC-1929. FEAT-1794 (FSM state) and
+FEAT-1931 (terminal adapter) depend on this interface being stabilized first.
+
+## Re-scope (2026-06-20) — two adapters, EventBus not bespoke push
+
+The Hermes integration (EPIC-2196, `done`) changed what this protocol needs to
+abstract over. The original framing — a rich multi-transport protocol spanning
+terminal, push, Slack, Telegram, SMS, webhook, with little-loops owning each
+transport — is obsolete: **Hermes already reaches the operator on every one of
+those channels** (text, Telegram, etc.) and consumes little-loops events via its
+webhook and the EventBus/extension surface.
+
+The protocol's surface (`send_alert()` / `await_response()` / `supports_async()`)
+and the `CommunicationAdapterExtension` registration decision (Option B, below)
+are **unchanged**. What shrinks is the set of adapters this protocol must prove
+itself against:
+
+- **`terminal`** — dev/debug/fallback channel (FEAT-1931). Unchanged.
+- **`eventbus`** — emit a `human_approval_requested` event; resume when a
+  matching `human_response` event arrives. This is the async channel Hermes
+  consumes and relays to whatever channel the operator is on. **Replaces the
+  cancelled bespoke PushNotification adapter (FEAT-1932).**
+
+This also **resolves Open Question #2** (event bus vs. file-poller for the inbound
+callback) in favor of the **event bus** — that is precisely the surface Hermes
+already subscribes to, so no new inbound transport is needed. Designing the
+protocol for these two adapters (sync terminal + async eventbus) still proves the
+abstraction; third-party adapters (a direct Slack adapter, a custom webhook) can
+be added later against the same protocol without touching `executor.py`.
+
+> Downstream: FEAT-1932 **cancelled**; FEAT-2102 (adapter-swap test) **deferred**
+> until the `eventbus` adapter lands, then retargeted to terminal↔eventbus.
 
 ## Current Behavior
 
@@ -63,19 +92,22 @@ cost that pays back every time a new channel is added.
 
 ## Use Case
 
-**Who**: A platform developer adding a new notification channel (e.g., Slack, SMS,
-webhook) to ll's human-in-the-loop workflow.
+**Who**: A platform developer wiring ll's human-in-the-loop workflow to an async
+relay (the EventBus adapter consumed by Hermes), or adding a further channel
+later.
 
 **Context**: An FSM loop reaches a `human_approval` state and needs operator input
 before proceeding. The operator might be watching the terminal, or might be away
-and reachable only via push notification or chat.
+and reachable only through Hermes (text, Telegram, etc.), which relays the
+EventBus-published prompt and feeds the verdict back.
 
 **Goal**: The developer implements a `CommunicationAdapter` subclass for their
 channel without modifying `executor.py`, `extension.py`, or any existing adapter.
 
-**Outcome**: Setting `hitl.channel: "slack"` in `.ll/ll-config.json` routes all
-`human_approval` prompts through the Slack adapter — no code changes to the FSM
-runner.
+**Outcome**: Setting `hitl.channel: "eventbus"` in `.ll/ll-config.json` routes all
+`human_approval` prompts through the EventBus adapter (relayed by Hermes) — no
+code changes to the FSM runner. Switching back to `hitl.channel: "terminal"` for
+local dev is the same one-line config change.
 
 ## Acceptance Criteria
 
@@ -122,7 +154,7 @@ Decided by `/ll:decide-issue` on 2026-06-12.
 - **Option A**: `wire_extensions()` loop and conflict-detection guards are reusable, but no existing extension class mixes `provided_*` methods from different capability types; `provided_actions()` is precisely typed as `dict[str, ActionRunner]`, which a `CommunicationAdapter` does not satisfy.
 - **Option B**: replicates a mechanical 4-precedent pattern end-to-end — Protocol class, `hasattr()` gate, `_contributed_*` executor slot, `ValueError` duplicate guard, `__init__.py` export, `TestNewProtocols` smoke/protocol-satisfied tests (`test_extension.py:524–691`), and a one-line addition to the `ll-create-extension` scaffold docstring (`create_extension.py:84`).
 
-**Follow-through for implementation**: register via `hasattr(ext, "provided_adapters")` in `wire_extensions()`; add `_contributed_adapters: dict[str, CommunicationAdapter]` to `FSMExecutor.__init__`; resolve the active adapter from `hitl.channel` with `terminal` fallback; update the `ll-create-extension` docstring and `__init__.py` exports; sibling issues FEAT-1931/FEAT-1932 implement adapters against the new Protocol.
+**Follow-through for implementation**: register via `hasattr(ext, "provided_adapters")` in `wire_extensions()`; add `_contributed_adapters: dict[str, CommunicationAdapter]` to `FSMExecutor.__init__`; resolve the active adapter from `hitl.channel` with `terminal` fallback; update the `ll-create-extension` docstring and `__init__.py` exports; FEAT-1931 (terminal) and the EventBus adapter (per the 2026-06-20 re-scope; replaces the cancelled FEAT-1932) implement adapters against the new Protocol.
 
 ## API/Interface
 
@@ -225,7 +257,7 @@ class TerminalAdapterExtension(CommunicationAdapterExtension):
 
 ## Impact
 
-- **Priority**: P2 — prerequisite for FEAT-1794, FEAT-1931, FEAT-1932
+- **Priority**: P2 — prerequisite for FEAT-1794, FEAT-1931, and the EventBus adapter
 - **Effort**: Small — abstract class, registration hook, config key
 - **Risk**: Low — no user-facing change until adapters are implemented
 - **Breaking Change**: No

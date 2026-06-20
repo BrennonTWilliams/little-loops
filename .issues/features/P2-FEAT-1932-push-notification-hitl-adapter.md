@@ -3,19 +3,23 @@ id: FEAT-1932
 title: PushNotification adapter for async HITL communication
 type: FEAT
 priority: P2
-captured_at: "2026-06-04T00:00:00Z"
+captured_at: '2026-06-04T00:00:00Z'
 discovered_date: 2026-06-04
 discovered_by: scope-epic
-status: blocked
-blocked_by: [FEAT-1930]
+status: cancelled
+blocked_by:
+- FEAT-1930
 parent: EPIC-1929
-relates_to: [FEAT-1930, FEAT-1794, FEAT-1931]
+relates_to:
+- FEAT-1930
+- FEAT-1794
+- FEAT-1931
 labels:
-  - fsm
-  - harness
-  - hitl
-  - adapter
-  - push-notification
+- fsm
+- harness
+- hitl
+- adapter
+- push-notification
 ---
 
 # FEAT-1932: PushNotification adapter for async HITL communication
@@ -213,7 +217,27 @@ full prompt. The operator can request more context if needed (v2 enhancement).
 ---
 ## Status
 
-open
+cancelled
+
+## Cancellation Rationale (2026-06-20)
+
+**Superseded by the Hermes integration (EPIC-2196, `done`).** This issue's premise
+was that little-loops must own a bespoke async transport to page an off-terminal
+operator — outbound via the `PushNotification` tool, inbound via a file-poller
+callback. Hermes now *is* that transport layer: it already reaches the operator on
+their phone via text message, Telegram, and other channels, and consumes
+little-loops events through its webhook (`POST /hermes/v1/ll-event`) and the
+EventBus/extension surface.
+
+Building a parallel push-notification + file-poller path would duplicate transport
+work Hermes already does, on a channel (`PushNotification` tool) that has never
+existed in this codebase (hard blocker noted in every verification pass since
+2026-06-05). The async-HITL need this issue served is better met by a thin
+**EventBus adapter** — emit `human_approval_requested`, resume on `human_response`
+— consumed by Hermes, which is now folded into the re-scoped FEAT-1930.
+
+The transport-agnostic core (the `human_approval` FSM state, FEAT-1794) is
+unaffected and remains in EPIC-1929.
 
 ## Verification Notes (2026-06-05)
 
