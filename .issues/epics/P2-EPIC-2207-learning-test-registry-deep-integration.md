@@ -3,7 +3,7 @@ id: EPIC-2207
 title: Learning Test Registry — Deep Integration Across ll Features
 type: epic
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
@@ -50,7 +50,7 @@ EPIC-1694 delivered the core registry, proof loops, and an opt-in discoverabilit
 
 ## Status
 
-Open — no children started yet.
+Done — all 12 children completed (verified 2026-06-19).
 
 ## Changes from Scoping Review
 
@@ -58,5 +58,10 @@ Open — no children started yet.
 - **ENH-2213** (Adversarial verification loop) — **Cancelled**. Learning tests are validated by real code execution, not LLM judgment; re-running proof scripts (via existing stale detection) is the right mechanism. LLM refuters have the same failure mode as LLM provers.
 - **ENH-2219** (ll-parallel wrapper) — **Consolidated**. Gating logic now extracted into a shared utility (`learning_tests/gate.py`) used by both ENH-2210 and ENH-2219, avoiding dual maintenance.
 
+## Verification Notes
+
+2026-06-19 (OUTDATED→DONE): All 12 children confirmed `status: done` (ENH-2208 through ENH-2221, excluding cancelled ENH-2211/ENH-2213). The Status section read "Open — no children started yet" despite full completion. Marked `status: done` and updated Status section.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:capture-issue` - 2026-06-18T15:38:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a36b2894-cd5b-4d62-9c0f-f69cbebc76de.jsonl`

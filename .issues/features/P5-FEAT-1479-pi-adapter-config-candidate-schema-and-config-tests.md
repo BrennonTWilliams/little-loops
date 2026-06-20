@@ -221,7 +221,10 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - 2026-06-13: Schema enum step (adding 'pi' to hooks.host.enum in config-schema.json) is already done — step 1 is complete. Remaining work: add PI_CONFIG_DIR branch to scripts/little_loops/config/core.py. Stale line numbers: CODEX_CONFIG_DIR is now at :41 (issue may say :36), codex branch at :92-93. Tests not yet written.
 - 2026-06-17: Step 1 (config-schema.json enum) confirmed done — `"pi"` at `hooks.host.enum` (line 1356). Remaining: `PI_CONFIG_DIR` constant and `elif host == "pi"` branch still absent from `config/core.py` (CODEX_CONFIG_DIR is at line 41, codex branch at lines 92-93). Tests not written.
 
+2026-06-19 (NEEDS_UPDATE): Step 1 (config-schema.json enum) confirmed done — `"pi"` at `hooks.host.enum` line 1368. Remaining: `PI_CONFIG_DIR` constant and `elif host == "pi"` branch absent from `config/core.py`. Stale OrchestrationConfig docstring reference no longer in `core.py` (moved); implementation target is now solely `config/core.py._config_candidates()`. Tests not written.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-20T00:34:46 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:14:07 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`

@@ -252,7 +252,10 @@ were filed for the genuine remaining depth gaps.
 
 2026-06-18 (NEEDS_UPDATE): Body still contains a stale "5 of 12 children are done" footer (Update 2026-06-04). Current active children include ENH-2105 (added 2026-06-12) bringing the total to 13+ active children (FEAT-1720 cancelled). The relates_to list was synced 2026-06-12. Remove or update the "5 of 12" count note — use `ll-issues epic-progress EPIC-1463` for live counts.
 
+2026-06-19 (NEEDS_UPDATE): Stale "5 of 12 children done" footer (Update 2026-06-04) still present. Actual: 6 done across 17+ total children (ENH-2105 added 2026-06-12; FEAT-1720 cancelled). Remove footer count — use `ll-issues epic-progress EPIC-1463` for live counts.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

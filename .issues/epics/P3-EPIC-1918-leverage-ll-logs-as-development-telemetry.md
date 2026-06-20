@@ -92,12 +92,14 @@ from the corpus instead of leaving it as a passive archive.
 9. ~~ENH-2104 (wire stats → ll-ctx-stats)~~ **done**
 
 **Remaining open work:**
-- ENH-2130 — `--window-days` anchor inconsistency across subcommands
-- ENH-2131 — Always-null errors/error_rate fields in stats JSON
-- ENH-2132 — Deduplicate signal detection logic
-- ENH-2133 — Redundant edge rebuild in sequences
-- ENH-2134 — Minor code cleanup bundle
 - ENH-2070/2071/2072 — Automation wiring (deferred)
+
+**Completed (verified 2026-06-19):**
+- ~~ENH-2130~~ — `--window-days` anchor inconsistency (done)
+- ~~ENH-2131~~ — Always-null errors/error_rate fields (done)
+- ~~ENH-2132~~ — Deduplicate signal detection logic (done)
+- ~~ENH-2133~~ — Redundant edge rebuild in sequences (done)
+- ~~ENH-2134~~ — Minor code cleanup bundle (done)
 
 ## Success Metrics
 
@@ -125,7 +127,10 @@ open
 
 - `/ll:verify-issues` - 2026-06-17 - All 7 primary children (ENH-1919, FEAT-1920, ENH-1921/22/23/24, FEAT-1925) plus ENH-2103/2104 are `done` — both success metrics met. Remaining open children are ENH-2130/2131/2132/2133/2134 (code-quality fixes) and deferred ENH-2070/2071/2072. The Implementation Order section still reads as future work; update to reflect completed deliverables.
 
+2026-06-19 (OUTDATED): ENH-2130/2131/2132/2133/2134 confirmed `status: done`; only ENH-2070/2071/2072 remain (correctly marked deferred). "Remaining open work" section updated to remove the 5 completed children.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

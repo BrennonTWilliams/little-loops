@@ -63,7 +63,10 @@ transcript format (we see real values, not placeholder ~9s).
 - ENH-2148 (Status hook `used_percentage`) is `deferred` — epic still references it as a pending deliverable.
 - Update the Implementation Order section to mark BUG-2145/2146 complete and ENH-2148 deferred before resuming.
 
+2026-06-19 (NEEDS_UPDATE): Implementation Status section is accurate (BUG-2145/2146 done, ENH-2148 deferred). Additionally, the Success Criteria section still reads "BUG-865, BUG-924, and BUG-869 resolved as a side-effect of ENH-2148" — those bugs are now done via independent resolutions, not via the still-deferred ENH-2148. Remove or update the side-effect claim in Success Criteria.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 
 ## Success Criteria

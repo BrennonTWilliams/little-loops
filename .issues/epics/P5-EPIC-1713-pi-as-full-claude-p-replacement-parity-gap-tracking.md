@@ -132,7 +132,10 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 
 2026-06-18 (NEEDS_UPDATE): FEAT-1850 has been **re-attached** to this epic (frontmatter now shows `parent: EPIC-1713` and `blocked_by: [FEAT-1715]`). The 2026-06-12 audit note saying "FEAT-1850 detached" is now stale. Remove the audit note (or replace with a "re-attached 2026-06-18" entry), and verify the Children section lists FEAT-1850 alongside FEAT-1714/1715/1716.
 
+2026-06-19 (NEEDS_UPDATE): FEAT-1850 frontmatter confirmed with `parent: EPIC-1713` and `blocked_by: [FEAT-1715]`, but Children section still lists only FEAT-1714/1715/1716. Add FEAT-1850 to the Children list and replace the 2026-06-12 "FEAT-1850 detached" audit note with a re-attachment note.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 

@@ -103,7 +103,10 @@ _Updated by `/ll:verify-issues` on 2026-06-09_
 
 2026-06-18 (OUTDATED): Minor stale count in the Proposed Solution section — line 33 still reads "all 28 `skills/ll-*/SKILL.md` files" while the correct count is 30 (confirmed by filesystem). All other sections correctly say 30. Fix "28" → "30" in the `Proposed Solution` prose before merging.
 
+2026-06-19 (NEEDS_UPDATE): Confirmed — Proposed Solution prose still reads "all 28 `skills/ll-*/SKILL.md` files"; correct count is 30 (verified by filesystem). No ll-* bridge skills have `disable-model-invocation: true` yet. Fix "28" → "30" in prose before merging.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-20T00:34:44 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

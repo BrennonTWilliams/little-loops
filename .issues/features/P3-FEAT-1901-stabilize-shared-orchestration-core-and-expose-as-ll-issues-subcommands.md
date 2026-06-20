@@ -136,7 +136,10 @@ ll-issues mark-failed <issue-id> --reason <text>
 - 2026-06-13: Corrected path: `commands/issues.py` → `cli/issues/__init__.py`. Subcommands `verify-work`, `classify-failure`, `complete`, `mark-failed` are not yet implemented. Underlying functions in work_verification.py and issue_lifecycle.py confirmed present.
 - `/ll:verify-issues` - 2026-06-17 - Still NEEDS_UPDATE: `commands/issues.py` stale path persists in Implementation Steps. `next-issue`/`next-issues` subcommands exist but differ from the proposed `ll-issues next --respect-deps` API. `verify-work`, `classify-failure`, `complete`, `mark-failed` subcommands remain unimplemented. Correct implementation target is `cli/issues/__init__.py`.
 
+2026-06-19 (NEEDS_UPDATE): `verify-work`, `classify-failure`, `complete`, `mark-failed` subcommands still not implemented. `next-issue`/`next-issues` exist in `cli/issues/` but differ from the proposed `ll-issues next --respect-deps` API. Implementation Steps still reference `commands/issues.py` — correct target is `cli/issues/__init__.py`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-20T00:34:46 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:14:03 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`

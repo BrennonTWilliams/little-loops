@@ -86,7 +86,10 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - 2026-06-13 (OUTDATED): `skills/init/SKILL.md` was collapsed to a redirect stub by ENH-1982 (2026-06-12) and is no longer the correct implementation target. Implementation steps referencing this file need re-scoping to the ll-init CLI surface (scripts/little_loops/init/). Recommend updating implementation plan before starting.
 - 2026-06-17: Still NEEDS_UPDATE — `skills/init/SKILL.md` remains a redirect stub; `--pi` flag still absent from ll-init CLI; `hooks/adapters/pi/` does not exist. Implementation Steps must be retargeted to `scripts/little_loops/init/` (`--hosts` multi-select already exists via FEAT-1981) before starting.
 
+2026-06-19 (NEEDS_UPDATE): Confirmed — `skills/init/SKILL.md` is a 56-line redirect stub (ENH-1982 done); `--pi` flag still absent from ll-init CLI; `hooks/adapters/pi/` does not exist. Implementation Steps must be retargeted to `scripts/little_loops/init/` before starting.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-20T00:34:46 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:14:10 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
