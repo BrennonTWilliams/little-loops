@@ -694,7 +694,7 @@ class TestMakeIssueDirs:
     def test_creates_all_subdirs(self, tmp_project: Path) -> None:
         base = tmp_project / ".issues"
         make_issue_dirs(base)
-        for sd in ("bugs", "features", "enhancements", "completed", "deferred"):
+        for sd in ("bugs", "features", "enhancements", "epics"):
             assert (base / sd).is_dir()
 
     def test_idempotent(self, tmp_project: Path) -> None:

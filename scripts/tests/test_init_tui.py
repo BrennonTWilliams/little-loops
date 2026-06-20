@@ -148,7 +148,7 @@ class TestHappyPath:
             _wire_q(mock_q)
             run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
-        for subdir in ("bugs", "features", "enhancements", "completed", "deferred"):
+        for subdir in ("bugs", "features", "enhancements", "epics"):
             assert (tmp_path / ".issues" / subdir).is_dir()
 
     @patch("little_loops.init.tui.questionary")

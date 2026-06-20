@@ -53,8 +53,7 @@ _ISSUE_SUBDIRS: tuple[str, ...] = (
     "bugs",
     "features",
     "enhancements",
-    "completed",
-    "deferred",
+    "epics",
 )
 
 # Sentinel string used to detect whether the ll section already exists in CLAUDE.md
