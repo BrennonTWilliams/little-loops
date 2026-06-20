@@ -50,7 +50,7 @@ ll-init --yes $FORCE_FLAG $DRY_RUN_FLAG $HOSTS_FLAG $CODEX_FLAG
 
 ```bash
 /ll:init               # run ll-init --yes with auto-detected defaults
-/ll:init --force       # overwrite existing config
+/ll:init --force       # reset to template defaults (re-run without --force to review and edit existing config)
 /ll:init --dry-run     # preview without writing
 /ll:init --hosts codex # also install Codex hook adapter
 ```

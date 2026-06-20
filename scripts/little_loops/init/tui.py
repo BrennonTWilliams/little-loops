@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -73,6 +74,33 @@ _DESIGN_TOKEN_PROFILES: list[tuple[str, str]] = [
 ]
 
 
+def _features_from_existing_config(cfg: dict[str, Any]) -> frozenset[str]:
+    """Extract which TUI feature keys are enabled from an existing ll-config.json."""
+    enabled: set[str] = set()
+    if cfg.get("parallel"):
+        enabled.add("parallel")
+    for key in (
+        "product",
+        "documents",
+        "design_tokens",
+        "learning_tests",
+        "analytics",
+        "context_monitor",
+        "decisions",
+        "scratch_pad",
+        "session_capture",
+    ):
+        if cfg.get(key, {}).get("enabled"):
+            enabled.add(key)
+    if cfg.get("sync", {}).get("enabled"):
+        enabled.add("github_sync")
+    if cfg.get("commands", {}).get("confidence_gate", {}).get("enabled"):
+        enabled.add("confidence_gate")
+    if cfg.get("commands", {}).get("tdd_mode"):
+        enabled.add("tdd")
+    return frozenset(enabled)
+
+
 def _ask_command(label: str, default: str, options: list[str] | None) -> str | None:
     """Ask for a command field using a curated menu when options are provided.
 
@@ -115,19 +143,21 @@ def run_tui(
         )
         return 1
 
+    from little_loops.config.core import resolve_config_path
     from little_loops.init.detect import detect_project_type
 
     console = Console()
     ll_dir = project_root / ".ll"
     config_path = ll_dir / "ll-config.json"
 
-    if config_path.exists() and not force:
-        print(
-            f"Configuration already exists at {config_path}\n"
-            "Use --force to overwrite, or edit the existing file directly.",
-            file=sys.stderr,
-        )
-        return 1
+    # Load existing config for pre-population (if present).
+    existing_config: dict[str, Any] = {}
+    _existing_path = resolve_config_path(project_root)
+    if _existing_path is not None:
+        try:
+            existing_config = json.loads(_existing_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            existing_config = {}
 
     template = detect_project_type(project_root, templates_dir)
     project_data = template.data.get("project", {})
@@ -142,19 +172,25 @@ def run_tui(
     # --- Screen 1 / 6: Project Basics ---
     console.rule("[bold]1 / 6  Project Basics[/bold]")
 
-    name = questionary.text("Project name:", default=project_root.name).ask()
+    _ex_proj = existing_config.get("project", {})
+
+    name = questionary.text(
+        "Project name:",
+        default=_ex_proj.get("name") or project_root.name,
+    ).ask()
     if name is None:
         return 130
 
     src_dir = questionary.text(
-        "Source directory:", default=project_data.get("src_dir", "src/")
+        "Source directory:",
+        default=_ex_proj.get("src_dir") or project_data.get("src_dir", "src/"),
     ).ask()
     if src_dir is None:
         return 130
 
     test_cmd = _ask_command(
         "Test command:",
-        default=project_data.get("test_cmd") or "",
+        default=_ex_proj.get("test_cmd") or project_data.get("test_cmd") or "",
         options=cmd_options.get("test_cmd"),
     )
     if test_cmd is None:
@@ -162,7 +198,7 @@ def run_tui(
 
     lint_cmd = _ask_command(
         "Lint command:",
-        default=project_data.get("lint_cmd") or "",
+        default=_ex_proj.get("lint_cmd") or project_data.get("lint_cmd") or "",
         options=cmd_options.get("lint_cmd"),
     )
     if lint_cmd is None:
@@ -170,14 +206,14 @@ def run_tui(
 
     type_cmd = questionary.text(
         "Type-check command (optional):",
-        default=project_data.get("type_cmd") or "",
+        default=_ex_proj.get("type_cmd") or project_data.get("type_cmd") or "",
     ).ask()
     if type_cmd is None:
         return 130
 
     format_cmd = _ask_command(
         "Format command (optional):",
-        default=project_data.get("format_cmd") or "",
+        default=_ex_proj.get("format_cmd") or project_data.get("format_cmd") or "",
         options=cmd_options.get("format_cmd"),
     )
     if format_cmd is None:
@@ -188,7 +224,8 @@ def run_tui(
     console.rule("[bold]2 / 6  Scan[/bold]")
 
     _scan_data = template.data.get("scan", {})
-    _default_focus = ", ".join(_scan_data.get("focus_dirs", ["src/"]))
+    _ex_focus = existing_config.get("scan", {}).get("focus_dirs")
+    _default_focus = ", ".join(_ex_focus if _ex_focus else _scan_data.get("focus_dirs", ["src/"]))
     focus_dirs_str = questionary.text(
         "Focus directories (comma-separated):",
         default=_default_focus,
@@ -215,10 +252,13 @@ def run_tui(
     console.print()
     console.rule("[bold]3 / 6  Features[/bold]")
 
+    _pre_checked_features = (
+        _features_from_existing_config(existing_config) if existing_config else _DEFAULT_FEATURES
+    )
     selected_features: list[str] | None = questionary.checkbox(
         "Enable features:",
         choices=[
-            questionary.Choice(label, value=val, checked=(val in _DEFAULT_FEATURES))
+            questionary.Choice(label, value=val, checked=(val in _pre_checked_features))
             for label, val in _FEATURE_CHOICES
         ],
     ).ask()
@@ -228,11 +268,15 @@ def run_tui(
     selected_set = set(selected_features)
 
     # Conditional: parallel worker count, worktree copy files, and feature-branch mode
+    _ex_parallel = existing_config.get("parallel", {})
     parallel_workers: int = 4
     worktree_copy_files: list[str] = []
     use_feature_branches: bool = False
     if "parallel" in selected_set:
-        workers_str = questionary.text("Max parallel workers:", default="4").ask()
+        workers_str = questionary.text(
+            "Max parallel workers:",
+            default=str(_ex_parallel.get("max_workers", 4)),
+        ).ask()
         if workers_str is None:
             return 130
         try:
@@ -243,12 +287,17 @@ def run_tui(
             console.print("[yellow]Invalid worker count; defaulting to 4.[/yellow]")
             parallel_workers = 4
 
+        _ex_wt_files = set(_ex_parallel.get("worktree_copy_files", []))
         wt_files: list[str] | None = questionary.checkbox(
             "Copy these files into each worktree:",
             choices=[
-                questionary.Choice(".env", value=".env"),
-                questionary.Choice(".env.local", value=".env.local"),
-                questionary.Choice(".secrets", value=".secrets"),
+                questionary.Choice(".env", value=".env", checked=(".env" in _ex_wt_files)),
+                questionary.Choice(
+                    ".env.local", value=".env.local", checked=(".env.local" in _ex_wt_files)
+                ),
+                questionary.Choice(
+                    ".secrets", value=".secrets", checked=(".secrets" in _ex_wt_files)
+                ),
             ],
         ).ask()
         if wt_files is None:
@@ -256,18 +305,21 @@ def run_tui(
         worktree_copy_files = wt_files
 
         fb_val: bool | None = questionary.confirm(
-            "Enable feature-branch mode (branch-per-issue)?", default=False
+            "Enable feature-branch mode (branch-per-issue)?",
+            default=_ex_parallel.get("use_feature_branches", False),
         ).ask()
         if fb_val is None:
             return 130
         use_feature_branches = fb_val
 
     # Conditional: design-token profile picker
+    _ex_dt_profile = existing_config.get("design_tokens", {}).get("active", "default")
     design_token_profile = "default"
     if "design_tokens" in selected_set:
         _profile: str | None = questionary.select(
             "Design-token profile:",
             choices=[questionary.Choice(label, value=val) for label, val in _DESIGN_TOKEN_PROFILES],
+            default=_ex_dt_profile,
         ).ask()
         if _profile is None:
             return 130
@@ -280,15 +332,19 @@ def run_tui(
             design_token_profile = _profile
 
     # Session digest toggle (always asked)
+    _ex_session_digest = (
+        existing_config.get("history", {}).get("session_digest", {}).get("enabled", True)
+    )
     session_digest_enabled: bool | None = questionary.confirm(
-        "Enable ambient session digest?", default=True
+        "Enable ambient session digest?", default=_ex_session_digest
     ).ask()
     if session_digest_enabled is None:
         return 130
 
     # Prompt optimization opt-out (default-on feature; always asked)
+    _ex_prompt_opt = existing_config.get("prompt_optimization", {}).get("enabled", True)
     prompt_optimization_enabled: bool | None = questionary.confirm(
-        "Enable automatic prompt optimization?", default=True
+        "Enable automatic prompt optimization?", default=_ex_prompt_opt
     ).ask()
     if prompt_optimization_enabled is None:
         return 130

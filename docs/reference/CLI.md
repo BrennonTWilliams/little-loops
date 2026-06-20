@@ -34,14 +34,16 @@ These flags appear across multiple tools:
 
 ### ll-init
 
-Initialize little-loops for a project. Detects the project root, selects host adapters, generates a default `.ll/ll-config.json`, and optionally installs hook adapters for supported host CLIs (`claude-code`, `codex`, `pi`).
+Initialize little-loops for a project. Detects the project root, selects host adapters, generates a `.ll/ll-config.json`, and optionally installs hook adapters for supported host CLIs (`claude-code`, `codex`, `pi`).
+
+When run on a project that already has a `.ll/ll-config.json`, the interactive wizard pre-populates every field with the existing values so you can review and update without losing previous settings. The headless `--yes` path preserves existing feature toggles and project fields, applying only the overrides supplied via `--enable`/`--disable`.
 
 **Flags:**
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--yes` | `-y` | Accept all defaults; run non-interactively |
-| `--force` | `-f` | Overwrite existing `.ll/ll-config.json` |
+| `--yes` | `-y` | Accept all defaults; run non-interactively. Merges existing config values when a config is present. |
+| `--force` | `-f` | Reset to template defaults rather than pre-populating from existing config |
 | `--dry-run` | `-n` | Preview actions without writing files |
 | `--plan` | | Emit a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything |
 | `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `pi`). Defaults to auto-detected hosts. |
@@ -57,14 +59,14 @@ Richer features (`parallel`, `sync`, `documents`, `design_tokens`, `confidence_g
 |------------|-------------|
 | `apply --config PLAN` | Apply writes from a `--plan` JSON output. `--config` accepts a file path or raw JSON string. Accepts `--force` to overwrite existing configuration. |
 
-**Exit codes:** `0` = success, `1` = error (config exists, template missing, etc.), `2` = usage error
+**Exit codes:** `0` = success, `1` = error (template missing, stdin not a TTY, etc.), `2` = usage error
 
 **Interactive TUI screens** (omitted when `--yes` is passed):
 
 | Screen | Prompt | Notes |
 |--------|--------|-------|
 | 1 / 6  | Project type template | Auto-detected from repo contents |
-| 2 / 6  | Project name, src dir, test/lint/format commands | Pre-filled from detection; command fields offer curated-menu select with "Custom…" fallthrough |
+| 2 / 6  | Project name, src dir, test/lint/format commands | Pre-filled from existing config when present, otherwise from detection; command fields offer curated-menu select with "Custom…" fallthrough |
 | 3 / 6  | Scan settings | `focus_dirs` text entry; confirm/override exclude patterns |
 | 4 / 6  | Features | Opt-in checkboxes including `github_sync`, `confidence_gate`, `tdd`, `decisions` (rules log), `scratch_pad` (automation context masking), `session_capture` (PreCompact handoff); profile picker for `design_tokens`; worktree copy-files toggle; session-digest confirm; prompt-optimization opt-out confirm (default on) |
 | 5 / 6  | Host adapters + settings target | Defaults to detected hosts; third "Skip" option skips `merge_settings` entirely |

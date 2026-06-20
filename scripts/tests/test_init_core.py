@@ -1103,15 +1103,25 @@ class TestMainInit:
         data = json.loads(config_path.read_text())
         assert "$schema" in data
 
-    def test_yes_fails_if_exists_without_force(self, tmp_project: Path) -> None:
+    def test_yes_merges_existing_config(self, tmp_project: Path) -> None:
+        """--yes on a project with existing config merges rather than failing."""
+        import json
+
         from little_loops.init.cli import main_init
 
         (tmp_project / ".ll").mkdir()
-        (tmp_project / ".ll" / "ll-config.json").write_text("{}")
+        existing = {"project": {"name": "preserved", "src_dir": "kept/"}, "analytics": {"enabled": False}}
+        (tmp_project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
 
         with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
             code = main_init(["--yes", "--root", str(tmp_project)])
-        assert code == 1
+        assert code == 0
+        result = json.loads((tmp_project / ".ll" / "ll-config.json").read_text())
+        # Existing project name and src_dir should be preserved
+        assert result["project"]["name"] == "preserved"
+        assert result["project"]["src_dir"] == "kept/"
+        # Existing analytics=disabled should be preserved
+        assert result["analytics"]["enabled"] is False
 
     def test_plan_emits_json(self, tmp_project: Path, capsys: pytest.CaptureFixture) -> None:
         from little_loops.init.cli import main_init

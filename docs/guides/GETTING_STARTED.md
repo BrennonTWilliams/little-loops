@@ -87,7 +87,7 @@ ll-init
 |------|-------------|---------------|
 | _(none)_ | Launches an interactive TUI to configure options step by step | Default — works for most projects |
 | `--yes` | Accepts all auto-detected defaults without any confirmation prompts | Fastest path when auto-detection gets it right |
-| `--force` | Overwrites an existing `.ll/ll-config.json` | Re-initializing a project that already has a config |
+| `--force` | Overwrites an existing `.ll/ll-config.json` (TUI now pre-populates from existing values automatically, so `--force` is rarely needed) | Forcing a full template reset regardless of existing config |
 | `--dry-run` | Previews what would be generated without writing any files | Checking what `ll-init` would produce before committing |
 
 > **More options:** `--hosts HOST…` wires adapters for additional host CLIs (Claude Code, Codex, OpenCode). Only needed if you use little-loops with multiple AI coding tools.

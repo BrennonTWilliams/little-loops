@@ -355,22 +355,59 @@ class TestCtrlC:
 
 class TestExistingConfig:
     @patch("little_loops.init.tui.questionary")
-    def test_existing_config_without_force_returns_1_no_prompts(
+    def test_existing_config_without_force_pre_populates(
         self, mock_q: MagicMock, tmp_path: Path
     ) -> None:
+        """Without --force, wizard should still run and pre-fill from existing config."""
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
-        (ll_dir / "ll-config.json").write_text("{}")
+        existing = {
+            "project": {"name": "oldproject", "src_dir": "oldsrc/", "test_cmd": "old-pytest"},
+            "analytics": {"enabled": True},
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(existing))
 
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, name="oldproject", src_dir="oldsrc/", test_cmd="old-pytest")
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, force=False)
 
-        assert rc == 1
-        mock_q.text.assert_not_called()
+        assert rc == 0
+        assert mock_q.text.called  # wizard ran
 
     @patch("little_loops.init.tui.questionary")
-    def test_existing_config_with_force_overwrites(self, mock_q: MagicMock, tmp_path: Path) -> None:
+    def test_existing_config_pre_populates_defaults(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        """Verify questionary prompts receive existing config values as the default= kwarg."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        existing = {
+            "project": {
+                "name": "myoldproject",
+                "src_dir": "oldsrc/",
+                "test_cmd": "old-pytest",
+            },
+            "analytics": {"enabled": True},
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(existing))
+
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, name="myoldproject", src_dir="oldsrc/", test_cmd="old-pytest")
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, force=False)
+
+        calls = mock_q.text.call_args_list
+        # Index 0: "Project name:" — should default to existing project name
+        assert calls[0].kwargs.get("default") == "myoldproject"
+        # Index 1: "Source directory:" — should default to existing src_dir
+        assert calls[1].kwargs.get("default") == "oldsrc/"
+
+    @patch("little_loops.init.tui.questionary")
+    def test_existing_config_with_force_pre_populates(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        """--force still pre-fills from existing config and runs to completion."""
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         (ll_dir / "ll-config.json").write_text("{}")

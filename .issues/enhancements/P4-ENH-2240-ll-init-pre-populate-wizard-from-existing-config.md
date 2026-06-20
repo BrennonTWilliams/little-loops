@@ -3,8 +3,9 @@ id: ENH-2240
 title: ll-init should pre-populate the wizard from existing ll-config.json
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-20T04:08:03Z'
+completed_at: '2026-06-20T05:43:09Z'
 discovered_date: '2026-06-20'
 discovered_by: capture-issue
 learning_tests_required:
@@ -15,6 +16,7 @@ score_complexity: 16
 score_test_coverage: 22
 score_ambiguity: 18
 score_change_surface: 22
+decision_needed: false
 ---
 
 # ENH-2240: ll-init should pre-populate the wizard from existing ll-config.json
@@ -121,6 +123,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Three `build_config()` choices keys absent from `_build_final_config()`'s choices_dict** (assembled at `tui.py:452–461`): `decisions_enabled`, `scratch_pad_enabled`, `session_capture_enabled` are applied as post-`build_config()` dict mutations, not through the choices dict; pre-populate for these three must read from `existing_config` directly in the post-`build_config()` mutation block — they cannot be injected via the choices dict passed to `build_config()`
 - **Test assertion pattern for `default=` verification**: `_wire_q()` sets `mock_q.text.side_effect` regardless of what `default=` was passed, so it does NOT verify seeding; the new `test_existing_config_pre_populates_defaults` test must assert via `mock_q.text.call_args_list[N].kwargs.get("default")` (e.g. index 0 = project name prompt) to confirm existing config values were used; for checkbox pre-selection, verify via `mock_q.Choice.call_args_list` — `Choice(label, value=val, checked=True)` call args are captured even though the return is a MagicMock, so assert `mock_q.Choice.call_args_list[N].kwargs.get("checked") == True` for items expected to be pre-checked
 
+### Codebase Research Findings (Third Refinement Pass)
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Third early-exit guard in `cli.py:_run_apply()` (lines 296–300)**: an identical `if config_path.exists() and not force: return 1` guard exists in `_run_apply()` in addition to the two guards already documented; the `--apply` subcommand workflow path will still block on existing configs unless this guard is also removed — see new Implementation Step 11
+- **Stale anchor in existing research findings**: the guard location for `cli.py` is listed above as "lines ~90–99" but the guard in `_run_yes()` is actually at **lines 136–142** (file has grown since that note was written); use 136–142 as the authoritative reference
+- **Exact anchor: `docs/guides/GETTING_STARTED.md:90`** — `| '--force' | Overwrites an existing '.ll/ll-config.json' | Re-initializing a project that already has a config |`; update this row (Implementation Step 9) to reflect that bare `ll-init` now pre-populates without `--force`
+- **Exact anchor: `docs/codex/getting-started.md:33`** — "It also writes `.ll/ll-config.json` if one does not already exist"; update (Implementation Step 10) to reflect the pre-populate review-and-edit flow
+- **Exact anchor: `skills/init/SKILL.md:53`** — `/ll:init --force  # overwrite existing config`; update comment (Implementation Step 8) to clarify `--force` is no longer required to re-run on an existing project
+
 ## Implementation Steps
 
 1. **Load existing config in `tui.py:run_tui()`** — After the TTY check (before the early-exit guard), call `resolve_config_path(project_root)` from `little_loops.config.core` and, if found, load the file as `existing_config: dict = json.loads(path.read_text(encoding="utf-8"))` with `except json.JSONDecodeError: existing_config = {}`.
@@ -138,6 +150,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 8. **Update `skills/init/SKILL.md`** — Change the example comment `/ll:init --force  # overwrite existing config` to clarify that bare `/ll:init` (without `--force`) now pre-populates and proceeds on existing projects; `--force` retains its passthrough role but is no longer required to re-run.
 9. **Update `docs/guides/GETTING_STARTED.md`** — Update the `--force` flag "When to use it" column and any troubleshooting entries that say `--force` is required to re-run `ll-init` on a configured project.
 10. **Update `docs/codex/getting-started.md`** — Update the sentence "writes `.ll/ll-config.json` if one does not already exist" to reflect the new pre-populate behavior.
+11. **Remove guard in `cli.py:_run_apply()` (lines 296–300)** — A third identical early-exit guard exists in `_run_apply()` (the `--apply` subcommand path); remove it so the `--apply` workflow also pre-populates from the existing config rather than blocking.
 
 ## Acceptance Criteria
 
@@ -164,7 +177,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `enhancement`, `captured`, `ux`, `ll-init`
 
+## Resolution
+
+Implemented pre-population in both the interactive TUI and headless `--yes` paths:
+
+- `tui.py`: Added `_features_from_existing_config()` helper; removed early-exit guard; seeded all `questionary` prompts (`name`, `src_dir`, commands, scan `focus_dirs`, features checkbox, parallel workers/worktree-files/feature-branches, design-token profile, session digest, prompt optimization) from `existing_config`.
+- `cli.py:_run_yes()`: Removed guard; loads existing config via `resolve_config_path()`; builds base `choices` dict from existing feature toggles and project fields, then overlays CLI `--enable`/`--disable` flags.
+- `cli.py:_run_apply()`: Removed guard to allow `--apply` subcommand on projects with an existing config.
+- Tests: Rewrote `test_existing_config_without_force_returns_1_no_prompts` → `test_existing_config_without_force_pre_populates`; added `test_existing_config_pre_populates_defaults` asserting `default=` kwargs; updated `test_yes_fails_if_exists_without_force` → `test_yes_merges_existing_config`.
+- Docs: Updated `CLI.md`, `GETTING_STARTED.md`, `docs/codex/getting-started.md`, `skills/init/SKILL.md`.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T05:30:58 - `c28acfb1-3a0a-4164-ada5-4b59980c3837.jsonl`
+- `/ll:ready-issue` - 2026-06-20T05:19:07 - `ee8f00fb-ab90-43dd-b8aa-6ceb65fb6b1e.jsonl`
+- `/ll:confidence-check` - 2026-06-20T06:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:refine-issue` - 2026-06-20T05:06:26 - `c25a11b7-c3e0-48fd-83b2-7e49c9719109.jsonl`
 - `/ll:refine-issue` - 2026-06-20T04:54:34 - `eb21245b-b71b-4640-8819-0ebd78cd0c03.jsonl`
 - `/ll:wire-issue` - 2026-06-20T04:36:08 - `fc6d3d82-b485-45e4-b461-f7a2a946075c.jsonl`
 - `/ll:refine-issue` - 2026-06-20T04:27:52 - `89f4d1f4-8387-4d9c-92e9-07a41c9aed63.jsonl`

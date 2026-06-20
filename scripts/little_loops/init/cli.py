@@ -130,24 +130,59 @@ def _run_yes(
         write_config,
     )
 
+    from little_loops.config.core import resolve_config_path
+
     ll_dir = project_root / ".ll"
     config_path = ll_dir / "ll-config.json"
 
-    if config_path.exists() and not force:
-        print(
-            f"Configuration already exists at {config_path}\n"
-            "Use --force to overwrite, or edit the existing file directly.",
-            file=sys.stderr,
-        )
-        return 1
+    # Load existing config as baseline for pre-population.
+    existing_config: dict[str, Any] = {}
+    _existing_path = resolve_config_path(project_root)
+    if _existing_path is not None:
+        try:
+            existing_config = json.loads(_existing_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            existing_config = {}
 
-    if config_path.exists() and force and not dry_run:
+    if existing_config and not dry_run:
+        print("Merging with existing configuration.")
+    elif config_path.exists() and force and not dry_run:
         print("Overwriting existing configuration.")
 
     template = detect_project_type(project_root, templates_dir)
     print(f"Detected project type: {template.name}")
 
+    # Build choices: start from existing config values, then apply CLI overrides.
     choices: dict[str, Any] = {"project_name": project_root.name}
+    if existing_config:
+        _ex_proj = existing_config.get("project", {})
+        if _ex_proj.get("name"):
+            choices["project_name"] = _ex_proj["name"]
+        if _ex_proj.get("src_dir"):
+            choices["src_dir"] = _ex_proj["src_dir"]
+        choices.update(
+            {
+                "product_enabled": existing_config.get("product", {}).get("enabled", True),
+                "analytics_enabled": existing_config.get("analytics", {}).get("enabled", True),
+                "context_monitor_enabled": existing_config.get("context_monitor", {}).get(
+                    "enabled", True
+                ),
+                "learning_tests_enabled": existing_config.get("learning_tests", {}).get(
+                    "enabled", True
+                ),
+                "decisions_enabled": existing_config.get("decisions", {}).get("enabled", False),
+                "scratch_pad_enabled": existing_config.get("scratch_pad", {}).get("enabled", False),
+                "session_capture_enabled": existing_config.get("session_capture", {}).get(
+                    "enabled", False
+                ),
+                "session_digest_enabled": existing_config.get("history", {})
+                .get("session_digest", {})
+                .get("enabled", True),
+                "prompt_optimization_enabled": existing_config.get("prompt_optimization", {}).get(
+                    "enabled", True
+                ),
+            }
+        )
     if feature_choices:
         choices.update(feature_choices)
     config = build_config(template, choices)
@@ -291,14 +326,6 @@ def _run_apply(
 
     config: dict[str, Any] = plan.get("proposed_config") or plan
     ll_dir = project_root / ".ll"
-    config_path = ll_dir / "ll-config.json"
-
-    if config_path.exists() and not force:
-        print(
-            f"Configuration already exists at {config_path}\nUse --force to overwrite.",
-            file=sys.stderr,
-        )
-        return 1
 
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
     issues_base = project_root / issues_base_rel
