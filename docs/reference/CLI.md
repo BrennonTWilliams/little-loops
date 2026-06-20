@@ -42,7 +42,7 @@ When run on a project that already has a `.ll/ll-config.json`, the interactive w
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--yes` | `-y` | Accept all defaults; run non-interactively. Merges existing config values when a config is present. |
+| `--yes` | `-y` | Accept all defaults; run non-interactively. Merges existing config values when a config is present. Loop run defaults: `clear: true`, `show_diagrams: "clean"`. |
 | `--force` | `-f` | Reset to template defaults rather than pre-populating from existing config |
 | `--dry-run` | `-n` | Preview actions without writing files |
 | `--plan` | | Emit a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything |
@@ -63,13 +63,15 @@ Richer features (`parallel`, `sync`, `documents`, `design_tokens`, `confidence_g
 
 **Interactive TUI screens** (omitted when `--yes` is passed):
 
+The detected project type is shown as a banner line (not a questionary prompt) before Screen 1 starts.
+
 | Screen | Prompt | Notes |
 |--------|--------|-------|
-| 1 / 6  | Project type template | Auto-detected from repo contents |
-| 2 / 6  | Project name, src dir, test/lint/format commands | Pre-filled from existing config when present, otherwise from detection; command fields offer curated-menu select with "Custom…" fallthrough |
-| 3 / 6  | Scan settings | `focus_dirs` text entry; confirm/override exclude patterns |
-| 4 / 6  | Features | Opt-in checkboxes including `github_sync`, `confidence_gate`, `tdd`, `decisions` (rules log), `scratch_pad` (automation context masking), `session_capture` (PreCompact handoff); profile picker for `design_tokens`; worktree copy-files toggle; session-digest confirm; prompt-optimization opt-out confirm (default on) |
-| 5 / 6  | Host adapters + settings target | Defaults to detected hosts; third "Skip" option skips `merge_settings` entirely |
+| 1 / 6  | Project Basics | Project name, src dir, test/lint/format/type-check commands. Pre-filled from existing config when present, otherwise from project-type detection; command fields offer curated-menu select with "Custom…" fallthrough |
+| 2 / 6  | Scan | `focus_dirs` text entry; confirm/override exclude patterns |
+| 3 / 6  | Features | Opt-in checkboxes including `github_sync`, `confidence_gate`, `tdd`, `decisions` (rules log), `scratch_pad` (automation context masking), `session_capture` (PreCompact handoff); profile picker for `design_tokens`; worktree copy-files toggle; session-digest confirm; prompt-optimization opt-out confirm (default on); **loop defaults**: "Enable --clear by default?" (default Yes) and "Default diagram mode for ll-loop run?" (default `clean`) |
+| 4 / 6  | Hosts | Defaults to detected hosts |
+| 5 / 6  | Settings target | Third "Skip" option skips `merge_settings` entirely |
 | 6 / 6  | CLAUDE.md update | Offers to create `.claude/CLAUDE.md` (or append to an existing one) with ll CLI command stubs; skipped if a `## little-loops` section is already present (ENH-2043, ENH-2092) |
 
 **Examples:**

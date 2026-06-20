@@ -302,8 +302,8 @@ learning_tests_required:
 `/ll:ready-issue` queries each target via `ll-learning-tests check`:
 - **Proven** → PASS row in VALIDATION table
 - **Stale** → WARN row: re-run `/ll:explore-api "<target>"`
-- **Refuted** → hard NOT_READY; includes the refutation summary
-- **Missing** → NOT_READY: `❌ Unproven assumption: "<target>" — run /ll:explore-api "<target>"`
+- **Refuted** → **auto-invokes** `/ll:explore-api "<target>"`, then re-checks; hard NOT_READY only if still refuted after exploration
+- **Missing** → **auto-invokes** `/ll:explore-api "<target>"`, then re-checks; NOT_READY only if still missing after exploration
 
 Issues without `learning_tests_required` are unaffected — the gate is opt-in.
 

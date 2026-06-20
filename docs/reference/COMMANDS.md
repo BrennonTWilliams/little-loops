@@ -177,7 +177,7 @@ Validate issue file for accuracy and auto-correct problems.
 - `--deep` — Use sub-agents for comprehensive validation (verifies file paths, line numbers, code snippets against actual codebase)
 - `--check` — Check-only mode for FSM loop evaluators: run validation without auto-corrections, print `[ID] ready: [verdict]`, exit 0 if READY/CORRECTED, exit 1 otherwise
 
-**Learning Test Gate:** When the issue contains a `learning_tests_required` frontmatter field, each declared target is checked against the learning test registry (`ll-learning-tests check`). Proven targets emit a PASS row in the VALIDATION table; stale targets emit a WARN; missing or refuted targets block readiness with `❌ Unproven assumption: "<target>" — run /ll:explore-api "<target>"`. Issues without `learning_tests_required` are unaffected.
+**Learning Test Gate:** When the issue contains a `learning_tests_required` frontmatter field, each declared target is checked against the learning test registry (`ll-learning-tests check`). Proven targets emit a PASS row in the VALIDATION table; stale targets emit a WARN. For `missing` or `refuted` targets, the skill **auto-invokes** `/ll:explore-api "<target>"` inline, then re-checks the registry. If the target is now proven, the gate passes; if it is still missing or refuted after exploration, readiness is blocked with `❌ Unproven assumption: "<target>"`. Issues without `learning_tests_required` are unaffected.
 
 ### `/ll:verify-issues`
 Verify all issue files against current codebase state.
