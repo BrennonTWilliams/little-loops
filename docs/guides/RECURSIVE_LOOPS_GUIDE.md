@@ -151,6 +151,9 @@ phases:
                           IMPLEMENT · DECIDE · WIRE · REFINE · DECOMPOSE
 3. Remediation Actions    run the chosen action (decide / wire / refine /
                           implement) with refine+wire marker gating
+                          Note: the refine action uses two states —
+                          refine_first (REFINE-diagnosis path, uses --full-rewrite)
+                          and refine_followup (all other refine callers, no --full-rewrite)
 4. Re-Assessment & Convergence  re-score → compute deltas → converged?
                           improved? stalled? (bounded by max_remediation_passes: 3)
 ```
@@ -190,7 +193,9 @@ it and route. For `rn-remediate`:
 | `STALLED_NEEDS_DECOMPOSE` | Remediation exhausted its budget | Try `rn-decompose`; if no children, defer |
 | `MANUAL_REVIEW_NEEDED` | Needs a human decision | Mark blocked |
 | `RATE_LIMITED` | Host rate limit hit | Record rate-limit diagnostic, continue |
-| `IMPLEMENT_FAILED` / `SCORES_MISSING` | Failure | Record failure, continue |
+| `IMPLEMENT_FAILED` | Implementation failure | Record failure, continue |
+| `SCORES_MISSING` | Diagnostic/tooling failure (confidence or outcome frontmatter unreadable after implementation) | Record diagnostic failure separately, continue |
+| `SIZE_REVIEW_FAILED` | `/ll:issue-size-review` errored or was inconclusive during decompose | Record diagnostic failure separately, continue |
 
 `rn-decompose` emits `DECOMPOSED` (children enqueued) or `NO_CHILDREN` (atomic);
 the parent uses the stall-vs-atomic distinction above to decide between deferring
