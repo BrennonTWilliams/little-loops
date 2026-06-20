@@ -317,7 +317,7 @@ class TestENH1732StateSplit:
     def test_do_work_retries_on_error(self, raw_data: dict) -> None:
         assert raw_data["states"]["do_work"]["on_error"] == "do_work"
         assert raw_data["states"]["do_work"]["max_retries"] == 2
-        assert raw_data["states"]["do_work"]["on_retry_exhausted"] == "continue_work"
+        assert raw_data["states"]["do_work"]["on_retry_exhausted"] == "capture_work_exit"
 
     def test_continue_work_retries_on_error(self, raw_data: dict) -> None:
         assert raw_data["states"]["continue_work"]["on_error"] == "continue_work"
