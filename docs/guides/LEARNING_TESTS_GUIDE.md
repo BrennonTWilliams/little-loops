@@ -368,27 +368,35 @@ The gate caches each package lookup for the lifetime of the Python process (one 
 
 ## Release Gate
 
-When `learning_tests.enabled` is `true`, `ll-manage-release` runs a pre-release check that blocks tagging if any issue in the current sprint (or in the set of recently completed issues) declares `learning_tests_required` targets that are stale or refuted.
+When `learning_tests.enabled` is `true`, `ll-manage-release` runs a pre-release audit that scans actively-imported packages across `learning_tests.scan_dirs` source files (via `get_imported_packages()`) and cross-references them against the learning-test registry. If any imported package has a `refuted` record or a `proven` record older than `stale_after_days`, the gate reports or blocks depending on the `release_gate` config value.
 
-**What it blocks on:**
+**What it flags:**
 
-| Record state | `--stale-aware` check result | Gate decision |
-|---|---|---|
-| `proven` and not stale | pass | allow |
-| `proven` but age > `stale_after_days` | stale | **block** |
-| `refuted` | refuted | **block** |
-| missing | not found | **block** |
+| Record state | Gate signal |
+|---|---|
+| `proven` and not stale | pass (no output) |
+| `proven` but age > `stale_after_days` | stale — warn or block |
+| `refuted` | refuted — warn or block |
 
-**Example output:**
+**Gate behavior** (`learning_tests.release_gate` in `.ll/ll-config.json`):
+
+| `release_gate` value | Behavior |
+|---|---|
+| `"warn"` (default) | Prints warning table, release continues |
+| `"block"` | Prints warning table, aborts with exit 1 |
+
+**Example output (block mode):**
 ```
-[ll-manage-release] Learning-test gate: BLOCK
-  ✗ stale:   "Anthropic SDK streaming"  (last proven 2026-05-01, stale after 30 days)
-  ✗ refuted: "GitHub webhook delivery guarantees"
+⚠ Learning Test Pre-Release Audit
+Package                        Status     Record Date    Days Since Proven
+----------------------------------------------------------------------
+anthropic                      stale      2026-05-01     49
+requests                       refuted    2026-04-15     64
 
-Run /ll:explore-api to re-prove stale targets before tagging.
+✗ Release blocked: fix or re-prove the above records, or set release_gate: warn to proceed.
 ```
 
-The gate can be bypassed for emergency releases with `ll-manage-release --skip-learning-gate`.
+For emergency releases, set `release_gate: "warn"` in `.ll/ll-config.json` temporarily — `ll-manage-release` has no `--skip-learning-gate` flag.
 
 ---
 

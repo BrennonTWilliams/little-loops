@@ -3,8 +3,9 @@ id: ENH-2235
 title: Fix Release Gate section in LEARNING_TESTS_GUIDE.md
 type: ENH
 priority: P3
-status: open
+status: done
 testable: false
+completed_at: 2026-06-20 03:58:01+00:00
 ---
 
 ## Summary
@@ -88,4 +89,5 @@ Rewrite the "Release Gate" section to accurately describe:
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T03:56:40 - `d445de64-7691-4c6d-a1c8-94f4fe2bdb10.jsonl`
 - `/ll:format-issue` - 2026-06-20T03:51:07 - `af33a2f7-b8a5-40ce-9634-e1101e03615b.jsonl`
