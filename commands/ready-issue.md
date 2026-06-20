@@ -179,8 +179,8 @@ Record corrections in `CORRECTIONS_MADE` as usual, but the top-level verdict mus
   - If present: for each target string, run `ll-learning-tests check "<target>"`
     - `status: proven` → PASS row in VALIDATION table: `Learning Tests | PASS | "<target>" proven`
     - `status: stale` → WARN row: `Learning Tests | WARN | "<target>" stale — re-run /ll:explore-api "<target>"`
-    - `status: refuted` → **Set verdict to NOT_READY**: `❌ Refuted assumption: "<target>" — see registry for refutation details`
-    - Record not found (None returned) → **Set verdict to NOT_READY**: `❌ Unproven assumption: "<target>" — run /ll:explore-api "<target>"`
+    - `status: refuted` → **Auto-invoke** `Skill("explore-api", "<target>")` to re-explore the assumption, then re-run `ll-learning-tests check "<target>"`. If still `refuted`: `❌ Refuted assumption: "<target>" — see registry for refutation details` + **Set verdict to NOT_READY**. If now `proven` or `stale`: apply that status and continue.
+    - Record not found (None returned) → **Auto-invoke** `Skill("explore-api", "<target>")` to create the proof record, then re-run `ll-learning-tests check "<target>"` and apply the refreshed status. If still `missing` after exploration: `❌ Unproven assumption: "<target>"` + **Set verdict to NOT_READY**.
 - Refuted or missing targets block readiness and override READY/CORRECTED.
 - Stale targets produce a WARN but do not block.
 

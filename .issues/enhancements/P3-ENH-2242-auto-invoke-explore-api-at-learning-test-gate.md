@@ -3,10 +3,18 @@ id: ENH-2242
 title: Auto-invoke explore-api at learning test gate
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-06-20T05:38:22Z"
-discovered_date: "2026-06-20"
+status: done
+captured_at: '2026-06-20T05:38:22Z'
+completed_at: '2026-06-20T06:03:43Z'
+discovered_date: '2026-06-20'
 discovered_by: capture-issue
+testable: true
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 25
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2242: Auto-invoke explore-api at learning test gate
@@ -14,6 +22,14 @@ discovered_by: capture-issue
 ## Summary
 
 When `ready-issue` or `confidence-check` encounters a `missing` or `refuted` learning test target, they currently block and instruct the user to manually run `/ll:explore-api "<target>"`. This is unnecessary friction — both skills have access to the `Skill` tool and can invoke `explore-api` themselves, then re-check the gate.
+
+## Current Behavior
+
+When `ready-issue` or `confidence-check` hits a learning test gate with a `missing` or `refuted` target, they block with a NOT_READY verdict and print a manual instruction: `❌ Unproven assumption: "<target>" — run /ll:explore-api "<target>"`. The user must exit the gate flow, run `/ll:explore-api` manually, then re-run the original skill to continue.
+
+## Expected Behavior
+
+When a `missing` or `refuted` target is encountered, the skill auto-invokes `Skill("explore-api", "<target>")` inline, then re-runs `ll-learning-tests check "<target>"` to get the refreshed status. The gate only surfaces a hard NOT_READY block if the target is still `missing` or `refuted` after exploration. Stale targets continue to produce a WARN row without triggering auto-invoke.
 
 ## Motivation
 
@@ -47,7 +63,7 @@ After the exit-semantics paragraph (the line ending `"…loses the distinction n
 
 `SKILL.md` line 275 ("Learning Test Hard Override: if Phase 1.5 found any `missing` or `refuted` target…") remains accurate — it triggers only if the re-check after auto-provision still fails.
 
-## Out of Scope
+## Scope Boundaries
 
 - `skills/scope-epic/SKILL.md` and `skills/create-loop/loop-types.md` also reference "run /ll:explore-api" in learning-test contexts, but those are proposal/display strings, not blocking gate logic. Leave for a follow-up.
 - The `stale` WARN path in both files is unchanged (non-blocking, existing text is informational).
@@ -60,5 +76,19 @@ After the exit-semantics paragraph (the line ending `"…loses the distinction n
 4. For refuted: manually create a refuted record, re-run both skills — re-explores and either resolves or surfaces NOT_READY cleanly.
 5. Confirm stale targets still produce a WARN row without triggering auto-invoke.
 
+## Impact
+
+- **Priority**: P3 — Nice-to-have UX improvement; gate still functions correctly without it, just with extra manual steps
+- **Effort**: Small — changes are limited to instruction text in two markdown files (`commands/ready-issue.md` and `skills/confidence-check/rubric.md`); no Python code changes
+- **Risk**: Low — modifies skill instruction prose only; no runtime code paths affected; worst case is auto-invoke fails and the same NOT_READY verdict is surfaced
+- **Breaking Change**: No
+
+## Labels
+
+`ux`, `dx`, `learning-tests`, `skills`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-20T06:00:27 - `edb438d7-81e8-409c-8b89-5c36ff2bdab0.jsonl`
+- `/ll:confidence-check` - 2026-06-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edb438d7-81e8-409c-8b89-5c36ff2bdab0.jsonl`
+- `/ll:format-issue` - 2026-06-20T05:44:12 - `d2a02e35-6ac9-41b6-9cb8-988e2febce58.jsonl`
 - `/ll:capture-issue` - 2026-06-20T05:38:22Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8f142e-9c8f-4d85-8bfd-0333f0b18482.jsonl`

@@ -142,6 +142,8 @@ fi
 
 `ll-learning-tests check "<target>"` exit semantics: exit 0 + JSON stdout → record found (`status` is `"proven"`, `"stale"`, or `"refuted"`); exit 1 + no stdout → record not found (treat as `"missing"`). Do **not** use `--stale-aware`; that flag collapses stale+missing into a single exit 1 and loses the distinction needed for differential scoring.
 
+**Auto-provision**: If any target's status is `missing` or `refuted` after the script above, invoke `Skill("explore-api", "<target>")` for each such target before proceeding. After each invocation completes, re-run `ll-learning-tests check "<target>"` and update that target's row in `LT_ROWS` with the refreshed status and notes. Re-evaluate `LT_STOP`: reset to `false`, then set to `true` only if any target is still `missing` or `refuted` after provisioning.
+
 When `LT_ROWS` is non-empty, inject the following **Learning Test Context** block into Phase 2 assessment:
 
 ```

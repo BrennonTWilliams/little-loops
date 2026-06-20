@@ -144,3 +144,65 @@ class TestReadyIssueLearningTestGate:
         assert "opt-in" in text.lower() or "absent" in text.lower() or "empty" in text.lower(), (
             "Step 2 must mention that the gate is opt-in (absent/empty field is PASS)"
         )
+
+
+class TestReadyIssueLearningTestAutoProvision:
+    """commands/ready-issue.md must auto-invoke explore-api for missing/refuted targets (ENH-2242)."""
+
+    RUBRIC_FILE = PROJECT_ROOT / "skills" / "confidence-check" / "rubric.md"
+
+    def _gate_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("#### Learning Test Gate")
+        next_heading = content.find("\n####", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def _rubric_lt_text(self) -> str:
+        content = self.RUBRIC_FILE.read_text()
+        start = content.index("ll-learning-tests check")
+        next_heading = content.find("\nWhen `LT_ROWS`", start)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_ready_issue_refuted_auto_invokes_explore_api(self) -> None:
+        text = self._gate_text()
+        assert "explore-api" in text, (
+            "Learning Test Gate must reference explore-api for refuted targets (ENH-2242)"
+        )
+        assert "Auto-invoke" in text or "auto-invoke" in text or "Auto-provision" in text or "auto-provision" in text, (
+            "Learning Test Gate must describe auto-invocation for refuted targets (ENH-2242)"
+        )
+
+    def test_ready_issue_missing_auto_invokes_explore_api(self) -> None:
+        text = self._gate_text()
+        # Must not only block — must also describe the auto-invoke path for missing targets
+        assert "explore-api" in text, (
+            "Learning Test Gate must reference explore-api for missing targets (ENH-2242)"
+        )
+
+    def test_ready_issue_stale_does_not_trigger_auto_invoke(self) -> None:
+        text = self._gate_text()
+        # stale line must remain a WARN, not an auto-invoke
+        stale_line = next(
+            (line for line in text.splitlines() if "stale" in line and "WARN" in line), None
+        )
+        assert stale_line is not None, (
+            "stale targets must still produce a WARN row (not trigger auto-invoke) (ENH-2242)"
+        )
+
+    def test_confidence_check_rubric_has_auto_provision_step(self) -> None:
+        content = self.RUBRIC_FILE.read_text()
+        assert "Auto-provision" in content, (
+            "confidence-check rubric.md must include an Auto-provision step for missing/refuted targets (ENH-2242)"
+        )
+
+    def test_confidence_check_rubric_auto_provision_before_lt_rows(self) -> None:
+        content = self.RUBRIC_FILE.read_text()
+        auto_pos = content.find("Auto-provision")
+        lt_rows_pos = content.find("When `LT_ROWS`")
+        assert auto_pos != -1, "Auto-provision step must exist in rubric.md (ENH-2242)"
+        assert lt_rows_pos != -1, "When `LT_ROWS` paragraph must exist in rubric.md"
+        assert auto_pos < lt_rows_pos, (
+            "Auto-provision step must appear before the 'When LT_ROWS is non-empty' paragraph (ENH-2242)"
+        )
