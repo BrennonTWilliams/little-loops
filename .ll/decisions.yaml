@@ -1161,3 +1161,171 @@
   rule: 'Captured: brainstorm built-in FSM loop'
   scope: issue
   issue: FEAT-2248
+- id: OTHE-044
+  type: rule
+  timestamp: '2026-06-20T19:24:59Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: Git will not re-include a file whose parent directory is excluded. A
+    bare file-level negation silently fails; you must first re-include the directory
+    itself with an anchored path.
+  rule: Use an anchored negative rule `!/.ll/` (not `!.ll/decisions.yaml`) to re-include
+    a root dir excluded by a glob pattern.
+  enforcement: advisory
+  issue: ENH-2249
+- id: OTHE-045
+  type: rule
+  timestamp: '2026-06-20T19:24:59Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: The `**/.ll/` rule inadvertently matched the repo-root `.ll/`, silently
+    dropping curated artifacts that postdated the rule. Anchored patterns eliminate
+    this class of silent-ignore bugs.
+  rule: Prefer anchored `.gitignore` patterns (`/dir/`) over glob patterns (`**/.dir/`)
+    when the intent is to exclude only neste
+  enforcement: advisory
+  issue: ENH-2249
+- id: OTHE-046
+  type: rule
+  timestamp: '2026-06-20T19:24:59Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: Tracking only `.md` index records left every `raw/` proof file untracked,
+    making the registry entries unverifiable. An index without its referenced artifacts
+    is incomplete.
+  rule: When tracking a registry or index file, also track its referenced proof/raw-output
+    files in the same commit.
+  enforcement: advisory
+  issue: ENH-2249
+- id: OTHE-047
+  type: rule
+  timestamp: '2026-06-20T19:24:59Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: FEAT-1932 was blocked across every verification pass because `PushNotification`
+    tool never existed. An unresolvable hard dependency means the issue cannot land
+    as written and should be cancelled, not deferred indefinitely.
+  rule: Cancel any issue whose implementation depends on a tool or primitive that
+    does not exist in the codebase.
+  enforcement: advisory
+  issue: ENH-2249
+- id: ARCH-048
+  type: rule
+  timestamp: '2026-06-20T19:24:59Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Hermes handled message transport but cannot pause/resume an FSM mid-run.
+    Blanket cancellation would have dropped the still-needed `human_approval` FSM
+    state; splitting preserved the core and cancelled only the now-redundant transport
+    work.
+  rule: When an external integration obsoletes the transport layer of an epic, split
+    along capability lines rather than blanket-
+  enforcement: advisory
+  issue: ENH-2249
+- id: ARCH-049
+  type: rule
+  timestamp: '2026-06-20T19:24:59Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: External notification integrations (Hermes, etc.) can deliver messages
+    but cannot suspend and resume an in-flight FSM. The state machine itself must
+    own the pause/resume contract.
+  rule: FSM pause/resume primitives (`human_approval` state) must live in the executor,
+    not in transport adapters.
+  enforcement: advisory
+  issue: ENH-2249
+- id: ARCH-050
+  type: rule
+  timestamp: '2026-06-20T20:23:33Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: ENH-2250 found that SCORES_MISSING and SIZE_REVIEW_FAILED fell through
+    to record_failure, mixing tooling/infrastructure errors with genuine implementation
+    failures and making operator triage impossible.
+  rule: Route diagnostic sub-loop outcomes to dedicated record states; never collapse
+    them into the generic record_failure state
+  enforcement: advisory
+  issue: ENH-2250
+- id: ARCH-051
+  type: rule
+  timestamp: '2026-06-20T20:23:33Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Untagged failure lines prevent the report state from distinguishing real
+    failures from diagnostic errors, hiding infrastructure issues behind a single
+    failed count.
+  rule: Tag every line written to failures.txt with a token (e.g. SCORES_MISSING,
+    SIZE_REVIEW_FAILED) so report can tally and di
+  enforcement: advisory
+  issue: ENH-2250
+- id: ARCH-052
+  type: rule
+  timestamp: '2026-06-20T20:23:33Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The headline failed count should represent genuine implementation failures
+    only; mixing in infrastructure/tooling errors causes operators to misread run
+    health and take wrong remediation actions.
+  rule: 'Subtract all non-failure diagnostic categories (SUB_LOOP_CRASHES, SCORES_MISSING,
+    SIZE_REVIEW_FAILED) from the headline '
+  enforcement: advisory
+  issue: ENH-2250
+- id: ARCH-053
+  type: rule
+  timestamp: '2026-06-20T20:23:33Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: A scoring-read error or size-review timeout warrants a different operator
+    response than a failed ll-auto run; routing them identically destroys that signal
+    before it can be acted on.
+  rule: 'Distinguish infrastructure/tooling errors from semantic implementation failures
+    at the loop routing level, not post-hoc '
+  enforcement: advisory
+  issue: ENH-2250
+- id: STYL-054
+  type: rule
+  timestamp: '2026-06-20T20:23:33Z'
+  category: style
+  labels:
+  - extracted
+  - issue
+  rationale: ENH-2250 and ENH-2005 established this as the canonical pattern; deviating
+    creates inconsistent tally behavior and breaks report parsing.
+  rule: 'New record_<condition> states should follow the record_sub_loop_crash convention:
+    write a tagged line to the tally file,'
+  enforcement: advisory
+  issue: ENH-2250
+- id: ARCH-055
+  type: rule
+  timestamp: '2026-06-20T20:23:33Z'
+  category: architecture
+  labels:
+  - extracted
+  - issue
+  rationale: ENH-2250 added scores_missing and size_review_failed keys; without updating
+    both the JSON and the human echo, the new category is invisible to automated consumers
+    or human readers respectively.
+  rule: When adding a new failure category, add a corresponding key to summary.json
+    and a matching human-readable echo line in r
+  enforcement: advisory
+  issue: ENH-2250
