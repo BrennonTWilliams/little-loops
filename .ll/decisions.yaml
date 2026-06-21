@@ -1385,3 +1385,86 @@
     value against codebase convention.
   enforcement: advisory
   issue: ENH-2251
+- id: ARCH-060
+  type: rule
+  timestamp: '2026-06-21T00:44:54Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: backfill() silently ignored compaction settings because the CLI handler
+    never loaded project config, unlike the prune handler which already followed this
+    pattern. Config-unaware handlers cause feature flags to have no effect.
+  rule: CLI subcommand handlers must read project config via resolve_config_path()
+    and pass it to the underlying function.
+  enforcement: advisory
+  issue: ENH-2252
+- id: STYL-061
+  type: rule
+  timestamp: '2026-06-21T00:44:54Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: The backfill bug existed because a new handler was written without mirroring
+    the prune handler's config-loading approach. Consistency gaps cause silent behavioral
+    differences between subcommands.
+  rule: When adding a new CLI handler, audit existing sibling handlers for established
+    patterns (e.g., config loading, error han
+  enforcement: advisory
+  issue: ENH-2252
+- id: ARCH-062
+  type: rule
+  timestamp: '2026-06-21T00:44:54Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: When streaming rows from multiple tables into a single JSONL file, the
+    type field is the only reliable way to distinguish record origins. Without it,
+    consumers must guess from field presence.
+  rule: Multi-table export functions must include a 'type' discriminator field on
+    each row so consumers can route records withou
+  enforcement: advisory
+  issue: ENH-2252
+- id: PERF-063
+  type: rule
+  timestamp: '2026-06-21T00:44:54Z'
+  category: performance
+  labels:
+  - extracted
+  - global
+  rationale: message_events (~46K rows) dwarfs all other tables combined. Exporting
+    them by default would make the common case slow and produce unexpectedly large
+    files; opt-in via --include-messages preserves usability.
+  rule: High-volume tables (tens of thousands of rows) must be opt-in in export commands,
+    not included by default.
+  enforcement: advisory
+  issue: ENH-2252
+- id: PERF-064
+  type: rule
+  timestamp: '2026-06-21T00:44:54Z'
+  category: performance
+  labels:
+  - extracted
+  - global
+  rationale: history.db can contain tens of thousands of rows across multiple tables.
+    A generator (yield per row) bounds memory usage regardless of database size.
+  rule: Export and streaming functions over large datasets must use a generator pattern,
+    not load all rows into memory first.
+  enforcement: advisory
+  issue: ENH-2252
+- id: OTHE-065
+  type: rule
+  timestamp: '2026-06-21T00:44:54Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: Backfilling compaction without a cap would issue LLM calls for every
+    unprocessed session. A --max-sessions N flag lets users safely explore cost and
+    output quality before committing to a full run.
+  rule: Operations that are expensive per-item (LLM calls, compaction) must expose
+    a --max-N cap flag to make them safe to run o
+  enforcement: advisory
+  issue: ENH-2252
