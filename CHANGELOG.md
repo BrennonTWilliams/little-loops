@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.129.0] - 2026-06-21
+
+### Added
+
+- **`ll-session export` subcommand** — Streams `history.db` tables as JSONL with type discriminators; high-volume tables are opt-in; `--max-sessions` caps backfill runs; backfill now reads project config correctly. (ENH-2252)
+- **`ll-init` install detection** — Detects existing plugin installations and version drift; `--yes` headless mode auto-installs or upgrades the pip package; new `install_source` field written to `ll-config.json`. (ENH-2253)
+
+### Fixed
+
+- **`brainstorm` loop resilience** — Added `on_error` routes to all states and set `on_handoff` to `spawn` for autonomous resumption after context handoffs. (ce7e680)
+- **Skill count drift** — Corrected stale skill count in `CONTRIBUTING.md`, `README.md`, and test assertions. (3c3f2de, 8b7f543)
+
 ## [1.128.0] - 2026-06-20
 
 ### Added
@@ -85,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`loop-composer` and `loop-composer-adaptive` error routing** — `re_decompose` wired to `on_error`; `check_auto_plan` error paths route to the HITL gate instead of failing silently. (ENH-2135)
 - **`loop-router` loop discovery** — `discover_loops` now passes `--visibility public` to filter hidden loops from selection. (ENH-2203)
 
+[1.129.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.128.0...v1.129.0
 [1.128.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.127.0...v1.128.0
 [1.127.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.126.0...v1.127.0
 [1.126.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.125.0...v1.126.0
