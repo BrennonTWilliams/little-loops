@@ -2104,7 +2104,8 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 |------------|-------------|
 | `search` | FTS5 full-text query with BM25-ranked results |
 | `recent` | Most recent rows for an event kind; optionally filtered by issue |
-| `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830); `--snapshots` seeds the `issue_snapshots` table from `.issues/` files (ENH-2151); `--extract-decisions` runs `extract-from-completed` after backfill (ENH-2152) |
+| `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830); `--snapshots` seeds the `issue_snapshots` table from `.issues/` files (ENH-2151); `--extract-decisions` runs `extract-from-completed` after backfill (ENH-2152); `--max-sessions N` caps how many sessions are compacted in this run (newest first, useful for large DBs) (ENH-2252) |
+| `export` | Dump selected history tables as JSONL to stdout or a file — for visualization, external tooling, or backup (ENH-2252) |
 | `related` | Issue events for a given issue ID |
 | `path` | Resolve the JSONL file path for a session ID |
 | `grep` | Regex search over `message_events` with optional summary-node scope filtering; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |
@@ -2153,6 +2154,25 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `--limit N` | Maximum rows (default: 20) |
 | `--json` | Output as a JSON array |
 
+**`backfill` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--since DATE` | Incremental mode: only process JSONL files modified on or after DATE (ENH-1830) |
+| `--host HOST` | Filter to a single host source: `claude-code`, `codex`, `opencode`, or `pi` |
+| `--snapshots` | Also seed the `issue_snapshots` table from `.issues/` files (ENH-2151) |
+| `--extract-decisions` | Run `extract-from-completed` on issue history after backfill (ENH-2152) |
+| `--max-sessions N` | Cap the number of sessions compacted in this run (newest first); useful for large DBs that would otherwise time out (ENH-2252) |
+
+**`export` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event` |
+| `--since DATE` | Only rows at or after this ISO 8601 date/datetime |
+| `--include-messages` | Also include `message_events` (potentially large); ignored when `--tables` is given explicitly |
+| `-o / --output FILE` | Write output to FILE instead of stdout |
+
 **Examples:**
 ```bash
 ll-session search --fts "rate limit"            # Full-text search, BM25-ranked
@@ -2161,11 +2181,15 @@ ll-session recent --issue ENH-1710              # Sessions that touched ENH-1710
 ll-session recent --kind message --issue ENH-1710  # Messages from those sessions
 ll-session backfill                             # Seed the database from on-disk sources
 ll-session backfill --since 2026-01-01          # Incremental JSONL backfill since date
+ll-session backfill --max-sessions 50           # Compact at most 50 sessions this run
 ll-session path <session_id>                    # Resolve JSONL file path for a session ID
 ll-session grep "error"                         # Regex search over messages
 ll-session grep "traceback" --summary-id 5      # Search within a summary node's span
 ll-session expand 5                             # List messages covered by summary node 5
 ll-session describe 5                           # Show metadata for summary node 5
+ll-session export                               # Dump all non-message tables to stdout as JSONL
+ll-session export --tables issue_event loop_event -o history.jsonl  # Selective export to file
+ll-session export --since 2026-01-01 --include-messages             # Full dump since date
 ll-session prune --dry-run                      # Preview what would be pruned without deleting
 ll-session prune                                # Delete old raw events and VACUUM
 ll-session prune --json                         # Prune result as JSON

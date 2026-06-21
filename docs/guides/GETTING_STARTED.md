@@ -107,6 +107,20 @@ The three fields most relevant to beginners:
 
 Start with the auto-detected defaults.
 
+### Existing Installation Detection
+
+`ll-init` automatically detects whether little-loops is already installed before writing any config. The detection logic runs in both headless (`--yes`) and TUI modes:
+
+| Detected state | What ll-init does |
+|----------------|-------------------|
+| Not installed (no pip package, no global plugin) | Prints a notice and installs automatically in headless mode; TUI informs you before proceeding |
+| Global plugin (`ll@little-loops` via `claude plugin list`) | Recognises the installation; no reinstall needed |
+| Local dev install (editable `pip install -e`) | Reads the installed version from pip metadata |
+| Version mismatch (installed ≠ current) | Prints a notice and upgrades the package automatically in headless mode |
+| Up to date | Proceeds silently |
+
+When an existing `.ll/ll-config.json` is found, the TUI pre-populates every field from its current values so a re-run always starts from your actual config rather than defaults. Use `--force` to reset to template defaults instead of merging.
+
 ### After Setup
 
 Tune individual settings interactively with `/ll:configure` — it presents every config option with its current value and lets you edit in-place. For less common options, see the [Configuration Reference](../reference/CONFIGURATION.md).
