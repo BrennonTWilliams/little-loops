@@ -173,9 +173,7 @@ def _run_yes(
                 f"current: {_plugin_version()!r}) — upgrading..."
             )
             _scripts_dir = project_root / "scripts"
-            _install_target = (
-                f"{_scripts_dir}[dev]" if _scripts_dir.exists() else "little-loops"
-            )
+            _install_target = f"{_scripts_dir}[dev]" if _scripts_dir.exists() else "little-loops"
             try:
                 _subprocess.run(
                     [sys.executable, "-m", "pip", "install", "-e", _install_target],

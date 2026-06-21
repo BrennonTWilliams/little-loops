@@ -7,8 +7,6 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from little_loops.init.install_check import InstallStatus, check_version, detect_installation
 
 
