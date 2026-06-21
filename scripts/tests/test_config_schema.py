@@ -575,6 +575,21 @@ class TestConfigSchema:
         assert scope_props["max_children"]["minimum"] == 1
         assert scope_props["max_children"]["default"] == 8
 
+    def test_install_source_in_schema(self) -> None:
+        """install_source must be declared in config-schema.json root properties.
+
+        The root properties block has additionalProperties: false, so writing
+        install_source to .ll/ll-config.json will be rejected by schema validation
+        unless the property is declared here.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "install_source" in data["properties"], (
+            "install_source is not declared in config-schema.json; writing it to config "
+            "would violate additionalProperties: false"
+        )
+        install_source = data["properties"]["install_source"]
+        assert "string" in install_source["type"]
+
     def test_session_capture_in_schema(self) -> None:
         """session_capture block must be declared in config-schema.json (FEAT-1262).
 

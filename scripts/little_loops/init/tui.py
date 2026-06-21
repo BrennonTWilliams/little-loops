@@ -145,6 +145,7 @@ def run_tui(
 
     from little_loops.config.core import resolve_config_path
     from little_loops.init.detect import detect_project_type
+    from little_loops.init.install_check import InstallStatus, check_version, detect_installation
 
     console = Console()
     ll_dir = project_root / ".ll"
@@ -159,6 +160,49 @@ def run_tui(
         except json.JSONDecodeError:
             existing_config = {}
 
+    # --- Screen 1 / 7: Plugin Install ---
+    install_source, installed_version = detect_installation(project_root)
+    _needs_install = install_source is None
+    _needs_upgrade = False
+    if install_source is not None and installed_version is not None:
+        from little_loops import __version__ as _plugin_ver  # type: ignore[attr-defined]
+
+        _needs_upgrade = check_version(installed_version, _plugin_ver) == InstallStatus.OutOfDate
+
+    if _needs_install or _needs_upgrade:
+        console.print()
+        console.rule("[bold]1 / 7  Plugin Install[/bold]")
+        if _needs_install:
+            console.print(
+                "[yellow]little-loops package not detected.[/yellow] "
+                "ll-* CLI tools require the pip package to be installed."
+            )
+            console.print("  Install: [cyan]pip install -e ./scripts[dev][/cyan]")
+        else:
+            from little_loops import __version__ as _current_ver  # type: ignore[attr-defined]
+
+            console.print(
+                f"[yellow]Version mismatch:[/yellow] installed [cyan]{installed_version}[/cyan], "
+                f"current [cyan]{_current_ver}[/cyan]."
+            )
+            console.print("  Upgrade: [cyan]pip install -e ./scripts[dev][/cyan]")
+
+        _proceed: bool | None = questionary.confirm(
+            "Proceed with wizard? (install/upgrade separately after)",
+            default=True,
+        ).ask()
+        if _proceed is None:
+            return 130
+        if not _proceed:
+            console.print("[yellow]Aborted — no changes made.[/yellow]")
+            return 1
+    else:
+        if install_source is not None:
+            console.print(
+                f"[dim]Plugin status: {install_source} "
+                f"{'v' + installed_version if installed_version else '(version unknown)'} ✓[/dim]"
+            )
+
     template = detect_project_type(project_root, templates_dir)
     project_data = template.data.get("project", {})
     cmd_options: dict[str, list[str]] = template.meta.get("command_options", {})
@@ -169,8 +213,8 @@ def run_tui(
 
     default_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
 
-    # --- Screen 1 / 6: Project Basics ---
-    console.rule("[bold]1 / 6  Project Basics[/bold]")
+    # --- Screen 2 / 7: Project Basics ---
+    console.rule("[bold]2 / 7  Project Basics[/bold]")
 
     _ex_proj = existing_config.get("project", {})
 
@@ -219,9 +263,9 @@ def run_tui(
     if format_cmd is None:
         return 130
 
-    # --- Screen 2 / 6: Scan ---
+    # --- Screen 3 / 7: Scan ---
     console.print()
-    console.rule("[bold]2 / 6  Scan[/bold]")
+    console.rule("[bold]3 / 7  Scan[/bold]")
 
     _scan_data = template.data.get("scan", {})
     _ex_focus = existing_config.get("scan", {}).get("focus_dirs")
@@ -248,9 +292,9 @@ def run_tui(
         if custom_excludes_str is None:
             return 130
 
-    # --- Screen 3 / 6: Features ---
+    # --- Screen 4 / 7: Features ---
     console.print()
-    console.rule("[bold]3 / 6  Features[/bold]")
+    console.rule("[bold]4 / 7  Features[/bold]")
 
     _pre_checked_features = (
         _features_from_existing_config(existing_config) if existing_config else _DEFAULT_FEATURES
@@ -377,9 +421,9 @@ def run_tui(
         return 130
     loop_show_diagrams_default: str | None = None if _raw_sd == "__disabled__" else _raw_sd
 
-    # --- Screen 4 / 6: Hosts ---
+    # --- Screen 5 / 7: Hosts ---
     console.print()
-    console.rule("[bold]4 / 6  Hosts[/bold]")
+    console.rule("[bold]5 / 7  Hosts[/bold]")
 
     selected_hosts: list[str] | None = questionary.checkbox(
         "Which host harnesses should ll-init wire adapters for?",
@@ -391,9 +435,9 @@ def run_tui(
     if selected_hosts is None:
         return 130
 
-    # --- Screen 5 / 6: Settings target ---
+    # --- Screen 6 / 7: Settings target ---
     console.print()
-    console.rule("[bold]5 / 6  Settings[/bold]")
+    console.rule("[bold]6 / 7  Settings[/bold]")
 
     settings_target: str | None = questionary.select(
         "Where should ll tool permissions be written?",
@@ -415,9 +459,9 @@ def run_tui(
     if settings_target is None:
         return 130
 
-    # --- Screen 6 / 6: CLAUDE.md ---
+    # --- Screen 7 / 7: CLAUDE.md ---
     console.print()
-    console.rule("[bold]6 / 6  CLAUDE.md[/bold]")
+    console.rule("[bold]7 / 7  CLAUDE.md[/bold]")
 
     _dot_claude_md = project_root / ".claude" / "CLAUDE.md"
     _root_claude_md = project_root / "CLAUDE.md"
@@ -461,6 +505,7 @@ def run_tui(
     scan_custom_excludes = [p.strip() for p in custom_excludes_str.split(",") if p.strip()]
 
     # --- Build config ---
+    # install_source captured from the Round 1 detection above (closure).
     config = _build_final_config(
         template=template,
         name=name,
@@ -482,6 +527,9 @@ def run_tui(
         loop_clear_default=bool(loop_clear_default),
         loop_show_diagrams_default=loop_show_diagrams_default,
     )
+
+    if install_source:
+        config["install_source"] = install_source
 
     # --- Summary ---
     console.print()

@@ -2,10 +2,11 @@
 id: ENH-2253
 title: ll-init should detect existing plugin installation and handle version updates
 type: enhancement
-status: open
+status: done
 priority: P2
 discovered_date: 2026-06-20
 captured_at: '2026-06-21T02:09:57Z'
+completed_at: '2026-06-21T03:07:42Z'
 discovered_by: capture-issue
 labels:
 - init
@@ -184,6 +185,7 @@ open
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-21T02:49:59 - `af876d31-ccff-418d-a42d-1eb78c6c0ccd.jsonl`
 - `/ll:confidence-check` - 2026-06-20T00:00:00Z - `141f626f-5cf5-41a6-a306-b7cee561efb4.jsonl`
 - `/ll:wire-issue` - 2026-06-21T02:42:48 - `81a3e5b3-1459-4b5f-b2ac-84e042c77111.jsonl`
 - `/ll:refine-issue` - 2026-06-21T02:20:06 - `7821b45a-10dc-484b-b3b3-374cbf9fb76a.jsonl`

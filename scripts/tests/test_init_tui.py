@@ -16,6 +16,25 @@ _PLUGIN_ROOT = _PROJECT_ROOT
 
 
 # ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def mock_detect_installation() -> MagicMock:
+    """Mock detect_installation to return (None, None) for all TUI tests.
+
+    Ensures the Round 1 install-check confirm always fires (not-installed path)
+    so confirm_returns lists in _wire_q() are always positionally consistent.
+    """
+    with patch(
+        "little_loops.init.install_check.detect_installation",
+        return_value=(None, None),
+    ) as m:
+        yield m
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -48,20 +67,22 @@ def _wire_q(
     loop_clear_default: bool = True,
     hosts: list[str] | None = None,
     settings: str = "local",
+    install_confirmed: bool = True,
     confirmed: bool | None = True,
 ) -> None:
     """Wire a questionary mock for a complete TUI interaction.
 
-    Screen flow (6 screens):
-      1. Project Basics: name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd (text)
-      2. Scan: focus_dirs (text), add_excludes (confirm), [custom_excludes (text) if add_excludes]
-      3. Features: features (checkbox), [workers (text) + worktree_files (checkbox) if parallel],
+    Screen flow (7 screens):
+      1. Plugin Install: install_confirmed (confirm) — fires when detect_installation returns (None,None)
+      2. Project Basics: name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd (text)
+      3. Scan: focus_dirs (text), add_excludes (confirm), [custom_excludes (text) if add_excludes]
+      4. Features: features (checkbox), [workers (text) + worktree_files (checkbox) if parallel],
                    [use_feature_branches (confirm) if parallel], session_digest (confirm),
                    prompt_optimization (confirm), loop_clear_default (confirm)
-      3b. Loop run defaults: loop_show_diagrams_default (select, via shared return_value)
-      4. Hosts: hosts (checkbox)
-      5. Settings: settings (select, via shared return_value)
-      6. CLAUDE.md: (select, via shared return_value)
+      4b. Loop run defaults: loop_show_diagrams_default (select, via shared return_value)
+      5. Hosts: hosts (checkbox)
+      6. Settings: settings (select, via shared return_value)
+      7. CLAUDE.md: (select, via shared return_value)
     """
     if features is None:
         features = ["parallel", "product", "learning_tests", "analytics", "context_monitor"]
@@ -70,7 +91,7 @@ def _wire_q(
     if worktree_files is None:
         worktree_files = []
 
-    # Text calls: Screen 1 (6 fields) + Screen 2 focus_dirs
+    # Text calls: Screen 2 (6 fields) + Screen 3 focus_dirs
     text_returns = [name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd, focus_dirs]
     if add_excludes:
         text_returns.append(custom_excludes)
@@ -86,17 +107,17 @@ def _wire_q(
     checkbox_returns.append(hosts)
     mock_q.checkbox.side_effect = [_mock_ask(v) for v in checkbox_returns]
 
-    # Select: loop_show_diagrams_default (screen 3b) + settings (screen 5) + CLAUDE.md (screen 6)
+    # Select: loop_show_diagrams_default (screen 4b) + settings (screen 6) + CLAUDE.md (screen 7)
     # — shared return_value means all three get the same value; "local" is a valid diagram preset
     # so this works for both the new loop_show_diagrams question and the settings/CLAUDE.md selects.
     # (no curated menus since tests use generic.json which has no command_options;
     #  and design_tokens not in default features so no profile select)
     mock_q.select.return_value.ask.return_value = settings
 
-    # Confirm: add_excludes (screen 2), [use_feature_branches if parallel] (screen 3),
-    # session_digest (screen 3), prompt_optimization (screen 3),
-    # loop_clear_default (screen 3, ENH-2243), apply (final)
-    confirm_returns = [add_excludes]
+    # Confirm: install_confirmed (screen 1, ENH-2253), add_excludes (screen 3),
+    # [use_feature_branches if parallel] (screen 4), session_digest (screen 4),
+    # prompt_optimization (screen 4), loop_clear_default (screen 4, ENH-2243), apply (final)
+    confirm_returns = [install_confirmed, add_excludes]
     if "parallel" in features:
         confirm_returns.append(use_feature_branches)
     confirm_returns.extend([session_digest, prompt_optimization, loop_clear_default, confirmed])
@@ -323,7 +344,10 @@ class TestCtrlC:
                 _mock_ask("ruff format ."),
                 _mock_ask("src/"),  # focus_dirs
             ]
-            mock_q.confirm.side_effect = [_mock_ask(False)]  # add_excludes
+            mock_q.confirm.side_effect = [
+                _mock_ask(True),  # install_confirmed (screen 1, ENH-2253)
+                _mock_ask(False),  # add_excludes
+            ]
             mock_q.checkbox.side_effect = [_mock_ask(None)]  # features Ctrl-C
             mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
@@ -564,6 +588,7 @@ class TestHostSelection:
                 _mock_ask("src/"),  # focus_dirs
             ]
             mock_q.confirm.side_effect = [
+                _mock_ask(True),  # install_confirmed (screen 1, ENH-2253)
                 _mock_ask(False),  # add_excludes
                 _mock_ask(True),  # session_digest
                 _mock_ask(True),  # prompt_optimization
@@ -780,6 +805,7 @@ class TestDesignTokenProfilePicker:
                 _mock_ask("skip"),  # CLAUDE.md (screen 6)
             ]
             mock_q.confirm.side_effect = [
+                _mock_ask(True),  # install_confirmed (screen 1, ENH-2253)
                 _mock_ask(False),  # add_excludes
                 _mock_ask(True),  # session_digest
                 _mock_ask(True),  # prompt_optimization

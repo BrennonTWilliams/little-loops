@@ -1100,7 +1100,13 @@ class TestMainInit:
     def test_dry_run_yes_exits_zero(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 
-        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None),
+            ),
+        ):
             code = main_init(["--yes", "--dry-run", "--root", str(tmp_project)])
         assert code == 0
         assert not (tmp_project / ".ll" / "ll-config.json").exists()
@@ -1108,7 +1114,13 @@ class TestMainInit:
     def test_yes_creates_config(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 
-        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None),
+            ),
+        ):
             code = main_init(["--yes", "--root", str(tmp_project)])
         assert code == 0
         config_path = tmp_project / ".ll" / "ll-config.json"
@@ -1129,7 +1141,13 @@ class TestMainInit:
         }
         (tmp_project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
 
-        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None),
+            ),
+        ):
             code = main_init(["--yes", "--root", str(tmp_project)])
         assert code == 0
         result = json.loads((tmp_project / ".ll" / "ll-config.json").read_text())
@@ -1155,7 +1173,13 @@ class TestMainInit:
     def test_yes_enable_feature_flags_write_sections(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 
-        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None),
+            ),
+        ):
             code = main_init(
                 [
                     "--yes",
@@ -1176,7 +1200,13 @@ class TestMainInit:
     def test_yes_disable_prompt_optimization_writes_disabled(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 
-        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None),
+            ),
+        ):
             code = main_init(
                 ["--yes", "--disable", "prompt_optimization", "--root", str(tmp_project)]
             )
@@ -1257,6 +1287,10 @@ class TestMainInit:
         with (
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch("little_loops.init.core.build_config", side_effect=patched_build),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None),
+            ),
         ):
             code = main_init(["--yes", "--root", str(tmp_project)])
         assert code == 0
@@ -1277,6 +1311,10 @@ class TestMainInit:
         with (
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch("little_loops.init.core.build_config", side_effect=patched_build),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None),
+            ),
         ):
             code = main_init(["--yes", "--root", str(tmp_project)])
         assert code == 0

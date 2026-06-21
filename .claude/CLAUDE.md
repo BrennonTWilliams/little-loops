@@ -210,7 +210,7 @@ Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
 ## CLI Tools
 
 The `scripts/` directory contains Python CLI tools:
-- `ll-init` - Initialize little-loops for a project (headless core; `--yes`, `--dry-run`, `--plan`/`apply`, `--hosts` multi-select; always writes `loops.run_defaults` into generated config)
+- `ll-init` - Initialize little-loops for a project (headless core; `--yes`, `--dry-run`, `--plan`/`apply`, `--hosts` multi-select; always writes `loops.run_defaults` into generated config; detects existing install and version drift)
 - `ll-auto` - Process all backlog issues sequentially in priority order
 - `ll-parallel` - Process issues concurrently using isolated git worktrees
 - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
