@@ -146,7 +146,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 _pf = get_project_folder(cwd)
                 _backfill_path = str(_pf) if _pf is not None else None
 
-            if _backfill_path is not None:
+            if _backfill_path is not None and not _os.environ.get("LL_NON_INTERACTIVE"):
                 subprocess.Popen(
                     [
                         sys.executable,

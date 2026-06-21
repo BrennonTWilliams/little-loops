@@ -1490,6 +1490,7 @@ def _call_llm_for_summary(
         inv = resolve_host().build_blocking_json(prompt=prompt, model=model)
         proc = subprocess.run(
             [inv.binary, *inv.args],
+            env={**os.environ, **inv.env},
             capture_output=True,
             text=True,
             timeout=timeout,
