@@ -147,7 +147,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/ARCHITECTURE.md", "epics/", "FEAT-1407"),
     # REMOVED (stale/false-positive): ("README.md", "verify-issue-loop/", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("CONTRIBUTING.md", "63 composable skills", "FEAT-1447"),
-    ("CONTRIBUTING.md", "# 38 skill definitions", "FEAT-1447"),
+    ("CONTRIBUTING.md", "# 36 skill definitions", "FEAT-1447"),
     ("docs/guides/LOOPS_GUIDE.md", "distill-traces", "FEAT-2078"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "/ll:verify-issue-loop", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "verify-issue-loop", "FEAT-1447"),
