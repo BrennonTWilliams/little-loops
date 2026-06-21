@@ -14,6 +14,7 @@ Subcommands:
     expand   return message_events covered by a summary node
     describe metadata for a summary node
     prune    delete raw event rows older than configured max-age and VACUUM (ENH-1906)
+    export   dump selected tables as JSONL for visualization or external tooling
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from little_loops.session_store import (
     backfill_snapshots,
     cli_event_context,
     connect,
+    export_history,
     prune,
     recent,
     search,
@@ -148,6 +150,50 @@ Examples:
         action="store_true",
         default=False,
         help="Hydrate issue_snapshots table from existing .issues/ files (ENH-2151)",
+    )
+    backfill_parser.add_argument(
+        "--max-sessions",
+        type=int,
+        default=None,
+        metavar="N",
+        dest="max_sessions",
+        help="Cap the number of sessions compacted in this run (newest first); useful for large DBs",
+    )
+
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Dump selected tables as JSONL for visualization or external tooling",
+    )
+    export_parser.add_argument(
+        "--tables",
+        nargs="+",
+        metavar="TYPE",
+        default=None,
+        help=(
+            "Types to include (default: all non-message tables). "
+            "Choices: session, issue_event, issue_snapshot, skill_event, "
+            "loop_event, correction, summary_node, message_event"
+        ),
+    )
+    export_parser.add_argument(
+        "--since",
+        metavar="DATE",
+        default=None,
+        help="Only rows at or after this ISO 8601 date/datetime",
+    )
+    export_parser.add_argument(
+        "--include-messages",
+        action="store_true",
+        default=False,
+        dest="include_messages",
+        help="Also include message_events (~46 K rows); ignored when --tables is given",
+    )
+    export_parser.add_argument(
+        "-o",
+        "--output",
+        metavar="FILE",
+        default=None,
+        help="Write output to FILE instead of stdout",
     )
 
     grep_parser = subparsers.add_parser(
@@ -346,6 +392,22 @@ def main_session() -> int:
                 count = backfill_snapshots(args.db)
                 logger.success(f"Backfilled {count} issue snapshots.")
                 return 0
+
+            # Read project config so compaction settings are respected (same
+            # pattern as the prune handler).
+            import json as _json
+
+            from little_loops.config.core import resolve_config_path
+
+            _config: dict | None = None
+            _config_path = resolve_config_path(Path.cwd())
+            if _config_path is not None:
+                try:
+                    _config = _json.loads(_config_path.read_text(encoding="utf-8"))
+                except (OSError, _json.JSONDecodeError):
+                    _config = None
+
+            max_sessions = getattr(args, "max_sessions", None)
             since_flag = getattr(args, "since", None)
             if since_flag is not None:
                 from datetime import datetime
@@ -365,7 +427,7 @@ def main_session() -> int:
                     return 1
                 jsonl_files = list(project_folder.glob("*.jsonl"))
                 inc_counts = backfill_incremental(
-                    args.db, jsonl_files=jsonl_files, since_ts=since_ts
+                    args.db, jsonl_files=jsonl_files, since_ts=since_ts, config=_config
                 )
                 inc_total = sum(inc_counts.values())
                 logger.success(
@@ -382,7 +444,12 @@ def main_session() -> int:
             full_jsonl_files: list[Path] | None = (
                 list(project_folder.glob("*.jsonl")) if project_folder else None
             )
-            counts = backfill(args.db, jsonl_files=full_jsonl_files)
+            counts = backfill(
+                args.db,
+                jsonl_files=full_jsonl_files,
+                config=_config,
+                max_sessions=max_sessions,
+            )
             total = sum(counts.values())
             logger.success(
                 f"Backfilled {total} rows "
@@ -494,6 +561,28 @@ def main_session() -> int:
             if not args.dry_run and result.get("vacuumed"):
                 print("Database VACUUMed.")
 
+            return 0
+
+        if args.command == "export":
+            import json as _json
+
+            out_path = getattr(args, "output", None)
+            out = open(out_path, "w", encoding="utf-8") if out_path else sys.stdout
+            count = 0
+            try:
+                for record in export_history(
+                    args.db,
+                    tables=getattr(args, "tables", None),
+                    since=getattr(args, "since", None),
+                    include_messages=getattr(args, "include_messages", False),
+                ):
+                    out.write(_json.dumps(record, default=str) + "\n")
+                    count += 1
+            finally:
+                if out_path:
+                    out.close()
+            if out_path:
+                logger.success(f"Exported {count:,} records to {out_path}")
             return 0
 
         return 1

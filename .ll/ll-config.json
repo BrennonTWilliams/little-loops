@@ -81,6 +81,11 @@
       "enabled": true,
       "days": 7,
       "char_cap": 1200
+    },
+    "compaction": {
+      "enabled": true,
+      "budget_tokens": 4096,
+      "cross_session_enabled": true
     }
   }
 }

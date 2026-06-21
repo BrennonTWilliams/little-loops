@@ -106,6 +106,7 @@ deepcodebase-*.txt
 .ll/loop-suggestions/
 .ll/workflow-analysis/
 .ll/user-messages-*.jsonl
+.ll/export*.jsonl
 .claude/ll-continue-prompt.md
 .claude/loop-suggestions/
 loop-catalog.*

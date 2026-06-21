@@ -64,6 +64,7 @@ __all__ = [
     "backfill_incremental",
     "mine_corrections_from_messages",
     "compact_session",
+    "export_history",
     "prune",
     "search",
     "recent",
@@ -1668,6 +1669,7 @@ def _compact_session_conn(
 def _compact_sessions(
     conn: sqlite3.Connection,
     config: dict | None = None,
+    max_sessions: int | None = None,
 ) -> int:
     """Compact all sessions in the sessions table; returns total new leaf nodes created.
 
@@ -1679,6 +1681,10 @@ def _compact_sessions(
     grouped level-by-level by token budget, summarised, and inserted as higher-order
     condensed nodes (``session_id=NULL``, ``level=1+``) until exactly one project-root
     summary node remains (ENH-1954).
+
+    Args:
+        max_sessions: When set, caps the number of sessions compacted in this run
+            (useful for incremental first-time backfills on large databases).
     """
     from little_loops.config.features import CompactionConfig
 
@@ -1687,7 +1693,9 @@ def _compact_sessions(
     if not compact_cfg.enabled:
         return 0
 
-    rows = conn.execute("SELECT session_id FROM sessions").fetchall()
+    rows = conn.execute("SELECT session_id FROM sessions ORDER BY started_at DESC").fetchall()
+    if max_sessions is not None:
+        rows = rows[:max_sessions]
     total = 0
     for row in rows:
         total += _compact_session_conn(
@@ -1917,6 +1925,7 @@ def backfill(
     loops_dir: Path | None = None,
     jsonl_files: list[Path] | None = None,
     config: dict | None = None,
+    max_sessions: int | None = None,
 ) -> dict[str, int]:
     """Populate the database from existing on-disk sources.
 
@@ -1950,7 +1959,7 @@ def backfill(
             counts["assistant_messages"] = _backfill_assistant_messages(conn, jsonl_files)
             counts["sessions"] = _backfill_sessions(conn, jsonl_files)
         counts["corrections"] = mine_corrections_from_messages(conn, config)
-        counts["summaries"] = _compact_sessions(conn, config)
+        counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions)
         conn.commit()
     finally:
         conn.close()
@@ -2216,5 +2225,94 @@ def list_retirements(
         return [dict(r) for r in rows]
     except sqlite3.OperationalError:
         return []
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# JSONL export (for visualization / external tooling)
+# ---------------------------------------------------------------------------
+
+# Maps the public type name used in exported records to (table, timestamp_column).
+_EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
+    "session": ("sessions", "started_at"),
+    "issue_event": ("issue_events", "ts"),
+    "issue_snapshot": ("issue_snapshots", "ts"),
+    "skill_event": ("skill_events", "ts"),
+    "loop_event": ("loop_events", "ts"),
+    "correction": ("user_corrections", "ts"),
+    "summary_node": ("summary_nodes", "created_at"),
+    "message_event": ("message_events", "ts"),
+}
+
+_EXPORT_DEFAULT_TABLES = [
+    "session",
+    "issue_event",
+    "issue_snapshot",
+    "skill_event",
+    "loop_event",
+    "correction",
+    "summary_node",
+]
+
+
+def export_history(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    tables: list[str] | None = None,
+    since: str | None = None,
+    include_messages: bool = False,
+) -> Generator[dict, None, None]:
+    """Yield rows from history.db as dicts with a ``type`` key (JSONL export).
+
+    Each yielded dict has a ``"type"`` field identifying the source table so
+    records from multiple tables can be mixed in a single stream and later
+    distinguished by a visualizer.
+
+    Args:
+        db: Path to the history database (default: ``.ll/history.db``).
+        tables: Type names to include.  Defaults to all non-message tables.
+            Valid values: ``session``, ``issue_event``, ``issue_snapshot``,
+            ``skill_event``, ``loop_event``, ``correction``, ``summary_node``,
+            ``message_event``.
+        since: ISO 8601 datetime string; only rows at or after this timestamp are
+            returned, filtered per-table using the relevant timestamp column.
+        include_messages: When ``True`` and *tables* is not given, also include
+            ``message_events`` (~46 K rows by default).  Ignored when *tables*
+            is specified explicitly.
+    """
+    db_path = Path(db)
+    if not db_path.exists():
+        return
+
+    if tables is None:
+        selected = list(_EXPORT_DEFAULT_TABLES)
+        if include_messages:
+            selected.append("message_event")
+    else:
+        selected = list(tables)
+
+    conn = connect(db_path)
+    try:
+        for type_name in selected:
+            entry = _EXPORT_TABLE_MAP.get(type_name)
+            if entry is None:
+                logger.warning("export_history: unknown type %r — skipped", type_name)
+                continue
+            table, ts_col = entry
+            try:
+                if since:
+                    cursor = conn.execute(
+                        f"SELECT * FROM {table} WHERE {ts_col} >= ? ORDER BY {ts_col}",
+                        (since,),
+                    )
+                else:
+                    cursor = conn.execute(f"SELECT * FROM {table} ORDER BY {ts_col}")
+                for row in cursor:
+                    d = dict(row)
+                    d["type"] = type_name
+                    yield d
+            except sqlite3.OperationalError as exc:
+                logger.warning("export_history: skipping %s: %s", table, exc)
     finally:
         conn.close()
