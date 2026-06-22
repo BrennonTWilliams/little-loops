@@ -138,4 +138,5 @@ completion despite all 19 plan steps and 42 DoD criteria being satisfied.
 **Open** | Created: 2026-06-22 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-22T14:56:57 - `fbdc25da-bfa8-461a-94b5-26bba2297470.jsonl`
 - `/ll:capture-issue` - 2026-06-22T14:50:06Z - `bcaa0571-6edd-4292-b878-2b56b7b28560.jsonl`
