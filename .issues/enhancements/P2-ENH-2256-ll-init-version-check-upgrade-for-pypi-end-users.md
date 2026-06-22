@@ -2,8 +2,9 @@
 id: ENH-2256
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-22T18:22:22Z'
+completed_at: '2026-06-22T19:58:52Z'
 discovered_date: 2026-06-22
 discovered_by: capture-issue
 relates_to:
@@ -339,6 +340,7 @@ The issue text references lines 88–96 and 112–125; verified current line num
 Mirror both as `TestMainInit` assertions that `["-e", "little-loops"]` never appears in the `subprocess.run` args constructed by `cli.py:_run_yes()` for the consumer path.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-22T19:38:48 - `7e10f4e6-27be-4069-8252-a20571bfa502.jsonl`
 - `/ll:confidence-check` - 2026-06-22T20:00:00Z - `86ea8608-0275-4ab6-9270-49dc109f6497.jsonl`
 - `/ll:refine-issue` - 2026-06-22T19:27:29 - `f89a7b96-0442-4d81-ad9c-9f9ab0dd8c72.jsonl`
 - `/ll:confidence-check` - 2026-06-22T19:15:00Z - `43ef88af-b7a7-4f0a-8ce6-427eff2bb0d2.jsonl`
@@ -350,6 +352,19 @@ Mirror both as `TestMainInit` assertions that `["-e", "little-loops"]` never app
 
 ---
 
+## Resolution
+
+All 7 acceptance criteria met:
+- PyPI version check via `fetch_latest_pypi()` compares installed vs external latest
+- Plugin version check via `fetch_latest_plugin()` using `resolve_host()`
+- No code path constructs `pip install -e little-loops` (bare name)
+- Both checks fail silently on timeout/offline
+- Plugin check gated on `claude-code` in selected hosts
+- Headless mode warns only; `--upgrade` flag required to act
+- `check_version` compares installed vs external latest (not `__version__`)
+
+**Files changed:** `install_check.py`, `cli.py`, `tui.py`, `__init__.py`, `config-schema.json`, `test_init_install.py`, `test_init_core.py`, `GETTING_STARTED.md`, `skills/init/SKILL.md`
+
 ## Status
 
-**Current Status**: open
+**Current Status**: done

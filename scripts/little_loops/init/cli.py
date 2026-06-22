@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import subprocess as _subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -114,14 +115,18 @@ def _run_yes(
     dry_run: bool,
     hosts: list[str],
     feature_choices: dict[str, Any] | None = None,
+    upgrade: bool = False,
 ) -> int:
     """Execute the non-interactive --yes init flow."""
-    import subprocess as _subprocess
-
     from little_loops.config.core import resolve_config_path
     from little_loops.init.core import build_config
     from little_loops.init.detect import detect_project_type
-    from little_loops.init.install_check import InstallStatus, check_version, detect_installation
+    from little_loops.init.install_check import (
+        InstallStatus,
+        check_version,
+        detect_installation,
+        fetch_latest_pypi,
+    )
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
         deploy_design_tokens,
@@ -151,36 +156,84 @@ def _run_yes(
     elif config_path.exists() and force and not dry_run:
         print("Overwriting existing configuration.")
 
-    # Detect installation and auto-install/upgrade in headless mode.
+    # Detect installation; notify-and-act (only with --upgrade) or warn-only.
     install_source, installed_version = detect_installation(project_root)
     if install_source is None:
-        print("little-loops package not detected — installing...")
-        _scripts_dir = project_root / "scripts"
-        _install_target = f"{_scripts_dir}[dev]" if _scripts_dir.exists() else "little-loops"
-        try:
-            _subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-e", _install_target],
-                check=True,
-            )
-            install_source = "local-editable"
-        except _subprocess.CalledProcessError as exc:
-            print(f"Warning: auto-install failed: {exc}", file=sys.stderr)
-    elif installed_version is not None:
-        _status = check_version(installed_version, _plugin_version())
-        if _status == InstallStatus.OutOfDate:
-            print(
-                f"little-loops version mismatch (installed: {installed_version!r}, "
-                f"current: {_plugin_version()!r}) — upgrading..."
-            )
-            _scripts_dir = project_root / "scripts"
-            _install_target = f"{_scripts_dir}[dev]" if _scripts_dir.exists() else "little-loops"
+        print("little-loops package not detected.", file=sys.stderr)
+        if upgrade:
+            print("  Installing...")
             try:
                 _subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-e", _install_target],
+                    [sys.executable, "-m", "pip", "install", "little-loops"],
                     check=True,
                 )
+                install_source = "pypi"
             except _subprocess.CalledProcessError as exc:
-                print(f"Warning: auto-upgrade failed: {exc}", file=sys.stderr)
+                print(f"  Warning: auto-install failed: {exc}", file=sys.stderr)
+        else:
+            print("  Hint: pip install little-loops  (pass --upgrade to act automatically)", file=sys.stderr)
+    elif installed_version is not None:
+        _latest = fetch_latest_pypi()
+        if _latest is not None:
+            _status = check_version(installed_version, _latest)
+            if _status == InstallStatus.OutOfDate:
+                print(
+                    f"little-loops version mismatch (installed: {installed_version!r}, "
+                    f"latest: {_latest!r})",
+                    file=sys.stderr,
+                )
+                if upgrade:
+                    print("  Upgrading...")
+                    if install_source == "local-editable":
+                        # Resolve true editable path via pip show.
+                        _pip_show = _subprocess.run(
+                            [sys.executable, "-m", "pip", "show", "little-loops"],
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                        )
+                        _editable_line = next(
+                            (
+                                line
+                                for line in _pip_show.stdout.splitlines()
+                                if line.startswith("Editable project location:")
+                            ),
+                            None,
+                        )
+                        if _editable_line:
+                            _editable_path = _editable_line.split(": ", 1)[1].strip()
+                            try:
+                                _subprocess.run(
+                                    [
+                                        sys.executable,
+                                        "-m",
+                                        "pip",
+                                        "install",
+                                        "-e",
+                                        f"{_editable_path}[dev]",
+                                    ],
+                                    check=True,
+                                )
+                            except _subprocess.CalledProcessError as exc:
+                                print(f"  Warning: auto-upgrade failed: {exc}", file=sys.stderr)
+                        else:
+                            print(
+                                "  Warning: could not determine editable install path.",
+                                file=sys.stderr,
+                            )
+                    else:
+                        try:
+                            _subprocess.run(
+                                [sys.executable, "-m", "pip", "install", "--upgrade", "little-loops"],
+                                check=True,
+                            )
+                        except _subprocess.CalledProcessError as exc:
+                            print(f"  Warning: auto-upgrade failed: {exc}", file=sys.stderr)
+                else:
+                    print(
+                        "  Hint: pip install --upgrade little-loops  (pass --upgrade to act automatically)",
+                        file=sys.stderr,
+                    )
 
     template = detect_project_type(project_root, templates_dir)
     print(f"Detected project type: {template.name}")
@@ -395,6 +448,7 @@ Examples:
   %(prog)s --yes                      # Non-interactive full init with defaults
   %(prog)s --yes --dry-run            # Preview without writing files
   %(prog)s --yes --force              # Overwrite existing configuration
+  %(prog)s --yes --upgrade            # Upgrade stale package/plugin automatically
   %(prog)s --plan                     # Emit JSON plan without writing
   %(prog)s apply --config plan.json   # Apply writes from a --plan output
   %(prog)s --yes --enable decisions --enable session_capture
@@ -469,6 +523,14 @@ Exit codes:
             help=(
                 "Disable a feature in the headless config (repeatable). "
                 "Same valid names as --enable."
+            ),
+        )
+        parser.add_argument(
+            "--upgrade",
+            action="store_true",
+            help=(
+                "Act on version drift automatically (install or upgrade). "
+                "Default headless behaviour is warn-only."
             ),
         )
         parser.add_argument(
@@ -556,6 +618,7 @@ Exit codes:
                 dry_run=args.dry_run,
                 hosts=hosts,
                 feature_choices=feature_choices,
+                upgrade=args.upgrade,
             )
 
         from little_loops.init.tui import run_tui

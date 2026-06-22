@@ -1321,6 +1321,102 @@ class TestMainInit:
         settings = json.loads((tmp_project / ".claude" / "settings.local.json").read_text())
         assert "Skill(ll:explore-api)" in settings["permissions"]["allow"]
 
+    def test_yes_warns_when_pypi_stale_without_upgrade_flag(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Without --upgrade, headless mode warns but never runs pip install/upgrade."""
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("pypi", "1.0.0"),
+            ),
+            patch(
+                "little_loops.init.install_check.fetch_latest_pypi",
+                return_value="1.1.0",
+            ),
+            patch("little_loops.init.cli._subprocess") as mock_sp,
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        # No pip subprocess should have been called during the install check
+        mock_sp.run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "mismatch" in err or "Hint" in err
+
+    def test_yes_upgrades_when_pypi_stale_with_upgrade_flag(
+        self, tmp_project: Path
+    ) -> None:
+        """With --upgrade, headless mode runs pip install --upgrade for PyPI installs."""
+        from unittest.mock import MagicMock, call, patch
+
+        from little_loops.init.cli import main_init
+
+        captured_runs: list = []
+
+        def record_run(cmd, **kwargs):
+            captured_runs.append(cmd)
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("pypi", "1.0.0"),
+            ),
+            patch(
+                "little_loops.init.install_check.fetch_latest_pypi",
+                return_value="1.1.0",
+            ),
+            patch("little_loops.init.cli._subprocess.run", side_effect=record_run),
+        ):
+            code = main_init(["--yes", "--upgrade", "--root", str(tmp_project)])
+        assert code == 0
+        # At least one call should be the pip upgrade
+        upgrade_calls = [c for c in captured_runs if "--upgrade" in c and "little-loops" in c]
+        assert upgrade_calls, f"Expected pip --upgrade little-loops call; got: {captured_runs}"
+
+    def test_yes_consumer_path_never_uses_editable_bare_name(
+        self, tmp_project: Path
+    ) -> None:
+        """pip install -e <bare-package-name> must never be constructed for PyPI installs."""
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.init.cli import main_init
+
+        captured_runs: list = []
+
+        def record_run(cmd, **kwargs):
+            captured_runs.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("pypi", "1.0.0"),
+            ),
+            patch(
+                "little_loops.init.install_check.fetch_latest_pypi",
+                return_value="1.1.0",
+            ),
+            patch("little_loops.init.cli._subprocess.run", side_effect=record_run),
+        ):
+            main_init(["--yes", "--upgrade", "--root", str(tmp_project)])
+
+        # Assert that no call uses `pip install -e little-loops` (bare name)
+        for cmd in captured_runs:
+            if "-e" in cmd:
+                idx = cmd.index("-e")
+                editable_target = cmd[idx + 1] if idx + 1 < len(cmd) else ""
+                assert editable_target != "little-loops", (
+                    f"pip install -e <bare-name> must not be constructed; got: {cmd}"
+                )
+
 
 # ===========================================================================
 # TestDetectHosts

@@ -145,7 +145,13 @@ def run_tui(
 
     from little_loops.config.core import resolve_config_path
     from little_loops.init.detect import detect_project_type
-    from little_loops.init.install_check import InstallStatus, check_version, detect_installation
+    from little_loops.init.install_check import (
+        InstallStatus,
+        check_version,
+        detect_installation,
+        fetch_latest_plugin,
+        fetch_latest_pypi,
+    )
 
     console = Console()
     ll_dir = project_root / ".ll"
@@ -160,16 +166,29 @@ def run_tui(
         except json.JSONDecodeError:
             existing_config = {}
 
+    _selected_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
+
     # --- Screen 1 / 7: Plugin Install ---
     install_source, installed_version = detect_installation(project_root)
     _needs_install = install_source is None
-    _needs_upgrade = False
-    if install_source is not None and installed_version is not None:
-        from little_loops import __version__ as _plugin_ver  # type: ignore[attr-defined]
+    _pkg_outdated = False
+    _plugin_outdated = False
+    _pkg_latest: str | None = None
+    _plugin_latest: str | None = None
 
-        _needs_upgrade = check_version(installed_version, _plugin_ver) == InstallStatus.OutOfDate
+    if install_source in ("local-editable", "pypi") and installed_version is not None:
+        _pkg_latest = fetch_latest_pypi()
+        if _pkg_latest is not None:
+            _pkg_outdated = check_version(installed_version, _pkg_latest) == InstallStatus.OutOfDate
 
-    if _needs_install or _needs_upgrade:
+    if "claude-code" in _selected_hosts and install_source == "global-claude-code":
+        _plugin_latest = fetch_latest_plugin()
+        if installed_version is not None and _plugin_latest is not None:
+            _plugin_outdated = (
+                check_version(installed_version, _plugin_latest) == InstallStatus.OutOfDate
+            )
+
+    if _needs_install or _pkg_outdated or _plugin_outdated:
         console.print()
         console.rule("[bold]1 / 7  Plugin Install[/bold]")
         if _needs_install:
@@ -177,15 +196,29 @@ def run_tui(
                 "[yellow]little-loops package not detected.[/yellow] "
                 "ll-* CLI tools require the pip package to be installed."
             )
-            console.print("  Install: [cyan]pip install -e ./scripts[dev][/cyan]")
-        else:
-            from little_loops import __version__ as _current_ver  # type: ignore[attr-defined]
-
+            console.print("  Install: [cyan]pip install little-loops[/cyan]")
+        if _pkg_outdated:
             console.print(
-                f"[yellow]Version mismatch:[/yellow] installed [cyan]{installed_version}[/cyan], "
-                f"current [cyan]{_current_ver}[/cyan]."
+                f"[yellow]Package outdated:[/yellow] installed [cyan]{installed_version}[/cyan], "
+                f"latest [cyan]{_pkg_latest}[/cyan]."
             )
-            console.print("  Upgrade: [cyan]pip install -e ./scripts[dev][/cyan]")
+            if install_source == "local-editable":
+                console.print(
+                    "  Upgrade: [cyan]pip install -e <editable-path>[dev][/cyan]"
+                )
+            else:
+                console.print(
+                    "  Upgrade: [cyan]pip install --upgrade little-loops[/cyan]"
+                )
+        if _plugin_outdated:
+            console.print(
+                f"[yellow]Plugin outdated:[/yellow] installed [cyan]{installed_version}[/cyan], "
+                f"latest [cyan]{_plugin_latest}[/cyan]."
+            )
+            console.print(
+                "  Upgrade: [cyan]claude plugin marketplace update little-loops "
+                "&& claude plugin update ll@little-loops[/cyan]"
+            )
 
         _proceed: bool | None = questionary.confirm(
             "Proceed with wizard? (install/upgrade separately after)",

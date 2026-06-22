@@ -92,6 +92,7 @@ ll-init
 | `--plan` | Emits a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything | CI pipelines, inspection before applying, or piping into `ll-init apply --config` |
 | `--enable FEATURE` | Enable an optional feature in the headless config (repeatable). Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization` | Activating optional features without the TUI |
 | `--disable FEATURE` | Disable a feature (same valid names as `--enable`) | Turning off a feature that was auto-enabled |
+| `--upgrade` | Act on version drift automatically (install or upgrade the pip package). Default headless mode is warn-only | CI pipelines or automation where you want hands-free upgrades |
 | `--root / -C` | Set the project root directory (default: current directory) | Running `ll-init` from a different working directory |
 | `--hosts HOST…` | Wire adapters for additional host CLIs: `claude-code`, `codex`, `opencode`, `pi` | Only needed if you use little-loops with multiple AI coding tools |
 
@@ -113,10 +114,11 @@ Start with the auto-detected defaults.
 
 | Detected state | What ll-init does |
 |----------------|-------------------|
-| Not installed (no pip package, no global plugin) | Prints a notice and installs automatically in headless mode; TUI informs you before proceeding |
-| Global plugin (`ll@little-loops` via `claude plugin list`) | Recognises the installation; no reinstall needed |
-| Local dev install (editable `pip install -e`) | Reads the installed version from pip metadata |
-| Version mismatch (installed ≠ current) | Prints a notice and upgrades the package automatically in headless mode |
+| Not installed (no pip package, no global plugin) | Prints a notice; **warns only** by default — pass `--upgrade` to install automatically |
+| Global plugin (`ll@little-loops` via `claude plugin list --json`) | Reads the plugin version; checks marketplace for drift |
+| Local dev install (editable `pip install -e`) | Reads the installed version; checks PyPI for drift |
+| PyPI consumer install (`pip install little-loops`) | Reads the installed version; checks PyPI for drift |
+| Version mismatch (installed ≠ PyPI latest) | Prints a notice with the upgrade command; **warns only** by default — pass `--upgrade` to upgrade automatically |
 | Up to date | Proceeds silently |
 
 When an existing `.ll/ll-config.json` is found, the TUI pre-populates every field from its current values so a re-run always starts from your actual config rather than defaults. Use `--force` to reset to template defaults instead of merging.

@@ -29,6 +29,7 @@ FORCE_FLAG=""
 DRY_RUN_FLAG=""
 HOSTS_FLAG=""
 CODEX_FLAG=""
+UPGRADE_FLAG=""
 
 if [[ "$FLAGS" == *"--force"* ]]; then FORCE_FLAG="--force"; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN_FLAG="--dry-run"; fi
@@ -37,13 +38,14 @@ if [[ "$FLAGS" == *"--hosts"* ]]; then
     if [[ -n "$HOSTS_VALUE" ]]; then HOSTS_FLAG="--hosts $HOSTS_VALUE"; fi
 fi
 if [[ "$FLAGS" == *"--codex"* ]]; then CODEX_FLAG="--codex"; fi
+if [[ "$FLAGS" == *"--upgrade"* ]]; then UPGRADE_FLAG="--upgrade"; fi
 ```
 
 ### 2. Run ll-init
 
 ```bash
 echo "Guided init moved to CLI — running \`ll-init --yes\` with detected defaults…"
-ll-init --yes $FORCE_FLAG $DRY_RUN_FLAG $HOSTS_FLAG $CODEX_FLAG
+ll-init --yes $FORCE_FLAG $DRY_RUN_FLAG $HOSTS_FLAG $CODEX_FLAG $UPGRADE_FLAG
 ```
 
 ## Examples
@@ -53,4 +55,5 @@ ll-init --yes $FORCE_FLAG $DRY_RUN_FLAG $HOSTS_FLAG $CODEX_FLAG
 /ll:init --force       # reset to template defaults (re-run without --force to review and edit existing config)
 /ll:init --dry-run     # preview without writing
 /ll:init --hosts codex # also install Codex hook adapter
+/ll:init --upgrade     # auto-upgrade stale pip package or plugin (default is warn-only)
 ```
