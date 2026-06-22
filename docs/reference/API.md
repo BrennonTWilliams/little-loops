@@ -7536,6 +7536,63 @@ if prompt is None:
     prompt = "/ll:ready-issue FEAT-123"  # fallback
 ```
 
+## little_loops.init.install_check
+
+Installation detection and version-comparison helpers used by `ll-init` to detect package drift and auto-upgrade. All network calls are offline-safe: every function returns `None` on timeout, missing binary, or parse failure.
+
+### InstallStatus
+
+```python
+class InstallStatus(Enum):
+    UpToDate     = "up_to_date"
+    OutOfDate    = "out_of_date"
+    NotInstalled = "not_installed"
+    Unknown      = "unknown"
+```
+
+### detect_installation
+
+```python
+def detect_installation(project_root: Path) -> tuple[str | None, str | None]
+```
+
+Detects the active little-loops installation. Checks pip metadata first; falls back to `claude plugin list --json` for global plugin installs.
+
+**Returns**: `(install_source, installed_version)` where `install_source` is one of `"local-editable"`, `"pypi"`, `"global-claude-code"`, or `None` (not found). `installed_version` is the version string for pip-based and global-claude-code installs (populated via `--json` flag; `None` if the CLI is too old to support it).
+
+| `install_source` value | Meaning |
+|------------------------|---------|
+| `"local-editable"` | Installed via `pip install -e` (dev / contributor path) |
+| `"pypi"` | Installed via `pip install little-loops` (end-user path) |
+| `"global-claude-code"` | Installed as a Claude Code plugin via `claude plugin add` |
+| `None` | Not found |
+
+### fetch_latest_pypi
+
+```python
+def fetch_latest_pypi(timeout: float = 10.0) -> str | None
+```
+
+Fetches the latest little-loops release version from PyPI using `pip index versions`. Parses the `LATEST:` line. Returns `None` on any failure (offline, timeout, pip not available).
+
+### fetch_latest_plugin
+
+```python
+def fetch_latest_plugin(timeout: float = 10.0) -> str | None
+```
+
+Fetches the latest `ll@little-loops` plugin version from the Claude Code marketplace. Uses `resolve_host()` — never hardcodes the `claude` binary. Returns `None` when the host CLI is not configured or the call fails. Only meaningful when the `claude-code` host is active.
+
+### check_version
+
+```python
+def check_version(installed: str, latest: str) -> InstallStatus
+```
+
+Compares an installed version string against the latest available version. Returns `InstallStatus.UpToDate` when they match, `InstallStatus.OutOfDate` otherwise. Does not perform network I/O; call `fetch_latest_pypi` / `fetch_latest_plugin` first.
+
+---
+
 ## Agents
 
 Specialized sub-agents live in `agents/*.md` and are registered in `.claude-plugin/plugin.json`. Each agent is spawned via the `Task` / `Agent` tool with `subagent_type` set to the agent name. Codex-CLI mirrors are generated into `.codex/agents/*.toml` by `ll-adapt-agents-for-codex`.

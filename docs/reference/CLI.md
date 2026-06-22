@@ -49,6 +49,7 @@ When run on a project that already has a `.ll/ll-config.json`, the interactive w
 | `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `pi`). Defaults to auto-detected hosts. |
 | `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`. |
 | `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--disable prompt_optimization` to opt out of the default-on prompt optimizer. |
+| `--upgrade` | | Act on version drift automatically (install or upgrade the pip package or plugin). Without this flag, headless mode only warns when a newer version is available. |
 | `--root ROOT` | `-C` | Project root directory (default: current directory) |
 
 Richer features (`parallel`, `sync`, `documents`, `design_tokens`, `confidence_gate`, `tdd`) carry sub-config and remain interactive-only; they are not accepted by `--enable`/`--disable`. Unknown feature names exit `2`.
@@ -79,6 +80,7 @@ The detected project type is shown as a banner line (not a questionary prompt) b
 ll-init --yes                      # Non-interactive full init with defaults
 ll-init --yes --dry-run            # Preview without writing files
 ll-init --yes --force              # Overwrite existing configuration
+ll-init --yes --upgrade            # Upgrade stale package/plugin automatically
 ll-init --plan                     # Emit JSON plan without writing
 ll-init --hosts claude-code codex  # Install adapters for specific hosts
 ll-init --yes --enable decisions --enable session_capture  # Opt in to extra features
