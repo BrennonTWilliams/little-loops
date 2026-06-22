@@ -386,7 +386,15 @@ states:
       if [ "$PASS_PCT" -lt "$MIN_PASS_PCT" ]; then
         BLOCKING_DOD=$(($BLOCKING_DOD + $SOFT_UNCHECKED_DOD))
       fi
-      TOTAL=$(($BLOCKING_DOD + $UNCHECKED_PLAN + $FAILED_SAMPLES))
+      # FAILED_SAMPLES is reported for observability but is NOT part of the gate.
+      # Sample Verification sections accumulate across iterations and are free-form
+      # LLM prose that re-emits historical FAILEDs, which permanently poisons the
+      # count. A genuine sample failure already blocks the gate authoritatively:
+      # check_done flips the corresponding criterion back to [ ], counted by
+      # HARD/SOFT_UNCHECKED_DOD. final_verify independently re-verifies every
+      # criterion from scratch before terminal done, so dropping this term loses
+      # no real safety.
+      TOTAL=$(($BLOCKING_DOD + $UNCHECKED_PLAN))
       printf '{"hard_unchecked_dod": %d, "soft_unchecked_dod": %d, "unchecked_plan": %d, "failed_samples": %d, "total": %d}\n' \
         "$HARD_UNCHECKED_DOD" "$SOFT_UNCHECKED_DOD" "$UNCHECKED_PLAN" "$FAILED_SAMPLES" "$TOTAL"
     action_type: shell
@@ -528,8 +536,21 @@ states:
 
       Print a summary of the remediation step you appended (or note that an existing
       step already covers the criterion).
+
+      ESCAPE HATCH: If, after reading both files, every DoD criterion is already [x]
+      AND every plan step is already [x] AND there is genuinely no remediation step to
+      append, do NOT append anything — instead print exactly this on its own line:
+      WORK_COMPLETE
+      Use this ONLY when there is truly nothing left to do; otherwise append the
+      remediation step as described above and do not print WORK_COMPLETE.
     action_type: prompt
-    next: select_step
+    capture: continue_result
+    evaluate:
+      type: output_contains
+      source: "${captured.continue_result.output}"
+      pattern: "WORK_COMPLETE"
+    on_yes: final_verify
+    on_no: select_step
     on_error: continue_work
     max_retries: 3
     on_retry_exhausted: diagnose

@@ -196,9 +196,24 @@ class TestBUG1687ContinueWorkCapture:
 
     def test_continue_work_routes_to_select_step(self, raw_data: dict) -> None:
         state = raw_data["states"]["continue_work"]
-        assert state.get("next") == "select_step", (
-            "continue_work must route to select_step after ENH-1732 so the remediation step "
-            "goes through the full select_step → do_work → verify_step → mark_done chain"
+        # Routing moved from an unconditional `next` to an evaluated branch so
+        # continue_work can escape to final_verify when there is nothing to remediate.
+        # The remediation path still goes to select_step (on_no) so the appended step
+        # runs through the full select_step → do_work → verify_step → mark_done chain.
+        assert state.get("on_no") == "select_step", (
+            "continue_work must route the remediation path (on_no) to select_step"
+        )
+
+    def test_continue_work_escape_hatch_routes_to_final_verify(self, raw_data: dict) -> None:
+        state = raw_data["states"]["continue_work"]
+        assert state.get("on_yes") == "final_verify", (
+            "continue_work must escape to final_verify when WORK_COMPLETE is emitted"
+        )
+        assert state.get("evaluate", {}).get("type") == "output_contains", (
+            "continue_work must gate on WORK_COMPLETE via an output_contains evaluator"
+        )
+        assert "WORK_COMPLETE" in state["action"], (
+            "continue_work.action must define the WORK_COMPLETE escape-hatch instruction"
         )
 
     def test_continue_work_action_type_is_prompt(self, raw_data: dict) -> None:
@@ -870,7 +885,11 @@ class TestCountDoneShellScript:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode != 0, "Script must exit non-zero when DoD file is missing"
 
-    def test_failed_sample_emits_nonzero_total(self, tmp_path: Path) -> None:
+    def test_failed_sample_reported_but_does_not_gate_total(self, tmp_path: Path) -> None:
+        # A FAILED sample is reported for observability but no longer drives `total`:
+        # Sample Verification prose accumulates and re-emits historical FAILEDs, which
+        # permanently poisoned the gate. Genuine failures block authoritatively via the
+        # criterion being flipped back to [ ] (see next test), not via failed_samples.
         dod_with_failed = """\
 # Definition of Done
 ## Verification Criteria
@@ -887,8 +906,33 @@ class TestCountDoneShellScript:
         import json
 
         data = json.loads(result.stdout.strip())
-        assert data["failed_samples"] >= 1
-        assert data["total"] >= 1
+        assert data["failed_samples"] >= 1, "failed_samples must still be reported"
+        assert data["total"] == 0, (
+            "a FAILED sample alone must NOT gate completion — the criterion is still [x] "
+            "and the plan is complete, so total is 0"
+        )
+
+    def test_flipped_back_criterion_gates_total(self, tmp_path: Path) -> None:
+        # The authoritative block for a genuine sample failure: check_done flips the
+        # criterion back to [ ], which HARD/SOFT_UNCHECKED_DOD counts into total.
+        dod_flipped_back = """\
+# Definition of Done
+## Verification Criteria
+- [ ] Tests pass [hard]
+## Sample Verification
+- [ ] Tests pass: FAILED — pytest returned exit 1
+"""
+        run_dir = _setup_dod_plan(
+            tmp_path, dod_content=dod_flipped_back, plan_content=_ALL_DONE_PLAN
+        )
+        script = _load_count_done_script(run_dir=run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads(result.stdout.strip())
+        assert data["hard_unchecked_dod"] >= 1
+        assert data["total"] >= 1, "a flipped-back unchecked hard criterion must block"
 
 
 class TestENH1676PartialDoDThreshold:
