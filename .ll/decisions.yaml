@@ -1468,3 +1468,52 @@
     a --max-N cap flag to make them safe to run o
   enforcement: advisory
   issue: ENH-2252
+- id: ARCHITECTURE-042
+  type: decision
+  timestamp: '2026-06-22T18:23:19Z'
+  category: architecture
+  labels: []
+  rationale: ll-init must check installed pip pkg vs latest PyPI and ll@little-loops
+    plugin vs marketplace; notify+prompt via subprocess; remove the pip install -e
+    bare-name crash path
+  rule: 'Captured: ll-init version-check and upgrade for PyPI end users'
+  scope: issue
+  issue: ENH-2256
+- id: ARCHITECTURE-043
+  type: decision
+  timestamp: '2026-06-22T19:00:48Z'
+  category: architecture
+  labels: []
+  rationale: The ENH-2256 fix requires calling pip show little-loops to detect editable
+    vs consumer installs anyway. Once that discrimination exists, returning 'local-editable'
+    for a regular PyPI install would be actively incorrect. config-schema.json install_source
+    enum must add 'pypi'; test_local_installation_detected assertion must be updated.
+  rule: detect_installation() must return 'pypi' as source label for non-editable
+    pip installs
+  scope: issue
+  issue: ENH-2256
+- id: ARCHITECTURE-044
+  type: decision
+  timestamp: '2026-06-22T19:00:59Z'
+  category: architecture
+  labels: []
+  rationale: Function must compare installed vs external PyPI/marketplace latest,
+    not own __version__. Clean signature break preferred over a parallel zombie function.
+    The 3 existing TestCheckVersion tests must be rewritten to pass a realistic 'latest'
+    string and assert notify-and-prompt behavior.
+  rule: check_version() signature changes from check_version(installed, current) to
+    check_version(installed, latest)
+  scope: issue
+  issue: ENH-2256
+- id: ARCHITECTURE-045
+  type: decision
+  timestamp: '2026-06-22T19:01:08Z'
+  category: architecture
+  labels: []
+  rationale: FEAT-892 (ll-update slash command, P3, open) is a pattern reference only
+    — not a hard dependency. The editable-vs-consumer detection pattern is already
+    established via BUG-1071 in skills/update/SKILL.md. resolve_host() is live in
+    action.py. ENH-2256's implementation plan provides Python equivalents directly.
+  rule: ENH-2256 proceeds independently of FEAT-892
+  scope: issue
+  issue: ENH-2256
