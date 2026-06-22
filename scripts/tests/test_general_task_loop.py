@@ -111,11 +111,22 @@ class TestChange2CheckDoneReconcileAndSampleVerify:
     def test_check_done_emits_sample_verification_section(self, raw_data: dict) -> None:
         action = raw_data["states"]["check_done"]["action"]
         assert "## Sample Verification" in action, (
-            "check_done.action must append a `## Sample Verification` section to the DoD"
+            "check_done.action must reference the `## Sample Verification` section in the DoD"
         )
         # Must independently re-verify up to min(3, total_checked) already-[x] criteria.
         assert "min(3" in action or "up to 3" in action.lower(), (
             "check_done.action must sample up to 3 already-[x] criteria for re-verification"
+        )
+
+    def test_check_done_replaces_not_appends_sample_verification(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_done"]["action"]
+        action_lower = action.lower()
+        assert "replace" in action_lower, (
+            "check_done.action must instruct the agent to replace the `## Sample Verification` section"
+        )
+        # Must not instruct appending a new section (which causes unbounded accumulation).
+        assert "append a" not in action_lower or "sample verification" not in action_lower, (
+            "check_done.action must not instruct appending a new `## Sample Verification` section"
         )
 
 

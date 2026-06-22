@@ -2,8 +2,9 @@
 id: ENH-2255
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-22T14:50:06Z'
+completed_at: '2026-06-22T15:05:03Z'
 discovered_date: 2026-06-22
 discovered_by: capture-issue
 labels:
@@ -11,6 +12,12 @@ labels:
 - fsm
 - general-task
 - reliability
+confidence_score: 100
+outcome_confidence: 98
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 23
+score_change_surface: 25
 ---
 
 # ENH-2255: general-task check_done should replace (not append) the Sample Verification section
@@ -138,5 +145,7 @@ completion despite all 19 plan steps and 42 DoD criteria being satisfied.
 **Open** | Created: 2026-06-22 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-22T15:02:39 - `3bb3dd2d-4a79-403f-8c6e-2490d2cee8c0.jsonl`
+- `/ll:confidence-check` - 2026-06-22T00:00:00Z - `b1ccd26b-f585-48b3-aef5-e5849cb56700.jsonl`
 - `/ll:format-issue` - 2026-06-22T14:56:57 - `fbdc25da-bfa8-461a-94b5-26bba2297470.jsonl`
 - `/ll:capture-issue` - 2026-06-22T14:50:06Z - `bcaa0571-6edd-4292-b878-2b56b7b28560.jsonl`

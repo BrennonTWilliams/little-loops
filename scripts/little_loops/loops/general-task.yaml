@@ -318,8 +318,9 @@ states:
       Step 3 — Sample re-verification:
       Pick up to min(3, total_checked) already-[x] DoD criteria and INDEPENDENTLY
       re-verify each by re-running the command / re-reading the file / re-checking
-      the filesystem. Append a `## Sample Verification` section to the DoD file in
-      this exact format:
+      the filesystem. Replace the `## Sample Verification` section in the DoD file:
+      if one already exists, remove it entirely before writing the new one; if none
+      exists, create it. Write exactly one section in this exact format:
       ```
       ## Sample Verification
       - [x] <criterion>: <evidence>
