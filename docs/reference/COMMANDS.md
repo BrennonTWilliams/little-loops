@@ -29,7 +29,7 @@ Not all commands support all flags. See individual command documentation for sup
 ### `/ll:init`
 Redirect stub — delegates to `ll-init` for project bootstrap and config setup.
 
-**Flags:** `--yes` (accepts all defaults), `--force`, `--dry-run`, `--hosts`, `--codex`
+**Flags:** `--yes` (accepts all defaults), `--force`, `--dry-run`, `--hosts`
 
 Prints a one-line handoff banner, then runs `ll-init --yes` with any recognized flags passed through. For full interactive setup use `ll-init` directly in a terminal.
 
