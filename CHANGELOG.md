@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.130.0] - 2026-06-22
+
+### Changed
+
+- **`ll-init` PyPI version-check and --upgrade flag** — Detects version drift against PyPI and exposes `--upgrade` flag for end-user upgrades. (ENH-2256)
+- **`general-task` check_done section replacement** — `check_done` now replaces (not appends) the Sample Verification section on each pass, preventing duplicate accumulation. (ENH-2255)
+- **`/ll:init` `--codex` flag removal** — Removed deprecated `--codex` flag from COMMANDS.md documentation. (ENH-2254)
+
+### Fixed
+
+- **`general-task` completion gate cleanup** — Removed `FAILED_SAMPLES` from the completion gate and added `WORK_COMPLETE` escape hatch. (33be1d1)
+
 ## [1.129.0] - 2026-06-21
 
 ### Added
@@ -97,6 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`loop-composer` and `loop-composer-adaptive` error routing** — `re_decompose` wired to `on_error`; `check_auto_plan` error paths route to the HITL gate instead of failing silently. (ENH-2135)
 - **`loop-router` loop discovery** — `discover_loops` now passes `--visibility public` to filter hidden loops from selection. (ENH-2203)
 
+[1.130.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.129.0...v1.130.0
 [1.129.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.128.0...v1.129.0
 [1.128.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.127.0...v1.128.0
 [1.127.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.126.0...v1.127.0
