@@ -18,8 +18,10 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
 
     When ``--cascade`` is set, also propagates the status to active children
     (those with status ``open``, ``in_progress``, or ``blocked``). Child
-    resolution uses union of ``relates_to:`` (forward) + ``parent:`` (backward)
-    lookups.
+    resolution follows ``parent:`` edges **only**, transitively. Association
+    edges (``relates_to:``, ``blocked_by:``) are non-hierarchical and never
+    trigger a cascade — cascading through them silently mutated unrelated
+    issues, including sibling epics (BUG-2265).
 
     Args:
         config: Project configuration
@@ -72,18 +74,32 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
 
         all_issues = find_issues(config)
 
-        # Union of forward (relates_to:) + backward (parent:)
-        forward_ids: set[str] = set(fm.get("relates_to", []))
-        backward_ids: set[str] = {
-            i.issue_id for i in all_issues if i.parent and i.parent.upper() == epic_id
-        }
-        child_ids = forward_ids | backward_ids
+        # Cascade follows parent: → child edges ONLY, transitively. relates_to:
+        # and blocked_by: are non-hierarchical association edges; cascading
+        # through them silently flipped the status of unrelated issues —
+        # including sibling epics — during routine epic closure (BUG-2265).
+        children_by_parent: dict[str, list] = {}
+        for i in all_issues:
+            if i.parent:
+                children_by_parent.setdefault(i.parent.upper(), []).append(i)
 
-        children = [i for i in all_issues if i.issue_id.upper() in child_ids]
-        active = [c for c in children if c.status in _OPEN_STATUSES]
-        skipped = [c for c in children if c not in active]
+        # Transitive closure over parent edges, breadth-first from the epic.
+        descendants: list = []
+        seen: set[str] = {epic_id}
+        queue = list(children_by_parent.get(epic_id, []))
+        while queue:
+            child = queue.pop(0)
+            cid = child.issue_id.upper()
+            if cid in seen:
+                continue
+            seen.add(cid)
+            descendants.append(child)
+            queue.extend(children_by_parent.get(cid, []))
 
-        print(f"  Cascading to {len(active)} active children (default: {args.cascade_to}):")
+        active = [c for c in descendants if c.status in _OPEN_STATUSES]
+        skipped = [c for c in descendants if c not in active]
+
+        print(f"  Cascading to {len(active)} active parent-children (default: {args.cascade_to}):")
 
         failures = 0
         for child in active:

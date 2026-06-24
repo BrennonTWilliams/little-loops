@@ -380,13 +380,17 @@ class TestIssuesCLISetStatus:
         captured = capsys.readouterr()
         assert "only valid" in captured.err.lower() or "cascade" in captured.err.lower()
 
-    def test_cascade_resolves_via_relates_to_forward(
+    def test_cascade_does_not_follow_relates_to(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         issues_dir: Path,
     ) -> None:
-        """Children linked via relates_to: in the EPIC frontmatter are cascaded."""
+        """relates_to: links must NOT be cascaded (BUG-2265).
+
+        Cascading through association edges silently mutated unrelated issues.
+        Only parent: edges may trigger a status change.
+        """
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -403,8 +407,8 @@ class TestIssuesCLISetStatus:
 
         enhancements_dir = issues_dir / "enhancements"
         enhancements_dir.mkdir(parents=True, exist_ok=True)
-        (enhancements_dir / "P3-ENH-001-forward-child.md").write_text(
-            "---\nid: ENH-001\nstatus: open\n---\n# ENH-001: Forward child\n"
+        (enhancements_dir / "P3-ENH-001-related.md").write_text(
+            "---\nid: ENH-001\nstatus: open\n---\n# ENH-001: Related (not a child)\n"
         )
 
         with patch.object(
@@ -425,7 +429,120 @@ class TestIssuesCLISetStatus:
             result = main_issues()
 
         assert result == 0
-        assert "status: deferred" in (enhancements_dir / "P3-ENH-001-forward-child.md").read_text()
+        # Related-only issue must be left untouched.
+        assert "status: open" in (enhancements_dir / "P3-ENH-001-related.md").read_text()
+
+    def test_cascade_does_not_touch_sibling_epic_via_relates_to(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """BUG-2265 regression: cancelling an epic with relates_to → another epic
+        leaves the related epic (and its children) untouched."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epics_dir = issues_dir / "epics"
+        # EPIC-001 relates to sibling EPIC-002 and owns one real child.
+        (epics_dir / "P2-EPIC-001-being-cancelled.md").write_text(
+            "---\n"
+            "id: EPIC-001\n"
+            "status: open\n"
+            "relates_to:\n"
+            "  - EPIC-002\n"
+            "---\n"
+            "# EPIC-001: Being cancelled\n"
+        )
+        (epics_dir / "P2-EPIC-002-sibling.md").write_text(
+            "---\nid: EPIC-002\nstatus: open\n---\n# EPIC-002: Sibling (related-only)\n"
+        )
+
+        features_dir = issues_dir / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        # Real child of EPIC-001 (should cascade).
+        (features_dir / "P3-FEAT-001-real-child.md").write_text(
+            "---\nid: FEAT-001\nstatus: open\nparent: EPIC-001\n---\n# FEAT-001: Real child\n"
+        )
+        # Child of the sibling epic (must NOT cascade — one hop away via relates_to).
+        (features_dir / "P3-FEAT-002-sibling-child.md").write_text(
+            "---\nid: FEAT-002\nstatus: open\nparent: EPIC-002\n---\n# FEAT-002: Sibling child\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "EPIC-001",
+                "cancelled",
+                "--cascade",
+                "--cascade-to",
+                "cancelled",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        # Real child cascaded.
+        assert "status: cancelled" in (features_dir / "P3-FEAT-001-real-child.md").read_text()
+        # Sibling epic and its child left untouched.
+        assert "status: open" in (epics_dir / "P2-EPIC-002-sibling.md").read_text()
+        assert "status: open" in (features_dir / "P3-FEAT-002-sibling-child.md").read_text()
+
+    def test_cascade_is_transitive_over_parent_edges(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """BUG-2265 AC#1: cascade follows parent: edges transitively (grandchildren)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epics_dir = issues_dir / "epics"
+        (epics_dir / "P2-EPIC-001-root.md").write_text(
+            "---\nid: EPIC-001\nstatus: open\n---\n# EPIC-001: Root epic\n"
+        )
+        # Sub-epic is a child of the root epic.
+        (epics_dir / "P2-EPIC-002-sub.md").write_text(
+            "---\nid: EPIC-002\nstatus: open\nparent: EPIC-001\n---\n# EPIC-002: Sub epic\n"
+        )
+
+        features_dir = issues_dir / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        # Grandchild: child of the sub-epic.
+        (features_dir / "P3-FEAT-001-grandchild.md").write_text(
+            "---\nid: FEAT-001\nstatus: open\nparent: EPIC-002\n---\n# FEAT-001: Grandchild\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "EPIC-001",
+                "cancelled",
+                "--cascade",
+                "--cascade-to",
+                "cancelled",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert "status: cancelled" in (epics_dir / "P2-EPIC-002-sub.md").read_text()
+        assert "status: cancelled" in (features_dir / "P3-FEAT-001-grandchild.md").read_text()
 
     def test_cascade_continues_on_individual_failure(
         self,
