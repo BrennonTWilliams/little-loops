@@ -31,7 +31,8 @@ context:
 flow:
   - classify_research
   - "route_files?research_files:route_web"
-  - "route_web?research_web:research_files"
+  - "route_web?research_web:classify_fallback"
+  - classify_fallback
   - research_files
   - research_web
   - synthesize
@@ -55,9 +56,18 @@ state_defs:
 
       Pick the single most valuable research type for the lowest-scoring dimension.
 
-      End your response with EXACTLY one of these tokens on its own line:
+      End your response with EXACTLY one of these tokens on its own line,
+      with no other text on that line and no trailing whitespace:
       NEEDS_FILES
       NEEDS_WEB
+
+      Do NOT wrap the token in backticks, quotes, or prose. The final
+      line of your response must be exactly one of the two tokens above
+      and nothing else. For example, do NOT output:
+        `NEEDS_FILES`
+        "NEEDS_WEB"
+        The answer is NEEDS_FILES
+      Just the bare token on its own line.
     capture: classification
 
   route_files:
@@ -70,11 +80,27 @@ state_defs:
 
   route_web:
     # Router: dispatch to web research when classification captured NEEDS_WEB.
-    # Falls back to research_files if neither token matched (unexpected output).
+    # Routes to classify_fallback if neither token matched (degenerate classification).
     evaluate:
       type: output_contains
       source: "${captured.classification.output}"
       pattern: "NEEDS_WEB"
+    on_error: synthesize
+
+  classify_fallback:
+    # Fallback: classification produced neither NEEDS_FILES nor NEEDS_WEB.
+    # Logs the degenerate event explicitly so it is observable in event logs,
+    # then defaults to file research (the safer choice for most codebase-adjacent
+    # plans). Without this state, degenerate classification and legitimate
+    # NEEDS_FILES routing are indistinguishable.
+    action_type: shell
+    action: echo "DEGENERATE_CLASSIFICATION"
+    capture: fallback_result
+    evaluate:
+      type: output_contains
+      pattern: "DEGENERATE_CLASSIFICATION"
+    on_yes: research_files
+    on_no: synthesize
     on_error: synthesize
 
   research_files:
