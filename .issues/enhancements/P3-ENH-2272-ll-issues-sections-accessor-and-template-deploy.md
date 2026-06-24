@@ -128,6 +128,8 @@ New CLI surface on `ll-issues`:
 - `scripts/little_loops/init/writers.py` — `deploy_issue_templates()` (skip-if-exists).
 - `scripts/little_loops/init/cli.py` — wire deploy into the init flow behind a
   feature flag.
+- `scripts/little_loops/init/tui.py` — add `deploy_issue_templates()` call in `_apply_config()` (line ~847) alongside existing `deploy_goals` / `deploy_design_tokens` calls; add to inline import block. [Wiring]
+- `scripts/little_loops/init/__init__.py` — add `deploy_issue_templates` to `from little_loops.init.writers import (...)` block and `__all__` list (alongside `deploy_goals`, `deploy_design_tokens`). [Wiring]
 - `config-schema.json` / `config/features.py` — feature flag for the deploy (if
   gated).
 - `skills/format-issue/SKILL.md`, `skills/format-issue/templates.md`,
@@ -153,9 +155,18 @@ New CLI surface on `ll-issues`:
 - New: `scripts/tests/test_deploy_issue_templates.py` — skip-if-exists semantics, dry-run, feature-flag gating.
 - Update: tests covering `ll-init` flow to include the new deploy step.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_template.py` — existing `test_load_custom_dir` and `test_load_missing_file` may break if `load_issue_sections` second-parameter semantics change; add new parametrized tests for the 4-tier resolver precedence in `TestLoadIssueSections`.
+- `scripts/tests/test_init_core.py` — add `TestDeployIssueTemplates` class (mirror `TestDeployGoals`: `test_deploys_sections`, `test_skips_if_already_exists`, `test_dry_run`, `test_skips_if_template_missing`); add `test_yes_deploys_issue_templates_when_enabled` integration test.
+- `scripts/tests/test_config_schema.py` — add `test_issues_deploy_templates_in_schema` sentinel following `test_issues_auto_commit_in_schema` pattern.
+
 ### Documentation
 - `docs/reference/CLI.md` — document `ll-issues sections` subcommand.
 - `docs/reference/API.md` — document the unified resolver (`issue_template.py`) and `deploy_issue_templates()`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — add `deploy_templates` row to the `### issues` config table (alongside `templates_dir`).
+- `.claude/CLAUDE.md` — add `sections` to the parenthetical `ll-issues` subcommand list (line 233).
 
 ### Configuration
 - `config-schema.json` — feature flag property for `deploy_issue_templates` (if gated).
@@ -230,6 +241,18 @@ def deploy_issue_templates(ll_dir: Path, templates_dir: Path, dry_run: bool = Fa
 5. Verify `ll-verify-skills` / `ll-verify-skill-budget` still pass and run
    `python -m pytest scripts/tests/`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `scripts/little_loops/init/tui.py` — add `deploy_issue_templates()` call in `_apply_config()` (line ~847) alongside `deploy_goals` / `deploy_design_tokens`; add to inline import block.
+7. Update `scripts/little_loops/init/__init__.py` — add `deploy_issue_templates` to imports and `__all__`.
+8. Update `scripts/tests/test_issue_template.py` — add 4-tier resolver precedence tests to `TestLoadIssueSections`; verify `test_load_custom_dir` / `test_load_missing_file` don't regress under any signature change.
+9. Update `scripts/tests/test_init_core.py` — add `TestDeployIssueTemplates` class and `test_yes_deploys_issue_templates_when_enabled` integration test.
+10. Update `scripts/tests/test_config_schema.py` — add `test_issues_deploy_templates_in_schema`.
+11. Update `docs/reference/CONFIGURATION.md` — add `deploy_templates` row to the `### issues` config table.
+12. Update `.claude/CLAUDE.md` — add `sections` to the `ll-issues` parenthetical subcommand list (line 233).
+
 ## Scope Boundaries
 
 - Changing the content or format of the `*-sections.json` files themselves (only the access layer changes).
@@ -265,6 +288,7 @@ def deploy_issue_templates(ll_dir: Path, templates_dir: Path, dry_run: bool = Fa
 `enhancement`, `templates`, `cli`, `ll-init`, `skills`, `performance`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-24T23:21:52 - `97498016-23cf-4c10-9b5b-f243fd01138b.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:05:17 - `5b067ad3-2717-49a4-bf64-d61c0eab69cc.jsonl`
 - `/ll:format-issue` - 2026-06-24T22:58:10 - `2559928a-8ef2-4ca3-879e-63d8f4134600.jsonl`
 - `/ll:capture-issue` - 2026-06-24T22:17:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d34d610-c8b9-4a5e-82c8-191296760b6d.jsonl`

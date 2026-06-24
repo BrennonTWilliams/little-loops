@@ -3,11 +3,20 @@ id: BUG-2271
 type: BUG
 priority: P3
 status: open
-captured_at: "2026-06-24T22:17:07Z"
+captured_at: '2026-06-24T22:17:07Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
-relates_to: [ENH-2272, BUG-2273, FEAT-2274]
+relates_to:
+- ENH-2272
+- BUG-2273
+- FEAT-2274
 decision_needed: false
+confidence_score: 96
+outcome_confidence: 87
+score_complexity: 23
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # BUG-2271: Section-template resolver ignores CLAUDE_PLUGIN_ROOT and project-local templates
@@ -119,11 +128,21 @@ non-editable installs that have `CLAUDE_PLUGIN_ROOT` available.
 - `scripts/little_loops/issue_parser.py:80` — `is_formatted()` calls `load_issue_sections()` → degraded signal on missing dir
 - `scripts/little_loops/cli/issues.py` — `ll-issues show`, `refine-status`, `next-action` all surface via `is_formatted()`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- **Conditional** (only if `_find_plugin_root` is factored into a renamed/moved shared helper): `scripts/little_loops/cli/action.py`, `scripts/little_loops/cli/adapt_skills_for_codex.py`, `scripts/little_loops/cli/adapt_agents_for_codex.py`, `scripts/little_loops/cli/generate_skill_descriptions.py` — each defines a local `_find_plugin_root()` proxy wrapper that delegates to `skill_expander._find_plugin_root`; renaming or moving the helper requires updating all 4 proxy wrappers plus 19 `patch()` targets in their test files (`test_action.py` 9×, `test_adapt_skills_for_codex.py` 3×, `test_adapt_agents_for_codex.py` 4×, `test_generate_skill_descriptions.py` 3×) [Agent 1 + Agent 2]
+
 ### Tests
 - `scripts/tests/test_issue_template.py` — **existing** `TestLoadIssueSections` class; add new test methods here (not a new file)
   - New: `test_uses_claude_plugin_root_when_set` — `monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))`, write `tmp_path/templates/bug-sections.json`, assert `load_issue_sections("BUG")` resolves correctly
   - New: `test_falls_back_to_file_relative` — `monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)`, assert `load_issue_sections("BUG")` still works via `__file__`-relative path (editable-install path)
 - `scripts/tests/test_skill_expander.py:TestFindPluginRoot` — reference model for `monkeypatch.setenv` / `monkeypatch.delenv` pattern
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_template.py` (`test_load_default`, parametrized 4 variants) — needs `monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)` guard; without it, running in a CI environment where `CLAUDE_PLUGIN_ROOT` is set will route through the new env-var branch and may fail if that path lacks `templates/` [Agent 3]
+- `scripts/tests/test_issue_template.py` (module-level fixtures `bug_sections`, `feat_sections`, `enh_sections`) — call `load_issue_sections()` at fixture setup without `templates_dir`; fixtures have no `monkeypatch` access, so env-var pollution at the session level will break every dependent test; fix by passing `templates_dir=Path(__file__).parent.parent.parent / "templates"` explicitly or add a module-scoped `monkeypatch.delenv` autouse fixture [Agent 3]
+- New: `test_load_default_env_var_missing_templates_raises` — in `TestLoadIssueSections`; `monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))` with no `templates/` subdir, assert `load_issue_sections("BUG")` raises `FileNotFoundError` [Agent 3]
+- `scripts/tests/test_refine_status.py` — exercises `is_formatted()` indirectly via `ll-issues refine-status`; silent regression risk: `is_formatted()` swallows `FileNotFoundError` and returns `False`, so a broken template path silently degrades the result rather than failing the test [Agent 3]
+- `scripts/tests/test_issues_cli.py` (`TestIssuesCLIShow`) — exercises `ll-issues show` → `is_formatted()`; same silent regression risk as `test_refine_status.py`; no existing assertion on the `fmt` field, so a broken resolver would go undetected [Agent 3]
 
 ### Documentation
 - `docs/reference/API.md` — documents `load_issue_sections`; update to note resolver precedence
@@ -168,6 +187,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    unset (editable-install path).
 4. Run `python -m pytest scripts/tests/`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Guard existing `test_load_default` (4 parametrized variants) in `test_issue_template.py` — add `monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)` to each variant to prevent env-var pollution in CI environments where `CLAUDE_PLUGIN_ROOT` is set
+6. Guard or convert module-level fixtures `bug_sections`, `feat_sections`, `enh_sections` in `test_issue_template.py` — pass `templates_dir=Path(__file__).parent.parent.parent / "templates"` explicitly (or add a module-scoped `monkeypatch.delenv` autouse fixture), since fixture setup has no `monkeypatch` access
+7. Add `test_load_default_env_var_missing_templates_raises` to `TestLoadIssueSections` — `CLAUDE_PLUGIN_ROOT` set but no `templates/` subdir → `FileNotFoundError`
+8. **If shared helper approach** (factoring `_find_plugin_root` out of `skill_expander.py`): update the 4 proxy wrapper functions in `cli/action.py`, `cli/adapt_skills_for_codex.py`, `cli/adapt_agents_for_codex.py`, `cli/generate_skill_descriptions.py`; update the 19 `patch()` targets in `test_action.py` (9×), `test_adapt_skills_for_codex.py` (3×), `test_adapt_agents_for_codex.py` (4×), `test_generate_skill_descriptions.py` (3×)
+
 ## Impact
 
 - **Priority**: P3 — Silent/degraded behavior for non-editable installs in the
@@ -199,6 +227,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-06-24 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T23:45:00 - `eed0e888-b9de-43d8-9237-8796107da954.jsonl`
+- `/ll:wire-issue` - 2026-06-24T23:17:52 - `cdc24f62-8926-49f2-87a9-4f69f340b39e.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:06:22 - `a735547e-7297-4f0e-8564-f8f404751bb4.jsonl`
 - `/ll:format-issue` - 2026-06-24T22:56:49 - `675310ea-1b88-4963-9ad5-358af691a6bb.jsonl`
 - `/ll:capture-issue` - 2026-06-24T22:17:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d34d610-c8b9-4a5e-82c8-191296760b6d.jsonl`

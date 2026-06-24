@@ -3,10 +3,21 @@ id: BUG-2273
 type: BUG
 priority: P2
 status: open
-captured_at: "2026-06-24T22:25:58Z"
+captured_at: '2026-06-24T22:25:58Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
-relates_to: [BUG-2271, ENH-2272, FEAT-2274, BUG-885, BUG-938]
+relates_to:
+- BUG-2271
+- ENH-2272
+- FEAT-2274
+- BUG-885
+- BUG-938
+confidence_score: 87
+outcome_confidence: 72
+score_complexity: 16
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 20
 ---
 
 # BUG-2273: ll-init `_plugin_root()` resolver silently skips design-token / goals / project-type templates on non-editable installs
@@ -162,13 +173,27 @@ warning instead of a silent no-op.
 - `scripts/little_loops/init/writers.py` — `deploy_design_tokens()` and `deploy_goals()` receive `templates_dir` from `cli.py`
 - `scripts/little_loops/init/detect.py` — `detect_project_type()` reads per-type config templates via `templates_dir`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/tui.py` — `_apply_writes()` (line 843) calls `deploy_goals(ll_dir, templates_dir)` and `deploy_design_tokens(ll_dir, templates_dir, ...)` (line 847), discarding both returns; `run_tui()` (line 239) calls `detect_project_type()` with `templates_dir`; verify whether `templates_dir` is passed from `cli.py`'s resolver or resolved independently — if independently resolved, `tui.py` has the same `_plugin_root()` bug and must also consume the shared resolver
+- `scripts/little_loops/init/__init__.py` — re-exports `deploy_design_tokens`, `deploy_goals`, `detect_project_type` in `__all__`; this is the public API boundary — if return-value semantics change (e.g., `False` split into two distinct states), this marks the scope of the API change (no code edit needed here, but signals the change is public)
+
 ### Tests
 - `scripts/tests/test_init_core.py` — primary init test file (not `test_ll_init.py`); existing `TestDeployGoals.test_skips_if_template_missing` already tests the source-missing path but only asserts `False` — extend to also assert warning emitted; add: (a) resolver finds bundled `templates/` when `_plugin_root` is patched to a non-editable path; (b) missing source emits a visible warning instead of silent skip; (c) editable-install fallback still resolves.
 - See `test_skill_expander.py:TestFindPluginRoot` for the `monkeypatch.setenv`/`monkeypatch.delenv` env-var test pattern to follow.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_init_tui.py` — `generic_template` fixture (lines 461–464, 968–971) calls `detect_project_type(tmp_path, _TEMPLATES_DIR)` directly; review for breakage if `detect_project_type()` gains a warning when template source is unresolved
+- New `TestPluginRoot` class in `test_init_core.py` (to write) — dedicated unit tests for `cli._plugin_root()` itself; no such class exists; follow `TestFindPluginRoot` pattern in `test_skill_expander.py` (lines 37–50): `monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", ...)` for env-var path, `monkeypatch.delenv(...)` for fallback
+- New `TestFindTemplatesDir` class in `test_init_core.py` (to write) — `detect._find_templates_dir()` has **zero test coverage**; same `TestFindPluginRoot` structure; verify the four-parent traversal resolves to the correct path and that the fixed resolver handles the non-editable case
+- `TestDeployDesignTokens.test_skips_if_source_missing` (new test to write) — parallel to the existing `TestDeployGoals.test_skips_if_template_missing`; currently `TestDeployDesignTokens` has NO source-missing test; assert both `created is False` and warning emission via `capsys`; the `test_skips_if_already_exists` test only covers the "dest exists" early-return path
+- Tests that may break if `deploy_design_tokens()` / `deploy_goals()` return-value semantics change: `TestDeployDesignTokens` (all 3), `TestDeployGoals.test_skips_if_already_exists` — review these if `False` is split into distinct states
+
 ### Documentation
 - `docs/reference/CLI.md` — `ll-init` command docs; verify `--design-tokens` flag description reflects actual deployment behavior
 - `docs/reference/API.md` — if `_plugin_root()` or template resolution is documented, update to reflect the new shared resolver
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — section "Auto-scaffolding built-in profiles" → "Case B" (line ~685) currently describes the silent-skip when no profiles directory exists; update to reflect that missing template source now emits a visible warning instead of a silent no-op
 
 ### Configuration
 - N/A — no config file changes; the shared resolver will honor `config.issues.templates_dir` as an optional override without requiring a new config key
@@ -205,6 +230,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    assert the editable-install `__file__` fallback still works.
 4. Run `python -m pytest scripts/tests/`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Audit `scripts/little_loops/init/tui.py` — check whether `_apply_writes()` and `run_tui()` resolve `templates_dir` independently of `cli.py`'s `_plugin_root()` call; if yes, replace with the same shared resolver (same bug, different call site)
+6. Write `TestPluginRoot` test class in `test_init_core.py` — unit-test `cli._plugin_root()` resolver directly (env-var path + `__file__` fallback), following `TestFindPluginRoot` pattern in `test_skill_expander.py`
+7. Write `TestFindTemplatesDir` test class in `test_init_core.py` — unit-test `detect._find_templates_dir()` (zero coverage today)
+8. Write `TestDeployDesignTokens.test_skips_if_source_missing` — assert `False` return AND warning emission via `capsys` (parallel to existing `TestDeployGoals.test_skips_if_template_missing`)
+9. Update `docs/reference/CONFIGURATION.md` — revise "Case B" description to reflect that missing template source now warns instead of silently no-oping
+
 ## Impact
 
 - **Priority**: P2 — Silently degrades `ll-init`, the primary onboarding command
@@ -237,7 +272,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Open** | Created: 2026-06-24 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-24_
+
+**Readiness Score**: 87/100 → PROCEED
+**Outcome Confidence**: 72/100 → Moderate risk
+
+### Outcome Risk Factors
+- **Soft dependency coupling on 3 open issues**: BUG-2271, ENH-2272, and FEAT-2274 are all open. Step 1 says "reuse the shared resolver introduced by BUG-2271/ENH-2272" — without coordination, both issues could introduce incompatible independent resolver implementations. Resolve who owns the shared resolver function before starting.
+- **Behavior verification before implementing warning strategy**: Codebase research found that `detect_project_type()` calls `templates_dir.glob("*.json")` on a non-existent directory, which raises `FileNotFoundError` — not a graceful fallback. The warning must be placed upstream of the load call. Verify empirically before writing the `detect.py` warning code.
+- **Return-value semantics for deploy functions**: Distinguishing "source missing" from "destination exists" in `deploy_goals()`/`deploy_design_tokens()` affects ~5 call sites in `cli.py`/`tui.py` plus 3–4 test methods. Using a side-effect warning (`print` to stderr inside the function) avoids this cost; decide which approach before implementation begins.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T23:30:00Z - `f4b1792d-435d-44eb-b05e-5ac1ba224be4.jsonl`
+- `/ll:wire-issue` - 2026-06-24T23:18:11 - `f4b1792d-435d-44eb-b05e-5ac1ba224be4.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:07:14 - `cdada0da-4753-458e-a13a-508a5ae683e0.jsonl`
 - `/ll:format-issue` - 2026-06-24T22:57:31 - `cd6e14d6-0ccd-4ef9-8c5e-8b0a2f72105e.jsonl`
 - `/ll:capture-issue` - 2026-06-24T22:25:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4149029-8124-4b7f-a1de-e3e84bc0d161.jsonl`
