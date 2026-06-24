@@ -141,6 +141,9 @@ host abstraction (`resolve_host()`), not only the Claude plugin root.
 - `docs/reference/API.md` — `skill_expander` resolution precedence.
 - `docs/reference/HOST_COMPATIBILITY.md` — per-host skill-dir resolution.
 
+### Configuration
+- N/A
+
 ## Implementation Steps
 
 1. Swap the escaping fallback for the shared resolver.
@@ -159,6 +162,11 @@ host abstraction (`resolve_host()`), not only the Claude plugin root.
 - **Risk**: Low — additive; existing fallback preserved.
 - **Breaking Change**: No.
 
+## Related Key Documentation
+
+- `docs/reference/API.md` — `skill_expander` module and resolution precedence.
+- `docs/reference/HOST_COMPATIBILITY.md` — per-host skill-dir resolution and `LL_HOST_CLI` env var.
+
 ## Related
 
 - BUG-2275 — `hooks/` package data (same `__file__`-escape class).
@@ -176,3 +184,7 @@ host abstraction (`resolve_host()`), not only the Claude plugin root.
 ## Status
 
 **Open** | Created: 2026-06-24 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-24T23:23:17 - `f6b59a7a-7a33-46b0-b1e5-64bbc39e6087.jsonl`

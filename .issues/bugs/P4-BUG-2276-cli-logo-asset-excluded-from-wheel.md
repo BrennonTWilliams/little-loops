@@ -28,6 +28,10 @@ FEAT-2274) and BUG-2275 (`hooks/`): *package code reaches outside the package vi
 is the `assets/` instance. Cosmetic, hence P4 — but identical mechanism and
 silently masked by editable dev installs.
 
+## Motivation
+
+Installed users never see the CLI logo — `print_logo()` silently no-ops on every non-editable `pip install`. The editable dev install masks the gap, so it goes unnoticed until an end user reports missing output. Fixing this as part of FEAT-2274's packaging sweep avoids another one-off patch for a misplaced repo-root asset.
+
 ## Steps to Reproduce
 
 1. `pip install little-loops` (non-editable) into a fresh venv.
@@ -81,6 +85,9 @@ package-data moves.
 - `scripts/little_loops/logo.py` — `get_logo()` path resolution.
 - `scripts/pyproject.toml` — bundle the logo asset (git mv or force-include).
 
+### Dependent Files (Callers/Importers)
+- N/A — `get_logo()` and `print_logo()` are not currently imported by any other module; the path fix is self-contained within `logo.py`.
+
 ### Similar Patterns
 - BUG-2275 — `hooks/` package data excluded from the wheel (same class).
 - FEAT-2274 — `templates/` packaging (extend its scope to `assets/`).
@@ -89,6 +96,12 @@ package-data moves.
 ### Tests
 - `scripts/tests/` — assert `get_logo()` resolves the bundled asset when
   `__file__` is monkeypatched to a non-editable path.
+
+### Documentation
+- N/A — no user-facing documentation references the logo asset path.
+
+### Configuration
+- N/A — no configuration files affected; the fix is a move + path update only.
 
 ## Implementation Steps
 
@@ -118,3 +131,7 @@ package-data moves.
 ## Status
 
 **Open** | Created: 2026-06-24 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-24T23:25:56 - `7a6b079f-6b9c-4751-8816-e0520ba8c865.jsonl`

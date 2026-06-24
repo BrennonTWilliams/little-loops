@@ -182,6 +182,9 @@ not per-host-adapted plugin assets.
 - `docs/reference/API.md` — `install_codex_adapter`, `user_prompt_submit`.
 - `docs/reference/HOST_COMPATIBILITY.md` — Codex adapter install prerequisites.
 
+### Configuration
+- N/A — packaging and source layout changes only; no runtime configuration affected (`pyproject.toml` is listed under Files to Modify as a build-system change, not a runtime config).
+
 ## Implementation Steps
 
 1. Move/force-include `hooks/prompts/` + `hooks/adapters/` into the wheel; build
@@ -225,3 +228,7 @@ not per-host-adapted plugin assets.
 ## Status
 
 **Open** | Created: 2026-06-24 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-24T23:22:53 - `805d4898-1c18-40f2-ad99-fdac06f4d00e.jsonl`
