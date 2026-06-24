@@ -141,14 +141,32 @@ states:
     on_error: diagnose
 
   verify_score:
-    # File verification — reads the actual rubric file to confirm ALL_VERY_HIGH is
-    # present before accepting convergence. Guards against hallucinated convergence
-    # signals where the LLM outputs ALL_VERY_HIGH but writes ITERATE to the file.
+    # Two-stage verification — (1) confirms ALL_VERY_HIGH is present in the rubric
+    # file, then (2) diffs the current plan against the previous iteration's snapshot
+    # to detect phantom convergence (plan unchanged despite model claiming improvement).
+    # Guards against LLM self-evaluation bias: the model that writes the plan also
+    # scores it, so it can claim convergence on a plan it hasn't actually improved.
+    # PHANTOM_CONVERGENCE naturally falls through to on_no → research_iteration
+    # because the output_contains pattern only matches ALL_VERY_HIGH.
     action_type: shell
     action: |
       RUBRIC="${captured.run_dir.output}/plan-rubric.md"
       if [ ! -f "$RUBRIC" ]; then echo "RUBRIC_MISSING"; exit 0; fi
-      grep -q "ALL_VERY_HIGH" "$RUBRIC" && echo "ALL_VERY_HIGH" || echo "ITERATE"
+      if ! grep -q "ALL_VERY_HIGH" "$RUBRIC"; then echo "ITERATE"; exit 0; fi
+      # Stage 2: Diff-based phantom convergence check.
+      # The snapshot state (before score) copies plan.md into iter-N/. If the
+      # current plan is byte-for-byte identical to the previous iteration's plan,
+      # the model re-scored an unchanged plan higher without real improvement.
+      RUN_DIR="${captured.run_dir.output}"
+      COUNTER=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0)
+      if [ "$COUNTER" -gt 1 ]; then
+        PREV="$RUN_DIR/iter-$((COUNTER - 1))/plan.md"
+        if [ -f "$PREV" ] && diff -q "$RUN_DIR/plan.md" "$PREV" > /dev/null 2>&1; then
+          echo "PHANTOM_CONVERGENCE"
+          exit 0
+        fi
+      fi
+      echo "ALL_VERY_HIGH"
     capture: rubric_check
     evaluate:
       type: output_contains

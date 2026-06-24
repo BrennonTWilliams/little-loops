@@ -1517,3 +1517,154 @@
   rule: ENH-2256 proceeds independently of FEAT-892
   scope: issue
   issue: ENH-2256
+- id: ARCHITECTURE-046
+  type: decision
+  timestamp: '2026-06-24T17:30:52Z'
+  category: architecture
+  labels:
+  - gemini
+  - host-compat
+  - hooks
+  rationale: FEAT-2179 research spike confirmed Gemini's hook protocol is stdin/stdout
+    JSON identical to Claude Code, and the ll hook handler is already host-agnostic.
+    Option A mirrors the existing hooks/adapters/claude-code/ pattern at lowest complexity;
+    Extension packaging (Option B) is deferrable to a separate enhancement. Unblocks
+    the entire EPIC-2178 Gemini chain (ENH-2184 → ENH-2185 → FEAT-2186 → ENH-2187
+    → FEAT-2188/2189 → FEAT-2190 → ENH-2191 → FEAT-2192).
+  rule: 'Option A: register Gemini hooks via .gemini/settings.json injection (ll:configure
+    --gemini), not a Gemini Extension package'
+  scope: issue
+  alternatives_rejected: Option B (package hooks as a Gemini Extension under ~/.gemini/extensions/ll/
+    with gemini-extension.json) — higher complexity, no offsetting benefit for the
+    core adapter; revisit as a separate ENH if extension-based distribution is later
+    desired.
+  issue: FEAT-2186
+- id: ARCHITECTURE-047
+  type: decision
+  timestamp: '2026-06-24T17:43:23Z'
+  category: architecture
+  labels:
+  - host-compat
+  - multi-host
+  - gemini
+  - pi
+  - omp
+  rationale: 'Per-host code assessment (thoughts/audits/2026-06-24-host-generalization-planning-assessment.md
+    + code scout) found 5 of 6 existing Codex children are cleanly parameterizable:
+    host-specific logic is confined to a few lines that belong in a lookup table,
+    not a forked file. Evidence: HostRunner Protocol + _HOST_RUNNER_REGISTRY (host_runner.py:773,153)
+    is already the runner seam; _config_candidates special-cases only ''.codex'' at
+    config/core.py:92; adapt_skills/agents_for_codex are ~95% generic with Codex-specificity
+    isolated to one serializer (adapt_skills_for_codex.py:113, adapt_agents_for_codex.py:75-92);
+    FEAT-1716 conformance design already specifies LL_HOST_CLI override + skipif;
+    codex vs claude-code bash hook adapters differ by ONE line (export LL_HOOK_HOST=codex).
+    Hybrid (keep hook adapters bespoke ''because lifecycle events differ most'') fails
+    on evidence: bash hook adapters are near-identical and templatable; real divergence
+    is integration model, and the only SDK-native host (OpenCode) already exists and
+    never needs the shared abstraction. Collapses ~6-8 duplicated children across
+    EPIC-2178/1622/1713 + FEAT-1850. Keep parameterization declarative (registry of
+    host->config), NOT a generic serializer engine -- serializers genuinely differ
+    (openai.yaml vs TOML vs Gemini .toml commands) and are the YAGNI line.'
+  rule: 'Build the shared per-host children (conformance suite, skill adapter, command/agent
+    adapter, config probe, init flag, bash hook adapter) as ONE generic, host-parameterized
+    implementation driven by a declarative host registry, not N bespoke copies per
+    epic. New hosts register as a data entry (host -> {config_dir, manifest_format/schema_fn,
+    detection_fn, install_fn, LL_HOOK_HOST marker}) consumed by a shared _HOST_REGISTRY
+    at every seam: init/cli.py _detect_hosts/_dispatch_host_adapters, config/core.py
+    _config_candidates (_HOST_CONFIG_DIRS table), the skill/agent adapters (swappable
+    serializer per host), the conformance suite (LL_HOST_CLI override + skipif guards),
+    and bash hook adapters (one template with LL_HOOK_HOST substitution). Carve-out
+    is by INTEGRATION MODEL, not lifecycle: subprocess/bash hosts (Codex, Gemini,
+    Pi, omp) ride the generic path; SDK-native hosts (OpenCode TypeScript) stay bespoke.
+    Gemini/Pi/omp epics reference this decision instead of each re-deriving the same
+    ~6-8 children; omp lands as a thin PiRunner subclass.'
+  scope: project
+  alternatives_rejected: 'Hybrid (generic conformance+skill/command, bespoke hook
+    adapters) -- rejected: premise that ''hook adapters differ most'' is false; bash
+    adapters differ by one env var and the integration-model carve-out already isolates
+    the only divergent host (OpenCode). Bespoke per host (status quo) -- rejected:
+    each of 4 epics independently re-derives the same children, ~6-8x duplication,
+    drift risk, and no single owner for host priority order. Deep generic serializer
+    engine -- rejected as YAGNI: per-host manifest formats genuinely differ; keep
+    the swap point as a small data entry, not an abstraction.'
+- id: ARCHITECTURE-048
+  type: decision
+  timestamp: '2026-06-24T17:51:23Z'
+  category: architecture
+  labels:
+  - host-compat
+  - portfolio
+  - gemini
+  - omp
+  - pi
+  rationale: 'Gemini is the lowest-friction second host: research spike (FEAT-2179)
+    complete, HOST_COMPATIBILITY matrix already populated, FEAT-2186 adapter decision
+    now ratified (ARCHITECTURE-046). omp supersedes vanilla Pi (active maintenance,
+    MCP, richer hook events, 9.3k stars) so Pi-family effort routes through omp instead
+    of pi-mono. No demand signal for vanilla Pi after ~29 days at 0% built.'
+  rule: 'Multi-host generalization order: Codex (landed, polish only) → Gemini (next
+    full host) → omp/oh-my-pi (first-class, after Gemini). Vanilla Pi (pi-mono) is
+    cancelled.'
+  scope: project
+  alternatives_rejected: 'Committing the full Gemini→omp→Pi order up front (rejected:
+    re-decide omp vs Pi after Gemini lands with that experience in hand); keeping
+    vanilla Pi active (rejected: omp is a strict superset fork, no reason to build
+    both).'
+- id: ARCHITECTURE-049
+  type: decision
+  timestamp: '2026-06-24T17:51:24Z'
+  category: architecture
+  labels:
+  - host-compat
+  - portfolio
+  - adapters
+  rationale: 'Each per-host epic (Codex/Gemini/omp) independently re-derives the same
+    children: a conformance harness (FEAT-1721/FEAT-1716/FEAT-2192), skills adaptation
+    (FEAT-1486/FEAT-2188), commands adaptation (FEAT-1493/FEAT-2189), config probe,
+    init flag, project-context file. One host-parameterized conformance harness and
+    one host-parameterized skill/command adapter collapse ~6-8 duplicated children
+    and align with the existing resolve_host() abstraction. ll-adapt-skills/agents-for-codex
+    become --host-parameterized.'
+  rule: Shared per-host children (conformance suite, skill adapter, command adapter,
+    config probe, init flag) are built as generic, host-parameterized components taking
+    a host arg — NOT N bespoke copies per host epic.
+  scope: project
+  alternatives_rejected: 'Bespoke per-host (status quo): more code, each host evolves
+    independently but duplicates the same scaffolding N times. Hybrid (generic conformance+adapt,
+    bespoke hooks): hook adapters stay bespoke because lifecycle events differ most
+    — folded into the generic decision as an implementation note rather than a separate
+    strategy.'
+- id: ARCHITECTURE-050
+  type: decision
+  timestamp: '2026-06-24T17:55:35Z'
+  category: architecture
+  labels:
+  - host-compat
+  - pi
+  - omp
+  - portfolio
+  rationale: oh-my-pi is a strict superset fork of pi-mono (MCP, 40+ providers, richer
+    hook events, LSP/DAP, subagents, active maintenance). Building both vanilla Pi
+    and omp is redundant. Vanilla Pi sat at 0% built for ~29 days with no demand signal.
+    Reusable analysis from the cancelled Pi issues (headless audit FEAT-1714, hook
+    parity FEAT-1715) is absorbed by omp children FEAT-1850/FEAT-2263.
+  rule: 'Cancel vanilla Pi (pi-mono) host support: EPIC-1622 + EPIC-1713 and all 8
+    Pi children (FEAT-1475/1476/1478/1479/1480/1714/1715/1716) set to cancelled. Pi-family
+    host effort routes through oh-my-pi (omp) under EPIC-2258 instead.'
+  scope: project
+  alternatives_rejected: 'Keep vanilla Pi active (rejected: omp supersedes it); defer-rather-than-cancel
+    (rejected: a superset fork makes vanilla Pi unlikely to ever be revived — cancel
+    is the honest state).'
+- id: ARCHITECTURE-051
+  type: decision
+  timestamp: '2026-06-24T20:43:04Z'
+  category: architecture
+  labels: []
+  rationale: '9 existing from: usages make it the idiomatic oracle-variant pattern;
+    zero blast radius on 6 existing callers vs Option A''s _validate_with_bindings
+    enforcement across all 6'
+  rule: 'Fork oracle via from: inheritance (Option B)'
+  scope: issue
+  alternatives_rejected: 'Option A: parameterize shared oracles/generator-evaluator.yaml
+    with render_command'
+  issue: FEAT-2269

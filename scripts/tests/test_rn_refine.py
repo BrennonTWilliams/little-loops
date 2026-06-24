@@ -228,6 +228,125 @@ class TestRoutingStructure:
         assert fsm.states["done"].terminal is True
 
 
+# Shell body of the verify_score state, parametrized by run_dir.
+# Mirrors the actual YAML action with ${captured.run_dir.output} substituted.
+def _verify_score_script(run_dir: str) -> str:
+    return f"""
+    RUBRIC="{run_dir}/plan-rubric.md"
+    if [ ! -f "$RUBRIC" ]; then echo "RUBRIC_MISSING"; exit 0; fi
+    if ! grep -q "ALL_VERY_HIGH" "$RUBRIC"; then echo "ITERATE"; exit 0; fi
+    RUN_DIR="{run_dir}"
+    COUNTER=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0)
+    if [ "$COUNTER" -gt 1 ]; then
+      PREV="$RUN_DIR/iter-$((COUNTER - 1))/plan.md"
+      if [ -f "$PREV" ] && diff -q "$RUN_DIR/plan.md" "$PREV" > /dev/null 2>&1; then
+        echo "PHANTOM_CONVERGENCE"
+        exit 0
+      fi
+    fi
+    echo "ALL_VERY_HIGH"
+    """
+
+
+class TestPhantomConvergence:
+    """verify_score detects phantom convergence when plan.md is unchanged from previous iteration."""
+
+    def test_phantom_convergence_detected_when_plan_unchanged(self, tmp_path: Path) -> None:
+        """Outputs PHANTOM_CONVERGENCE when rubric passes but plan is byte-identical to iter-(N-1)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        plan_content = "# Same plan content\n\nNo changes here.\n"
+        (run_dir / "plan.md").write_text(plan_content)
+        (run_dir / "plan-rubric.md").write_text("verdict: ALL_VERY_HIGH\n")
+
+        # Simulate second iteration: .iter_counter=2, iter-1/plan.md is identical
+        (run_dir / ".iter_counter").write_text("2\n")
+        prev_dir = run_dir / "iter-1"
+        prev_dir.mkdir(parents=True)
+        (prev_dir / "plan.md").write_text(plan_content)
+
+        result = _bash(_verify_score_script(str(run_dir)), tmp_path)
+
+        assert result.returncode == 0
+        assert "PHANTOM_CONVERGENCE" in result.stdout
+
+    def test_all_very_high_when_plan_changed(self, tmp_path: Path) -> None:
+        """Outputs ALL_VERY_HIGH when rubric passes and plan differs from previous iteration."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        current_plan = "# Improved plan\n\nAdded new section.\n"
+        (run_dir / "plan.md").write_text(current_plan)
+        (run_dir / "plan-rubric.md").write_text("verdict: ALL_VERY_HIGH\n")
+
+        (run_dir / ".iter_counter").write_text("2\n")
+        prev_dir = run_dir / "iter-1"
+        prev_dir.mkdir(parents=True)
+        (prev_dir / "plan.md").write_text("# Old plan\n\nOriginal content.\n")
+
+        result = _bash(_verify_score_script(str(run_dir)), tmp_path)
+
+        assert result.returncode == 0
+        assert "ALL_VERY_HIGH" in result.stdout
+        assert "PHANTOM_CONVERGENCE" not in result.stdout
+
+    def test_first_iteration_skips_diff_and_outputs_all_very_high(self, tmp_path: Path) -> None:
+        """First iteration (COUNTER=1, no previous snapshot) skips diff and outputs ALL_VERY_HIGH."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        (run_dir / "plan.md").write_text("# Plan v1\n")
+        (run_dir / "plan-rubric.md").write_text("verdict: ALL_VERY_HIGH\n")
+        (run_dir / ".iter_counter").write_text("1\n")
+        # No iter-0 directory exists — and we shouldn't reference it
+
+        result = _bash(_verify_score_script(str(run_dir)), tmp_path)
+
+        assert result.returncode == 0
+        assert "ALL_VERY_HIGH" in result.stdout
+        assert "PHANTOM_CONVERGENCE" not in result.stdout
+
+    def test_rubric_missing_outputs_rubric_missing(self, tmp_path: Path) -> None:
+        """When plan-rubric.md is missing, outputs RUBRIC_MISSING and exits 0."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        (run_dir / "plan.md").write_text("# Plan\n")
+        # No plan-rubric.md
+
+        result = _bash(_verify_score_script(str(run_dir)), tmp_path)
+
+        assert result.returncode == 0
+        assert "RUBRIC_MISSING" in result.stdout
+
+    def test_iterate_when_rubric_has_iterate(self, tmp_path: Path) -> None:
+        """Outputs ITERATE when rubric file contains ITERATE instead of ALL_VERY_HIGH."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        (run_dir / "plan.md").write_text("# Plan\n")
+        (run_dir / "plan-rubric.md").write_text("verdict: ITERATE\n")
+
+        result = _bash(_verify_score_script(str(run_dir)), tmp_path)
+
+        assert result.returncode == 0
+        assert "ITERATE" in result.stdout
+        # Diff check should not be reached (script exits after ITERATE)
+        assert "PHANTOM_CONVERGENCE" not in result.stdout
+
+    def test_phantom_convergence_routes_to_research_iteration(self) -> None:
+        """PHANTOM_CONVERGENCE does not match ALL_VERY_HIGH pattern, so routes via on_no to research_iteration."""
+        loop_path = Path(__file__).parent.parent / "little_loops" / "loops" / "rn-refine.yaml"
+        fsm, _ = load_and_validate(loop_path)
+
+        state = fsm.states["verify_score"]
+        # The evaluate pattern is "ALL_VERY_HIGH" — PHANTOM_CONVERGENCE won't match
+        assert state.on_no == "research_iteration"
+        # Confirm on_yes still routes to report for genuine convergence
+        assert state.on_yes == "report"
+
+
 class TestDiagnoseRouting:
     """Diagnose state exists and all on_error transitions route to it instead of failed."""
 
