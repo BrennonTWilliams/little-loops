@@ -1,12 +1,13 @@
 ---
 id: FEAT-1480
-title: Pi Adapter — Wire PiRunner and Host Runner Tests
+title: "Pi Adapter \u2014 Wire PiRunner and Host Runner Tests"
 type: FEAT
 priority: P5
-status: open
+status: cancelled
 parent: EPIC-1622
 relates_to: FEAT-1476
-depends_on: [FEAT-1714]
+depends_on:
+- FEAT-1714
 ---
 
 # FEAT-1480: Pi Adapter — Wire PiRunner and Host Runner Tests

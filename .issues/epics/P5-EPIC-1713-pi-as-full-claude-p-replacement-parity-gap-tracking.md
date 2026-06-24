@@ -1,17 +1,34 @@
 ---
 id: EPIC-1713
-title: Pi as full `claude -p` replacement — parity gap tracking
+title: "Pi as full `claude -p` replacement \u2014 parity gap tracking"
 type: epic
-status: open
+status: cancelled
 priority: P5
-captured_at: "2026-05-26T02:06:59Z"
+captured_at: '2026-05-26T02:06:59Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
-relates_to: [EPIC-1622, EPIC-1463, FEAT-992, FEAT-1480]
-labels: [epic, captured, pi-adapter, host-compat, tracking, parity]
+relates_to:
+- EPIC-1622
+- EPIC-1463
+- FEAT-992
+- FEAT-1480
+labels:
+- epic
+- captured
+- pi-adapter
+- host-compat
+- tracking
+- parity
 ---
 
 # EPIC-1713: Pi as full `claude -p` replacement — parity gap tracking
+
+> **CANCELLED 2026-06-24 (see ARCHITECTURE-050).** Vanilla Pi (pi-mono) parity
+> is cancelled — oh-my-pi (`omp`) supersedes vanilla Pi. Children
+> FEAT-1714/1715/1716 are cancelled; their reusable intent (headless audit,
+> hook-event parity) is absorbed by omp issues FEAT-1850 / FEAT-2263 under
+> **EPIC-2258**. (FEAT-1850, formerly listed here, was re-parented to EPIC-2258
+> before cancellation.)
 
 ## Summary
 

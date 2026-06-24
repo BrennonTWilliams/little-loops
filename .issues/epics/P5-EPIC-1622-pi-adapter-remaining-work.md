@@ -1,16 +1,29 @@
 ---
 id: EPIC-1622
-title: Pi adapter — remaining work
+title: "Pi adapter \u2014 remaining work"
 type: epic
-status: open
+status: cancelled
 priority: P5
 discovered_date: 2026-05-22
 discovered_by: verify-issues
-labels: [epic, pi-adapter, tracking]
-relates_to: [FEAT-992, FEAT-1474, FEAT-1477, FEAT-1714]
+labels:
+- epic
+- pi-adapter
+- tracking
+relates_to:
+- FEAT-992
+- FEAT-1474
+- FEAT-1477
+- FEAT-1714
 ---
 
 # EPIC-1622: Pi adapter — remaining work
+
+> **CANCELLED 2026-06-24 (see ARCHITECTURE-050).** Vanilla Pi (pi-mono) host
+> support is cancelled — oh-my-pi (`omp`) is a strict superset fork and
+> supersedes it. All five children (FEAT-1475/1476/1478/1479/1480) are
+> cancelled. Pi-family host effort now lives under **EPIC-2258** (omp); reusable
+> analysis is absorbed by omp children (FEAT-1850, FEAT-2263).
 
 ## Summary
 

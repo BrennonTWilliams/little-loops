@@ -2,14 +2,22 @@
 id: FEAT-1714
 title: Audit Pi CLI headless flag surface & define `PiRunner` `HostCapabilities`
 type: FEAT
-status: open
+status: cancelled
 priority: P5
-captured_at: "2026-05-26T02:06:59Z"
+captured_at: '2026-05-26T02:06:59Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1713
-relates_to: [FEAT-1480, FEAT-992, ENH-1722]
-labels: [feat, captured, pi-adapter, host-compat, research]
+relates_to:
+- FEAT-1480
+- FEAT-992
+- ENH-1722
+labels:
+- feat
+- captured
+- pi-adapter
+- host-compat
+- research
 ---
 
 # FEAT-1714: Audit Pi CLI headless flag surface & define `PiRunner` `HostCapabilities`

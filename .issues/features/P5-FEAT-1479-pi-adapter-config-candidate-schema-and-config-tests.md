@@ -1,9 +1,9 @@
 ---
 id: FEAT-1479
-title: Pi Adapter — Config Candidate, Schema, and Config Tests
+title: "Pi Adapter \u2014 Config Candidate, Schema, and Config Tests"
 type: FEAT
 priority: P5
-status: open
+status: cancelled
 parent: EPIC-1622
 confidence_score: 100
 outcome_confidence: 97

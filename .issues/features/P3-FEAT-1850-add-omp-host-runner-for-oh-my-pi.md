@@ -8,12 +8,21 @@ captured_at: "2026-06-01T15:06:49Z"
 discovered_date: 2026-06-01
 discovered_by: capture-issue
 labels: [feat, captured, host-compat, pi-adapter, omp]
-relates_to: [FEAT-1480, FEAT-1714, FEAT-1715]
-blocked_by: [FEAT-1715]
-parent: EPIC-1713
+relates_to: [FEAT-2261, FEAT-2263]
+parent: EPIC-2258
 ---
 
 # FEAT-1850: Add OmpRunner host runner for oh-my-pi (`omp` CLI)
+
+> **Re-scoped 2026-06-24:** omp is now a first-class host under **EPIC-2258**
+> (promoted from this lone FEAT). This issue is now the **runner core** child:
+> headless flag audit + `OmpRunner` wiring + tests. Work split out to siblings:
+> hook adapter → **FEAT-2261**; config probe → **FEAT-2262**; hook-event parity
+> → **FEAT-2263**. Conformance and skill/command adaptation route through the
+> generic **FEAT-2259 / FEAT-2260** (`--host omp`), not bespoke omp issues.
+> Former `blocked_by: FEAT-1715` removed — vanilla Pi (EPIC-1713) is cancelled;
+> see ARCHITECTURE-048. Steps 6 (hook adapter) and 7 (parity child) below are
+> superseded by FEAT-2261 / FEAT-2263.
 
 ## Summary
 

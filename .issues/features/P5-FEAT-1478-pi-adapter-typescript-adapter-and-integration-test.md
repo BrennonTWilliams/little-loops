@@ -1,9 +1,9 @@
 ---
 id: FEAT-1478
-title: Pi Adapter — TypeScript Adapter and Integration Test
+title: "Pi Adapter \u2014 TypeScript Adapter and Integration Test"
 type: FEAT
 priority: P5
-status: open
+status: cancelled
 parent: EPIC-1622
 ---
 

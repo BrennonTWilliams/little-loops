@@ -192,7 +192,12 @@ call sites.
     `claude` binary or its argv. **stub** = runner is registered so
     `LL_HOST_CLI=<host>` resolves, but every `build_*` raises
     `HostNotConfigured` until the host-specific argv is implemented
-    (OpenCode: FEAT-1472 Option B; Pi: research deferred to FEAT-992).
+    (OpenCode: FEAT-1472 Option B). **Vanilla Pi (pi-mono) host support is
+    CANCELLED** (2026-06-24, ARCHITECTURE-050) — the `PiRunner` stub is frozen
+    and superseded by oh-my-pi (`omp`), tracked under EPIC-2258. The Pi column
+    is retained only because the stub is still registered in code; it will be
+    replaced by an `omp` column once `OmpRunner` lands (FEAT-1850). Do not
+    invest in the Pi column.
 
 ## Config probe path
 
@@ -289,8 +294,10 @@ This matrix is the authoritative parity reference; the Codex docs above are the 
 - **FEAT-1486** — Adapt `skills/*/SKILL.md` for Codex Skills API (resolves
   the Skill discovery ✗ cell).
 - **FEAT-1487** — Update parity matrix and footnote for Codex slash-command gap.
-- **FEAT-992** — Raspberry Pi compatibility (deferred — will add a Pi
-  column once the Pi plugin API research is done).
+- **FEAT-992** — Original Pi (pi-mono) coding-agent compatibility epic.
+  **Vanilla Pi support cancelled** 2026-06-24 (ARCHITECTURE-050); superseded by
+  oh-my-pi (`omp`) under **EPIC-2258**. An `omp` column replaces the Pi column
+  once `OmpRunner` lands (FEAT-1850).
 - **FEAT-1488** — Research spike: sidecar/IPC for hot-path intents on
   non-Claude-Code hosts (completed — decision: opt-in-only + fire-and-forget
   `post_tool_use`; sidecar deferred until benchmark; see

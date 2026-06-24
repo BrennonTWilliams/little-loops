@@ -3,8 +3,12 @@ id: FEAT-1476
 title: Pi Adapter Documentation
 type: FEAT
 priority: P5
-status: open
-depends_on: [FEAT-1475, FEAT-1478, FEAT-1479, FEAT-1480]
+status: cancelled
+depends_on:
+- FEAT-1475
+- FEAT-1478
+- FEAT-1479
+- FEAT-1480
 parent: EPIC-1622
 size: Small
 ---

@@ -4,11 +4,42 @@ title: Track deferred Codex CLI interop gaps
 type: epic
 status: open
 priority: P5
-captured_at: "2026-05-15T12:15:21Z"
+captured_at: '2026-05-15T12:15:21Z'
 discovered_date: 2026-05-15
 discovered_by: capture-issue
-relates_to: [FEAT-957, FEAT-1462, FEAT-992, ENH-1718, FEAT-1719, FEAT-1720, FEAT-1721, ENH-1722, ENH-1615, ENH-1529, FEAT-1486, FEAT-1487, FEAT-1488, FEAT-1489, FEAT-1493, BUG-1494, ENH-1495, FEAT-1496, ENH-1497, FEAT-1526, ENH-1531, ENH-2105, ENH-2121, FEAT-2122, FEAT-2123, ENH-2124]
-labels: [epic, captured, codex, host-compat, tracking]
+relates_to:
+- FEAT-957
+- FEAT-1462
+- FEAT-992
+- ENH-1718
+- FEAT-1719
+- FEAT-1720
+- FEAT-1721
+- ENH-1722
+- ENH-1615
+- ENH-1529
+- FEAT-1486
+- FEAT-1487
+- FEAT-1488
+- FEAT-1489
+- FEAT-1493
+- BUG-1494
+- ENH-1495
+- FEAT-1496
+- ENH-1497
+- FEAT-1526
+- ENH-1531
+- ENH-2105
+- ENH-2121
+- FEAT-2122
+- FEAT-2123
+- ENH-2124
+labels:
+- epic
+- captured
+- codex
+- host-compat
+- tracking
 ---
 
 # EPIC-1463: Track deferred Codex CLI interop gaps
@@ -273,7 +304,9 @@ were filed for the genuine remaining depth gaps.
 
 **Open** | Created: 2026-05-15 | Priority: P5
 
-**Update 2026-06-04 (re-verified)**:
-- 5 of 12 children are `done`: FEAT-1483 (research spike), FEAT-1486 (Codex Skills API adapt), FEAT-1487 (HOST_COMPATIBILITY.md update), FEAT-1488 (hot-path research), FEAT-1489 (post_tool_use fire-and-forget).
-- Remaining open children: ENH-1718, FEAT-1719, FEAT-1721, ENH-1722, ENH-1615, ENH-1529. (FEAT-1720 is `cancelled` — scope absorbed into FEAT-1719.)
-- As a P5 tracking epic, this is expected — but the body should acknowledge the 5 completed research/implementation spikes to give an accurate picture of progress.
+**Progress**: run `ll-issues epic-progress EPIC-1463` for live counts (as of
+2026-06-24: 13/23 done, 10 open, 1 cancelled). Codex core landed in production;
+the remaining open children are all polish/refinement — none block "Codex is
+supported." The stale "5 of 12 children done" footer (Update 2026-06-04) was
+removed 2026-06-24 — it had been flagged by three verify-issues runs and never
+matched live counts. Do not re-add a hand-maintained count; use the live command.

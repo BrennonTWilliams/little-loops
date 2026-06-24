@@ -1,16 +1,27 @@
 ---
 id: FEAT-1716
-title: Pi `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden paths)
+title: Pi `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden
+  paths)
 type: FEAT
-status: open
+status: cancelled
 priority: P5
-captured_at: "2026-05-26T02:06:59Z"
+captured_at: '2026-05-26T02:06:59Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1713
-depends_on: [FEAT-1714, FEAT-1480]
-relates_to: [FEAT-992, FEAT-1478]
-labels: [feat, captured, pi-adapter, testing, host-compat, conformance]
+depends_on:
+- FEAT-1714
+- FEAT-1480
+relates_to:
+- FEAT-992
+- FEAT-1478
+labels:
+- feat
+- captured
+- pi-adapter
+- testing
+- host-compat
+- conformance
 ---
 
 # FEAT-1716: Pi `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden paths)

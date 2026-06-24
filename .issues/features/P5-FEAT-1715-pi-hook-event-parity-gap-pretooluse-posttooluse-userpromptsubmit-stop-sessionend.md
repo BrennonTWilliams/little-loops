@@ -1,17 +1,29 @@
 ---
 id: FEAT-1715
-title: Pi hook-event parity gap (PreToolUse / PostToolUse / UserPromptSubmit / Stop / SessionEnd)
+title: Pi hook-event parity gap (PreToolUse / PostToolUse / UserPromptSubmit / Stop
+  / SessionEnd)
 type: FEAT
-status: open
+status: cancelled
 priority: P5
-captured_at: "2026-05-26T02:06:59Z"
+captured_at: '2026-05-26T02:06:59Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1713
-relates_to: [FEAT-992, FEAT-1478]
-depends_on: [FEAT-1476, FEAT-1714]
-blocked_by: [FEAT-1719]
-labels: [feat, captured, pi-adapter, hooks, host-compat, upstream-coordination]
+relates_to:
+- FEAT-992
+- FEAT-1478
+depends_on:
+- FEAT-1476
+- FEAT-1714
+blocked_by:
+- FEAT-1719
+labels:
+- feat
+- captured
+- pi-adapter
+- hooks
+- host-compat
+- upstream-coordination
 ---
 
 # FEAT-1715: Pi hook-event parity gap (PreToolUse / PostToolUse / UserPromptSubmit / Stop / SessionEnd)

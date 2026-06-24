@@ -9,7 +9,6 @@ discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
 blocked_by: [ENH-1718]
-blocks: FEAT-1715
 labels: [codex, hooks, host-compat]
 ---
 

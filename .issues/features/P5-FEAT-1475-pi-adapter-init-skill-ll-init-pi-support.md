@@ -1,9 +1,9 @@
 ---
 id: FEAT-1475
-title: Pi Adapter Init Skill — ll:init --pi Support
+title: "Pi Adapter Init Skill \u2014 ll:init --pi Support"
 type: FEAT
 priority: P5
-status: open
+status: cancelled
 parent: EPIC-1622
 size: Small
 depends_on: FEAT-1478
