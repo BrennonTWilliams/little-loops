@@ -932,20 +932,22 @@ states:
       FAILURES=$((TOTAL_FAILURES - SUB_LOOP_CRASHES - SCORES_MISSING - SIZE_REVIEW_FAILED))
       RATE_LIMITED=$(wc -l < "$RUN_DIR/rate_limits.txt" 2>/dev/null | tr -d ' ' || echo 0)
 
-      printf '{\n'
-      printf '  "total_processed": %s,\n' "$DEQUEUE_COUNT"
-      printf '  "implemented": %s,\n' "$IMPLEMENTED"
-      printf '  "decomposed": %s,\n' "$DECOMPOSED"
-      printf '  "skipped": %s,\n' "$SKIPPED"
-      printf '  "deferred": %s,\n' "$DEFERRED"
-      printf '  "blocked": %s,\n' "$BLOCKED"
-      printf '  "depth_capped": %s,\n' "$DEPTH_CAPPED"
-      printf '  "failed": %s,\n' "$FAILURES"
-      printf '  "sub_loop_crashes": %s,\n' "$SUB_LOOP_CRASHES"
-      printf '  "scores_missing": %s,\n' "$SCORES_MISSING"
-      printf '  "size_review_failed": %s,\n' "$SIZE_REVIEW_FAILED"
-      printf '  "rate_limited": %s\n' "$RATE_LIMITED"
-      printf '}\n' > "$RUN_DIR/summary.json"
+      {
+        printf '{\n'
+        printf '  "total_processed": %s,\n' "$DEQUEUE_COUNT"
+        printf '  "implemented": %s,\n' "$IMPLEMENTED"
+        printf '  "decomposed": %s,\n' "$DECOMPOSED"
+        printf '  "skipped": %s,\n' "$SKIPPED"
+        printf '  "deferred": %s,\n' "$DEFERRED"
+        printf '  "blocked": %s,\n' "$BLOCKED"
+        printf '  "depth_capped": %s,\n' "$DEPTH_CAPPED"
+        printf '  "failed": %s,\n' "$FAILURES"
+        printf '  "sub_loop_crashes": %s,\n' "$SUB_LOOP_CRASHES"
+        printf '  "scores_missing": %s,\n' "$SCORES_MISSING"
+        printf '  "size_review_failed": %s,\n' "$SIZE_REVIEW_FAILED"
+        printf '  "rate_limited": %s\n' "$RATE_LIMITED"
+        printf '}\n'
+      } > "$RUN_DIR/summary.json"
 
       echo "=== rn-implement Complete ==="
       echo "  Processed: $DEQUEUE_COUNT | Implemented: $IMPLEMENTED | Decomposed: $DECOMPOSED"
