@@ -1709,3 +1709,31 @@
     exist.
   enforcement: advisory
   issue: ENH-2270
+- id: OTHE-069
+  type: rule
+  timestamp: '2026-06-24T21:50:28Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: Attaching `>` to only the final command in a printf sequence silently
+    discards all preceding output. The file receives only the last line, producing
+    a structurally invalid artifact with no error or warning.
+  rule: When building multi-line output in bash, wrap the entire block in `{ ...;
+    } > file` rather than redirecting only the las
+  enforcement: advisory
+  issue: BUG-2267
+- id: TEST-070
+  type: rule
+  timestamp: '2026-06-24T21:50:28Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: The broken summary.json (containing only `}`) propagated silently through
+    the loop with no parse error; the defect was discovered only via an external audit
+    of a downstream fork, not by the loop itself.
+  rule: 'FSM shell states that write structured output files (JSON, YAML) must verify
+    the file is non-empty and parseable before '
+  enforcement: advisory
+  issue: BUG-2267
