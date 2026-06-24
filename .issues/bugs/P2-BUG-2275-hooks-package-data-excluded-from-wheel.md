@@ -6,7 +6,7 @@ status: open
 captured_at: "2026-06-24T00:00:00Z"
 discovered_date: 2026-06-24
 discovered_by: capture-issue
-parent: EPIC-2257
+parent: EPIC-2279
 relates_to: [BUG-2273, FEAT-2274, ENH-2272, BUG-938, BUG-885]
 decision_ref: ARCHITECTURE-053
 labels: [bug, packaging, hooks, host-compat, cross-host, install, path-resolution]
@@ -165,6 +165,36 @@ not per-host-adapted plugin assets.
   in-package; the precedent for moving consumed assets into the wheel).
 - `logo.py:get_logo()` — BUG-2276 (same class, `assets/`).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Canonical resolver to model the lazy lookup after** — `skill_expander._find_plugin_root()` at `scripts/little_loops/skill_expander.py:22`:
+```python
+def _find_plugin_root() -> Path:
+    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env_root:
+        return Path(env_root)
+    return Path(__file__).resolve().parent.parent.parent
+```
+For the in-package fix, `handle()` should resolve the prompt file as
+`Path(__file__).parent / "prompts" / "optimize-prompt-hook.md"` (one hop, after
+moving assets into `little_loops/hooks/prompts/`), with `CLAUDE_PLUGIN_ROOT`
+checked first as the override tier.
+
+**BUG-885 move-in-package pattern (exact code)** — `get_builtin_loops_dir()` at `scripts/little_loops/cli/loop/_helpers.py:822`:
+```python
+def get_builtin_loops_dir() -> Path:
+    return Path(__file__).parent.parent.parent / "loops"
+```
+`loops/` lives at `scripts/little_loops/loops/` — inside the package tree — so
+`packages = ["little_loops"]` in `pyproject.toml` picks it up automatically. No
+extra `include` stanza needed after git-moving the directory into the package.
+
+**No `importlib.resources` in codebase** — every existing asset resolution uses
+raw `Path(__file__).parent...` traversal. Do not introduce `importlib.resources`;
+follow the BUG-885 move-in-package pattern instead.
+
 ### Tests
 - `scripts/tests/` — prompt hook: monkeypatch `__file__`/resolver to a
   non-editable path with no repo `hooks/`; assert the handler still resolves the
@@ -172,6 +202,16 @@ not per-host-adapted plugin assets.
 - `scripts/tests/test_ll_init.py` — Codex adapter: assert `.codex/hooks.json` is
   written from a non-editable resolver path, and that a missing source emits a
   warning rather than a silent `False`.
+
+### Test Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`scripts/tests/test_hook_user_prompt_submit.py`** — existing test file for `user_prompt_submit.handle()`; extend here for the non-editable install scenario (patch `_PROMPT_FILE` to a tmp path with no `hooks/prompts/` and assert render still fires from the in-package path).
+- **`scripts/tests/test_codex_adapter.py`** — existing test file for the Codex adapter; extend with source-missing warning assertion.
+- **`scripts/tests/test_hooks_integration.py`** — existing integration test file; already contains `test_optimization_template_injected_when_claude_plugin_root_set()` at line 1313 which tests the `CLAUDE_PLUGIN_ROOT` env-var path. Add a companion test for the in-package fallback (env var unset; asset moved in-package; assert render fires).
+- **`scripts/tests/test_init_core.py`** — primary init test file (not `test_ll_init.py`); contains `_PROJECT_ROOT` constant used by `patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT)` (line 1104) — the established pattern for patching `_plugin_root` to the real repo root.
+- **Test pattern to follow for env-var coverage**: `TestFindPluginRoot` class in `scripts/tests/test_skill_expander.py` uses `monkeypatch.setenv` / `monkeypatch.delenv` to exercise env-var-first and fallback branches independently.
 
 ### Packaging (see FEAT-2274)
 - FEAT-2274 owns `templates/`; this bug extends the same wheel-delivery decision
@@ -196,6 +236,34 @@ not per-host-adapted plugin assets.
    silent degradation.
 5. `python -m pytest scripts/tests/`; verify both reproduction steps pass in a
    clean venv with `CLAUDE_PLUGIN_ROOT` unset.
+
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+### Import-Time Evaluation of `_PROMPT_FILE`
+
+`_PROMPT_FILE` is evaluated as a **module-level constant** — not inside `handle()`. The evaluation fires when `_dispatch_table()` in `hooks/__init__.py` first imports `user_prompt_submit` (lazy import on first hook dispatch). This means any fix that patches `_PROMPT_FILE` after import is too late; the lazy lookup **must** be inside `handle()` itself (Step 2).
+
+### `install_codex_adapter()` Return-Value Overloading
+
+`install_codex_adapter()` currently returns `False` for two distinct failure modes:
+- **Line 368–369**: `template_path.exists()` is `False` → source missing → `return False`
+- **Line 371–372**: destination already exists and `force=False` → `return False`
+
+Both return `False`; `_dispatch_host_adapters()` cannot distinguish them. The fix (Step 3) should introduce a sentinel to separate these cases — e.g., `Optional[bool]` where `None` = source missing, `False` = dest-exists skip, `True` = installed — so `_dispatch_host_adapters()` can emit a warning specifically for the source-missing case without conflating it with the idempotent skip.
+
+### Shell Scripts in `hooks/adapters/codex/`
+
+`hooks/adapters/codex/` contains `hooks.json` (read by `install_codex_adapter()`) **and** five shell scripts (`prompt-submit.sh`, `session-start.sh`, `pre-compact.sh`, `post-tool-use.sh`, `README.md`). The `hooks.json` template contains `{{LL_PLUGIN_ROOT}}` substitutions that point to these scripts. If `hooks.json` is moved into `little_loops/hooks/adapters/codex/`, the substituted paths must resolve to the shell scripts at their new in-package location. Decide whether to move the shell scripts alongside `hooks.json` or whether the substituted paths should still reference a repo/plugin-root location (which would require the scripts to remain outside the wheel). This packaging scope question affects Step 1.
+
+### `init/detect.py:_find_templates_dir()` — Out-of-Scope Sibling
+
+`scripts/little_loops/init/detect.py` contains a `_find_templates_dir()` with the same three-levels-up `__file__` traversal pattern as `issue_template._default_templates_dir()`. Not in scope for this bug (no caller in this issue's fix surface) but should be tracked.
+
+### Asset Files Confirmed in `hooks/prompts/`
+
+Two files exist: `optimize-prompt-hook.md` (the one read by `user_prompt_submit.py`) and `continuation-prompt-template.md`. Verify whether `continuation-prompt-template.md` is read by any other Python code before deciding whether to move only `optimize-prompt-hook.md` or the entire `hooks/prompts/` directory.
 
 ## Impact
 
@@ -231,4 +299,5 @@ not per-host-adapted plugin assets.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-24T23:31:39 - `79c0e758-e055-44ee-9a4e-08b736264d83.jsonl`
 - `/ll:format-issue` - 2026-06-24T23:22:53 - `805d4898-1c18-40f2-ad99-fdac06f4d00e.jsonl`

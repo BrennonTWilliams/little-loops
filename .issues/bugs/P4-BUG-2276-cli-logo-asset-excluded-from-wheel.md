@@ -6,8 +6,10 @@ status: open
 captured_at: "2026-06-24T00:00:00Z"
 discovered_date: 2026-06-24
 discovered_by: capture-issue
+parent: EPIC-2279
 relates_to: [BUG-2275, FEAT-2274, BUG-885]
 labels: [bug, packaging, assets, install, path-resolution]
+decision_needed: true
 ---
 
 # BUG-2276: CLI logo asset excluded from the wheel — `get_logo()` silently returns None on non-editable installs
@@ -82,11 +84,12 @@ package-data moves.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/logo.py` — `get_logo()` path resolution.
-- `scripts/pyproject.toml` — bundle the logo asset (git mv or force-include).
+- `scripts/little_loops/logo.py` — `get_logo()` path resolution (one-line change).
+- `scripts/pyproject.toml` — **no change needed for Option 1** (git mv): the existing `include = ["little_loops/**", "LICENSE"]` glob already captures any new `scripts/little_loops/assets/` subdirectory. Option 2 (force-include) would require a manifest edit.
 
 ### Dependent Files (Callers/Importers)
-- N/A — `get_logo()` and `print_logo()` are not currently imported by any other module; the path fix is self-contained within `logo.py`.
+- **Zero production callers** — grep of all `scripts/little_loops/` confirms `get_logo()` and `print_logo()` are not imported or called by any live CLI entry point or module; the path fix is self-contained within `logo.py`.
+- `scripts/tests/test_ll_loop_execution.py:TestQuietMode.test_quiet_mode_suppresses_logo` — implicit test dependency: asserts `"little loops"` is absent from stdout in `--quiet` mode, which presupposes `print_logo()` would fire in non-quiet mode; however, no entry point currently calls `print_logo()`, so this test's positive precondition is unverified. Ensure this test remains passing after the fix and verify the wiring concern separately.
 
 ### Similar Patterns
 - BUG-2275 — `hooks/` package data excluded from the wheel (same class).
@@ -94,8 +97,19 @@ package-data moves.
 - BUG-885 — moved `loops/` in-package; the precedent.
 
 ### Tests
-- `scripts/tests/` — assert `get_logo()` resolves the bundled asset when
-  `__file__` is monkeypatched to a non-editable path.
+- `scripts/tests/test_ll_loop_execution.py:TestQuietMode.test_quiet_mode_suppresses_logo` — existing quiet-mode test; must remain passing after the path fix.
+- New test needed: follow `scripts/tests/test_action.py:TestLoadSkills` patch pattern — `patch("little_loops.logo.Path", return_value=<sim-site-packages-path>)` — to assert `get_logo()` returns the file content when called from a simulated non-editable location.
+- Model for fixture shape: `scripts/tests/test_builtin_loops.py` — tests `get_builtin_loops_dir()` after the BUG-885 in-package move using `Path(__file__).parent.parent / "little_loops" / "loops"` to reference the in-package location.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`print_logo()` has zero live callers**: No CLI entry point under `scripts/little_loops/cli/` or `scripts/little_loops/init/cli.py` currently imports or calls `print_logo()` or `get_logo()`. The function is a public API with no integration point. The packaging fix resolves the asset-path bug; wiring `print_logo()` into a CLI entry point is a separate scoping concern.
+- **After Option 1 (git mv), the path expression needs only ONE parent, not three**: `logo.py` sits at `scripts/little_loops/logo.py`, so `Path(__file__).parent` already resolves to `scripts/little_loops/` — the sibling `assets/` subdir is reachable with a single parent traversal, identical to the BUG-885 pattern in `scripts/little_loops/fsm/fragments.py:_BUILTIN_LOOPS_DIR` (`Path(__file__).parent.parent / "loops"`).
+- **No `importlib.resources` precedent exists**: All asset resolution in `scripts/little_loops/` uses `Path(__file__).parent...` traversal; `importlib.resources.files()` is unused. Option 1 (git mv + path fix) is more consistent with the codebase; Option 2 would introduce a new pattern.
+- **Option 2 (force-include) still requires the path expression update**: The current three-parent traversal reaches above `site-packages/` regardless of inclusion strategy; `get_logo()` must be repointed in either option. Option 1 is strictly simpler (one file, one line).
+- **`scripts/little_loops/assets/` does not yet exist** and must be created as part of the move.
 
 ### Documentation
 - N/A — no user-facing documentation references the logo asset path.
@@ -105,10 +119,10 @@ package-data moves.
 
 ## Implementation Steps
 
-1. Move/force-include the logo asset into the wheel.
-2. Repoint `get_logo()` to the in-package location.
-3. Add a test for the non-editable resolution path.
-4. Build the wheel; assert `unzip -l dist/*.whl | grep ll-cli-logo.txt`.
+1. **Move asset into package** (BUG-885 precedent): `mkdir -p scripts/little_loops/assets/ && git mv assets/ll-cli-logo.txt scripts/little_loops/assets/ll-cli-logo.txt`. No `pyproject.toml` change needed — the existing `little_loops/**` glob captures the new subdirectory automatically.
+2. **Repoint `get_logo()`** in `scripts/little_loops/logo.py:get_logo()`: change `Path(__file__).parent.parent.parent / "assets" / "ll-cli-logo.txt"` → `Path(__file__).parent / "assets" / "ll-cli-logo.txt"` (one parent from `little_loops/logo.py` → `little_loops/`).
+3. **Add test** following `scripts/tests/test_action.py:TestLoadSkills` patch pattern: assert `get_logo()` returns the ASCII content when invoked with a simulated non-editable `__file__` path outside the source tree.
+4. **Build and verify**: `python -m build && unzip -l dist/*.whl | grep ll-cli-logo.txt` (aligns with ENH-2277's wheel smoke test proposal).
 
 ## Impact
 
@@ -134,4 +148,5 @@ package-data moves.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-24T23:35:47 - `8a54fdd7-3020-4216-95d6-fd9489d38b88.jsonl`
 - `/ll:format-issue` - 2026-06-24T23:25:56 - `7a6b079f-6b9c-4751-8816-e0520ba8c865.jsonl`
