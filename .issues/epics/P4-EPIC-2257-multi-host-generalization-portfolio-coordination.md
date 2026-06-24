@@ -8,7 +8,7 @@ discovered_date: 2026-06-24
 discovered_by: planning-assessment
 decision_ref: ARCHITECTURE-048, ARCHITECTURE-049
 labels: [epic, host-compat, portfolio, tracking, coordination]
-relates_to: [EPIC-1463, EPIC-2178]
+relates_to: [EPIC-1463, EPIC-2178, FEAT-2274]
 ---
 
 # EPIC-2257: Multi-host generalization — portfolio coordination
@@ -72,6 +72,9 @@ epic.
 - **FEAT-2260** — Generic host-parameterized skill + command adapter
 - **FEAT-2267** — Generic host-parameterized `ll-init --upgrade` surface refresh
   (blocked by **BUG-2266** — scope-aware install detection)
+- **FEAT-2274** — Package host-agnostic `templates/` into the wheel so `ll-init`
+  + section loading work on every host via pip (with BUG-2271 / BUG-2273
+  resolver fixes + ENH-2272 deploy)
 
 ## Tracked per-host epics (sequenced under this epic)
 

@@ -1737,3 +1737,30 @@
     the file is non-empty and parseable before '
   enforcement: advisory
   issue: BUG-2267
+- id: ARCHITECTURE-052
+  type: decision
+  timestamp: '2026-06-24T22:18:47Z'
+  category: architecture
+  labels: []
+  rationale: Skills resolve per-type section JSON via CLI accessor + precedence (config
+    → .ll/templates → CLAUDE_PLUGIN_ROOT → __file__) instead of a plugin-relative
+    filesystem search; deploy makes BYO templates the default.
+  rule: 'Captured: ll-issues sections accessor + project-local template deploy'
+  scope: issue
+  issue: ENH-2272
+- id: ARCHITECTURE-053
+  type: decision
+  timestamp: '2026-06-24T22:33:12Z'
+  category: architecture
+  labels: []
+  rationale: 'The consume-side boundary refines BUG-938: skills/commands/agents/hooks
+    are host-plugin artifacts adapted per host and stay out of the wheel, but templates/
+    (section JSON, project-type configs, design-tokens, goals) are package data consumed
+    by the package''s own CLI code (load_issue_sections, ll-init detect/deploy). The
+    pip wheel is the only delivery substrate common to all hosts (Codex/Gemini/omp),
+    which never set CLAUDE_PLUGIN_ROOT — so package-data templates must be bundled
+    into the wheel. Decision: Both — package into the wheel as the universal seed/fallback
+    AND deploy to .ll/templates for per-project customization.'
+  rule: Package-data templates ship in the wheel; host-plugin assets do not
+  scope: global
+  issue: FEAT-2274

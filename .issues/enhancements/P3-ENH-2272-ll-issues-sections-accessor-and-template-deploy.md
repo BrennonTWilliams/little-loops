@@ -1,0 +1,181 @@
+---
+id: ENH-2272
+type: ENH
+priority: P3
+status: open
+captured_at: "2026-06-24T22:17:07Z"
+discovered_date: 2026-06-24
+discovered_by: capture-issue
+relates_to: [BUG-2271, BUG-2273, FEAT-2274]
+---
+
+# ENH-2272: ll-issues sections accessor + project-local template deploy
+
+## Summary
+
+Six skill/command files instruct the LLM, in prose, to read
+`templates/{type}-sections.json` "relative to the little-loops plugin
+directory." In a target project (not the little-loops repo), the LLM has no
+anchor for that path and falls back to a filesystem-wide `find /` — observed
+taking ~1 minute on a single `/ll:format-issue` run. Add a dedicated
+`ll-issues sections` accessor backed by a unified resolver, deploy default
+section templates into the project via `ll-init`, and rewrite the six callsites
+to call the CLI instead of searching the filesystem. This also makes
+"bring your own templates" the default, editable path rather than a config knob.
+
+## Motivation
+
+- **Latency**: the "relative to the plugin directory" prose forces a
+  filesystem walk; replacing it with one deterministic CLI call collapses ~60s
+  to ~50ms.
+- **Portability**: a CLI accessor works identically across hosts
+  (claude-code / codex / opencode) and does not depend on the LLM knowing where
+  the plugin lives or on `${CLAUDE_PLUGIN_ROOT}` being exported into the skill's
+  bash context.
+- **Customization as default**: deploying `*-sections.json` into `.ll/templates/`
+  (skip-if-exists, like `deploy_goals` / `deploy_design_tokens`) lets users edit
+  their own issue templates in-project with no `issues.templates_dir` config
+  indirection, and survives plugin upgrade/uninstall.
+- **Single source of resolution**: the precedence logic lives in one resolver
+  instead of being re-encoded as prose/bash in every skill.
+
+## Current Behavior
+
+Callsites that tell the LLM to read the per-type section JSON relative to the
+plugin directory:
+
+- `skills/format-issue/SKILL.md` (Steps 3, 3.5 — lines ~196, ~221)
+- `skills/format-issue/templates.md` (lines 7, 52, 54)
+- `skills/capture-issue/SKILL.md` (line ~276)
+- `skills/scope-epic/SKILL.md` (lines ~296, ~358)
+- `commands/ready-issue.md` (line ~139)
+- `commands/scan-codebase.md` (lines ~241, ~243)
+
+`issues.templates_dir` already exists in config/schema (`config-schema.json:122`,
+`config/features.py:200`) but defaults to `null` — and null is exactly the case
+that triggers the filesystem search. There is no CLI to resolve the default
+location, and no project-local copy.
+
+## Proposed Solution
+
+### 1. Unified template resolver (precedence)
+
+Introduce one resolver (shared with BUG-2271 / BUG-2273) used by the new CLI and
+the existing Python loaders (`sync`, `issue_parser`). Under the **Both (wheel +
+deploy)** decision (ARCHITECTURE-053), the in-package bundle (added by
+FEAT-2274) is the primary source, so the resolver always succeeds with no
+env-var dependency:
+
+1. `config.issues.templates_dir` — explicit override (power users / shared dir)
+2. `.ll/templates/` — deployed by `ll-init` (per-project customization)
+3. in-package `Path(__file__).parent / "templates"` — bundled in the wheel by
+   FEAT-2274 (works on every host, no `CLAUDE_PLUGIN_ROOT` needed)
+4. `${CLAUDE_PLUGIN_ROOT}/templates` / `__file__`-to-repo-root — fallbacks
+   (Claude plugin context / editable-dev)
+
+### 2. `ll-issues sections` subcommand
+
+```
+ll-issues sections <bug|feat|enh|epic>   # print the resolved section JSON to stdout
+ll-issues sections <type> --path         # print only the absolute path to the JSON file
+```
+
+Walks the precedence above and prints the JSON (or path). Mirrors the existing
+`ll-issues path` pattern already used by `format-issue`. Registered in
+`cli/issues/__init__.py` like the other subcommands.
+
+### 3. `ll-init` deploy of default templates
+
+Add an opt-in (default off) feature that copies the bundled `*-sections.json`
+into `.ll/templates/` using skip-if-exists semantics, mirroring
+`deploy_goals` / `deploy_design_tokens` in `init/writers.py`. Off-by-default
+keeps projects that never customize templates clean; the resolver still works
+via precedence steps 3–4 when no local copy exists.
+
+### 4. Rewrite the six callsites
+
+Replace "read `templates/{type}-sections.json` relative to the plugin
+directory" with "run `ll-issues sections {type}`" (or
+`ll-issues sections {type} --path` then Read, where the skill wants the file on
+disk). Remove the "relative to the little-loops plugin directory" phrasing
+entirely.
+
+## API/Interface
+
+New CLI surface on `ll-issues`:
+- `ll-issues sections <type>` → stdout: section-definition JSON for `<type>`
+- `ll-issues sections <type> --path` → stdout: absolute path to the JSON file
+- Exit non-zero with a clear message if `<type>` is invalid or no templates dir
+  resolves.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/issues/__init__.py` — register `sections` subcommand
+  + dispatch.
+- `scripts/little_loops/cli/issues/sections.py` (new) — `cmd_sections`.
+- `scripts/little_loops/issue_template.py` — unified resolver consumed by the CLI
+  and existing loaders (builds on BUG-2271).
+- `scripts/little_loops/init/writers.py` — `deploy_issue_templates()` (skip-if-exists).
+- `scripts/little_loops/init/cli.py` — wire deploy into the init flow behind a
+  feature flag.
+- `config-schema.json` / `config/features.py` — feature flag for the deploy (if
+  gated).
+- `skills/format-issue/SKILL.md`, `skills/format-issue/templates.md`,
+  `skills/capture-issue/SKILL.md`, `skills/scope-epic/SKILL.md`,
+  `commands/ready-issue.md`, `commands/scan-codebase.md` — swap prose for
+  `ll-issues sections`.
+- `docs/reference/CLI.md` / `docs/reference/API.md` — document the subcommand.
+
+### Similar Patterns
+- `ll-issues path` (`cli/issues/path_cmd.py`) — accessor pattern + skill usage in
+  `format-issue`.
+- `deploy_goals` / `deploy_design_tokens` (`init/writers.py:240`, `:264`) —
+  skip-if-exists project deploy.
+- `skill_expander._find_plugin_root()` — env-var-first resolution.
+
+### Packaging (see FEAT-2274)
+- `scripts/pyproject.toml` packaging is changed by **FEAT-2274** (templates into
+  the wheel), which makes resolver tier 3 always available. This ENH owns the
+  accessor + `.ll/templates/` deploy (the "deploy" half of **Both**); FEAT-2274
+  owns the "wheel" half.
+
+## Implementation Steps
+
+1. Land / reuse the unified resolver (BUG-2271) and extend precedence with
+   config override + `.ll/templates/`.
+2. Add `cli/issues/sections.py` + register subcommand; tests for JSON output,
+   `--path`, invalid type, and each precedence tier.
+3. Add `deploy_issue_templates()` + init wiring behind a feature flag; tests for
+   skip-if-exists and dry-run.
+4. Rewrite the six skill/command callsites; update CLI/API docs.
+5. Verify `ll-verify-skills` / `ll-verify-skill-budget` still pass and run
+   `python -m pytest scripts/tests/`.
+
+## Impact
+
+- **Priority**: P3 — meaningful per-invocation latency fix for several
+  issue-pipeline skills + enables BYO templates; not blocking.
+- **Effort**: Medium — new CLI subcommand + resolver + init deploy + 6 callsite
+  edits + tests/docs.
+- **Risk**: Low–Medium — additive CLI/feature; callsite edits are prose swaps;
+  deploy is opt-in and non-destructive.
+- **Breaking Change**: No.
+
+## Related
+
+- BUG-2271 — section-template resolver correctness (shared resolver).
+- BUG-2273 — `ll-init` resolver correctness (shared resolver).
+- FEAT-2274 — packages `templates/` into the wheel (the "wheel" half of **Both**);
+  this ENH is the "deploy" half.
+- BUG-938 — closed invalid; FEAT-2274 refines its rule (host-plugin assets out,
+  package-data templates in).
+- ENH-576 / ENH-491 / ENH-271 — prior work aligning and centralizing the
+  per-type section JSON; this adds the access + deploy layer on top.
+
+## Labels
+
+`enhancement`, `templates`, `cli`, `ll-init`, `skills`, `performance`
+
+## Session Log
+- `/ll:capture-issue` - 2026-06-24T22:17:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d34d610-c8b9-4a5e-82c8-191296760b6d.jsonl`
