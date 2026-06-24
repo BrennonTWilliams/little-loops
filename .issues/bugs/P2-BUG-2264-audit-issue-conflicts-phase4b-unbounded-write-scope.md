@@ -10,7 +10,15 @@ labels:
 - bug
 - skills
 - audit-issue-conflicts
-relates_to: [BUG-1799, FEAT-1389]
+relates_to:
+- BUG-1799
+- FEAT-1389
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 24
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # BUG-2264: audit-issue-conflicts Phase 4b applies edits with unbounded write scope (modifies done issues)
@@ -162,6 +170,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T21:00:00Z - `b546709b-abd9-4d20-95d4-597936cd0cea.jsonl`
 - `/ll:wire-issue` - 2026-06-24T20:41:38 - `cab00745-6580-45c4-87b5-4d107e68bd28.jsonl`
 - `/ll:refine-issue` - 2026-06-24T20:25:26 - `3eaafc1f-779c-4470-b381-fdd0d770bfa4.jsonl`
 - `/ll:format-issue` - 2026-06-24T18:01:24 - `583a1678-ddec-4a1a-9641-b1b934fb8a25.jsonl`

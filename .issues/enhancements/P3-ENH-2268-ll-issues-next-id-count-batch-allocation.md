@@ -1,12 +1,22 @@
 ---
 id: ENH-2268
-title: "ll-issues next-id --count N for collision-free batch ID allocation"
+title: ll-issues next-id --count N for collision-free batch ID allocation
 type: enhancement
 status: open
 priority: P3
 discovered_date: 2026-06-24
 discovered_by: planning-assessment
-labels: [enhancement, ll-issues, next-id, data-safety]
+labels:
+- enhancement
+- ll-issues
+- next-id
+- data-safety
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-2268: `ll-issues next-id --count N` batch allocation
@@ -202,6 +212,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T21:00:00 - `fffe04a2-92e2-4f19-bafe-0d8c500f9b47.jsonl`
 - `/ll:wire-issue` - 2026-06-24T20:41:43 - `ff0c7bdb-b5b2-42d5-a9a1-7e8abfc9a0ed.jsonl`
 - `/ll:refine-issue` - 2026-06-24T20:28:05 - `de730a3f-9cf8-4a76-8678-a41c35dafd15.jsonl`
 - `/ll:format-issue` - 2026-06-24T19:54:46 - `671613d2-868e-4451-bec7-a270a767c5ac.jsonl`

@@ -1668,3 +1668,44 @@
   alternatives_rejected: 'Option A: parameterize shared oracles/generator-evaluator.yaml
     with render_command'
   issue: FEAT-2269
+- id: TEST-066
+  type: rule
+  timestamp: '2026-06-24T21:32:24Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: A model that both writes and scores output can claim convergence on byte-identical
+    content. A diff against the prior iteration's snapshot catches phantom convergence
+    without adding any LLM calls.
+  rule: Pair LLM score evaluators with a file-diff check to detect unchanged-but-passing
+    artifacts.
+  enforcement: advisory
+  issue: ENH-2270
+- id: ARCH-067
+  type: rule
+  timestamp: '2026-06-24T21:32:24Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: If the snapshot runs after scoring, the prior-iteration file is absent
+    when the diff guard executes. State ordering enforces the invariant that the baseline
+    is written before comparison.
+  rule: Order snapshot states before evaluation states so the baseline always exists
+    at diff time.
+  enforcement: advisory
+  issue: ENH-2270
+- id: ARCH-068
+  type: rule
+  timestamp: '2026-06-24T21:32:24Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: A genuine first-pass result has nothing to compare against; blocking
+    it would prevent valid convergence. Guard the diff with COUNTER <= 1 or equivalent.
+  rule: Skip diff-based convergence guards on iteration 1 when no prior snapshot can
+    exist.
+  enforcement: advisory
+  issue: ENH-2270

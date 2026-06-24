@@ -6,7 +6,8 @@ status: open
 priority: P4
 parent: EPIC-2178
 depends_on: [FEAT-2179, ENH-2184]
-decision_needed: true
+decision_needed: false
+decision_ref: ARCHITECTURE-046
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
@@ -21,7 +22,14 @@ Create `hooks/adapters/gemini/` with adapter scripts that translate gemini-cli
 lifecycle events into `LLHookEvent` format and invoke the ll hook handler.
 Analogous to `hooks/adapters/codex/` and `hooks/adapters/claude-code/`.
 
-## Decision Needed
+## Decision — RATIFIED 2026-06-24 (Option A; see ARCHITECTURE-046)
+
+**Resolved: Option A** — inject hook entries into `.gemini/settings.json` via
+`ll:configure --gemini`. Lower complexity, mirrors the existing
+`hooks/adapters/claude-code/` pattern, and the ll hook handler is already
+host-agnostic. Extension packaging (Option B) is deferred to a separate
+enhancement if extension-based distribution is later wanted. The original
+decision framing is preserved below for context.
 
 Gemini hooks can be registered in two ways (FEAT-2179):
 - **Option A**: Inject entries into `.gemini/settings.json` under `hooks:` — user

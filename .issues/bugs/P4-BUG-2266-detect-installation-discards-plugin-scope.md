@@ -1,13 +1,25 @@
 ---
 id: BUG-2266
-title: detect_installation discards plugin scope and mislabels project installs as global
+title: detect_installation discards plugin scope and mislabels project installs as
+  global
 type: bug
 status: open
 priority: P4
 discovered_date: 2026-06-24
 discovered_by: capture-issue
-relates_to: [EPIC-2257, ENH-2256]
-labels: [host-compat, init, install-check]
+relates_to:
+- EPIC-2257
+- ENH-2256
+labels:
+- host-compat
+- init
+- install-check
+confidence_score: 98
+outcome_confidence: 82
+score_complexity: 17
+score_test_coverage: 23
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # BUG-2266: detect_installation discards plugin scope and mislabels project installs as global
@@ -123,6 +135,13 @@ In `detect_installation()` (`install_check.py`), after matching the plugin by na
 8. Update `docs/reference/API.md:7563` table row and docstring for `detect_installation`.
 9. Run tests and verify the mislabeling is resolved.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+10. Ensure ALL return sites in `detect_installation()` return a consistent 3-tuple — the plain-text fallback at `install_check.py:74–75` (`if "ll@little-loops" in result.stdout: return "global-claude-code", None`) must become `return "global-claude-code", None, None`; callers (`cli.py:160`, `tui.py:172`) must both unpack to 3-tuple (step 6, made definitive here).
+11. Add a new integration test in `test_init_core.py` (`TestMainInit`) — mock `detect_installation` returning `("project-claude-code", "1.0.0", "/path/to/install")` and assert `config["install_source"] == "project-claude-code"` is written to the output config file.
+
 ## Integration Map
 
 ### Files to Modify
@@ -144,6 +163,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_init_core.py` — 10 mock `return_value=` 2-tuple sites (lines 1106–1402, all patch `"little_loops.init.install_check.detect_installation"`); all will fail at the production unpack when return becomes 3-tuple; update all to 3-tuple [Agent 2/3 finding]
 - `scripts/tests/test_init_tui.py` — `mock_detect_installation` autouse fixture (lines 23–34) returns `(None, None)`; the production `tui.py:172` unpack will break; update `return_value=(None, None)` → `(None, None, None)` [Agent 2/3 finding]
 - `scripts/tests/test_config_schema.py` — `test_install_source_in_schema()` (line 578) only checks key presence and `type: string`; does not assert enum membership; extend with `assert "enum" in install_source` and `assert "project-claude-code" in install_source["enum"]` following pattern from `test_issues_next_issue_in_schema` (lines 39–54) [Agent 3 finding]
+- `scripts/tests/test_init_core.py` — add a new `TestMainInit` headless `--yes` test where `detect_installation` returns `("project-claude-code", "1.0.0", "/path/to/install")`; assert `config["install_source"] == "project-claude-code"` is written to output config (integration test for new scope variant, no existing coverage) [Agent 3 finding]
 
 ### Documentation
 - `docs/reference/API.md:7553–7567` — `detect_installation` entry: lists `"global-claude-code"` in return-value table; needs a `"project-claude-code"` row and updated description
@@ -173,6 +193,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T00:00:00 - `fa7c169d-eb54-4677-82b2-e67621565732.jsonl`
+- `/ll:wire-issue` - 2026-06-24T21:12:34 - `be894440-8cde-464b-8d81-175113fcffbe.jsonl`
 - `/ll:wire-issue` - 2026-06-24T20:41:00 - `cab00745-6580-45c4-87b5-4d107e68bd28.jsonl`
 - `/ll:refine-issue` - 2026-06-24T20:24:51 - `3eaafc1f-779c-4470-b381-fdd0d770bfa4.jsonl`
 - `/ll:format-issue` - 2026-06-24T20:01:28 - `062df68d-565a-4685-8017-4ee73cfc2c7d.jsonl`

@@ -6,9 +6,21 @@ status: open
 priority: P4
 discovered_date: 2026-06-24
 discovered_by: capture-issue
-relates_to: [ENH-1869]
-labels: [fsm-loop, harness, builtin-loop, cad, oracle]
+relates_to:
+- ENH-1869
+labels:
+- fsm-loop
+- harness
+- builtin-loop
+- cad
+- oracle
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 76
+score_complexity: 16
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # FEAT-2269: OpenSCAD model generator built-in FSM loop
@@ -179,20 +191,16 @@ matching the existing harness default):
   threshold 6) embedded in the loop's `rubric` parameter.
 - Per-run artifact isolation under `${context.run_dir}/` (CLAUDE.md meta-loop
   rule MR-3 / harness convention); per-iteration snapshots preserved.
-- `done` reports `.scad` + rendered view paths; optional STL export.
+- `done` reports `.scad` + rendered view paths; STL export is opt-in via `export_stl: true` context variable (default off).
 - System dependency on the `openscad` CLI documented; the loop fails gracefully
   with a clear message when `openscad` is not on PATH.
 
-## Open design questions (keep explicit; do not pre-decide)
+## Resolved design decisions
 
-- Parameterize the shared oracle (`render_command`) vs. fork a CLI-render
-  oracle. Trade-off: cross-domain reuse vs. blast radius on existing wrappers.
-- `--preview` (fast, lower-quality CSG) for early iterations vs. `--render`
-  (full CSG) for the final pass — render time on slower hosts can be minutes for
-  complex models; the `render_views` state needs generous timeouts.
-- Individual PNG per angle (higher res per view) vs. one stitched composite
-  sheet for LLM evaluation.
-- STL export in `done`: always vs. opt-in.
+- **Oracle strategy**: Option B — `from:` fork (`oracles/generator-evaluator-cli.yaml`). Zero blast radius on five existing callers. _(decided by `/ll:decide-issue` 2026-06-24)_
+- **Render mode**: Use `--render` (full CSG) on every pass, not `--preview`. The loop's value is accurate geometry inspection; `--preview` (OpenGL approximation) misses non-manifold geometry and interior features — exactly the defects the rubric targets. Use a generous per-view timeout (120 s) to absorb render time on complex models. _(decided 2026-06-24)_
+- **View format**: Individual PNG per angle (not a stitched composite). Consistent with `rlhf-svg-evaluate.yaml`'s 4-frame interleaved-content-array pattern, which is the stated reference for the vision gate. _(decided 2026-06-24)_
+- **STL export**: Opt-in only. `done` reports `.scad` + rendered view paths; STL export triggered by an explicit context variable (e.g. `export_stl: true`), defaulting to off. _(decided 2026-06-24)_
 
 ## Reference
 
@@ -257,6 +265,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_builtin_loops.py` — add `TestOpenSCADModelGenerator` class
 - `scripts/little_loops/loops/README.md` — add `openscad-model-generator` to built-in loops catalog
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `README.md` (root) line 163 — update `"92 FSM loops"` count to 94; both new YAML files pass `is_runnable_loop()`, so `ll-verify-docs` exits non-zero without this edit [Agent 2 finding]
+
 ### Dependent Files (Callers of `oracles/generator-evaluator`)
 Affected under Option A only; unaffected under Option B:
 - `scripts/little_loops/loops/svg-image-generator.yaml`
@@ -274,8 +285,16 @@ Affected under Option A only; unaffected under Option B:
 - `scripts/tests/test_builtin_loops.py` — add `TestOpenSCADModelGenerator`; mock `openscad` binary; assert YAML loads, `ll-loop validate` exits 0, state routing is correct
 - `scripts/tests/test_fsm_validation.py` — no changes; new loop must pass existing MR-1 through MR-6 rules
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — `TestBuiltinLoopFiles.test_expected_loops_exist` (lines 74–164) has a hardcoded `expected` set; add `"openscad-model-generator"` or the exact-set assertion fails on merge [Agent 1 finding]
+- `scripts/tests/test_builtin_loops.py` — add `TestGeneratorEvaluatorCliOracle` class; follow `TestGeneratorEvaluatorOracle` at line 5720; if oracle uses `from: oracles/generator-evaluator`, also add `resolved_data` fixture per `TestP5jsSketchGeneratorLoop` pattern at line 3511 [Agent 3 finding]
+
 ### Documentation
-- `scripts/little_loops/loops/README.md` — add `openscad-model-generator` to built-in loops catalog
+- `scripts/little_loops/loops/README.md` — add `openscad-model-generator` to `## Harness / Templates` table
+- `scripts/little_loops/loops/README.md` — also add `oracles/generator-evaluator-cli` row to `## Oracle Sub-loops` table with caller note [Agent 2 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — add `openscad-model-generator` row to `### Harness Examples` table (~line 1217); add to GAN-attribution sentence (~line 1247); add `### openscad-model-generator` section with `> **Prerequisites**: openscad CLI` callout — this is where all harness loop system-dependency docs live [Agent 2 finding]
 
 ## Implementation Steps
 
@@ -288,16 +307,26 @@ Affected under Option A only; unaffected under Option B:
 3. **Write `openscad-model-generator.yaml`:**
    - Set `category: harness` and `artifact_versioning: true` (required — MR-5 fires for iterative `generate → render_views` cycle that overwrites view PNGs each pass).
    - States: `init` → `plan` → `generate` → `render_views` → oracle sub-loop → `vision_gate` → `done`.
-   - `render_views` shell state: loop over `view_count` camera presets (iso, front, top…) calling `openscad ${context.run_dir}/model.scad --camera <preset> --render -o ${context.run_dir}/views/view_${n}.png`; add `timeout:` override (full CSG render can take minutes for complex models); check `command -v openscad` first and route `on_no` to a descriptive `done`-exit when not on PATH; evaluator: `output_contains: "CAPTURED"` (satisfies MR-1).
+   - `render_views` shell state: loop over `view_count` camera presets (iso, front, top…) calling `openscad $${RUN_DIR}/model.scad --camera <preset> --render -o $${RUN_DIR}/views/view_$${n}.png`; set `timeout: 120` per view (full CSG; never use `--preview` — it misses non-manifold geometry); check `command -v openscad` first and route `on_no` to a descriptive `done`-exit when not on PATH; evaluator: `output_contains: "CAPTURED"` (satisfies MR-1).
    - Rubric text: enumerate `${context.run_dir}/views/view_0.png … view_{view_count-1}.png` explicitly — `ll_rubric_score` at `lib/harness.yaml:34` delegates image path resolution entirely to the rubric string.
-   - `vision_gate`: copy from `svg-image-generator.yaml:130`; update to iterate over view files; preserve `ROUND_CAP = 3`.
-   - `done`: report `.scad` + `views/view_*.png` paths; optional STL export via `openscad -o model.stl`.
+   - `vision_gate`: follow `rlhf-svg-evaluate.yaml`'s 4-frame interleaved-content-array pattern (not `svg-image-generator.yaml`'s single-image pattern); iterate over `views/view_0.png … views/view_{view_count-1}.png`; preserve `ROUND_CAP = 3`.
+   - `done`: report `.scad` + `views/view_*.png` paths; conditionally run `openscad -o model.stl` only when `${context.export_stl}` is `true` (default off).
 
 4. **Validate**: `ll-loop validate openscad-model-generator.yaml` — confirm MR-1 (render_views evaluator), MR-3 (all writes under `run_dir`), MR-4 (all LLM-judged states have `on_no`/`on_partial` routes or `next:`), MR-5 (suppressed by `artifact_versioning: true`).
 
 5. **Test**: Add `TestOpenSCADModelGenerator` in `scripts/tests/test_builtin_loops.py`; mock `openscad` binary; assert YAML loads without error and `ll-loop validate` exits 0.
 
 6. **Update catalog**: Add `openscad-model-generator` entry to `scripts/little_loops/loops/README.md`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `TestBuiltinLoopFiles.test_expected_loops_exist` in `scripts/tests/test_builtin_loops.py` — add `"openscad-model-generator"` to the hardcoded `expected` set (critical: exact-set assertion fails without this)
+8. Add `TestGeneratorEvaluatorCliOracle` class in `scripts/tests/test_builtin_loops.py` — follow `TestGeneratorEvaluatorOracle` at line 5720; if oracle uses `from: oracles/generator-evaluator`, use `data` + `resolved_data` fixture pair per `TestP5jsSketchGeneratorLoop` at line 3511
+9. Update `README.md` (root) line 163 — increment `"92 FSM loops"` to 94; `ll-verify-docs` counts runnable loops via `rglob`, both new YAMLs are counted
+10. Add `oracles/generator-evaluator-cli` row to `## Oracle Sub-loops` table in `scripts/little_loops/loops/README.md`
+11. Add `openscad-model-generator` to `docs/guides/LOOPS_REFERENCE.md` — row in `### Harness Examples` table, entry in GAN-attribution sentence (~line 1247), and new `### openscad-model-generator` section with `> **Prerequisites**` callout for `openscad` binary install
 
 ## Impact
 
@@ -312,7 +341,22 @@ Affected under Option A only; unaffected under Option B:
 **Open** | Created: 2026-06-24 | Priority: P4
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-24_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 74/100 → Acceptable (just below 75 threshold)
+
+### Outcome Risk Factors
+- Three render-path implementation choices left to implementor judgment (`--preview` vs. `--render` for early iterations; individual PNG per angle vs. stitched composite; STL export always vs. opt-in) — `rlhf-svg-evaluate.yaml`'s 4-frame pattern effectively resolves the PNG question in favor of individual files, but the render-quality tradeoff should be settled before writing the `render_views` state to avoid timeout-tuning rework
+- `test_expected_loops_exist` exact-set assertion at `test_builtin_loops.py:74` will cause CI failure if `"openscad-model-generator"` is not added to the hardcoded set — documented in step 7 but easy to miss when writing test classes bottom-up
+- External `openscad` CLI binary requires test mocking — the mock must intercept the `render_views` shell state subprocess call; unvalidated against the new loop YAML structure until the file is written
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T22:15:00 - `99a0a893-83eb-4eb3-9d41-6e42559224b6.jsonl`
+- `/ll:confidence-check` - 2026-06-24T21:30:00 - `6b13d994-35f5-46a7-b0d0-1c904a388fbe.jsonl`
+- `/ll:wire-issue` - 2026-06-24T21:13:42 - `51fb05c0-16b7-46b6-930c-7ce607ef3f4d.jsonl`
 - `/ll:decide-issue` - 2026-06-24T20:43:11 - `488ef513-57b0-4a32-88de-2e01a29a0bdc.jsonl`
 - `/ll:refine-issue` - 2026-06-24T20:30:57 - `de730a3f-9cf8-4a76-8678-a41c35dafd15.jsonl`
 - `/ll:format-issue` - 2026-06-24T19:48:57 - `18c9e93a-fde6-4c52-9a3f-e96c3083df94.jsonl`
