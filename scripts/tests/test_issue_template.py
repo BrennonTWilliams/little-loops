@@ -9,31 +9,34 @@ import pytest
 
 from little_loops.issue_template import assemble_issue_markdown, load_issue_sections
 
+BUNDLED_TEMPLATES = Path(__file__).parent.parent.parent / "templates"
+
 
 @pytest.fixture
 def bug_sections() -> dict:
     """Load BUG sections for testing."""
-    return load_issue_sections("BUG")
+    return load_issue_sections("BUG", BUNDLED_TEMPLATES)
 
 
 @pytest.fixture
 def feat_sections() -> dict:
     """Load FEAT sections for testing."""
-    return load_issue_sections("FEAT")
+    return load_issue_sections("FEAT", BUNDLED_TEMPLATES)
 
 
 @pytest.fixture
 def enh_sections() -> dict:
     """Load ENH sections for testing."""
-    return load_issue_sections("ENH")
+    return load_issue_sections("ENH", BUNDLED_TEMPLATES)
 
 
 class TestLoadIssueSections:
     """Tests for loading per-type sections files."""
 
     @pytest.mark.parametrize("issue_type", ["BUG", "FEAT", "ENH", "EPIC"])
-    def test_load_default(self, issue_type: str) -> None:
+    def test_load_default(self, monkeypatch: pytest.MonkeyPatch, issue_type: str) -> None:
         """Loads per-type file from bundled templates/ directory."""
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
         data = load_issue_sections(issue_type)
         assert "_meta" in data
         assert data["_meta"]["version"] == "2.0"
@@ -57,6 +60,38 @@ class TestLoadIssueSections:
         """Raises FileNotFoundError for missing template."""
         with pytest.raises(FileNotFoundError):
             load_issue_sections("BUG", tmp_path)
+
+    def test_uses_claude_plugin_root_when_set(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """CLAUDE_PLUGIN_ROOT env var is used as templates directory root."""
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        template = {
+            "_meta": {"version": "env-var", "type": "BUG"},
+            "common_sections": {},
+            "creation_variants": {},
+            "type_sections": {},
+        }
+        (templates_dir / "bug-sections.json").write_text(json.dumps(template))
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+        data = load_issue_sections("BUG")
+        assert data["_meta"]["version"] == "env-var"
+
+    def test_falls_back_to_file_relative(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Falls back to __file__-relative path when CLAUDE_PLUGIN_ROOT is unset."""
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+        data = load_issue_sections("BUG")
+        assert "_meta" in data
+        assert data["_meta"]["type"] == "BUG"
+
+    def test_load_default_env_var_missing_templates_raises(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """CLAUDE_PLUGIN_ROOT set but no templates/ subdir raises FileNotFoundError."""
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+        with pytest.raises(FileNotFoundError):
+            load_issue_sections("BUG")
 
 
 class TestAssembleIssueMarkdown:

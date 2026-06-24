@@ -2,10 +2,12 @@
 id: BUG-2271
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-24T22:17:07Z'
+completed_at: '2026-06-24T23:40:06Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
+parent: EPIC-2279
 relates_to:
 - ENH-2272
 - BUG-2273
@@ -227,6 +229,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-06-24 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-24T23:30:27 - `d0a0457b-8179-46d1-a61d-6ee6f3cc8921.jsonl`
 - `/ll:confidence-check` - 2026-06-24T23:45:00 - `eed0e888-b9de-43d8-9237-8796107da954.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:17:52 - `cdc24f62-8926-49f2-87a9-4f69f340b39e.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:06:22 - `a735547e-7297-4f0e-8564-f8f404751bb4.jsonl`

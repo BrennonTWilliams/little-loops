@@ -8,12 +8,20 @@ issue files. Used by sync pull to produce v2.0-compliant issues.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 
 def _default_templates_dir() -> Path:
-    """Return the bundled templates/ directory relative to this package."""
+    """Return the bundled templates/ directory.
+
+    Checks CLAUDE_PLUGIN_ROOT env var first (non-editable installs), then falls
+    back to the __file__-relative path (editable dev installs).
+    """
+    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env_root:
+        return Path(env_root) / "templates"
     return Path(__file__).resolve().parent.parent.parent / "templates"
 
 

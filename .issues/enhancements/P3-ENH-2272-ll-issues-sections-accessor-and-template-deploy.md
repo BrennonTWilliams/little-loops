@@ -3,10 +3,20 @@ id: ENH-2272
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-24T22:17:07Z"
+captured_at: '2026-06-24T22:17:07Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
-relates_to: [BUG-2271, BUG-2273, FEAT-2274]
+parent: EPIC-2279
+relates_to:
+- BUG-2271
+- BUG-2273
+- FEAT-2274
+confidence_score: 90
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 18
 ---
 
 # ENH-2272: ll-issues sections accessor + project-local template deploy
@@ -287,7 +297,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `enhancement`, `templates`, `cli`, `ll-init`, `skills`, `performance`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-24_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 74/100 → CAUTION
+
+### Outcome Risk Factors
+- Wide breadth (~20 files): most per-site changes are mechanical prose swaps or additive imports, but the total file count increases integration burden and the chance of a missed callsite
+- `issue_template.py` is also modified by BUG-2271 (shared resolver); implement in coordinated sequence (BUG-2271 first or co-delivered with ENH-2272) to avoid merge conflicts on the resolver function
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T23:45:00Z - `d0a0457b-8179-46d1-a61d-6ee6f3cc8921.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:21:52 - `97498016-23cf-4c10-9b5b-f243fd01138b.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:05:17 - `5b067ad3-2717-49a4-bf64-d61c0eab69cc.jsonl`
 - `/ll:format-issue` - 2026-06-24T22:58:10 - `2559928a-8ef2-4ca3-879e-63d8f4134600.jsonl`
