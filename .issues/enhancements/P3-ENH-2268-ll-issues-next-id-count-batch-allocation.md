@@ -2,9 +2,10 @@
 id: ENH-2268
 title: ll-issues next-id --count N for collision-free batch ID allocation
 type: enhancement
-status: open
+status: done
 priority: P3
 discovered_date: 2026-06-24
+completed_at: 2026-06-24 23:11:46+00:00
 discovered_by: planning-assessment
 labels:
 - enhancement
@@ -212,6 +213,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-24T23:03:24 - `9172b317-b524-4bef-b5ae-14ef9e118a93.jsonl`
 - `/ll:confidence-check` - 2026-06-24T21:00:00 - `fffe04a2-92e2-4f19-bafe-0d8c500f9b47.jsonl`
 - `/ll:wire-issue` - 2026-06-24T20:41:43 - `ff0c7bdb-b5b2-42d5-a9a1-7e8abfc9a0ed.jsonl`
 - `/ll:refine-issue` - 2026-06-24T20:28:05 - `de730a3f-9cf8-4a76-8678-a41c35dafd15.jsonl`

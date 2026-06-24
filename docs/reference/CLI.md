@@ -992,6 +992,11 @@ Issue management and visualization utilities.
 
 Print the next globally unique issue number across all types.
 
+| Flag | Description |
+|------|-------------|
+| `--count N` / `-n N` | Print N consecutive IDs starting at `max+1`, one per line (default: 1). Must be a positive integer; `0` or negative values exit with code 2. |
+| `--config` | Path to project root |
+
 #### `ll-issues list` / `ll-issues l`
 
 List issues with optional filters.

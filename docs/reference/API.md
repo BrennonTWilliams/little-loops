@@ -3277,7 +3277,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 
 | Sub-command | Description |
 |-------------|-------------|
-| `next-id` | Print next globally unique issue number |
+| `next-id` | Print next globally unique issue number; `--count N` / `-n N` emits N consecutive IDs from a single scan |
 | `list` | List active issues with optional type/priority filters |
 | `search` | Search issues with text query, filters, sorting, and multiple output formats |
 | `count` | Count active issues with optional filters (`--type`, `--priority`, `--json`) |

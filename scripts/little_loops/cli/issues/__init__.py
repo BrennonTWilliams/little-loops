@@ -137,6 +137,16 @@ Examples:
         )
         nid.set_defaults(command="next-id")
         add_config_arg(nid)
+        from little_loops.cli.issues.next_id import positive_int
+
+        nid.add_argument(
+            "--count",
+            "-n",
+            type=positive_int,
+            default=1,
+            metavar="N",
+            help="Number of consecutive IDs to allocate (default: 1)",
+        )
 
         ls = subs.add_parser("list", aliases=["l"], help="List active issues")
         ls.set_defaults(command="list")
@@ -704,7 +714,7 @@ Examples:
         configure_output(config.cli)
 
         if args.command == "next-id":
-            return cmd_next_id(config)
+            return cmd_next_id(config, count=args.count)
         if args.command == "list":
             return cmd_list(config, args)
         if args.command == "search":

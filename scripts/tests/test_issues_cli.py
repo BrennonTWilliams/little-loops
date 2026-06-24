@@ -56,6 +56,89 @@ class TestIssuesCLINextId:
         # issues_dir fixture has BUG-001, BUG-002, BUG-003, FEAT-001, FEAT-002
         assert captured.out.strip() == "004"
 
+    def test_next_id_count_batch(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """next-id --count 3 prints three consecutive IDs starting at max+1."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-id", "--count", "3", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # issues_dir fixture has max ID = 003, so next IDs are 004, 005, 006
+        assert captured.out.strip() == "004\n005\n006"
+
+    def test_next_id_count_one_matches_default(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """next-id --count 1 is byte-for-byte identical to default output."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-id", "--count", "1", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "004"
+
+    def test_next_id_count_zero_exits_2(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+    ) -> None:
+        """next-id --count 0 is rejected with exit code 2."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-id", "--count", "0", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_issues()
+
+        assert exc_info.value.code == 2
+
+    def test_next_id_count_negative_exits_2(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+    ) -> None:
+        """next-id --count -1 is rejected with exit code 2."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-id", "--count", "-1", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_issues()
+
+        assert exc_info.value.code == 2
+
 
 @pytest.fixture
 def issues_dir_with_enh(issues_dir: Path) -> Path:
