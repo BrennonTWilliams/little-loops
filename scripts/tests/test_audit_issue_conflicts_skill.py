@@ -90,3 +90,21 @@ class TestAuditIssueConflictsSkillExists:
         assert "idempotent" in phase4b_text.lower(), (
             "Phase 4b must document idempotency pre-check for audit-authored section appends"
         )
+
+    def test_phase4b_write_side_guard_present(self) -> None:
+        """Phase 4b must guard writes to non-active targets (BUG-2264)."""
+        content = SKILL_FILE.read_text()
+        phase4b_start = content.index("## Phase 4b")
+        phase5_start = content.index("## Phase 5")
+        phase4b_text = content[phase4b_start:phase5_start]
+        assert "ISSUE_FILES" in phase4b_text, "Phase 4b must reference ISSUE_FILES membership"
+        assert "open|in_progress|blocked" in phase4b_text, "Phase 4b must re-check status"
+        assert "not in active set" in phase4b_text, "Phase 4b must log skip reason"
+
+    def test_phase6_skipped_inactive_count_reported(self) -> None:
+        """Phase 6 must report SKIPPED_INACTIVE_COUNT for write-side guard skips (BUG-2264)."""
+        content = SKILL_FILE.read_text()
+        phase6_start = content.index("## Phase 6")
+        phase6_text = content[phase6_start:]
+        assert "SKIPPED_INACTIVE_COUNT" in phase6_text, "Phase 6 must tally skipped inactive writes"
+        assert "Skipped (target not active)" in phase6_text, "Phase 6 must label the skip category"

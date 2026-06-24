@@ -317,6 +317,7 @@ Track every modified file path so Phase 5 stages only audit-touched files:
 
 ```bash
 MODIFIED_FILES=()
+SKIPPED_INACTIVE_COUNT=0
 ```
 
 For each approved recommendation:
@@ -324,7 +325,8 @@ For each approved recommendation:
 ### merge / deprecate
 
 1. Identify the issue to be **kept** and the one to be **closed/superseded**
-2. If merging scope: before appending, read the kept issue file and check whether `## Scope Addition` already contains a reference to `[CLOSED-ID]`. If found, skip the append and log `[idempotent: Scope Addition for CLOSED-ID already present]`. Otherwise, append a `## Scope Addition` note to the kept issue file:
+2. Before editing either the kept or closed issue file, verify the write-side active-set guard for each target using the ISSUE_FILES list from Phase 1 context: **(1) Membership** — the target's file path must appear in ISSUE_FILES. If not, skip this action and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`. Increment `SKIPPED_INACTIVE_COUNT`. **(2) TOCTOU re-check** — run `awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' TARGET` and confirm the result matches `open|in_progress|blocked`. If terminal, skip this action and log `[skipped: TARGET status is CURRENT_STATUS — not active]`. Increment `SKIPPED_INACTIVE_COUNT` for each skipped target.
+3. If merging scope: before appending, read the kept issue file and check whether `## Scope Addition` already contains a reference to `[CLOSED-ID]`. If found, skip the append and log `[idempotent: Scope Addition for CLOSED-ID already present]`. Otherwise, append a `## Scope Addition` note to the kept issue file:
 
 ```markdown
 
@@ -337,7 +339,7 @@ For each approved recommendation:
 [Relevant scope absorbed from CLOSED-ID]
 ```
 
-3. Add a resolution section to the closed issue file: before appending, check whether `## Resolution` is already present in the closed issue file. If found, skip and log `[idempotent: Resolution already present]`. Otherwise, append:
+4. Add a resolution section to the closed issue file: before appending, check whether `## Resolution` is already present in the closed issue file. If found, skip and log `[idempotent: Resolution already present]`. Otherwise, append:
 
 ```markdown
 
@@ -351,27 +353,29 @@ For each approved recommendation:
 - **Proposed change**: [proposed_change from conflict record]
 ```
 
-4. Update the closed issue's frontmatter `status: done` using the Edit tool.
+5. Update the closed issue's frontmatter `status: done` using the Edit tool.
 
-5. Track both modified files:
+6. Track both modified files:
 
 ```bash
 MODIFIED_FILES+=("[kept-issue-path]" "[closed-issue-path]")
 ```
 
-6. Append session log to closed issue:
+7. Append session log to closed issue:
 
 ```bash
 ll-issues append-log "[issue-file-path]" /ll:audit-issue-conflicts
 ```
 
-7. Append session log to kept issue:
+8. Append session log to kept issue:
 
 ```bash
 ll-issues append-log "[kept-issue-path]" /ll:audit-issue-conflicts
 ```
 
 ### add_dependency
+
+Before appending, verify the write-side active-set guard using the ISSUE_FILES list from Phase 1 context: **(1) Membership** — the dependent issue's file path must appear in ISSUE_FILES. If not, skip and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`. Increment `SKIPPED_INACTIVE_COUNT`. **(2) TOCTOU re-check** — run `awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' TARGET` and confirm the result matches `open|in_progress|blocked`. If terminal, skip and log `[skipped: TARGET status is CURRENT_STATUS — not active]`. Increment `SKIPPED_INACTIVE_COUNT`.
 
 Append either `blocked_by: [ISSUE-B]` (hard stop — must complete first) or `depends_on: [ISSUE-B]` (soft ordering — preferred when no hard dependency exists) to the frontmatter of the dependent issue file using Edit, according to the user's choice from the interactive prompt. Track the modified file:
 
@@ -387,7 +391,7 @@ ll-issues append-log "[issue-path]" /ll:audit-issue-conflicts
 
 ### split / update_scope
 
-Before appending to each affected issue, check whether `## Scope Boundary` is already present in that file and already references `[OTHER-ID]`. If found, skip the append and log `[idempotent: Scope Boundary for OTHER-ID already present]`. Otherwise, append a scope boundary note:
+Before appending to each affected issue, apply two guards: **(1) Write-side active-set guard** — verify the target's file path appears in ISSUE_FILES (from Phase 1) and run `awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' TARGET` to confirm the result matches `open|in_progress|blocked`. If the membership check fails, skip and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`; increment `SKIPPED_INACTIVE_COUNT`. If the status re-check fails, skip and log `[skipped: TARGET status is CURRENT_STATUS — not active]`; increment `SKIPPED_INACTIVE_COUNT`. **(2) Idempotency check** — check whether `## Scope Boundary` is already present in that file and already references `[OTHER-ID]`. If found, skip the append and log `[idempotent: Scope Boundary for OTHER-ID already present]`. Otherwise, append a scope boundary note:
 
 ```markdown
 
@@ -432,6 +436,7 @@ AUDIT ISSUE CONFLICTS — COMPLETE
 - Recommendations applied: [A]
 - Skipped (idempotent): [I]
 - Skipped (user declined or no-op): [S]
+- Skipped (target not active): [SKIPPED_INACTIVE_COUNT]
 - Could not evaluate: [W]
 
 ## APPLIED CHANGES
@@ -440,6 +445,10 @@ AUDIT ISSUE CONFLICTS — COMPLETE
 
 ## SKIPPED (IDEMPOTENT)
 - [ISSUE-A] vs [ISSUE-B]: Scope Boundary for OTHER-ID already present — no duplicate appended
+
+## SKIPPED (TARGET NOT ACTIVE)
+- [ISSUE-X]: [skipped: TARGET not in active set (not loaded in Phase 1)]
+- [ISSUE-Y]: [skipped: TARGET status is done — not active]
 
 ## UNCHANGED
 - [ISSUE-A] vs [ISSUE-B]: user declined recommendation

@@ -2,8 +2,9 @@
 id: BUG-2264
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-24T17:55:55Z'
+completed_at: '2026-06-24T22:07:54Z'
 discovered_date: '2026-06-24'
 discovered_by: capture-issue
 labels:
@@ -126,7 +127,7 @@ Apply in each Phase 4b branch (`merge/deprecate`, `add_dependency`, `split/updat
 - `skills/audit-issue-conflicts/SKILL.md:422-455` — Phase 6 report needs a "Skipped (target not active)" line
 
 ### Similar Patterns
-- `skills/audit-issue-conflicts/SKILL.md:62-83` — Phase 1 read-side status filter (the symmetric read guard this issue mirrors on the write side); line 62 is the actual start (`declare -a ISSUE_FILES`)
+- `skills/audit-issue-conflicts/SKILL.md:63-83` — Phase 1 read-side status filter (the symmetric read guard this issue mirrors on the write side); line 63 is the actual start (`declare -a ISSUE_FILES`)
 - `skills/capture-issue/SKILL.md:174` — awk status-extraction one-liner reused here
 - `skills/audit-issue-conflicts/SKILL.md:327` — existing prose idempotency pre-check in add_dependency branch ("before appending, read the kept issue file and check whether `## Scope Addition` already contains..."); the write-side guard should follow the same **prose** pattern
 - `skills/audit-issue-conflicts/SKILL.md:340` — existing prose guard for `## Resolution` (merge/deprecate branch)
@@ -170,6 +171,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-24T22:07:54Z - `fix: add write-side active-set guard to Phase 4b and SKIPPED_INACTIVE_COUNT to Phase 6`
+- `/ll:ready-issue` - 2026-06-24T22:00:09 - `4390ce68-2ef5-4782-a6ad-fcb7b99ff6e9.jsonl`
 - `/ll:confidence-check` - 2026-06-24T21:00:00Z - `b546709b-abd9-4d20-95d4-597936cd0cea.jsonl`
 - `/ll:wire-issue` - 2026-06-24T20:41:38 - `cab00745-6580-45c4-87b5-4d107e68bd28.jsonl`
 - `/ll:refine-issue` - 2026-06-24T20:25:26 - `3eaafc1f-779c-4470-b381-fdd0d770bfa4.jsonl`
