@@ -46,6 +46,14 @@ this bug's job is to (a) consume that shared resolver instead of the bare
 no source resolves. This refines BUG-938: host-plugin assets stay out of the
 wheel, package-data templates go in.
 
+## Motivation
+
+Silently breaks the dominant `pip install little-loops` → `ll-init` onboarding path:
+- Affects every non-editable install — the expected production use case for external users
+- Design tokens are never deployed, `.ll/ll-goals.md` is never written, and project-type detection always falls back to `generic`, all without any error or warning
+- Users receive a success exit from `ll-init` but arrive at a misconfigured project
+- Blocks downstream features (design tokens, goals templates, project-type-specific configuration) from working correctly on first install
+
 ## Steps to Reproduce
 
 1. `pip install little-loops` (non-editable) into a fresh venv.
@@ -132,8 +140,7 @@ warning instead of a silent no-op.
 - `scripts/little_loops/init/writers.py` — `deploy_design_tokens()` (line 265)
   and `deploy_goals()` (line 240): distinguish "source missing" from
   "destination exists" in the return/log so callers can warn.
-- `scripts/little_loops/init/detect.py` — `detect_project_type()` (line 115):
-  optional warning when template source is unresolved.
+- `scripts/little_loops/init/detect.py` — `_find_templates_dir()` (~line 31): identical four-parent traversal bug site (`Path(__file__).parent.parent.parent.parent / "templates"`) that **must also be replaced with the shared resolver** (not just given a warning); and `detect_project_type()` (line 115): warn when template source is unresolved.
 
 ### Similar Patterns
 - `skill_expander._find_plugin_root()` (`skill_expander.py:22`) — the env-var-
@@ -149,6 +156,41 @@ warning instead of a silent no-op.
   fix on non-Claude hosts. This bug owns the `ll-init` resolver + warning
   behavior, not the packaging change itself. The earlier "do not bundle (BUG-938
   stance)" note is superseded for package-data templates by ARCHITECTURE-053.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/init/cli.py` — `_plugin_root()` derives `templates_dir` (consumed inline); callers of `templates_dir`: `detect_project_type()`, `deploy_goals()`, `deploy_design_tokens()`
+- `scripts/little_loops/init/writers.py` — `deploy_design_tokens()` and `deploy_goals()` receive `templates_dir` from `cli.py`
+- `scripts/little_loops/init/detect.py` — `detect_project_type()` reads per-type config templates via `templates_dir`
+
+### Tests
+- `scripts/tests/test_init_core.py` — primary init test file (not `test_ll_init.py`); existing `TestDeployGoals.test_skips_if_template_missing` already tests the source-missing path but only asserts `False` — extend to also assert warning emitted; add: (a) resolver finds bundled `templates/` when `_plugin_root` is patched to a non-editable path; (b) missing source emits a visible warning instead of silent skip; (c) editable-install fallback still resolves.
+- See `test_skill_expander.py:TestFindPluginRoot` for the `monkeypatch.setenv`/`monkeypatch.delenv` env-var test pattern to follow.
+
+### Documentation
+- `docs/reference/CLI.md` — `ll-init` command docs; verify `--design-tokens` flag description reflects actual deployment behavior
+- `docs/reference/API.md` — if `_plugin_root()` or template resolution is documented, update to reflect the new shared resolver
+
+### Configuration
+- N/A — no config file changes; the shared resolver will honor `config.issues.templates_dir` as an optional override without requiring a new config key
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`detect_project_type()` actual behavior (correction):** The issue summary and Current Behavior section say "falls back to generic." Research shows `detect_project_type()` calls `_load_templates(templates_dir)` which calls `templates_dir.glob("*.json")` — on a non-existent directory this **raises `FileNotFoundError`**, not a graceful fallback. The exception is uncaught by `_run_yes()`. Verify empirically before implementing; if the outer `main_init()` has a catch-all, behavior may differ.
+
+**`detect.py` dual resolver:** `detect.py` has two path-resolution functions — `_find_templates_dir()` (~line 31, same buggy four-parent pattern) and `detect_project_type(templates_dir=None)`. `main_init()` always passes a `templates_dir` argument so `_find_templates_dir()` is never called in practice; but both must be fixed to avoid the same latent bug if `detect_project_type` is ever called without an argument.
+
+**Warning emission pattern:** Established in `init/cli.py`: `print(f"  Warning: ...", file=sys.stderr)`. Structured warnings use the `DepWarning` dataclass (`init/validate.py`) collected into a list and printed by the caller. Either pattern is valid; the inline `print` to stderr is simpler for the missing-source case.
+
+**Existing test coverage:**
+- `test_init_core.py:TestDeployGoals.test_skips_if_template_missing` — already asserts `deploy_goals()` returns `False` for missing source; extend to `capsys`-assert the warning is printed.
+- `test_init_core.py:TestMainInit` — already patches `_plugin_root` via `patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT)`; use the same pattern for non-editable-path simulation.
+- `test_skill_expander.py:TestFindPluginRoot` — env-var test pattern: `monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))` / `monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)`.
+
+**`install_check.py` editable detection:** Contains `detect_installation()` which can determine whether the package is an editable install; could augment warning messages with install-mode context if desired (non-blocking enhancement).
+
+**No `importlib.resources` usage exists** in the codebase yet — the package-data access path (for FEAT-2274's wheel bundling) will need to introduce it; this bug's resolver fix should remain `__file__`-based for the editable fallback and env-var / config for the non-editable path.
 
 ## Implementation Steps
 
@@ -191,5 +233,11 @@ warning instead of a silent no-op.
 
 `bug`, `ll-init`, `templates`, `design-tokens`, `install`, `path-resolution`
 
+## Status
+
+**Open** | Created: 2026-06-24 | Priority: P2
+
 ## Session Log
+- `/ll:refine-issue` - 2026-06-24T23:07:14 - `cdada0da-4753-458e-a13a-508a5ae683e0.jsonl`
+- `/ll:format-issue` - 2026-06-24T22:57:31 - `cd6e14d6-0ccd-4ef9-8c5e-8b0a2f72105e.jsonl`
 - `/ll:capture-issue` - 2026-06-24T22:25:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4149029-8124-4b7f-a1de-e3e84bc0d161.jsonl`

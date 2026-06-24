@@ -7,7 +7,7 @@ captured_at: "2026-06-24T22:29:39Z"
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2257
-relates_to: [BUG-2271, BUG-2273, ENH-2272, BUG-938, BUG-885]
+relates_to: [BUG-2271, BUG-2273, ENH-2272, BUG-2275, BUG-2276, ENH-2277, BUG-938, BUG-885]
 decision_ref: ARCHITECTURE-053
 labels: [feature, packaging, templates, host-compat, cross-host, install]
 ---
@@ -55,7 +55,7 @@ universal seed/fallback **and** keep the `.ll/templates/` project deploy
 
 ## Scope
 
-In scope — the entire host-agnostic `templates/` tree (all consumed by CLI code):
+In scope — all host-agnostic package data consumed by CLI/hook code:
 
 - `*-sections.json` (bug/feat/enh/epic) — `load_issue_sections()`
 - project-type configs (`python-generic.json`, `typescript.json`, `go.json`,
@@ -64,10 +64,23 @@ In scope — the entire host-agnostic `templates/` tree (all consumed by CLI cod
 - `design-tokens/` — `deploy_design_tokens()`
 - `ll-goals-template.md` — `deploy_goals()`
 - `extension/` — `ll-create-extension` scaffolding
+- `hooks/prompts/optimize-prompt-hook.md` — read by
+  `hooks/user_prompt_submit.py` (**BUG-2275**)
+- `hooks/adapters/codex/hooks.json` (and any other consumed adapter templates) —
+  read by `init/writers.py:install_codex_adapter()` (**BUG-2275**)
+- `assets/ll-cli-logo.txt` — read by `logo.py:get_logo()` (**BUG-2276**)
 
-Out of scope:
-- `skills/`, `commands/`, `agents/`, `hooks/`, `.claude-plugin/` — host-plugin
-  assets; stay out of the wheel (BUG-938 stance unchanged for these).
+The unifying rule (ARCHITECTURE-053): *data the wheel's own code reads ships in
+the wheel*, regardless of which repo-root dir it currently lives under. The
+three additions above were missed in the initial scoping; they are the same
+package-data class as `templates/`, just under `hooks/` and `assets/`.
+
+Out of scope (host-plugin assets adapted per host; stay out of the wheel,
+BUG-938 stance unchanged):
+- `skills/`, `commands/`, `agents/`, `.claude-plugin/`
+- host-plugin glue under `hooks/` that is *not* read by package code
+  (e.g. `hooks/hooks.json`, host launcher/adapter shell scripts) — only the
+  asset files package code imports move in.
 
 ## Proposed Solution
 

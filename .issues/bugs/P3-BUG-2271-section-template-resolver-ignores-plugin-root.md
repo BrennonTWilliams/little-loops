@@ -7,6 +7,7 @@ captured_at: "2026-06-24T22:17:07Z"
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 relates_to: [ENH-2272, BUG-2273, FEAT-2274]
+decision_needed: false
 ---
 
 # BUG-2271: Section-template resolver ignores CLAUDE_PLUGIN_ROOT and project-local templates
@@ -31,6 +32,15 @@ decision (ARCHITECTURE-053), the resolver's primary tier becomes the in-package
 `__file__` tiers this bug adds are fallbacks. This refines BUG-938 (closed
 invalid): host-plugin assets stay out of the wheel, but package-data templates
 the CLIs import go into it.
+
+## Motivation
+
+Non-editable `pip install little-loops` users hit a silent `FileNotFoundError` in
+`ll-sync pull` and a degraded `is_formatted()` signal across `ll-issues show`,
+`refine-status`, and `next-action`. The bug is invisible in editable dev installs,
+so it can ship undetected and silently corrupt issue-status signals for all
+distribution-path users. Fixing it restores correctness without any risk to editable
+installs and unblocks ENH-2272's full resolver precedence chain.
 
 ## Steps to Reproduce
 
@@ -104,11 +114,40 @@ non-editable installs that have `CLAUDE_PLUGIN_ROOT` available.
 - `scripts/little_loops/skill_expander.py` — source of the existing
   `_find_plugin_root()` pattern; candidate home for a shared helper.
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/sync.py:700` — `ll-sync pull` calls `load_issue_sections()` → `FileNotFoundError` on missing dir
+- `scripts/little_loops/issue_parser.py:80` — `is_formatted()` calls `load_issue_sections()` → degraded signal on missing dir
+- `scripts/little_loops/cli/issues.py` — `ll-issues show`, `refine-status`, `next-action` all surface via `is_formatted()`
+
+### Tests
+- `scripts/tests/test_issue_template.py` — **existing** `TestLoadIssueSections` class; add new test methods here (not a new file)
+  - New: `test_uses_claude_plugin_root_when_set` — `monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))`, write `tmp_path/templates/bug-sections.json`, assert `load_issue_sections("BUG")` resolves correctly
+  - New: `test_falls_back_to_file_relative` — `monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)`, assert `load_issue_sections("BUG")` still works via `__file__`-relative path (editable-install path)
+- `scripts/tests/test_skill_expander.py:TestFindPluginRoot` — reference model for `monkeypatch.setenv` / `monkeypatch.delenv` pattern
+
+### Documentation
+- `docs/reference/API.md` — documents `load_issue_sections`; update to note resolver precedence
+
+### Configuration
+- N/A
+
 ### Similar Patterns
 - `skill_expander._find_plugin_root()` (`skill_expander.py:22`) — the correct
   env-var-first resolution to mirror.
 - `cli/loop/_helpers.py:get_builtin_loops_dir()` — BUG-885 hit the same
   `__file__`-traversal-breaks-in-wheel class of bug for `loops/`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **CLI module paths are a split package** — `cli/issues.py` does not exist as a single file; the three affected CLI commands live in:
+  - `scripts/little_loops/cli/issues/show.py:cmd_show()` — renders `"✓"` / `"✗"` from `is_formatted()`
+  - `scripts/little_loops/cli/issues/refine_status.py:cmd_refine_status()` — stores `"formatted"` key in dict; renders table column
+  - `scripts/little_loops/cli/issues/next_action.py:cmd_next_action()` — outputs `NEEDS_FORMAT <ID>` and exits code 1 when `is_formatted()` returns `False`
+- **`sync.py` precise anchor** — call site is `GitHubSyncer._create_local_issue()`, not just "line 700"; caller already has a config-based override (`self.config.issues.templates_dir`), so the bug only fires when no `issues.templates_dir` is configured
+- **`is_formatted()` silently swallows `FileNotFoundError`** — `issue_parser.py` wraps the entire `load_issue_sections()` call in `try/except Exception: return False`; all three CLI commands receive a silent `False` with no diagnostic, making template-path failures indistinguishable from genuinely unformatted issues
+- **`init/detect.py:_find_templates_dir()`** — another `__file__`-only resolver with the same class of bug (`Path(__file__).parent.parent.parent.parent / "templates"`); may fall under BUG-2273 scope — worth checking during implementation
 
 ### Packaging (see FEAT-2274)
 - The robust cross-host fix is **FEAT-2274**: package `templates/` into the wheel
@@ -155,5 +194,11 @@ non-editable installs that have `CLAUDE_PLUGIN_ROOT` available.
 
 `bug`, `templates`, `install`, `path-resolution`
 
+## Status
+
+**Open** | Created: 2026-06-24 | Priority: P3
+
 ## Session Log
+- `/ll:refine-issue` - 2026-06-24T23:06:22 - `a735547e-7297-4f0e-8564-f8f404751bb4.jsonl`
+- `/ll:format-issue` - 2026-06-24T22:56:49 - `675310ea-1b88-4963-9ad5-358af691a6bb.jsonl`
 - `/ll:capture-issue` - 2026-06-24T22:17:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d34d610-c8b9-4a5e-82c8-191296760b6d.jsonl`

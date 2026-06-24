@@ -56,6 +56,15 @@ plugin directory:
 that triggers the filesystem search. There is no CLI to resolve the default
 location, and no project-local copy.
 
+## Expected Behavior
+
+After the enhancement ships:
+- `ll-issues sections <type>` resolves and prints the per-type section JSON in ~50ms (deterministic, no filesystem walk).
+- `ll-issues sections <type> --path` prints only the absolute path to the resolved JSON file.
+- All six callsites in skills/commands invoke `ll-issues sections` directly, removing the "relative to the plugin directory" prose and eliminating the ~60s `find /` fallback.
+- The resolver works identically across claude-code, codex, and opencode hosts with no `CLAUDE_PLUGIN_ROOT` dependency.
+- `ll-init` offers an opt-in step that copies bundled `*-sections.json` into `.ll/templates/` (skip-if-exists); when absent, the resolver falls through to the in-package bundle provided by FEAT-2274.
+
 ## Proposed Solution
 
 ### 1. Unified template resolver (precedence)
@@ -134,11 +143,80 @@ New CLI surface on `ll-issues`:
   skip-if-exists project deploy.
 - `skill_expander._find_plugin_root()` — env-var-first resolution.
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/issue_parser.py` — imports `issue_template.py` resolver; must switch to the shared resolver when BUG-2271 lands.
+- `scripts/little_loops/sync/` — any loader that reads per-type section JSON will consume the shared resolver.
+- Six skill/command files (listed in Files to Modify) — become callers of `ll-issues sections` after callsite rewrite.
+
+### Tests
+- New: `scripts/tests/test_ll_issues_sections.py` — JSON output, `--path`, invalid type, and each resolver precedence tier.
+- New: `scripts/tests/test_deploy_issue_templates.py` — skip-if-exists semantics, dry-run, feature-flag gating.
+- Update: tests covering `ll-init` flow to include the new deploy step.
+
+### Documentation
+- `docs/reference/CLI.md` — document `ll-issues sections` subcommand.
+- `docs/reference/API.md` — document the unified resolver (`issue_template.py`) and `deploy_issue_templates()`.
+
+### Configuration
+- `config-schema.json` — feature flag property for `deploy_issue_templates` (if gated).
+- `config/features.py` — register the feature flag constant.
+
 ### Packaging (see FEAT-2274)
 - `scripts/pyproject.toml` packaging is changed by **FEAT-2274** (templates into
   the wheel), which makes resolver tier 3 always available. This ENH owns the
   accessor + `.ll/templates/` deploy (the "deploy" half of **Both**); FEAT-2274
   owns the "wheel" half.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Existing resolver state (`issue_template.py`):**
+- `_default_templates_dir()` (line 15–17): resolves only via `Path(__file__).resolve().parent.parent.parent / "templates"` — no config.issues.templates_dir or `.ll/templates/` lookup. This is the function that must become the fallback tier.
+- `load_issue_sections(issue_type, templates_dir=None)` (line 20–37): already accepts an optional `templates_dir` override, but callers must pass it explicitly — no auto-resolution from config.
+- `sync.py:697–700`: already passes `config.issues.templates_dir` to `load_issue_sections` when set, but has only 2 tiers (explicit override or `__file__`-based default). The `.ll/templates/` tier is missing.
+- **New function needed**: `resolve_templates_dir(config: BRConfig) -> Path` in `issue_template.py` that implements the 4-tier precedence and is consumed by both the new CLI and existing callers.
+
+**Init gating pattern (`init/cli.py:289–293`):**
+- `deploy_goals` is gated by `config.get("product", {}).get("enabled")` (not a feature constants file).
+- `deploy_design_tokens` is gated by `config.get("design_tokens", {}).get("enabled")`.
+- `deploy_issue_templates` should follow the same config-key gating pattern: `config.get("issues", {}).get("deploy_templates")`.
+- `config-schema.json:122` already defines `issues.templates_dir`; add `"deploy_templates": {"type": "boolean", "default": false}` as a sibling property under `issues`.
+
+**`init/__init__.py` exports:** `deploy_goals` (line 14) and `deploy_design_tokens` (line 15) are both exported; `deploy_issue_templates` must be added to the same import + `__all__` block (lines 13–22, 24–41).
+
+**`deploy_goals()` signature to mirror (`init/writers.py:240–262`):**
+```python
+def deploy_issue_templates(ll_dir: Path, templates_dir: Path, dry_run: bool = False) -> bool:
+    dest = ll_dir / "templates"
+    if dest.exists():
+        return False
+    src = templates_dir  # bundle containing *-sections.json files
+    if not src.exists():
+        return False
+    if dry_run:
+        print(f"[write] {dest}/ (issue section templates)")
+        return True
+    ll_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dest, ignore=shutil.ignore_patterns("design-tokens", "*.md", "*.toml"))
+    return True
+```
+
+**Exact callsite prose to replace:**
+- `skills/format-issue/SKILL.md:196`: `"templates/{type}-sections.json" v2.0 (relative to the little-loops plugin directory)`
+- `skills/format-issue/SKILL.md:221`: `"templates/{type}-sections.json" for the issue's type`
+- `skills/format-issue/templates.md:7,52,54`: similar plugin-relative references
+- `skills/capture-issue/SKILL.md:~276`: plugin-relative sections JSON reference
+- `skills/scope-epic/SKILL.md:~296,~358`: plugin-relative sections JSON reference
+- `commands/ready-issue.md:~139`: plugin-relative sections JSON reference
+- `commands/scan-codebase.md:~241,~243`: plugin-relative sections JSON reference
+
+**Registration pattern (`cli/issues/__init__.py`):** Each subcommand uses `subs.add_parser("sections", aliases=["sec"], help="...")` + `set_defaults(command="sections")` + `add_argument("type", ...)` + `add_argument("--path", action="store_true")`. Dispatch block at the end of `main_issues()` routes `command == "sections"` to `cmd_sections(config, args)`.
+
+**Test patterns to follow:**
+- For the new `test_ll_issues_sections.py`: mirror `test_issues_path.py` — use `patch.object(sys, "argv", ["ll-issues", "sections", "BUG", "--config", str(tmp_dir)])` + call `main_issues()` + `capsys.readouterr()`.
+- For `test_deploy_issue_templates.py`: mirror `test_init_core.py:750–806` — create `tmp_path / "ll"` and `tmp_path / "templates"`, populate source files, call `deploy_issue_templates()`, assert destination state.
+- For resolver precedence tests: extend `test_issue_template.py:TestLoadIssueSections` with the same parametrized approach, creating stub files in `tmp_path` for each tier.
 
 ## Implementation Steps
 
@@ -151,6 +229,15 @@ New CLI surface on `ll-issues`:
 4. Rewrite the six skill/command callsites; update CLI/API docs.
 5. Verify `ll-verify-skills` / `ll-verify-skill-budget` still pass and run
    `python -m pytest scripts/tests/`.
+
+## Scope Boundaries
+
+- Changing the content or format of the `*-sections.json` files themselves (only the access layer changes).
+- Bundling templates into the wheel — owned by FEAT-2274.
+- Fixing resolver correctness bugs in existing loaders — owned by BUG-2271 (`issue_parser`) and BUG-2273 (`ll-init`).
+- Enabling `deploy_issue_templates` on-by-default (deliberately opt-in to keep projects that never customize templates clean).
+- Migrating existing projects' custom `issues.templates_dir` paths or renaming config keys.
+- Adding callsites beyond the six listed in Current Behavior.
 
 ## Impact
 
@@ -178,4 +265,6 @@ New CLI surface on `ll-issues`:
 `enhancement`, `templates`, `cli`, `ll-init`, `skills`, `performance`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-24T23:05:17 - `5b067ad3-2717-49a4-bf64-d61c0eab69cc.jsonl`
+- `/ll:format-issue` - 2026-06-24T22:58:10 - `2559928a-8ef2-4ca3-879e-63d8f4134600.jsonl`
 - `/ll:capture-issue` - 2026-06-24T22:17:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d34d610-c8b9-4a5e-82c8-191296760b6d.jsonl`
