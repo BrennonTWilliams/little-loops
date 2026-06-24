@@ -6,8 +6,8 @@ status: open
 captured_at: "2026-06-24T22:29:39Z"
 discovered_date: 2026-06-24
 discovered_by: capture-issue
-parent: EPIC-2257
-relates_to: [BUG-2271, BUG-2273, ENH-2272, BUG-2275, BUG-2276, ENH-2277, BUG-938, BUG-885]
+parent: EPIC-2279
+relates_to: [EPIC-2257, BUG-2271, BUG-2273, ENH-2272, BUG-2275, BUG-2276, ENH-2277, BUG-938, BUG-885]
 decision_ref: ARCHITECTURE-053
 labels: [feature, packaging, templates, host-compat, cross-host, install]
 ---

@@ -6,7 +6,7 @@ status: open
 captured_at: "2026-06-24T00:00:00Z"
 discovered_date: 2026-06-24
 discovered_by: capture-issue
-parent: EPIC-2257
+parent: EPIC-2279
 relates_to: [BUG-2271, BUG-2273, BUG-2275, BUG-2276, FEAT-2274, BUG-885, BUG-938]
 labels: [enhancement, packaging, testing, lint, ci, install, host-compat]
 ---

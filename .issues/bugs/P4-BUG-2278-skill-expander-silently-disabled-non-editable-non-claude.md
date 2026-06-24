@@ -6,7 +6,7 @@ status: open
 captured_at: "2026-06-24T00:00:00Z"
 discovered_date: 2026-06-24
 discovered_by: capture-issue
-parent: EPIC-2257
+parent: EPIC-2279
 relates_to: [BUG-2275, FEAT-2274, ENH-2272, BUG-2273]
 labels: [bug, host-compat, cross-host, skill-expander, automation, path-resolution]
 ---

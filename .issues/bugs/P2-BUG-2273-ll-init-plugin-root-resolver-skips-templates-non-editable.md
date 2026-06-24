@@ -6,6 +6,7 @@ status: open
 captured_at: '2026-06-24T22:25:58Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
+parent: EPIC-2279
 relates_to:
 - BUG-2271
 - ENH-2272

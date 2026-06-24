@@ -72,9 +72,14 @@ epic.
 - **FEAT-2260** — Generic host-parameterized skill + command adapter
 - **FEAT-2267** — Generic host-parameterized `ll-init --upgrade` surface refresh
   (blocked by **BUG-2266** — scope-aware install detection)
-- **FEAT-2274** — Package host-agnostic `templates/` into the wheel so `ll-init`
-  + section loading work on every host via pip (with BUG-2271 / BUG-2273
-  resolver fixes + ENH-2272 deploy)
+
+## Tracked sub-epics (sequenced under this epic)
+
+- **EPIC-2279** — Wheel-self-sufficient package data + unified asset resolver
+  (packages host-agnostic `templates/` / `hooks/` / `assets/` into the wheel so
+  `ll-init` + section loading + the prompt hook + the Codex adapter work on every
+  host via pip; owns FEAT-2274 + the BUG-2271 / BUG-2273 / BUG-2275 / BUG-2276 /
+  BUG-2278 resolver fixes + ENH-2272 deploy + ENH-2277 prevention gate).
 
 ## Tracked per-host epics (sequenced under this epic)
 
