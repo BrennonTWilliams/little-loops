@@ -307,3 +307,68 @@ class TestUserPromptSubmitSkillWrite:
         monkeypatch.setattr(session_store, "connect", boom)
         result = handle(_event({"prompt": "/ll:ready-issue ENH-1833"}, cwd=str(tmp_path)))
         assert result.exit_code == 0
+
+
+class TestPromptOptimizationRender:
+    """BUG-2275: prompt optimization renders from in-package template, not module constant."""
+
+    def _write_opt_config(self, project_dir: Path) -> None:
+        ll_dir = project_dir / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        config = {
+            "prompt_optimization": {
+                "enabled": True,
+                "mode": "quick",
+                "confirm": "false",
+                "bypass_prefix": "*",
+            }
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    def test_renders_from_package_without_env_var(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """In-package fallback: render fires even with CLAUDE_PLUGIN_ROOT unset."""
+        self._write_opt_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        result = handle(_event({"prompt": "implement authentication flow"}))
+        assert result.exit_code == 0
+        assert result.stdout, "prompt optimization must render template, not return empty stdout"
+        assert "{{USER_PROMPT}}" not in result.stdout, "template placeholders must be substituted"
+        assert "implement authentication flow" in result.stdout
+
+    def test_env_var_override_uses_custom_template(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CLAUDE_PLUGIN_ROOT env var overrides the in-package template path."""
+        self._write_opt_config(tmp_path)
+
+        plugin_root = tmp_path / "custom_plugin"
+        prompts_dir = plugin_root / "hooks" / "prompts"
+        prompts_dir.mkdir(parents=True)
+        (prompts_dir / "optimize-prompt-hook.md").write_text(
+            "CUSTOM: {{USER_PROMPT}}", encoding="utf-8"
+        )
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+        result = handle(_event({"prompt": "implement authentication flow"}))
+        assert result.exit_code == 0
+        assert result.stdout.startswith("CUSTOM: "), (
+            "CLAUDE_PLUGIN_ROOT must redirect to custom template"
+        )
+
+    def test_silent_noop_when_prompt_too_short(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Prompts below _MIN_PROMPT_LENGTH bypass optimization silently."""
+        self._write_opt_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        result = handle(_event({"prompt": "short"}))
+        assert result.exit_code == 0
+        assert not result.stdout

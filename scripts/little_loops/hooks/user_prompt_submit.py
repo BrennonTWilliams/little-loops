@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -32,11 +33,15 @@ _NO_CONFIG_MSG = (
     "[little-loops] No config found. Run ll-init to set up little-loops for this project."
 )
 
-# Navigate from this file up to the plugin root, then into hooks/prompts/.
-# Path: scripts/little_loops/hooks/user_prompt_submit.py → parents[3] = repo root.
-_PROMPT_FILE = Path(__file__).resolve().parents[3] / "hooks" / "prompts" / "optimize-prompt-hook.md"
-
 _MIN_PROMPT_LENGTH = 10
+
+
+def _find_prompt_file() -> Path:
+    """Resolve the optimize-prompt-hook template: env-var-first, then in-package fallback."""
+    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env_root:
+        return Path(env_root) / "hooks" / "prompts" / "optimize-prompt-hook.md"
+    return Path(__file__).parent / "prompts" / "optimize-prompt-hook.md"
 
 
 def _load_config(cwd: Path) -> dict[str, Any] | None:
@@ -110,11 +115,12 @@ def handle(event: LLHookEvent) -> LLHookResult:
     if len(user_prompt) < _MIN_PROMPT_LENGTH:
         return LLHookResult(exit_code=0)
 
-    if not _PROMPT_FILE.is_file():
+    prompt_file = _find_prompt_file()
+    if not prompt_file.is_file():
         return LLHookResult(exit_code=0)
 
     try:
-        template = _PROMPT_FILE.read_text(encoding="utf-8")
+        template = prompt_file.read_text(encoding="utf-8")
     except OSError:
         return LLHookResult(exit_code=0)
 

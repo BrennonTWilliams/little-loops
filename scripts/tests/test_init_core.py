@@ -901,6 +901,8 @@ class TestInstallCodexAdapter:
         return plugin_root
 
     def test_installs_adapter(self, tmp_path: Path) -> None:
+        import little_loops.init.writers as writers_mod
+
         project_root = tmp_path / "project"
         project_root.mkdir()
         plugin_root = self._make_plugin_root(tmp_path)
@@ -909,7 +911,8 @@ class TestInstallCodexAdapter:
         dest = project_root / ".codex" / "hooks.json"
         assert dest.exists()
         content = dest.read_text()
-        assert str(plugin_root) in content
+        # Substitution value is the in-package little_loops root (not plugin_root)
+        assert str(Path(writers_mod.__file__).parent.parent) in content
         assert "{{LL_PLUGIN_ROOT}}" not in content
 
     def test_skips_existing_without_force(self, tmp_path: Path) -> None:
@@ -939,13 +942,18 @@ class TestInstallCodexAdapter:
         assert not (project_root / ".codex" / "hooks.json").exists()
         assert "[write]" in capsys.readouterr().out
 
-    def test_skips_when_template_missing(self, tmp_path: Path) -> None:
+    def test_skips_when_template_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.init import writers as writers_mod
+
         project_root = tmp_path / "project"
         project_root.mkdir()
-        plugin_root = tmp_path / "empty_plugin"
-        plugin_root.mkdir()
-        installed = install_codex_adapter(project_root, plugin_root)
-        assert installed is False
+        monkeypatch.setattr(
+            writers_mod, "_codex_template_path", lambda: tmp_path / "nonexistent" / "hooks.json"
+        )
+        installed = install_codex_adapter(project_root, tmp_path)
+        assert installed is None
 
 
 # ===========================================================================
@@ -1601,11 +1609,6 @@ class TestDetectHosts:
 
 
 class TestHostDispatch:
-    @pytest.mark.xfail(
-        reason="BUG-2275: install_codex_adapter() path not yet updated to in-package "
-        "hooks/adapters/codex/hooks.json after FEAT-2274 git mv",
-        strict=True,
-    )
     def test_hosts_codex_installs_adapter(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 
@@ -1633,11 +1636,6 @@ class TestHostDispatch:
         assert code == 0
         assert "not yet available" in capsys.readouterr().out
 
-    @pytest.mark.xfail(
-        reason="BUG-2275: install_codex_adapter() path not yet updated to in-package "
-        "hooks/adapters/codex/hooks.json after FEAT-2274 git mv",
-        strict=True,
-    )
     def test_hosts_comma_separated(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 
@@ -1646,11 +1644,6 @@ class TestHostDispatch:
         assert code == 0
         assert (tmp_project / ".codex" / "hooks.json").exists()
 
-    @pytest.mark.xfail(
-        reason="BUG-2275: install_codex_adapter() path not yet updated to in-package "
-        "hooks/adapters/codex/hooks.json after FEAT-2274 git mv",
-        strict=True,
-    )
     def test_codex_deprecated_alias_still_works(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 

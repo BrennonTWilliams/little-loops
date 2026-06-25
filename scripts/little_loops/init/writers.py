@@ -6,7 +6,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from little_loops.file_utils import atomic_write, atomic_write_json
 
@@ -375,39 +375,45 @@ def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
     return True
 
 
+def _codex_template_path() -> Path:
+    """Return the in-package path to the Codex adapter hooks.json template."""
+    return Path(__file__).parent.parent / "hooks" / "adapters" / "codex" / "hooks.json"
+
+
 def install_codex_adapter(
     project_root: Path,
     plugin_root: Path,
     force: bool = False,
     dry_run: bool = False,
-) -> bool:
-    """Write .codex/hooks.json from the Codex adapter template.
+) -> Optional[bool]:
+    """Write .codex/hooks.json from the in-package Codex adapter template.
 
-    Reads ``hooks/adapters/codex/hooks.json`` (plugin-relative), substitutes
-    the ``{{LL_PLUGIN_ROOT}}`` placeholder with the absolute *plugin_root*
-    path, and writes the result to ``<project_root>/.codex/hooks.json``.
+    Reads ``little_loops/hooks/adapters/codex/hooks.json`` from the installed
+    package, substitutes ``{{LL_PLUGIN_ROOT}}`` with the ``little_loops``
+    package directory, and writes the result to ``<project_root>/.codex/hooks.json``.
 
     Args:
         project_root: Project root directory.
-        plugin_root: Absolute path to the little-loops plugin root.
+        plugin_root: Unused; kept for call-site compatibility.
         force: If True, overwrite an existing .codex/hooks.json.
         dry_run: If True, print planned write; do not modify files.
 
     Returns:
-        True if written; False if skipped (already exists without --force, or
-        template not found).
+        True if written; False if skipped (dest already exists without --force);
+        None if the source template is missing (package install corrupted).
     """
-    template_path = plugin_root / "hooks" / "adapters" / "codex" / "hooks.json"
+    template_path = _codex_template_path()
     dest = project_root / ".codex" / "hooks.json"
 
     if not template_path.exists():
-        return False
+        return None
 
     if dest.exists() and not force:
         return False
 
+    package_root = str(Path(__file__).parent.parent)
     rendered = template_path.read_text(encoding="utf-8").replace(
-        "{{LL_PLUGIN_ROOT}}", str(plugin_root)
+        "{{LL_PLUGIN_ROOT}}", package_root
     )
 
     if dry_run:

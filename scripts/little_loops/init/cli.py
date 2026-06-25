@@ -79,7 +79,15 @@ def _dispatch_host_adapters(
             installed = install_codex_adapter(
                 project_root, plugin_root, force=force, dry_run=dry_run
             )
-            if installed and not dry_run:
+            if installed is None:
+                import sys as _sys
+
+                print(
+                    "[Codex] Warning: adapter template not found in package install; "
+                    ".codex/hooks.json was not written.",
+                    file=_sys.stderr,
+                )
+            elif installed and not dry_run:
                 print("[Codex] Hook adapter installed to .codex/hooks.json")
                 print(
                     "[Codex] Note: Codex will show a hook-trust dialog on next session start. "

@@ -29,9 +29,9 @@ pytestmark = pytest.mark.skipif(_BASH is None, reason="bash not available on PAT
 BASH: str = _BASH or "bash"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ADAPTER_DIR = REPO_ROOT / "hooks" / "adapters" / "codex"
-# hooks.json ships inside the package (FEAT-2274); shell scripts stay at repo root
-HOOKS_JSON_DIR = REPO_ROOT / "scripts" / "little_loops" / "hooks" / "adapters" / "codex"
+# All adapter files (hooks.json + shell scripts) now ship inside the package (BUG-2275)
+ADAPTER_DIR = REPO_ROOT / "scripts" / "little_loops" / "hooks" / "adapters" / "codex"
+HOOKS_JSON_DIR = ADAPTER_DIR
 SESSION_START = ADAPTER_DIR / "session-start.sh"
 PRE_COMPACT = ADAPTER_DIR / "pre-compact.sh"
 PROMPT_SUBMIT = ADAPTER_DIR / "prompt-submit.sh"
@@ -42,13 +42,13 @@ class TestCodexAdapterIntegration:
     """End-to-end adapter tests via bash + the real Python dispatcher."""
 
     def test_adapter_files_exist(self) -> None:
-        """The adapter directory ships session-start.sh, pre-compact.sh, prompt-submit.sh, post-tool-use.sh, hooks.json, README.md."""
+        """The adapter directory ships session-start.sh, pre-compact.sh, prompt-submit.sh, post-tool-use.sh, hooks.json; README.md stays at repo-root hooks/adapters/codex/."""
         assert SESSION_START.is_file()
         assert PRE_COMPACT.is_file()
         assert PROMPT_SUBMIT.is_file()
         assert POST_TOOL_USE.is_file()
         assert (HOOKS_JSON_DIR / "hooks.json").is_file()
-        assert (ADAPTER_DIR / "README.md").is_file()
+        assert (REPO_ROOT / "hooks" / "adapters" / "codex" / "README.md").is_file()
 
     def test_adapter_scripts_are_executable(self) -> None:
         """Bash adapter scripts must be marked executable so Codex can `bash` them."""

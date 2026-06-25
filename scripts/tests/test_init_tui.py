@@ -628,11 +628,6 @@ class TestHostSelection:
 
         assert rc == 130
 
-    @pytest.mark.xfail(
-        reason="BUG-2275: install_codex_adapter() path not yet updated to in-package "
-        "hooks/adapters/codex/hooks.json after FEAT-2274 git mv",
-        strict=True,
-    )
     @patch("little_loops.init.tui.questionary")
     def test_codex_host_installs_adapter(self, mock_q: MagicMock, tmp_path: Path) -> None:
         plugin_root = _PLUGIN_ROOT  # real plugin root has the adapter template
