@@ -9,8 +9,6 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.cli.verify_package_data import (
-    EscapeViolation,
-    LintResult,
     _ALLOWLIST,
     _count_parent_steps,
     _file_depth,
@@ -26,7 +24,6 @@ from little_loops.cli.verify_package_data import (
 
 def _re_match(pattern_text: str):
     """Return the first regex match for a Path(__file__) expression."""
-    import re
 
     from little_loops.cli.verify_package_data import _FILE_ESCAPE_RE
 
@@ -234,9 +231,7 @@ class TestRunEscapeLint:
     def test_clean_package_returns_empty(self, tmp_path: Path) -> None:
         """Package with only in-package reads → no results."""
         pkg = _make_pkg(tmp_path)
-        (pkg / "logo.py").write_text(
-            'p = Path(__file__).parent / "assets" / "ll-cli-logo.txt"\n'
-        )
+        (pkg / "logo.py").write_text('p = Path(__file__).parent / "assets" / "ll-cli-logo.txt"\n')
         results = run_escape_lint(pkg)
         assert results == []
 
@@ -244,9 +239,7 @@ class TestRunEscapeLint:
         """One escaping file → one result."""
         pkg = _make_pkg(tmp_path)
         (pkg / "hooks").mkdir()
-        (pkg / "hooks" / "bad.py").write_text(
-            "f = Path(__file__).resolve().parents[3] / 'x'\n"
-        )
+        (pkg / "hooks" / "bad.py").write_text("f = Path(__file__).resolve().parents[3] / 'x'\n")
         results = run_escape_lint(pkg)
         assert len(results) == 1
         assert "hooks/bad.py" in results[0].rel_path
@@ -290,9 +283,7 @@ class TestMainVerifyPackageData:
         """File with __file__ escape + --lint-only → exit 1."""
         pkg = self._pkg(tmp_path)
         (pkg / "hooks").mkdir()
-        (pkg / "hooks" / "bad.py").write_text(
-            "_F = Path(__file__).resolve().parents[3] / 'x'\n"
-        )
+        (pkg / "hooks" / "bad.py").write_text("_F = Path(__file__).resolve().parents[3] / 'x'\n")
         with (
             patch("sys.argv", ["ll-verify-package-data", "-C", str(tmp_path), "--lint-only"]),
             patch("builtins.print"),

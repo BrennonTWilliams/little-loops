@@ -444,9 +444,7 @@ class TestAssessLoopSkill:
         step2_start = content.index("## Step 2:")
         step3_start = content.index("## Step 3:")
         step2_section = content[step2_start:step3_start]
-        assert "wc -l" in step2_section, (
-            "Step 2 must use 'wc -l' to derive the total event count"
-        )
+        assert "wc -l" in step2_section, "Step 2 must use 'wc -l' to derive the total event count"
         assert "events.jsonl" in step2_section, (
             "Step 2 must reference 'events.jsonl' for the event count derivation"
         )

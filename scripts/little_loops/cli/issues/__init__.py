@@ -379,7 +379,9 @@ Examples:
         sec_p.set_defaults(command="sections")
         sec_p.add_argument("type", help="Issue type: bug, feat, enh, or epic")
         sec_p.add_argument(
-            "--path", action="store_true", help="Print path to template file instead of JSON content"
+            "--path",
+            action="store_true",
+            help="Print path to template file instead of JSON content",
         )
         add_config_arg(sec_p)
 

@@ -39,9 +39,7 @@ class TestSectionsJsonOutput:
         """Each valid type prints valid JSON to stdout, exit 0."""
         _write_config(temp_project_dir, sample_config)
 
-        result = _invoke(
-            ["ll-issues", "sections", issue_type, "--config", str(temp_project_dir)]
-        )
+        result = _invoke(["ll-issues", "sections", issue_type, "--config", str(temp_project_dir)])
         out, _ = capsys.readouterr()
 
         assert result == 0
@@ -121,9 +119,7 @@ class TestSectionsInvalidType:
         """Invalid type exits 1 with error message to stderr."""
         _write_config(temp_project_dir, sample_config)
 
-        result = _invoke(
-            ["ll-issues", "sections", "invalid", "--config", str(temp_project_dir)]
-        )
+        result = _invoke(["ll-issues", "sections", "invalid", "--config", str(temp_project_dir)])
         _, err = capsys.readouterr()
 
         assert result == 1
@@ -138,9 +134,7 @@ class TestSectionsInvalidType:
         """Error message mentions the bad type value."""
         _write_config(temp_project_dir, sample_config)
 
-        result = _invoke(
-            ["ll-issues", "sections", "badtype", "--config", str(temp_project_dir)]
-        )
+        result = _invoke(["ll-issues", "sections", "badtype", "--config", str(temp_project_dir)])
         _, err = capsys.readouterr()
 
         assert result == 1
@@ -195,9 +189,7 @@ class TestSectionsResolverTiers:
         custom_content = '{"custom": true}'
         (ll_templates / "bug-sections.json").write_text(custom_content)
 
-        result = _invoke(
-            ["ll-issues", "sections", "bug", "--config", str(temp_project_dir)]
-        )
+        result = _invoke(["ll-issues", "sections", "bug", "--config", str(temp_project_dir)])
         out, _ = capsys.readouterr()
 
         assert result == 0
@@ -229,9 +221,7 @@ class TestSectionsResolverTiers:
         ll_templates.mkdir(parents=True, exist_ok=True)
         (ll_templates / "feat-sections.json").write_text('{"project_local": true}')
 
-        result = _invoke(
-            ["ll-issues", "sections", "feat", "--config", str(temp_project_dir)]
-        )
+        result = _invoke(["ll-issues", "sections", "feat", "--config", str(temp_project_dir)])
         out, _ = capsys.readouterr()
 
         assert result == 0

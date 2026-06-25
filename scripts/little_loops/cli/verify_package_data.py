@@ -33,7 +33,7 @@ from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 # Paths are relative to the little_loops package root, using forward slashes.
 _ALLOWLIST: frozenset[str] = frozenset(
     {
-        "init/cli.py",        # canonical _plugin_root() resolver — intentional traversal
+        "init/cli.py",  # canonical _plugin_root() resolver — intentional traversal
         "skill_expander.py",  # _find_plugin_root() — same pattern as shared resolver
     }
 )

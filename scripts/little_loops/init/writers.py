@@ -412,9 +412,7 @@ def install_codex_adapter(
         return False
 
     package_root = str(Path(__file__).parent.parent)
-    rendered = template_path.read_text(encoding="utf-8").replace(
-        "{{LL_PLUGIN_ROOT}}", package_root
-    )
+    rendered = template_path.read_text(encoding="utf-8").replace("{{LL_PLUGIN_ROOT}}", package_root)
 
     if dry_run:
         print("[write] .codex/hooks.json")

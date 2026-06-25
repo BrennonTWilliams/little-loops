@@ -401,9 +401,7 @@ class TestReportAndTerminal:
         assert "decomposed_count.txt" in action, (
             "report must read decomposed count from decomposed_count.txt"
         )
-        assert "skipped.txt" in action, (
-            "report must read skipped count from skipped.txt"
-        )
+        assert "skipped.txt" in action, "report must read skipped count from skipped.txt"
 
 
 # ---------------------------------------------------------------------------
@@ -704,9 +702,7 @@ class TestParentClassifier:
                 stripped = line.strip()
                 writes = ">>" in stripped and "skipped.txt" in stripped
                 writes = writes or (
-                    "skipped.txt" in stripped
-                    and stripped.startswith(":")
-                    and ">" in stripped
+                    "skipped.txt" in stripped and stripped.startswith(":") and ">" in stripped
                 )
                 if writes and name not in allowed_writers:
                     raise AssertionError(

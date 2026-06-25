@@ -71,9 +71,7 @@ class TestDeployIssueTemplates:
         assert not (ll_dir / "templates").exists()
         assert "[write]" in capsys.readouterr().out
 
-    def test_skips_if_no_section_files(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_skips_if_no_section_files(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         tdir = tmp_path / "templates"
         tdir.mkdir()
         (tdir / "python.json").write_text("{}")  # no *-sections.json

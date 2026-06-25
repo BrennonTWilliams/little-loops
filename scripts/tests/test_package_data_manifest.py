@@ -28,7 +28,9 @@ class TestPackageDataManifest:
             f"via importlib.resources: {missing}"
         )
 
-    @pytest.mark.parametrize("parts", list(PACKAGE_DATA_ASSETS), ids=["/".join(p) for p in PACKAGE_DATA_ASSETS])
+    @pytest.mark.parametrize(
+        "parts", list(PACKAGE_DATA_ASSETS), ids=["/".join(p) for p in PACKAGE_DATA_ASSETS]
+    )
     def test_individual_asset_accessible(self, parts: tuple[str, ...]) -> None:
         """Each registered asset is individually accessible."""
         assert check_asset_accessible(parts), (

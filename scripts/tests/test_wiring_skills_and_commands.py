@@ -213,7 +213,11 @@ DOC_STRINGS_ABSENT: list[tuple[str, str, str]] = [
     ("docs/reference/loops.md", ".loops/tmp/harness-optimize-trajectory.jsonl", "ENH-1557"),
     ("skills/explore-api/SKILL.md", "29 skills", "FEAT-1287"),
     ("agents/consistency-checker.md", "| hooks/prompts/optimize-prompt-hook.md |", "ENH-2291"),
-    (".codex/agents/consistency-checker.toml", "| hooks/prompts/optimize-prompt-hook.md |", "ENH-2291"),
+    (
+        ".codex/agents/consistency-checker.toml",
+        "| hooks/prompts/optimize-prompt-hook.md |",
+        "ENH-2291",
+    ),
 ]
 
 

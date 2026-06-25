@@ -224,9 +224,7 @@ class TestHappyPath:
         assert (tmp_path / ".ll" / "design-tokens" / "profiles").is_dir()
 
     @patch("little_loops.init.tui.questionary")
-    def test_deploy_issue_templates_via_tui(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_deploy_issue_templates_via_tui(self, mock_q: MagicMock, tmp_path: Path) -> None:
         from little_loops.init import tui as tui_mod
 
         real_build = tui_mod._build_final_config

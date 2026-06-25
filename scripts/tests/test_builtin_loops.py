@@ -6519,9 +6519,7 @@ class TestPlanResearchIterationOracle:
             for key in ("next", "on_yes", "on_no", "on_error", "on_partial"):
                 if state.get(key) == "synthesize":
                     offenders.append(f"{name}.{key}")
-        assert not offenders, (
-            f"only check_research may route to synthesize; offenders: {offenders}"
-        )
+        assert not offenders, f"only check_research may route to synthesize; offenders: {offenders}"
 
     def test_states_use_context_run_dir(self, data: dict) -> None:
         """All prompt state bodies must reference ${context.run_dir}, not ${captured.*}."""
