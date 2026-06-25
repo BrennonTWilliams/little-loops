@@ -51,6 +51,12 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.command == "discover"
 
+    def test_tail_project_flag(self) -> None:
+        """tail --project sets project path as a Path object."""
+        with patch("sys.argv", ["ll-logs", "tail", "--loop", "myloop", "--project", "/tmp"]):
+            args = _parse_args()
+        assert args.project == Path("/tmp")
+
 
 class TestDiscover:
     """Integration tests for the discover subcommand."""
@@ -555,6 +561,32 @@ class TestTail:
         assert result == 0
         captured = capsys.readouterr()
         assert captured.out == ""
+
+    def test_tail_project_not_found_returns_1(self) -> None:
+        """tail --project pointing at a nonexistent dir returns 1 (no active session)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            nonexistent = Path(tmpdir) / "nosuchproject"
+
+            with patch("sys.argv", ["ll-logs", "tail", "--loop", "myloop", "--project", str(nonexistent)]):
+                result = main_logs()
+
+        assert result == 1
+
+    def test_tail_uses_project_loops_dir(self) -> None:
+        """tail --project resolves loops dir from given project root, not CWD."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            alt_root = Path(tmpdir) / "alt-project"
+            alt_root.mkdir()
+            loops_dir = alt_root / ".loops"
+            running_dir = loops_dir / ".running"
+            running_dir.mkdir(parents=True, exist_ok=True)
+            (running_dir / "myloop.events.jsonl").write_text("")
+
+            args = argparse.Namespace(loop="myloop", project=alt_root)
+            with patch("little_loops.cli.logs.time.sleep", side_effect=KeyboardInterrupt):
+                result = _cmd_tail(args, loops_dir)
+
+        assert result == 0
 
 
 class TestIsLlRelevantAssistantBash:

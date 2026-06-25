@@ -3729,7 +3729,7 @@ Entry point for `ll-logs` command. Discover, extract, sequence, and tail Claude 
     skill_name: refine-issue
     pii_detected: false
   ```
-- `tail` — Stream live events from an active loop session; requires `--loop NAME`
+- `tail` — Stream live events from an active loop session; requires `--loop NAME`; optional `--project DIR`
 
 ---
 

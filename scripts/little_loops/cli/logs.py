@@ -1685,6 +1685,9 @@ Examples:
         help="Stream live events from an active loop session",
     )
     tail_parser.add_argument("--loop", required=True, metavar="NAME", help="Loop name to tail")
+    tail_parser.add_argument(
+        "--project", type=Path, metavar="DIR", help="Project root to tail loops from (default: CWD)"
+    )
 
     extract_parser = subparsers.add_parser(
         "extract",
@@ -1933,7 +1936,8 @@ def main_logs() -> int:
             return 0
 
         if args.command == "tail":
-            config = BRConfig(Path.cwd())
+            project_root = args.project if args.project else Path.cwd()
+            config = BRConfig(project_root)
             loops_dir = Path(config.loops.loops_dir)
             return _cmd_tail(args, loops_dir)
 

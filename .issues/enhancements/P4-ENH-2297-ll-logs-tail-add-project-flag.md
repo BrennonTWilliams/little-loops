@@ -3,8 +3,9 @@ id: ENH-2297
 title: Add --project DIR flag to ll-logs tail for cross-project consistency
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-25T18:52:54Z'
+completed_at: '2026-06-25T19:27:31Z'
 discovered_date: '2026-06-25'
 discovered_by: capture-issue
 confidence_score: 100
@@ -135,6 +136,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-06-25 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T19:20:36 - `8d59f7ef-ae6d-4a57-8d5e-f4d1877a0d64.jsonl`
 - `/ll:confidence-check` - 2026-06-25T20:00:00Z - `c21ec4d9-b5a5-41b5-8ddb-c973d34b23b3.jsonl`
 - `/ll:wire-issue` - 2026-06-25T19:09:16 - `16886653-9d7a-446b-b2a5-0cf6603480f4.jsonl`
 - `/ll:refine-issue` - 2026-06-25T19:02:30 - `853a5f56-2b9f-4b28-ab01-3785b3961b4d.jsonl`

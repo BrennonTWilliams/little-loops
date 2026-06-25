@@ -1995,6 +1995,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | Flag | Description |
 |------|-------------|
 | `--loop NAME` | Loop name to tail (required) |
+| `--project DIR` | Project root to tail loops from (default: CWD) |
 
 **`extract` flags:**
 
