@@ -108,7 +108,7 @@ Audit all plugin component definitions:
 - Process/workflow clarity
 - Integration documentation
 
-**Hooks** (hooks/hooks.json + hooks/prompts/*.md):
+**Hooks** (hooks/hooks.json + hooks/prompts/*.md + scripts/little_loops/hooks/prompts/*.md):
 - Valid JSON syntax
 - Recognized event types (17 official types)
 - Handler types: command, prompt, agent

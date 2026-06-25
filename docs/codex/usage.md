@@ -136,4 +136,4 @@ This support is marked `"partial"` in `describe_capabilities` because the schema
 - [Getting Started](getting-started.md) — install, trust prompt, skill discovery
 - [Host Compatibility Matrix](../reference/HOST_COMPATIBILITY.md) — authoritative per-host feature matrix
 - [Troubleshooting](../development/TROUBLESHOOTING.md) — `HostNotConfigured`, hook trust, binary detection
-- [Codex adapter source](../../hooks/adapters/codex/) — transport shims and trust-model details
+- [Codex adapter source](../../scripts/little_loops/hooks/adapters/codex/) — transport shims and trust-model details

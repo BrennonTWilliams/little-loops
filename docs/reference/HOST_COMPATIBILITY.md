@@ -257,7 +257,7 @@ without invoking the adapter.
 
 - Claude Code: [`hooks/adapters/claude-code/`](../../hooks/adapters/claude-code/) — Bash shim
 - OpenCode: [`hooks/adapters/opencode/`](../../hooks/adapters/opencode/) — TypeScript/Bun plugin
-- Codex CLI: [`hooks/adapters/codex/`](../../hooks/adapters/codex/) — Bash shim with `matcher: "startup"`
+- Codex CLI: [`scripts/little_loops/hooks/adapters/codex/`](../../scripts/little_loops/hooks/adapters/codex/) — Bash shim with `matcher: "startup"`
 
 Each adapter is a thin transport (`spawn → set env → pipe stdin → exit`);
 all real logic lives in `scripts/little_loops/hooks/`.

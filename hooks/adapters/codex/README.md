@@ -16,7 +16,7 @@ logic lives in this adapter; it is purely a transport.
 ## Installation
 
 `ll:init --codex` writes a `.codex/hooks.json` into the user's project from
-the [`hooks.json`](./hooks.json) template, substituting `{{LL_PLUGIN_ROOT}}`
+the [`hooks.json`](../../../scripts/little_loops/hooks/adapters/codex/hooks.json) template, substituting `{{LL_PLUGIN_ROOT}}`
 with the absolute path of the installed little-loops plugin. The user must
 then accept the hook-trust dialog the next time they start Codex CLI.
 
@@ -198,7 +198,7 @@ issue — do not silently expand `LL_STATE_DIR`'s reach here.
 
 The Python-side integration test at
 `scripts/tests/test_codex_adapter.py` exercises this adapter end-to-end via
-`bash hooks/adapters/codex/session-start.sh` (and the sibling shims for
+`bash scripts/little_loops/hooks/adapters/codex/session-start.sh` (and the sibling shims for
 `pre-compact`, `prompt-submit`, `post-tool-use`). It is automatically
 skipped if `bash` is not available on `PATH`.
 

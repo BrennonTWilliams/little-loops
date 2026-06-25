@@ -2,8 +2,9 @@
 id: ENH-2291
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-25T14:15:33Z'
+completed_at: '2026-06-25T15:43:05Z'
 discovered_date: 2026-06-25
 discovered_by: capture-issue
 parent: EPIC-2279
@@ -177,6 +178,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-06-25 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T15:22:37 - `02ed0980-bc4d-438c-9277-bc9920bcdd34.jsonl`
 - `/ll:wire-issue` - 2026-06-25T14:48:37 - `d2156314-5c57-4a4a-a962-c97a00142626.jsonl`
 - `/ll:refine-issue` - 2026-06-25T14:38:39 - `03ab1b2b-04bc-4023-8ad7-999a9f5fcd1c.jsonl`
 - `/ll:format-issue` - 2026-06-25T14:21:47 - `9c3a5bf0-be76-4e09-80f3-6eeb965681b5.jsonl`

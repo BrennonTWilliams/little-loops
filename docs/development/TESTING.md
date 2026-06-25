@@ -900,7 +900,7 @@ def run_hook_intent():
 
     Mirrors how `hooks/adapters/claude-code/<event>.sh`,
     `hooks/adapters/opencode/index.ts`, and
-    `hooks/adapters/codex/<event>.sh` call into `little_loops.hooks`.
+    `scripts/little_loops/hooks/adapters/codex/<event>.sh` call into `little_loops.hooks`.
     Flip the `host` argument to reproduce each adapter's `LL_HOOK_HOST`
     (e.g. `"claude-code"`, `"opencode"`, `"codex"`).
     """

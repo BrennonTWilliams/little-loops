@@ -81,8 +81,7 @@ little-loops/
 ├── hooks/                   # Lifecycle hooks and validation scripts
 │   ├── hooks.json           # Hook configuration
 │   ├── prompts/
-│   │   ├── continuation-prompt-template.md  # Handoff prompt template
-│   │   └── optimize-prompt-hook.md          # Prompt optimization hook
+│   │   └── continuation-prompt-template.md  # Handoff prompt template
 │   ├── adapters/            # Host-specific adapters → little_loops.hooks dispatcher
 │   │   ├── claude-code/
 │   │   │   ├── post-tool-use.sh
@@ -96,11 +95,7 @@ little-loops/
 │   │   │   ├── package.json
 │   │   │   ├── tsconfig.json
 │   │   │   └── README.md
-│   │   └── codex/           # Codex CLI bash adapter (Rust host, shell-command hooks)
-│   │       ├── session-start.sh  # SessionStart matcher=startup → session_start (sets LL_HOOK_HOST=codex)
-│   │       ├── pre-compact.sh    # PreCompact → pre_compact (sets LL_HOOK_HOST=codex)
-│   │       ├── prompt-submit.sh  # UserPromptSubmit → user_prompt_submit (sets LL_HOOK_HOST=codex)
-│   │       ├── hooks.json        # Template written to .codex/hooks.json by ll-init --hosts codex
+│   │   └── codex/           # Codex CLI bash adapter — scripts and hooks.json moved in-package (FEAT-2274/BUG-2275)
 │   │       └── README.md
 │   └── scripts/             # Hook scripts
 │       ├── check-duplicate-issue-id.sh
@@ -336,7 +331,11 @@ little-loops/
             │   └── optimize-prompt-hook.md  # Package data: prompt optimization template
             └── adapters/
                 └── codex/
-                    └── hooks.json   # Package data: Codex adapter hooks template
+                    ├── hooks.json        # Package data: Codex adapter hooks template
+                    ├── session-start.sh  # SessionStart → session_start (sets LL_HOOK_HOST=codex)
+                    ├── pre-compact.sh    # PreCompact → pre_compact (sets LL_HOOK_HOST=codex)
+                    ├── prompt-submit.sh  # UserPromptSubmit → user_prompt_submit (sets LL_HOOK_HOST=codex)
+                    └── post-tool-use.sh  # PostToolUse → post_tool_use (sets LL_HOOK_HOST=codex)
 ```
 
 ---

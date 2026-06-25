@@ -65,7 +65,7 @@ You are a specialist at validating cross-component consistency in Claude Code pl
 | Source | Target | What to Check |
 |--------|--------|---------------|
 | commands/*.md | agents/*.md | subagent_type="X" → agents/X.md exists |
-| hooks/hooks.json | hooks/prompts/*.md | "prompt": "path" → file exists |
+| hooks/hooks.json | hooks/prompts/*.md, scripts/little_loops/hooks/prompts/*.md | "prompt": "path" → file exists |
 | .ll/ll-config.json | config-schema.json | Values match schema types |
 | CLAUDE.md | commands/*.md | /ll:X mentioned → commands/X.md exists |
 | skills/*/SKILL.md | commands/*.md | /ll:X referenced → commands/X.md or skills/X/ exists |
@@ -166,7 +166,7 @@ Structure your consistency check like this:
 #### Hooks → Prompts
 | Hook Event | Prompt Path | Resolved Path | Status |
 |------------|-------------|---------------|--------|
-| UserPromptSubmit | optimize-prompt-hook.md | hooks/prompts/optimize-prompt-hook.md | OK |
+| UserPromptSubmit | optimize-prompt-hook.md | scripts/little_loops/hooks/prompts/optimize-prompt-hook.md | OK |
 | ... | ... | ... | ... |
 
 #### CLAUDE.md → Commands

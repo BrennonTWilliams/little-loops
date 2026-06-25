@@ -850,8 +850,8 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
    chmod +x hooks/adapters/claude-code/precompact-handoff.sh
    chmod +x hooks/adapters/claude-code/session-end.sh
    chmod +x hooks/adapters/claude-code/session-start.sh
-   chmod +x hooks/adapters/codex/session-start.sh
-   chmod +x hooks/adapters/codex/pre-compact.sh
+   chmod +x scripts/little_loops/hooks/adapters/codex/session-start.sh
+   chmod +x scripts/little_loops/hooks/adapters/codex/pre-compact.sh
    chmod +x hooks/scripts/scratch-pad-redirect.sh
    ```
 
@@ -1119,7 +1119,7 @@ python -m pytest scripts/tests/test_hooks_integration.py -v -s
    - context-monitor.sh: 3s timeout
    - check-duplicate-issue-id.sh: 3s timeout (PreToolUse lock)
    - check-duplicate-issue-id-post.sh: no lock (PostToolUse reactive deletion; overall hook timeout 5s)
-   - little_loops.hooks.pre_compact: 3s lock timeout (Python handler invoked via hooks/adapters/claude-code/precompact.sh, hooks/adapters/opencode/index.ts on the `session.compacted` event, or hooks/adapters/codex/pre-compact.sh on Codex's `PreCompact` event)
+   - little_loops.hooks.pre_compact: 3s lock timeout (Python handler invoked via hooks/adapters/claude-code/precompact.sh, hooks/adapters/opencode/index.ts on the `session.compacted` event, or scripts/little_loops/hooks/adapters/codex/pre-compact.sh on Codex's `PreCompact` event)
    - little_loops.hooks.pre_compact_handoff: 3s lock timeout (Python handler invoked via hooks/adapters/claude-code/precompact-handoff.sh; writes .ll/ll-continue-prompt.md atomically after reading .ll/ll-precompact-state.json idempotency guard)
 3. Monitor lock files during operation:
    ```bash

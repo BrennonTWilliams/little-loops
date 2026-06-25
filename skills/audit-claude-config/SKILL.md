@@ -134,7 +134,7 @@ See [wave1-prompts.md](wave1-prompts.md#task-1-claudemd-auditor) for the full ve
 
 `subagent_type="plugin-config-auditor"` — audits agents (`agents/*.md`), skills
 (`skills/*.md`), commands (`commands/*.md`), and hooks (`hooks/hooks.json` +
-`hooks/prompts/*.md`). Checks description quality, frontmatter completeness,
+`hooks/prompts/*.md` + `scripts/little_loops/hooks/prompts/*.md`). Checks description quality, frontmatter completeness,
 tool appropriateness, JSON validity, recognized event/handler types, and timeout
 defaults. Returns a per-component summary table, severity-tagged issues, quality
 scores, and reference lists (subagent_type values, prompt file paths, /ll:X

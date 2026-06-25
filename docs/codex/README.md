@@ -21,7 +21,7 @@ little-loops integrates with [OpenAI Codex CLI](https://github.com/openai/codex)
 | `post_compact` | deferred — no current consumer |
 | `permission_request` | deferred — no current consumer |
 
-Hook intents reach the same host-agnostic Python dispatcher (`scripts/little_loops/hooks/`) as Claude Code and OpenCode. The Codex adapter (`hooks/adapters/codex/`) is a thin Bash shim with no logic of its own.
+Hook intents reach the same host-agnostic Python dispatcher (`scripts/little_loops/hooks/`) as Claude Code and OpenCode. The Codex adapter scripts (`scripts/little_loops/hooks/adapters/codex/`) are thin Bash shims with no logic of their own; `hooks/adapters/codex/` retains only the README.
 
 ### Orchestration CLIs
 

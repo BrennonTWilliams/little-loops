@@ -6797,7 +6797,7 @@ def main_hooks(argv: list[str]) -> int: ...
 **Adapter integration:**
 - Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `precompact-handoff.sh`, `post-tool-use.sh`, `session-start.sh`, `session-end.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
 - The OpenCode adapter (`hooks/adapters/opencode/index.ts`) sets `LL_HOOK_HOST=opencode` before invoking the same CLI.
-- The Codex CLI adapter (`hooks/adapters/codex/session-start.sh`, `pre-compact.sh`) sets `LL_HOOK_HOST=codex` before invoking the same CLI. The `hooks.json` template restricts `SessionStart` to `"matcher": "startup"` per FEAT-957's policy (avoids re-emitting identifiers on `resume`/`clear` and minimizes trust-hash churn).
+- The Codex CLI adapter (`scripts/little_loops/hooks/adapters/codex/session-start.sh`, `pre-compact.sh`) sets `LL_HOOK_HOST=codex` before invoking the same CLI. The `hooks.json` template restricts `SessionStart` to `"matcher": "startup"` per FEAT-957's policy (avoids re-emitting identifiers on `resume`/`clear` and minimizes trust-hash churn).
 
 ---
 

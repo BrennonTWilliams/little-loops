@@ -66,7 +66,7 @@ file:<project>/.codex/hooks.json:user_prompt_submit:0:0
 file:<project>/.codex/hooks.json:post_tool_use:0:0
 ```
 
-Because the hash covers the **command string** in `hooks.json` (not the script body), updates to the Python package that only change `hooks/adapters/codex/*.sh` internals do **not** invalidate your trust. Only changes to `.codex/hooks.json` itself (paths, timeouts, matcher) prompt re-trust.
+Because the hash covers the **command string** in `hooks.json` (not the script body), updates to the Python package that only change `scripts/little_loops/hooks/adapters/codex/*.sh` internals do **not** invalidate your trust. Only changes to `.codex/hooks.json` itself (paths, timeouts, matcher) prompt re-trust.
 
 ---
 
@@ -115,7 +115,7 @@ Start a Codex session and confirm hooks are active:
 
    ```bash
    LL_HOOK_HOST=codex echo '{"session_id":"test","cwd":"'$(pwd)'","model":"","source":"startup"}' \
-     | bash hooks/adapters/codex/session-start.sh
+     | bash scripts/little_loops/hooks/adapters/codex/session-start.sh
    ```
 
    A zero exit code indicates the adapter and Python dispatcher are both reachable. The full integration test in `scripts/tests/test_codex_adapter.py` exercises all four adapter scripts and is run by `python -m pytest scripts/tests/test_codex_adapter.py -v`.
@@ -128,7 +128,7 @@ Start a Codex session and confirm hooks are active:
 | --- | --- |
 | Hooks silently do nothing | Open a new session; choose "Trust All and Continue" in the trust dialog |
 | `codex: command not found` during init | Ensure the `codex` binary is on `PATH`: `which codex` |
-| Adapter scripts not executable | `chmod +x hooks/adapters/codex/*.sh` |
+| Adapter scripts not executable | `chmod +x scripts/little_loops/hooks/adapters/codex/*.sh` |
 | `LL_HOOK_HOST=codex` not recognized | Upgrade to the latest little-loops version: `pip install --upgrade little-loops` |
 | Skills not appearing in Codex TUI | Re-run `ll-adapt-skills-for-codex --apply` |
 
