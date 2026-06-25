@@ -1776,3 +1776,17 @@
   scope: issue
   alternatives_rejected: 'Option 2: Hatch force-include'
   issue: FEAT-2274
+- id: ARCHITECTURE-055
+  type: decision
+  timestamp: '2026-06-25T04:21:34Z'
+  category: architecture
+  labels: []
+  rationale: importlib.resources auto-maintains the manifest via resolver self-registration
+    (no forget-to-update gap); Regex matches established import_scan.py pattern and
+    is sufficient for the backstop role
+  rule: importlib.resources round-trip in-process for manifest check; Regex for __file__-escape
+    lint
+  scope: issue
+  alternatives_rejected: Resource registry (explicit list, high risk of forgotten
+    updates); AST (no codebase precedent, overkill for backstop)
+  issue: ENH-2277

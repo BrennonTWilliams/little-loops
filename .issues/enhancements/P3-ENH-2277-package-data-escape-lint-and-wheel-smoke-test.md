@@ -3,13 +3,33 @@ id: ENH-2277
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-24T00:00:00Z"
+captured_at: '2026-06-24T00:00:00Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
-relates_to: [BUG-2271, BUG-2273, BUG-2275, BUG-2276, FEAT-2274, BUG-885, BUG-938]
-labels: [enhancement, packaging, testing, lint, ci, install, host-compat]
+relates_to:
+- BUG-2271
+- BUG-2273
+- BUG-2275
+- BUG-2276
+- FEAT-2274
+- BUG-885
+- BUG-938
+labels:
+- enhancement
+- packaging
+- testing
+- lint
+- ci
+- install
+- host-compat
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-2277: Left-shift gates for the "package-data escapes the wheel" bug class — manifest-completeness check (primary) + `__file__`-escape lint + wheel smoke test
@@ -217,6 +237,16 @@ Decided by `/ll:decide-issue` on 2026-06-24.
 ### Dependent Files (Callers/Importers)
 - N/A — all integration targets are new files; no existing code imports them yet. The `ll-verify-package-data` entry point is invoked directly by the verify suite / CI rather than imported.
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Callers of lint targets** (files whose `_find_plugin_root()` calls the lint will analyze — relevant to the allowlist decision for `skill_expander._find_plugin_root()`):
+- `scripts/little_loops/cli/generate_skill_descriptions.py` — calls `_find_plugin_root()` from `skill_expander.py` [Agent 1 finding]
+- `scripts/little_loops/cli/adapt_skills_for_codex.py` — calls `_find_plugin_root()` from `skill_expander.py` [Agent 1 finding]
+- `scripts/little_loops/cli/adapt_agents_for_codex.py` — calls `_find_plugin_root()` from `skill_expander.py` [Agent 1 finding]
+- `scripts/little_loops/cli/action.py` — calls `_find_plugin_root()` and `expand_skill()` from `skill_expander.py` [Agent 1 finding]
+
+**Note**: These callers use `_find_plugin_root()` (in `skill_expander.py`) as their resolver. The allowlist decision for `skill_expander._find_plugin_root()` determines whether they will need to be refactored to route through `init/cli._plugin_root()` (the canonical resolver).
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -241,13 +271,26 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   trip it; an in-package read must not).
 - The wheel smoke test itself.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_verify_package_data.py` (new) — lint-specific tests for `main_verify_package_data()`; follow `test_verify_triggers.py` pattern: `tmp_path` fixture files with escaping vs. non-escaping `__file__` patterns, `-C tmp_path` flag, assert exit 0/1 [Agent 3 finding]
+- `scripts/tests/test_init_core.py` — update `test_all_canonical_permissions_present()` (~line 682) if `Bash(ll-verify-package-data:*)` is added to `_LL_PERMISSIONS` in `init/writers.py` [Agent 2 finding]
+- `scripts/tests/test_ll_logs.py` — optionally add test that `ll-verify-package-data` is excluded from scan-failures via `_LL_VERIFY_RE`; structurally covered by regex but explicit coverage confirms the new tool name matches [Agent 2 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` — document `ll-verify-package-data`.
 - `CONTRIBUTING.md` — note the wheel smoke test and why editable installs mask
   this class.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — add `little_loops.package_data` row to module overview table (~lines 20-66); optionally add `### main_verify_package_data` entry following the `### main_verify_docs` pattern at line 3576 [Agent 2 finding]
+- `.claude/CLAUDE.md` — add `ll-verify-package-data` bullet to `## CLI Tools` section [Agent 1 + 2 finding]
+
 ### Configuration
 - `scripts/pyproject.toml` — already listed under Files to Modify (new `ll-verify-package-data` entry point registration).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/writers.py` — two decision-dependent changes: (1) `_LL_PERMISSIONS` tuple (~lines 24-51): decide whether `Bash(ll-verify-package-data:*)` should be added so `ll-init` grants Claude Code permission to run it (note: `ll-verify-docs` is included; `ll-verify-triggers` and `ll-verify-skill-budget` are not); (2) `_CLAUDE_MD_COMMANDS_BLOCK` string (~lines 64-95): decide whether `ll-verify-package-data` should appear in the CLI listing written to initialized project CLAUDE.md files [Agent 2 finding]
+- `scripts/little_loops/cli/__init__.py` module docstring (~lines 1-35) — add `ll-verify-package-data` bullet alongside existing verify entries (file already in Files to Modify for import/`__all__`; docstring is an additional touchpoint) [Agent 2 finding]
 
 ## Implementation Steps
 
@@ -263,6 +306,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    path (Codex adapter).
 5. Backfill: confirm the manifest check + lint flag the already-known instances
    (BUG-2275 / BUG-2276) until they're fixed; confirm clean once they are.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `scripts/little_loops/init/writers.py` — decide and apply whether `Bash(ll-verify-package-data:*)` belongs in `_LL_PERMISSIONS` and whether a CLI bullet belongs in `_CLAUDE_MD_COMMANDS_BLOCK`; if adding to `_LL_PERMISSIONS`, also update `test_init_core.py:test_all_canonical_permissions_present`
+7. Update `docs/reference/API.md` — add `little_loops.package_data` row to module overview table (~lines 20-66)
+8. Update `.claude/CLAUDE.md` — add `ll-verify-package-data` bullet to `## CLI Tools` section
+9. Update `scripts/little_loops/cli/__init__.py` module docstring (~lines 1-35) — add `ll-verify-package-data` alongside other verify tool entries
+10. Create `scripts/tests/test_verify_package_data.py` — lint-specific unit tests following `test_verify_triggers.py` three-tier pattern (unit helpers, core logic, CLI entry point via `-C tmp_path` + exit code assertions)
 
 ## Scope Boundaries
 
@@ -385,6 +438,8 @@ Both marks are already declared in `[tool.pytest.ini_options]` in `scripts/pypro
 For subprocess invocations in the smoke test, follow the pattern in `test_rn_build.py`: `subprocess.run([...], capture_output=True, text=True, timeout=N)` without `check=True`; assert manually on `returncode`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T00:00:00Z - `adfa305f-dade-431c-b1e2-ea277e3b8bd6.jsonl`
+- `/ll:wire-issue` - 2026-06-25T04:30:45 - `abb28d89-c8b8-4206-baca-55ad85bc454a.jsonl`
 - `/ll:decide-issue` - 2026-06-25T04:21:22 - `31eb1bb9-53b5-4aad-998f-729f66e478aa.jsonl`
 - `/ll:refine-issue` - 2026-06-25T04:17:08 - `a21d9f22-89f7-43e3-9e2d-36a72e4d4b27.jsonl`
 - `/ll:format-issue` - 2026-06-25T04:09:14 - `18bb767c-bb64-42b8-87dd-2614b8c50967.jsonl`

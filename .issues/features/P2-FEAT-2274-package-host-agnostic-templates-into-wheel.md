@@ -3,14 +3,35 @@ id: FEAT-2274
 type: FEAT
 priority: P2
 status: open
-captured_at: "2026-06-24T22:29:39Z"
+captured_at: '2026-06-24T22:29:39Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
-relates_to: [EPIC-2257, BUG-2271, BUG-2273, ENH-2272, BUG-2275, BUG-2276, ENH-2277, BUG-938, BUG-885]
+relates_to:
+- EPIC-2257
+- BUG-2271
+- BUG-2273
+- ENH-2272
+- BUG-2275
+- BUG-2276
+- ENH-2277
+- BUG-938
+- BUG-885
 decision_ref: ARCHITECTURE-053
 decision_needed: false
-labels: [feature, packaging, templates, host-compat, cross-host, install]
+labels:
+- feature
+- packaging
+- templates
+- host-compat
+- cross-host
+- install
+confidence_score: 91
+outcome_confidence: 82
+score_complexity: 16
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # FEAT-2274: Package host-agnostic templates into the wheel (cross-host delivery)
