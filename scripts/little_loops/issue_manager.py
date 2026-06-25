@@ -46,7 +46,6 @@ from little_loops.subprocess_utils import (
     detect_context_handoff,
     read_continuation_prompt,
     read_sentinel,
-    write_sentinel,
 )
 from little_loops.subprocess_utils import (
     run_claude_command as _run_claude_base,
@@ -208,8 +207,6 @@ def run_with_continuation(
     on_usage: Callable[[int, int], None] | None = None,
     preview_full: bool = False,
     context_limit: int = 200_000,
-    sentinel_threshold: float = 0.60,
-    guillotine_threshold: float = 0.90,
     issue_path: Path | None = None,
     run_dir: str | None = None,
     sprint_context: SprintWorkerContext | None = None,
@@ -218,17 +215,15 @@ def run_with_continuation(
 
     Implements Options E, G, and J from BUG-1377:
 
-    Option G (sentinel write): after each session, if accurate token count from
-    on_usage exceeds sentinel_threshold without a CONTEXT_HANDOFF signal, writes
-    a sentinel file so the next iteration knows to send an explicit handoff instruction.
-
     Option E (sentinel read): before starting the next session, reads the sentinel
     and if present sends a ``--continue`` turn with an explicit "run /ll:handoff now"
     instruction, triggering the standard CONTEXT_HANDOFF continuation flow.
 
-    Option J (guillotine): if usage exceeds guillotine_threshold OR stderr contains
-    "Prompt is too long", assembles a transcript-summary prompt and spawns a fresh
-    session (not --resume) starting at 0 tokens.
+    Option J (guillotine): if stderr contains "Prompt is too long", assembles a
+    transcript-summary prompt and spawns a fresh session (not --resume) starting at 0
+    tokens.  The cumulative-token usage_ratio arm was removed (BUG-2280): cumulative
+    result-event tokens are incommensurable with the single-window context limit and
+    produced false-positive guillotine fires on every healthy multi-turn session.
 
     Args:
         initial_command: Initial command to run
@@ -242,8 +237,6 @@ def run_with_continuation(
             ``--resume`` to ``initial_command``.
         on_usage: Optional external usage callback; wrapped internally for tracking.
         context_limit: Context window size in tokens (default 200K).
-        sentinel_threshold: Write sentinel when usage/context_limit >= this (default 0.60).
-        guillotine_threshold: Trigger J-path when usage/context_limit >= this (default 0.90).
 
     Returns:
         Final CompletedProcess result
@@ -320,17 +313,14 @@ def run_with_continuation(
             )
             break
 
-        total_tokens = _last_input[0] + _last_output[0]
-        usage_ratio = total_tokens / context_limit if context_limit > 0 else 0.0
         prompt_too_long = "prompt is too long" in (result.stderr or "").lower()
 
         # Option J: guillotine — context overflow with no handoff signal.
+        # Fires only on the reliable "Prompt is too long" stderr signal (BUG-2280).
         # When run_dir is set (loop context), write a resume file and invoke /ll:resume.
         # Otherwise fall back to the transcript-summary blob (non-loop ll-auto runs).
-        if (
-            prompt_too_long or usage_ratio >= guillotine_threshold
-        ) and continuation_count < max_continuations:
-            trigger_reason = "Prompt is too long" if prompt_too_long else f"usage {usage_ratio:.0%}"
+        if prompt_too_long and continuation_count < max_continuations:
+            trigger_reason = "Prompt is too long"
             logger.warning(f"Option J triggered ({trigger_reason}): spawning fresh session")
             if run_dir is not None:
                 try:
@@ -424,7 +414,7 @@ def run_with_continuation(
                 "Fresh session wrote sentinel; consumed without --continue (work already done)"
             )
         elif sentinel_data is not None and continuation_count < max_continuations:
-            usage_pct = sentinel_data.get("usage_percent", int(usage_ratio * 100))
+            usage_pct = sentinel_data.get("usage_percent", 0)
             logger.info(
                 f"Sentinel detected ({usage_pct}% context used): "
                 "sending explicit handoff instruction via --continue"
@@ -469,12 +459,6 @@ def run_with_continuation(
                     _last_output[0] = 0
                     continue
             break
-
-        # Option G (Python layer): write sentinel if usage is high for the NEXT session.
-        # Placed after E-path check so we don't immediately consume our own write.
-        if total_tokens > 0 and usage_ratio >= sentinel_threshold:
-            logger.info(f"Writing context-handoff sentinel ({usage_ratio:.0%} context used)")
-            write_sentinel(repo_path, token_count=total_tokens, context_limit=context_limit)
 
         # No handoff signal, no prior-session sentinel, no overflow — done
         break

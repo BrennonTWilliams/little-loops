@@ -243,11 +243,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`$${...}` double-dollar escaping**: In FSM shell state `action:` strings, `${...}` is interpolated by the FSM template engine; bash variable references must use `$${...}` (e.g., `openscad $${RUN_DIR}/model.scad`) to avoid "expected namespace.path" errors — see `oracles/generator-evaluator.yaml:70` for the canonical example.
 
 **Test class references:**
-- `scripts/tests/test_builtin_loops.py:3388` — `TestSvgImageGeneratorLoop`; contains delegation tests (`test_run_gen_eval_delegates_to_generator_evaluator`, `test_run_gen_eval_with_bindings_present`, `test_inline_generate_evaluate_score_states_removed`, `test_init_state_is_shell_with_capture`). Add `TestOpenSCADModelGeneratorLoop` following this pattern.
-- `scripts/tests/test_builtin_loops.py:3273` — `TestHtmlWebsiteGeneratorLoop`; alternate reference for loops that use `${context.run_dir}` directly without an `init` capture state.
+- `scripts/tests/test_builtin_loops.py:3378` — `TestSvgImageGeneratorLoop`; contains delegation tests (`test_run_gen_eval_delegates_to_generator_evaluator`, `test_run_gen_eval_with_bindings_present`, `test_inline_generate_evaluate_score_states_removed`, `test_init_state_is_shell_with_capture`). Add `TestOpenSCADModelGeneratorLoop` following this pattern.
+- `scripts/tests/test_builtin_loops.py:3263` — `TestHtmlWebsiteGeneratorLoop`; alternate reference for loops that use `${context.run_dir}` directly without an `init` capture state.
 
 **Option A thin-wrapper callers (unaffected under Option B):**
 - `svg-image-generator.yaml`, `html-website-generator.yaml`, `html-anything.yaml`, `hitl-md.yaml`, `hitl-compare.yaml` — all delegate to `loop: oracles/generator-evaluator`. Under Option A each must pass a `render_command` default binding (the existing Playwright shell action) to preserve current behavior; enforced by `_validate_with_bindings()` in `validation.py:364`.
+
+**Second refinement pass — gap-analysis findings (2026-06-24):**
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Rubric-text / view-path resolution**: `generative-art.yaml` `score` state (lines 179–181) hardcodes the three default frame filenames (`frame_0.png`, `frame_90.png`, `frame_240.png`) in the prompt text rather than deriving them dynamically from `${context.sample_frames}`. The OpenSCAD `score` rubric text must similarly hardcode the expected view filenames (e.g. `view_0.png`, `view_1.png`, `view_2.png`). Overriding `view_count`/`view_presets` in context changes what `render_views` renders but does NOT automatically update the rubric text — the implementor must ensure consistency between the context variable and the hardcoded view names in the rubric string.
+- **`rlhf-svg-evaluate.yaml` `FRAME_DEFS` pattern**: The vision gate (lines 256–276) uses a **hardcoded static list** of 4 filenames, not dynamic directory discovery. Graceful degradation is via per-file `os.path.exists()` skip. The OpenSCAD vision gate should follow the same approach: hardcode the default view filenames in a `FRAME_DEFS`-style list rather than `os.listdir("views/")`.
+- **`from:` inheritance for oracle — novel pattern**: No existing file in `oracles/` uses `from:` inheritance; the pattern is used only by top-level loop stubs (`p5js-sketch-generator.yaml`, `pixi-generative-art.yaml`, `deep-research-arxiv.yaml`). `generator-evaluator-cli.yaml` would be the **first oracle to use `from:`** — a supported but untested code path. The `resolved_data` fixture in `TestGeneratorEvaluatorCliOracle` (using `resolve_inheritance` + `resolve_fragments`) validates this path explicitly.
+- **`test_expected_loops_exist` scope**: The exact-set assertion (line 76) globs `BUILTIN_LOOPS_DIR / "*.yaml"` — top-level `loops/` only. `oracles/generator-evaluator-cli.yaml` lives in `oracles/` and is **not** caught by this test; only `"openscad-model-generator"` must be added to the `expected` set. The oracle is covered by the separate `TestGeneratorEvaluatorCliOracle` class.
+- **All loop tests are structural YAML assertions only** — `TestSvgImageGeneratorLoop` (and all peer classes) never invoke the external binary (playwright/openscad). No subprocess mocking needed in `TestOpenSCADModelGeneratorLoop`; binary-mocking is only relevant in integration tests.
 
 ## Integration Map
 
@@ -289,12 +299,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py` — `TestBuiltinLoopFiles.test_expected_loops_exist` (lines 74–164) has a hardcoded `expected` set; add `"openscad-model-generator"` or the exact-set assertion fails on merge [Agent 1 finding]
 - `scripts/tests/test_builtin_loops.py` — add `TestGeneratorEvaluatorCliOracle` class; follow `TestGeneratorEvaluatorOracle` at line 5720; if oracle uses `from: oracles/generator-evaluator`, also add `resolved_data` fixture per `TestP5jsSketchGeneratorLoop` pattern at line 3511 [Agent 3 finding]
 
+_Second wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_doc_counts.py` — Add `test_generator_evaluator_cli_is_runnable()` to `TestIsRunnableLoop` (follow `test_generator_evaluator_is_runnable` at line 137); confirms `generator-evaluator-cli.yaml` passes `is_runnable_loop()` [Agent 2 finding]
+
 ### Documentation
 - `scripts/little_loops/loops/README.md` — add `openscad-model-generator` to `## Harness / Templates` table
 - `scripts/little_loops/loops/README.md` — also add `oracles/generator-evaluator-cli` row to `## Oracle Sub-loops` table with caller note [Agent 2 finding]
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_REFERENCE.md` — add `openscad-model-generator` row to `### Harness Examples` table (~line 1217); add to GAN-attribution sentence (~line 1247); add `### openscad-model-generator` section with `> **Prerequisites**: openscad CLI` callout — this is where all harness loop system-dependency docs live [Agent 2 finding]
+
+_Second wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/loops.md` — Add `## oracles/generator-evaluator-cli` section after existing `## oracles/generator-evaluator` (lines 390–453); describe CLI-render variant, parameters inherited from parent, multi-view snapshot behavior, and that `openscad-model-generator` is its only caller [Agent 1 finding]
 
 ## Implementation Steps
 
@@ -324,9 +340,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 7. Update `TestBuiltinLoopFiles.test_expected_loops_exist` in `scripts/tests/test_builtin_loops.py` — add `"openscad-model-generator"` to the hardcoded `expected` set (critical: exact-set assertion fails without this)
 8. Add `TestGeneratorEvaluatorCliOracle` class in `scripts/tests/test_builtin_loops.py` — follow `TestGeneratorEvaluatorOracle` at line 5720; if oracle uses `from: oracles/generator-evaluator`, use `data` + `resolved_data` fixture pair per `TestP5jsSketchGeneratorLoop` at line 3511
-9. Update `README.md` (root) line 163 — increment `"92 FSM loops"` to 94; `ll-verify-docs` counts runnable loops via `rglob`, both new YAMLs are counted
+9. Update `README.md` (root) line 163 — increment `"93 FSM loops"` to `"95 FSM loops"`; current count is 93 (verified 2026-06-24); both new YAMLs pass `is_runnable_loop()` and are counted by `ll-verify-docs`
 10. Add `oracles/generator-evaluator-cli` row to `## Oracle Sub-loops` table in `scripts/little_loops/loops/README.md`
 11. Add `openscad-model-generator` to `docs/guides/LOOPS_REFERENCE.md` — row in `### Harness Examples` table, entry in GAN-attribution sentence (~line 1247), and new `### openscad-model-generator` section with `> **Prerequisites**` callout for `openscad` binary install
+12. **CRITICAL — `from:` field in `generator-evaluator-cli.yaml`**: declare `from: generator-evaluator` (bare name) — NOT `from: oracles/generator-evaluator`; `resolve_loop_path()` in `cli/loop/_helpers.py` resolves the parent from the oracle's own directory (`oracles/`), so the prefixed form would construct path `oracles/oracles/generator-evaluator.yaml` which does not exist [Agent 2 finding]
+13. Add `test_generator_evaluator_cli_is_runnable()` to `TestIsRunnableLoop` in `scripts/tests/test_doc_counts.py` — follows `test_generator_evaluator_is_runnable` at line 137; asserts `is_runnable_loop(oracle)` is True for `oracles/generator-evaluator-cli.yaml` [Agent 1/2 finding]
+14. Add `## oracles/generator-evaluator-cli` section to `docs/reference/loops.md` — follows the `## oracles/generator-evaluator` section (lines 390–453); document CLI-render variant, parameters inherited from parent, multi-view snapshot behavior, and that `openscad-model-generator` is its sole caller [Agent 1 finding]
+15. **Correct step 9 loop count**: current runnable loop count is 92 (README.md line 163 confirms "92 FSM loops"; `is_runnable_loop` count verified at 92 on 2026-06-24); step 9 incorrectly states 93→95 — the correct update is `README.md` line 163: `"92 FSM loops"` → `"94 FSM loops"` [verified directly]
+16. Add explicit `visibility:` field to `openscad-model-generator.yaml` — omitting it defaults to `"public"`, which adds the loop to `loop-router`'s dynamic catalog automatically; decide `public` (CAD loop visible to users) vs `internal` (hidden from auto-routing) before shipping [Agent 2 finding]
 
 ## Impact
 
@@ -354,6 +375,8 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 - External `openscad` CLI binary requires test mocking — the mock must intercept the `render_views` shell state subprocess call; unvalidated against the new loop YAML structure until the file is written
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-25T02:43:56 - `5172b87e-d2c8-4926-8493-639536cb7596.jsonl`
+- `/ll:refine-issue` - 2026-06-25T02:33:20 - `a8d37fdd-8f6d-4bf9-8ae9-e43625aa7f05.jsonl`
 - `/ll:confidence-check` - 2026-06-24T22:15:00 - `99a0a893-83eb-4eb3-9d41-6e42559224b6.jsonl`
 - `/ll:confidence-check` - 2026-06-24T21:30:00 - `6b13d994-35f5-46a7-b0d0-1c904a388fbe.jsonl`
 - `/ll:wire-issue` - 2026-06-24T21:13:42 - `51fb05c0-16b7-46b6-930c-7ce607ef3f4d.jsonl`

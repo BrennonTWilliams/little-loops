@@ -13,13 +13,14 @@ relates_to:
 - FEAT-2274
 - BUG-885
 - BUG-938
-depends_on: ENH-2272
-confidence_score: 87
-outcome_confidence: 72
-score_complexity: 16
+depends_on: []
+confidence_score: 91
+outcome_confidence: 78
+score_complexity: 17
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 23
 score_change_surface: 20
+decision_needed: false
 ---
 
 # BUG-2273: ll-init `_plugin_root()` resolver silently skips design-token / goals / project-type templates on non-editable installs
@@ -224,9 +225,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 1. Factor / reuse the shared template resolver (config → `.ll/templates/` →
    `CLAUDE_PLUGIN_ROOT` → `__file__`) introduced by BUG-2271 / ENH-2272 and call
    it from `init/cli.py` instead of `_plugin_root() / "templates"`.
-2. Make `deploy_design_tokens()` / `deploy_goals()` report *why* they returned
-   `False` (source-missing vs. dest-exists); have the `ll-init` flow warn on the
-   source-missing case.
+2. Add `print(f"  Warning: ...", file=sys.stderr)` inside `deploy_design_tokens()`
+   and `deploy_goals()` when the source is missing — side-effect warning, no
+   return-value changes (avoids touching ~5 call sites in `cli.py` and `tui.py`).
 3. Add tests: monkeypatch the resolver to a temp `templates/` and assert deploys
    land; assert that an unresolved source produces a warning, not a silent skip;
    assert the editable-install `__file__` fallback still works.
@@ -276,17 +277,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-24_
+_Updated by `/ll:confidence-check` on 2026-06-24 (re-check; BUG-2271 now done)_
 
-**Readiness Score**: 87/100 → PROCEED
-**Outcome Confidence**: 72/100 → Moderate risk
+**Readiness Score**: 91/100 → PROCEED
+**Outcome Confidence**: 74/100 → Moderate risk
 
 ### Outcome Risk Factors
-- **Soft dependency coupling on 3 open issues**: BUG-2271, ENH-2272, and FEAT-2274 are all open. Step 1 says "reuse the shared resolver introduced by BUG-2271/ENH-2272" — without coordination, both issues could introduce incompatible independent resolver implementations. Resolve who owns the shared resolver function before starting.
-- **Behavior verification before implementing warning strategy**: Codebase research found that `detect_project_type()` calls `templates_dir.glob("*.json")` on a non-existent directory, which raises `FileNotFoundError` — not a graceful fallback. The warning must be placed upstream of the load call. Verify empirically before writing the `detect.py` warning code.
-- **Return-value semantics for deploy functions**: Distinguishing "source missing" from "destination exists" in `deploy_goals()`/`deploy_design_tokens()` affects ~5 call sites in `cli.py`/`tui.py` plus 3–4 test methods. Using a side-effect warning (`print` to stderr inside the function) avoids this cost; decide which approach before implementation begins.
+- **Open decision: return-value semantics** — `deploy_goals()`/`deploy_design_tokens()` return a single `False` for both "source missing" and "destination exists". The simplest fix is a side-effect warning via `print(..., file=sys.stderr)` inside the function (the established pattern in `init/cli.py`), avoiding return-value changes at ~5 call sites in `cli.py` and `tui.py`. Pick one before starting implementation.
+- **ENH-2272 still open (declared dependency)**: A partial resolver (CLAUDE_PLUGIN_ROOT + `__file__` fallback from BUG-2271's pattern) can start now. Add the `.ll/templates/` precedence step only after ENH-2272 lands, to avoid two independent implementations that drift.
+- **`detect_project_type()` raises `FileNotFoundError`, not graceful fallback**: `_load_templates()` calls `templates_dir.glob("*.json")` on a non-existent path — this raises, not returns. The warning must be inserted before the `_load_templates()` call in `detect_project_type()`. Verify empirically before writing warning code.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T00:00:00Z - `052ee002-e687-4985-8087-f17ffa746259.jsonl`
+- `/ll:confidence-check` - 2026-06-24T23:59:00Z - `1dae7405-974b-4068-920d-3cf120a46bc9.jsonl`
+- `/ll:confidence-check` - 2026-06-24T22:00:00Z - `618231b5-3ed0-4735-8afd-ef8da6a14e53.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T01:15:25 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:confidence-check` - 2026-06-24T23:30:00Z - `f4b1792d-435d-44eb-b05e-5ac1ba224be4.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:18:11 - `f4b1792d-435d-44eb-b05e-5ac1ba224be4.jsonl`

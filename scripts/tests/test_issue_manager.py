@@ -1345,7 +1345,7 @@ class TestRunWithContinuation:
         assert read_sentinel(temp_project_dir) is None
 
     def test_guillotine_path_on_context_overflow(self, temp_project_dir: Path) -> None:
-        """Option J: usage >= guillotine_threshold triggers fresh session (no --resume)."""
+        """Option J: 'Prompt is too long' in stderr triggers fresh session (no --resume)."""
         from little_loops.issue_manager import run_with_continuation
 
         mock_logger = MagicMock()
@@ -1353,7 +1353,7 @@ class TestRunWithContinuation:
         overflow_result = MagicMock()
         overflow_result.returncode = 1
         overflow_result.stdout = "Partial work..."
-        overflow_result.stderr = ""
+        overflow_result.stderr = "API error: Prompt is too long"
         overflow_result.args = ["claude"]
 
         fresh_result = MagicMock()
@@ -1368,10 +1368,6 @@ class TestRunWithContinuation:
         def mock_run(command: str, *args, **kwargs):
             call_count[0] += 1
             commands_received.append(command)
-            # Simulate high token usage on first call
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)  # 195K total > 90% of 200K
             if call_count[0] == 1:
                 return overflow_result
             return fresh_result
@@ -1384,7 +1380,6 @@ class TestRunWithContinuation:
                     repo_path=temp_project_dir,
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                 )
 
         assert call_count[0] == 2
@@ -1443,7 +1438,7 @@ class TestRunWithContinuation:
         overflow_result = MagicMock()
         overflow_result.returncode = 1
         overflow_result.stdout = "Partial work..."
-        overflow_result.stderr = ""
+        overflow_result.stderr = "API error: Prompt is too long"
         overflow_result.args = ["claude"]
 
         fresh_result = MagicMock()
@@ -1458,9 +1453,6 @@ class TestRunWithContinuation:
         def mock_run(command: str, *args, **kwargs):
             call_count[0] += 1
             commands_received.append(command)
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)  # 195K > 90% of 200K
             return overflow_result if call_count[0] == 1 else fresh_result
 
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
@@ -1471,7 +1463,6 @@ class TestRunWithContinuation:
                     repo_path=tmp_path,
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                     run_dir=str(run_dir),
                 )
 
@@ -1495,7 +1486,7 @@ class TestRunWithContinuation:
         overflow_result = MagicMock()
         overflow_result.returncode = 1
         overflow_result.stdout = "Partial work..."
-        overflow_result.stderr = ""
+        overflow_result.stderr = "API error: Prompt is too long"
         overflow_result.args = ["claude"]
 
         fresh_result = MagicMock()
@@ -1510,9 +1501,6 @@ class TestRunWithContinuation:
         def mock_run(command: str, *args, **kwargs):
             call_count[0] += 1
             commands_received.append(command)
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)
             return overflow_result if call_count[0] == 1 else fresh_result
 
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
@@ -1523,7 +1511,6 @@ class TestRunWithContinuation:
                     repo_path=temp_project_dir,
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                     # run_dir not provided — legacy fallback path
                 )
 
@@ -1531,8 +1518,9 @@ class TestRunWithContinuation:
         assert "CONTEXT LIMIT REACHED" in commands_received[1]
         assert not commands_received[1].startswith("/ll:resume")
 
-    def test_sentinel_written_on_high_usage(self, temp_project_dir: Path) -> None:
-        """Option G: sentinel file written when on_usage reports >= sentinel_threshold."""
+    def test_high_cumulative_usage_does_not_write_sentinel(self, temp_project_dir: Path) -> None:
+        """BUG-2280: Option G Python sentinel write removed — high cumulative usage no longer
+        writes a sentinel. The sentinel is written only by the Stop hook."""
         from little_loops.issue_manager import run_with_continuation
         from little_loops.subprocess_utils import SENTINEL_PATH
 
@@ -1547,7 +1535,7 @@ class TestRunWithContinuation:
         def mock_run(command: str, *args, **kwargs):
             on_usage = kwargs.get("on_usage")
             if on_usage:
-                on_usage(120_000, 10_000)  # 130K = 65% of 200K
+                on_usage(120_000, 10_000)  # 130K cumulative — previously triggered sentinel
             return normal_result
 
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
@@ -1556,17 +1544,14 @@ class TestRunWithContinuation:
                     "/ll:manage-issue bug fix BUG-1377",
                     mock_logger,
                     repo_path=temp_project_dir,
-                    max_continuations=0,  # only one pass
+                    max_continuations=0,
                     context_limit=200_000,
-                    sentinel_threshold=0.60,
                 )
 
         sentinel_file = temp_project_dir / SENTINEL_PATH
-        assert sentinel_file.exists()
-        import json as _json
-
-        data = _json.loads(sentinel_file.read_text())
-        assert data["usage_percent"] == 65
+        assert not sentinel_file.exists(), (
+            "Python layer must not write sentinel from cumulative usage (BUG-2280)"
+        )
 
     def test_option_j_fresh_session_skips_option_e(self, temp_project_dir: Path) -> None:
         """BUG-1386: after Option J fires a fresh session, Option E must NOT call --continue.
@@ -1588,7 +1573,7 @@ class TestRunWithContinuation:
         overflow_result = MagicMock()
         overflow_result.returncode = 1
         overflow_result.stdout = "Partial work"
-        overflow_result.stderr = ""
+        overflow_result.stderr = "API error: Prompt is too long"
         overflow_result.args = ["claude"]
 
         fresh_result = MagicMock()
@@ -1602,11 +1587,8 @@ class TestRunWithContinuation:
 
         def mock_run(command: str, *args, **kwargs):
             call_count[0] += 1
-            on_usage = kwargs.get("on_usage")
             if call_count[0] == 1:
-                # First call: overflow → triggers Option J
-                if on_usage:
-                    on_usage(190_000, 10_000)  # 200K = 100% of 200K
+                # First call: "Prompt is too long" → triggers Option J
                 return overflow_result
             # Second call: fresh guillotine session — write sentinel to simulate stop hook
             sentinel_file.write_text('{"usage_percent": 63}')
@@ -1622,7 +1604,6 @@ class TestRunWithContinuation:
                     repo_path=temp_project_dir,
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                 )
 
         # Fresh session completed successfully — result should be success
@@ -1647,7 +1628,7 @@ class TestRunWithContinuation:
         overflow_result = MagicMock()
         overflow_result.returncode = 1
         overflow_result.stdout = "Partial work..."
-        overflow_result.stderr = ""
+        overflow_result.stderr = "API error: Prompt is too long"
         overflow_result.args = ["claude"]
 
         fresh_result = MagicMock()
@@ -1662,9 +1643,6 @@ class TestRunWithContinuation:
         def mock_run(command: str, *args, **kwargs):
             call_count[0] += 1
             commands_received.append(command)
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)  # 195K > 90% of 200K
             return overflow_result if call_count[0] == 1 else fresh_result
 
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
@@ -1675,7 +1653,6 @@ class TestRunWithContinuation:
                     repo_path=temp_project_dir,
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                     sprint_context=sprint_ctx,
                 )
 
@@ -1695,7 +1672,7 @@ class TestRunWithContinuation:
         overflow_result = MagicMock()
         overflow_result.returncode = 1
         overflow_result.stdout = "Partial work..."
-        overflow_result.stderr = ""
+        overflow_result.stderr = "API error: Prompt is too long"
         overflow_result.args = ["claude"]
 
         fresh_result = MagicMock()
@@ -1710,9 +1687,6 @@ class TestRunWithContinuation:
         def mock_run(command: str, *args, **kwargs):
             call_count[0] += 1
             commands_received.append(command)
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)
             return overflow_result if call_count[0] == 1 else fresh_result
 
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
@@ -1723,7 +1697,6 @@ class TestRunWithContinuation:
                     repo_path=temp_project_dir,
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                     # no sprint_context
                 )
 
@@ -1756,11 +1729,10 @@ class TestRunWithContinuation:
 
         call_count = [0]
 
+        overflow_result.stderr = "API error: Prompt is too long"
+
         def mock_run(command: str, *args, **kwargs):
             call_count[0] += 1
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)  # 195K > 90% of 200K → triggers Option J
             return overflow_result if call_count[0] == 1 else fresh_result
 
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
@@ -1771,7 +1743,6 @@ class TestRunWithContinuation:
                     repo_path=tmp_path,
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                     issue_path=issue_file,
                     run_dir=str(run_dir),
                     # sprint_context is None (the missing-scope bug path)
@@ -1784,6 +1755,50 @@ class TestRunWithContinuation:
         assert "ENH-2177" in content, "Scope constraint must name the issue"
         assert "exactly ONE issue" in content, "Scope constraint must say 'exactly ONE issue'"
         assert "exit immediately" in content, "Scope constraint must instruct immediate exit"
+
+    def test_large_cumulative_tokens_with_clean_completion_no_guillotine(
+        self, temp_project_dir: Path
+    ) -> None:
+        """BUG-2280: cumulative session tokens >> context window must NOT trigger Option J.
+
+        A session consuming 989K cumulative tokens (across many turns with cache reads) that
+        completes cleanly (returncode=0, no 'prompt is too long') must not spawn a continuation.
+        The defective usage_ratio = cumulative_total / context_limit arm fired at ~495%; after
+        the fix only prompt_too_long triggers Option J.
+        """
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        clean_result = MagicMock()
+        clean_result.returncode = 0
+        clean_result.stdout = "Issue implemented and committed"
+        clean_result.stderr = ""
+        clean_result.args = ["claude"]
+
+        call_count = [0]
+
+        def mock_run(command: str, *args, **kwargs):
+            call_count[0] += 1
+            on_usage = kwargs.get("on_usage")
+            if on_usage:
+                on_usage(989_202, 0)  # cumulative tokens far over 200K window
+            return clean_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "/ll:manage-issue bug fix BUG-2280",
+                    mock_logger,
+                    repo_path=temp_project_dir,
+                    max_continuations=3,
+                    context_limit=200_000,
+                )
+
+        assert call_count[0] == 1, (
+            f"Expected 1 call (no continuation), got {call_count[0]}: "
+            "cumulative tokens must not trigger Option J"
+        )
 
 
 class TestReadyIssueErrorHandling:

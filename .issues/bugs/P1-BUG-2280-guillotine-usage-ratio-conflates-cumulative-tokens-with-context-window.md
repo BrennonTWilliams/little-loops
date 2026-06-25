@@ -3,10 +3,11 @@ id: BUG-2280
 title: Option J guillotine metric conflates cumulative session tokens with context-window
   occupancy, firing spurious continuations
 type: BUG
-status: open
+status: done
 priority: P1
 decision_needed: false
 captured_at: '2026-06-24T23:53:24Z'
+completed_at: '2026-06-25T02:55:24Z'
 discovered_date: '2026-06-24'
 discovered_by: capture-issue
 labels:
@@ -14,7 +15,17 @@ labels:
 - continuation
 - guillotine
 - context-handoff
-relates_to: [BUG-2281, BUG-2054, BUG-2201, BUG-1759]
+relates_to:
+- BUG-2281
+- BUG-2054
+- BUG-2201
+- BUG-1759
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-2280: Option J guillotine `usage_ratio` measures cumulative session tokens, not context-window occupancy
@@ -237,6 +248,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   guard pattern referenced at `issue_manager.py:295`).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T02:32:14 - `1dae7405-974b-4068-920d-3cf120a46bc9.jsonl`
+- `/ll:confidence-check` - 2026-06-25T02:29:27Z - `206895be-827f-4558-af0e-78773cc4bf82.jsonl`
 - `/ll:wire-issue` - 2026-06-25T00:54:59 - `605a186d-3999-4d1a-a240-f61cf197c0ef.jsonl`
 - `/ll:decide-issue` - 2026-06-25T00:31:36 - `27e8665e-4c56-4dde-ab56-7b5ada80a7a4.jsonl`
 - `/ll:refine-issue` - 2026-06-25T00:24:47 - `9aa86380-3890-4fd3-aa75-4ce244b7e7af.jsonl`
@@ -245,6 +258,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
+## Resolution
+
+Implemented Option 1: dropped the `usage_ratio >= guillotine_threshold` arm from `run_with_continuation()` in both `issue_manager.py` and `worker_pool.py`. Option J now fires only on the reliable `prompt_too_long` stderr signal. Also removed the dependent Option G Python sentinel-write block (same defective ratio) and replaced the `int(usage_ratio * 100)` fallback in the sentinel-read path with `0`. Updated all 13 breaking tests to use `stderr="API error: Prompt is too long"` as the trigger. Added 2 new regression tests asserting 989K cumulative tokens with clean completion produces no continuation.
+
 ## Status
 
-open
+done

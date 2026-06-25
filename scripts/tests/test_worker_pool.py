@@ -2437,12 +2437,12 @@ class TestRunWithContinuation:
         worker_pool: WorkerPool,
         temp_repo_with_config: Path,
     ) -> None:
-        """Option J: high token usage triggers fresh session with guillotine prompt."""
+        """Option J: 'Prompt is too long' in stderr triggers fresh session with guillotine prompt."""
         overflow_result = subprocess.CompletedProcess(
             args=["claude", "-p", "test"],
             returncode=1,
             stdout="Partial work...",
-            stderr="",
+            stderr="API error: Prompt is too long",
         )
         fresh_result = subprocess.CompletedProcess(
             args=["claude", "-p", "fresh"],
@@ -2457,9 +2457,6 @@ class TestRunWithContinuation:
         def mock_run_claude(command, working_dir, **kwargs):
             call_count[0] += 1
             commands_received.append(command)
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)  # 195K total > 90% of 200K
             return overflow_result if call_count[0] == 1 else fresh_result
 
         with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
@@ -2472,7 +2469,6 @@ class TestRunWithContinuation:
                     issue_id="BUG-1377",
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                 )
 
         assert call_count[0] == 2
@@ -2492,7 +2488,7 @@ class TestRunWithContinuation:
             args=["claude", "-p", "test"],
             returncode=1,
             stdout="Partial work...",
-            stderr="",
+            stderr="API error: Prompt is too long",
         )
         fresh_result = subprocess.CompletedProcess(
             args=["claude", "-p", "fresh"],
@@ -2507,9 +2503,6 @@ class TestRunWithContinuation:
         def mock_run_claude(command, working_dir, **kwargs):
             call_count[0] += 1
             commands_received.append(command)
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)  # 195K > 90% of 200K
             return overflow_result if call_count[0] == 1 else fresh_result
 
         with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
@@ -2522,7 +2515,6 @@ class TestRunWithContinuation:
                     issue_id="BUG-1377",
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                     run_dir=str(run_dir),
                 )
 
@@ -2549,7 +2541,7 @@ class TestRunWithContinuation:
             args=["claude", "-p", "test"],
             returncode=1,
             stdout="Partial work...",
-            stderr="",
+            stderr="API error: Prompt is too long",
         )
         fresh_result = subprocess.CompletedProcess(
             args=["claude", "-p", "fresh"],
@@ -2564,9 +2556,6 @@ class TestRunWithContinuation:
         def mock_run_claude(command, working_dir, **kwargs):
             call_count[0] += 1
             commands_received.append(command)
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)  # 195K total > 90% of 200K
             return overflow_result if call_count[0] == 1 else fresh_result
 
         with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
@@ -2579,7 +2568,6 @@ class TestRunWithContinuation:
                     issue_id="FEAT-025",
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                     sprint_context=sprint_ctx,
                 )
 
@@ -2607,7 +2595,7 @@ class TestRunWithContinuation:
             args=["claude", "-p", "test"],
             returncode=1,
             stdout="Partial work...",
-            stderr="",
+            stderr="API error: Prompt is too long",
         )
         fresh_result = subprocess.CompletedProcess(
             args=["claude", "-p", "fresh"],
@@ -2622,9 +2610,6 @@ class TestRunWithContinuation:
         def mock_run_claude(command, working_dir, **kwargs):
             call_count[0] += 1
             commands_received.append(command)
-            on_usage = kwargs.get("on_usage")
-            if on_usage and call_count[0] == 1:
-                on_usage(185_000, 10_000)
             return overflow_result if call_count[0] == 1 else fresh_result
 
         with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
@@ -2637,7 +2622,6 @@ class TestRunWithContinuation:
                     issue_id="FEAT-025",
                     max_continuations=3,
                     context_limit=200_000,
-                    guillotine_threshold=0.90,
                     run_dir=str(run_dir),
                     sprint_context=sprint_ctx,
                 )
@@ -2653,6 +2637,48 @@ class TestRunWithContinuation:
         assert "Branch: parallel/feat-025-ts" in content
         # Sprint framing comes before the Intent section
         assert content.index("Sprint Worker Context") < content.index("## Intent")
+
+    def test_large_cumulative_tokens_with_clean_completion_no_guillotine(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """BUG-2280: cumulative session tokens >> context window must NOT trigger Option J.
+
+        Mirrors the issue_manager regression test for the parallel worker path.
+        """
+        clean_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "test"],
+            returncode=0,
+            stdout="Issue implemented and committed",
+            stderr="",
+        )
+
+        call_count = [0]
+
+        def mock_run_claude(command, working_dir, **kwargs):
+            call_count[0] += 1
+            on_usage = kwargs.get("on_usage")
+            if on_usage:
+                on_usage(989_202, 0)  # cumulative tokens far over 200K window
+            return clean_result
+
+        with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
+            with patch(
+                "little_loops.parallel.worker_pool.detect_context_handoff", return_value=False
+            ):
+                worker_pool._run_with_continuation(
+                    "test",
+                    temp_repo_with_config,
+                    issue_id="BUG-2280",
+                    max_continuations=3,
+                    context_limit=200_000,
+                )
+
+        assert call_count[0] == 1, (
+            f"Expected 1 call (no continuation), got {call_count[0]}: "
+            "cumulative tokens must not trigger Option J"
+        )
 
 
 class TestWorkerPoolDecisionNeededGate:

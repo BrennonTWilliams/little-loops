@@ -28,7 +28,6 @@ from little_loops.subprocess_utils import (
     detect_context_handoff,
     read_continuation_prompt,
     read_sentinel,
-    write_sentinel,
 )
 from little_loops.subprocess_utils import (
     run_claude_command as _run_claude_base,
@@ -829,14 +828,12 @@ class WorkerPool:
         issue_id: str | None = None,
         max_continuations: int = 3,
         context_limit: int = 200_000,
-        sentinel_threshold: float = 0.60,
-        guillotine_threshold: float = 0.90,
         run_dir: str | None = None,
         sprint_context: SprintWorkerContext | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """Run a Claude command with automatic continuation on context handoff.
 
-        Mirrors the E+G+J logic in issue_manager.run_with_continuation.
+        Mirrors the E+J logic in issue_manager.run_with_continuation.
 
         Args:
             command: The command to run
@@ -844,8 +841,6 @@ class WorkerPool:
             issue_id: Optional issue ID for subprocess tracking
             max_continuations: Maximum number of continuation attempts
             context_limit: Context window size in tokens
-            sentinel_threshold: Write sentinel when usage >= this fraction
-            guillotine_threshold: Trigger J-path when usage >= this fraction
 
         Returns:
             Combined CompletedProcess with all session outputs
@@ -913,19 +908,13 @@ class WorkerPool:
                 )
                 break
 
-            total_tokens = _last_input[0] + _last_output[0]
-            usage_ratio = total_tokens / context_limit if context_limit > 0 else 0.0
             prompt_too_long = "prompt is too long" in (result.stderr or "").lower()
 
-            # Option J: guillotine — fresh session.
-            # When run_dir is set (loop context), write a resume file and invoke /ll:resume.
-            # Otherwise fall back to the transcript-summary blob.
-            if (
-                prompt_too_long or usage_ratio >= guillotine_threshold
-            ) and continuation_count < max_continuations:
-                trigger_reason = (
-                    "Prompt is too long" if prompt_too_long else f"usage {usage_ratio:.0%}"
-                )
+            # Option J: guillotine — fires only on the reliable "Prompt is too long" stderr
+            # signal (BUG-2280). When run_dir is set (loop context), write a resume file and
+            # invoke /ll:resume. Otherwise fall back to the transcript-summary blob.
+            if prompt_too_long and continuation_count < max_continuations:
+                trigger_reason = "Prompt is too long"
                 self.logger.warning(
                     f"{tag} Option J triggered ({trigger_reason}): spawning fresh session"
                 )
@@ -997,7 +986,7 @@ class WorkerPool:
             # the current-session sentinel to avoid immediately consuming our own write).
             sentinel_data = read_sentinel(working_dir)
             if sentinel_data is not None and continuation_count < max_continuations:
-                usage_pct = sentinel_data.get("usage_percent", int(usage_ratio * 100))
+                usage_pct = sentinel_data.get("usage_percent", 0)
                 self.logger.info(
                     f"{tag} Sentinel detected ({usage_pct}% context used): "
                     "sending explicit handoff instruction"
@@ -1036,14 +1025,6 @@ class WorkerPool:
                         _last_output[0] = 0
                         continue
                 break
-
-            # Option G (Python layer): write sentinel for the NEXT session.
-            # Placed after E-path so we don't immediately consume our own write.
-            if total_tokens > 0 and usage_ratio >= sentinel_threshold:
-                self.logger.info(
-                    f"{tag} Writing context-handoff sentinel ({usage_ratio:.0%} context used)"
-                )
-                write_sentinel(working_dir, token_count=total_tokens, context_limit=context_limit)
 
             # No handoff signal, no prior-session sentinel, no overflow — done
             break
