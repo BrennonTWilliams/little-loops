@@ -29,8 +29,8 @@ score_complexity: 14
 score_test_coverage: 14
 score_ambiguity: 17
 score_change_surface: 16
-decision_needed: true
-implementation_order_risk: true
+decision_needed: false
+implementation_order_risk: false
 ---
 
 # BUG-2275: `hooks/` package-data (prompt template + Codex adapter) excluded from the wheel — prompt-optimization hook and Codex onboarding silently break
@@ -51,9 +51,9 @@ install and every non-Claude host:
    with **no `CLAUDE_PLUGIN_ROOT` fallback**, even Claude plugin context cannot
    rescue it from a wheel install.
 
-2. **Codex host adapter** — `init/writers.py:install_codex_adapter()` (line 365)
+2. **Codex host adapter** — `init/writers.py:install_codex_adapter()` (line 378)
    reads `plugin_root / "hooks" / "adapters" / "codex" / "hooks.json"`, where
-   `plugin_root` comes from the broken `_plugin_root()` (`init/cli.py:42`, the
+   `plugin_root` comes from the broken `_plugin_root()` (`init/cli.py:41`, the
    BUG-2273 resolver). On a `pip install` Codex user, `template_path.exists()` is
    `False` → the function returns `False` → **Codex gets no hook adapter**, with
    only a missing success line to show for it. This is *the* non-Claude
@@ -106,7 +106,7 @@ _PROMPT_FILE = Path(__file__).resolve().parents[3] / "hooks" / "prompts" / "opti
 ```
 
 - **File**: `scripts/little_loops/init/writers.py`
-- **Anchor**: `install_codex_adapter()` (line 343), `template_path` (line 365)
+- **Anchor**: `install_codex_adapter()` (line 378), `template_path` (line 400)
 
 ```python
 template_path = plugin_root / "hooks" / "adapters" / "codex" / "hooks.json"
@@ -114,7 +114,7 @@ if not template_path.exists():
     return False
 ```
 
-`plugin_root` is supplied by `init/cli.py:_plugin_root()` (line 42), the same
+`plugin_root` is supplied by `init/cli.py:_plugin_root()` (line 41), the same
 bare `__file__`×4 traversal BUG-2273 fixes. But fixing that resolver is **not
 sufficient**: the assets it would resolve (`hooks/prompts/`, `hooks/adapters/`)
 are not in the wheel, and FEAT-2274's packaging scope explicitly lists
@@ -188,7 +188,7 @@ Decided by `/ll:decide-issue` on 2026-06-24.
 - `scripts/little_loops/init/writers.py` — `install_codex_adapter()`: resolve
   the template via the shared resolver; distinguish source-missing from
   dest-exists; signal the source-missing case to the caller.
-- `scripts/little_loops/init/cli.py` — `_dispatch_host_adapters()` (line 57):
+- `scripts/little_loops/init/cli.py` — `_dispatch_host_adapters()` (line 67):
   warn when `install_codex_adapter()` skipped due to missing source.
 - `scripts/pyproject.toml` — bundle `hooks/prompts/` and `hooks/adapters/` as
   package data (git mv into `little_loops/` per the BUG-885 precedent, or a
@@ -206,7 +206,7 @@ Decided by `/ll:decide-issue` on 2026-06-24.
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/hooks/__init__.py` — `main_hooks()` dispatch to
   `user_prompt_submit.handle`.
-- `scripts/little_loops/init/cli.py:69` — `install_codex_adapter(project_root,
+- `scripts/little_loops/init/cli.py:79` — `install_codex_adapter(project_root,
   plugin_root, ...)` call site.
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -553,6 +553,7 @@ _Updated by `/ll:confidence-check` on 2026-06-25 (re-run confirming stable score
 - Step 6 (user-prompt-check.sh) confirmed out-of-scope — it's a pass-through to Python, not a direct template reader
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T14:48:59 - `d2156314-5c57-4a4a-a962-c97a00142626.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00Z - `2d7d1ea6-286a-44ba-ac2e-8609d33e0c76.jsonl`
 - `/ll:refine-issue` - 2026-06-25T14:00:42 - `51622a86-d799-4018-802f-382afb9f743c.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00Z - `a19c0bc7-9cea-45e9-bde8-1a1b51288c4b.jsonl`
