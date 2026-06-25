@@ -1880,3 +1880,73 @@
     a post-kill recovery path can run.
   enforcement: advisory
   issue: ENH-2292
+- id: ARCH-077
+  type: rule
+  timestamp: '2026-06-25T16:49:35Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Bare terminals give operators nothing to act on. When generate was SIGKILLed
+    with no output, the loop ended at `failed` with no breadcrumb, making the failure
+    unactionable. Diagnostic states produce artifacts operators can reason from.
+  rule: FSM `on_error` paths must route to a diagnostic state, never a bare terminal
+    like `failed`.
+  enforcement: advisory
+  issue: BUG-2294
+- id: ARCH-078
+  type: rule
+  timestamp: '2026-06-25T16:49:35Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Absence of the expected output file (e.g., model.scad) identifies a generate-phase
+    failure; its presence identifies a render-phase failure. A single diagnostic prompt
+    that assumes one phase produces misleading output for the other.
+  rule: Diagnostic states should branch on expected artifact existence to determine
+    which phase failed.
+  enforcement: advisory
+  issue: BUG-2294
+- id: ARCH-079
+  type: rule
+  timestamp: '2026-06-25T16:49:35Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Per-loop retry counters can't fire if the kill takes down the executor
+    process itself. Executor-level handling (retryable_exit_codes, post-mortem) is
+    generic and reusable; per-loop reinventions are weaker and duplicate the concern.
+  rule: OOM/SIGKILL resilience belongs in the executor layer, not in per-loop retry
+    counters.
+  enforcement: advisory
+  issue: BUG-2294
+- id: ARCH-080
+  type: rule
+  timestamp: '2026-06-25T16:49:35Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Audit-generated proposals routed to `generate_multi_pass` and `complexity_gate`
+    states that were never declared. Applying them produces broken loops that fail
+    `ll-loop validate` immediately.
+  rule: Never apply an audit proposal that references FSM route targets that do not
+    exist as declared states.
+  enforcement: advisory
+  issue: BUG-2294
+- id: ARCH-081
+  type: rule
+  timestamp: '2026-06-25T16:49:35Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Adding `.gen_retries` counters or size estimators per-loop reinvents
+    what the executor's `retryable_exit_codes` mechanism already covers, creating
+    duplicated, weaker logic that diverges over time.
+  rule: Don't add per-loop workarounds for failure modes already handled generically
+    by the executor.
+  enforcement: advisory
+  issue: BUG-2294

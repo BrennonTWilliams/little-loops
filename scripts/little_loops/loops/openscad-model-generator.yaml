@@ -126,7 +126,7 @@ states:
     on_yes: render_views
     on_no: render_views
     on_partial: render_views
-    on_error: failed
+    on_error: diagnose
 
   render_views:
     # HARNESS: CLI render phase — renders the model from each camera preset in
@@ -466,20 +466,33 @@ states:
     terminal: true
 
   diagnose:
-    # HARNESS: Explicit failure diagnostic — reached when render_views fails
-    # (openscad missing or model does not compile). Provides a clear human-readable
-    # explanation before routing to the failed terminal.
+    # HARNESS: Explicit failure diagnostic — reached from two paths:
+    #   1. render_views fails (openscad missing or model does not compile)
+    #   2. generate fails (on_error) — e.g. the prompt subprocess was killed
+    #      (exit -9 / SIGKILL, often OS OOM) and wrote no model.scad
+    # Provides a clear human-readable explanation before routing to the failed
+    # terminal so a kill produces an operator-readable artifact, not a bare
+    # `failed` terminal with no breadcrumb.
     action_type: prompt
     action: |
-      The openscad-model-generator loop encountered a render failure.
+      The openscad-model-generator loop encountered a failure. Determine which
+      phase failed and diagnose accordingly.
 
-      Diagnose what happened:
-      - If ${captured.run_dir.output}/model.scad exists, attempt to read it and
-        identify any obvious syntax errors (unclosed brackets, undefined variables,
-        undefined modules).
-      - Check whether "openscad" was found on PATH (the render_views state outputs
-        "OPENSCAD_MISSING" when it is not).
-      - Note whether any views were rendered in ${captured.run_dir.output}/views/.
+      First, check whether ${captured.run_dir.output}/model.scad exists:
+
+      - If model.scad is MISSING or empty, the generate phase failed before
+        writing output. The most common cause is the generation subprocess being
+        killed (exit -9 / SIGKILL, typically an OS out-of-memory kill on a complex
+        multi-part model) or a transient API error. Note that the CAD brief at
+        ${captured.run_dir.output}/brief.md was written successfully — re-running
+        will reuse it. If the brief describes a large multi-part assembly,
+        recommend simplifying the description or splitting it into separate parts.
+
+      - If model.scad EXISTS, the render phase failed. Read it and identify any
+        obvious syntax errors (unclosed brackets, undefined variables, undefined
+        modules). Check whether "openscad" was found on PATH (render_views outputs
+        "OPENSCAD_MISSING" when it is not). Note whether any views were rendered
+        in ${captured.run_dir.output}/views/.
 
       Write a one-paragraph diagnostic summary the operator can use to re-run
       or adjust the model description. If openscad is missing, reproduce the
