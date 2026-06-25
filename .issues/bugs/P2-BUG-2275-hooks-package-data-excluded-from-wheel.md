@@ -2,8 +2,9 @@
 id: BUG-2275
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-24T00:00:00Z'
+completed_at: '2026-06-25T15:14:40Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
@@ -510,9 +511,20 @@ HOOKS_JSON_DIR = REPO_ROOT / "scripts" / "little_loops" / "hooks" / "adapters" /
 `bug`, `packaging`, `hooks`, `host-compat`, `cross-host`, `install`,
 `path-resolution`
 
+## Resolution
+
+Fixed in commit `fix(hooks/packaging): move Codex adapter scripts in-package + lazy _PROMPT_FILE resolver`.
+
+- Moved `hooks/adapters/codex/{session-start,pre-compact,prompt-submit,post-tool-use}.sh` into `scripts/little_loops/hooks/adapters/codex/` (matching the BUG-885 precedent for `loops/`)
+- Replaced `_PROMPT_FILE` module constant with `_find_prompt_file()` lazy resolver (env-var-first, in-package fallback) inside `handle()`
+- `install_codex_adapter()` now reads `hooks.json` from `Path(__file__).parent.parent / "hooks/adapters/codex/hooks.json"` and substitutes `{{LL_PLUGIN_ROOT}}` with the `little_loops` package root
+- Return sentinel changed to `bool | None` (`None` = source-missing warning, `False` = dest-exists skip, `True` = installed)
+- `_dispatch_host_adapters()` warns to stderr on `None` return
+- `ll-verify-package-data` exits 0; 4 `xfail(strict=True)` decorators removed from `test_init_core.py` and `test_init_tui.py`
+
 ## Status
 
-**Open** | Created: 2026-06-24 | Priority: P2
+**Done** | Created: 2026-06-24 | Priority: P2
 
 
 ---

@@ -6,7 +6,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from little_loops.file_utils import atomic_write, atomic_write_json
 
@@ -385,7 +385,7 @@ def install_codex_adapter(
     plugin_root: Path,
     force: bool = False,
     dry_run: bool = False,
-) -> Optional[bool]:
+) -> bool | None:
     """Write .codex/hooks.json from the in-package Codex adapter template.
 
     Reads ``little_loops/hooks/adapters/codex/hooks.json`` from the installed
