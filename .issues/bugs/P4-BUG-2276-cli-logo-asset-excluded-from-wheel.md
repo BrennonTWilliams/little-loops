@@ -3,13 +3,28 @@ id: BUG-2276
 type: BUG
 priority: P4
 status: open
-captured_at: "2026-06-24T00:00:00Z"
+captured_at: '2026-06-24T00:00:00Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
-relates_to: [BUG-2275, FEAT-2274, BUG-885]
-labels: [bug, packaging, assets, install, path-resolution]
+relates_to:
+- BUG-2275
+- FEAT-2274
+- BUG-885
+labels:
+- bug
+- packaging
+- assets
+- install
+- path-resolution
 decision_needed: false
+implementation_order_risk: true
+confidence_score: 84
+outcome_confidence: 72
+score_complexity: 22
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # BUG-2276: CLI logo asset excluded from the wheel — `get_logo()` silently returns None on non-editable installs
@@ -186,7 +201,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Note** (added by `/ll:audit-issue-conflicts`): The packaging `git mv assets/ll-cli-logo.txt → scripts/little_loops/assets/ll-cli-logo.txt` is owned by **FEAT-2274**, which explicitly includes `assets/ll-cli-logo.txt` in its scope. Do NOT perform the `git mv` independently here — coordinate with FEAT-2274. BUG-2276 owns: (1) the path fix in `logo.py:get_logo()` (one-line change), (2) the test asserting `get_logo()` resolves from the in-package path, and (3) the `docs/reference/OUTPUT_STYLING.md` update. Related issue: [FEAT-2274].
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-24_
+
+**Readiness Score**: 84/100 → PROCEED with attention to noted concerns
+**Outcome Confidence**: 72/100 → below threshold
+
+### Concerns
+- FEAT-2274 (open) owns the `git mv assets/ll-cli-logo.txt → scripts/little_loops/assets/ll-cli-logo.txt`. BUG-2276's path fix has no effect until that move lands. Coordinate implementation with or after FEAT-2274.
+- Implementation Steps list `git mv` as Step 1, but the Scope Boundary note assigns it to FEAT-2274. Step 1 should be removed or marked as a pre-condition to avoid scope collision.
+
+### Outcome Risk Factors
+- Tests are co-deliverables: no existing test validates `get_logo()` returns non-None content. The quiet-mode test (`test_quiet_mode_suppresses_logo`) passes vacuously when `get_logo()` returns None. Implement tests first so correctness is verifiable.
+- `assets/ll-cli-logo.txt` still exists at the repo root (never deleted — confirmed in git history from Jan 9 2026). FEAT-2274 owns the `git mv` to `scripts/little_loops/assets/ll-cli-logo.txt`; no creation needed, just relocation. The path fix in `logo.py` cannot be meaningfully tested until that move lands.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T00:00:00Z - `b128ec64-1e93-499b-9f80-d41e92fa74d3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T01:15:24 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:59:51 - `73a37eb2-f3ec-44e0-ac15-6eae379762fd.jsonl`
 - `/ll:decide-issue` - 2026-06-24T23:45:44 - `3a5eb345-fd4d-4bec-870b-28d824f9c27e.jsonl`

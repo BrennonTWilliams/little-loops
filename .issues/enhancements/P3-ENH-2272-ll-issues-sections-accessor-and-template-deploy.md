@@ -17,6 +17,7 @@ score_complexity: 14
 score_test_coverage: 20
 score_ambiguity: 22
 score_change_surface: 18
+decision_needed: false
 ---
 
 # ENH-2272: ll-issues sections accessor + project-local template deploy
@@ -135,7 +136,7 @@ New CLI surface on `ll-issues`:
 - `scripts/little_loops/cli/issues/sections.py` (new) — `cmd_sections`.
 - `scripts/little_loops/issue_template.py` — unified resolver consumed by the CLI
   and existing loaders (builds on BUG-2271).
-- `scripts/little_loops/init/writers.py` — `deploy_issue_templates()` (skip-if-exists).
+- `scripts/little_loops/init/writers.py` — `deploy_issue_templates()` (skip-if-exists); also add `sections` to `_CLAUDE_MD_COMMANDS_BLOCK` (line ~83) so `ll-init`-generated CLAUDE.md blocks include the new subcommand.
 - `scripts/little_loops/init/cli.py` — wire deploy into the init flow behind a
   feature flag.
 - `scripts/little_loops/init/tui.py` — add `deploy_issue_templates()` call in `_apply_config()` (line ~847) alongside existing `deploy_goals` / `deploy_design_tokens` calls; add to inline import block. [Wiring]
@@ -157,7 +158,7 @@ New CLI surface on `ll-issues`:
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_parser.py` — imports `issue_template.py` resolver; must switch to the shared resolver when BUG-2271 lands.
-- `scripts/little_loops/sync/` — any loader that reads per-type section JSON will consume the shared resolver.
+- `scripts/little_loops/sync.py` — imports `load_issue_sections` at line 21; uses its own 2-tier config resolution at lines 697–700 (`config.issues.templates_dir` or `None`). When ENH-2272 lands, callers passing `None` can switch to `resolve_templates_dir(config)` to gain tiers 2–4; this migration is within BUG-2271 scope (existing-loader correctness), not ENH-2272's.
 - Six skill/command files (listed in Files to Modify) — become callers of `ll-issues sections` after callsite rewrite.
 
 ### Tests
@@ -166,9 +167,10 @@ New CLI surface on `ll-issues`:
 - Update: tests covering `ll-init` flow to include the new deploy step.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_issue_template.py` — existing `test_load_custom_dir` and `test_load_missing_file` may break if `load_issue_sections` second-parameter semantics change; add new parametrized tests for the 4-tier resolver precedence in `TestLoadIssueSections`.
-- `scripts/tests/test_init_core.py` — add `TestDeployIssueTemplates` class (mirror `TestDeployGoals`: `test_deploys_sections`, `test_skips_if_already_exists`, `test_dry_run`, `test_skips_if_template_missing`); add `test_yes_deploys_issue_templates_when_enabled` integration test.
+- `scripts/tests/test_issue_template.py` — existing `test_load_custom_dir` and `test_load_missing_file` may break if `load_issue_sections` second-parameter semantics change; add new parametrized tests for the 4-tier resolver precedence in `TestLoadIssueSections`. **Tier-ordering risk**: `test_uses_claude_plugin_root_when_set`, `test_falls_back_to_file_relative`, and `test_load_default_env_var_missing_templates_raises` assume the env-var tier has exclusive priority — if the new `.ll/templates/` tier is checked first and the test CWD has such a dir, these tests break. The resolver MUST check project-local tier only when a config `ll_dir` is explicitly passed (not from CWD), or the tests must explicitly suppress the local tier via monkeypatch.
+- `scripts/tests/test_init_core.py` — add `TestDeployIssueTemplates` class (mirror `TestDeployGoals`: `test_deploys_sections`, `test_skips_if_already_exists`, `test_dry_run`, `test_skips_if_template_missing`); add `test_yes_deploys_issue_templates_when_enabled` integration test (follow `test_yes_deploys_design_tokens_when_enabled` pattern — patch `build_config` to inject `issues.deploy_templates: true`).
 - `scripts/tests/test_config_schema.py` — add `test_issues_deploy_templates_in_schema` sentinel following `test_issues_auto_commit_in_schema` pattern.
+- `scripts/tests/test_init_tui.py` — add `test_deploy_issue_templates_via_tui` following `test_design_tokens_selected_deploys_profiles` pattern (line 215), exercising the `deploy_issue_templates()` call in `_apply_config()` through the full TUI flow.
 
 ### Documentation
 - `docs/reference/CLI.md` — document `ll-issues sections` subcommand.
@@ -177,6 +179,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` — add `deploy_templates` row to the `### issues` config table (alongside `templates_dir`).
 - `.claude/CLAUDE.md` — add `sections` to the parenthetical `ll-issues` subcommand list (line 233).
+- `skills/configure/show-output.md` — the `## issues --show` section displays `templates_dir: {{config.issues.templates_dir}} (default: none)`; add a `deploy_templates: false` display row for the new config key.
 
 ### Configuration
 - `config-schema.json` — feature flag property for `deploy_issue_templates` (if gated).
@@ -238,6 +241,52 @@ def deploy_issue_templates(ll_dir: Path, templates_dir: Path, dry_run: bool = Fa
 - For the new `test_ll_issues_sections.py`: mirror `test_issues_path.py` — use `patch.object(sys, "argv", ["ll-issues", "sections", "BUG", "--config", str(tmp_dir)])` + call `main_issues()` + `capsys.readouterr()`.
 - For `test_deploy_issue_templates.py`: mirror `test_init_core.py:750–806` — create `tmp_path / "ll"` and `tmp_path / "templates"`, populate source files, call `deploy_issue_templates()`, assert destination state.
 - For resolver precedence tests: extend `test_issue_template.py:TestLoadIssueSections` with the same parametrized approach, creating stub files in `tmp_path` for each tier.
+
+**`_run_apply()` vs `_run_yes()` asymmetry in `init/cli.py` (confirmed by analysis):**
+- `_run_yes()` (lines 298–305): calls both `deploy_goals` and `deploy_design_tokens` — note existing research said lines 289–293, but actual lines are 298–305.
+- `_run_apply()` (lines 434–435): calls **only** `deploy_goals` — `deploy_design_tokens` is absent from this path.
+- Implementer decision point: mirror the `deploy_design_tokens` precedent (add to `_run_yes()` only) or the `deploy_goals` precedent (add to both paths). Document the choice explicitly when implementing.
+
+**`issue_parser.py:80` — `is_formatted()` explicit parameter:**
+```python
+def is_formatted(content: str, issue_type: str, templates_dir: Path | None = None) -> bool:
+```
+Receives `templates_dir` explicitly from its callers. When BUG-2271 lands and callers are migrated, callers passing `None` must be updated to pass `resolve_templates_dir(config)` so the new resolver tiers apply. Co-delivery sequencing with BUG-2271 must account for this interaction point.
+
+**`main_issues()` deferred import location (confirmed):**
+All subcommand module imports are deferred inside the `with cli_event_context(...)` block at lines 21–55, not at module level. The `from little_loops.cli.issues.sections import cmd_sections` import must be added inside this block, following the `from little_loops.cli.issues.path_cmd import cmd_path` pattern.
+
+**`_default_templates_dir()` current tiers (line 16) — two tiers already exist:**
+1. `CLAUDE_PLUGIN_ROOT` env var → `Path(env_root) / "templates"`
+2. `Path(__file__).resolve().parent.parent.parent / "templates"` (3× `.parent` to repo root)
+
+The new `resolve_templates_dir(config: BRConfig)` must demote these to tiers 3–4. Keep `_default_templates_dir()` as a private helper so existing callers that pass `None` to `load_issue_sections()` continue working until they are migrated. Ensure the new function's signature is distinct (takes `config: BRConfig`) to avoid silently shadowing the old private function.
+
+_Added by `/ll:refine-issue` (2026-06-24 pass 3) — verified against current codebase:_
+
+**BUG-2271 is done (status confirmed):** `_default_templates_dir()` now has 2 tiers as documented above. However, `resolve_templates_dir(config: BRConfig)` — the 4-tier function ENH-2272 adds — does NOT yet exist in `issue_template.py`. ENH-2272 can now proceed without waiting on BUG-2271.
+
+**Callsite "plugin directory" prose — current exact state (4 of 6 need explicit replacement):**
+- `skills/format-issue/SKILL.md:196` — `(relative to the little-loops plugin directory)` present ✓ replace
+- `skills/format-issue/SKILL.md:221` — template reference without "plugin directory" phrase; still needs `ll-issues sections` substitution
+- `skills/format-issue/templates.md:7` — `(relative to the little-loops plugin directory)` present ✓ replace
+- `skills/format-issue/templates.md:52` — template reference without phrase; still needs substitution
+- `skills/capture-issue/SKILL.md:276` — no "plugin directory" phrase; generic `templates/{type}-sections.json` reference; still needs `ll-issues sections` substitution
+- `skills/scope-epic/SKILL.md:296,358` — no "plugin directory" phrase; generic template references; still need `ll-issues sections` substitution
+- `commands/ready-issue.md:139` — `(relative to the little-loops plugin directory)` present ✓ replace
+- `commands/scan-codebase.md:241` — `(relative to the little-loops plugin directory)` present ✓ replace
+
+All 6 still require updates; 4 have the exact "plugin directory" phrase, 2 use generic path references.
+
+**`init/tui.py:_apply_config()` exact line numbers:**
+- `deploy_goals(ll_dir, templates_dir)` call is at **line 843**
+- `deploy_design_tokens(ll_dir, templates_dir, active_profile=active_profile)` call is at **line 847**
+- `deploy_issue_templates()` should be inserted after line 847, matching the pattern.
+- Import block for `deploy_goals` and `deploy_design_tokens` is at lines 827–828 (inline import inside `_apply_config()`).
+
+**`deploy_goals` uses `atomic_write()` (not `shutil.copy`):** For a single-file deploy, `writers.py:atomic_write()` is used (line 263). The proposed `deploy_issue_templates` correctly uses `shutil.copytree()` since it deploys a directory, not a single file — this is appropriate and differs from `deploy_goals` intentionally.
+
+**Test files confirmed absent:** `scripts/tests/test_ll_issues_sections.py` and `scripts/tests/test_deploy_issue_templates.py` do not exist yet — both must be created as documented in the Tests section.
 
 ## Implementation Steps
 
@@ -309,6 +358,11 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 - `issue_template.py` is also modified by BUG-2271 (shared resolver); implement in coordinated sequence (BUG-2271 first or co-delivered with ENH-2272) to avoid merge conflicts on the resolver function
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T00:00:00Z - `cad8a6a0-ea53-4a66-a1bc-b1dac77ffa38.jsonl`
+- `/ll:refine-issue` - 2026-06-25T04:07:01 - `b128ec64-1e93-499b-9f80-d41e92fa74d3.jsonl`
+- `/ll:confidence-check` - 2026-06-25T05:00:00Z - `9a49e22d-1a83-43d6-90bb-9066a033acd4.jsonl`
+- `/ll:wire-issue` - 2026-06-25T03:45:08 - `96720814-9d39-475d-b533-70daac1152c4.jsonl`
+- `/ll:refine-issue` - 2026-06-25T03:34:36 - `613142ac-86df-4bf4-8683-82620ab53b99.jsonl`
 - `/ll:confidence-check` - 2026-06-24T23:45:00Z - `d0a0457b-8179-46d1-a61d-6ee6f3cc8921.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:21:52 - `97498016-23cf-4c10-9b5b-f243fd01138b.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:05:17 - `5b067ad3-2717-49a4-bf64-d61c0eab69cc.jsonl`

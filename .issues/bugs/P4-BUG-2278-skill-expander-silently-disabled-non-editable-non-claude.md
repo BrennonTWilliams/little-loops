@@ -3,12 +3,28 @@ id: BUG-2278
 type: BUG
 priority: P4
 status: open
-captured_at: "2026-06-24T00:00:00Z"
+captured_at: '2026-06-24T00:00:00Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
-relates_to: [BUG-2275, FEAT-2274, ENH-2272, BUG-2273]
-labels: [bug, host-compat, cross-host, skill-expander, automation, path-resolution]
+relates_to:
+- BUG-2275
+- FEAT-2274
+- ENH-2272
+- BUG-2273
+labels:
+- bug
+- host-compat
+- cross-host
+- skill-expander
+- automation
+- path-resolution
+confidence_score: 96
+outcome_confidence: 89
+score_complexity: 22
+score_test_coverage: 23
+score_ambiguity: 20
+score_change_surface: 24
 ---
 
 # BUG-2278: `skill_expander` silently disables prompt pre-expansion on non-editable / non-Claude installs (no host-skill-dir awareness)
@@ -241,6 +257,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `07abc172-0f51-46b6-ae83-e7273ddb4bc3.jsonl`
 - `/ll:wire-issue` - 2026-06-25T03:31:41 - `c1d60a39-e3ac-4d91-b682-b9d82e5ba0f1.jsonl`
 - `/ll:refine-issue` - 2026-06-25T03:24:40 - `f353a071-9adf-4f50-8426-b39c4da0b78d.jsonl`
 - `/ll:format-issue` - 2026-06-24T23:23:17 - `f6b59a7a-7a33-46b0-b1e5-64bbc39e6087.jsonl`

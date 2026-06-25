@@ -1764,3 +1764,15 @@
   rule: Package-data templates ship in the wheel; host-plugin assets do not
   scope: global
   issue: FEAT-2274
+- id: ARCHITECTURE-054
+  type: decision
+  timestamp: '2026-06-25T04:15:45Z'
+  category: architecture
+  labels: []
+  rationale: BUG-885 precedent directly reusable; pyproject.toml include already covers
+    little_loops/**; zero build config changes; force-include has no codebase precedent
+    and is inconsistent under editable installs
+  rule: 'Option 1: git mv templates → scripts/little_loops/templates/'
+  scope: issue
+  alternatives_rejected: 'Option 2: Hatch force-include'
+  issue: FEAT-2274

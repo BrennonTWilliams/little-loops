@@ -9,6 +9,7 @@ discovered_by: capture-issue
 parent: EPIC-2279
 relates_to: [EPIC-2257, BUG-2271, BUG-2273, ENH-2272, BUG-2275, BUG-2276, ENH-2277, BUG-938, BUG-885]
 decision_ref: ARCHITECTURE-053
+decision_needed: false
 labels: [feature, packaging, templates, host-compat, cross-host, install]
 ---
 
@@ -38,6 +39,14 @@ makes BUG-2271 / BUG-2273 / ENH-2272's resolvers robust without depending on
 Ratified direction (this session): **Both** — package into the wheel as the
 universal seed/fallback **and** keep the `.ll/templates/` project deploy
 (ENH-2272) for per-project customization.
+
+## Current Behavior
+
+The `templates/` directory lives at the repo root, outside the packaged `little_loops/` Python tree. When installed via `pip install little-loops` (non-editable), the wheel does not include this directory. Host-specific resolvers (`_default_templates_dir()`, `_plugin_root()`, `_find_templates_dir()`) rely on `${CLAUDE_PLUGIN_ROOT}` or `__file__`-traversal heuristics that only work under Claude Code's plugin delivery model. Every non-Claude host (Codex, Gemini, omp) receives the wheel without templates, causing `ll-init`, `load_issue_sections()`, `detect_project_type()`, and `deploy_design_tokens()` to fail or silently error when `CLAUDE_PLUGIN_ROOT` is unset.
+
+## Expected Behavior
+
+The `templates/` directory — along with related host-agnostic assets under `hooks/prompts/`, `hooks/adapters/codex/`, and `assets/` — ships inside the wheel as `little_loops/templates/`. A plain `pip install little-loops` (non-editable, no `CLAUDE_PLUGIN_ROOT` set) provides all data the CLI code reads. All resolvers default to the in-package location (`Path(__file__).parent / "templates"`), with `.ll/templates/` (per-project customization) layered above it as an override.
 
 ## Motivation
 
@@ -93,6 +102,9 @@ Two viable mechanisms — decide during implementation:
    handful of repo-root `templates/` references (e.g. loop YAMLs under
    `little_loops/loops/`, `loops/README.md`) and the Claude-context
    `${CLAUDE_PLUGIN_ROOT}/templates` path to the new sub-path.
+
+> **Selected:** Option 1 — git mv templates → scripts/little_loops/templates/ — matches BUG-885 precedent exactly; zero pyproject.toml changes; single-tier resolver simplicity (score 9/12 vs 3/12 for force-include).
+
 2. **Hatch `force-include`** mapping `../templates` → `little_loops/templates`.
    Keeps the repo-root layout but can behave inconsistently under editable
    installs; the resolver would need to try both locations.
@@ -100,6 +112,25 @@ Two viable mechanisms — decide during implementation:
 Either way, update the shared resolver (BUG-2271 / ENH-2272) so the in-package
 location is the primary bundled source, with `.ll/templates/` (customization) and
 `config.issues.templates_dir` (override) layered above it.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-24.
+
+**Selected**: Option 1 — git mv templates → scripts/little_loops/templates/
+
+**Reasoning**: The BUG-885 precedent (moving `loops/` inside the package) is directly reusable here: `pyproject.toml`'s `include = ["little_loops/**"]` already covers all subdirectories, so the `git mv` requires zero build config changes. Option 2 (Hatch force-include) has zero precedent in this codebase, explicitly behaves inconsistently under editable installs, and would require adding a new third-tier resolver across four files from scratch.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option 1 — git mv | 3/3 | 2/3 | 2/3 | 2/3 | 9/12 |
+| Option 2 — force-include | 0/3 | 1/3 | 1/3 | 1/3 | 3/12 |
+
+**Key evidence**:
+- **Option 1**: `get_builtin_loops_dir()` at `scripts/little_loops/cli/loop/_helpers.py:822` is the direct BUG-885 precedent; `pyproject.toml:114` (`include = ["little_loops/**"]`) already covers new subdirectories with zero changes; three resolver functions need mechanical hop-count updates.
+- **Option 2**: No `force-include` stanza exists anywhere in this project; no dual-location resolver pattern exists in any module; the BUG-885 precedent explicitly used the git mv approach.
 
 ## Integration Map
 
@@ -123,6 +154,36 @@ location is the primary bundled source, with `.ll/templates/` (customization) an
 ### No Changes Needed
 - `skills/` / `commands/` / `agents/` / `hooks/` packaging — stay plugin-delivered.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Resolver inventory (FEAT-2274 owns items 1–3; companions own 4–6):**
+
+| Resolver | File | Current `__file__` traversal | Post-move traversal |
+|---|---|---|---|
+| `_default_templates_dir()` | `scripts/little_loops/issue_template.py` | `.parent×3` → repo root | `.parent` → `little_loops/` |
+| `_find_templates_dir()` | `scripts/little_loops/init/detect.py` | `.parent×4` → repo root | `.parent.parent` → `little_loops/` |
+| `_plugin_root()` → `/ "templates"` | `scripts/little_loops/init/cli.py` | `.parent×4` → repo root | replace caller with shared helper |
+| `_PROMPT_FILE` constant | `scripts/little_loops/hooks/user_prompt_submit.py` | `.parents[3]` → repo root | BUG-2275 owns resolver change |
+| `get_logo()` | `scripts/little_loops/logo.py` | `.parent×3` → repo root | BUG-2276 owns resolver change |
+| `install_codex_adapter()` | `scripts/little_loops/init/writers.py` | receives `plugin_root` parameter | fixed when BUG-2275 updates `_plugin_root()` caller |
+
+**pyproject.toml — confirmed no change needed with Option 1 (git mv):**
+`[tool.hatch.build.targets.wheel]` is `packages = ["little_loops"]` + `include = ["little_loops/**", "LICENSE"]`. Once `templates/` moves inside `little_loops/`, it is bundled automatically — identical mechanism to `little_loops/loops/**` (BUG-885 precedent confirmed). Option 2 (force-include) would require adding a `[tool.hatch.build.targets.wheel.force-include]` stanza.
+
+**Loop YAML references — confirmed no updates needed:**
+All `templates/` mentions in loop YAMLs are `.issues/templates/*` exclusion globs in `find` commands (project `.issues/` subtree — unrelated to the top-level `templates/` package directory). `scripts/little_loops/loops/README.md` references `lib/task-templates/` (loop-internal YAML fragments, already inside the package). The issue's current Integration Map mention of `little_loops/loops/*.yaml` needing updates is **incorrect** — no loop YAML edits required.
+
+**Test files that need updating (not yet listed in this issue):**
+- `scripts/tests/test_init_core.py` `templates_dir` fixture (lines 48–54): `_PROJECT_ROOT / "templates"` must point inside the package post-move, e.g. `Path(importlib.resources.files("little_loops")).joinpath("templates")` or `Path(little_loops.__file__).parent / "templates"`
+- `scripts/tests/test_init_core.py:TestPluginRoot.test_falls_back_to_file_path` — asserts `.parent×4` expected path; must update to new traversal depth
+- `scripts/tests/test_init_core.py:TestFindTemplatesDir.test_falls_back_to_file_path` — asserts `.parent×4`; update to `.parent.parent`
+- `scripts/tests/test_issue_template.py:test_falls_back_to_file_relative` — exercises `_default_templates_dir()` traversal; must remain green after resolver update
+
+**Shared helper (BUG-885 pattern):**
+Introduce `get_bundled_templates_dir() -> Path` returning `Path(__file__).parent / "templates"` (where `__file__` is the helper's module, inside `little_loops/`). Mirrors `get_builtin_loops_dir()` at `scripts/little_loops/cli/loop/_helpers.py:822`. Suggested location: `scripts/little_loops/issue_template.py` (alongside `_default_templates_dir()`) or a new `scripts/little_loops/_package_data.py` shared by all three resolvers.
+
 ## Implementation Steps
 
 1. Decide mechanism (git mv vs force-include); if git mv, move the tree.
@@ -134,6 +195,34 @@ location is the primary bundled source, with `.ll/templates/` (customization) an
    (design tokens + goals deploy; correct project-type detection).
 5. Run `python -m pytest scripts/tests/`; verify BUG-2271 / BUG-2273 reproduction
    steps now pass without `CLAUDE_PLUGIN_ROOT`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete per-step details:_
+
+**Step 1 — git mv is the preferred mechanism:** `pyproject.toml` already covers `little_loops/**` with no config changes needed. Also move the other package-data files in the same commit:
+- `git mv assets/ll-cli-logo.txt scripts/little_loops/assets/ll-cli-logo.txt`
+- `git mv hooks/prompts/optimize-prompt-hook.md scripts/little_loops/hooks/prompts/optimize-prompt-hook.md`
+- `git mv hooks/adapters/codex/hooks.json scripts/little_loops/hooks/adapters/codex/hooks.json`
+(FEAT-2274 owns all four moves; BUG-2275 / BUG-2276 own the companion resolver changes for the last three.)
+
+**Step 2 — exact resolver changes:**
+- `issue_template.py:_default_templates_dir()`: `Path(__file__).resolve().parent.parent.parent / "templates"` → `Path(__file__).resolve().parent / "templates"` (templates become sibling directory inside `little_loops/`)
+- `init/detect.py:_find_templates_dir()`: `Path(__file__).resolve().parent.parent.parent.parent / "templates"` → `Path(__file__).resolve().parent.parent / "templates"` (`detect.py` → `init/` → `little_loops/` → `templates/`)
+- `init/cli.py:main_init()`: replace `plug_root / "templates"` with a direct call to the shared `get_bundled_templates_dir()` helper; keep `_plugin_root()` untouched (BUG-2275 will update it for the codex adapter path separately)
+
+**Step 3 — test file updates required:**
+- `test_init_core.py` `templates_dir` fixture: update `_PROJECT_ROOT / "templates"` to point inside the installed package
+- `test_init_core.py:TestPluginRoot.test_falls_back_to_file_path` and `TestFindTemplatesDir.test_falls_back_to_file_path`: update expected traversal depths
+
+**Step 4 — wheel smoke test command:**
+```bash
+python -m build scripts/ --wheel && unzip -l dist/little_loops-*.whl | grep -E "(templates|assets)/"
+```
+
+## Use Case
+
+A developer sets up little-loops on a Codex or Gemini host. They run `pip install little-loops` in a fresh virtual environment — no repo clone, no `CLAUDE_PLUGIN_ROOT` — and then execute `ll-init` in their project. They expect design tokens to deploy, project type to be detected, and issue-section templates to load. Currently this fails silently because the wheel ships without `templates/`. After this feature, the wheel is self-sufficient: `ll-init` completes successfully on every supported host through the one delivery mechanism they all share.
 
 ## Acceptance Criteria
 
@@ -171,6 +260,10 @@ location is the primary bundled source, with `.ll/templates/` (customization) an
 
 `feature`, `packaging`, `templates`, `host-compat`, `cross-host`, `install`
 
+## Status
+
+**Open** | Created: 2026-06-24 | Priority: P2
+
 ---
 
 ## Scope Boundary
@@ -178,5 +271,8 @@ location is the primary bundled source, with `.ll/templates/` (customization) an
 **Note** (added by `/ll:audit-issue-conflicts`): FEAT-2274 owns the packaging `git mv` of `hooks/prompts/optimize-prompt-hook.md`, `hooks/adapters/codex/hooks.json`, and `assets/ll-cli-logo.txt` into the wheel (the "wheel" half of the Both decision). Related issues own complementary — non-overlapping — work: [BUG-2275] owns resolver changes + warning behavior + Bash script path update (`hooks/scripts/user-prompt-check.sh`) + template substitution decisions; [BUG-2276] owns the path fix in `logo.py:get_logo()` + test + doc update. Neither BUG-2275 nor BUG-2276 should perform the `git mv` independently.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-25T04:15:30 - `7d489730-0081-4f8f-9a5b-aac0cb779c57.jsonl`
+- `/ll:refine-issue` - 2026-06-25T04:09:36 - `18bb767c-bb64-42b8-87dd-2614b8c50967.jsonl`
+- `/ll:format-issue` - 2026-06-25T03:58:38 - `06ffb4c9-80f3-4642-b0d8-8f65d0237b1c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T01:15:24 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:capture-issue` - 2026-06-24T22:29:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d34d610-c8b9-4a5e-82c8-191296760b6d.jsonl`

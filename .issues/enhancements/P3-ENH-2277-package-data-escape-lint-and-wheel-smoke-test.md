@@ -9,6 +9,7 @@ discovered_by: capture-issue
 parent: EPIC-2279
 relates_to: [BUG-2271, BUG-2273, BUG-2275, BUG-2276, FEAT-2274, BUG-885, BUG-938]
 labels: [enhancement, packaging, testing, lint, ci, install, host-compat]
+decision_needed: true
 ---
 
 # ENH-2277: Left-shift gates for the "package-data escapes the wheel" bug class — manifest-completeness check (primary) + `__file__`-escape lint + wheel smoke test
@@ -171,6 +172,22 @@ package-data manifest rather than a single grep.
 - `scripts/tests/test_wheel_smoke.py` (new) — the build+install+exercise test.
 - CI workflow — run the new verifier, manifest check, and smoke test.
 
+### Dependent Files (Callers/Importers)
+- N/A — all integration targets are new files; no existing code imports them yet. The `ll-verify-package-data` entry point is invoked directly by the verify suite / CI rather than imported.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Additional files to modify (not in original list):**
+- `scripts/little_loops/cli/__init__.py` — must add `from little_loops.cli.verify_package_data import main_verify_package_data` and include it in `__all__`; this is required because all `[project.scripts]` entry points resolve through `little_loops.cli:<function>` (established pattern: `main_verify_triggers`, `main_verify_skills`, etc. all re-exported here)
+- `scripts/little_loops/skill_expander.py` — has `_find_plugin_root()` using 3× `.parent` traversal (env-var-first with `CLAUDE_PLUGIN_ROOT`); the lint must handle this — either flag it as a remaining escape to fix, or allowlist it alongside `init/cli._plugin_root()`
+
+**Build backend is hatchling (not setuptools):**
+- Config lives in `[tool.hatch.build.targets.wheel]` in `scripts/pyproject.toml`: `packages = ["little_loops"]` and `include = ["little_loops/**", "LICENSE"]`
+- No `MANIFEST.in`, no `[tool.setuptools.package-data]`
+- For bundling repo-root assets into the wheel (FEAT-2274 scope), the correct mechanism is hatchling's `shared-data` or `artifacts` config, not setuptools `package-data`
+
 ### Similar Patterns
 - `ll-verify-skills` / `ll-verify-skill-budget` / `ll-verify-triggers` — existing
   `ll-verify-*` gate pattern to mirror.
@@ -186,6 +203,9 @@ package-data manifest rather than a single grep.
 - `docs/reference/CLI.md` — document `ll-verify-package-data`.
 - `CONTRIBUTING.md` — note the wheel smoke test and why editable installs mask
   this class.
+
+### Configuration
+- `scripts/pyproject.toml` — already listed under Files to Modify (new `ll-verify-package-data` entry point registration).
 
 ## Implementation Steps
 
@@ -235,3 +255,90 @@ package-data manifest rather than a single grep.
 ## Status
 
 **Open** | Created: 2026-06-24 | Priority: P3
+
+
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+### Complete `__file__` Escape Site Inventory
+
+All sites where `little_loops/` code reaches outside the package via `Path(__file__)` traversal:
+
+| File | Anchor | Traversal | Target asset | Env-var guard? | Lint verdict |
+|---|---|---|---|---|---|
+| `scripts/little_loops/logo.py` | `get_logo()` | 3× `.parent` + `/ "assets" / "ll-cli-logo.txt"` | `assets/ll-cli-logo.txt` | **No** | **FLAG** — bare escape, no fallback |
+| `scripts/little_loops/hooks/user_prompt_submit.py` | `_PROMPT_FILE` (module-level const) | `.parents[3]` + `/ "hooks" / "prompts" / ...` | `hooks/prompts/optimize-prompt-hook.md` | **No** | **FLAG** — bare escape, evaluated at import time |
+| `scripts/little_loops/issue_template.py` | `_default_templates_dir()` | 3× `.parent` + `/ "templates"` | `templates/` | Yes (`CLAUDE_PLUGIN_ROOT`) | **FLAG** — escapes without env var on non-editable |
+| `scripts/little_loops/skill_expander.py` | `_find_plugin_root()` | 3× `.parent` | repo root | Yes (`CLAUDE_PLUGIN_ROOT`) | **FLAG or allowlist** — same pattern as shared resolver |
+| `scripts/little_loops/init/cli.py` | `_plugin_root()` | 4× `.parent` | repo root | Yes (`CLAUDE_PLUGIN_ROOT`) | **Allowlist** — this IS the shared resolver; all others should route through it |
+| `scripts/little_loops/init/detect.py` | `_find_templates_dir()` | 4× `.parent` + `/ "templates"` | `templates/` | Yes (`CLAUDE_PLUGIN_ROOT`) | **FLAG** — duplicate of the resolver; should call `_plugin_root()` |
+| `scripts/little_loops/cli/loop/_helpers.py` | `get_builtin_loops_dir()` | 3× `.parent` | `scripts/little_loops/loops/` | No | **OK** — resolves inside the package; must be on allowlist |
+| `scripts/little_loops/fsm/fragments.py` | `_BUILTIN_LOOPS_DIR` (module-level) | 2× `.parent` | `scripts/little_loops/loops/` | No | **OK** — resolves inside the package; must be on allowlist |
+
+**Allowlist design:** The lint's pass/fail criterion is whether the resolved path exits `scripts/little_loops/`. `_helpers.py` and `fragments.py` stay inside — they are structurally OK and must be on the allowlist to avoid false positives. `init/cli._plugin_root()` is the canonical shared resolver and can also be allowlisted; all other escaping sites are lint targets.
+
+### `__file__` Escape Pattern Details
+
+- `logo.py:get_logo()` uses `logo_path.exists()` as a guard — silently returns `None` if absent; `print_logo()` is a no-op on `None`. No `CLAUDE_PLUGIN_ROOT` check at all.
+- `hooks/user_prompt_submit._PROMPT_FILE` is a **module-level constant** set at import time. The `handle()` function checks `_PROMPT_FILE.is_file()` but the path is baked in when the module loads — particularly brittle.
+- `skill_expander._find_plugin_root()` was not mentioned in the original issue but follows the same `CLAUDE_PLUGIN_ROOT`-first pattern as `init/cli._plugin_root()`; it reaches `skills/` and `commands/` at repo root.
+
+### Manifest Completeness Check — API
+
+`importlib.metadata` is already used in `scripts/little_loops/init/install_check.py:detect_installation()` and `init/validate._check_little_loops_version()`. The established test-patching pattern lives in `scripts/tests/test_init_install.py`.
+
+For the completeness check, use `importlib.metadata.Distribution("little-loops").files()` — returns a list of `PackagePath` objects covering all files in the installed distribution. Assert each declared asset appears in this list.
+
+For the in-process read path, `importlib.resources.files("little_loops")` provides a traversable interface to package-bundled data. **Zero usage of `importlib.resources` exists today** — the implementation will introduce it for the first time.
+
+### Lint Implementation — AST vs. Regex
+
+No `ast.parse` / `ast.walk` / `ast.NodeVisitor` usage exists in the codebase. Two options:
+
+- **Regex** (consistent with `scripts/little_loops/learning_tests/import_scan.py:_PY_IMPORT_RE` and `get_imported_packages()` — the established scanning pattern). Simpler, but can miss dynamic constructions.
+- **AST** (more accurate for counting `.parent` chains; new to the codebase). `ast.NodeVisitor` walking `ast.Attribute` nodes can precisely detect `Path(__file__).parent.parent...` chains and count depth.
+
+Given the pattern is syntactically regular (`.parent` chains on `Path(__file__)`), regex is likely sufficient for the backstop role. AST is more future-proof if the lint needs to count chain depth exactly.
+
+### CLI Structure — Model After `verify_triggers.py`
+
+The closest model for `cli/verify_package_data.py` is `scripts/little_loops/cli/verify_triggers.py:main_verify_triggers()`:
+
+```python
+def main_verify_package_data() -> int:
+    with cli_event_context(DEFAULT_DB_PATH, "ll-verify-package-data", sys.argv[1:]):
+        parser = argparse.ArgumentParser(
+            prog="ll-verify-package-data",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="Exit codes:\n  0 - all assets shipped\n  1 - missing assets or escaping reads",
+        )
+        parser.add_argument("-C", "--directory", type=Path, default=None, ...)
+        parser.add_argument("--list", action="store_true", ...)
+        parser.add_argument("--json", action="store_true", ...)
+        args = parser.parse_args()
+        ...
+        return 0  # or 1
+```
+
+### Wheel Smoke Test — Marks and Guard Pattern
+
+Use `@pytest.mark.slow` + `@pytest.mark.integration` + an `PYTEST_INTEGRATION=1` env guard, matching `scripts/tests/test_rn_build.py:TestE2E`:
+
+```python
+@pytest.mark.slow
+@pytest.mark.integration
+class TestWheelSmoke:
+    def test_asset_reads_non_editable(self) -> None:
+        if not os.environ.get("PYTEST_INTEGRATION"):
+            pytest.skip("Set PYTEST_INTEGRATION=1 to run wheel smoke tests")
+        # build wheel → install non-editable venv → exercise asset-read surfaces
+```
+
+Both marks are already declared in `[tool.pytest.ini_options]` in `scripts/pyproject.toml` — no new registration needed.
+
+For subprocess invocations in the smoke test, follow the pattern in `test_rn_build.py`: `subprocess.run([...], capture_output=True, text=True, timeout=N)` without `check=True`; assert manually on `returncode`.
+
+## Session Log
+- `/ll:refine-issue` - 2026-06-25T04:17:08 - `a21d9f22-89f7-43e3-9e2d-36a72e4d4b27.jsonl`
+- `/ll:format-issue` - 2026-06-25T04:09:14 - `18bb767c-bb64-42b8-87dd-2614b8c50967.jsonl`
