@@ -825,6 +825,7 @@ def _apply_config(
     from little_loops.init.writers import (
         deploy_design_tokens,
         deploy_goals,
+        deploy_issue_templates,
         make_issue_dirs,
         make_learning_tests_dir,
         merge_settings,
@@ -844,6 +845,9 @@ def _apply_config(
     if config.get("design_tokens", {}).get("enabled"):
         active_profile = config["design_tokens"].get("active", "default")
         deploy_design_tokens(ll_dir, templates_dir, active_profile=active_profile)
+
+    if config.get("issues", {}).get("deploy_templates"):
+        deploy_issue_templates(ll_dir, templates_dir)
 
     if config.get("learning_tests", {}).get("enabled"):
         make_learning_tests_dir(ll_dir)

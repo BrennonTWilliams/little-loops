@@ -141,6 +141,7 @@ def _run_yes(
     from little_loops.init.writers import (
         deploy_design_tokens,
         deploy_goals,
+        deploy_issue_templates,
         make_issue_dirs,
         make_learning_tests_dir,
         merge_settings,
@@ -311,6 +312,9 @@ def _run_yes(
 
     if config.get("design_tokens", {}).get("enabled"):
         deploy_design_tokens(ll_dir, templates_dir)
+
+    if config.get("issues", {}).get("deploy_templates"):
+        deploy_issue_templates(ll_dir, templates_dir)
 
     if config.get("learning_tests", {}).get("enabled"):
         make_learning_tests_dir(ll_dir)

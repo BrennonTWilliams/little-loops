@@ -72,6 +72,20 @@ class TestConfigSchema:
         )
         assert issues_props["auto_commit_prefix"]["type"] == "string"
 
+    def test_issues_deploy_templates_in_schema(self) -> None:
+        """issues.deploy_templates must be declared in config-schema.json.
+
+        issues has additionalProperties: false, so this field must be declared
+        or any config using it will be rejected at validation time.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        issues_props = data["properties"]["issues"]["properties"]
+        assert "deploy_templates" in issues_props, (
+            "issues.deploy_templates is not declared in config-schema.json"
+        )
+        assert issues_props["deploy_templates"]["type"] == "boolean"
+        assert issues_props["deploy_templates"].get("default") is False
+
     def test_commands_recursive_refine_in_schema(self) -> None:
         """commands.recursive_refine must be declared inside the commands block.
 

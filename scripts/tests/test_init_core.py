@@ -1374,6 +1374,31 @@ class TestMainInit:
         assert code == 0
         assert (tmp_project / ".ll" / "design-tokens" / "profiles").is_dir()
 
+    def test_yes_deploys_issue_templates_when_enabled(self, tmp_project: Path) -> None:
+        """_run_yes copies *-sections.json files when config has issues.deploy_templates."""
+        from little_loops.init import core as init_core
+        from little_loops.init.cli import main_init
+
+        real_build = init_core.build_config
+
+        def patched_build(template, choices=None):
+            cfg = real_build(template, choices)
+            cfg.setdefault("issues", {})["deploy_templates"] = True
+            return cfg
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch("little_loops.init.core.build_config", side_effect=patched_build),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        assert (tmp_project / ".ll" / "templates").is_dir()
+        assert len(list((tmp_project / ".ll" / "templates").glob("*-sections.json"))) >= 4
+
     def test_yes_adds_explore_api_permission_when_learning_tests(self, tmp_project: Path) -> None:
         """_run_yes injects Skill(ll:explore-api) into settings when learning_tests enabled."""
         from little_loops.init import core as init_core

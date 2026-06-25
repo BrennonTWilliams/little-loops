@@ -246,6 +246,11 @@
           "type": "string",
           "description": "Commit message prefix used by the auto-commit hook",
           "default": "chore(issues)"
+        },
+        "deploy_templates": {
+          "type": "boolean",
+          "default": false,
+          "description": "Copy bundled *-sections.json templates into .ll/templates/ on ll-init"
         }
       },
       "additionalProperties": false

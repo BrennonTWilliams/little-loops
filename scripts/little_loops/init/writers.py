@@ -301,6 +301,33 @@ def deploy_design_tokens(
     return True
 
 
+def deploy_issue_templates(ll_dir: Path, templates_dir: Path, dry_run: bool = False) -> bool:
+    """Copy bundled *-sections.json files to .ll/templates/ (skip if already present).
+
+    Args:
+        ll_dir: The .ll/ directory.
+        templates_dir: templates/ directory containing *-sections.json files.
+        dry_run: If True, print planned write; do not copy files.
+
+    Returns:
+        True if deployed; False if already existed or no section files found.
+    """
+    dest = ll_dir / "templates"
+    if dest.exists():
+        return False
+    section_files = list(templates_dir.glob("*-sections.json"))
+    if not section_files:
+        print(f"Warning: no *-sections.json files found in {templates_dir}", file=sys.stderr)
+        return False
+    if dry_run:
+        print(f"[write] {dest}/ (issue section templates)")
+        return True
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in section_files:
+        shutil.copy2(f, dest / f.name)
+    return True
+
+
 def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
     """Append the canonical ## little-loops CLI Commands block to CLAUDE.md.
 

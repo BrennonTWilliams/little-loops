@@ -224,6 +224,30 @@ class TestHappyPath:
         assert (tmp_path / ".ll" / "design-tokens" / "profiles").is_dir()
 
     @patch("little_loops.init.tui.questionary")
+    def test_deploy_issue_templates_via_tui(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        from little_loops.init import tui as tui_mod
+
+        real_build = tui_mod._build_final_config
+
+        def patched_build(**kwargs):
+            cfg = real_build(**kwargs)
+            cfg.setdefault("issues", {})["deploy_templates"] = True
+            return cfg
+
+        with (
+            patch("sys.stdin") as mock_stdin,
+            patch("little_loops.init.tui._build_final_config", side_effect=patched_build),
+        ):
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert (tmp_path / ".ll" / "templates").is_dir()
+        assert len(list((tmp_path / ".ll" / "templates").glob("*-sections.json"))) >= 4
+
+    @patch("little_loops.init.tui.questionary")
     def test_learning_tests_adds_explore_api_permission(
         self, mock_q: MagicMock, tmp_path: Path
     ) -> None:

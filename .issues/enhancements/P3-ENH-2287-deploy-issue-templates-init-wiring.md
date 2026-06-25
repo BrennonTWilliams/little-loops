@@ -2,14 +2,22 @@
 id: ENH-2287
 type: ENH
 priority: P3
-status: open
-parent: ENH-2272
+status: done
+parent: EPIC-2279
 relates_to:
 - ENH-2285
 - FEAT-2274
+- ENH-2272
 captured_at: '2026-06-25T00:00:00Z'
+completed_at: '2026-06-25T08:08:09Z'
 discovered_date: 2026-06-25
 discovered_by: issue-size-review
+confidence_score: 100
+outcome_confidence: 83
+score_complexity: 18
+score_test_coverage: 23
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2287: deploy_issue_templates() + full init wiring
@@ -134,4 +142,6 @@ Add as sibling of `templates_dir` (before the `"additionalProperties": false` at
 - Can run in parallel with ENH-2286 (no shared files)
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T07:57:51 - `67d80c1a-1f41-4eb2-8568-3d69461aea2e.jsonl`
 - `/ll:issue-size-review` - 2026-06-25T00:00:00Z - `fffe04a2-92e2-4f19-bafe-0d8c500f9b47.jsonl`
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `13fa342e-eb8b-4b2b-b95a-3b23ecbf065e.jsonl`

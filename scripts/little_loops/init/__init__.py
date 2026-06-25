@@ -13,6 +13,7 @@ from little_loops.init.validate import DepWarning, validate_deps
 from little_loops.init.writers import (
     deploy_design_tokens,
     deploy_goals,
+    deploy_issue_templates,
     install_codex_adapter,
     make_issue_dirs,
     make_learning_tests_dir,
@@ -29,6 +30,7 @@ __all__ = [
     "check_version",
     "deploy_design_tokens",
     "deploy_goals",
+    "deploy_issue_templates",
     "detect_installation",
     "detect_project_type",
     "fetch_latest_plugin",
