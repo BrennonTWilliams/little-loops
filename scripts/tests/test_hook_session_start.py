@@ -261,6 +261,7 @@ class TestSessionStartBackfillThread:
         import little_loops.user_messages as um
 
         monkeypatch.setattr(um, "get_project_folder", lambda *a, **kw: in_tmp)
+        monkeypatch.delenv("LL_NON_INTERACTIVE", raising=False)
         handle(_event())
         assert len(calls) == 1, "exactly one Popen call should be made"
         assert "backfill_worker" in " ".join(calls[0])
@@ -299,6 +300,7 @@ class TestSessionStartBackfillThread:
         import little_loops.user_messages as um
 
         monkeypatch.setattr(um, "get_project_folder", lambda *a, **kw: in_tmp)
+        monkeypatch.delenv("LL_NON_INTERACTIVE", raising=False)
         handle(_event())
         assert len(calls) == 1
         args = calls[0]
@@ -335,6 +337,7 @@ class TestSessionStartCodexTranscriptPath:
         transcript = in_tmp / "codex-session.jsonl"
         transcript.write_text(json.dumps({"role": "user", "content": "hello"}) + "\n")
         calls = self._mock_popen(monkeypatch)
+        monkeypatch.delenv("LL_NON_INTERACTIVE", raising=False)
 
         result = handle(self._codex_event(transcript_path=str(transcript)))
         assert result.exit_code == 0
@@ -353,6 +356,7 @@ class TestSessionStartCodexTranscriptPath:
         project_dir = in_tmp / "sessions"
         project_dir.mkdir()
         monkeypatch.setattr(um, "get_project_folder", lambda *a, **kw: project_dir)
+        monkeypatch.delenv("LL_NON_INTERACTIVE", raising=False)
 
         result = handle(self._codex_event())
         assert result.exit_code == 0
@@ -384,6 +388,7 @@ class TestSessionStartCodexTranscriptPath:
         transcript = in_tmp / "codex-session.jsonl"
         transcript.write_text(json.dumps({"role": "user", "content": "hello"}) + "\n")
         calls = self._mock_popen(monkeypatch)
+        monkeypatch.delenv("LL_NON_INTERACTIVE", raising=False)
 
         result = handle(self._codex_event(transcript_path=str(transcript)))
         assert result.exit_code == 0
