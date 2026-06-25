@@ -1790,3 +1790,93 @@
   alternatives_rejected: Resource registry (explicit list, high risk of forgotten
     updates); AST (no codebase precedent, overkill for backstop)
   issue: ENH-2277
+- id: ARCH-071
+  type: rule
+  timestamp: '2026-06-25T15:01:23Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The audit proposed `on_timeout:` but that key is not a StateConfig field
+    (schema.py:435). A timed-out prompt returns exit 124 (runners.py:138-143), which
+    is an error exit and routes via `on_error:`. Using the invented key silently has
+    no effect.
+  rule: Use `on_error:` (not a nonexistent `on_timeout:`) to handle per-state timeouts;
+    exit 124 routes via `on_error`.
+  enforcement: advisory
+  issue: ENH-2292
+- id: ARCH-072
+  type: rule
+  timestamp: '2026-06-25T15:01:23Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: A flat flow entry injects an implicit `next:`, and the FSM executor honors
+    `next` before `evaluate` (executor.py:1001). A flat guard entry therefore always
+    falls through to `next`, defeating the conditional entirely. Ternary form omits
+    the `next` injection.
+  rule: Use ternary flow entries (`'guard?yes_state:no_state'`) for conditional guard
+    states, never flat entries.
+  enforcement: advisory
+  issue: ENH-2292
+- id: ARCH-073
+  type: rule
+  timestamp: '2026-06-25T15:01:23Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: When a synthesis state reads a file unconditionally, an empty file (from
+    a killed or timed-out upstream action) produces a no-op rewrite that burns a full
+    iteration's token budget while reporting apparent progress. A `test -s` shell
+    gate catches this cheaply.
+  rule: Guard any expensive LLM synthesis state with a non-LLM shell check that the
+    input file is non-empty before proceeding.
+  enforcement: advisory
+  issue: ENH-2292
+- id: PERF-074
+  type: rule
+  timestamp: '2026-06-25T15:01:23Z'
+  category: performance
+  labels:
+  - extracted
+  - global
+  rationale: A single research action (e.g. parallel WebSearch/WebFetch) can hang
+    indefinitely within a loop whose global timeout won't fire for an hour. Per-state
+    `timeout:` (a real StateConfig field) bounds the specific action and enables graceful
+    degradation via `on_error:`.
+  rule: Add per-state `timeout:` to unbounded long-running prompt states; the loop-level
+    timeout is too coarse to protect indivi
+  enforcement: advisory
+  issue: ENH-2292
+- id: TEST-075
+  type: rule
+  timestamp: '2026-06-25T15:01:23Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: The fix rerouted every inbound edge to `synthesize` through `check_research`.
+    Without a structural test, future flow changes can silently bypass the guard.
+    A structural assertion (`synthesize` reachable only via `check_research`) prevents
+    regression.
+  rule: Assert in tests that expensive states have no unguarded inbound edges (only
+    guard states route to them).
+  enforcement: advisory
+  issue: ENH-2292
+- id: ARCH-076
+  type: rule
+  timestamp: '2026-06-25T15:01:23Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'Audit proposal #2 assumed a sub-loop signal handler could run `diagnose`
+    after SIGKILL. SIGKILL cannot be intercepted by user-space code by definition.
+    Any design predicated on catching SIGKILL is architecturally impossible and should
+    be rejected.'
+  rule: SIGKILL is uncatchable; do not design FSM signal-trapping handlers that assume
+    a post-kill recovery path can run.
+  enforcement: advisory
+  issue: ENH-2292

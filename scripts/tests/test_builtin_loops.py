@@ -6461,12 +6461,66 @@ class TestPlanResearchIterationOracle:
             "synthesize action must reference overwrite_source for rn-refine Step 7/8 gate"
         )
 
-    def test_research_files_overrides_next_to_synthesize(self, data: dict) -> None:
-        """research_files must override flow-generated next: research_web → synthesize."""
+    def test_research_files_overrides_next_to_check_research(self, data: dict) -> None:
+        """research_files must override flow-generated next: research_web → check_research."""
         state_defs = data.get("state_defs", {})
-        assert state_defs.get("research_files", {}).get("next") == "synthesize", (
-            "research_files state_defs must set next: synthesize to override "
+        assert state_defs.get("research_files", {}).get("next") == "check_research", (
+            "research_files state_defs must set next: check_research to override "
             "flow-generated next: research_web"
+        )
+
+    def test_research_states_have_timeout_and_error_route(self, data: dict) -> None:
+        """research_web/research_files must bound runtime and degrade through the guard.
+
+        A per-state timeout returns exit 124, which routes via on_error. Both
+        research states must route on_error to check_research so a timed-out or
+        partial research run is gated rather than fed straight into synthesize.
+        See audit rn-refine 2026-06-25.
+        """
+        state_defs = data.get("state_defs", {})
+        for name in ("research_web", "research_files"):
+            state = state_defs.get(name, {})
+            assert isinstance(state.get("timeout"), int) and state["timeout"] > 0, (
+                f"{name} must declare a positive per-state timeout"
+            )
+            assert state.get("on_error") == "check_research", (
+                f"{name} must route on_error to check_research"
+            )
+
+    def test_check_research_guards_synthesize(self, data: dict) -> None:
+        """check_research must gate synthesize: populated research → synthesize, empty → done.
+
+        synthesize reads research.md unconditionally, so an empty research file
+        would produce a phantom no-op rewrite. The guard routes via the
+        'check_research?synthesize:done' flow ternary on a `test -s` shell check.
+        """
+        flow = data.get("flow", [])
+        assert "check_research?synthesize:done" in flow, (
+            "flow must gate synthesize behind 'check_research?synthesize:done' ternary"
+        )
+        state = data.get("state_defs", {}).get("check_research", {})
+        assert state.get("action_type") == "shell", "check_research must be a shell guard"
+        assert "research.md" in state.get("action", ""), (
+            "check_research action must test the research.md file"
+        )
+        assert state.get("evaluate", {}).get("pattern") == "HAS_RESEARCH", (
+            "check_research must evaluate on the HAS_RESEARCH token"
+        )
+
+    def test_synthesize_only_reachable_via_guard(self, data: dict) -> None:
+        """No state may route directly to synthesize except the check_research guard."""
+        from little_loops.fsm.fragments import resolve_flow
+
+        expanded = resolve_flow(data)
+        offenders = []
+        for name, state in expanded["states"].items():
+            if name == "check_research":
+                continue
+            for key in ("next", "on_yes", "on_no", "on_error", "on_partial"):
+                if state.get(key) == "synthesize":
+                    offenders.append(f"{name}.{key}")
+        assert not offenders, (
+            f"only check_research may route to synthesize; offenders: {offenders}"
         )
 
     def test_states_use_context_run_dir(self, data: dict) -> None:

@@ -35,6 +35,7 @@ flow:
   - classify_fallback
   - research_files
   - research_web
+  - "check_research?synthesize:done"
   - synthesize
   - done
 
@@ -76,7 +77,7 @@ state_defs:
       type: output_contains
       source: "${captured.classification.output}"
       pattern: "NEEDS_FILES"
-    on_error: synthesize
+    on_error: check_research
 
   route_web:
     # Router: dispatch to web research when classification captured NEEDS_WEB.
@@ -85,7 +86,7 @@ state_defs:
       type: output_contains
       source: "${captured.classification.output}"
       pattern: "NEEDS_WEB"
-    on_error: synthesize
+    on_error: check_research
 
   classify_fallback:
     # Fallback: classification produced neither NEEDS_FILES nor NEEDS_WEB.
@@ -100,8 +101,8 @@ state_defs:
       type: output_contains
       pattern: "DEGENERATE_CLASSIFICATION"
     on_yes: research_files
-    on_no: synthesize
-    on_error: synthesize
+    on_no: check_research
+    on_error: check_research
 
   research_files:
     # File research — uses Read, Grep, and Glob tools to inspect the local codebase
@@ -131,7 +132,13 @@ state_defs:
       ## New Discoveries
       [relevant code/structure not yet in the plan that should be included]
       ```
-    next: synthesize
+    # Per-state safety net: bound a runaway research action independent of the
+    # loop-level timeout. A timed-out prompt returns exit 124, which routes via
+    # on_error → the check_research guard (which sends empty/partial research to
+    # done rather than a phantom synthesize). See ENH/audit rn-refine 2026-06-25.
+    timeout: 600
+    next: check_research
+    on_error: check_research
 
   research_web:
     # Web research — uses WebSearch and WebFetch tools to gather external information
@@ -161,6 +168,28 @@ state_defs:
       ## Pitfalls & Constraints
       [known issues, version requirements, or anti-patterns to avoid]
       ```
+    # Per-state safety net: bound a runaway web-research action (parallel
+    # WebSearch/WebFetch) independent of the loop-level timeout. A timed-out
+    # prompt returns exit 124, which routes via on_error → the check_research
+    # guard. next: check_research is supplied by the flow: chain but stated here
+    # explicitly so the on_error fall-through is unambiguous.
+    timeout: 600
+    next: check_research
+    on_error: check_research
+
+  check_research:
+    # Guard: synthesize reads research.md unconditionally, so an empty (0-byte)
+    # research file produces a phantom no-op plan rewrite that burns tokens
+    # without improving the plan. This gate routes a populated research file to
+    # synthesize and an empty/missing one to done (an honest no-op iteration).
+    # on_yes/on_no come from the "check_research?synthesize:done" flow ternary;
+    # declaring next: here would short-circuit the evaluate, so it is omitted.
+    action_type: shell
+    action: "test -s ${context.run_dir}/research.md && echo HAS_RESEARCH || echo NO_RESEARCH"
+    evaluate:
+      type: output_contains
+      pattern: "HAS_RESEARCH"
+    on_error: done
 
   synthesize:
     # Synthesis — merges research findings into an improved plan. Updates plan.md
