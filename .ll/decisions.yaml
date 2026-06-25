@@ -1950,3 +1950,46 @@
     by the executor.
   enforcement: advisory
   issue: BUG-2294
+- id: ARCH-082
+  type: rule
+  timestamp: '2026-06-25T17:12:35Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The CLAUDE_PLUGIN_ROOT env-var branch predated the in-package move and
+    silently became wrong after FEAT-2274. The in-package path (`Path(__file__).parent
+    / ...`) is always co-located with the code and cannot go stale from external env
+    state.
+  rule: Prefer `__file__`-relative paths over env-var overrides for locating bundled
+    package assets.
+  enforcement: advisory
+  issue: BUG-2295
+- id: ARCH-083
+  type: rule
+  timestamp: '2026-06-25T17:12:35Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: FEAT-2274 moved the prompt file but left an env-var branch pointing at
+    the pre-move path. The in-package fallback was correct but unreachable, causing
+    silent failure whenever CLAUDE_PLUGIN_ROOT was set.
+  rule: When moving a file into a package, audit every env-var-based path resolver
+    that references the old location.
+  enforcement: advisory
+  issue: BUG-2295
+- id: TEST-084
+  type: rule
+  timestamp: '2026-06-25T17:12:35Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: The xfail strict marker on the CLAUDE_PLUGIN_ROOT test kept the gap visible
+    in the suite and immediately surfaced the passing state when BUG-2295 was fixed,
+    preventing silent regression.
+  rule: Mark regression tests for known-broken behavior with `@pytest.mark.xfail(strict=True)`
+    to track the debt and fail CI whe
+  enforcement: advisory
+  issue: BUG-2295
