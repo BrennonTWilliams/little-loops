@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,11 +31,15 @@ class TemplateMatch:
 
 
 def _find_templates_dir() -> Path:
-    """Locate the templates/ directory relative to this package.
+    """Locate the templates/ directory relative to this package (env-var-first).
 
-    Path: scripts/little_loops/init/detect.py → four parents up → project root.
+    Checks CLAUDE_PLUGIN_ROOT first so non-editable installs resolve correctly.
+    Falls back to __file__-relative path for editable dev installs.
     """
-    return Path(__file__).parent.parent.parent.parent / "templates"
+    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env_root:
+        return Path(env_root) / "templates"
+    return Path(__file__).resolve().parent.parent.parent.parent / "templates"
 
 
 def _glob_match(pattern: str, root: Path) -> bool:
@@ -135,6 +141,19 @@ def detect_project_type(root: Path, templates_dir: Path | None = None) -> Templa
     """
     if templates_dir is None:
         templates_dir = _find_templates_dir()
+
+    if not templates_dir.exists():
+        print(
+            f"  Warning: templates/ not found at {templates_dir}; defaulting to generic project type",
+            file=sys.stderr,
+        )
+        return TemplateMatch(
+            name="Generic",
+            filename="generic.json",
+            template_path=templates_dir / "generic.json",
+            meta={"name": "Generic", "detect": []},
+            data={},
+        )
 
     templates = _load_templates(templates_dir)
     if not templates:

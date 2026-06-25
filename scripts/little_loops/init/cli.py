@@ -38,8 +38,17 @@ def _plugin_version() -> str:
 
 
 def _plugin_root() -> Path:
-    """Return the little-loops project root (four parents above this file)."""
-    return Path(__file__).parent.parent.parent.parent
+    """Return the little-loops project root (env-var-first resolver).
+
+    Checks CLAUDE_PLUGIN_ROOT first so non-editable installs resolve correctly.
+    Falls back to __file__-relative path for editable dev installs.
+    """
+    import os
+
+    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env_root:
+        return Path(env_root)
+    return Path(__file__).resolve().parent.parent.parent.parent
 
 
 def _detect_hosts(project_root: Path) -> list[str]:

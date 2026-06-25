@@ -10,8 +10,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from little_loops.init.cli import _plugin_root
 from little_loops.init.core import SCHEMA_URL, build_config
-from little_loops.init.detect import TemplateMatch, _load_templates, detect_project_type
+from little_loops.init.detect import (
+    TemplateMatch,
+    _find_templates_dir,
+    _load_templates,
+    detect_project_type,
+)
 from little_loops.init.validate import (
     _check_jq,
     _check_little_loops_version,
@@ -243,6 +249,44 @@ def _make_match(tdir: Path, filename: str) -> TemplateMatch:
 
 
 # ===========================================================================
+# TestPluginRoot
+# ===========================================================================
+
+
+class TestPluginRoot:
+    def test_uses_env_var_when_set(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+        assert _plugin_root() == tmp_path
+
+    def test_falls_back_to_file_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+        root = _plugin_root()
+        import little_loops.init.cli as mod
+
+        expected = Path(mod.__file__).resolve().parent.parent.parent.parent
+        assert root == expected
+
+
+# ===========================================================================
+# TestFindTemplatesDir
+# ===========================================================================
+
+
+class TestFindTemplatesDir:
+    def test_uses_env_var_when_set(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+        assert _find_templates_dir() == tmp_path / "templates"
+
+    def test_falls_back_to_file_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+        tdir = _find_templates_dir()
+        import little_loops.init.detect as mod
+
+        expected = Path(mod.__file__).resolve().parent.parent.parent.parent / "templates"
+        assert tdir == expected
+
+
+# ===========================================================================
 # TestDetectProjectType
 # ===========================================================================
 
@@ -292,6 +336,18 @@ class TestDetectProjectType:
         empty.mkdir()
         with pytest.raises(FileNotFoundError):
             detect_project_type(tmp_path, empty)
+
+    def test_warns_and_returns_generic_when_templates_dir_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        missing_dir = tmp_path / "nonexistent_templates"
+        # Do NOT mkdir — we want a non-existent dir, not an empty dir.
+        match = detect_project_type(tmp_path, missing_dir)
+        assert match.filename == "generic.json"
+        assert match.name == "Generic"
+        err = capsys.readouterr().err
+        assert "Warning" in err
+        assert "templates/" in err
 
     def test_real_templates_dir_loads(self, templates_dir: Path, tmp_project: Path) -> None:
         """Smoke test: the real templates/ directory is readable and returns a match."""
@@ -759,13 +815,16 @@ class TestDeployGoals:
         assert created is False
         assert (ll_dir / "ll-goals.md").read_text() == "existing"
 
-    def test_skips_if_template_missing(self, tmp_path: Path) -> None:
+    def test_skips_if_template_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         fake_tdir = tmp_path / "templates"
         fake_tdir.mkdir()
         created = deploy_goals(ll_dir, fake_tdir)
         assert created is False
+        assert "Warning" in capsys.readouterr().err
 
     def test_dry_run(
         self, tmp_path: Path, templates_dir: Path, capsys: pytest.CaptureFixture
@@ -807,6 +866,17 @@ class TestDeployDesignTokens:
         assert created is True
         assert not (ll_dir / "design-tokens").exists()
         assert "[write]" in capsys.readouterr().out
+
+    def test_skips_if_source_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        fake_tdir = tmp_path / "templates"
+        fake_tdir.mkdir()
+        created = deploy_design_tokens(ll_dir, fake_tdir)
+        assert created is False
+        assert "Warning" in capsys.readouterr().err
 
 
 # ===========================================================================

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -253,6 +254,7 @@ def deploy_goals(ll_dir: Path, templates_dir: Path, dry_run: bool = False) -> bo
         return False
     src = templates_dir / "ll-goals-template.md"
     if not src.exists():
+        print(f"  Warning: goals template source not found at {src}", file=sys.stderr)
         return False
     if dry_run:
         print(f"[write] {dest} (from {src.name})")
@@ -287,6 +289,10 @@ def deploy_design_tokens(
     if dest_profiles.exists():
         return False
     if not src_profiles.exists():
+        print(
+            f"  Warning: design-token profiles source not found at {src_profiles}",
+            file=sys.stderr,
+        )
         return False
     if dry_run:
         print(f"[write] {dest_profiles}/ (design-token profiles)")

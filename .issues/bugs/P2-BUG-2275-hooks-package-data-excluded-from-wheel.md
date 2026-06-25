@@ -3,13 +3,32 @@ id: BUG-2275
 type: BUG
 priority: P2
 status: open
-captured_at: "2026-06-24T00:00:00Z"
+captured_at: '2026-06-24T00:00:00Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
-relates_to: [BUG-2273, FEAT-2274, ENH-2272, BUG-938, BUG-885]
+relates_to:
+- BUG-2273
+- FEAT-2274
+- ENH-2272
+- BUG-938
+- BUG-885
 decision_ref: ARCHITECTURE-053
-labels: [bug, packaging, hooks, host-compat, cross-host, install, path-resolution]
+labels:
+- bug
+- packaging
+- hooks
+- host-compat
+- cross-host
+- install
+- path-resolution
+confidence_score: 84
+outcome_confidence: 65
+score_complexity: 15
+score_test_coverage: 20
+score_ambiguity: 12
+score_change_surface: 18
+decision_needed: true
 ---
 
 # BUG-2275: `hooks/` package-data (prompt template + Codex adapter) excluded from the wheel — prompt-optimization hook and Codex onboarding silently break
@@ -434,7 +453,25 @@ Two files exist: `optimize-prompt-hook.md` (the one read by `user_prompt_submit.
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue covers resolver + warning behavior + Bash script path updates (Step 6) and template substitution decisions (Step 7) only. The packaging `git mv` of `hooks/prompts/` and `hooks/adapters/` into the wheel is owned by **FEAT-2274**, which explicitly includes these assets in its scope. Do NOT perform the `git mv` independently here — coordinate with FEAT-2274 to ensure a single packaging move. Related issue: [FEAT-2274].
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-24_
+
+**Readiness Score**: 84/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 65/100 → Below threshold
+
+### Concerns
+- Step 7 (`{{LL_PLUGIN_ROOT}}` substitution decision) is explicitly unresolved — the issue says "make it explicit before implementing Step 1"; gates packaging shape, `install_codex_adapter()` substitution, and what pip-installed `.codex/hooks.json` files contain
+- FEAT-2274 (open) owns the `git mv`; the lazy resolver code changes in this issue yield a functional no-op until FEAT-2274 lands — sequence implementation accordingly
+- Step 6 is likely a false concern: `hooks/scripts/user-prompt-check.sh` delegates entirely to `python -m little_loops.hooks user_prompt_submit` with no direct template read; Agent 2's finding appears stale — confirm before including Step 6 in scope
+
+### Outcome Risk Factors
+- **Open design decision in Step 7**: the open decision on whether Codex adapter shell scripts move in-package ripples through `install_codex_adapter()` return contract, `hooks.json` template substitution, and pip-installed user experience — resolve before starting implementation
+- **Broad but shallow surface**: 15+ change sites across docs, agents/skills, and test files add coordination overhead; test-update count (~9 required changes) is fully enumerated but warrants careful sweep
+- **ENH-2272 dependency mismatch**: ENH-2272 is cited as the "shared resolver this bug's lookups should consume" but is actually about ll-issues sections accessor; the canonical resolver pattern (`skill_expander._find_plugin_root()`) already exists at `skill_expander.py:22` — no need to wait for ENH-2272
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T00:00:00Z - `77fa73e1-dacb-4249-8a20-ad4d9cb07c09.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T01:15:24 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:wire-issue` - 2026-06-25T00:05:35 - `43ed8b20-75e9-4cc1-9df5-86b5a03e80d8.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:44:40 - `3c0bdb5f-d2f8-4c48-b8d5-26b2377e2af9.jsonl`

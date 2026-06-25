@@ -2,8 +2,9 @@
 id: BUG-2273
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-24T22:25:58Z'
+completed_at: '2026-06-25T03:25:05Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
@@ -27,7 +28,7 @@ decision_needed: false
 
 ## Summary
 
-`ll-init`'s `_plugin_root()` (`init/cli.py:41`) resolves the bundled
+`ll-init`'s `_plugin_root()` (`init/cli.py:40`) resolves the bundled
 `templates/` directory **only** as `Path(__file__).parent.parent.parent.parent`
 — a four-level traversal that lands on the repo root in an *editable* dev
 install but on a non-existent path in a *non-editable* install
@@ -82,7 +83,7 @@ Silently breaks the dominant `pip install little-loops` → `ll-init` onboarding
 ## Root Cause
 
 - **File**: `scripts/little_loops/init/cli.py`
-- **Anchor**: `_plugin_root()` (line 41) → `templates_dir = plug_root / "templates"` (line 573)
+- **Anchor**: `_plugin_root()` (line 40) → `templates_dir = plug_root / "templates"` (line 573)
 
 ```python
 def _plugin_root() -> Path:
@@ -150,7 +151,7 @@ warning instead of a silent no-op.
 
 ### Files to Modify
 - `scripts/little_loops/init/cli.py` — `_plugin_root()` / `templates_dir`
-  resolution (lines 41–42, 573); warn on missing-source skips.
+  resolution (lines 40–41, 573); warn on missing-source skips.
 - `scripts/little_loops/init/writers.py` — `deploy_design_tokens()` (line 265)
   and `deploy_goals()` (line 240): distinguish "source missing" from
   "destination exists" in the return/log so callers can warn.
@@ -273,9 +274,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `bug`, `ll-init`, `templates`, `design-tokens`, `install`, `path-resolution`
 
+## Resolution
+
+Replaced bare `__file__`×4 traversal in `_plugin_root()` (`init/cli.py`) and `_find_templates_dir()` (`init/detect.py`) with env-var-first resolvers (`CLAUDE_PLUGIN_ROOT` → `__file__`-relative fallback), matching the `_default_templates_dir()` pattern from `issue_template.py`. Added `print(..., file=sys.stderr)` warnings in `deploy_goals()` and `deploy_design_tokens()` (`init/writers.py`) when the template source is missing. Added graceful generic fallback in `detect_project_type()` when `templates_dir` doesn't exist. Added `TestPluginRoot`, `TestFindTemplatesDir`, extended `TestDeployGoals.test_skips_if_template_missing`, and added `TestDeployDesignTokens.test_skips_if_source_missing` + `TestDetectProjectType.test_warns_and_returns_generic_when_templates_dir_missing`.
+
 ## Status
 
-**Open** | Created: 2026-06-24 | Priority: P2
+**Done** | Created: 2026-06-24 | Priority: P2
 
 ## Confidence Check Notes
 
@@ -290,6 +295,7 @@ _Updated by `/ll:confidence-check` on 2026-06-24 (re-check; BUG-2271 now done)_
 - **`detect_project_type()` raises `FileNotFoundError`, not graceful fallback**: `_load_templates()` calls `templates_dir.glob("*.json")` on a non-existent path — this raises, not returns. The warning must be inserted before the `_load_templates()` call in `detect_project_type()`. Verify empirically before writing warning code.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T03:15:14 - `bb77529e-596a-4f0a-bd3d-91acaab198e3.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00Z - `b938aa04-fa3a-4235-a849-07024bf38247.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `052ee002-e687-4985-8087-f17ffa746259.jsonl`
 - `/ll:confidence-check` - 2026-06-24T23:59:00Z - `1dae7405-974b-4068-920d-3cf120a46bc9.jsonl`
