@@ -20,10 +20,10 @@ relates_to:
 - BUG-2054
 - FEAT-812
 confidence_score: 95
-outcome_confidence: 77
-score_complexity: 12
+outcome_confidence: 82
+score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 22
+score_ambiguity: 25
 score_change_surface: 18
 ---
 
@@ -46,7 +46,7 @@ The context-window size used to drive handoff/guillotine decisions is resolved b
 2. **Python automation layer** (`issue_manager.py`, `subprocess_utils.py`,
    `parallel/worker_pool.py`) — has **no** model→window mapping at all. `context_limit`
    is a hardcoded `200_000` default in ~4 signatures. The model *is* detected at
-   runtime (`on_model_detected` → `_detected_model`, `issue_manager.py:1354-1357`) but
+   runtime (`on_model_detected` → `_detected_model`, `issue_manager.py:1338-1342`) but
    the value is only logged and **thrown away** — it never sets `context_limit`.
 
 This is the upstream cause behind the [[BUG-2280]] / [[BUG-2054]] cluster: both issues'
@@ -127,7 +127,7 @@ full hybrid later:
 
 3. **`scripts/little_loops/subprocess_utils.py:write_sentinel()`** — change `context_limit: int = 200_000` to `context_limit: int | None = None` and add `if context_limit is None: context_limit = context_window_for(None)` at the top of the body (lazy/call-time evaluation; avoids the Python eager-default trap where a module-import-time default would miss later `LL_CONTEXT_LIMIT` changes). The `assemble_guillotine_prompt()` fallback at line 190 (`token_stats.get("context_limit", 200_000)`) is a `dict.get()` evaluated at call time — change the fallback to `context_window_for(None)` directly.
 
-4. **`scripts/little_loops/parallel/worker_pool.py:WorkerPool._run_with_continuation()`** — read `LL_CONTEXT_LIMIT` via `context_window_for(None)` (which checks the env var as override) rather than threading `on_model_detected` through the worker infrastructure. Change the default `200_000` at line 831 to `context_window_for(None)`.
+4. **`scripts/little_loops/parallel/worker_pool.py:WorkerPool._run_with_continuation()`** — read `LL_CONTEXT_LIMIT` via `context_window_for(None)` (which checks the env var as override) rather than threading `on_model_detected` through the worker infrastructure. Change the default `200_000` at line 830 to `context_window_for(None)`.
 
 5. **`hooks/scripts/context-monitor.sh:get_context_limit()`** — add a `[1m]`-suffix branch: `claude-*\[1m\]) echo 1000000 ;;` before the existing `claude-*-4*` branches (static table, not Python delegation — delegating to Python adds ~100-200ms startup cost on a per-message hot path and a hard package-importability dependency from bash; sync risk is low and governed by a `# keep in sync with context_window.py` comment plus the cross-layer Success Metric test).
 
@@ -178,10 +178,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Hardcoded `200_000` parameter defaults (need updating):**
-- `scripts/little_loops/issue_manager.py:210` — `run_with_continuation()` parameter `context_limit: int = 200_000`
+- `scripts/little_loops/issue_manager.py:209` — `run_with_continuation()` parameter `context_limit: int = 200_000`
 - `scripts/little_loops/subprocess_utils.py:126` — `write_sentinel()` parameter `context_limit: int = 200_000`
 - `scripts/little_loops/subprocess_utils.py:190` — `assemble_guillotine_prompt()` dict fallback `token_stats.get("context_limit", 200_000)`
-- `scripts/little_loops/parallel/worker_pool.py:831` — `WorkerPool._run_with_continuation()` parameter `context_limit: int = 200_000`
+- `scripts/little_loops/parallel/worker_pool.py:830` — `WorkerPool._run_with_continuation()` parameter `context_limit: int = 200_000`
 
 **Functions that call `run_with_continuation()` / `_run_with_continuation()` without passing `context_limit` (critical wiring gap):**
 - `scripts/little_loops/issue_manager.py:process_issue_inplace()` — calls `run_with_continuation()` with no `context_limit` arg and has no `context_limit` parameter itself; the entire Phase 2 continuation path uses the 200k default
@@ -201,7 +201,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/subprocess_utils.py:run_claude_command()` — fires `on_model_detected(event["model"])` when the `system/init` event is parsed (line 421); this is the model-detection source
 - **`scripts/little_loops/pricing.py:MODEL_PRICING` + `estimate_cost_usd()`** — closest structural match to `context_window_for()`: module-level `dict[str, ...]` keyed on exact model-id strings, single public lookup function, returns `None` for unknown models; model new `context_window.py` after this module
 - **`scripts/tests/test_pricing.py:TestModelPricing` + `TestEstimateCostUsd`** — direct test template: `test_known_models_present`, `test_unknown_model_returns_none`, `test_zero_tokens_returns_zero` — model `test_context_window.py` classes after this
-- **`scripts/tests/conftest.py:_restore_cmd_run_env_vars`** — already cleans up `LL_CONTEXT_LIMIT` in an autouse fixture (line 484); tests for `context_window_for()` that set `LL_CONTEXT_LIMIT` should use `monkeypatch.setenv("LL_CONTEXT_LIMIT", "1000000")` and this fixture auto-restores
+- **`scripts/tests/conftest.py:_restore_cmd_run_env_vars`** — already cleans up `LL_CONTEXT_LIMIT` in an autouse fixture (line 479); tests for `context_window_for()` that set `LL_CONTEXT_LIMIT` should use `monkeypatch.setenv("LL_CONTEXT_LIMIT", "1000000")` and this fixture auto-restores
 
 ### Codebase Research Findings
 
@@ -226,6 +226,23 @@ In `AutoManager._process_issue()`, the `on_model` closure appends to `self._dete
 **Bash auto-upgrade heuristic at lines 295-299 in `context-monitor.sh`**
 
 The heuristic bumps `CONTEXT_LIMIT` to `1000000` when the measured transcript baseline exceeds the current `CONTEXT_LIMIT` but is `<= 1100000`. Once the static `get_context_limit()` table is corrected (to return `1000000` for `[1m]` models by identifier), the heuristic becomes a fallback for model IDs with stripped suffixes rather than the primary detection path.
+
+**`context_window_for()` lookup design differs from `estimate_cost_usd()` (the structural template)**
+
+`pricing.py:estimate_cost_usd()` uses a pure exact-match dict lookup and returns `None` for unknown models. `context_window_for()` cannot use pure exact-match because the `[1m]` suffix that appears in stream-json `system/init` model IDs (e.g. `claude-opus-4-8[1m]`) will never match a bare key like `"claude-opus-4-8"` in the lookup table. The implementation must use suffix-first detection before the table lookup:
+1. `LL_CONTEXT_LIMIT` env var → parse as int and return
+2. Model string ends with `[1m]` → return `1_000_000` (no table lookup needed)
+3. Exact model-id lookup in `MODEL_CONTEXT_WINDOW` dict → return table value
+4. Return `200_000` conservative floor
+The function always returns `int` (not `int | None`) because there is always a safe default — unlike `estimate_cost_usd()` which returns `None` for unknown models.
+
+**First-issue model detection gap in `AutoManager`**
+
+When `AutoManager._process_issue()` processes its first issue, `self._detected_model` is empty at call time (the callback fires *during* the call). Implementation Step 2 derives `resolved_limit = context_window_for(self._detected_model[0] if self._detected_model else None)` **before** calling `process_issue_inplace()` — so the first issue always uses the 200k default unless `LL_CONTEXT_LIMIT` is set explicitly by the CLI. Issues 2+ benefit from the cached model. This is expected v1 behavior; the env-var override path covers the explicit `ll-auto --context-limit 1000000` case.
+
+**`on_model_detected` fires before `run_with_continuation()` within `process_issue_inplace()`**
+
+`process_issue_inplace()` passes `on_model_detected` to `run_claude_command()` at lines 609, 664, and 829 (ready-check and decide phases). The `system/init` event fires early in each subprocess stream, so the callback appends to `self._detected_model` before `run_with_continuation()` is called at line 863. However, `process_issue_inplace()` holds no reference to `_detected_model`, so it cannot read the model back for the continuation call — which is why Implementation Step 2 must add `context_limit` as an explicit parameter to `process_issue_inplace()` that is derived and passed in by `AutoManager._process_issue()` before each call.
 
 ### Tests
 - `scripts/tests/test_context_window.py` (new) — cover `[1m]` suffix → 1M, known base → 200k, unknown → 200k floor, override-arg precedence, `LL_CONTEXT_LIMIT` env-var precedence
@@ -281,6 +298,9 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 - ~~Two implementation steps have alternative paths without selection~~ — resolved: step 3 uses None-sentinel pattern; step 5 uses static bash table entry. See updated Implementation Steps.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T00:00:00Z - `705d356c-32d0-4c9e-9c21-25ec0999390e.jsonl`
+- `/ll:refine-issue` - 2026-06-25T03:32:54 - `1b4a4754-a949-4148-913b-4dea602b2d07.jsonl`
+- `/ll:ready-issue` - 2026-06-25T03:15:35 - `bb77529e-596a-4f0a-bd3d-91acaab198e3.jsonl`
 - `/ll:confidence-check` - 2026-06-24T17:00:00Z - `60219707-55ed-4074-ac97-13cc49417dbb.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `5c0be5b3-5eab-46ac-aee6-ef4d793bf8fc.jsonl`
 - `/ll:wire-issue` - 2026-06-25T02:48:07 - `a3a3017d-2eaa-4766-b353-55d8b52bace7.jsonl`
