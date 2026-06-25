@@ -905,6 +905,168 @@ class TestIssuesCLIList:
         assert result_explicit == 0
         assert captured_default.out == captured_explicit.out
 
+    def test_list_truncates_long_title_at_narrow_width(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list truncates titles that exceed the terminal width with an ellipsis."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        # BUG-001 prefix = "  P0  BUG-001  " = 15 chars; at 40 cols max_title=25
+        # This title is 30 chars — must be truncated to 24 + "…"
+        long_title = "A very long bug title here!!"  # 28 chars
+        (bugs_dir / "P0-BUG-001-long-title.md").write_text(
+            f"---\nstatus: open\n---\n# BUG-001: {long_title}\n"
+        )
+
+        with patch(
+            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
+        ), patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "…" in captured.out
+        assert long_title not in captured.out
+
+    def test_list_no_truncate_flag_shows_full_title(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --no-truncate preserves full titles even at narrow terminal width."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        long_title = "A very long bug title here!!"
+        (bugs_dir / "P0-BUG-001-long-title.md").write_text(
+            f"---\nstatus: open\n---\n# BUG-001: {long_title}\n"
+        )
+
+        with patch(
+            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
+        ), patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--no-truncate", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert long_title in captured.out
+        assert "…" not in captured.out
+
+    def test_list_json_always_emits_full_title(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --json always emits full untruncated titles regardless of terminal width."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        long_title = "A very long bug title here!!"
+        (bugs_dir / "P0-BUG-001-long-title.md").write_text(
+            f"---\nstatus: open\n---\n# BUG-001: {long_title}\n"
+        )
+
+        with patch(
+            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
+        ), patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert any(item["title"] == long_title for item in data)
+
+    def test_list_short_title_not_truncated(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list does not truncate titles that fit within the terminal width."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        short_title = "Short title"
+        (bugs_dir / "P0-BUG-001-short.md").write_text(
+            f"---\nstatus: open\n---\n# BUG-001: {short_title}\n"
+        )
+
+        with patch(
+            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
+        ), patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert short_title in captured.out
+        assert "…" not in captured.out
+
+    def test_list_truncates_title_in_epic_group(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --group-by epic also truncates long titles at narrow terminal width."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        long_title = "A very long bug title here!!"
+        (bugs_dir / "P0-BUG-001-long-title.md").write_text(
+            f"---\nstatus: open\n---\n# BUG-001: {long_title}\n"
+        )
+
+        with patch(
+            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
+        ), patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--group-by", "epic", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "…" in captured.out
+        assert long_title not in captured.out
+
 
 class TestIssuesCLISequence:
     """Tests for ll-issues sequence sub-command."""

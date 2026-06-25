@@ -5,10 +5,16 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json, terminal_width
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+
+
+def _truncate_title(title: str, max_len: int) -> str:
+    if max_len > 20 and len(title) > max_len:
+        return title[: max_len - 1] + "…"
+    return title
 
 
 def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
@@ -134,6 +140,9 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             print(f"{issue.path.name}  {issue.title}")
         return 0
 
+    no_truncate = getattr(args, "no_truncate", False)
+    tw = terminal_width(default=120)
+
     group_by = getattr(args, "group_by", "type")
     if group_by == "epic":
         # Build parent title lookup from raw (before type filter) so headers
@@ -211,7 +220,9 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                 colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
                 colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
                 status_tag = f" [{stat}]" if stat not in ("open", "in_progress") else ""
-                lines.append(f"  {colored_priority}  {colored_id}  {issue.title}{status_tag}")
+                prefix_width = 2 + len(issue.priority) + 2 + len(issue.issue_id) + 2 + len(status_tag)
+                title = issue.title if no_truncate else _truncate_title(issue.title, tw - prefix_width)
+                lines.append(f"  {colored_priority}  {colored_id}  {title}{status_tag}")
             lines.append("")
         displayed = sum(len(g) for g in parent_buckets.values())
         lines.append(f"Total: {displayed} active issues (excluding EPICs)")
@@ -236,7 +247,9 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
             colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
             status_tag = f" [{stat}]" if stat not in ("open", "in_progress") else ""
-            lines.append(f"  {colored_priority}  {colored_id}  {issue.title}{status_tag}")
+            prefix_width = 2 + len(issue.priority) + 2 + len(issue.issue_id) + 2 + len(status_tag)
+            title = issue.title if no_truncate else _truncate_title(issue.title, tw - prefix_width)
+            lines.append(f"  {colored_priority}  {colored_id}  {title}{status_tag}")
         lines.append("")
     lines.append(f"Total: {len(issues_with_status)} active issues")
     print("\n".join(lines))

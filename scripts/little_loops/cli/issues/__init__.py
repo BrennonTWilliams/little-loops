@@ -225,6 +225,12 @@ Examples:
             dest="group_by",
             help="Group output by issue type (default) or parent ID",
         )
+        ls.add_argument(
+            "--no-truncate",
+            action="store_true",
+            dest="no_truncate",
+            help="Show full untruncated titles (default: truncate to terminal width)",
+        )
         add_config_arg(ls)
 
         sr = subs.add_parser(
