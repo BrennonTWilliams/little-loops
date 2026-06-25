@@ -159,6 +159,7 @@ class TestBuiltinLoopFiles:
             "rubric-refine",
             "policy-refine",
             "brainstorm",
+            "openscad-model-generator",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -5775,6 +5776,106 @@ class TestGeneratorEvaluatorOracle:
         assert "lib/harness.yaml" in imports, "must import lib/harness.yaml"
 
 
+class TestGeneratorEvaluatorCliOracle:
+    """Structural tests for the generator-evaluator-cli oracle sub-loop (FEAT-2269).
+
+    generator-evaluator-cli.yaml uses from: generator-evaluator inheritance.
+    State-based tests use resolved_data (inheritance + fragment resolved);
+    stub-level fields use data.
+    """
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles/generator-evaluator-cli.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        """Raw stub YAML — tests name, from, visibility."""
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @pytest.fixture
+    def resolved_data(self) -> dict:
+        """Inheritance + fragment resolved YAML — tests inherited and overridden states."""
+        from little_loops.fsm.fragments import resolve_fragments, resolve_inheritance
+
+        raw = yaml.safe_load(self.LOOP_FILE.read_text())
+        raw = resolve_inheritance(raw, BUILTIN_LOOPS_DIR / "oracles")
+        raw = resolve_fragments(raw, BUILTIN_LOOPS_DIR)
+        return raw
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Oracle stub must declare name and from: generator-evaluator."""
+        assert data.get("name") == "generator-evaluator-cli"
+        assert data.get("from") == "generator-evaluator", (
+            "generator-evaluator-cli must inherit from generator-evaluator (bare name)"
+        )
+        assert data.get("visibility") == "internal"
+
+    def test_stub_declares_render_command_parameter(self, data: dict) -> None:
+        """Stub must add render_command as a required parameter."""
+        params = data.get("parameters", {})
+        assert "render_command" in params, "stub must declare render_command parameter"
+        assert params["render_command"].get("required") is True
+
+    def test_resolved_has_generator_evaluator_states(self, resolved_data: dict) -> None:
+        """After inheritance resolution, all parent states must be present."""
+        states = resolved_data.get("states", {})
+        for name in ("generate", "evaluate", "snapshot", "score", "done", "failed"):
+            assert name in states, f"inherited state '{name}' missing after resolution"
+
+    def test_resolved_has_all_parameters(self, resolved_data: dict) -> None:
+        """After inheritance resolution, both parent and child parameters must exist."""
+        params = resolved_data.get("parameters", {})
+        for name in ("run_dir", "generate_prompt", "artifact_path"):
+            assert name in params, f"inherited parameter '{name}' missing"
+        assert "render_command" in params, "render_command parameter must survive resolution"
+        assert params["run_dir"].get("required") is True
+        assert params["generate_prompt"].get("required") is True
+        assert params["render_command"].get("required") is True
+
+    def test_resolved_evaluate_is_shell_type(self, resolved_data: dict) -> None:
+        """evaluate state override must be a shell action after resolution."""
+        state = resolved_data["states"].get("evaluate", {})
+        assert state.get("action_type") == "shell", (
+            "evaluate state must be action_type: shell in CLI oracle"
+        )
+
+    def test_resolved_evaluate_has_output_contains_captured(self, resolved_data: dict) -> None:
+        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
+        state = resolved_data["states"].get("evaluate", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "CAPTURED"
+
+    def test_resolved_evaluate_routes_to_failed_on_no(self, resolved_data: dict) -> None:
+        """evaluate.on_no must route to failed (not snapshot) — render failure is terminal."""
+        state = resolved_data["states"].get("evaluate", {})
+        assert state.get("on_no") == "failed", (
+            f"evaluate.on_no should be 'failed', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "failed", (
+            f"evaluate.on_error should be 'failed', got {state.get('on_error')!r}"
+        )
+
+    def test_resolved_snapshot_copies_views_png(self, resolved_data: dict) -> None:
+        """snapshot state action must iterate over views/*.png (multi-view aware)."""
+        state = resolved_data["states"].get("snapshot", {})
+        action = state.get("action", "")
+        assert "views/" in action, "snapshot.action must reference views/ directory"
+        assert "*.png" in action, "snapshot.action must glob *.png for multi-view copy"
+
+    def test_resolved_snapshot_routes_to_score(self, resolved_data: dict) -> None:
+        """snapshot must still route to score after override."""
+        state = resolved_data["states"].get("snapshot", {})
+        assert state.get("next") == "score", (
+            f"snapshot.next should be 'score', got {state.get('next')!r}"
+        )
+
+    def test_done_is_terminal(self, resolved_data: dict) -> None:
+        """done.terminal should be True (inherited from parent)."""
+        state = resolved_data["states"].get("done", {})
+        assert state.get("terminal") is True
+
+
 class TestEnumerateAndProveOracle:
     """Structural tests for the enumerate-and-prove oracle sub-loop."""
 
@@ -7510,3 +7611,184 @@ class TestGeneralTaskLoop:
         assert "DoD" in action or "remediation" in action or "unchecked" in action, (
             "continue_work prompt must preserve DoD-criterion remediation logic for non-timeout failures"
         )
+
+
+class TestOpenSCADModelGeneratorLoop:
+    """Structural tests for the openscad-model-generator built-in FSM loop (FEAT-2269)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "openscad-model-generator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, input_key, category, and states fields."""
+        assert data.get("name") == "openscad-model-generator"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "description"
+        assert data.get("category") == "harness"
+        assert isinstance(data.get("states"), dict)
+
+    def test_artifact_versioning_declared(self, data: dict) -> None:
+        """artifact_versioning: true must be declared at top level (MR-5 compliance)."""
+        assert data.get("artifact_versioning") is True, (
+            "artifact_versioning: true is required — MR-5 fires for iterative "
+            "generate → render_views cycle that overwrites views/*.png each pass"
+        )
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required FSM states must be present."""
+        required = {
+            "init", "plan", "generate", "render_views", "snapshot",
+            "score", "check_stall", "maybe_stl", "vision_gate",
+            "done", "diagnose", "failed",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_init_captures_run_dir(self, data: dict) -> None:
+        """init state must be a shell action that captures run_dir."""
+        state = data["states"].get("init", {})
+        assert state.get("action_type") == "shell"
+        assert state.get("capture") == "run_dir"
+        assert state.get("next") == "plan"
+
+    def test_init_creates_views_directory(self, data: dict) -> None:
+        """init action must create a views/ subdirectory for rendered PNGs."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "views" in action, "init.action must create views/ subdirectory"
+
+    def test_generate_routes_unconditionally_to_render_views(self, data: dict) -> None:
+        """generate must route all outcomes to render_views (same anti-dead-end pattern as oracle)."""
+        state = data["states"].get("generate", {})
+        for route in ("on_yes", "on_no", "on_partial"):
+            assert state.get(route) == "render_views", (
+                f"generate.{route} should be 'render_views', got {state.get(route)!r}"
+            )
+
+    def test_render_views_has_output_contains_captured(self, data: dict) -> None:
+        """render_views must have an output_contains evaluator with pattern CAPTURED (MR-1)."""
+        state = data["states"].get("render_views", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains", (
+            "render_views.evaluate.type must be output_contains (MR-1 non-LLM evaluator)"
+        )
+        assert evaluator.get("pattern") == "CAPTURED"
+
+    def test_render_views_is_shell_type(self, data: dict) -> None:
+        """render_views must be a shell action."""
+        state = data["states"].get("render_views", {})
+        assert state.get("action_type") == "shell"
+
+    def test_render_views_checks_openscad_on_path(self, data: dict) -> None:
+        """render_views action must check for openscad binary before rendering."""
+        state = data["states"].get("render_views", {})
+        action = state.get("action", "")
+        assert "openscad" in action, "render_views.action must reference openscad binary"
+        assert "command -v openscad" in action or "which openscad" in action, (
+            "render_views.action must check for openscad on PATH before rendering"
+        )
+
+    def test_render_views_uses_full_csg_render(self, data: dict) -> None:
+        """render_views must use --render (full CSG), never --preview."""
+        state = data["states"].get("render_views", {})
+        action = state.get("action", "")
+        assert "--render" in action, "render_views must use --render for full CSG"
+        assert "--preview" not in action, "render_views must NOT use --preview (misses non-manifold geometry)"
+
+    def test_render_views_routes_to_snapshot_on_yes(self, data: dict) -> None:
+        """render_views must route to snapshot when renders succeed."""
+        state = data["states"].get("render_views", {})
+        assert state.get("on_yes") == "snapshot"
+
+    def test_snapshot_routes_to_score(self, data: dict) -> None:
+        """snapshot must unconditionally route to score."""
+        state = data["states"].get("snapshot", {})
+        assert state.get("next") == "score"
+
+    def test_score_uses_ll_rubric_score_fragment(self, data: dict) -> None:
+        """score must use the ll_rubric_score fragment."""
+        state = data["states"].get("score", {})
+        assert state.get("fragment") == "ll_rubric_score"
+
+    def test_score_routes_to_maybe_stl_on_yes(self, data: dict) -> None:
+        """score.on_yes must route to maybe_stl (not done) for optional STL export."""
+        state = data["states"].get("score", {})
+        assert state.get("on_yes") == "maybe_stl", (
+            f"score.on_yes should be 'maybe_stl', got {state.get('on_yes')!r}"
+        )
+
+    def test_score_routes_to_check_stall_on_no(self, data: dict) -> None:
+        """score.on_no must route to check_stall for stall detection."""
+        state = data["states"].get("score", {})
+        assert state.get("on_no") == "check_stall"
+
+    def test_maybe_stl_routes_to_vision_gate(self, data: dict) -> None:
+        """maybe_stl must unconditionally route to vision_gate."""
+        state = data["states"].get("maybe_stl", {})
+        assert state.get("next") == "vision_gate"
+
+    def test_vision_gate_routes_to_done_on_yes(self, data: dict) -> None:
+        """vision_gate must route to done when external vision passes."""
+        state = data["states"].get("vision_gate", {})
+        assert state.get("on_yes") == "done"
+
+    def test_vision_gate_routes_to_generate_on_no(self, data: dict) -> None:
+        """vision_gate must route to generate when external vision fails (vision critique retry)."""
+        state = data["states"].get("vision_gate", {})
+        assert state.get("on_no") == "generate"
+
+    def test_vision_gate_has_round_cap(self, data: dict) -> None:
+        """vision_gate action must contain ROUND_CAP to prevent ping-pong."""
+        state = data["states"].get("vision_gate", {})
+        action = state.get("action", "")
+        assert "ROUND_CAP" in action, "vision_gate.action must have ROUND_CAP anti-ping-pong guard"
+
+    def test_vision_gate_has_graceful_degradation(self, data: dict) -> None:
+        """vision_gate must output VISION_PASS when VISION_* env vars are absent."""
+        state = data["states"].get("vision_gate", {})
+        action = state.get("action", "")
+        assert "VISION_PASS" in action, "vision_gate.action must output VISION_PASS for graceful degradation"
+        assert "VISION_BASE_URL" in action, "vision_gate.action must check VISION_BASE_URL env var"
+
+    def test_context_has_view_presets_with_default(self, data: dict) -> None:
+        """context block must define view_presets with a low default."""
+        ctx = data.get("context", {})
+        assert "view_presets" in ctx, "context must define view_presets"
+        view_presets = ctx.get("view_presets", "")
+        presets = [p.strip() for p in str(view_presets).split(",")]
+        assert len(presets) >= 2, "view_presets default must include at least 2 camera angles"
+        assert len(presets) <= 5, "view_presets default should be low (≤5) for fast demos"
+
+    def test_context_has_export_stl_default_false(self, data: dict) -> None:
+        """context block must define export_stl defaulting to false/off."""
+        ctx = data.get("context", {})
+        assert "export_stl" in ctx, "context must define export_stl"
+        assert str(ctx.get("export_stl")).lower() in ("false", "0", "no"), (
+            "export_stl must default to false/off"
+        )
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        state = data["states"].get("done", {})
+        assert state.get("terminal") is True
+
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True
+
+    def test_diagnose_routes_to_failed(self, data: dict) -> None:
+        """diagnose must route to failed."""
+        state = data["states"].get("diagnose", {})
+        assert state.get("next") == "failed"
+
+    def test_imports_lib_harness(self, data: dict) -> None:
+        """Loop must import lib/harness.yaml for ll_rubric_score fragment."""
+        imports = data.get("import", [])
+        assert "lib/harness.yaml" in imports, "must import lib/harness.yaml"
+

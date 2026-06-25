@@ -2,10 +2,11 @@
 id: FEAT-2269
 title: OpenSCAD model generator built-in FSM loop
 type: feature
-status: open
+status: done
 priority: P4
 discovered_date: 2026-06-24
 discovered_by: capture-issue
+completed_at: 2026-06-25 03:43:38+00:00
 relates_to:
 - ENH-1869
 labels:
@@ -375,6 +376,7 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 - External `openscad` CLI binary requires test mocking — the mock must intercept the `render_views` shell state subprocess call; unvalidated against the new loop YAML structure until the file is written
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T03:16:22 - `f353a071-9adf-4f50-8426-b39c4da0b78d.jsonl`
 - `/ll:confidence-check` - 2026-06-25T03:00:00 - `905651b8-3c5b-4a6b-b752-d2925de2ce20.jsonl`
 - `/ll:wire-issue` - 2026-06-25T02:43:56 - `5172b87e-d2c8-4926-8493-639536cb7596.jsonl`
 - `/ll:refine-issue` - 2026-06-25T02:33:20 - `a8d37fdd-8f6d-4bf9-8ae9-e43625aa7f05.jsonl`

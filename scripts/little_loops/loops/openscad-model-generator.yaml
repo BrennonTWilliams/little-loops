@@ -1,0 +1,495 @@
+name: openscad-model-generator
+category: harness
+input_key: description
+required_inputs: ["description"]
+visibility: public
+# MR-5: iterative generate → render_views cycle overwrites views/*.png each pass
+artifact_versioning: true
+description: |
+  Generator-evaluator harness for parametric OpenSCAD model creation.
+  Accepts a natural language part description via loop_input and iteratively
+  generates and refines a .scad file through a generate → render → inspect
+  → refine cycle. Renders the model from multiple camera angles via the
+  openscad CLI, scores the rendered views against a CAD-specific rubric
+  (correctness, completeness, printability, parametrics), and iterates until
+  ALL_PASS or max_steps. Fails gracefully with a clear message when openscad
+  is not on PATH. Optional VISION_* external-vision gate scores rendered views
+  when configured; degrades to no-op pass when unset.
+  System dependency: openscad CLI (https://openscad.org/downloads.html).
+
+initial: init
+max_steps: 20
+on_handoff: spawn
+timeout: 7200
+
+# HARNESS: Context variables control quality threshold and view rendering.
+context:
+  description: ""         # populated from loop_input via input_key: description
+  view_presets: "iso,front,top"  # comma-separated camera presets; default 3 views
+  pass_threshold: 6       # minimum score per criterion (1-10) to pass
+  export_stl: "false"     # set to "true" to export model.stl after generation
+
+import:
+  - lib/harness.yaml
+  - lib/common.yaml
+
+states:
+
+  init:
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute
+    # path and creates the views/ subdirectory for rendered PNGs.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR/views"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: plan
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into a CAD brief.
+    # The brief commits to specific dimensions, features, parametric variables,
+    # and printability constraints, giving the generator strong direction on the
+    # first iteration. Dimensional specificity is the discriminator from SVG/HTML
+    # briefs: a CAD brief that says "approximately 60mm" produces vague geometry;
+    # one that says "60.0mm × 40.0mm × 12.0mm external envelope" enables the
+    # generator to write parametric Customizer variables immediately.
+    action_type: prompt
+    action: |
+      Write a CAD brief to ${captured.run_dir.output}/brief.md for the following OpenSCAD model:
+      "${context.description}"
+
+      The brief must include:
+      - **Overall envelope**: external dimensions (L × W × H) in mm; if not specified,
+        estimate sensible defaults and state them explicitly
+      - **Features**: list every requested feature with approximate dimensions —
+        e.g. "M3 boss: 6mm OD, 3.5mm ID, 8mm tall" or "lid groove: 1.5mm wide, 1mm deep"
+      - **Parametric variables**: which dimensions should be exposed as top-of-file
+        OpenSCAD variables with `// [description] Customizer` annotations —
+        at minimum: overall length/width/height, wall thickness, any hole diameters
+      - **Printability**: wall thickness (≥2mm), overhang angles (flag anything >45°),
+        print orientation recommendation, support requirement notes
+      - **Assembly**: if multi-part, how parts connect (snap-fit, press-fit, M3 screws,
+        threaded inserts) with mating tolerances in mm (e.g. 0.2mm clearance)
+      - **Constraints to avoid**: common OpenSCAD anti-patterns for this part type
+
+      Be specific and dimensional. The generator uses this brief as its primary reference.
+    next: generate
+
+  generate:
+    # HARNESS: Generator phase — creates or refines a parametric OpenSCAD model.
+    # On the first pass uses the brief; on subsequent iterations also addresses
+    # the evaluator's critique. All dimension variables must be at the top of the
+    # file with Customizer annotations so users can adjust without editing geometry.
+    # Unconditional route to render_views: the real quality gate is the
+    # downstream render → multi-view score cycle (same pattern as generator-evaluator
+    # oracle's generate state — routing on LLM verdict of narration is unreliable).
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/brief.md for the CAD brief.
+
+      A previous iteration may have written ${captured.run_dir.output}/critique.md.
+      If that file exists, read it and address every issue in its "Issues to Address"
+      section specifically and completely before introducing new ideas.
+
+      Write a single self-contained OpenSCAD file to ${captured.run_dir.output}/model.scad that:
+
+      1. **Parametric header** — expose ALL key dimensions as variables at the top of the
+         file with descriptive Customizer comments:
+         ```
+         // Overall dimensions [mm]
+         length = 60;      // [40:5:120] Outer length
+         width  = 40;      // [20:5:100] Outer width
+         height = 12;      // [5:2:50]  Outer height
+         wall   = 2;       // [1.2:0.1:4] Wall thickness
+         ```
+         Variables with `// [min:step:max] Label` syntax appear as Customizer sliders.
+
+      2. **Geometry** — use difference(), union(), intersection() with primitives
+         (cube, cylinder, sphere, linear_extrude, rotate_extrude) to build the shape.
+         All hole clearances should be 0.2mm; press-fit tolerances 0.1mm.
+
+      3. **Color** — add `color("SteelBlue")` or similar to the top-level module so
+         renders are visually distinctive, not grey.
+
+      4. **Manifold geometry** — no zero-thickness walls, no floating islands, all
+         parts must be connected. Use `$fn = 32` globally for smooth cylinders.
+
+      5. **Modules** — use named modules for repeated geometry and the main assembly.
+         No monolithic single-expression models.
+
+      6. **Printability** — wall thickness ≥ ${captured.run_dir.output}/brief.md specs,
+         overhangs ≤ 45° unless critique specifies supports are acceptable.
+
+      The file must compile cleanly with `openscad --render`. If critique.md exists,
+      every bullet in "Issues to Address" must be resolved.
+    on_yes: render_views
+    on_no: render_views
+    on_partial: render_views
+    on_error: failed
+
+  render_views:
+    # HARNESS: CLI render phase — renders the model from each camera preset in
+    # view_presets via the openscad CLI with full CSG (--render, not --preview).
+    # Full CSG is load-bearing: --preview (OpenGL approximation) misses non-manifold
+    # geometry and interior features — exactly the defects the rubric targets.
+    # Timeout 360s = 120s/view × 3 views (generous for complex models).
+    # MR-1 (non-LLM evaluator): output_contains "CAPTURED".
+    # MR-3 (per-run artifact isolation): all writes under captured.run_dir.output.
+    action_type: shell
+    timeout: 360
+    action: |
+      if ! command -v openscad >/dev/null 2>&1; then
+        echo "OPENSCAD_MISSING: openscad not found on PATH."
+        echo "Install from https://openscad.org/downloads.html"
+        echo "  macOS:  brew install openscad"
+        echo "  Linux:  sudo apt install openscad"
+        echo "  or download the GUI installer from openscad.org"
+        exit 0
+      fi
+      SCAD="${captured.run_dir.output}/model.scad"
+      VIEWS_DIR="${captured.run_dir.output}/views"
+      PRESETS="${context.view_presets}"
+      mkdir -p "$VIEWS_DIR"
+      VIEW_N=0
+      for PRESET in $(echo "$PRESETS" | tr ',' ' '); do
+        case "$PRESET" in
+          iso)   CAMERA="0,0,0,55,0,25,500" ;;
+          front) CAMERA="0,0,0,90,0,0,500" ;;
+          top)   CAMERA="0,0,0,0,0,0,500" ;;
+          side)  CAMERA="0,0,0,90,0,90,500" ;;
+          back)  CAMERA="0,0,0,90,0,180,500" ;;
+          *)     CAMERA="0,0,0,55,0,25,500" ;;
+        esac
+        openscad "$SCAD" \
+          --camera "$CAMERA" \
+          --autocenter \
+          --render \
+          --imgsize=800,600 \
+          -o "$VIEWS_DIR/view_$VIEW_N.png" 2>&1 \
+          && echo "Rendered view_$VIEW_N ($PRESET)" \
+          || echo "WARN: render failed for $PRESET (view_$VIEW_N)"
+        VIEW_N=$((VIEW_N + 1))
+      done
+      echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: snapshot
+    on_no: diagnose
+    on_error: failed
+
+  snapshot:
+    # HARNESS: Per-iteration artifact versioning — copies model.scad and all
+    # rendered views/*.png into iter-N/ for per-iteration snapshots. Multi-view
+    # aware: handles N rendered PNGs, not just a single screenshot.png.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      COUNTER=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0)
+      COUNTER=$((COUNTER + 1))
+      echo "$COUNTER" > "$RUN_DIR/.iter_counter"
+      mkdir -p "$RUN_DIR/iter-$COUNTER"
+      cp "$RUN_DIR/model.scad" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
+      for f in "$RUN_DIR/views/"*.png; do
+        [ -f "$f" ] && cp "$f" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
+      done
+    next: score
+
+  score:
+    # HARNESS: Evaluator phase — LLM judges the rendered views against four
+    # CAD-specific criteria and writes structured critique for the next iteration.
+    # The rubric explicitly enumerates each rendered PNG by path (following the
+    # generative-art.yaml precedent: hardcode filenames consistent with the default
+    # view_presets="iso,front,top" rather than deriving dynamically).
+    # view_0.png = iso, view_1.png = front, view_2.png = top.
+    fragment: ll_rubric_score
+    with:
+      run_dir: "${captured.run_dir.output}"
+      rubric: |
+        Read the rendered views of the OpenSCAD model. Study each view carefully:
+          ${captured.run_dir.output}/views/view_0.png — isometric view (3/4 perspective, shows overall shape)
+          ${captured.run_dir.output}/views/view_1.png — front view (orthographic, shows height and width)
+          ${captured.run_dir.output}/views/view_2.png — top view (shows footprint and horizontal geometry)
+
+        Also read ${captured.run_dir.output}/brief.md for the design intent and
+        ${captured.run_dir.output}/model.scad to inspect the parametric structure.
+
+        Score the model on each criterion from 1 to 10 and write the evaluation to
+        ${captured.run_dir.output}/critique.md using this exact format:
+
+        ```
+        # Evaluation
+
+        correctness: N/10 — [Does the model match the description? Are ALL requested
+          features present across the three views? Missing walls, holes, or flanges
+          visible in the isometric or orthographic views are correctness failures.
+          Score 2× weight.]
+        completeness: N/10 — [Are all parts connected with no floating geometry?
+          Are all features manifold (no zero-thickness walls, no open meshes)?
+          Inspect the front and top views for gaps, disconnected islands, or
+          geometry that appears to clip through walls. Score 2× weight.]
+        printability: N/10 — [Is wall thickness adequate (≥2mm)? Do overhangs appear
+          manageable (<45° or supported)? Does print orientation make sense?
+          Evidence of manifold edges (no zero-width walls)? Score 1× weight.]
+        parametrics: N/10 — [Are key dimensions exposed as top-of-file variables with
+          Customizer annotations in model.scad? Is at least one color parameter
+          (color() call) present? Score 1× weight.]
+
+        ## Issues to Address
+        [Specific, actionable critique for the generator. List each problem concisely
+         so the generator can address it on the next pass. If all scores meet
+         threshold, write "No issues — all criteria pass."]
+        ```
+
+        After writing the file, evaluate the scores:
+        - correctness weight: 2x (threshold ${context.pass_threshold})
+        - completeness weight: 2x (threshold ${context.pass_threshold})
+        - printability weight: 1x (threshold ${context.pass_threshold})
+        - parametrics weight: 1x (threshold ${context.pass_threshold})
+
+        If ALL four individual scores are >= ${context.pass_threshold}, output exactly: ALL_PASS
+        Otherwise output: ITERATE
+      pass_threshold: "${context.pass_threshold}"
+    on_yes: maybe_stl
+    on_no: check_stall
+    on_error: generate
+
+  check_stall:
+    # HARNESS: Diff-stall guard — if the model has produced no file changes for
+    # max_stall consecutive refine cycles, plateau is detected early and the loop
+    # routes to done (accept best-so-far) rather than burning the remaining budget.
+    # on_yes = new changes observed; on_no = plateaued; on_error = git unavailable.
+    fragment: diff_stall_gate
+    action: echo "stall check"
+    action_type: shell
+    evaluate:
+      max_stall: 3
+    on_yes: generate
+    on_no: done
+    on_error: generate
+
+  maybe_stl:
+    # HARNESS: Optional STL export — runs openscad -o model.stl only when
+    # context.export_stl is "true". Runs unconditionally after score passes
+    # (next: vision_gate). Export failure is non-blocking (the loop continues
+    # to done). Skipped on stall-exit path (check_stall.on_no → done directly).
+    action_type: shell
+    action: |
+      EXPORT="${context.export_stl}"
+      if [ "$EXPORT" = "true" ] && command -v openscad >/dev/null 2>&1; then
+        openscad "${captured.run_dir.output}/model.scad" \
+          -o "${captured.run_dir.output}/model.stl" 2>&1 \
+          && echo "STL_EXPORTED: ${captured.run_dir.output}/model.stl" \
+          || echo "STL_EXPORT_FAILED: continuing without STL"
+      else
+        echo "STL_SKIP"
+      fi
+    next: vision_gate
+
+  vision_gate:
+    # HARNESS: Optional external-vision evaluator (VISION_* env wiring).
+    # An independent vision model scores the rendered views against CAD rubric
+    # criteria; failing criteria are appended to critique.md so the next
+    # generate pass addresses them. Multi-view: all available views/view_N.png
+    # are sent as an interleaved content array (text label + image per view),
+    # following the rlhf-svg-evaluate.yaml 4-frame pattern adapted for 3 CAD views.
+    #
+    # GRACEFUL DEGRADATION: no-op VISION_PASS when:
+    #   - VISION_* env vars are absent or empty
+    #   - No rendered view files are found
+    #   - ROUND_CAP (3) reached (anti-ping-pong guard)
+    #   - Vision API errors or returns unparseable response
+    # Never block a functionally-sound model on an optional gate.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
+        echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0
+      fi
+      VIEWS_FOUND=0
+      for V in view_0.png view_1.png view_2.png; do
+        [ -f "$RUN_DIR/views/$V" ] && VIEWS_FOUND=$((VIEWS_FOUND + 1))
+      done
+      if [ "$VIEWS_FOUND" -eq 0 ]; then
+        echo "VISION_PASS: skipped (no rendered views found)"; exit 0
+      fi
+      VISION_COUNT_FILE="$RUN_DIR/.vision_rounds"
+      ITER=$(cat "$VISION_COUNT_FILE" 2>/dev/null || echo 0)
+      ITER=$((ITER + 1))
+      echo "$ITER" > "$VISION_COUNT_FILE"
+      export ABS_DIR="$RUN_DIR" ITER
+      python3 <<'PY'
+      import os, re, sys, json, base64, urllib.request
+      abs_dir = os.environ["ABS_DIR"]
+      rc_file = os.path.join(abs_dir, ".vision_rounds")
+      crit = os.path.join(abs_dir, "critique.md")
+      ROUND_CAP = 3
+      try:
+          rc = int(open(rc_file).read().strip())
+      except Exception:
+          rc = 0
+      if rc >= ROUND_CAP:
+          print("VISION_PASS: round cap (%d) reached, accepting" % ROUND_CAP); sys.exit(0)
+
+      # Multi-view frame definitions (matching default view_presets="iso,front,top")
+      FRAME_DEFS = [
+          ("views/view_0.png", "View 1/3", "isometric (3/4 perspective)"),
+          ("views/view_1.png", "View 2/3", "front (orthographic)"),
+          ("views/view_2.png", "View 3/3", "top (looking down)"),
+      ]
+
+      captured_frames = []
+      missing_frames = []
+      for fname, label, angle_label in FRAME_DEFS:
+          fpath = os.path.join(abs_dir, fname)
+          if os.path.exists(fpath):
+              try:
+                  with open(fpath, "rb") as f:
+                      b64 = base64.b64encode(f.read()).decode()
+                  captured_frames.append((fname, label, angle_label, b64))
+              except Exception as e:
+                  missing_frames.append((fname, str(e)))
+          else:
+              missing_frames.append((fname, "file not found"))
+
+      if not captured_frames:
+          print("VISION_PASS: no rendered views available to evaluate"); sys.exit(0)
+
+      frame_names = [c[0] for c in captured_frames]
+      print("FRAMES_CAPTURED: %d/%d (%s)" % (len(captured_frames), len(FRAME_DEFS), ", ".join(frame_names)))
+      if missing_frames:
+          print("FRAMES_MISSING: %s" % ", ".join(m[0] for m in missing_frames))
+
+      base = os.environ["VISION_BASE_URL"].rstrip("/")
+      endpoint = base if base.endswith("completions") else base + "/chat/completions"
+
+      rubric = (
+          "You are a strict, impartial CAD model reviewer. You are given multiple "
+          "rendered views of a parametric OpenSCAD model from different camera angles. "
+          "Study ALL views together and score the model 1-10 on each dimension.\n\n"
+          "- correctness: Does the model match the original description? Are all "
+          "requested features present (bosses, walls, slots, holes, flanges, etc.) "
+          "and correctly sized? Missing or malformed features are correctness failures.\n"
+          "- completeness: Are all parts connected, manifold, and free of floating "
+          "geometry or missing walls? Inspect all views for gaps or disconnected islands.\n"
+          "- printability: Is wall thickness adequate (≥2mm)? Are overhangs manageable "
+          "(<45° or supported)? Are manifold edges clean (no zero-thickness walls)?\n"
+          "- parametrics: Are key dimensions exposed as top-of-file variables with "
+          "Customizer annotations in the source? Are color parameters present?\n\n"
+          "Threshold: every criterion must be >= 6.\n"
+          'Reply with ONE JSON object only, no prose: {"scores": '
+          '{"correctness": N, "completeness": N, "printability": N, '
+          '"parametrics": N}, "issues": ["specific actionable fix", ...]}'
+      )
+
+      content_blocks = [{"type": "text", "text": rubric}]
+      for fname, label, angle_label, b64 in captured_frames:
+          content_blocks.append({
+              "type": "text",
+              "text": "%s — %s:" % (label, angle_label)
+          })
+          content_blocks.append({
+              "type": "image_url",
+              "image_url": {"url": "data:image/png;base64," + b64}
+          })
+
+      payload = {
+          "model": os.environ["VISION_MODEL"],
+          "temperature": 0.2,
+          "max_tokens": 900,
+          "messages": [{"role": "user", "content": content_blocks}],
+      }
+      req = urllib.request.Request(
+          endpoint, data=json.dumps(payload).encode(),
+          headers={"Authorization": "Bearer " + os.environ["VISION_API_KEY"],
+                   "Content-Type": "application/json"})
+      try:
+          with urllib.request.urlopen(req, timeout=120) as r:
+              content = json.load(r)["choices"][0]["message"]["content"]
+      except Exception as e:
+          print("VISION_PASS: vision API error (%s), not blocking" % e); sys.exit(0)
+      m = re.search(r"\{.*\}", content, re.S)
+      try:
+          data = json.loads(m.group(0)) if m else {}
+          scores = data.get("scores", {}) or {}
+          issues = data.get("issues", []) or []
+      except Exception:
+          print("VISION_PASS: unparseable vision verdict, not blocking"); sys.exit(0)
+      failing = {k: v for k, v in scores.items()
+                 if isinstance(v, (int, float)) and v < 6}
+      print("VISION scores: " + json.dumps(scores))
+      if not failing:
+          print("VISION_PASS"); sys.exit(0)
+      open(rc_file, "w").write(str(rc + 1))
+      lines = ["", "## Issues to Address (external vision critique, round %d)" % (rc + 1)]
+      for k, v in failing.items():
+          lines.append("- %s scored %s/10 (below threshold 6)" % (k, v))
+      for i in issues:
+          lines.append("- %s" % i)
+      with open(crit, "a") as f:
+          f.write("\n".join(lines) + "\n")
+      print("VISION_FAIL: %d criteria below threshold" % len(failing))
+      PY
+    evaluate:
+      type: output_contains
+      pattern: "VISION_PASS"
+    on_yes: done
+    on_no: generate
+    on_error: done
+
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass (via vision_gate)
+    # or max_iterations exhausted (via check_stall). Reports the final output
+    # file locations before ending. If export_stl was true, model.stl was created
+    # by maybe_stl and is reported here.
+    action_type: prompt
+    action: |
+      The OpenSCAD model generation loop has completed successfully.
+
+      Final output files:
+      - ${captured.run_dir.output}/model.scad   — the generated parametric OpenSCAD model
+      - ${captured.run_dir.output}/views/view_0.png — isometric view render
+      - ${captured.run_dir.output}/views/view_1.png — front view render
+      - ${captured.run_dir.output}/views/view_2.png — top view render
+      - ${captured.run_dir.output}/brief.md    — the CAD planning brief
+      - ${captured.run_dir.output}/critique.md — the final evaluation scores and notes
+
+      If STL export was requested (export_stl: true):
+      - ${captured.run_dir.output}/model.stl   — exported STL for slicing
+
+      Open model.scad in OpenSCAD to inspect the parametric variables (Customizer panel).
+      Slice model.stl directly in Cura, PrusaSlicer, or Bambu Studio.
+
+      Report these paths to the user and confirm the model is ready.
+    terminal: true
+
+  diagnose:
+    # HARNESS: Explicit failure diagnostic — reached when render_views fails
+    # (openscad missing or model does not compile). Provides a clear human-readable
+    # explanation before routing to the failed terminal.
+    action_type: prompt
+    action: |
+      The openscad-model-generator loop encountered a render failure.
+
+      Diagnose what happened:
+      - If ${captured.run_dir.output}/model.scad exists, attempt to read it and
+        identify any obvious syntax errors (unclosed brackets, undefined variables,
+        undefined modules).
+      - Check whether "openscad" was found on PATH (the render_views state outputs
+        "OPENSCAD_MISSING" when it is not).
+      - Note whether any views were rendered in ${captured.run_dir.output}/views/.
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run
+      or adjust the model description. If openscad is missing, reproduce the
+      install instructions exactly:
+        macOS:  brew install openscad
+        Linux:  sudo apt install openscad
+        or download from https://openscad.org/downloads.html
+    next: failed
+
+  failed:
+    # HARNESS: Explicit failure terminal — reached on render errors or LLM crashes.
+    # Provides a clear signal distinct from a max_iterations timeout.
+    terminal: true

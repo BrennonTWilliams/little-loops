@@ -1229,6 +1229,7 @@ run_eval → score_results → analyze_failures
 | `hitl-md` | Human-in-the-loop single-document review harness — reads a markdown file (or raw text), decomposes it into GP-TSM saliency-modulated segments with per-segment confidence scores, and generates a self-contained interactive HTML page with natural markdown rendering, inline saliency highlights, a lightweight low-confidence cue (dotted underline + badge), click/focus-triggered popover edit controls (delete / insert-before / insert-after / inline-edit / flag-for-AI), a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" reconstruction control. Final HTML is copied to `./hitl-md-review.html` in the run directory for quick access. |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
+| `openscad-model-generator` | Generator-evaluator harness for parametric OpenSCAD model creation — accepts a natural language part description and iteratively generates and refines a .scad file via multi-angle CLI renders (iso/front/top), scoring against a CAD rubric (correctness, completeness, printability, parametrics) |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
 | `generative-art` | Canonical p5.js generative art base loop — single-pass plan → generate → evaluate → score cycle with multi-frame Playwright screenshots; parent for `p5js-sketch-generator` and `pixi-generative-art` via `from:` inheritance (ENH-2161) |
 | `p5js-sketch-generator` | p5.js sketch specialization of `generative-art` (`from: generative-art` stub, ENH-2161) — multi-frame screenshots at deterministic frameCounts evaluate motion, not just composition; GAN-style architecture with p5.js loaded from CDN |
@@ -1244,7 +1245,7 @@ run_eval → score_results → analyze_failures
 | `cua-agent-desktop` | Computer-Use Agent harness for macOS desktop automation — observe → plan → act → verify cycles via the `agent-desktop` CLI; uses macOS Accessibility API for element-level interaction (click, type, scroll, keyboard shortcuts, window management) with structured error recovery for `STALE_REF`, `ELEMENT_NOT_FOUND`, `PERM_DENIED`, `TIMEOUT`, and `ACTION_FAILED`; produces a `summary.md` artifact with the full action evidence chain in the run directory |
 | `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --input concept="how a transformer attends"` |
 
-For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, `canvas-sketch-generator`, and `rlhf-animated-svg`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
+For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, `canvas-sketch-generator`, `rlhf-animated-svg`, and `openscad-model-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
 > **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_steps` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available. After ENH-1869, these states (`evaluate`, `score`) live inside `oracles/generator-evaluator`; the rule applies to the oracle's internal state machine, not the calling thin-wrapper loops.
 
@@ -1552,6 +1553,62 @@ init → plan → generate → evaluate
 - If Playwright is unavailable, the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the SVG source rather than a screenshot.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
 - To customize the scoring criteria, install the loop locally (`ll-loop install svg-image-generator`) and edit the `score` state's prompt.
+
+### `openscad-model-generator` — Parametric CAD Model Generator
+
+> **Prerequisites**: [OpenSCAD CLI](https://openscad.org/downloads.html) must be installed and on PATH.
+> - macOS: `brew install openscad`
+> - Linux: `sudo apt install openscad`
+> - or download the GUI installer from [openscad.org](https://openscad.org/downloads.html)
+
+**Technique**: The first CAD/manufacturing harness in the generator-evaluator family. The loop runs six states in sequence: a **planner** expands the natural language description into a dimensional CAD brief (envelope dimensions, features with sizes, parametric variables, printability notes); a **generator** writes a fully parametric OpenSCAD file with Customizer-annotated dimension variables; a **renderer** runs the `openscad` CLI with `--render` (full CSG, not `--preview`) for three camera angles (isometric, front, top); a **snapshot** state versions the .scad and all PNG views into `iter-N/`; a **scorer** judges the rendered PNGs against four CAD-specific criteria, routing back to the generator with structured critique until all scores clear `pass_threshold`; and an optional **vision gate** sends all three view PNGs to an external vision model as an interleaved content array. The multi-angle inspection is the key differentiator from SVG/HTML harnesses: a `.scad` file can compile cleanly while still having a missing wall, floating geometry, or a feature absent from one viewing angle — visual multi-angle inspection catches defects that source-only review misses.
+
+**When to use**: When you want to generate a parametric OpenSCAD model from a natural language description and need geometry verification, not just compilation. The render → multi-view score cycle is the discriminator: a model that compiles and a model that has correct geometry look identical at the source level; rendering and inspecting three views makes geometry quality a first-class evaluation criterion.
+
+**Usage:**
+
+```bash
+ll-loop run openscad-model-generator "a parametric snap-fit enclosure for a 60x40mm PCB with M3 mounting bosses and a removable lid"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language part description — passed as the positional argument |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/openscad-model-generator-{timestamp}/`) |
+| `view_presets` | `"iso,front,top"` | Comma-separated camera angle presets; supported: `iso`, `front`, `top`, `side`, `back` |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); all four criteria must clear this value |
+| `export_stl` | `"false"` | Set to `"true"` to export `model.stl` after generation completes |
+
+**FSM flow:**
+
+```
+init → plan → generate → render_views
+                            ├─ CAPTURED → snapshot → score
+                            │               ├─ ALL_PASS → maybe_stl → vision_gate → done
+                            │               ├─ ITERATE  → check_stall
+                            │               │               ├─ progress → generate (refine)
+                            │               │               └─ stall    → done (accept best)
+                            │               └─ ERROR    → generate (retry)
+                            └─ MISSING  → diagnose → failed
+```
+
+**Evaluation criteria** (all four must meet `pass_threshold`):
+
+| Criterion | Weight | What it checks |
+|-----------|--------|----------------|
+| `correctness` | 2× | All requested features present and correctly sized across all three views |
+| `completeness` | 2× | Parts connected, manifold, no floating geometry or missing walls |
+| `printability` | 1× | Wall thickness ≥2mm, overhangs ≤45°, manifold edges, sensible print orientation |
+| `parametrics` | 1× | Key dimensions as top-of-file variables with Customizer annotations; color parameter present |
+
+**Notes:**
+- The renderer always uses `--render` (full CSG) with a 360-second timeout (generous for complex models). `--preview` (OpenGL approximation) is never used — it misses non-manifold geometry and interior features.
+- Camera positions use `--autocenter` with fixed angle presets. Increase `view_presets` to add more angles for complex models: `--context view_presets=iso,front,top,side`.
+- When `openscad` is not on PATH, the `render_views` state outputs an install guide and the `diagnose` state repeats it before terminating cleanly.
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
+- Per-iteration snapshots are preserved in `iter-N/` within the run directory for regression comparison.
 
 ### `svg-textgrad` — TextGrad-Style SVG Optimization Loop
 

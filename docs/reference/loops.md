@@ -452,6 +452,84 @@ Imports `lib/harness.yaml` for the `playwright_screenshot` fragment used in the 
 
 ---
 
+## `oracles/generator-evaluator-cli`
+
+**Category**: oracle sub-loop
+**File**: `scripts/little_loops/loops/oracles/generator-evaluator-cli.yaml`
+
+CLI-render oracle variant of `generator-evaluator`, created via `from: generator-evaluator` inheritance (first oracle to use `from:` — FEAT-2269). Overrides two states from the parent: `evaluate` (replaces Playwright screenshot with a caller-provided shell render command) and `snapshot` (replaces single `screenshot.png` copy with multi-file `views/*.png` copy). All other states (`generate`, `score`, `check_stall`, `done`, `failed`) are inherited unchanged.
+
+Intended for any CLI-rendered artifact: OpenSCAD, graphviz, manim, CNC toolchains, etc. Currently used only by `openscad-model-generator` as a reusable component; `openscad-model-generator` invokes the oracle directly for its inner generate → render → score cycle.
+
+### Parameters
+
+Inherits all parameters from `generator-evaluator`, plus:
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `run_dir` | yes | — | (inherited) Directory path for generated artifacts |
+| `generate_prompt` | yes | — | (inherited) Full LLM prompt for the `generate` state |
+| `rubric` | no | `""` | (inherited) Rubric criteria markdown |
+| `pass_threshold` | no | `6` | (inherited) Minimum score per criterion |
+| `artifact_path` | no | `"index.html"` | (inherited) Main artifact filename for snapshot copy |
+| `render_command` | yes | — | Shell script that renders the artifact into `views/` under `run_dir` and echoes `CAPTURED` on success. Exit 0 with no `CAPTURED` output on binary-missing (routes `on_no → failed`). |
+
+### Invocation (thin-wrapper pattern)
+
+```yaml
+run_gen_eval:
+  loop: oracles/generator-evaluator-cli
+  with:
+    run_dir: ${captured.run_dir.output}
+    artifact_path: "model.scad"
+    generate_prompt: |
+      Write model.scad to ${captured.run_dir.output}/ ...
+    render_command: |
+      if ! command -v openscad >/dev/null 2>&1; then
+        echo "OPENSCAD_MISSING"; exit 0
+      fi
+      # ... render loop ...
+      echo "CAPTURED"
+    rubric: |
+      Read views/view_0.png, view_1.png, view_2.png ...
+    pass_threshold: 6
+  on_yes: vision_gate
+  on_no: diagnose
+  on_error: diagnose
+```
+
+### Internal state machine (inherited from generator-evaluator, overridden states marked *)
+
+```
+generate   (prompt: LLM renders artifact via generate_prompt)
+  on_yes/no/partial → evaluate    # unconditional forward
+  on_error          → failed
+
+evaluate * (shell: runs render_command; echoes CAPTURED on success)
+  on_yes   → snapshot
+  on_no    → failed   # render failed or binary missing
+  on_error → failed
+
+snapshot * (shell: copies artifact_path + views/*.png to iter-N/)
+  → score  (unconditional)
+
+score      (fragment: ll_rubric_score; inherited)
+  on_yes  → done  (terminal)
+  on_no   → check_stall
+  on_error → generate
+
+check_stall (fragment: diff_stall_gate; inherited)
+  on_yes → generate
+  on_no  → done
+  on_error → generate
+```
+
+### Snapshot behavior difference from parent
+
+The parent `generator-evaluator` snapshot copies `screenshot.png` (single file). The CLI oracle snapshot iterates `views/*.png` to capture all N rendered view files. This multi-file snapshot is required for multi-angle renders (OpenSCAD iso/front/top) where each angle produces an independent PNG.
+
+---
+
 ## `oracles/research-coverage`
 
 **Category**: oracle sub-loop

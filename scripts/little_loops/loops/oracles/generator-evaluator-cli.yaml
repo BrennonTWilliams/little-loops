@@ -1,0 +1,56 @@
+name: generator-evaluator-cli
+from: generator-evaluator
+visibility: internal
+description: |
+  CLI-render oracle variant of generator-evaluator. Overrides evaluate
+  (Playwright screenshot → parameterized shell render command) and snapshot
+  (single screenshot.png → multi-file views/*.png capture). Intended for
+  any CLI-rendered artifact: OpenSCAD, CNC, graphviz, manim, etc. Callers
+  pass render_command via context binding. First oracle to use from:
+  inheritance (FEAT-2269). Used by openscad-model-generator.
+
+parameters:
+  render_command:
+    type: string
+    required: true
+    description: |
+      Shell script that renders the artifact into views/ under run_dir and
+      echoes CAPTURED on success. Must handle non-zero exit from missing
+      CLI binary gracefully (exit 0, no CAPTURED) so on_no triggers.
+
+states:
+  evaluate:
+    # CLI-render override: replaces playwright_screenshot fragment action with
+    # a caller-provided shell render command. The fragment still provides the
+    # evaluate.type: output_contains evaluator (CAPTURED pattern) via deep
+    # merge, so MR-1 (non-LLM evaluator) is satisfied. Callers must echo
+    # "CAPTURED" on render success and exit 0 on binary-missing (no CAPTURED)
+    # so on_no routes to failed rather than on_error.
+    action_type: shell
+    timeout: 360
+    action: |
+      ${context.render_command}
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: snapshot
+    on_no: failed
+    on_error: failed
+
+  snapshot:
+    description: |
+      Per-iteration artifact versioning for CLI-rendered artifacts. Copies the
+      main artifact file and all views/*.png into iter-N/ for per-iteration
+      snapshots. Multi-view aware: handles N rendered PNGs, not single screenshot.png.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      COUNTER=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0)
+      COUNTER=$((COUNTER + 1))
+      echo "$COUNTER" > "$RUN_DIR/.iter_counter"
+      mkdir -p "$RUN_DIR/iter-$COUNTER"
+      cp "$RUN_DIR/${context.artifact_path}" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
+      for f in "$RUN_DIR/views/"*.png; do
+        [ -f "$f" ] && cp "$f" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
+      done
+    next: score
