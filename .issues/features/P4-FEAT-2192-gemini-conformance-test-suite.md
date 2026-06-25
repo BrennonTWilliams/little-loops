@@ -1,18 +1,31 @@
 ---
 id: FEAT-2192
-title: Conformance test suite — ll-auto/ll-sprint/ll-loop golden paths against gemini -p
+title: "Conformance test suite \u2014 ll-auto/ll-sprint/ll-loop golden paths against\
+  \ gemini -p"
 type: feature
-status: open
+status: cancelled
 priority: P4
 parent: EPIC-2178
-depends_on: [ENH-2184, ENH-2185, FEAT-2186, ENH-2187]
-captured_at: "2026-06-15T00:00:00Z"
+depends_on:
+- ENH-2184
+- ENH-2185
+- FEAT-2186
+- ENH-2187
+captured_at: '2026-06-15T00:00:00Z'
 discovered_date: 2026-06-15
 discovered_by: capture-issue
-labels: [gemini, host-compat, tests, conformance]
+labels:
+- gemini
+- host-compat
+- tests
+- conformance
 ---
 
 # FEAT-2192: Conformance test suite — ll-auto/ll-sprint/ll-loop golden paths
+
+## Resolution
+
+**Cancelled 2026-06-25 — superseded by FEAT-2259.** The generic host-parameterized conformance harness covers the Gemini `gemini -p` golden paths (`--host gemini`). Per EPIC-2257 (ARCHITECTURE-049), per-host conformance / skill / command children are folded into the generic host-parameterized components rather than built bespoke. Run the equivalent capability via the generic tool with the appropriate `--host` argument.
 
 ## Summary
 

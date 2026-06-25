@@ -1993,3 +1993,15 @@
     to track the debt and fail CI whe
   enforcement: advisory
   issue: BUG-2295
+- id: ARCHITECTURE-056
+  type: decision
+  timestamp: '2026-06-25T18:38:19Z'
+  category: architecture
+  labels: []
+  rationale: pytest.mark.parametrize in 70+ test sites and resolve_host(env=...) at
+    13 call sites in test_host_runner.py; test-only addition with zero production
+    code changes vs Option B's parser surgery and os.environ mutation
+  rule: Use pytest-parametrize over resolve_host(env=...) for host conformance harness
+  scope: issue
+  alternatives_rejected: Option B — CLI wrapper (ll-harness --suite conformance)
+  issue: FEAT-2259

@@ -1,18 +1,27 @@
 ---
 id: FEAT-2188
-title: Skills adaptation — ll-adapt-skills-for-gemini copying skills to .gemini/skills/
+title: "Skills adaptation \u2014 ll-adapt-skills-for-gemini copying skills to .gemini/skills/"
 type: feature
-status: open
+status: cancelled
 priority: P4
 parent: EPIC-2178
-depends_on: [FEAT-2179]
-captured_at: "2026-06-15T00:00:00Z"
+depends_on:
+- FEAT-2179
+captured_at: '2026-06-15T00:00:00Z'
 discovered_date: 2026-06-15
 discovered_by: capture-issue
-labels: [gemini, host-compat, skills, adaptation]
+labels:
+- gemini
+- host-compat
+- skills
+- adaptation
 ---
 
 # FEAT-2188: Skills adaptation — ll-adapt-skills-for-gemini
+
+## Resolution
+
+**Cancelled 2026-06-25 — superseded by FEAT-2260.** The generic host-parameterized skill + command adapter covers Gemini skill adaptation (`--host gemini`). Per EPIC-2257 (ARCHITECTURE-049), per-host conformance / skill / command children are folded into the generic host-parameterized components rather than built bespoke. Run the equivalent capability via the generic tool with the appropriate `--host` argument.
 
 ## Summary
 

@@ -3,18 +3,30 @@ id: FEAT-1721
 title: Codex `claude -p` conformance test suite
 type: FEAT
 priority: P5
-status: open
-captured_at: "2026-05-26T02:23:05Z"
+status: cancelled
+captured_at: '2026-05-26T02:23:05Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
-depends_on: [FEAT-1481, ENH-1718]
-blocked_by: [FEAT-1719]
-relates_to: [FEAT-1716]
-labels: [codex, testing, host-compat, conformance]
+depends_on:
+- FEAT-1481
+- ENH-1718
+blocked_by:
+- FEAT-1719
+relates_to:
+- FEAT-1716
+labels:
+- codex
+- testing
+- host-compat
+- conformance
 ---
 
 # FEAT-1721: Codex `claude -p` conformance test suite
+
+## Resolution
+
+**Cancelled 2026-06-25 — superseded by FEAT-2259.** The generic host-parameterized conformance harness covers the Codex `claude -p` golden paths (`--host codex`). Per EPIC-2257 (ARCHITECTURE-049), per-host conformance / skill / command children are folded into the generic host-parameterized components rather than built bespoke. Run the equivalent capability via the generic tool with the appropriate `--host` argument.
 
 ## Summary
 
