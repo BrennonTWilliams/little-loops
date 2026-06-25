@@ -1419,7 +1419,7 @@ Transition an issue to a new status value. Validates the target status against t
 |----------|-------------|
 | `issue_id` | Issue ID (e.g., `518`, `ENH-518`, `P3-ENH-518`) |
 | `status` | New status value: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` |
-| `--cascade` | Propagate status to active children (EPIC closure only; only valid with `done`/`cancelled`) |
+| `--cascade` | Propagate status to issues with `parent: <EPIC-ID>` (EPIC closure only; only valid with `done`/`cancelled`). Only follows `parent:` edges — `relates_to:`, `blocked_by:`, and other relationship types are not traversed. |
 | `--cascade-to <status>` | Status to apply to cascaded children (default: `deferred`) |
 
 **Examples:**

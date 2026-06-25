@@ -317,7 +317,10 @@ init             (shell: validate plan_file exists, copy to run_dir/plan.md)
               on_error               → diagnose → failed
 ```
 
-**Notes**: The key difference from `rn-plan` is `assess_existing` — it reads the plan and scores dimensions at their *actual* current level rather than defaulting all to LOW. This avoids wasting iterations refining dimensions that are already HIGH or VERY-HIGH. `verify_score` is a deterministic shell check that confirms `ALL_VERY_HIGH` appears in the rubric file before accepting convergence — guarding against hallucinated convergence where the LLM emits the sentinel but writes `ITERATE` to disk.
+**Notes**: The key difference from `rn-plan` is `assess_existing` — it reads the plan and scores dimensions at their *actual* current level rather than defaulting all to LOW. This avoids wasting iterations refining dimensions that are already HIGH or VERY-HIGH. `verify_score` is a two-stage deterministic shell check that guards against hallucinated convergence:
+
+1. **Stage 1 — rubric check**: Confirms `ALL_VERY_HIGH` appears in the rubric file before accepting the LLM's convergence claim. Guards against a model emitting the sentinel token while writing `ITERATE` to disk.
+2. **Stage 2 — diff check** (ENH-2270): Confirms the plan `.md` file content actually changed since the last iteration. Guards against *phantom convergence* — where the model scores all dimensions as VERY-HIGH but produces no meaningful edit to the plan itself. If the diff is empty, `verify_score` rejects convergence and routes back to `classify_research`, forcing at least one more substantive iteration.
 
 - **In-place update**: On completion, the loop overwrites the **original** plan file (the path passed to `ll-loop run rn-refine`) with the refined content. No manual copy from `.loops/` is needed. The `plan.md` under the run directory is kept as a working-copy reference you can diff against or delete.
 - **Report state**: Prints `diff` commands comparing the original file against the working copy, so you can review changes before discarding the reference copy.
