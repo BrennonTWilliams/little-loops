@@ -11,6 +11,7 @@ decision_ref: ARCHITECTURE-049
 blocked_by: []
 decision_needed: false
 relates_to: [ENH-2256, FEAT-2260]
+depends_on: [FEAT-2260]
 labels: [host-compat, portfolio, init, upgrade]
 ---
 
@@ -214,6 +215,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-25T21:27:28 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:wire-issue` - 2026-06-25T18:46:15 - `b48daf6e-e26f-40d4-9aab-ea94d716a199.jsonl`
 - `/ll:refine-issue` - 2026-06-25T18:36:28 - `70f59565-7e94-410d-bf6c-c34dd59cbf9f.jsonl`
 - `/ll:format-issue` - 2026-06-25T18:23:35 - `07bde162-4904-43ac-b97d-3e260fc376b5.jsonl`

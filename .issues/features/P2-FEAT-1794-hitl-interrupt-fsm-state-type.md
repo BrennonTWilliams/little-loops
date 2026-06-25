@@ -327,6 +327,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 2026-06-17: Further drift — `_execute_state` :942 (was :838), `_run_action` :1157 (was :1053), `_action_mode` :1541 (was :1421), `_emit` :1762 (was :1642), `_interruptible_sleep` :1886 (was :1766). Use function-name anchors rather than line numbers when implementing.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-25T21:24:02 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:44 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
@@ -345,6 +346,14 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - `/ll:capture-issue` - 2026-05-29T20:37:23Z - `f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`
 
 ---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-25): Two conflicts with FEAT-1930 require coordination at implementation time:
+
+1. **Class name collision** — This issue's `API/Interface` defines `HumanResponse(LLEvent)` with `verdict: Literal[...]` as an event-bus type. FEAT-1930's `API/Interface` also defines a dataclass `HumanResponse` with `approved: bool` as the adapter return type. Both live in the same import namespace within `executor.py`. Resolution: FEAT-1930 must rename its adapter return type to `AdapterResponse` (or `HumanApprovalDecision`). This issue's `HumanResponse(LLEvent)` keeps its name.
+
+2. **Binary vs. three-way verdict** — FEAT-1930's current `HumanResponse.approved: bool` is binary and cannot express the `edit` verdict that this issue's `on_edit` routing requires. FEAT-1930 must update its adapter return type to include `verdict: Literal["approve", "reject", "edit"]` before FEAT-1931 (terminal adapter) and the EventBus adapter implement `await_response()`.
 
 ## Scope Boundary
 

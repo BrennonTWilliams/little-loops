@@ -186,6 +186,7 @@ class OmpRunner:
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-25T21:29:00 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
@@ -202,6 +203,8 @@ class OmpRunner:
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): Implementation Step 1 (headless flag audit for `omp`) overlaps with FEAT-1714, which performs the equivalent audit for the `pi` binary. Reuse FEAT-1714's research note template (`thoughts/research/pi-headless-cli.md`) and capability-table format verbatim — write `thoughts/research/omp-headless-flags.md` following the same structure. Add `relates_to: FEAT-1714` is now in frontmatter; check FEAT-1714's output first to identify flag conventions that may carry over from `pi` → `omp`.
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): Step 7 spawns a hook-event child issue using FEAT-1715's canonical audit framework (`parent: FEAT-1715`). Confirm the child issue's `parent: FEAT-1715` frontmatter is set at creation time so the omp parity audit tree is navigable from FEAT-1715. `relates_to: FEAT-1715` has been added to this issue's frontmatter to make the dependency traceable now.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-25): Implementation Step 6 (create `hooks/adapters/omp/`) is **fully superseded by FEAT-2261** and must not be implemented as part of this issue. The re-scope note at the top of this issue already states this, but the numbered step remains in the body and will mislead an implementer following steps sequentially. Skip step 6 entirely — it is FEAT-2261's scope, not this issue's.
 
 ## Status
 

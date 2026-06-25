@@ -266,6 +266,16 @@ class TerminalAdapterExtension(CommunicationAdapterExtension):
 
 ---
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-06-25): Two conflicts with FEAT-1794 require resolution before implementing `communication_adapter.py`:
+
+1. **Class name collision** — This issue's `API/Interface` defines a dataclass `HumanResponse` with `approved: bool, reason, modified_prompt`. FEAT-1794's `API/Interface` also defines `HumanResponse(LLEvent)` with `verdict: Literal["approve","reject","edit"], edited_text`. Importing both into `executor.py` will cause a name collision. Rename this issue's adapter return type to `AdapterResponse` (or `HumanApprovalDecision`) to avoid the collision; FEAT-1794's `HumanResponse(LLEvent)` event-bus type keeps its name.
+
+2. **Binary vs. three-way verdict** — This issue's `HumanResponse` encodes only `approved: bool`, but FEAT-1794 requires three-way FSM routing (`on_yes`/`on_no`/`on_edit`). The protocol cannot unambiguously express an `edit` verdict via `approved: bool` alone. Add an explicit `verdict: Literal["approve", "reject", "edit"]` field to this issue's return dataclass (replacing `approved: bool`) so `await_response()` can return all three verdict types FEAT-1794's routing table requires.
+
+---
+
 ## Verification Notes
 
 **Verdict**: VALID — 2026-06-05T21:00:23
@@ -282,6 +292,7 @@ class TerminalAdapterExtension(CommunicationAdapterExtension):
 open
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-25T21:24:01 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:14:14 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:decide-issue` - 2026-06-12T16:30:50 - `5f156fda-1001-478e-926c-73ffddf7e4b1.jsonl`

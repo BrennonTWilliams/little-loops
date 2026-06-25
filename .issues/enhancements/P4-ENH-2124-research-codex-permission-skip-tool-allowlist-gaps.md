@@ -8,7 +8,7 @@ captured_at: "2026-06-13T00:00:00Z"
 discovered_date: 2026-06-13
 discovered_by: capture-issue
 parent: EPIC-1463
-relates_to: [ENH-1529, ENH-2121, FEAT-1462]
+relates_to: [ENH-1529, ENH-2121, FEAT-1462, FEAT-2122]
 labels: [codex, host-runner, sandbox, host-compat, research]
 ---
 
@@ -119,6 +119,7 @@ Conditional — `describe_capabilities()` return dict may include updated values
 2026-06-19 (NEEDS_UPDATE): Confirmed — `describe_capabilities()` still returns `"full"` for `permission_skip` and `"partial"` for `tool_allowlist` (lines 590/607 in host_runner.py) while HOST_COMPATIBILITY.md still shows `✗[^runnercap]` for both Codex cells. Current Behavior section remains stale; `thoughts/research/codex-runner-capability-gaps.md` and doc update still outstanding.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-25T21:39:25 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:format-issue` - 2026-06-13T23:48:24 - `eef54360-d096-4a8c-a9e2-75102a87ce0d.jsonl`
