@@ -2,12 +2,13 @@
 id: BUG-2283
 type: BUG
 priority: P4
-status: open
+status: done
 title: "skill_events table has no backfill path \u2014 ll-logs stats undercounts pre-init\
   \ invocations"
 discovered_date: 2026-06-25
 discovered_by: capture-issue
 captured_at: '2026-06-25T01:38:33Z'
+completed_at: '2026-06-25T02:00:18Z'
 relates_to:
 - ENH-1833
 labels:
@@ -114,7 +115,12 @@ verify `tradeoff-review-issues` shows ≥ 4 (not 2).
 - **Risk**: Low — Uses `INSERT OR IGNORE`; idempotent, no existing data modified or at risk.
 - **Breaking Change**: No
 
+## Resolution
+
+Added `_backfill_skill_events(conn, jsonl_files)` to `session_store.py` following the `_backfill_messages` pattern. The function scans user JSONL records for `<command-name>/ll:<name></command-name>` signals and inserts into `skill_events`. Wired into both `backfill()` and `backfill_incremental()` (with a per-table watermark in incremental, matching the `assistant_messages` self-healing pattern). Added 5 unit tests in `TestBackfillSkillEvents`.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T01:51:54 - `aebd3ceb-67e0-4845-8879-c31cafcdb38c.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4646b6c-126e-4f42-b27d-67bef4444089.jsonl`
 - `/ll:format-issue` - 2026-06-25T01:43:19 - `9f7bef55-c353-41ec-9464-e2f083ac0301.jsonl`
 - `/ll:capture-issue` - 2026-06-25T01:38:33Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d627bb2-ced2-4076-9ec1-8bd9033c843a.jsonl`

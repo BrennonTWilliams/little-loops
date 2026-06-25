@@ -1344,6 +1344,76 @@ def _backfill_assistant_messages(conn: sqlite3.Connection, jsonl_files: list[Pat
     return count
 
 
+_BACKFILL_SKILL_RE = re.compile(r"<command-name>/ll:(\S+)")
+_BACKFILL_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
+
+
+def _backfill_skill_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+    """Seed ``skill_events`` from /ll: invocations in user blocks of session JSONL files.
+
+    Mirrors :func:`_backfill_messages` but selects ``type == "user"`` records and
+    matches the ``<command-name>/ll:<name></command-name>`` signal. Populates the
+    ``skill_events`` table that was added in schema v7 (ENH-1833) but never extended
+    to include a backfill path (BUG-2283). Used by ``ll-logs stats`` so pre-init
+    invocations are reflected in skill invocation counts.
+    """
+    count = 0
+    for jsonl_file in jsonl_files:
+        try:
+            handle = jsonl_file.open(encoding="utf-8")
+        except OSError:
+            continue
+        with handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("type") != "user":
+                    continue
+                session_id = record.get("sessionId")
+                ts = str(record.get("timestamp") or "")
+                content = record.get("message", {}).get("content", "")
+                if isinstance(content, list):
+                    text = ""
+                    for block in content:
+                        if isinstance(block, dict):
+                            text = block.get("text", "")
+                            if text:
+                                break
+                elif isinstance(content, str):
+                    text = content
+                else:
+                    text = ""
+                if not text:
+                    continue
+                m = _BACKFILL_SKILL_RE.search(text)
+                if not m:
+                    continue
+                skill_name = m.group(1)
+                if skill_name.endswith("</command-name>"):
+                    skill_name = skill_name[: -len("</command-name>")]
+                args_m = _BACKFILL_ARGS_RE.search(text)
+                args = args_m.group(1).strip()[:200] if args_m else ""
+                conn.execute(
+                    "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+                    (ts, str(session_id) if session_id else None, skill_name, args),
+                )
+                _index(
+                    conn,
+                    content=skill_name,
+                    kind="skill",
+                    ref=str(session_id) if session_id else "",
+                    anchor=str(jsonl_file),
+                    ts=ts,
+                )
+                count += 1
+    return count
+
+
 def mine_corrections_from_messages(conn: sqlite3.Connection, config: dict | None = None) -> int:
     """Scan ``message_events`` and insert matching rows into ``user_corrections``.
 
@@ -1947,6 +2017,7 @@ def backfill(
         "corrections": 0,
         "summaries": 0,
         "snapshots": 0,
+        "skill_events": 0,
     }
     try:
         if issues_dir.is_dir():
@@ -1958,6 +2029,7 @@ def backfill(
             counts["tools"] = _backfill_tool_events(conn, jsonl_files)
             counts["messages"] = _backfill_messages(conn, jsonl_files)
             counts["assistant_messages"] = _backfill_assistant_messages(conn, jsonl_files)
+            counts["skill_events"] = _backfill_skill_events(conn, jsonl_files)
             counts["sessions"] = _backfill_sessions(conn, jsonl_files)
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions)
@@ -1991,6 +2063,7 @@ def backfill_incremental(
         "tools": 0,
         "messages": 0,
         "assistant_messages": 0,
+        "skill_events": 0,
         "sessions": 0,
         "corrections": 0,
     }
@@ -2038,6 +2111,31 @@ def backfill_incremental(
             "INSERT INTO meta(key, value) VALUES(?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (_ASST_KEY, _now()),
+        )
+
+        # Per-table watermark for skill_events (added in v7 / ENH-1833, backfill
+        # path added in BUG-2283). Same self-healing logic as assistant_messages:
+        # absent key → reprocess all files on the first incremental run after deploy.
+        _SKILL_KEY = "last_backfill_ts_skill_events"
+        _skill_row = conn.execute("SELECT value FROM meta WHERE key = ?", (_SKILL_KEY,)).fetchone()
+        _skill_raw = _skill_row[0] if (_skill_row and _skill_row[0]) else None
+        if _skill_raw:
+            try:
+                _skill_since = datetime.fromisoformat(
+                    str(_skill_raw).replace("Z", "+00:00")
+                ).timestamp()
+            except ValueError:
+                _skill_since = 0.0
+        else:
+            _skill_since = 0.0  # never backfilled → process all files
+
+        skill_filtered = [f for f in jsonl_files if _mtime(f) >= _skill_since]
+        if skill_filtered:
+            counts["skill_events"] = _backfill_skill_events(conn, skill_filtered)
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (_SKILL_KEY, _now()),
         )
 
         counts["corrections"] = mine_corrections_from_messages(conn, config)

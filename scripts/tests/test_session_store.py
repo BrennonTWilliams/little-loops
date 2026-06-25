@@ -363,6 +363,7 @@ class TestBackfill:
             "tools": 0,
             "messages": 0,
             "assistant_messages": 0,
+            "skill_events": 0,
             "sessions": 0,
             "corrections": 0,
             "summaries": 0,
@@ -1549,6 +1550,99 @@ class TestRecordSkillEvent:
         record_skill_event(db, "sess-s3", "check-code", "", config={"analytics": {}})
         rows = recent(db, kind="skill")
         assert len(rows) == 1, "config stub must not suppress the write"
+
+
+class TestBackfillSkillEvents:
+    """BUG-2283: _backfill_skill_events() seeds skill_events from JSONL user records."""
+
+    def _user_record(self, session_id: str, ts: str, content: object) -> str:
+        return (
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": session_id,
+                    "timestamp": ts,
+                    "message": {"content": content},
+                }
+            )
+            + "\n"
+        )
+
+    def test_backfill_populates_skill_events_from_command_name_tag(
+        self, tmp_path: Path
+    ) -> None:
+        text = "<command-name>/ll:tradeoff-review-issues</command-name>\n<command-args>BUG-100</command-args>"
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess-pre", "2026-06-01T10:00:00Z", text),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        assert counts["skill_events"] == 1
+        rows = recent(db, kind="skill")
+        assert len(rows) == 1
+        assert rows[0]["skill_name"] == "tradeoff-review-issues"
+        assert rows[0]["args"] == "BUG-100"
+        assert rows[0]["session_id"] == "sess-pre"
+
+    def test_backfill_skill_events_no_args_when_tag_absent(self, tmp_path: Path) -> None:
+        text = "<command-name>/ll:check-code</command-name>"
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess2", "2026-06-02T10:00:00Z", text),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        assert counts["skill_events"] == 1
+        rows = recent(db, kind="skill")
+        assert rows[0]["skill_name"] == "check-code"
+        assert rows[0]["args"] == ""
+
+    def test_backfill_skill_events_skips_non_skill_records(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess3", "2026-06-03T10:00:00Z", "just a normal message")
+            + self._user_record("sess3", "2026-06-03T10:00:01Z", ""),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        assert counts["skill_events"] == 0
+
+    def test_backfill_skill_events_block_list_content(self, tmp_path: Path) -> None:
+        text = "<command-name>/ll:scan-codebase</command-name>"
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess4", "2026-06-04T10:00:00Z", [{"type": "text", "text": text}]),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        assert counts["skill_events"] == 1
+        rows = recent(db, kind="skill")
+        assert rows[0]["skill_name"] == "scan-codebase"
+
+    def test_backfill_skill_events_are_searchable(self, tmp_path: Path) -> None:
+        text = "<command-name>/ll:ready-issue</command-name>"
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess5", "2026-06-05T10:00:00Z", text),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        results = search(db, query="ready")
+        assert any(r["kind"] == "skill" for r in results)
 
 
 class TestCliEventContext:
