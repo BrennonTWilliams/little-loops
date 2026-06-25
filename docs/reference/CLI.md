@@ -2469,6 +2469,37 @@ ll-verify-triggers --precision-threshold 0.8 --recall-threshold 0.6
 
 ---
 
+### ll-verify-package-data
+
+Lint the `little_loops` package source for `__file__`-escape patterns that break non-editable installs, and verify every declared asset is accessible via `importlib.resources` in the current installation. Both gates must pass for exit 0.
+
+**Two checks run by default:**
+
+1. **`__file__`-escape lint** — regex-scans every `.py` file under `little_loops/` for `Path(__file__).parents[N]` or `.parent.parent...` chains whose traversal depth exits the package directory. Reports violations with file and line number.
+2. **Manifest completeness check** — verifies every asset in `PACKAGE_DATA_ASSETS` (`package_data.py`) is reachable via `importlib.resources`. Catches assets missing from the wheel (e.g., omitted from `MANIFEST.in` or `pyproject.toml`).
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | | Output as JSON |
+| `--directory` | `-C` | Project root containing the `little_loops` package (default: cwd) |
+| `--lint-only` | | Run only the `__file__`-escape lint (skip manifest check) |
+| `--manifest-only` | | Run only the manifest completeness check (skip lint) |
+
+**Exit codes:** `0` = no escape violations and all assets accessible; `1` = one or more violations or missing assets.
+
+**Examples:**
+```bash
+ll-verify-package-data                     # Run both checks from cwd
+ll-verify-package-data --json              # Machine-readable JSON output
+ll-verify-package-data --lint-only         # Lint only (no manifest check)
+ll-verify-package-data --manifest-only     # Manifest check only
+ll-verify-package-data -C /path/to/root    # Run from a specific project root
+```
+
+---
+
 ### ll-check-links
 
 Check markdown documentation for broken links.
