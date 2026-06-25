@@ -36,7 +36,14 @@ _MIN_PROMPT_LENGTH = 10
 
 
 def _find_prompt_file() -> Path:
-    """Resolve the optimize-prompt-hook template from the in-package path."""
+    """Resolve the optimize-prompt-hook template, checking CLAUDE_PLUGIN_ROOT first."""
+    import os
+
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if plugin_root:
+        custom = Path(plugin_root) / "hooks" / "prompts" / "optimize-prompt-hook.md"
+        if custom.is_file():
+            return custom
     return Path(__file__).parent / "prompts" / "optimize-prompt-hook.md"
 
 
