@@ -598,87 +598,132 @@ def _draw_box(
     except (ValueError, TypeError):
         bg_code = None
 
+    # Pre-compute the combined border SGR code for highlighted boxes so
+    # entire border strings can be batched into a single colorize() call.
+    border_code: str | None = None
+    if is_highlighted:
+        border_code = f"{highlight_color};{bg_code}" if bg_code else highlight_color
+
     def _bc(ch: str) -> str:
+        """Colorize a single character for non-batched cell writes (side borders)."""
         if not is_highlighted:
             return ch
         if bg_code:
             return colorize(ch, f"{highlight_color};{bg_code}")
         return colorize(ch, highlight_color)
 
-    # Top border: ┌ ─ ─ … ─ ┐
-    if col < total_width:
-        grid[row][col] = _bc("\u250c")
-    for j in range(1, width - 1):
-        if col + j < total_width:
-            grid[row][col + j] = _bc("\u2500")
-    if col + width - 1 < total_width:
-        grid[row][col + width - 1] = _bc("\u2510")
+    # ── Top border ──────────────────────────────────────────────────────
+    # Batched into a single colorize() call when highlighted.  When a badge
+    # is present the full border string is built in one shot — badge display
+    # width drives dash-count arithmetic so wide chars are handled correctly.
+    if is_highlighted and border_code:
+        if not badge:
+            grid[row][col] = colorize("\u250c" + "\u2500" * (width - 2) + "\u2510", border_code)
+        else:
+            badge_w = _badge_display_width(badge)
+            dash_count = width - badge_w - 4
+            grid[row][col] = colorize(
+                "\u250c" + "\u2500" * dash_count + " " + badge + " " + "\u2510",
+                border_code,
+            )
+        # Clear cells consumed by the batched border string
+        for j in range(1, width):
+            if col + j < total_width:
+                grid[row][col + j] = ""
+    else:
+        if col < total_width:
+            grid[row][col] = "\u250c"
+        for j in range(1, width - 1):
+            if col + j < total_width:
+                grid[row][col + j] = "\u2500"
+        if col + width - 1 < total_width:
+            grid[row][col + width - 1] = "\u2510"
 
-    # Overlay badge in top-right corner with one space of padding on each side: " badge ┐"
-    if badge:
-        badge_w = _badge_display_width(badge)
-        # Trailing space between badge end and ┐
-        trail_pos = col + width - 2
-        if col + 1 <= trail_pos < col + width - 1 and trail_pos < total_width:
-            grid[row][trail_pos] = _bc(" ")
-        # Leading space before badge
-        lead_pos = col + width - badge_w - 3
-        if col + 1 <= lead_pos < col + width - 1 and lead_pos < total_width:
-            grid[row][lead_pos] = _bc(" ")
-        # Badge characters (shifted left by 1 compared to no-padding placement)
-        pos = col + width - 1 - badge_w - 1
-        for ch in badge:
-            ch_w = _wcwidth(ch)
-            if ch_w < 1:
-                ch_w = 1
-            if col + 1 <= pos < col + width - 1 and pos < total_width:
-                grid[row][pos] = _bc(ch)
-                if ch_w == 2 and pos + 1 < col + width - 1 and pos + 1 < total_width:
-                    grid[row][pos + 1] = ""
-            pos += ch_w
+        # Overlay badge in top-right corner (non-highlighted path only;
+        # highlighted path builds the badge into the batched string above).
+        if badge:
+            badge_w = _badge_display_width(badge)
+            trail_pos = col + width - 2
+            if col + 1 <= trail_pos < col + width - 1 and trail_pos < total_width:
+                grid[row][trail_pos] = " "
+            lead_pos = col + width - badge_w - 3
+            if col + 1 <= lead_pos < col + width - 1 and lead_pos < total_width:
+                grid[row][lead_pos] = " "
+            pos = col + width - 1 - badge_w - 1
+            for ch in badge:
+                ch_w = _wcwidth(ch)
+                if ch_w < 1:
+                    ch_w = 1
+                if col + 1 <= pos < col + width - 1 and pos < total_width:
+                    grid[row][pos] = ch
+                    if ch_w == 2 and pos + 1 < col + width - 1 and pos + 1 < total_width:
+                        grid[row][pos + 1] = ""
+                pos += ch_w
 
-    # Pre-fill all interior cells with bg color so padding rows and gaps are filled
+    # ── Interior fill ───────────────────────────────────────────────────
+    # Batched per row — a single colorize(" " * N, bg_code) replaces the
+    # per-cell loop that previously generated (width-2) SGR pairs per row.
     if is_highlighted and bg_code:
+        fill_str = colorize(" " * (width - 2), bg_code)
         for ri in range(row + 1, row + height - 1):
             if ri >= len(grid):
                 break
-            for ci in range(col + 1, col + width - 1):
-                if ci < total_width:
-                    grid[ri][ci] = colorize(" ", bg_code)
+            if col + 1 < total_width:
+                grid[ri][col + 1] = fill_str
 
-    # Content rows
+    # ── Content rows ────────────────────────────────────────────────────
     for i, line in enumerate(content):
         r = row + i + 1
         if r >= len(grid):
             break
+        # Clear the batched fill cell for this row so content placement
+        # rebuilds the interior with proper leading-space + content +
+        # trailing-fill layout (the batched fill at col+1 would otherwise
+        # appear before the content instead of behind it).
+        if is_highlighted and bg_code:
+            grid[r][col + 1] = ""
         if col < total_width:
             grid[r][col] = _bc("\u2502")
         if col + width - 1 < total_width:
             grid[r][col + width - 1] = _bc("\u2502")
         if is_highlighted and i == 0:
             name_code = f"97;{bg_code};1" if bg_code else f"{highlight_color};1"
-            colored_line = colorize(line, name_code)
+            if col + 1 < total_width:
+                grid[r][col + 1] = colorize(" ", bg_code or highlight_color)
             if col + 2 < total_width:
-                grid[r][col + 2] = colored_line
+                grid[r][col + 2] = colorize(line, name_code)
             for j in range(1, len(line)):
                 if col + 2 + j < col + width - 1:
                     grid[r][col + 2 + j] = ""
+            # Trailing fill after name line
+            trail_pad = width - 3 - len(line)
+            if trail_pad > 0 and col + 2 + len(line) < total_width:
+                grid[r][col + 2 + len(line)] = colorize(" " * trail_pad, bg_code or highlight_color)
         elif i == 0:
-            bold_line = colorize(line, "1")
+            if col + 1 < total_width:
+                grid[r][col + 1] = " "
             if col + 2 < total_width:
-                grid[r][col + 2] = bold_line
+                grid[r][col + 2] = colorize(line, "1")
             for j in range(1, len(line)):
                 if col + 2 + j < col + width - 1:
                     grid[r][col + 2 + j] = ""
         else:
-            for j, ch in enumerate(line):
-                if col + 2 + j < col + width - 1:
-                    if is_highlighted and bg_code:
-                        grid[r][col + 2 + j] = colorize(ch, f"97;{bg_code}")
-                    else:
-                        grid[r][col + 2 + j] = ch
+            # Batched action line with leading space + content + trailing fill.
+            if is_highlighted and bg_code:
+                if col + 1 < total_width:
+                    grid[r][col + 1] = colorize(" ", bg_code)
+                if col + 2 < total_width:
+                    grid[r][col + 2] = colorize(line, f"97;{bg_code}")
+                trail_pad = width - 3 - len(line)
+                if trail_pad > 0 and col + 2 + len(line) < total_width:
+                    grid[r][col + 2 + len(line)] = colorize(" " * trail_pad, bg_code)
+            else:
+                if col + 1 < total_width:
+                    grid[r][col + 1] = " "
+                if col + 2 < total_width:
+                    grid[r][col + 2] = line
 
-    # Padding rows between content and bottom border
+    # ── Padding rows ────────────────────────────────────────────────────
     for i in range(len(content) + 1, height - 1):
         r = row + i
         if r >= len(grid):
@@ -688,16 +733,26 @@ def _draw_box(
         if col + width - 1 < total_width:
             grid[r][col + width - 1] = _bc("\u2502")
 
-    # Bottom border
+    # ── Bottom border ───────────────────────────────────────────────────
+    # Fully batched — same pattern as top border (no badge on bottom).
     brow = row + height - 1
     if brow < len(grid):
-        if col < total_width:
-            grid[brow][col] = _bc("\u2514")
-        for j in range(1, width - 1):
-            if col + j < total_width:
-                grid[brow][col + j] = _bc("\u2500")
-        if col + width - 1 < total_width:
-            grid[brow][col + width - 1] = _bc("\u2518")
+        if is_highlighted and border_code:
+            if col < total_width:
+                grid[brow][col] = colorize(
+                    "\u2514" + "\u2500" * (width - 2) + "\u2518", border_code
+                )
+            for j in range(1, width):
+                if col + j < total_width:
+                    grid[brow][col + j] = ""
+        else:
+            if col < total_width:
+                grid[brow][col] = "\u2514"
+            for j in range(1, width - 1):
+                if col + j < total_width:
+                    grid[brow][col + j] = "\u2500"
+            if col + width - 1 < total_width:
+                grid[brow][col + width - 1] = "\u2518"
 
 
 # ---------------------------------------------------------------------------
