@@ -22,13 +22,14 @@ labels:
 - cross-host
 - install
 - path-resolution
-confidence_score: 82
-outcome_confidence: 70
-score_complexity: 12
-score_test_coverage: 20
-score_ambiguity: 20
-score_change_surface: 18
-decision_needed: false
+confidence_score: 92
+outcome_confidence: 61
+score_complexity: 14
+score_test_coverage: 14
+score_ambiguity: 17
+score_change_surface: 16
+decision_needed: true
+implementation_order_risk: true
 ---
 
 # BUG-2275: `hooks/` package-data (prompt template + Codex adapter) excluded from the wheel — prompt-optimization hook and Codex onboarding silently break
@@ -507,20 +508,21 @@ Two files exist: `optimize-prompt-hook.md` (the one read by `user_prompt_submit.
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-06-24_
+_Updated by `/ll:confidence-check` on 2026-06-25_
 
-**Readiness Score**: 82/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 70/100 → Below threshold
-
-### Concerns
-- **FEAT-2274 sequencing**: both Python resolver changes yield a functional no-op until the `git mv` lands; decide whether this issue PRs alongside FEAT-2274 or after
-- **Prompt optimization path entirely untested**: `test_hook_user_prompt_submit.py` has zero tests for `enabled=True` / `_PROMPT_FILE.is_file()` branch; new tests are required in this PR, not a follow-up
+**Readiness Score**: 92/100 → PROCEED
+**Outcome Confidence**: 61/100 → Below threshold
 
 ### Outcome Risk Factors
-- **Wide doc/agent surface with no verification grep**: 15+ enumerated change sites across docs, agent files, and skill SKILL.md files; no grep anchor to verify completeness — write tests or a final grep sweep before closing
-- **Exec-bit preservation for `.sh` files**: `hatchling`'s `little_loops/**` glob behavior with execute permissions is unverified; `test_codex_adapter.py` asserts executability post-move — run `pip install --no-editable` smoke test explicitly
+- **`_PROMPT_FILE` now broken on ALL installs** — FEAT-2274 (now `done`) moved `optimize-prompt-hook.md` to `scripts/little_loops/hooks/prompts/` and removed it from `hooks/prompts/`; the module-level constant resolves a non-existent path even on editable installs; the lazy-resolver fix (Step 2) is now critical-path on Day 1.
+- **Optimization template rendering path still has zero test coverage** — `test_hook_user_prompt_submit.py` has no tests for `enabled=True` branch or the render path; tests are co-deliverables; implement tests first so regressions are caught as code changes land.
+- **Shell script placement open question** — FEAT-2274 moved `hooks.json` in-package but left `hooks/adapters/codex/*.sh` at repo root (hybrid state); Option A decision says to move all `.sh` files in-package; BUG-2275 must either move them (completing Option A) or explicitly document the hybrid and adjust the `{{LL_PLUGIN_ROOT}}` substitution value in Step 14; resolve before starting Step 1.
+- **Wide doc/agent surface with no verification grep** — 15+ enumerated change sites across docs, agent files, and skill SKILL.md files; add a final grep sweep before closing PR (e.g., `grep -rn "hooks/prompts/optimize-prompt-hook\|hooks/adapters/codex" docs/ agents/ skills/` to confirm all references updated).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `a19c0bc7-9cea-45e9-bde8-1a1b51288c4b.jsonl`
+- `/ll:decide-issue` - 2026-06-25T08:39:26 - `fcbba724-0185-4e2d-a5b6-f8d741fdc3b1.jsonl`
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `8b0deb75-1c98-49de-9b8c-c14f0c419d15.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `18bb767c-bb64-42b8-87dd-2614b8c50967.jsonl`
 - `/ll:wire-issue` - 2026-06-25T03:53:53 - `1509b452-e6a6-4abf-9664-f76f66dc3860.jsonl`
 - `/ll:refine-issue` - 2026-06-25T03:40:48 - `953ef343-dd8b-4f00-8d4e-3f339efb44fe.jsonl`

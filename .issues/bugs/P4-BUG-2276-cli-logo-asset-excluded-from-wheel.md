@@ -2,8 +2,9 @@
 id: BUG-2276
 type: BUG
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-24T00:00:00Z'
+completed_at: '2026-06-25T08:56:50Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
@@ -19,11 +20,11 @@ labels:
 - path-resolution
 decision_needed: false
 implementation_order_risk: true
-confidence_score: 84
-outcome_confidence: 72
+confidence_score: 98
+outcome_confidence: 76
 score_complexity: 22
 score_test_coverage: 10
-score_ambiguity: 18
+score_ambiguity: 22
 score_change_surface: 22
 ---
 
@@ -160,17 +161,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. **Move asset into package** (BUG-885 precedent): `mkdir -p scripts/little_loops/assets/ && git mv assets/ll-cli-logo.txt scripts/little_loops/assets/ll-cli-logo.txt`. No `pyproject.toml` change needed — the existing `little_loops/**` glob captures the new subdirectory automatically.
+1. ~~**Move asset into package**~~ **[DONE by FEAT-2274]**: `scripts/little_loops/assets/ll-cli-logo.txt` now exists; `assets/ll-cli-logo.txt` removed from repo root. Pre-condition satisfied.
 2. **Repoint `get_logo()`** in `scripts/little_loops/logo.py:get_logo()`: change `Path(__file__).parent.parent.parent / "assets" / "ll-cli-logo.txt"` → `Path(__file__).parent / "assets" / "ll-cli-logo.txt"` (one parent from `little_loops/logo.py` → `little_loops/`).
-3. **Add test** following `scripts/tests/test_action.py:TestLoadSkills` patch pattern: assert `get_logo()` returns the ASCII content when invoked with a simulated non-editable `__file__` path outside the source tree.
-4. **Update `docs/reference/OUTPUT_STYLING.md`**: In the "Logo" section, update the path reference from `assets/ll-cli-logo.txt` to `scripts/little_loops/assets/ll-cli-logo.txt` to reflect the new in-package location [Wiring Phase].
+3. **Add test** following `scripts/tests/test_builtin_loops.py:BUILTIN_LOOPS_DIR` pattern: declare `LOGO_PATH = Path(__file__).parent.parent / "little_loops" / "assets" / "ll-cli-logo.txt"` at test module top, then assert `LOGO_PATH.exists()` and `get_logo()` returns a non-None string. No `Path` mock needed.
+4. ~~**Update `docs/reference/OUTPUT_STYLING.md`**~~ **[DONE by FEAT-2274]**: Line 86 already reads `scripts/little_loops/assets/ll-cli-logo.txt`.
 5. **Build and verify**: `python -m build && unzip -l dist/*.whl | grep ll-cli-logo.txt` (aligns with ENH-2277's wheel smoke test proposal).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-5. Update `docs/reference/OUTPUT_STYLING.md` — "Logo" section references the old `assets/ll-cli-logo.txt` repo-root path; update to `scripts/little_loops/assets/ll-cli-logo.txt` after the `git mv`
+5. ~~Update `docs/reference/OUTPUT_STYLING.md`~~ — **[DONE by FEAT-2274]**: already references `scripts/little_loops/assets/ll-cli-logo.txt`.
 
 ## Impact
 
@@ -208,15 +209,17 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 **Readiness Score**: 84/100 → PROCEED with attention to noted concerns
 **Outcome Confidence**: 72/100 → below threshold
 
-### Concerns
-- FEAT-2274 (open) owns the `git mv assets/ll-cli-logo.txt → scripts/little_loops/assets/ll-cli-logo.txt`. BUG-2276's path fix has no effect until that move lands. Coordinate implementation with or after FEAT-2274.
-- Implementation Steps list `git mv` as Step 1, but the Scope Boundary note assigns it to FEAT-2274. Step 1 should be removed or marked as a pre-condition to avoid scope collision.
+### Concerns _(updated by `/ll:ready-issue` 2026-06-25)_
+- ~~FEAT-2274 (open) owns the `git mv`~~ — **RESOLVED**: FEAT-2274 is `done`; `scripts/little_loops/assets/ll-cli-logo.txt` exists.
+- ~~Step 1 scope collision~~ — **RESOLVED**: Step 1 marked as DONE by FEAT-2274 in Implementation Steps.
 
 ### Outcome Risk Factors
 - Tests are co-deliverables: no existing test validates `get_logo()` returns non-None content. The quiet-mode test (`test_quiet_mode_suppresses_logo`) passes vacuously when `get_logo()` returns None. Implement tests first so correctness is verifiable.
-- `assets/ll-cli-logo.txt` still exists at the repo root (never deleted — confirmed in git history from Jan 9 2026). FEAT-2274 owns the `git mv` to `scripts/little_loops/assets/ll-cli-logo.txt`; no creation needed, just relocation. The path fix in `logo.py` cannot be meaningfully tested until that move lands.
+- ~~Path fix cannot be meaningfully tested until FEAT-2274 lands~~ — **RESOLVED**: asset is now in-package; path fix can be implemented and tested immediately.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T08:54:37 - `c1dcef41-57cb-4b0a-955a-f3d2b5328186.jsonl`
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `a726e1ff-e9e5-49b4-b8c3-7dd8f8ad7e6e.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `b128ec64-1e93-499b-9f80-d41e92fa74d3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T01:15:24 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:59:51 - `73a37eb2-f3ec-44e0-ac15-6eae379762fd.jsonl`

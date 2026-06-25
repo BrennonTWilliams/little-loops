@@ -14,7 +14,7 @@ def get_logo() -> str | None:
     Returns:
         Logo text content, or None if file not found.
     """
-    logo_path = Path(__file__).parent.parent.parent / "assets" / "ll-cli-logo.txt"
+    logo_path = Path(__file__).parent / "assets" / "ll-cli-logo.txt"
     if logo_path.exists():
         return logo_path.read_text()
     return None
