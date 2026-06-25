@@ -567,7 +567,9 @@ class TestTail:
         with tempfile.TemporaryDirectory() as tmpdir:
             nonexistent = Path(tmpdir) / "nosuchproject"
 
-            with patch("sys.argv", ["ll-logs", "tail", "--loop", "myloop", "--project", str(nonexistent)]):
+            with patch(
+                "sys.argv", ["ll-logs", "tail", "--loop", "myloop", "--project", str(nonexistent)]
+            ):
                 result = main_logs()
 
         assert result == 1
