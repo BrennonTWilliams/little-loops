@@ -13,6 +13,7 @@ relates_to:
 - FEAT-2274
 - BUG-885
 - BUG-938
+depends_on: ENH-2272
 confidence_score: 87
 outcome_confidence: 72
 score_complexity: 16
@@ -286,6 +287,7 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 - **Return-value semantics for deploy functions**: Distinguishing "source missing" from "destination exists" in `deploy_goals()`/`deploy_design_tokens()` affects ~5 call sites in `cli.py`/`tui.py` plus 3–4 test methods. Using a side-effect warning (`print` to stderr inside the function) avoids this cost; decide which approach before implementation begins.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-25T01:15:25 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:confidence-check` - 2026-06-24T23:30:00Z - `f4b1792d-435d-44eb-b05e-5ac1ba224be4.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:18:11 - `f4b1792d-435d-44eb-b05e-5ac1ba224be4.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:07:14 - `cdada0da-4753-458e-a13a-508a5ae683e0.jsonl`

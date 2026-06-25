@@ -171,5 +171,12 @@ location is the primary bundled source, with `.ll/templates/` (customization) an
 
 `feature`, `packaging`, `templates`, `host-compat`, `cross-host`, `install`
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-2274 owns the packaging `git mv` of `hooks/prompts/optimize-prompt-hook.md`, `hooks/adapters/codex/hooks.json`, and `assets/ll-cli-logo.txt` into the wheel (the "wheel" half of the Both decision). Related issues own complementary — non-overlapping — work: [BUG-2275] owns resolver changes + warning behavior + Bash script path update (`hooks/scripts/user-prompt-check.sh`) + template substitution decisions; [BUG-2276] owns the path fix in `logo.py:get_logo()` + test + doc update. Neither BUG-2275 nor BUG-2276 should perform the `git mv` independently.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-25T01:15:24 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:capture-issue` - 2026-06-24T22:29:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d34d610-c8b9-4a5e-82c8-191296760b6d.jsonl`

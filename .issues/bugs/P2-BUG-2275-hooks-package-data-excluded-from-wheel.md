@@ -428,7 +428,14 @@ Two files exist: `optimize-prompt-hook.md` (the one read by `user_prompt_submit.
 **Open** | Created: 2026-06-24 | Priority: P2
 
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue covers resolver + warning behavior + Bash script path updates (Step 6) and template substitution decisions (Step 7) only. The packaging `git mv` of `hooks/prompts/` and `hooks/adapters/` into the wheel is owned by **FEAT-2274**, which explicitly includes these assets in its scope. Do NOT perform the `git mv` independently here — coordinate with FEAT-2274 to ensure a single packaging move. Related issue: [FEAT-2274].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-25T01:15:24 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:wire-issue` - 2026-06-25T00:05:35 - `43ed8b20-75e9-4cc1-9df5-86b5a03e80d8.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:44:40 - `3c0bdb5f-d2f8-4c48-b8d5-26b2377e2af9.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:31:39 - `79c0e758-e055-44ee-9a4e-08b736264d83.jsonl`

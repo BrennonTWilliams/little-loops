@@ -180,7 +180,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-06-24 | Priority: P4
 
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The packaging `git mv assets/ll-cli-logo.txt → scripts/little_loops/assets/ll-cli-logo.txt` is owned by **FEAT-2274**, which explicitly includes `assets/ll-cli-logo.txt` in its scope. Do NOT perform the `git mv` independently here — coordinate with FEAT-2274. BUG-2276 owns: (1) the path fix in `logo.py:get_logo()` (one-line change), (2) the test asserting `get_logo()` resolves from the in-package path, and (3) the `docs/reference/OUTPUT_STYLING.md` update. Related issue: [FEAT-2274].
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-25T01:15:24 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:wire-issue` - 2026-06-24T23:59:51 - `73a37eb2-f3ec-44e0-ac15-6eae379762fd.jsonl`
 - `/ll:decide-issue` - 2026-06-24T23:45:44 - `3a5eb345-fd4d-4bec-870b-28d824f9c27e.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:35:47 - `8a54fdd7-3020-4216-95d6-fd9489d38b88.jsonl`
