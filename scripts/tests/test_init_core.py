@@ -1104,7 +1104,7 @@ class TestMainInit:
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=(None, None),
+                return_value=(None, None, None),
             ),
         ):
             code = main_init(["--yes", "--dry-run", "--root", str(tmp_project)])
@@ -1118,7 +1118,7 @@ class TestMainInit:
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=(None, None),
+                return_value=(None, None, None),
             ),
         ):
             code = main_init(["--yes", "--root", str(tmp_project)])
@@ -1145,7 +1145,7 @@ class TestMainInit:
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=(None, None),
+                return_value=(None, None, None),
             ),
         ):
             code = main_init(["--yes", "--root", str(tmp_project)])
@@ -1177,7 +1177,7 @@ class TestMainInit:
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=(None, None),
+                return_value=(None, None, None),
             ),
         ):
             code = main_init(
@@ -1204,7 +1204,7 @@ class TestMainInit:
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=(None, None),
+                return_value=(None, None, None),
             ),
         ):
             code = main_init(
@@ -1289,7 +1289,7 @@ class TestMainInit:
             patch("little_loops.init.core.build_config", side_effect=patched_build),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=(None, None),
+                return_value=(None, None, None),
             ),
         ):
             code = main_init(["--yes", "--root", str(tmp_project)])
@@ -1313,7 +1313,7 @@ class TestMainInit:
             patch("little_loops.init.core.build_config", side_effect=patched_build),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=(None, None),
+                return_value=(None, None, None),
             ),
         ):
             code = main_init(["--yes", "--root", str(tmp_project)])
@@ -1333,7 +1333,7 @@ class TestMainInit:
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=("pypi", "1.0.0"),
+                return_value=("pypi", "1.0.0", None),
             ),
             patch(
                 "little_loops.init.install_check.fetch_latest_pypi",
@@ -1366,7 +1366,7 @@ class TestMainInit:
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=("pypi", "1.0.0"),
+                return_value=("pypi", "1.0.0", None),
             ),
             patch(
                 "little_loops.init.install_check.fetch_latest_pypi",
@@ -1398,7 +1398,7 @@ class TestMainInit:
             patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
             patch(
                 "little_loops.init.install_check.detect_installation",
-                return_value=("pypi", "1.0.0"),
+                return_value=("pypi", "1.0.0", None),
             ),
             patch(
                 "little_loops.init.install_check.fetch_latest_pypi",
@@ -1416,6 +1416,24 @@ class TestMainInit:
                 assert editable_target != "little-loops", (
                     f"pip install -e <bare-name> must not be constructed; got: {cmd}"
                 )
+
+    def test_project_scoped_plugin_install_source_written_to_config(
+        self, tmp_project: Path
+    ) -> None:
+        """detect_installation returning project-claude-code scope writes it to config (BUG-2266)."""
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("project-claude-code", "1.0.0", "/proj/.claude/plugins/ll"),
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        config = json.loads((tmp_project / ".ll" / "ll-config.json").read_text())
+        assert config.get("install_source") == "project-claude-code"
 
 
 # ===========================================================================

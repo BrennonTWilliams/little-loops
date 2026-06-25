@@ -41,9 +41,10 @@ class TestDetectInstallation:
             ),
             patch("little_loops.init.install_check.shutil.which", return_value=None),
         ):
-            source, version = detect_installation(tmp_path)
+            source, version, install_path = detect_installation(tmp_path)
         assert source is None
         assert version is None
+        assert install_path is None
 
     def test_local_editable_installation_detected(self, tmp_path: Path) -> None:
         pip_show_out = (
@@ -59,9 +60,10 @@ class TestDetectInstallation:
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout=pip_show_out)
-            source, version = detect_installation(tmp_path)
+            source, version, install_path = detect_installation(tmp_path)
         assert source == "local-editable"
         assert version == "1.2.3"
+        assert install_path is None
 
     def test_pypi_installation_detected(self, tmp_path: Path) -> None:
         pip_show_out = "Name: little-loops\nVersion: 1.2.3\n"  # No Editable line
@@ -74,12 +76,13 @@ class TestDetectInstallation:
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout=pip_show_out)
-            source, version = detect_installation(tmp_path)
+            source, version, install_path = detect_installation(tmp_path)
         assert source == "pypi"
         assert version == "1.2.3"
+        assert install_path is None
 
     def test_global_claude_code_installation_detected(self, tmp_path: Path) -> None:
-        plugin_json = '[{"name": "ll@little-loops", "version": "1.129.0"}, {"name": "other", "version": "1.0.0"}]'
+        plugin_json = '[{"name": "ll@little-loops", "version": "1.129.0", "scope": "user"}, {"name": "other", "version": "1.0.0"}]'
         with (
             patch(
                 "little_loops.init.install_check.importlib.metadata.version",
@@ -92,9 +95,10 @@ class TestDetectInstallation:
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout=plugin_json)
-            source, version = detect_installation(tmp_path)
+            source, version, install_path = detect_installation(tmp_path)
         assert source == "global-claude-code"
         assert version == "1.129.0"  # populated from plugin list --json
+        assert install_path is None
 
     def test_global_not_registered_returns_none_none(self, tmp_path: Path) -> None:
         # JSON response with no ll@little-loops entry
@@ -111,9 +115,10 @@ class TestDetectInstallation:
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout=plugin_json)
-            source, version = detect_installation(tmp_path)
+            source, version, install_path = detect_installation(tmp_path)
         assert source is None
         assert version is None
+        assert install_path is None
 
     def test_local_takes_precedence_over_global(self, tmp_path: Path) -> None:
         pip_show_out = (
@@ -132,9 +137,10 @@ class TestDetectInstallation:
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout=pip_show_out)
-            source, version = detect_installation(tmp_path)
+            source, version, install_path = detect_installation(tmp_path)
         assert source == "local-editable"
         assert version == "1.2.3"
+        assert install_path is None
 
     def test_global_cmd_timeout_returns_none_none(self, tmp_path: Path) -> None:
         with (
@@ -151,9 +157,10 @@ class TestDetectInstallation:
                 side_effect=subprocess.TimeoutExpired("claude", 10),
             ),
         ):
-            source, version = detect_installation(tmp_path)
+            source, version, install_path = detect_installation(tmp_path)
         assert source is None
         assert version is None
+        assert install_path is None
 
     def test_global_cmd_nonzero_returncode_returns_none_none(self, tmp_path: Path) -> None:
         with (
@@ -168,9 +175,10 @@ class TestDetectInstallation:
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=1, stdout="")
-            source, version = detect_installation(tmp_path)
+            source, version, install_path = detect_installation(tmp_path)
         assert source is None
         assert version is None
+        assert install_path is None
 
     def test_pip_show_timeout_falls_back_to_pypi_source(self, tmp_path: Path) -> None:
         """If pip show times out, default source to 'pypi' (cannot confirm editable)."""
@@ -185,9 +193,33 @@ class TestDetectInstallation:
                 side_effect=subprocess.TimeoutExpired("pip", 10),
             ),
         ):
-            source, version = detect_installation(tmp_path)
+            source, version, install_path = detect_installation(tmp_path)
         assert source == "pypi"
         assert version == "1.2.3"
+        assert install_path is None
+
+    def test_project_claude_code_installation_detected(self, tmp_path: Path) -> None:
+        """scope: project in plugin JSON → source must be project-claude-code."""
+        plugin_json = (
+            '[{"name": "ll@little-loops", "version": "1.129.0",'
+            ' "scope": "project", "installPath": "/proj/.claude/plugins/ll"}]'
+        )
+        with (
+            patch(
+                "little_loops.init.install_check.importlib.metadata.version",
+                side_effect=importlib.metadata.PackageNotFoundError("little-loops"),
+            ),
+            patch(
+                "little_loops.init.install_check.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch("little_loops.init.install_check.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout=plugin_json)
+            source, version, install_path = detect_installation(tmp_path)
+        assert source == "project-claude-code"
+        assert version == "1.129.0"
+        assert install_path == "/proj/.claude/plugins/ll"
 
 
 class TestFetchLatestPypi:

@@ -1562,8 +1562,8 @@
     },
     "install_source": {
       "type": ["string", "null"],
-      "description": "Source of the little-loops plugin installation recorded by ll-init (ENH-2253). Values: 'local-editable', 'pypi', 'global-claude-code', 'global-codex', 'global-pi', or null.",
-      "enum": ["local-editable", "pypi", "global-claude-code", "global-codex", "global-pi", null]
+      "description": "Source of the little-loops plugin installation recorded by ll-init (ENH-2253). Values: 'local-editable', 'pypi', 'global-claude-code', 'project-claude-code', 'global-codex', 'global-pi', or null.",
+      "enum": ["local-editable", "pypi", "global-claude-code", "project-claude-code", "global-codex", "global-pi", null]
     },
     "history": {
       "type": "object",

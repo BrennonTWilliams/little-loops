@@ -7553,18 +7553,19 @@ class InstallStatus(Enum):
 ### detect_installation
 
 ```python
-def detect_installation(project_root: Path) -> tuple[str | None, str | None]
+def detect_installation(project_root: Path) -> tuple[str | None, str | None, str | None]
 ```
 
-Detects the active little-loops installation. Checks pip metadata first; falls back to `claude plugin list --json` for global plugin installs.
+Detects the active little-loops installation. Checks pip metadata first; falls back to `claude plugin list --json` for global/project plugin installs.
 
-**Returns**: `(install_source, installed_version)` where `install_source` is one of `"local-editable"`, `"pypi"`, `"global-claude-code"`, or `None` (not found). `installed_version` is the version string for pip-based and global-claude-code installs (populated via `--json` flag; `None` if the CLI is too old to support it).
+**Returns**: `(install_source, installed_version, install_path)` where `install_source` is one of `"local-editable"`, `"pypi"`, `"global-claude-code"`, `"project-claude-code"`, or `None` (not found). `installed_version` is the version string for pip-based and claude-code plugin installs (populated via `--json` flag; `None` if the CLI is too old to support it). `install_path` is the `installPath` from the plugin JSON for claude-code plugin installs; `None` otherwise.
 
 | `install_source` value | Meaning |
 |------------------------|---------|
 | `"local-editable"` | Installed via `pip install -e` (dev / contributor path) |
 | `"pypi"` | Installed via `pip install little-loops` (end-user path) |
-| `"global-claude-code"` | Installed as a Claude Code plugin via `claude plugin add` |
+| `"global-claude-code"` | Installed as a user-scoped Claude Code plugin (`scope: "user"`) |
+| `"project-claude-code"` | Installed as a project-scoped Claude Code plugin (`scope: "project"`) |
 | `None` | Not found |
 
 ### fetch_latest_pypi

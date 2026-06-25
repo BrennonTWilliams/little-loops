@@ -169,7 +169,7 @@ def run_tui(
     _selected_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
 
     # --- Screen 1 / 7: Plugin Install ---
-    install_source, installed_version = detect_installation(project_root)
+    install_source, installed_version, _install_path = detect_installation(project_root)
     _needs_install = install_source is None
     _pkg_outdated = False
     _plugin_outdated = False
@@ -181,7 +181,7 @@ def run_tui(
         if _pkg_latest is not None:
             _pkg_outdated = check_version(installed_version, _pkg_latest) == InstallStatus.OutOfDate
 
-    if "claude-code" in _selected_hosts and install_source == "global-claude-code":
+    if "claude-code" in _selected_hosts and install_source in ("global-claude-code", "project-claude-code"):
         _plugin_latest = fetch_latest_plugin()
         if installed_version is not None and _plugin_latest is not None:
             _plugin_outdated = (

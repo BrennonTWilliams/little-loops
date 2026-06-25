@@ -22,14 +22,14 @@ _PLUGIN_ROOT = _PROJECT_ROOT
 
 @pytest.fixture(autouse=True)
 def mock_detect_installation() -> MagicMock:
-    """Mock detect_installation to return (None, None) for all TUI tests.
+    """Mock detect_installation to return (None, None, None) for all TUI tests.
 
     Ensures the Round 1 install-check confirm always fires (not-installed path)
     so confirm_returns lists in _wire_q() are always positionally consistent.
     """
     with patch(
         "little_loops.init.install_check.detect_installation",
-        return_value=(None, None),
+        return_value=(None, None, None),
     ) as m:
         yield m
 

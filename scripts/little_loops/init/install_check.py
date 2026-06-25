@@ -37,24 +37,27 @@ def _is_editable_install() -> bool:
         return False
 
 
-def detect_installation(project_root: Path) -> tuple[str | None, str | None]:
+def detect_installation(
+    project_root: Path,
+) -> tuple[str | None, str | None, str | None]:
     """Detect local or global little-loops installation.
 
     Returns:
-        (install_source, installed_version) where install_source is one of
-        "local-editable", "pypi", "global-claude-code", or None (not found).
-        installed_version is the pip version string for pip-based installs,
-        or the plugin version string for global-claude-code installs.
+        (install_source, installed_version, install_path) where install_source is one of
+        "local-editable", "pypi", "global-claude-code", "project-claude-code", or None
+        (not found).  installed_version is the pip version string for pip-based installs,
+        or the plugin version string for claude-code plugin installs.  install_path is the
+        installPath from the plugin JSON (claude-code installs only), or None otherwise.
     """
     # Check pip metadata first.
     try:
         installed = importlib.metadata.version("little-loops")
         source = "local-editable" if _is_editable_install() else "pypi"
-        return source, installed
+        return source, installed, None
     except importlib.metadata.PackageNotFoundError:
         pass
 
-    # Global claude plugin check — use --json to retrieve version.
+    # Global claude plugin check — use --json to retrieve version and scope.
     if shutil.which("claude"):
         try:
             result = subprocess.run(
@@ -68,15 +71,21 @@ def detect_installation(project_root: Path) -> tuple[str | None, str | None]:
                     plugins = json.loads(result.stdout)
                     for plugin in plugins:
                         if isinstance(plugin, dict) and plugin.get("name") == "ll@little-loops":
-                            return "global-claude-code", plugin.get("version")
+                            scope = plugin.get("scope", "user")
+                            source = (
+                                "project-claude-code"
+                                if scope == "project"
+                                else "global-claude-code"
+                            )
+                            return source, plugin.get("version"), plugin.get("installPath")
                 except (json.JSONDecodeError, TypeError, AttributeError):
                     # Older CLI without --json: fall back to plain-text presence check.
                     if "ll@little-loops" in result.stdout:
-                        return "global-claude-code", None
+                        return "global-claude-code", None, None
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             pass
 
-    return None, None
+    return None, None, None
 
 
 def fetch_latest_pypi(timeout: float = 10.0) -> str | None:

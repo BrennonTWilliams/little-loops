@@ -157,7 +157,7 @@ def _run_yes(
         print("Overwriting existing configuration.")
 
     # Detect installation; notify-and-act (only with --upgrade) or warn-only.
-    install_source, installed_version = detect_installation(project_root)
+    install_source, installed_version, _install_path = detect_installation(project_root)
     if install_source is None:
         print("little-loops package not detected.", file=sys.stderr)
         if upgrade:

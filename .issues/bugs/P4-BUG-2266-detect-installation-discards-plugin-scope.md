@@ -3,9 +3,10 @@ id: BUG-2266
 title: detect_installation discards plugin scope and mislabels project installs as
   global
 type: bug
-status: open
+status: done
 priority: P4
 discovered_date: 2026-06-24
+completed_at: 2026-06-25 01:43:00+00:00
 discovered_by: capture-issue
 relates_to:
 - EPIC-2257
@@ -197,6 +198,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T01:33:35 - `2e736709-efa5-481d-b078-7a0080496e92.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00 - `4eec996e-9c36-42e5-8afa-0d8061699790.jsonl`
 - `/ll:refine-issue` - 2026-06-25T01:22:08 - `46f8a883-2d5b-457a-bd39-76e513bfddfd.jsonl`
 - `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`

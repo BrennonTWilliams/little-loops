@@ -589,6 +589,10 @@ class TestConfigSchema:
         )
         install_source = data["properties"]["install_source"]
         assert "string" in install_source["type"]
+        assert "enum" in install_source, "install_source should have an enum constraint"
+        assert "project-claude-code" in install_source["enum"], (
+            "project-claude-code missing from install_source enum (BUG-2266)"
+        )
 
     def test_session_capture_in_schema(self) -> None:
         """session_capture block must be declared in config-schema.json (FEAT-1262).
