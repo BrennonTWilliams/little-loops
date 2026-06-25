@@ -20,6 +20,8 @@ score_complexity: 17
 score_test_coverage: 23
 score_ambiguity: 22
 score_change_surface: 20
+blocks:
+- FEAT-2267
 ---
 
 # BUG-2266: detect_installation discards plugin scope and mislabels project installs as global
@@ -193,6 +195,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00 - `fa7c169d-eb54-4677-82b2-e67621565732.jsonl`
 - `/ll:wire-issue` - 2026-06-24T21:12:34 - `be894440-8cde-464b-8d81-175113fcffbe.jsonl`
 - `/ll:wire-issue` - 2026-06-24T20:41:00 - `cab00745-6580-45c4-87b5-4d107e68bd28.jsonl`

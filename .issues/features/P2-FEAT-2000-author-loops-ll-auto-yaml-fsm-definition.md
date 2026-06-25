@@ -10,6 +10,9 @@ blocked_by:
 relates_to:
 - FEAT-2001
 - FEAT-1902
+blocks:
+- FEAT-2001
+- FEAT-1899
 size: Medium
 confidence_score: 90
 outcome_confidence: 86
@@ -168,6 +171,7 @@ the Python implementation.
 - Remaining blocker: FEAT-1901 (`ll-issues next`/`verify-work` subcommands still unimplemented).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-18T02:52:53 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:format-issue` - 2026-06-07T20:58:15 - `cd20bf16-b103-4e35-9958-d8e7c9147ee9.jsonl`
 - `/ll:issue-size-review` - 2026-06-07T00:00:00Z - `5db94c28-db76-4bed-885c-95a49da744cb.jsonl`

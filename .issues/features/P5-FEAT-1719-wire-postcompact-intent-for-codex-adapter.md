@@ -9,6 +9,8 @@ discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
 blocked_by: [ENH-1718]
+blocks:
+- FEAT-1721
 labels: [codex, hooks, host-compat]
 ---
 
@@ -74,6 +76,7 @@ A `PostCompact` entry exists in `hooks/adapters/codex/hooks.json` pointing to a 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:13:05 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:01 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

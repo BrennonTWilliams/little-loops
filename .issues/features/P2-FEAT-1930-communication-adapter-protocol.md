@@ -11,6 +11,8 @@ parent: EPIC-1929
 relates_to: [FEAT-1794, FEAT-1931, EPIC-2196]
 blocks:
 - FEAT-2102
+- FEAT-1794
+- FEAT-1931
 labels:
   - fsm
   - harness
@@ -280,6 +282,7 @@ class TerminalAdapterExtension(CommunicationAdapterExtension):
 open
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:14:14 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:decide-issue` - 2026-06-12T16:30:50 - `5f156fda-1001-478e-926c-73ffddf7e4b1.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:16:53 - `8041e61d-a9eb-4655-91d2-d32792836de3.jsonl`

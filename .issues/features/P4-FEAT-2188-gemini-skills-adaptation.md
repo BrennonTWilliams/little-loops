@@ -67,7 +67,7 @@ and offers ll skills.
 Gemini skill surface: `.gemini/skills/<name>/SKILL.md` — compatible format with
 Claude Code; only `name:` frontmatter field may need to be ensured.
 
-Codex analog: `ll-adapt-skills-for-codex` in `scripts/little_loops/adapt_skills_codex.py`.
+Codex analog: `ll-adapt-skills-for-codex` in `scripts/little_loops/cli/adapt_skills_for_codex.py`.
 
 ## Impact
 
@@ -81,4 +81,10 @@ Codex analog: `ll-adapt-skills-for-codex` in `scripts/little_loops/adapt_skills_
 
 2026-06-18 (UNSTARTED): `scripts/little_loops/adapt_gemini_skills.py` does not exist. No `ll-adapt-skills-for-gemini` entry point in `pyproject.toml`. FEAT-2179 (research spike) complete — Gemini's `.gemini/skills/<name>/SKILL.md` surface confirmed same format as Claude Code. Codex analog `adapt_skills_codex.py` exists as the reference pattern.
 
+2026-06-25 (NEEDS_UPDATE): Research Notes path corrected — Codex analog is `scripts/little_loops/cli/adapt_skills_for_codex.py` (not `scripts/little_loops/adapt_skills_codex.py`). Reference in issue body updated.
+
 **Open** | Created: 2026-06-15 | Priority: P4
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`

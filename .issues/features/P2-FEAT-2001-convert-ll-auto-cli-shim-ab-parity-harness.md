@@ -7,6 +7,9 @@ status: open
 parent: EPIC-1867
 blocked_by:
 - FEAT-2000
+blocks:
+- FEAT-2002
+- FEAT-1899
 relates_to:
 - FEAT-2002
 - FEAT-1902
@@ -206,8 +209,8 @@ FEAT-2000 must be merged first — this child invokes `ll-loop run ll-auto`, whi
       `main_auto()` — this test must be rewritten to assert subprocess invocation, not in-process
       transport construction (see step 20).
 
-16. Audit `loops/autodev.yaml`, `loops/oracles/implement-issue-chain.yaml`,
-    `loops/rn-remediate.yaml`, `loops/eval-driven-development.yaml`, `loops/lib/cli.yaml`
+16. Audit `scripts/little_loops/loops/autodev.yaml`, `scripts/little_loops/loops/oracles/implement-issue-chain.yaml`,
+    `scripts/little_loops/loops/rn-remediate.yaml`, `scripts/little_loops/loops/eval-driven-development.yaml`, `scripts/little_loops/loops/lib/cli.yaml`
     — confirm exit-code routing survives shim. No changes expected if `ll-auto` preserves
     exit codes; document findings in a brief comment in the PR.
 
@@ -347,6 +350,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 2026-06-19 (NEEDS_UPDATE): All 6 `manager.run()` test call-sites in `test_issue_manager.py` have drifted ~149 lines since 2026-06-17 (now at L2753/L2787/L2818/L2850/L2883/L2969 vs. body's L2604–L2820). `--context` flag now at L234/L382. `loops/ll-auto.yaml` still absent; remains blocked on FEAT-2000.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:46 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:13:05 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
