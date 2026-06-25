@@ -1203,6 +1203,42 @@ class TestRunWithContinuation:
         # The original Claude output may contain handoff text, but no EXTRA signal
         # was appended and no continuation was spawned
 
+    def test_option_j_guard_skips_when_issue_already_done(self, temp_project_dir: Path) -> None:
+        """BUG-2281: Option J guard skips continuation when issue is already done."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P2-BUG-999-test.md"
+        issue_file.write_text("---\nstatus: done\n---\n\n# BUG-999: Test")
+
+        overflow_result = MagicMock()
+        overflow_result.returncode = 1
+        overflow_result.stdout = "Partial work..."
+        overflow_result.stderr = "API error: Prompt is too long"
+        overflow_result.args = ["claude"]
+
+        call_count = [0]
+
+        def mock_run(command: str, *args, **kwargs):
+            call_count[0] += 1
+            return overflow_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                result = run_with_continuation(
+                    "/ll:manage-issue bug fix BUG-999",
+                    mock_logger,
+                    issue_path=issue_file,
+                    max_continuations=3,
+                    context_limit=200_000,
+                )
+
+        assert call_count[0] == 1, "No fresh session should be spawned when issue is already done"
+        assert result.returncode == 0
+
     def test_forwards_handoff_signal_to_stdout(self, temp_project_dir: Path) -> None:
         """Handoff signal is forwarded to stdout for outer FSM detection."""
         import io

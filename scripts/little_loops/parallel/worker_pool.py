@@ -914,6 +914,20 @@ class WorkerPool:
             # signal (BUG-2280). When run_dir is set (loop context), write a resume file and
             # invoke /ll:resume. Otherwise fall back to the transcript-summary blob.
             if prompt_too_long and continuation_count < max_continuations:
+                # Pre-continuation guard (BUG-2281): mirror the CONTEXT_HANDOFF branch —
+                # if the issue is already done/cancelled, return success without spawning.
+                if self._check_issue_already_done(issue_id, working_dir):
+                    self.logger.info(
+                        f"{tag} Issue already done/cancelled; "
+                        "skipping Option J continuation"
+                    )
+                    result = subprocess.CompletedProcess(
+                        args=result.args,
+                        returncode=0,
+                        stdout=result.stdout,
+                        stderr=result.stderr,
+                    )
+                    break
                 trigger_reason = "Prompt is too long"
                 self.logger.warning(
                     f"{tag} Option J triggered ({trigger_reason}): spawning fresh session"

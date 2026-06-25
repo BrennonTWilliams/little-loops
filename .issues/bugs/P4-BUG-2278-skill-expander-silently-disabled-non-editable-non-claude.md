@@ -111,6 +111,17 @@ host abstraction (`resolve_host()`), not only the Claude plugin root.
 3. When no source resolves, log at debug/warn that pre-expansion is unavailable
    (so the fallback is observable), instead of a fully silent `None`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **No shared resolver from ENH-2272 yet**: BUG-2273 and ENH-2272 are both `open`/unimplemented. Step 1 must self-contain the fix in `skill_expander.py`; no shared utility exists to import.
+- **`~/.codex/skills/` does not exist in the codebase**: `adapt_skills_for_codex.py` writes Codex-adapted skills to `plugin_root / "skills"` (inside the source tree), not `~/.codex/skills/`. Step 2 (host-specific skill-dir probing) is likely a **no-op** — when `CLAUDE_PLUGIN_ROOT` is set, the existing `skills/<name>/SKILL.md` probe already covers both Claude and Codex. Host-dir probing in `_resolve_content_path()` is unnecessary.
+- **`importlib.resources` is off the table**: BUG-2273's codebase research states "Do not introduce `importlib.resources`; follow the BUG-885 move-in-package pattern instead." But `skills/` and `commands/` are NOT in the wheel (host-plugin assets, not bundled), so the BUG-885 "move in-package" pattern doesn't apply either. `CLAUDE_PLUGIN_ROOT` is the **only** viable resolution path for non-editable installs.
+- **Scope simplification — observability is the core fix**: The `__file__` fallback is structurally correct for editable/dev installs and should be preserved. What's missing is a `logging.debug()` / `logging.warning()` call when `_resolve_content_path` returns `None`, making the "optimization disabled" state observable instead of silent.
+- **Four CLI tool callers are safe**: `action.py`, `adapt_skills_for_codex.py`, `adapt_agents_for_codex.py`, `generate_skill_descriptions.py` all delegate to `skill_expander._find_plugin_root` and legitimately need the source-tree `skills/`/`commands/`/`agents/` dirs. They hard-error when those dirs are missing. No change needed for them; they already require `CLAUDE_PLUGIN_ROOT` to be set in non-editable contexts.
+- **`resume_command` always uses `_slash_cmd`** (`issue_manager.py:~862`): `run_with_continuation` passes `resume_command=_slash_cmd` (compact slash form) unconditionally, regardless of whether the initial command was expanded. This is intentional and out of scope.
+
 ## Integration Map
 
 ### Files to Modify
@@ -137,9 +148,32 @@ host abstraction (`resolve_host()`), not only the Claude plugin root.
   a debug/warn signal (not silent `None`) when no source resolves; assert
   host-specific dir probing for Codex.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_action.py` — patches `little_loops.cli.action._find_plugin_root`; safe, no changes needed (fix is in `expand_skill()`, not `_find_plugin_root()`)
+- `scripts/tests/test_adapt_agents_for_codex.py` — same wrapper-patch pattern; safe, no changes needed
+- `scripts/tests/test_adapt_skills_for_codex.py` — same wrapper-patch pattern; safe, no changes needed
+- `scripts/tests/test_generate_skill_descriptions.py` — same wrapper-patch pattern; safe, no changes needed
+- Pattern reference for new caplog test: `scripts/tests/test_sprint.py` `TestSprintManager.test_load_issue_infos_logs_warning_on_parse_failure` — closest analogous pattern (Pattern C: `patch` + `caplog.at_level` multi-context manager); new test should use `caplog.at_level(logging.DEBUG, logger="little_loops.skill_expander")` inside a `with (patch(...), caplog.at_level(...)):` block
+
+### Codebase Research Findings — Tests
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Existing file**: `scripts/tests/test_skill_expander.py` — classes `TestFindPluginRoot` (lines ~38–47) and `TestExpandSkill`.
+  - `TestFindPluginRoot.test_falls_back_to_package_parent` (lines ~42–47): currently asserts the **broken** `__file__.parent.parent.parent` path. Must be updated (or its assertion broadened) when the observability change is made.
+  - `TestFindPluginRoot.test_uses_env_var_when_set` (lines ~38–41): uses `monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))` — preserve unchanged.
+  - `TestExpandSkill`: patches via `patch("little_loops.skill_expander._find_plugin_root", return_value=tmp_path)` — unaffected by the resolver change.
+- **New tests needed** (follow patterns from `TestFindPluginRoot`):
+  1. Simulate non-editable: `monkeypatch.delenv("CLAUDE_PLUGIN_ROOT")` + set `__file__` fallback to a `tmp_path` with no `skills/` subdir → assert a debug/warn is logged (use `caplog` or `capfd`) and `expand_skill()` still returns `None` (graceful degradation preserved).
+  2. Assert that calling `expand_skill()` on an unresolvable path does NOT raise — returns `None` with a log entry.
+  3. No separate "Codex paths" test needed — resolution is identical to Claude when `CLAUDE_PLUGIN_ROOT` points to the source tree.
+
 ### Documentation
 - `docs/reference/API.md` — `skill_expander` resolution precedence.
 - `docs/reference/HOST_COMPATIBILITY.md` — per-host skill-dir resolution.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `CHANGELOG.md` — has existing "Skill Pre-Expansion (`skill_expander`)" entry describing "falls back transparently on any failure"; no change at implementation time, but add a new release entry when shipping this observability fix
 
 ### Configuration
 - N/A
@@ -151,6 +185,26 @@ host abstraction (`resolve_host()`), not only the Claude plugin root.
 3. Add an observable signal when expansion is unavailable.
 4. Add tests for the non-editable and Codex paths.
 5. `python -m pytest scripts/tests/`.
+
+### Codebase Research Findings — Steps
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Step 1 (resolver)**: Keep `_find_plugin_root()` as-is (env-var check + `__file__` fallback). The `__file__` traversal cannot resolve `skills/`/`commands/` in non-editable installs (they're not in the wheel), so "replacing the escaping fallback" reduces to **documenting** that `CLAUDE_PLUGIN_ROOT` is required for non-editable use. No new resolver utility exists to import from.
+- **Step 2 (host-dir probing)**: Likely a **no-op** — `adapt_skills_for_codex.py` writes to `plugin_root / "skills"`, not `~/.codex/skills/`. If per-host path branching is desired in future, follow the pattern in `scripts/little_loops/config/core.py:resolve_config_path()` which uses `LL_HOOK_HOST` to select alternate config paths. For now, omit host-dir probing from scope.
+- **Step 3 (observability)**: In `expand_skill()` (`skill_expander.py`), replace the silent `if content_path is None: return None` with:
+  ```python
+  if content_path is None:
+      import logging
+      logging.debug(
+          "skill_expander: pre-expansion unavailable for %r — "
+          "CLAUDE_PLUGIN_ROOT not set or skills/commands not found under %s",
+          name, plugin_root,
+      )
+      return None
+  ```
+  The outer `try/except Exception: return None` can remain.
+- **Step 4 (tests)**: Update `TestFindPluginRoot.test_falls_back_to_package_parent` in `scripts/tests/test_skill_expander.py`; add the non-editable simulation + `caplog` assertion test described in the Tests section above. No Codex-specific test needed.
 
 ## Impact
 
@@ -187,4 +241,6 @@ host abstraction (`resolve_host()`), not only the Claude plugin root.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-25T03:31:41 - `c1d60a39-e3ac-4d91-b682-b9d82e5ba0f1.jsonl`
+- `/ll:refine-issue` - 2026-06-25T03:24:40 - `f353a071-9adf-4f50-8426-b39c4da0b78d.jsonl`
 - `/ll:format-issue` - 2026-06-24T23:23:17 - `f6b59a7a-7a33-46b0-b1e5-64bbc39e6087.jsonl`

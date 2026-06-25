@@ -28,7 +28,7 @@ score_complexity: 15
 score_test_coverage: 20
 score_ambiguity: 12
 score_change_surface: 18
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-2275: `hooks/` package-data (prompt template + Codex adapter) excluded from the wheel — prompt-optimization hook and Codex onboarding silently break
@@ -156,6 +156,27 @@ not per-host-adapted plugin assets.
    resolver instead of the raw `plugin_root` from `_plugin_root()`, and **warn**
    (not silently return `False`) when the source template is missing — distinct
    from the "destination already exists" skip.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-24.
+
+**Selected**: Move all of `hooks/adapters/codex/` (including shell scripts) in-package — Step 7 resolved as Option A.
+
+**Reasoning**: The BUG-885 precedent for `loops/` (90+ YAML files moved into `little_loops/loops/`) is a direct structural parallel — the Codex adapter shell scripts are 4-line generic shims with no project-specific content, matching the same classification as `loops/` assets rather than "host-plugin glue." Moving only `hooks.json` (Option B) would make `install_codex_adapter()` reachable but leave the written `.codex/hooks.json` with broken command strings for pip-installed users (`_plugin_root()`'s four-level traversal from `cli.py:51` resolves above site-packages where the scripts don't exist). The `little_loops/**` hatchling glob in `pyproject.toml:113` already covers `.sh` files with no config changes needed; the only code change is a single-line swap of `template_path` from `plugin_root / "hooks/adapters/codex/hooks.json"` to `Path(writers.__file__).parent / "hooks/adapters/codex/hooks.json"`.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A (Move scripts in-package) | 3/3 | 2/3 | 2/3 | 2/3 | 9/12 |
+| B (Keep scripts at plugin-root) | 1/3 | 1/3 | 2/3 | 3/3 | 7/12 |
+
+**Key evidence**:
+- Option A: `get_builtin_loops_dir()` at `scripts/little_loops/cli/loop/_helpers.py:822` is the direct BUG-885 precedent (`little_loops/loops/` holds 90+ YAML assets picked up by the same `little_loops/**` glob); `install_codex_adapter()` change reduces to one line; reuse score 2.5/3
+- Option B: ARCHITECTURE-053 classifies scripts as "host-plugin glue" (consistent in principle) but the written `.codex/hooks.json` still bakes in the broken `_plugin_root()` traversal path for pip users; delivering scripts independently requires new infrastructure with no reusable precedent; reuse score 1/3
+
+**Implementation note**: Executable-bit preservation for `.sh` files in the wheel is a new concern — verify `hatchling` preserves execute permissions on pip install (cf. `test_codex_adapter.py:52-63` which asserts executability); may require an explicit `pyproject.toml` `force-include` or `chmod` post-install hook if the default glob does not preserve bits.
 
 ## Integration Map
 
@@ -356,6 +377,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
    package install path) rather than `plugin_root`. This decision affects what
    `.codex/hooks.json` files look like for pip-installed users; make it
    explicit before implementing Step 1.
+   > **Selected:** Move all of `hooks/adapters/codex/` (including shell scripts) in-package — shell scripts are 4-line generic shims with no project-specific content, matching the BUG-885 `loops/` precedent; `little_loops/**` hatchling glob already covers `.sh` files; single-line `template_path` swap in `install_codex_adapter()` is sufficient. See [Decision Rationale](#decision-rationale) above.
 8. Update `scripts/tests/test_codex_adapter.py` — `ADAPTER_DIR` is hardcoded
    to `REPO_ROOT / "hooks" / "adapters" / "codex"`; update to the new path
    (in-package or repo-relative depending on Step 7's decision). Also update
@@ -471,6 +493,7 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 - **ENH-2272 dependency mismatch**: ENH-2272 is cited as the "shared resolver this bug's lookups should consume" but is actually about ll-issues sections accessor; the canonical resolver pattern (`skill_expander._find_plugin_root()`) already exists at `skill_expander.py:22` — no need to wait for ENH-2272
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-25T03:34:14 - `c466e87a-d415-4ecb-933b-1337ea77a039.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `77fa73e1-dacb-4249-8a20-ad4d9cb07c09.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T01:15:24 - `4d9c6bcd-b580-4f4a-bc4f-3993c0160aa9.jsonl`
 - `/ll:wire-issue` - 2026-06-25T00:05:35 - `43ed8b20-75e9-4cc1-9df5-86b5a03e80d8.jsonl`

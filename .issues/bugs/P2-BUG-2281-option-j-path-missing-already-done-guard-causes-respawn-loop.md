@@ -3,10 +3,11 @@ id: BUG-2281
 title: Option J guillotine path lacks the already-done guard, causing an unbounded
   respawn loop on completed issues
 type: BUG
-status: open
+status: done
 priority: P2
 decision_needed: false
 captured_at: '2026-06-24T23:53:24Z'
+completed_at: '2026-06-25T03:37:32Z'
 discovered_date: '2026-06-24'
 discovered_by: capture-issue
 labels:
@@ -30,10 +31,10 @@ score_change_surface: 23
 
 ## Summary
 
-`run_claude_with_continuation()` in `scripts/little_loops/issue_manager.py` has two
+`run_with_continuation()` in `scripts/little_loops/issue_manager.py` has two
 continuation triggers. The **CONTEXT_HANDOFF** path checks whether the issue is already
 `done`/`cancelled` before spawning a fresh session and short-circuits to success if so
-(line 296-305, added for [[BUG-1759]]). The **Option J guillotine** path (line 330-414)
+(line 289-298, added for [[BUG-1759]]). The **Option J guillotine** path (line 322+)
 has **no such guard** — it spawns a fresh continuation unconditionally whenever its
 trigger condition is met. So when an issue is already complete, the guillotine keeps
 spawning fresh sessions that rediscover "it's done," exit, and trigger yet another
@@ -75,7 +76,7 @@ The fix is a one-line guard insertion mirroring an existing, proven pattern — 
 `scripts/little_loops/issue_manager.py` — the CONTEXT_HANDOFF branch guards completion:
 
 ```python
-# line 293-305 (CONTEXT_HANDOFF path)
+# line 289-298 (CONTEXT_HANDOFF path)
 already_done = _check_issue_already_done(issue_path, logger)
 if already_done:
     logger.info("Issue already done/cancelled; skipping handoff and returning success")
@@ -87,9 +88,9 @@ if already_done:
 check:
 
 ```python
-# line 330-334 (Option J path) — no _check_issue_already_done
-if (prompt_too_long or usage_ratio >= guillotine_threshold) and continuation_count < max_continuations:
-    trigger_reason = ...
+# line 322 (Option J path) — no _check_issue_already_done
+if prompt_too_long and continuation_count < max_continuations:
+    trigger_reason = "Prompt is too long"
     logger.warning(f"Option J triggered ({trigger_reason}): spawning fresh session")
     # ... writes guillotine-prompt.md and continues, unconditionally ...
 ```
@@ -113,7 +114,7 @@ Add the same guard at the top of the Option J branch (before writing the guillot
 prompt). Factor the shared check so both branches call it identically:
 
 ```python
-if (prompt_too_long or usage_ratio >= guillotine_threshold) and continuation_count < max_continuations:
+if prompt_too_long and continuation_count < max_continuations:
     if _check_issue_already_done(issue_path, logger):
         logger.info("Issue already done/cancelled; skipping Option J continuation")
         result = subprocess.CompletedProcess(args=result.args, returncode=0,
@@ -127,7 +128,7 @@ if (prompt_too_long or usage_ratio >= guillotine_threshold) and continuation_cou
 1. **Add failing tests** (TDD):
    - In `scripts/tests/test_issue_manager.py`, class `TestRunWithContinuation` (line 1131): add `test_option_j_guard_skips_when_issue_already_done`. Pattern: write a `status: done` issue file, call `on_usage(185_000, 10_000)` in `mock_run` to drive `usage_ratio ≥ 0.90`, patch `detect_context_handoff` → `False`, assert `call_count[0] == 1` (no fresh session) and `result.returncode == 0`.
    - In `scripts/tests/test_worker_pool.py`, class `TestRunWithContinuation` (line 2340): add equivalent test using `patch.object(worker_pool, "_run_claude_command", ...)` and `issue_id="BUG-999"` pointing to a `status: done` fixture file.
-2. **Fix `issue_manager.py`**: Insert before line 330 (`if (prompt_too_long or usage_ratio >= guillotine_threshold)`):
+2. **Fix `issue_manager.py`**: Insert before line 322 (`if prompt_too_long`):
    ```python
    if _check_issue_already_done(issue_path, logger):
        logger.info("Issue already done/cancelled; skipping Option J continuation")
@@ -135,7 +136,7 @@ if (prompt_too_long or usage_ratio >= guillotine_threshold) and continuation_cou
                                              stdout=result.stdout, stderr=result.stderr)
        break
    ```
-3. **Fix `worker_pool.py`**: Insert the equivalent guard before line 923 (`if (prompt_too_long or usage_ratio >= guillotine_threshold)`) using `self._check_issue_already_done(issue_id, working_dir)`.
+3. **Fix `worker_pool.py`**: Insert the equivalent guard before line 916 (`if prompt_too_long`) using `self._check_issue_already_done(issue_id, working_dir)`.
 4. **Run checks**: `python -m pytest scripts/tests/test_issue_manager.py scripts/tests/test_worker_pool.py -v` + `ruff check scripts/` + `python -m mypy scripts/little_loops/`.
 
 ## Open Questions
@@ -146,26 +147,26 @@ if (prompt_too_long or usage_ratio >= guillotine_threshold) and continuation_cou
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_manager.py` — `run_claude_with_continuation()`: add `_check_issue_already_done` guard at the head of the Option J branch (before the `trigger_reason` assignment, ~line 330)
+- `scripts/little_loops/issue_manager.py` — `run_with_continuation()`: add `_check_issue_already_done` guard at the head of the Option J branch (before the `trigger_reason` assignment, ~line 322)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/parallel/worker_pool.py` — `WorkerPool._run_with_continuation()`: add `self._check_issue_already_done(issue_id, working_dir)` guard at the head of the Option J branch (~line 926, before `trigger_reason` assignment) — this is the mirror fix to `issue_manager.py`; the Implementation Steps already describe this but it was absent from Files to Modify [Agent 1 + Agent 3 finding]
+- `scripts/little_loops/parallel/worker_pool.py` — `WorkerPool._run_with_continuation()`: add `self._check_issue_already_done(issue_id, working_dir)` guard at the head of the Option J branch (~line 916, before `trigger_reason` assignment) — this is the mirror fix to `issue_manager.py`; the Implementation Steps already describe this but it was absent from Files to Modify [Agent 1 + Agent 3 finding]
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_manager.py:process_issue_inplace()` — calls `run_with_continuation()` at line 879; passes `issue_path=info.path`, so the guard has a valid path to check
 - `scripts/little_loops/cli/sprint/run.py:66,650` — calls `process_issue_inplace()` directly (ll-sprint CLI)
-- `scripts/little_loops/parallel/worker_pool.py:WorkerPool._run_with_continuation()` — **mirror implementation** of the same E+G+J logic at line 825; called from `_process_worker_issue()` at line 488; has its own `_check_issue_already_done()` at line 789 (takes `issue_id: str | None` instead of `Path`) — **also missing the guard in its Option J block at line 924** (same structural gap)
+- `scripts/little_loops/parallel/worker_pool.py:WorkerPool._run_with_continuation()` — **mirror implementation** of the same E+G+J logic at line 824; called from `_process_worker_issue()` at line 487; has its own `_check_issue_already_done()` at line 788 (takes `issue_id: str | None` instead of `Path`) — **also missing the guard in its Option J block at line 916** (same structural gap)
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- **Worker pool mirror gap confirmed**: `scripts/little_loops/parallel/worker_pool.py:_run_with_continuation()` has the same structural layout — `_check_issue_already_done()` is present in the CONTEXT_HANDOFF branch (line 888) but absent from the Option J branch (line 924). The fix scope should cover both `issue_manager.py` and `worker_pool.py`.
+- **Worker pool mirror gap confirmed**: `scripts/little_loops/parallel/worker_pool.py:_run_with_continuation()` has the same structural layout — `_check_issue_already_done()` is present in the CONTEXT_HANDOFF branch (line 883) but absent from the Option J branch (line 916). The fix scope should cover both `issue_manager.py` and `worker_pool.py`.
 - **Guard call differs between the two implementations**: `issue_manager._check_issue_already_done(issue_path, logger)` takes a `Path`; `worker_pool._check_issue_already_done(issue_id, working_dir)` takes `str | None` + `Path`. Both are already defined — just need the call inserted before the trigger check.
 - **`sprint_context` sub-paths are covered**: the `sprint_context` and `run_dir` branches are both inside the Option J block, so adding the guard before `if (prompt_too_long or usage_ratio >= guillotine_threshold)` covers all sub-paths in a single insertion point.
 
 ### Similar Patterns
-- `run_claude_with_continuation()` CONTEXT_HANDOFF branch (lines 293–305) — the existing `_check_issue_already_done` call is the exact pattern to replicate
+- `run_with_continuation()` CONTEXT_HANDOFF branch (lines 289–298) — the existing `_check_issue_already_done` call is the exact pattern to replicate
 
 ### Tests
 - `scripts/tests/test_issue_manager.py` — primary test file; class `TestRunWithContinuation` (line 1131) hosts all Option J tests. New test goes here.
@@ -198,6 +199,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [[BUG-2201]] — Option J continuation scope escape (same path, sibling hardening).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T03:33:16 - `c1d60a39-e3ac-4d91-b682-b9d82e5ba0f1.jsonl`
 - `/ll:confidence-check` - 2026-06-25T01:10:00 - `60219707-55ed-4074-ac97-13cc49417dbb.jsonl`
 - `/ll:wire-issue` - 2026-06-25T00:35:24 - `f3b734be-ae79-4eac-832f-68c245c56458.jsonl`
 - `/ll:refine-issue` - 2026-06-25T00:27:50 - `5302a422-c0d1-420a-a9db-ea930a398524.jsonl`

@@ -2680,6 +2680,48 @@ class TestRunWithContinuation:
             "cumulative tokens must not trigger Option J"
         )
 
+    def test_option_j_guard_skips_when_issue_already_done(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """BUG-2281: Option J guard skips continuation when issue is already done."""
+        issues_dir = temp_repo_with_config / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P2-BUG-999-test.md"
+        issue_file.write_text("---\nstatus: done\n---\n\n# BUG-999: Test")
+
+        overflow_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "test"],
+            returncode=1,
+            stdout="Partial work...",
+            stderr="API error: Prompt is too long",
+        )
+
+        call_count = [0]
+
+        def mock_run_claude(command, working_dir, **kwargs):
+            call_count[0] += 1
+            return overflow_result
+
+        with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
+            with patch(
+                "little_loops.parallel.worker_pool.detect_context_handoff", return_value=False
+            ):
+                result = worker_pool._run_with_continuation(
+                    "test",
+                    temp_repo_with_config,
+                    issue_id="BUG-999",
+                    max_continuations=3,
+                    context_limit=200_000,
+                )
+
+        assert call_count[0] == 1, (
+            f"Expected 1 call (no continuation), got {call_count[0]}: "
+            "no fresh session should be spawned when issue is already done"
+        )
+        assert result.returncode == 0
+
 
 class TestWorkerPoolDecisionNeededGate:
     """Tests for conditional decide-issue invocation when decision_needed=True."""
