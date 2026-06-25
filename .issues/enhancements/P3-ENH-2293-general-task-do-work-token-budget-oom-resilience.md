@@ -1,19 +1,28 @@
 ---
 id: ENH-2293
-title: general-task do_work — token-budget / OOM resilience (pre-work context guard)
+title: "general-task do_work \u2014 token-budget / OOM resilience (pre-work context\
+  \ guard)"
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-25T15:24:25Z"
+captured_at: '2026-06-25T15:24:25Z'
 discovered_date: 2026-06-25
 discovered_by: capture-issue
 labels:
-  - loops
-  - general-task
-  - fsm
-  - resilience
-relates_to: [ENH-2246, ENH-1732]
+- loops
+- general-task
+- fsm
+- resilience
+relates_to:
+- ENH-2246
+- ENH-1732
 decision_needed: false
+confidence_score: 96
+outcome_confidence: 91
+score_complexity: 21
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 23
 ---
 
 # ENH-2293: general-task do_work — token-budget / OOM resilience
@@ -178,6 +187,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Step 3 precision (Option 1/2 path)**: Add a new shell guard state before `do_work`. Follow the `check_research` pattern in `scripts/little_loops/loops/oracles/plan-research-iteration.yaml` for the guard state shape and `output_contains` evaluator wiring.
 - **Step 4 — two test files**: Add tests to **both** `scripts/tests/test_builtin_loops.py:TestGeneralTaskLoop` (line 7536) for routing assertions AND `scripts/tests/test_general_task_loop.py` (dedicated general-task test file from ENH-1644) for prompt-content assertions. Model the new tests after `test_continue_work_prompt_detects_timeout_exit_code` (line 7640) and `test_continue_work_prompt_instructs_step_split_on_timeout` (line 7648) in `test_builtin_loops.py`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Add 3 new tests to `scripts/tests/test_builtin_loops.py:TestGeneralTaskLoop` (after line 7667):
+   - `test_do_work_retryable_exit_codes_is_124_only` — assert `data["states"]["do_work"].get("retryable_exit_codes") == [124]`
+   - `test_continue_work_prompt_detects_oom_exit_code` — assert `"-9"` or `"OOM"` or `"SIGKILL"` in `continue_work.action`
+   - `test_continue_work_prompt_routes_to_diagnose_on_oom` — assert `"diagnose"` appears in the OOM branch of `continue_work.action`
+7. Add 2 new tests to `scripts/tests/test_general_task_loop.py` (new class `TestENH2293OOMResilience`):
+   - `test_do_work_retryable_exit_codes` — assert `raw_data["states"]["do_work"]["retryable_exit_codes"] == [124]`
+   - `test_continue_work_handles_oom_exit_code` — assert OOM/SIGKILL signal text in `continue_work.action`
+8. Update `docs/guides/LOOPS_REFERENCE.md` — Section "5. Continue": add exit -9 (OOM/SIGKILL) as a third case alongside exit-124 and DoD-remediation
+
 ## Scope Boundaries
 
 - **In scope**: `general-task.yaml` FSM only — adding a pre-`do_work` guard state or OOM-aware post-mortem routing.
@@ -193,6 +215,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loop_runner.py` — executes general-task; source of exit -9 signal if runner survives the kill
 - `scripts/little_loops/cli/loop.py` — `ll-loop run` CLI entrypoint
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/proof-first-task.yaml` — references `impl_loop: "general-task"` (line 14); no change needed but general-task's loop interface must remain stable after this fix [Agent 1 finding]
 
 ### Codebase Research Findings
 
@@ -215,8 +240,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — add/extend test for the new guard state or OOM-aware routing
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+New tests to add in `test_builtin_loops.py:TestGeneralTaskLoop` (after line 7667, mirroring the exit-124 test shape):
+- `test_do_work_retryable_exit_codes_is_124_only` — assert `data["states"]["do_work"].get("retryable_exit_codes") == [124]`
+- `test_continue_work_prompt_detects_oom_exit_code` — assert `"-9"` or `"OOM"` or `"SIGKILL"` appears in `continue_work.action`
+- `test_continue_work_prompt_routes_to_diagnose_on_oom` — assert `"diagnose"` appears in the OOM branch of `continue_work.action`
+
+New tests to add in `scripts/tests/test_general_task_loop.py` (new class `TestENH2293OOMResilience`, mirroring `TestENH1732StateSplit` shape):
+- `test_do_work_retryable_exit_codes` — assert `raw_data["states"]["do_work"]["retryable_exit_codes"] == [124]`
+- `test_continue_work_handles_oom_exit_code` — assert OOM/SIGKILL signal text in `continue_work.action` [Agent 3 finding]
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — Section "5. Continue" documents exactly two exit-code cases ("exit 124" and "Other exit codes / DoD remediation"); adding an exit -9 OOM branch to `continue_work` makes this section incomplete and requires a third case [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -230,6 +268,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Scope**: `scripts/little_loops/loops/general-task.yaml` (FSM only; no runner change expected).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25T16:30:00Z - `48eb6c56-fe87-4a7b-abd5-a2992ed6f148.jsonl`
+- `/ll:wire-issue` - 2026-06-25T15:59:22 - `36c21096-cd85-469c-bcaf-ae76d9650ce1.jsonl`
 - `/ll:decide-issue` - 2026-06-25T15:48:33 - `58d60d2e-2091-4283-b975-b472ea8c30c0.jsonl`
 - `/ll:refine-issue` - 2026-06-25T15:38:39 - `bf3647f2-ce33-4c92-93fb-c97defad2e8b.jsonl`
 - `/ll:format-issue` - 2026-06-25T15:28:02 - `1c91181a-126c-4f87-8a8f-91683ce4f565.jsonl`
