@@ -3,7 +3,7 @@ id: ENH-2121
 title: Emit rich Codex subagent TOML fields in ll-adapt-agents-for-codex
 type: ENH
 priority: P3
-status: open
+status: cancelled
 captured_at: "2026-06-13T00:00:00Z"
 discovered_date: 2026-06-13
 discovered_by: capture-issue
@@ -13,6 +13,16 @@ labels: [codex, host-runner, agents, host-compat]
 ---
 
 # ENH-2121: Emit rich Codex subagent TOML fields in ll-adapt-agents-for-codex
+
+> **CANCELLED 2026-06-25 — absorbed into FEAT-2260.** `ll-adapt-agents-for-codex`
+> is being generalized into the host-parameterized adapter (FEAT-2260,
+> ARCHITECTURE-049). Implementing the rich-field emission as a standalone Codex
+> patch first, then re-touching the same emitter during the `--host` refactor,
+> is a double-touch. This scope now lives as FEAT-2260's "Codex-host emitter
+> parity" acceptance criterion, so the richer fields land once, inside the
+> generic adapter. The source-mapping detail, scope boundaries, and Codex schema
+> link below remain the authoritative spec for that criterion. See the
+> Phase-1 sequencing in the EPIC-1463/2178/2257/2258 plan.
 
 ## Summary
 
@@ -159,7 +169,7 @@ parent session for omitted optional fields, so omission stays safe).
 
 ## Status
 
-**Open** | Created: 2026-06-13 | Priority: P3
+**Cancelled** | Created: 2026-06-13 | Cancelled: 2026-06-25 (absorbed into FEAT-2260) | Priority: P3
 
 
 ## Session Log

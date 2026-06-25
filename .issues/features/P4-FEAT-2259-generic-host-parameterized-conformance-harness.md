@@ -42,6 +42,17 @@ new issue + new test file.
   closed as superseded once it lands).
 - Adding a host requires no new conformance code — only a host entry.
 
+## Note — `--host codex` backflow (closes FEAT-1721)
+
+This harness is built during the **Gemini** phase (its first new-host consumer),
+but it is host-agnostic by construction, so once it lands, running it
+`--host codex` exercises the Codex golden paths and **satisfies FEAT-1721**
+(Codex conformance) with no Codex-specific code. This is the deliberate payoff
+of sequencing Gemini ahead of EPIC-1463 polish: Codex conformance arrives as a
+near-free backflow *from* the Gemini work rather than as separate Codex effort.
+After this lands, sweep the Codex column of `HOST_COMPATIBILITY.md` via
+`--host codex` and close FEAT-1721 as superseded.
+
 ## Reference
 
 - `ll-harness` — existing one-shot runner evaluation; likely the integration point.

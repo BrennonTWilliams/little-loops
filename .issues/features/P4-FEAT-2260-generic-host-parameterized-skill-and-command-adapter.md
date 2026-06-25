@@ -9,7 +9,7 @@ discovered_by: planning-assessment
 parent: EPIC-2257
 decision_ref: ARCHITECTURE-049
 labels: [host-compat, portfolio, skills, commands, adapters]
-relates_to: [FEAT-2188, FEAT-2189]
+relates_to: [FEAT-2188, FEAT-2189, ENH-2121]
 ---
 
 # FEAT-2260: Generic host-parameterized skill + command adapter
@@ -24,6 +24,8 @@ Per ARCHITECTURE-049, this consolidates:
 - `ll-adapt-skills-for-codex` + `ll-adapt-agents-for-codex` (existing, Codex-only)
 - **FEAT-2188** (Gemini skills adaptation)
 - **FEAT-2189** (Gemini commands `.md` → `.toml`)
+- **ENH-2121** (rich Codex subagent TOML fields — absorbed as the Codex-host
+  agent-emitter requirement; see "Codex-host emitter parity" below)
 - the omp skill/command adaptation need (folded here, not re-specified under EPIC-2258)
 
 ## Motivation
@@ -45,10 +47,32 @@ adapter with per-host output emitters removes N near-duplicate scripts.
 - Respects `disable-model-invocation: true` (skips those skills) for every host.
 - Adding a host = adding one output emitter, not a new script.
 
+### Codex-host emitter parity (absorbs ENH-2121)
+
+The `--host codex` agent emitter must not regress to today's lossy four-field
+output. Since this issue generalizes `ll-adapt-agents-for-codex`, it owns
+ENH-2121's scope: the Codex agent emitter maps available source-agent metadata
+onto the richer Codex subagent schema rather than dropping it.
+
+- Codex agent TOML emits `sandbox_mode` (vocabulary aligned with ENH-1529:
+  `off` / `read-only` / `write-to-cwd` / `network`), `model_reasoning_effort`,
+  `mcp_servers`, and `skills.config` **when derivable from the source agent's
+  `tools:` frontmatter / model identifier**; fields with no source mapping are
+  omitted (Codex inherits from the parent session — omission stays safe).
+- `nickname_candidates` remains **out of scope** (no clean source mapping), and
+  no new `agents/*.md` frontmatter fields are invented — derive from existing
+  `tools:` / model only. (Both boundaries carried over verbatim from ENH-2121.)
+- Test parity: the Codex emitter's tests assert each rich field emits for a
+  fixture agent that declares it and is omitted otherwise (was
+  `test_adapt_agents_for_codex.py`; folds into this adapter's test suite).
+
 ## Reference
 
 - `ll-adapt-skills-for-codex`, `ll-adapt-agents-for-codex` — existing Codex emitters.
 - FEAT-2188 / FEAT-2189 — the bespoke Gemini specs this generalizes.
+- ENH-2121 — rich Codex subagent TOML fields, absorbed here as the Codex-host
+  emitter parity requirement (closed as superseded; full source-mapping detail
+  and the `developers.openai.com/codex/subagents` schema link live in its body).
 
 ## Impact
 
