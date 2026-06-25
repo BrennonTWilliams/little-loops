@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.131.0] - 2026-06-25
+
+### Added
+
+- **OpenSCAD model generator built-in FSM loop** — New `openscad-model-generator` loop for generating and iterating on parametric 3D models using FSM-driven prompting. (FEAT-2269)
+- **`ll-issues next-id --count N` batch allocation** — Allocates a block of N sequential IDs in one call, eliminating race conditions when scripts need multiple IDs. (ENH-2268)
+- **Centralized model→context-window mapping with 1M support** — Context-window limits moved to a single authoritative table; 1M-token models now handled correctly.
+
+### Fixed
+
+- **Per-character SGR wrapping artifacts in FSM diagrams** — Batch SGR sequences in `_draw_box` to eliminate per-character wrapping that caused visual artifacts in video/terminal recordings. (BUG-2284)
+- **`ll-session` skill events missing backfill path** — Added `_backfill_skill_events` to populate pre-init history so `ll-logs stats` no longer undercounts sessions. (BUG-2283)
+- **`ll-issues set-status --cascade` follows wrong edges** — Restricted `--cascade` to `parent:` edges only; `relates_to` and `blocked_by` edges are no longer traversed. (BUG-2265)
+- **`detect_installation` discards plugin scope** — Reads scope from discovery result and propagates `installPath`; project installs no longer mislabeled as global. (BUG-2266)
+- **`rn-implement` report state writes only `}`** — Wrapped `report` summary `printf` block in group redirect so `summary.json` is written correctly. (BUG-2267)
+
+### Changed
+
+- **`rn-refine verify_score`** — Added diff-based phantom convergence check to prevent false-positive convergence signals.
+- **`ll-issues list` title truncation** — Long issue titles now truncate to fit terminal width.
+- **`--cascade` edge restriction documentation** — Clarified `--cascade` semantics in API docs and loop guides.
+
 ## [1.130.0] - 2026-06-22
 
 ### Changed
@@ -3440,6 +3462,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.57.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.56.0...v1.57.0
 [1.56.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.55.0...v1.56.0
 [1.55.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.54.0...v1.55.0
+[1.131.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.130.0...v1.131.0
+[1.130.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.129.0...v1.130.0
 [1.54.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.53.0...v1.54.0
 [1.53.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.52.0...v1.53.0
 [1.52.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.51.0...v1.52.0
