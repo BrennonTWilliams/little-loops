@@ -14,6 +14,7 @@ labels:
 - host-compat
 - init
 - install-check
+decision_needed: false
 confidence_score: 98
 outcome_confidence: 82
 score_complexity: 17
@@ -182,7 +183,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`installPath` return-type impact**: Adding `installPath` to the return value changes the current 2-tuple `(source, version)` signature. Both callers unpack as `install_source, installed_version = detect_installation(...)`. They would each need updating. Additionally, ~10 mock sites in `test_init_core.py` (lines ~1106–1400) and `test_init_tui.py` (line 31) use `return_value=(None, None)` or `return_value=("pypi", "1.0.0")` 2-tuples; each would need a third element. Consider using a `NamedTuple` or keeping as a 3-tuple — both require the same set of updates to callers and mocks.
 - **Plain-text fallback**: `install_check.py:74-75` — the non-JSON fallback path (`if "ll@little-loops" in result.stdout: return "global-claude-code", None`) cannot determine scope; should remain `"global-claude-code"` since no structured data is available.
 - **`test_config_schema.py:578`**: The existing schema test only asserts `"install_source"` key exists and `type: string`; it does NOT assert enum membership. A new assertion `assert "project-claude-code" in install_source["enum"]` must be added to catch future enum regressions, following `test_issues_next_issue_in_schema` (lines 39–54) as the pattern.
-- **All 9 `TestDetectInstallation` test methods unpack as 2-tuples**: Lines 44, 62, 78, 95, 135, 154, 188 all use `source, version = detect_installation(...)`. These will ALL break (ValueError) when the return becomes a 3-tuple — step 4 must update all existing unpacks, not just add new cases.
+- **All 9 `TestDetectInstallation` test methods unpack as 2-tuples**: Lines 44, 62, 78, 95, 114, 135, 154, 171, 188 all use `source, version = detect_installation(...)`. These will ALL break (ValueError) when the return becomes a 3-tuple — step 4 must update all existing unpacks, not just add new cases.
+- **Pip return path is also a 2-tuple** (`install_check.py:53`): `return source, installed` must become `return source, installed, None` to be consistent with the 3-tuple contract — step 10 currently only calls out the plain-text fallback (`install_check.py:74–75`), but all 4 return paths need updating: line 53 (pip), line 71 (JSON match), line 75 (plain-text fallback), line 79 (not-found sentinel).
 
 ## Reference
 
@@ -195,6 +197,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T00:00:00 - `4eec996e-9c36-42e5-8afa-0d8061699790.jsonl`
+- `/ll:refine-issue` - 2026-06-25T01:22:08 - `46f8a883-2d5b-457a-bd39-76e513bfddfd.jsonl`
 - `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00 - `fa7c169d-eb54-4677-82b2-e67621565732.jsonl`
 - `/ll:wire-issue` - 2026-06-24T21:12:34 - `be894440-8cde-464b-8d81-175113fcffbe.jsonl`
