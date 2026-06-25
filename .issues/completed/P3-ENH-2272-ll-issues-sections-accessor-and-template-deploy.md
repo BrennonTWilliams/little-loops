@@ -19,6 +19,7 @@ score_test_coverage: 20
 score_ambiguity: 22
 score_change_surface: 18
 decision_needed: false
+completed_at: '2026-06-25T07:29:48Z'
 ---
 
 # ENH-2272: ll-issues sections accessor + project-local template deploy
@@ -573,3 +574,13 @@ _Updated by `/ll:confidence-check` on 2026-06-25_
 - `/ll:refine-issue` - 2026-06-24T23:05:17 - `5b067ad3-2717-49a4-bf64-d61c0eab69cc.jsonl`
 - `/ll:format-issue` - 2026-06-24T22:58:10 - `2559928a-8ef2-4ca3-879e-63d8f4134600.jsonl`
 - `/ll:capture-issue` - 2026-06-24T22:17:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d34d610-c8b9-4a5e-82c8-191296760b6d.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-06-25
+- **Decomposed into**: ENH-2285, ENH-2286, ENH-2287, ENH-2288
+
+Work for ENH-2272 is now carried by its child issues; this parent was closed by rn-decompose.

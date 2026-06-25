@@ -13,6 +13,7 @@ relates_to:
 - ENH-2272
 - BUG-938
 - BUG-885
+- ENH-2291
 decision_ref: ARCHITECTURE-053
 labels:
 - bug
@@ -396,26 +397,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 9. Update `scripts/tests/test_init_core.py:864` — change
    `assert installed is False` to `assert installed is None` in
    `test_skips_when_template_missing` after the sentinel change.
-10. Update docs — `docs/ARCHITECTURE.md` directory tree (lines 85, 102, 1186),
-    `docs/development/TROUBLESHOOTING.md` (lines 853-854, 1021),
-    `docs/guides/BUILTIN_HOOKS_GUIDE.md` (line 152),
-    `docs/codex/getting-started.md`, `docs/codex/usage.md`,
-    `docs/codex/README.md`, `docs/claude-code/write-a-hook.md` (lines 190, 324-325)
-    to reflect new paths.
-11. Update agent/skill files — `agents/consistency-checker.md` (line 169),
-    `.codex/agents/consistency-checker.toml` (line 143),
-    `skills/audit-claude-config/SKILL.md` (line 44),
-    `skills/configure/areas.md` (line 890) to reflect new paths.
-12. Update `skills/audit-claude-config/wave1-prompts.md` (line 111) —
-    the audit-scope glob `hooks/prompts/*.md` will no longer match
-    `optimize-prompt-hook.md` once it moves in-package; update to also
-    check `little_loops/hooks/prompts/` or replace with both paths.
-    [second wiring pass]
-13. Update `hooks/adapters/codex/hooks.json` template body (Step 7 resolved as Option A):
-    the `{{LL_PLUGIN_ROOT}}/hooks/adapters/codex/<script>.sh` substitution
-    pattern must be replaced with the in-package Python package install
-    path so installed `.codex/hooks.json` files resolve correctly on
-    pip-installed systems. [second wiring pass]
+10. _(split to ENH-2291)_ Update all doc/agent/skill path references after the
+    move lands — 8 doc files, 4 agent/skill files, and the `wave1-prompts.md`
+    audit glob. See ENH-2291 for the full enumerated list and verification grep.
 14. In `install_codex_adapter()` in `scripts/little_loops/init/writers.py`,
     the `{{LL_PLUGIN_ROOT}}` substitution **value** (currently `str(plugin_root)`)
     must ALSO change to the in-package hooks base path (e.g.,
@@ -428,10 +412,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
     function signature entirely or whether any other code path still needs it;
     update call sites in `cli.py:_dispatch_host_adapters()` (line 79) and
     `tui.py:_apply_config()` (line 868) accordingly. [Agent 2 finding — third wiring pass]
-15. Update `hooks/adapters/codex/README.md` (distinct from `docs/codex/README.md`)
-    — lines 19, 113, 204 describe the old `{{LL_PLUGIN_ROOT}}` substitution and
-    show old repo-root paths; update after the move and substitution change land.
-    [Agent 2 + Agent 1 finding — third wiring pass]
 
 ## Codebase Research Findings
 
@@ -548,9 +528,11 @@ HOOKS_JSON_DIR = REPO_ROOT / "scripts" / "little_loops" / "hooks" / "adapters" /
 - Fix `{{LL_PLUGIN_ROOT}}` substitution value → `str(Path(writers.__file__).parent.parent)` (Step 14)
 - Update caller warning in `_dispatch_host_adapters()` (Step 3)
 - Remove three `xfail` decorators from `test_init_core.py:1605,1637,1650` once fixed
-- All doc/agent/skill/test updates enumerated in Implementation Steps 8–15
+- Test updates enumerated in Implementation Steps 8–9
 
-**Not in scope**: The original `git mv` for `hooks/prompts/` and `hooks/adapters/` (now done by FEAT-2274).
+**Not in scope**:
+- The original `git mv` for `hooks/prompts/` and `hooks/adapters/` (done by FEAT-2274)
+- Doc/agent/skill path reference updates — split to ENH-2291 (Steps 10-12, 15 from the original wiring list)
 
 ## Confidence Check Notes
 

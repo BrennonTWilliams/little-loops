@@ -1,6 +1,7 @@
 ---
 id: BUG-2289
-title: rn-decompose records decomposed parent in both skipped.txt and decomposed_count — summary breakdown double-counts
+title: "rn-decompose records decomposed parent in both skipped.txt and decomposed_count\
+  \ \u2014 summary breakdown double-counts"
 priority: P3
 type: BUG
 status: open
@@ -14,6 +15,12 @@ labels:
 - rn-implement
 - rn-decompose
 - telemetry
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2289: rn-decompose records decomposed parent in both skipped.txt and decomposed_count — summary breakdown double-counts
@@ -83,6 +90,40 @@ depth_capped + failed` (plus diagnostic tallies) should never exceed
   re-dequeue guard, but queue removal + `visited.txt` already prevent
   re-processing — `skipped.txt` is purely a report tally.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **All anchor references verified accurate (no stale refs):**
+  - `rn-decompose.yaml:209` — `echo "$ID" >> "$RUN_DIR/skipped.txt"` (the
+    redundant write, comment "Mark parent as skipped (decomposed)" at line 208).
+  - `rn-decompose.yaml:212-213` — `decomposed_count.txt` increment.
+  - `rn-implement.yaml:915` — `DECOMPOSED=$(cat "$RUN_DIR/decomposed_count.txt" …)`.
+  - `rn-implement.yaml:916` — `SKIPPED=$(wc -l < "$RUN_DIR/skipped.txt" …)`.
+  - `rn-implement.yaml:885-889` — `skip_issue` state, the only *intended*
+    writer to `skipped.txt` (`echo "$ID" >> …/skipped.txt` at line 889).
+- **The re-dequeue-guard claim is confirmed by an existing comment.**
+  `rn-decompose.yaml:198-202` documents that `visited.txt` (written by
+  `rn-implement`'s fifo_pop/select_next at dequeue time) is the authoritative
+  "dequeued" log, and that `enqueue_children` must *not* write `visited.txt`
+  here (BUG-2004). Combined with queue removal, this means re-processing is
+  already prevented without `skipped.txt` — directly supporting **Option A**
+  (the `skipped.txt` write at line 209 has no guard role; it is pure tally
+  double-counting).
+- **`report` reads `skipped`/`decomposed` as fully disjoint buckets.**
+  `rn-implement.yaml:915-916` plus the `summary.json` emission (lines 937-948)
+  print `decomposed` and `skipped` as independent fields; nothing reconciles a
+  parent appearing in both, so the over-count equals the number of decomposed
+  parents — exactly as observed (8 processed, buckets sum 9).
+- **Option A is low-blast-radius:** no other report tally file
+  (`deferred.txt`, `blocked.txt`, `depth_capped.txt`, `failures.txt`) is
+  double-written by `enqueue_children`; only `skipped.txt` is. Removing line
+  209 leaves all other buckets untouched.
+- **Both target test files exist:** `scripts/tests/test_rn_decompose.py` and
+  `scripts/tests/test_rn_implement.py` are present; the latter already asserts
+  on `decomposed_count.txt` (line 370) and routes (`route_dec_decomposed`,
+  line 608), giving a natural home for the regression assertions.
+
 ## Acceptance Criteria
 
 1. A decomposed parent is no longer written to `skipped.txt` (or, if a
@@ -106,6 +147,49 @@ double-counting.
 (e.g. `decomposed_parents.txt`) that the `report` state does not sum into the
 `skipped` bucket.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/rn-decompose.yaml` — remove `echo "$ID" >> "$RUN_DIR/skipped.txt"` from `enqueue_children` state (~line 209)
+- `docs/guides/LOOPS_REFERENCE.md` — remove/rewrite "The parent is recorded as skipped (decomposed) in `skipped.txt`." in the `rn-decompose` Notes paragraph (~line 485) [wiring pass]
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/rn-implement.yaml` — `report` state (~line 916) reads `skipped.txt` and `decomposed_count.txt` as disjoint buckets; no changes needed after the fix but verify tallies hold
+
+### Similar Patterns
+- N/A — no other loop writes the same parent ID to both a skip-tally file and a separate outcome counter
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue` — confirmed patterns and specific targets:_
+- `scripts/tests/test_rn_decompose.py` — add `test_enqueue_children_does_not_write_skipped_txt` to `TestDecompositionChain`; assert `"skipped.txt" not in data["states"]["enqueue_children"]["action"]` (BUG-2289 regression)
+- `scripts/tests/test_rn_implement.py` — add two tests to cover the disjointness invariant:
+  - `test_skip_issue_is_sole_skipped_txt_writer` in `TestParentClassifier`: scan all states, assert only `skip_issue` and `init` write to `skipped.txt`
+  - `test_report_decomposed_and_skipped_use_distinct_sources` in `TestReportAndTerminal`: assert both `"decomposed_count.txt"` and `"skipped.txt"` appear in `report["action"]` as separate source references
+- Pattern: pure YAML-text assertions only (`yaml.safe_load` + `assert "..." in/not in action`); no subprocess or `tmp_path`; bug ID reference in docstring and assertion message; follow `TestDecompositionChain` / `TestReportAndTerminal` class conventions
+- No existing tests assert the erroneous `skipped.txt` write — the fix will not break any current test
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — `rn-decompose` Notes paragraph (~line 485) states "The parent is recorded as skipped (decomposed) in `skipped.txt`." — remove or rewrite to state that the decomposed parent is tracked via `decomposed_count.txt` and the `DECOMPOSED` outcome token written by `finalize_parent`
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. Remove the `echo "$ID" >> "$RUN_DIR/skipped.txt"` line from `enqueue_children` in `rn-decompose.yaml`
+2. Verify the `report` state in `rn-implement.yaml` reads `skipped.txt` and `decomposed_count.txt` without overlap — no further edits expected
+3. Add regression test in `test_rn_decompose.py`: `test_enqueue_children_does_not_write_skipped_txt` in `TestDecompositionChain` — assert `"skipped.txt" not in data["states"]["enqueue_children"]["action"]`
+4. Add two structural tests in `test_rn_implement.py`: `test_skip_issue_is_sole_skipped_txt_writer` (scan all states, assert only `skip_issue`/`init` write to `skipped.txt`) and `test_report_decomposed_and_skipped_use_distinct_sources` (assert both tally files appear in `report["action"]` as separate references)
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Update `docs/guides/LOOPS_REFERENCE.md` (~line 485) — remove or rewrite "The parent is recorded as skipped (decomposed) in `skipped.txt`." in the `rn-decompose` Notes paragraph to reflect that the decomposed parent is tracked via `decomposed_count.txt` and the `DECOMPOSED` outcome token
+
 ## Impact
 
 - **Priority**: P3 — Telemetry inaccuracy in session reports; does not block
@@ -121,4 +205,7 @@ double-counting.
 **Open** | Created: 2026-06-25 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-25T14:18:38 - `0dd67099-f064-444a-8696-874bdae766b0.jsonl`
+- `/ll:refine-issue` - 2026-06-25T14:05:29 - `cd1382df-2f0c-4a2c-9267-f984e7cc89aa.jsonl`
+- `/ll:format-issue` - 2026-06-25T14:01:09 - `825fcb47-9057-4fbe-b73f-2ff9366825b5.jsonl`
 - `/ll:capture-issue` - 2026-06-25T13:53:17Z - `fe374318-c8a2-454a-82dd-24bd83653458.jsonl`

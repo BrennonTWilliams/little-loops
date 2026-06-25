@@ -7,8 +7,24 @@ priority: P2
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 decision_ref: ARCHITECTURE-053
-relates_to: [EPIC-2257, BUG-938, BUG-885, BUG-2266]
-labels: [epic, packaging, templates, host-compat, cross-host, install, path-resolution]
+relates_to:
+- EPIC-2257
+- BUG-938
+- BUG-885
+- BUG-2266
+- ENH-2285
+- ENH-2286
+- ENH-2287
+- ENH-2288
+- ENH-2291
+labels:
+- epic
+- packaging
+- templates
+- host-compat
+- cross-host
+- install
+- path-resolution
 ---
 
 # EPIC-2279: Wheel-self-sufficient package data + unified asset resolver
@@ -84,6 +100,8 @@ ENH-2277 gates the result:
   deploy + unified resolver precedence.
 - **ENH-2277** (P3) — Left-shift gates (manifest-completeness check + escape lint
   + wheel smoke test). *Closes the class.*
+- **ENH-2291** (P3) — Update doc/agent/skill path references after BUG-2275
+  hooks in-package move. *Documentation follow-up; depends on BUG-2275.*
 
 ## Acceptance Criteria
 
