@@ -171,6 +171,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-06-25 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25T15:00:00 - `acd5edc6-b165-4636-a1b4-29ea5a58dcc5.jsonl`
 - `/ll:wire-issue` - 2026-06-25T14:25:22 - `e65f1034-5dff-4e4e-8a88-69da0e6d888c.jsonl`
 - `/ll:refine-issue` - 2026-06-25T14:17:21 - `ef18e2b4-2e0b-447e-a13e-de18997666b3.jsonl`
 - `/ll:format-issue` - 2026-06-25T14:05:47 - `fb5dcf44-bdaf-4d95-85d4-261312bfa8ee.jsonl`
