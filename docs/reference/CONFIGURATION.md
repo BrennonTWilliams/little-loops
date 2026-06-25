@@ -541,7 +541,7 @@ happening lately" summary. Default: disabled. Run `ll-history-context --project`
 |-----|------|---------|-------------|
 | `history.session_digest.enabled` | `boolean` | `true` | Gate flag — set `false` to disable injection. |
 | `history.session_digest.days` | `integer` | `7` | Freshness window in days; rows older than this are excluded. |
-| `history.session_digest.char_cap` | `integer` | `800` | Hard character ceiling on the injected block. Truncates with `+N more`. |
+| `history.session_digest.char_cap` | `integer` | `1200` | Hard character ceiling on the injected block. Truncates with `+N more`. |
 | `history.session_digest.sections` | `list[str]` | `[]` | Ordered list of section keys to render. Empty = all providers. Supported: `"touched_files"`, `"completed_issues"`, `"recurring_corrections"`. |
 
 #### `history.evolution`

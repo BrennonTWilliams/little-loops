@@ -1,6 +1,6 @@
 # Issue Template Guide (v2.0)
 
-**Last Updated**: 2026-02-10
+**Last Updated**: 2026-06-25
 **Template Version**: 2.0 (Optimized for AI Implementation)
 
 ## Overview

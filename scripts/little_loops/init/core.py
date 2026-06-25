@@ -112,7 +112,6 @@ def build_config(
         "session_digest": {
             "enabled": session_digest_enabled,
             "days": 7,
-            "char_cap": 1200,
         }
     }
 

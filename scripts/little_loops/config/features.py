@@ -714,7 +714,7 @@ class SessionDigestConfig:
 
     enabled: bool = True
     days: int = 7
-    char_cap: int = 800
+    char_cap: int = 1200
     sections: list[str] = field(default_factory=list)
 
     @classmethod
@@ -723,7 +723,7 @@ class SessionDigestConfig:
         return cls(
             enabled=data.get("enabled", True),
             days=data.get("days", 7),
-            char_cap=data.get("char_cap", 800),
+            char_cap=data.get("char_cap", 1200),
             sections=data.get("sections", []),
         )
 

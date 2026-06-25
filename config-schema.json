@@ -1612,7 +1612,7 @@
             },
             "char_cap": {
               "type": "integer",
-              "default": 800,
+              "default": 1200,
               "description": "Maximum characters for the digest block."
             },
             "sections": {

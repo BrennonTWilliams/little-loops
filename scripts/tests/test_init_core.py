@@ -498,7 +498,7 @@ class TestBuildConfig:
         config = build_config(match)
         sd = config["history"]["session_digest"]
         assert sd["days"] == 7
-        assert sd["char_cap"] == 1200
+        assert "char_cap" not in sd
 
     def test_history_session_digest_disabled_via_choice(
         self, fake_templates: Path, tmp_project: Path

@@ -1,6 +1,6 @@
 # Host Compatibility Matrix
 
-> **Last Updated: 2026-06-19** — update this date whenever a matrix cell changes status.
+> **Last Updated: 2026-06-25** — update this date whenever a matrix cell changes status.
 
 little-loops integrates with multiple coding-agent host CLIs. This page is
 the authoritative parity matrix — what is wired where, and which gaps are
