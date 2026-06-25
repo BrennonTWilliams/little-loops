@@ -2,7 +2,8 @@
 id: ENH-2272
 type: ENH
 priority: P3
-status: open
+status: done
+size: Very Large
 captured_at: '2026-06-24T22:17:07Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
@@ -539,7 +540,22 @@ _Updated by `/ll:confidence-check` on 2026-06-25_
 - FEAT-2274 still open — tier-3 bundle path works locally (`scripts/little_loops/templates/` staged), but pyproject.toml packaging not yet merged; implement `resolve_templates_dir()` using `get_bundled_templates_dir()` as tier-3, validate wheel packaging post-FEAT-2274 merge
 - `_run_apply()` vs `_run_yes()` asymmetry — mirror `deploy_design_tokens` (`_run_yes()` only); document this precedent in the commit message (no blocking gap, implementer instruction only)
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-06-25
+- **Reason**: Issue too large for single session
+
+### Decomposed Into
+- ENH-2285: Unified 4-tier template resolver in issue_template.py
+- ENH-2286: ll-issues sections CLI subcommand
+- ENH-2287: deploy_issue_templates() + full init wiring
+- ENH-2288: Callsite rewrites (6 files) + docs updates
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-06-25T00:00:00Z - `fffe04a2-92e2-4f19-bafe-0d8c500f9b47.jsonl`
 - `/ll:confidence-check` - 2026-06-25T16:00:00Z - `35673248-c074-4cec-bbe7-79fa8b2d18f6.jsonl`
 - `/ll:refine-issue` - 2026-06-25T07:20:24 - `1ca16fef-a5e2-48b5-8b75-abcf46c496e5.jsonl`
 - `/ll:confidence-check` - 2026-06-25T08:00:00Z - `5f0e8d2e-107a-4306-983f-dd49d06cf703.jsonl`

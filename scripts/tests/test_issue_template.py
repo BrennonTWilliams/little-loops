@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,6 +12,7 @@ from little_loops.issue_template import (
     assemble_issue_markdown,
     get_bundled_templates_dir,
     load_issue_sections,
+    resolve_templates_dir,
 )
 
 BUNDLED_TEMPLATES = get_bundled_templates_dir()
@@ -214,3 +216,41 @@ class TestAssembleIssueMarkdown:
         )
         assert "## Labels" in result
         assert "`enhancement`, `sync`" in result
+
+
+class TestResolveTemplatesDir:
+    """Tests for resolve_templates_dir 4-tier precedence lookup."""
+
+    def _make_config(self, templates_dir: str | None, project_root: Path) -> SimpleNamespace:
+        return SimpleNamespace(
+            issues=SimpleNamespace(templates_dir=templates_dir),
+            project_root=project_root,
+        )
+
+    def test_uses_config_templates_dir(self, tmp_path: Path) -> None:
+        """Tier 1: explicit config override is returned when set."""
+        custom_templates = tmp_path / "custom_templates"
+        custom_templates.mkdir()
+        config = self._make_config(str(custom_templates), tmp_path)
+        assert resolve_templates_dir(config) == custom_templates
+
+    def test_uses_ll_templates_dir(self, tmp_path: Path) -> None:
+        """Tier 2: .ll/templates/ is returned when it exists and no override is set."""
+        ll_templates = tmp_path / ".ll" / "templates"
+        ll_templates.mkdir(parents=True)
+        config = self._make_config(None, tmp_path)
+        assert resolve_templates_dir(config) == ll_templates
+
+    def test_falls_back_to_bundle(self, tmp_path: Path) -> None:
+        """Tier 3: bundled templates/ is returned when neither tier 1 nor tier 2 applies."""
+        config = self._make_config(None, tmp_path)
+        assert resolve_templates_dir(config) == get_bundled_templates_dir()
+
+    def test_config_override_beats_ll_templates(self, tmp_path: Path) -> None:
+        """Tier 1 takes precedence over tier 2 when both exist."""
+        ll_templates = tmp_path / ".ll" / "templates"
+        ll_templates.mkdir(parents=True)
+        custom_templates = tmp_path / "custom_templates"
+        custom_templates.mkdir()
+        config = self._make_config(str(custom_templates), tmp_path)
+        assert resolve_templates_dir(config) == custom_templates

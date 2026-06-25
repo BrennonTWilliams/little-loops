@@ -10,7 +10,10 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from little_loops.config import BRConfig
 
 
 def get_bundled_templates_dir() -> Path:
@@ -30,6 +33,33 @@ def _default_templates_dir() -> Path:
         env_path = Path(env_root) / "templates"
         if env_path.is_dir():
             return env_path
+    return get_bundled_templates_dir()
+
+
+def resolve_templates_dir(config: BRConfig) -> Path:
+    """Return the templates directory using 4-tier precedence lookup.
+
+    Tiers (highest to lowest priority):
+
+    1. ``config.issues.templates_dir`` — explicit config override
+    2. ``<project_root>/.ll/templates/`` — per-project deployed copy
+    3. Bundled in-package ``templates/`` (always available)
+
+    The fourth tier (``CLAUDE_PLUGIN_ROOT`` env var) lives in
+    :func:`_default_templates_dir` and applies only to legacy callers of
+    :func:`load_issue_sections` that pass no ``templates_dir``.
+
+    Args:
+        config: Project configuration.
+
+    Returns:
+        Path to the resolved templates directory.
+    """
+    if config.issues.templates_dir:
+        return Path(config.issues.templates_dir)
+    ll_templates = config.project_root / ".ll" / "templates"
+    if ll_templates.exists():
+        return ll_templates
     return get_bundled_templates_dir()
 
 
