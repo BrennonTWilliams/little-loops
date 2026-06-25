@@ -1,6 +1,7 @@
 ---
 id: ENH-2290
-title: audit-loop-run should auto-scale --tail to run size instead of defaulting to 200
+title: audit-loop-run should auto-scale --tail to run size instead of defaulting to
+  200
 priority: P4
 type: ENH
 status: open
@@ -11,6 +12,12 @@ labels:
 - audit-loop-run
 - skills
 - diagnostics
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 23
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2290: audit-loop-run should auto-scale --tail to run size instead of defaulting to 200
