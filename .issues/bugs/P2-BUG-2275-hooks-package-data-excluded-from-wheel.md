@@ -151,12 +151,33 @@ not per-host-adapted plugin assets.
 - `scripts/pyproject.toml` — bundle `hooks/prompts/` and `hooks/adapters/` as
   package data (git mv into `little_loops/` per the BUG-885 precedent, or a
   `force-include` stanza).
+- `hooks/scripts/user-prompt-check.sh` — **critical wiring gap**: this Bash
+  shell script (Claude Code host path) has its own independent
+  `SCRIPT_DIR`-relative read of `optimize-prompt-hook.md`
+  (`${SCRIPT_DIR}/../prompts/optimize-prompt-hook.md`) that is completely
+  separate from the Python `_PROMPT_FILE` fix. If `optimize-prompt-hook.md`
+  moves into the Python package, this script's path traversal breaks for the
+  Claude Code host entirely. Must be updated alongside the Python fix —
+  either redirect to the in-package path via `python -c "import ..."` or
+  use the same env-var-first / package-fallback pattern. [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/hooks/__init__.py` — `main_hooks()` dispatch to
   `user_prompt_submit.handle`.
 - `scripts/little_loops/init/cli.py:69` — `install_codex_adapter(project_root,
   plugin_root, ...)` call site.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/__init__.py` — re-exports `install_codex_adapter`
+  in `__all__` (line 16, 36); return-type change (None/False/True sentinel) is
+  a public API break at this surface. [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/init/tui.py` — calls `_dispatch_host_adapters()` at
+  line 868 (`_apply_config()`), which internally calls `install_codex_adapter()`.
+  Inherits the warning behavior without direct code changes, but must be covered
+  in testing. [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/hooks/__main__.py` — imports and invokes `main_hooks()`
+  as the CLI entry point; no code changes needed, but exercises the dispatch
+  path that fires `user_prompt_submit.handle()`. [Agent 1 finding]
 
 ### Similar Patterns
 - `issue_template._default_templates_dir()` — BUG-2271 (templates consumer).
@@ -213,6 +234,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`scripts/tests/test_init_core.py`** — primary init test file (not `test_ll_init.py`); contains `_PROJECT_ROOT` constant used by `patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT)` (line 1104) — the established pattern for patching `_plugin_root` to the real repo root.
 - **Test pattern to follow for env-var coverage**: `TestFindPluginRoot` class in `scripts/tests/test_skill_expander.py` uses `monkeypatch.setenv` / `monkeypatch.delenv` to exercise env-var-first and fallback branches independently.
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that will break and must be updated:**
+- `scripts/tests/test_init_core.py:864` — `TestInstallCodexAdapter.test_skips_when_template_missing`: asserts `installed is False` for the missing-template case. After the sentinel change (`None` = source-missing, `False` = dest-exists skip, `True` = installed), this assertion must change to `assert installed is None`. [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_codex_adapter.py` — `TestCodexAdapterIntegration`: `ADAPTER_DIR` is hardcoded to `REPO_ROOT / "hooks" / "adapters" / "codex"`. If any of the Codex adapter files move into the package, **all six tests** in this class will break:
+  - `test_adapter_files_exist` — asserts shell scripts exist at old path
+  - `test_adapter_scripts_are_executable` — asserts executability at old path
+  - `test_hooks_json_references_plugin_root_placeholder` — reads `hooks.json` at old path
+  - `test_hooks_json_uses_matcher_startup`, `test_hooks_json_has_user_prompt_submit`, `test_hooks_json_has_post_tool_use` — same
+  - `test_prompt_submit_sets_ll_hook_host_codex` + `test_adapter_sets_ll_hook_host_codex` + `test_post_tool_use_sets_ll_hook_host_codex` — run shell scripts at old path
+  Update `ADAPTER_DIR` to the new in-package location after the move. [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_hooks_integration.py:1313` — `test_optimization_template_injected_when_claude_plugin_root_set` runs `user-prompt-check.sh` end-to-end via subprocess; if the Bash script's `SCRIPT_DIR`-relative path to `optimize-prompt-hook.md` is not updated, this assertion fails even with the Python fix applied. [Agent 2 finding]
+
+**New tests to write:**
+- `scripts/tests/test_hook_user_prompt_submit.py` — currently no test calls `handle()` with `prompt_optimization.enabled=True` and asserts `result.stdout` contains template content. Add: (a) test for the in-package resolver path (env var unset; assert render fires from `Path(__file__).parent / "prompts" / "..."`); (b) test for env-var override (monkeypatch `CLAUDE_PLUGIN_ROOT`; assert resolver uses env path). Follow `TestFindPluginRoot` pattern from `test_skill_expander.py`. [Agent 3 finding]
+- `scripts/tests/test_init_core.py` — add test for the new warning path in `_dispatch_host_adapters()` when `install_codex_adapter()` returns `None` (source-missing). Follow `test_hosts_pi_graceful_unavailable` pattern at line 1504: assert warning string in `capsys.readouterr().err`. [Agent 3 finding]
+
 ### Packaging (see FEAT-2274)
 - FEAT-2274 owns `templates/`; this bug extends the same wheel-delivery decision
   to the consumed `hooks/` subtrees. Coordinate the packaging mechanism (git mv
@@ -221,6 +259,48 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Documentation
 - `docs/reference/API.md` — `install_codex_adapter`, `user_prompt_submit`.
 - `docs/reference/HOST_COMPATIBILITY.md` — Codex adapter install prerequisites.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` — directory tree (lines 85, 102) lists
+  `hooks/prompts/optimize-prompt-hook.md` and `hooks/adapters/codex/prompt-submit.sh`
+  at repo-root-relative paths; also line 1186 mentions `hooks/prompts/continuation-prompt-template.md`.
+  Update if either directory moves in-package. [Agent 2 finding]
+- `docs/development/TROUBLESHOOTING.md` — line 1021 instructs `ls -la hooks/prompts/optimize-prompt-hook.md`;
+  lines 853-854 have `chmod +x hooks/adapters/codex/session-start.sh` and
+  `chmod +x hooks/adapters/codex/pre-compact.sh`. Both become stale if files
+  move in-package. [Agent 2 finding]
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — line 152 references
+  `hooks/prompts/optimize-prompt-hook.md` by path in the `user_prompt_submit`
+  description. [Agent 2 finding]
+- `docs/codex/getting-started.md` — shows the rendered command string
+  `bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/session-start.sh`; becomes
+  stale if shell script paths change. [Agent 2 finding]
+- `docs/codex/usage.md` — shows an example `hooks.json` fragment with
+  `bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/pre-tool-use.sh`. [Agent 2 finding]
+- `docs/codex/README.md` — states adapter is at `hooks/adapters/codex/`
+  (line 24); update if directory moves. [Agent 2 finding]
+- `docs/claude-code/write-a-hook.md` — line 190 references
+  `hooks/adapters/codex/{session-start,pre-compact}.sh`; lines 324-325
+  link to `hooks/adapters/codex/README.md`. [Agent 2 finding]
+
+### Agents and Skills
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `agents/consistency-checker.md` — "Hooks → Prompts" table (line 169) has
+  a hardcoded row with `hooks/prompts/optimize-prompt-hook.md` as the resolved
+  path. Update if file moves in-package. [Agent 2 finding]
+- `.codex/agents/consistency-checker.toml` — mirrors the same table at
+  line 143. [Agent 2 finding]
+- `skills/audit-claude-config/SKILL.md` — line 44 references
+  `hooks/prompts/*.md` and `hooks/adapters/` as canonical audit-scope paths.
+  [Agent 2 finding]
+- `skills/configure/areas.md` — line 890 references `hooks/adapters/codex/`
+  as the Codex adapter location. [Agent 2 finding]
+- `skills/audit-claude-config/wave1-prompts.md` — line 111 defines the audit
+  scope as `hooks/prompts/*.md`; once `optimize-prompt-hook.md` moves
+  in-package, this glob silently stops matching it and the audit no longer
+  verifies the optimization template exists. Update to check the in-package
+  path or parameterize the glob. [Agent 2 finding — second wiring pass]
 
 ### Configuration
 - N/A — packaging and source layout changes only; no runtime configuration affected (`pyproject.toml` is listed under Files to Modify as a build-system change, not a runtime config).
@@ -236,6 +316,56 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    silent degradation.
 5. `python -m pytest scripts/tests/`; verify both reproduction steps pass in a
    clean venv with `CLAUDE_PLUGIN_ROOT` unset.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `hooks/scripts/user-prompt-check.sh` — this Bash file (Claude Code
+   host) has its own `${SCRIPT_DIR}/../prompts/optimize-prompt-hook.md` path
+   that is completely separate from the Python fix. After moving
+   `optimize-prompt-hook.md` in-package, update this script to resolve the
+   template from the new location (e.g., via
+   `python -c "import little_loops.hooks; print(Path(little_loops.hooks.__file__).parent / 'prompts' / 'optimize-prompt-hook.md')"`)
+   or consolidate so only the Python dispatcher reads the template file and
+   the Bash script never reads it directly.
+7. Decide and document the `{{LL_PLUGIN_ROOT}}` substitution for shell script
+   paths — the `hooks/adapters/codex/hooks.json` template embeds
+   `bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/<script>.sh`. If the shell
+   scripts also move in-package, `install_codex_adapter()` must substitute a
+   different base path (e.g., `Path(writers.__file__).parent` or the Python
+   package install path) rather than `plugin_root`. This decision affects what
+   `.codex/hooks.json` files look like for pip-installed users; make it
+   explicit before implementing Step 1.
+8. Update `scripts/tests/test_codex_adapter.py` — `ADAPTER_DIR` is hardcoded
+   to `REPO_ROOT / "hooks" / "adapters" / "codex"`; update to the new path
+   (in-package or repo-relative depending on Step 7's decision). Also update
+   the 6+ tests that probe file existence, executability, and `hooks.json`
+   content at the old path.
+9. Update `scripts/tests/test_init_core.py:864` — change
+   `assert installed is False` to `assert installed is None` in
+   `test_skips_when_template_missing` after the sentinel change.
+10. Update docs — `docs/ARCHITECTURE.md` directory tree (lines 85, 102, 1186),
+    `docs/development/TROUBLESHOOTING.md` (lines 853-854, 1021),
+    `docs/guides/BUILTIN_HOOKS_GUIDE.md` (line 152),
+    `docs/codex/getting-started.md`, `docs/codex/usage.md`,
+    `docs/codex/README.md`, `docs/claude-code/write-a-hook.md` (lines 190, 324-325)
+    to reflect new paths.
+11. Update agent/skill files — `agents/consistency-checker.md` (line 169),
+    `.codex/agents/consistency-checker.toml` (line 143),
+    `skills/audit-claude-config/SKILL.md` (line 44),
+    `skills/configure/areas.md` (line 890) to reflect new paths.
+12. Update `skills/audit-claude-config/wave1-prompts.md` (line 111) —
+    the audit-scope glob `hooks/prompts/*.md` will no longer match
+    `optimize-prompt-hook.md` once it moves in-package; update to also
+    check `little_loops/hooks/prompts/` or replace with both paths.
+    [second wiring pass]
+13. If Step 7's decision is to move shell scripts in-package:
+    update `hooks/adapters/codex/hooks.json` template body — the
+    `{{LL_PLUGIN_ROOT}}/hooks/adapters/codex/<script>.sh` substitution
+    pattern must be replaced with the in-package Python package install
+    path so installed `.codex/hooks.json` files resolve correctly on
+    pip-installed systems. [second wiring pass]
 
 ## Codebase Research Findings
 
@@ -299,5 +429,7 @@ Two files exist: `optimize-prompt-hook.md` (the one read by `user_prompt_submit.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-25T00:05:35 - `43ed8b20-75e9-4cc1-9df5-86b5a03e80d8.jsonl`
+- `/ll:wire-issue` - 2026-06-24T23:44:40 - `3c0bdb5f-d2f8-4c48-b8d5-26b2377e2af9.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:31:39 - `79c0e758-e055-44ee-9a4e-08b736264d83.jsonl`
 - `/ll:format-issue` - 2026-06-24T23:22:53 - `805d4898-1c18-40f2-ad99-fdac06f4d00e.jsonl`

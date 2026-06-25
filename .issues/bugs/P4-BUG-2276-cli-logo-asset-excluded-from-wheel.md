@@ -9,7 +9,7 @@ discovered_by: capture-issue
 parent: EPIC-2279
 relates_to: [BUG-2275, FEAT-2274, BUG-885]
 labels: [bug, packaging, assets, install, path-resolution]
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-2276: CLI logo asset excluded from the wheel — `get_logo()` silently returns None on non-editable installs
@@ -76,10 +76,32 @@ wheel (FEAT-2274's principle). Either:
 1. `git mv assets/ll-cli-logo.txt scripts/little_loops/assets/ll-cli-logo.txt`
    (BUG-885 precedent) and repoint `get_logo()` to
    `Path(__file__).parent / "assets" / "ll-cli-logo.txt"`; or
+
+> **Selected:** Option 1 (git mv + path fix) — BUG-885 precedent; no `pyproject.toml` change; single-line `get_logo()` fix
+
 2. `force-include` `assets/` into the wheel and use the shared resolver.
 
 Add `assets/` to FEAT-2274's packaging sweep so it lands with the other
 package-data moves.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-24.
+
+**Selected**: Option 1 — `git mv` asset into package + path fix
+
+**Reasoning**: Option 1 directly applies the BUG-885 precedent used by two production files (`fsm/fragments.py:_BUILTIN_LOOPS_DIR`, `cli/loop/_helpers.py:824`) — move the asset inside the package where the existing `little_loops/**` wheel glob captures it automatically, then fix the one-line path expression. Option 2 builds entirely from scratch (no `importlib.resources` or `force-include` precedent in the codebase), still requires the same path fix, and would pull unrelated marketing images (`assets/little-loops.jpeg`) into the wheel.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option 1 (git mv + path fix) | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option 2 (force-include) | 0/3 | 0/3 | 1/3 | 1/3 | 2/12 |
+
+**Key evidence**:
+- Option 1: BUG-885 precedent in `fsm/fragments.py:38` and `cli/loop/_helpers.py:824`; existing `little_loops/**` glob requires zero `pyproject.toml` changes; `TestLoadSkills` patch pattern (`test_action.py`) directly applicable.
+- Option 2: No `importlib.resources` or `force-include` anywhere in the codebase; `assets/` directory contains non-package marketing images; path expression must change regardless of inclusion strategy.
 
 ## Integration Map
 
@@ -97,9 +119,11 @@ package-data moves.
 - BUG-885 — moved `loops/` in-package; the precedent.
 
 ### Tests
-- `scripts/tests/test_ll_loop_execution.py:TestQuietMode.test_quiet_mode_suppresses_logo` — existing quiet-mode test; must remain passing after the path fix.
-- New test needed: follow `scripts/tests/test_action.py:TestLoadSkills` patch pattern — `patch("little_loops.logo.Path", return_value=<sim-site-packages-path>)` — to assert `get_logo()` returns the file content when called from a simulated non-editable location.
-- Model for fixture shape: `scripts/tests/test_builtin_loops.py` — tests `get_builtin_loops_dir()` after the BUG-885 in-package move using `Path(__file__).parent.parent / "little_loops" / "loops"` to reference the in-package location.
+- `scripts/tests/test_ll_loop_execution.py:TestQuietMode.test_quiet_mode_suppresses_logo` — existing quiet-mode test; must remain passing after the path fix. Won't mechanically break (asserts absence of logo in quiet mode), but is insufficient as a correctness guard since it passes vacuously if `get_logo()` returns `None`.
+- New test needed: follow `scripts/tests/test_builtin_loops.py:BUILTIN_LOOPS_DIR` pattern (simpler than Path mocking) — declare `LOGO_PATH = Path(__file__).parent.parent / "little_loops" / "assets" / "ll-cli-logo.txt"` at test module top level, then assert `LOGO_PATH.exists()` and `get_logo()` returns a non-None string containing logo content. No `Path` mock needed; the in-package path resolves correctly from the test file's location in an editable dev install [Agent 3 finding].
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Confirmed: no additional test files beyond `test_ll_loop_execution.py` import `logo`, `get_logo`, or `print_logo`.
 
 ### Codebase Research Findings
 
@@ -112,7 +136,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`scripts/little_loops/assets/` does not yet exist** and must be created as part of the move.
 
 ### Documentation
-- N/A — no user-facing documentation references the logo asset path.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/OUTPUT_STYLING.md` — "Logo: `scripts/little_loops/logo.py`" section references `assets/ll-cli-logo.txt` (repo-root path); must be updated to `scripts/little_loops/assets/ll-cli-logo.txt` after the `git mv` [Agent 2 finding]
 
 ### Configuration
 - N/A — no configuration files affected; the fix is a move + path update only.
@@ -122,7 +148,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 1. **Move asset into package** (BUG-885 precedent): `mkdir -p scripts/little_loops/assets/ && git mv assets/ll-cli-logo.txt scripts/little_loops/assets/ll-cli-logo.txt`. No `pyproject.toml` change needed — the existing `little_loops/**` glob captures the new subdirectory automatically.
 2. **Repoint `get_logo()`** in `scripts/little_loops/logo.py:get_logo()`: change `Path(__file__).parent.parent.parent / "assets" / "ll-cli-logo.txt"` → `Path(__file__).parent / "assets" / "ll-cli-logo.txt"` (one parent from `little_loops/logo.py` → `little_loops/`).
 3. **Add test** following `scripts/tests/test_action.py:TestLoadSkills` patch pattern: assert `get_logo()` returns the ASCII content when invoked with a simulated non-editable `__file__` path outside the source tree.
-4. **Build and verify**: `python -m build && unzip -l dist/*.whl | grep ll-cli-logo.txt` (aligns with ENH-2277's wheel smoke test proposal).
+4. **Update `docs/reference/OUTPUT_STYLING.md`**: In the "Logo" section, update the path reference from `assets/ll-cli-logo.txt` to `scripts/little_loops/assets/ll-cli-logo.txt` to reflect the new in-package location [Wiring Phase].
+5. **Build and verify**: `python -m build && unzip -l dist/*.whl | grep ll-cli-logo.txt` (aligns with ENH-2277's wheel smoke test proposal).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Update `docs/reference/OUTPUT_STYLING.md` — "Logo" section references the old `assets/ll-cli-logo.txt` repo-root path; update to `scripts/little_loops/assets/ll-cli-logo.txt` after the `git mv`
 
 ## Impact
 
@@ -148,5 +181,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-24T23:59:51 - `73a37eb2-f3ec-44e0-ac15-6eae379762fd.jsonl`
+- `/ll:decide-issue` - 2026-06-24T23:45:44 - `3a5eb345-fd4d-4bec-870b-28d824f9c27e.jsonl`
 - `/ll:refine-issue` - 2026-06-24T23:35:47 - `8a54fdd7-3020-4216-95d6-fd9489d38b88.jsonl`
 - `/ll:format-issue` - 2026-06-24T23:25:56 - `7a6b079f-6b9c-4751-8816-e0520ba8c865.jsonl`
