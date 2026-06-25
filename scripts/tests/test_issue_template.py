@@ -7,9 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from little_loops.issue_template import assemble_issue_markdown, load_issue_sections
+from little_loops.issue_template import (
+    assemble_issue_markdown,
+    get_bundled_templates_dir,
+    load_issue_sections,
+)
 
-BUNDLED_TEMPLATES = Path(__file__).parent.parent.parent / "templates"
+BUNDLED_TEMPLATES = get_bundled_templates_dir()
 
 
 @pytest.fixture
@@ -85,13 +89,14 @@ class TestLoadIssueSections:
         assert "_meta" in data
         assert data["_meta"]["type"] == "BUG"
 
-    def test_load_default_env_var_missing_templates_raises(
+    def test_falls_back_to_bundled_when_env_var_has_no_templates(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """CLAUDE_PLUGIN_ROOT set but no templates/ subdir raises FileNotFoundError."""
+        """CLAUDE_PLUGIN_ROOT set but no templates/ subdir falls back to bundled."""
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
-        with pytest.raises(FileNotFoundError):
-            load_issue_sections("BUG")
+        data = load_issue_sections("BUG")
+        assert "_meta" in data
+        assert data["_meta"]["type"] == "BUG"
 
 
 class TestAssembleIssueMarkdown:

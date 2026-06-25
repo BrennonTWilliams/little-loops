@@ -193,7 +193,7 @@ Check active required rules against the issue's proposed approach (gracefully sk
 
 ### 3. Identify Gaps
 
-Analyze content against type-specific checklists defined in the per-type template `templates/{type}-sections.json` v2.0 (relative to the little-loops plugin directory), where `{type}` is `bug`, `feat`, or `enh` based on the issue type.
+Analyze content against type-specific checklists defined in the per-type template `scripts/little_loops/templates/{type}-sections.json` v2.0 (relative to the little-loops plugin directory), where `{type}` is `bug`, `feat`, or `enh` based on the issue type.
 
 See [templates.md](templates.md) for:
 - Template v2.0 structure and section definitions
@@ -218,7 +218,7 @@ For each section that has content, evaluate against these checks:
 
 #### Type-Specific Quality Checks
 
-Read `quality_checks.[TYPE]` from the per-type template `templates/{type}-sections.json` for the issue's type (BUG/FEAT/ENH/EPIC). Apply each quality check to the corresponding section content.
+Read `quality_checks.[TYPE]` from the per-type template `scripts/little_loops/templates/{type}-sections.json` for the issue's type (BUG/FEAT/ENH/EPIC). Apply each quality check to the corresponding section content.
 
 #### Classification
 

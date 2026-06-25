@@ -30,6 +30,8 @@ BASH: str = _BASH or "bash"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ADAPTER_DIR = REPO_ROOT / "hooks" / "adapters" / "codex"
+# hooks.json ships inside the package (FEAT-2274); shell scripts stay at repo root
+HOOKS_JSON_DIR = REPO_ROOT / "scripts" / "little_loops" / "hooks" / "adapters" / "codex"
 SESSION_START = ADAPTER_DIR / "session-start.sh"
 PRE_COMPACT = ADAPTER_DIR / "pre-compact.sh"
 PROMPT_SUBMIT = ADAPTER_DIR / "prompt-submit.sh"
@@ -45,7 +47,7 @@ class TestCodexAdapterIntegration:
         assert PRE_COMPACT.is_file()
         assert PROMPT_SUBMIT.is_file()
         assert POST_TOOL_USE.is_file()
-        assert (ADAPTER_DIR / "hooks.json").is_file()
+        assert (HOOKS_JSON_DIR / "hooks.json").is_file()
         assert (ADAPTER_DIR / "README.md").is_file()
 
     def test_adapter_scripts_are_executable(self) -> None:
@@ -70,14 +72,14 @@ class TestCodexAdapterIntegration:
         already-running session; restricting to ``startup`` matches the
         semantics the Claude Code adapter already relies on.
         """
-        data = json.loads((ADAPTER_DIR / "hooks.json").read_text())
+        data = json.loads((HOOKS_JSON_DIR / "hooks.json").read_text())
         session_start_groups = data["hooks"]["SessionStart"]
         assert len(session_start_groups) >= 1
         assert session_start_groups[0]["matcher"] == "startup"
 
     def test_hooks_json_references_plugin_root_placeholder(self) -> None:
         """Template must use ``{{LL_PLUGIN_ROOT}}`` for ``ll:init --codex`` to substitute at install time."""
-        raw = (ADAPTER_DIR / "hooks.json").read_text()
+        raw = (HOOKS_JSON_DIR / "hooks.json").read_text()
         assert "{{LL_PLUGIN_ROOT}}" in raw, (
             "hooks.json template must reference {{LL_PLUGIN_ROOT}} so the "
             "absolute plugin path is filled in at install time"
@@ -231,7 +233,7 @@ class TestCodexAdapterIntegration:
 
     def test_hooks_json_has_user_prompt_submit(self) -> None:
         """hooks.json must include a UserPromptSubmit entry pointing to prompt-submit.sh."""
-        data = json.loads((ADAPTER_DIR / "hooks.json").read_text())
+        data = json.loads((HOOKS_JSON_DIR / "hooks.json").read_text())
         assert "UserPromptSubmit" in data["hooks"], "hooks.json is missing UserPromptSubmit key"
         groups = data["hooks"]["UserPromptSubmit"]
         assert len(groups) >= 1
@@ -242,7 +244,7 @@ class TestCodexAdapterIntegration:
 
     def test_hooks_json_has_post_tool_use(self) -> None:
         """hooks.json must include a PostToolUse entry pointing to post-tool-use.sh (FEAT-1489)."""
-        data = json.loads((ADAPTER_DIR / "hooks.json").read_text())
+        data = json.loads((HOOKS_JSON_DIR / "hooks.json").read_text())
         assert "PostToolUse" in data["hooks"], "hooks.json is missing PostToolUse key"
         groups = data["hooks"]["PostToolUse"]
         assert len(groups) >= 1

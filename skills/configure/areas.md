@@ -1150,7 +1150,7 @@ After writing the config values, apply materialization logic:
 
   BUILTIN = ["default", "editorial-mono", "warm-paper"]
   PROFILE_DIR = <config.design_tokens.path>/<profiles_dir or "profiles">/<new_active>
-  TEMPLATE_DIR = templates/design-tokens/profiles/<new_active>
+  TEMPLATE_DIR = scripts/little_loops/templates/design-tokens/profiles/<new_active>
 
   If PROFILE_DIR does not exist:
     If new_active is in BUILTIN AND TEMPLATE_DIR exists:
@@ -1171,7 +1171,7 @@ After writing the config values, apply materialization logic:
 
   PROFILES_ROOT = <config.design_tokens.path>/<profiles_dir or "profiles">
   If PROFILES_ROOT does not exist:
-    Bash(python3:*): python3 -c "import shutil; shutil.copytree('templates/design-tokens/profiles', '<PROFILES_ROOT>', dirs_exist_ok=False)"
+    Bash(python3:*): python3 -c "import shutil; shutil.copytree('scripts/little_loops/templates/design-tokens/profiles', '<PROFILES_ROOT>', dirs_exist_ok=False)"
     Report: ✓ Installed all 3 built-in profiles → <PROFILES_ROOT>/
 
 ### Round 2 (3 questions — advanced)

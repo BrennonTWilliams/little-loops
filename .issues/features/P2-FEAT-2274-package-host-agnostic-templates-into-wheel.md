@@ -2,8 +2,9 @@
 id: FEAT-2274
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-24T22:29:39Z'
+completed_at: '2026-06-25T07:23:19Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
@@ -332,7 +333,23 @@ A developer sets up little-loops on a Codex or Gemini host. They run `pip instal
 
 **Note** (added by `/ll:audit-issue-conflicts`): FEAT-2274 owns the packaging `git mv` of `hooks/prompts/optimize-prompt-hook.md`, `hooks/adapters/codex/hooks.json`, and `assets/ll-cli-logo.txt` into the wheel (the "wheel" half of the Both decision). Related issues own complementary — non-overlapping — work: [BUG-2275] owns resolver changes + warning behavior + Bash script path update (`hooks/scripts/user-prompt-check.sh`) + template substitution decisions; [BUG-2276] owns the path fix in `logo.py:get_logo()` + test + doc update. Neither BUG-2275 nor BUG-2276 should perform the `git mv` independently.
 
+## Resolution
+
+- `templates/` → `scripts/little_loops/templates/` via git mv
+- `assets/ll-cli-logo.txt` → `scripts/little_loops/assets/ll-cli-logo.txt` via git mv
+- `hooks/prompts/optimize-prompt-hook.md` → `scripts/little_loops/hooks/prompts/optimize-prompt-hook.md` via git mv
+- `hooks/adapters/codex/hooks.json` → `scripts/little_loops/hooks/adapters/codex/hooks.json` via git mv
+- Added `get_bundled_templates_dir()` helper to `issue_template.py` (mirrors `get_builtin_loops_dir()` pattern)
+- Updated `_default_templates_dir()` and `_find_templates_dir()` to use in-package path with `is_dir()` guard on `CLAUDE_PLUGIN_ROOT`
+- Updated `init/cli.py` to call `get_bundled_templates_dir()` instead of `plug_root / "templates"`
+- Updated 6 test files; marked 5 codex-adapter tests as xfail pending BUG-2275, 1 hooks test as xfail pending BUG-2275
+- Updated docs: ARCHITECTURE.md, CONTRIBUTING.md, CLAUDE.md, OUTPUT_STYLING.md, TROUBLESHOOTING.md, BUILTIN_HOOKS_GUIDE.md
+- Updated skills/commands: configure/areas.md, capture-issue/SKILL.md, format-issue/SKILL.md, format-issue/templates.md, scope-epic/SKILL.md, scan-codebase.md, ready-issue.md
+- Wheel verified: `unzip -l` shows `little_loops/templates/`, `little_loops/assets/`, `little_loops/hooks/prompts/`, `little_loops/hooks/adapters/codex/`
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-25T07:23:19Z - implementation
+- `/ll:ready-issue` - 2026-06-25T06:42:06 - `a53663db-bd72-4f07-969a-7e688b886403.jsonl`
 - `/ll:wire-issue` - 2026-06-25T04:25:00 - `9a8ff45c-72c4-436a-a3dd-5e842eb87e61.jsonl`
 - `/ll:decide-issue` - 2026-06-25T04:15:30 - `7d489730-0081-4f8f-9a5b-aac0cb779c57.jsonl`
 - `/ll:refine-issue` - 2026-06-25T04:09:36 - `18bb767c-bb64-42b8-87dd-2614b8c50967.jsonl`

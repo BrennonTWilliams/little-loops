@@ -13,16 +13,24 @@ from pathlib import Path
 from typing import Any
 
 
+def get_bundled_templates_dir() -> Path:
+    """Return the in-package templates/ directory (works in all install modes)."""
+    return Path(__file__).resolve().parent / "templates"
+
+
 def _default_templates_dir() -> Path:
     """Return the bundled templates/ directory.
 
-    Checks CLAUDE_PLUGIN_ROOT env var first (non-editable installs), then falls
-    back to the __file__-relative path (editable dev installs).
+    Honors CLAUDE_PLUGIN_ROOT only when its templates/ subdirectory exists
+    (legacy override). Falls back to the in-package location so pip-installed
+    (non-editable) and editable installs both resolve correctly without env vars.
     """
     env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if env_root:
-        return Path(env_root) / "templates"
-    return Path(__file__).resolve().parent.parent.parent / "templates"
+        env_path = Path(env_root) / "templates"
+        if env_path.is_dir():
+            return env_path
+    return get_bundled_templates_dir()
 
 
 def load_issue_sections(issue_type: str, templates_dir: Path | None = None) -> dict[str, Any]:

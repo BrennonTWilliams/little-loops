@@ -83,7 +83,7 @@ configure_output(config.cli)   # or configure_output(None) for defaults
 
 ## Logo: `scripts/little_loops/logo.py`
 
-Reads and prints ASCII art from `assets/ll-cli-logo.txt`. Silent no-op if the file is missing.
+Reads and prints ASCII art from `scripts/little_loops/assets/ll-cli-logo.txt` (in-package since FEAT-2274). Silent no-op if the file is missing.
 
 ```python
 from little_loops.logo import print_logo, get_logo

@@ -333,7 +333,12 @@ class TestIntegration:
     """Integration tests against the actual bundled `default` profile."""
 
     _TEMPLATE_DIR = (
-        Path(__file__).parent.parent.parent / "templates" / "design-tokens" / "profiles" / "default"
+        Path(__file__).parent.parent
+        / "little_loops"
+        / "templates"
+        / "design-tokens"
+        / "profiles"
+        / "default"
     )
 
     def _skip_if_absent(self) -> None:
@@ -368,7 +373,7 @@ class TestIntegration:
 
         # Copy the whole templates/design-tokens/ tree so the profiles dir
         # structure carries over and the loader resolves profiles/default/.
-        src_root = Path(__file__).parent.parent.parent / "templates" / "design-tokens"
+        src_root = Path(__file__).parent.parent / "little_loops" / "templates" / "design-tokens"
         dest = tmp_path / ".ll" / "design-tokens"
         shutil.copytree(src_root, dest)
         config_dir = tmp_path / ".ll"

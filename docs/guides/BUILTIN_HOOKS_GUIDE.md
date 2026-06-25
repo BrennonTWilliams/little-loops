@@ -149,7 +149,7 @@ Fires every time you submit a prompt. Two independent jobs:
 
 ### Prompt optimization
 
-If your prompt looks like it could be sharpened, the hook renders `hooks/prompts/optimize-prompt-hook.md` and injects it as additional context so the model first clarifies intent. It **skips** prompts that are very short (<10 chars), start with `/`, `#`, or `?`, or begin with the bypass prefix.
+If your prompt looks like it could be sharpened, the hook renders `scripts/little_loops/hooks/prompts/optimize-prompt-hook.md` (in-package since FEAT-2274) and injects it as additional context so the model first clarifies intent. It **skips** prompts that are very short (<10 chars), start with `/`, `#`, or `?`, or begin with the bypass prefix.
 
 - `prompt_optimization.enabled` (default **true**)
 - `prompt_optimization.mode` — `quick` (default) or `thorough` (the latter can call the `prompt-optimizer` agent for codebase context)

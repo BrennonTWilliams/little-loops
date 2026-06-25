@@ -29,7 +29,7 @@ flowchart TB
     subgraph "Configuration"
         CFG[ll-config.json]
         SCHEMA[config-schema.json]
-        TPL[templates/*.json]
+        TPL[little_loops/templates/*.json]
     end
 
     subgraph "Python Automation"
@@ -183,27 +183,6 @@ little-loops/
 │   │   └── SKILL.md
 │   └── distill-traces/      # User-invoked
 │       └── SKILL.md
-├── templates/               # Project type configs
-│   ├── python-generic.json
-│   ├── javascript.json
-│   ├── typescript.json
-│   ├── go.json
-│   ├── rust.json
-│   ├── java-maven.json
-│   ├── java-gradle.json
-│   ├── dotnet.json
-│   ├── bug-sections.json
-│   ├── feat-sections.json
-│   ├── enh-sections.json
-│   ├── ll-goals-template.md
-│   ├── design-tokens/       # Built-in accessible default palette
-│   │   ├── primitives.json
-│   │   ├── semantic.json
-│   │   └── themes/
-│   │       ├── light.json
-│   │       └── dark.json
-│   ├── extension/           # Extension scaffold templates (.tmpl)
-│   └── generic.json
 └── scripts/                 # Python package
     └── little_loops/
         ├── __init__.py
@@ -318,22 +297,46 @@ little-loops/
         ├── extension.py             # Extension protocol, loader, and reference implementation
         ├── testing.py               # Offline LLTestBus test harness for extension development
         ├── output_parsing.py        # Shared output parsing (ll-auto, ll-parallel)
-        └── parallel/
-            ├── __init__.py
-            ├── orchestrator.py
-            ├── worker_pool.py
-            ├── merge_coordinator.py
-            ├── priority_queue.py
-            ├── git_lock.py
-            ├── file_hints.py       # File hint extraction
-            ├── overlap_detector.py  # File overlap detection
-            ├── types.py
-            └── tasks/
-                ├── README.md
-                ├── lint-all.yaml
-                ├── test-suite.yaml
-                ├── build-assets.yaml
-                └── health-check.yaml
+        ├── parallel/
+        │   ├── __init__.py
+        │   ├── orchestrator.py
+        │   ├── worker_pool.py
+        │   ├── merge_coordinator.py
+        │   ├── priority_queue.py
+        │   ├── git_lock.py
+        │   ├── file_hints.py       # File hint extraction
+        │   ├── overlap_detector.py  # File overlap detection
+        │   ├── types.py
+        │   └── tasks/
+        │       ├── README.md
+        │       ├── lint-all.yaml
+        │       ├── test-suite.yaml
+        │       ├── build-assets.yaml
+        │       └── health-check.yaml
+        ├── assets/                  # Package data: CLI assets
+        │   └── ll-cli-logo.txt
+        ├── templates/               # Package data: project-type configs and section templates
+        │   ├── python-generic.json
+        │   ├── javascript.json
+        │   ├── typescript.json
+        │   ├── go.json
+        │   ├── rust.json
+        │   ├── java-maven.json
+        │   ├── java-gradle.json
+        │   ├── dotnet.json
+        │   ├── bug-sections.json
+        │   ├── feat-sections.json
+        │   ├── enh-sections.json
+        │   ├── ll-goals-template.md
+        │   ├── design-tokens/       # Built-in accessible default palette
+        │   ├── extension/           # Extension scaffold templates (.tmpl)
+        │   └── generic.json
+        └── hooks/                   # (package hook modules + in-package prompt/adapter data)
+            ├── prompts/
+            │   └── optimize-prompt-hook.md  # Package data: prompt optimization template
+            └── adapters/
+                └── codex/
+                    └── hooks.json   # Package data: Codex adapter hooks template
 ```
 
 ---

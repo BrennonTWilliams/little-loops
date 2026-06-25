@@ -11,7 +11,7 @@ relates_to:
 - BUG-2271
 - BUG-2273
 - FEAT-2274
-confidence_score: 90
+confidence_score: 94
 outcome_confidence: 74
 score_complexity: 14
 score_test_coverage: 20
@@ -288,6 +288,187 @@ All 6 still require updates; 4 have the exact "plugin directory" phrase, 2 use g
 
 **Test files confirmed absent:** `scripts/tests/test_ll_issues_sections.py` and `scripts/tests/test_deploy_issue_templates.py` do not exist yet — both must be created as documented in the Tests section.
 
+_Added by `/ll:refine-issue` (2026-06-25 pass 4) — corrected against current codebase:_
+
+**`get_bundled_templates_dir()` already exists as a public function:**
+`issue_template.py` exposes `get_bundled_templates_dir()` → `Path(__file__).resolve().parent / "templates"` (1× parent — in-package since BUG-2271). The old research note at lines above that described "3× `.parent` to repo root" is stale. The new `resolve_templates_dir(config)` should call `get_bundled_templates_dir()` as its tier-3 fallback rather than recomputing the path:
+```python
+def resolve_templates_dir(config: BRConfig) -> Path:
+    # tier 1: explicit config override
+    if explicit := (config.issues.templates_dir if hasattr(config, "issues") else None):
+        return Path(explicit)
+    # tier 2: per-project deployed copy
+    if (ll_dir := Path(config.ll_dir if hasattr(config, "ll_dir") else ".ll") / "templates").exists():
+        return ll_dir
+    # tier 3: in-package bundle (always available; added by FEAT-2274 / present now)
+    return get_bundled_templates_dir()
+    # tier 4 (CLAUDE_PLUGIN_ROOT / repo root) is handled inside _default_templates_dir(); not needed here
+```
+This means `_default_templates_dir()` does NOT need to become a 4-tier function — ENH-2272 adds a separate `resolve_templates_dir(config)` that only callers with a config object use; `_default_templates_dir()` can remain as-is for legacy callers.
+
+**Exact `_run_yes()` deploy call lines confirmed:**
+- `deploy_goals(ll_dir, templates_dir)` → **line 310** (conditional on `config.get("product", {}).get("enabled")`)
+- `deploy_design_tokens(ll_dir, templates_dir)` → **line 313** (conditional on `config.get("design_tokens", {}).get("enabled")`)
+- `make_learning_tests_dir(ll_dir)` → **line 316** (conditional on `config.get("learning_tests", {}).get("enabled")`)
+- `deploy_issue_templates` must be added at ~line 314 following the `deploy_design_tokens` pattern.
+
+**Exact `_run_apply()` deploy call line confirmed:**
+- `deploy_goals(ll_dir, templates_dir)` → **line 446** (conditional on same product gate)
+- `deploy_design_tokens` is absent from `_run_apply()` — this asymmetry means the precedent is: add `deploy_issue_templates` to `_run_yes()` only (mirror `deploy_design_tokens`). Commit message must document this choice.
+
+**`init/tui.py:_apply_config()` corrected line numbers:**
+- Inline import block: **lines 821–834** (includes `deploy_design_tokens`, `deploy_goals`, `make_learning_tests_dir`, and others)
+- `deploy_goals(ll_dir, templates_dir)` call: **line 842**
+- `deploy_design_tokens(ll_dir, templates_dir, active_profile=active_profile)` call: **line 846**
+- `make_learning_tests_dir(ll_dir)` call: **line 849**
+- `deploy_issue_templates()` should be inserted between lines 846 and 849, gated by `config.get("issues", {}).get("deploy_templates")`.
+
+**`init/__init__.py` exact import + `__all__` structure:**
+```python
+from little_loops.init.writers import (
+    deploy_design_tokens,
+    deploy_goals,
+    install_codex_adapter,
+    make_issue_dirs,
+    make_learning_tests_dir,
+    merge_settings,
+    update_gitignore,
+    write_config,
+)
+__all__ = [
+    "InstallStatus", "TemplateMatch", "DepWarning", "build_config", "check_version",
+    "deploy_design_tokens", "deploy_goals", "detect_installation", "detect_project_type",
+    "fetch_latest_plugin", "fetch_latest_pypi", "install_codex_adapter",
+    "make_issue_dirs", "make_learning_tests_dir", "merge_settings",
+    "update_gitignore", "validate_deps", "write_config",
+]
+```
+Add `deploy_issue_templates` to both the `from writers import (...)` block and `__all__` list.
+
+**`config-schema.json` `issues` section has `"additionalProperties": false` at line 251:**
+The new `"deploy_templates": {"type": "boolean", "default": false}` property MUST be added as a sibling of `templates_dir` (lines 122–126) before line 251, or any config file containing `issues.deploy_templates` will fail schema validation.
+
+**Test class locations corrected:**
+- `TestDeployGoals` in `test_init_core.py`: **lines 814–847** (not 750–806 as previous research stated)
+- `TestDeployDesignTokens`: immediately follows at lines 855–887 (same 4-test shape: deploys, skips-if-exists, dry-run, skips-if-source-missing)
+- `test_yes_deploys_design_tokens_when_enabled`: **lines 1353–1375** — exact integration test pattern; the `TestDeployIssueTemplates` integration test should follow this shape (patch `build_config` to inject `issues.deploy_templates: true`, then assert `.ll/templates/` directory exists after `main_init(["--yes", ...])`)
+- `test_design_tokens_selected_deploys_profiles` in `test_init_tui.py`: **lines 214–223** — calls `_wire_q(mock_q, features=["design_tokens", ...])` then `run_tui(...)` and asserts the profiles dir; mirror with `features=["issues_deploy_templates"]` (or whatever checkbox label is used in the TUI) and assert `.ll/templates/` exists
+
+**`deploy_issue_templates` copy filter — only `*-sections.json` files:**
+The bundled `templates/` directory contains: `design-tokens/` subdir, project-type JSONs (`dotnet.json`, `go.json`, `java-gradle.json`, `java-maven.json`, `javascript.json`, `python-generic.json`, `rust.json`, `typescript.json`, `generic.json`), and `*-sections.json` files (bug, feat, enh, epic). The deploy function must copy ONLY the `*-sections.json` files — project-type JSONs are not user-editable per-project templates. Recommended approach: iterate `src.glob("*-sections.json")` and copy individual files rather than `shutil.copytree` with an ignore list (avoids the risk of inadvertently including future files):
+```python
+def deploy_issue_templates(ll_dir: Path, templates_dir: Path, dry_run: bool = False) -> bool:
+    dest = ll_dir / "templates"
+    if dest.exists():
+        return False
+    section_files = list(templates_dir.glob("*-sections.json"))
+    if not section_files:
+        print(f"Warning: no *-sections.json files found in {templates_dir}", file=sys.stderr)
+        return False
+    if dry_run:
+        print(f"[write] {dest}/ (issue section templates)")
+        return True
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in section_files:
+        shutil.copy2(f, dest / f.name)
+    return True
+```
+
+_Added by `/ll:refine-issue` (2026-06-25 pass 5) — exact callsite text and cmd_sections structure confirmed:_
+
+**FEAT-2274 partial path migration (already staged, not committed):** The `*-sections.json` files have already been moved from root `templates/` → `scripts/little_loops/templates/` by FEAT-2274 (visible as staged renames in `git status`). All six callsite files have been updated accordingly — they now reference `scripts/little_loops/templates/{type}-sections.json` rather than the old root-level path. **The prose-based lookup mechanism still exists in all 6 files** — ENH-2272 replaces this prose approach (whether the old path or new) with `ll-issues sections {type}`.
+
+**Confirmed verbatim replacement targets (exact text from each file):**
+
+| File | Line | Verbatim phrase to replace |
+|------|------|----------------------------|
+| `skills/format-issue/SKILL.md` | 196 | `scripts/little_loops/templates/{type}-sections.json` v2.0 (relative to the little-loops plugin directory) |
+| `skills/format-issue/SKILL.md` | 221 | `the per-type template \`scripts/little_loops/templates/{type}-sections.json\` for the issue's type` |
+| `skills/format-issue/templates.md` | 7 | `scripts/little_loops/templates/{type}-sections.json` (relative to the little-loops plugin directory) |
+| `skills/format-issue/templates.md` | 52 | `the per-type template \`scripts/little_loops/templates/{type}-sections.json\` v2.0` |
+| `skills/format-issue/templates.md` | 54 | `Read the per-type template file \`scripts/little_loops/templates/{type}-sections.json\`` |
+| `skills/capture-issue/SKILL.md` | 276 | `Read the per-type template \`scripts/little_loops/templates/{type}-sections.json\`` |
+| `skills/scope-epic/SKILL.md` | 296 | `Read \`scripts/little_loops/templates/epic-sections.json\` to get section definitions.` |
+| `skills/scope-epic/SKILL.md` | 358 | `Read \`scripts/little_loops/templates/{type}-sections.json\` for the child's type.` |
+| `commands/ready-issue.md` | 139 | `Read the per-type template \`scripts/little_loops/templates/{type}-sections.json\` v2.0 (relative to the little-loops plugin directory)` |
+| `commands/scan-codebase.md` | 241 | `using the section structure from per-type template files (relative to the little-loops plugin directory)` |
+| `commands/scan-codebase.md` | 243 | `Read the per-type template \`scripts/little_loops/templates/{type}-sections.json\`` |
+
+**`cmd_sections` confirmed structure (from `path_cmd.py` pattern):**
+
+```python
+# cli/issues/sections.py
+def cmd_sections(config: BRConfig, args: argparse.Namespace) -> int:
+    issue_type = args.type.lower()
+    if issue_type not in ("bug", "feat", "enh", "epic"):
+        print(f"Error: invalid type '{args.type}' — must be bug, feat, enh, or epic", file=sys.stderr)
+        return 1
+    templates_dir = resolve_templates_dir(config)
+    json_path = templates_dir / f"{issue_type}-sections.json"
+    if not json_path.exists():
+        print(f"Error: template not found: {json_path}", file=sys.stderr)
+        return 1
+    if getattr(args, "path", False):
+        print(json_path)
+        return 0
+    print(json_path.read_text())
+    return 0
+```
+
+Parser registration snippet (add after `path_p` block at line ~374 in `cli/issues/__init__.py`):
+```python
+sec_p = subs.add_parser("sections", aliases=["sec"], help="Print section template JSON for an issue type")
+sec_p.set_defaults(command="sections")
+sec_p.add_argument("type", help="Issue type: bug, feat, enh, or epic")
+sec_p.add_argument("--path", action="store_true", help="Print path to template file instead of JSON content")
+add_config_arg(sec_p)
+```
+
+Dispatch addition (after `if args.command == "path"` block at ~line 734; import is deferred inside `with cli_event_context(...)` block):
+```python
+if args.command == "sections":
+    from little_loops.cli.issues.sections import cmd_sections
+    return cmd_sections(config, args)
+```
+
+**File existence confirmed (all must be created from scratch):**
+- `scripts/little_loops/cli/issues/sections.py` — does NOT exist
+- `scripts/tests/test_ll_issues_sections.py` — does NOT exist
+- `scripts/tests/test_deploy_issue_templates.py` — does NOT exist
+
+**`_run_yes()` exact deploy block (lines 309–316) confirmed:**
+```python
+if config.get("product", {}).get("enabled"):
+    deploy_goals(ll_dir, templates_dir)          # line 309–310
+if config.get("design_tokens", {}).get("enabled"):
+    deploy_design_tokens(ll_dir, templates_dir)  # line 312–313
+if config.get("learning_tests", {}).get("enabled"):
+    make_learning_tests_dir(ll_dir)              # line 315–316
+# deploy_issue_templates goes here, gated by config.get("issues", {}).get("deploy_templates")
+```
+
+_Added by `/ll:refine-issue` (2026-06-25 pass 6) — verified against current codebase; corrects stale naming in prior passes:_
+
+**`apply_plan()` is the correct function name (not `_run_apply()`):** All prior pass findings that reference `_run_apply()` in `init/cli.py` should read `apply_plan()`. The function containing the deploy call at line 446 is named `apply_plan()` (import at line 416), not `_run_apply()`. The asymmetry note from pass 4 stands: `apply_plan()` calls only `deploy_goals`, while `_run_yes()` calls both `deploy_goals` and `deploy_design_tokens`. Mirror `deploy_design_tokens` precedent: add `deploy_issue_templates` to `_run_yes()` only. Verify whether `_apply_headless()` (which imports `deploy_goals` at line 143) also needs the new deploy call — the analysis reveals a third entry point not previously documented; if `_apply_headless()` is the headless `--yes` path and `_run_yes()` is the interactive one, both may need the deploy. Check by grepping `def _apply_headless` and `def _run_yes` for their call contexts.
+
+**Dispatch chain insertion point (confirmed exact):** The `sections` dispatch must be inserted before the final `return 1` in `main_issues()`. The current end of the dispatch chain is:
+```python
+if args.command == "finalize-decomposition":
+    return cmd_finalize_decomposition(config, args)
+return 1
+```
+Insert the `sections` dispatch block immediately before `return 1`:
+```python
+if args.command == "sections":
+    from little_loops.cli.issues.sections import cmd_sections
+    return cmd_sections(config, args)
+return 1
+```
+
+**Pass 5 callsite table confirmed accurate:** All 11 verbatim replacement targets in the pass 5 table were verified against the current files. No text has changed since pass 5. All 6 callsite files still use `scripts/little_loops/templates/{type}-sections.json` path references.
+
+**Pass 1–5 findings remain current:** All function names, signatures, and line numbers documented in earlier passes were re-verified and are accurate. No additional corrections required beyond the `apply_plan()` naming fix above.
+
 ## Implementation Steps
 
 1. Land / reuse the unified resolver (BUG-2271) and extend precedence with
@@ -348,16 +529,24 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-24_
+_Updated by `/ll:confidence-check` on 2026-06-25_
 
-**Readiness Score**: 90/100 → PROCEED
+**Readiness Score**: 94/100 → PROCEED
 **Outcome Confidence**: 74/100 → CAUTION
 
 ### Outcome Risk Factors
-- Wide breadth (~20 files): most per-site changes are mechanical prose swaps or additive imports, but the total file count increases integration burden and the chance of a missed callsite
-- `issue_template.py` is also modified by BUG-2271 (shared resolver); implement in coordinated sequence (BUG-2271 first or co-delivered with ENH-2272) to avoid merge conflicts on the resolver function
+- Wide change surface (~26 files) across CLI, init, skills, commands, tests, and docs — the 12-step plan is complete, but warrants a final `grep -r "plugin directory\|scripts/little_loops/templates" skills/ commands/` post-implementation to confirm no prose references remain
+- FEAT-2274 still open — tier-3 bundle path works locally (`scripts/little_loops/templates/` staged), but pyproject.toml packaging not yet merged; implement `resolve_templates_dir()` using `get_bundled_templates_dir()` as tier-3, validate wheel packaging post-FEAT-2274 merge
+- `_run_apply()` vs `_run_yes()` asymmetry — mirror `deploy_design_tokens` (`_run_yes()` only); document this precedent in the commit message (no blocking gap, implementer instruction only)
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25T16:00:00Z - `35673248-c074-4cec-bbe7-79fa8b2d18f6.jsonl`
+- `/ll:refine-issue` - 2026-06-25T07:20:24 - `1ca16fef-a5e2-48b5-8b75-abcf46c496e5.jsonl`
+- `/ll:confidence-check` - 2026-06-25T08:00:00Z - `5f0e8d2e-107a-4306-983f-dd49d06cf703.jsonl`
+- `/ll:refine-issue` - 2026-06-25T07:09:59 - `93d8bdbd-9b51-40ae-bec7-7146cc267a60.jsonl`
+- `/ll:confidence-check` - 2026-06-25T06:00:00Z - `93d8bdbd-9b51-40ae-bec7-7146cc267a60.jsonl`
+- `/ll:refine-issue` - 2026-06-25T07:00:54 - `93d8bdbd-9b51-40ae-bec7-7146cc267a60.jsonl`
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `93d8bdbd-9b51-40ae-bec7-7146cc267a60.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `cad8a6a0-ea53-4a66-a1bc-b1dac77ffa38.jsonl`
 - `/ll:refine-issue` - 2026-06-25T04:07:01 - `b128ec64-1e93-499b-9f80-d41e92fa74d3.jsonl`
 - `/ll:confidence-check` - 2026-06-25T05:00:00Z - `9a49e22d-1a83-43d6-90bb-9066a033acd4.jsonl`

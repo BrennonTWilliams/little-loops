@@ -158,7 +158,6 @@ little-loops/
 │   ├── verify-issue-loop/            # Generate FSM verification loop from issue acceptance criteria
 │   ├── wire-issue/                   # Add integration wiring to implementation plans
 │   └── workflow-automation-proposer/ # Propose automations from patterns
-├── templates/            # Project-type config templates
 ├── docs/                 # Documentation
 │   ├── ARCHITECTURE.md                  # System design diagrams
 │   ├── INDEX.md                         # Documentation index

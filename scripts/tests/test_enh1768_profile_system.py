@@ -18,7 +18,7 @@ from pathlib import Path
 from little_loops.design_tokens import load_design_tokens
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-TEMPLATES_DIR = PROJECT_ROOT / "templates" / "design-tokens"
+TEMPLATES_DIR = Path(__file__).parent.parent / "little_loops" / "templates" / "design-tokens"
 PROFILES_TEMPLATE_DIR = TEMPLATES_DIR / "profiles"
 
 PROFILE_NAMES = ("default", "editorial-mono", "warm-paper")

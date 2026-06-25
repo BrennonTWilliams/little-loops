@@ -31,15 +31,18 @@ class TemplateMatch:
 
 
 def _find_templates_dir() -> Path:
-    """Locate the templates/ directory relative to this package (env-var-first).
+    """Locate the in-package templates/ directory.
 
-    Checks CLAUDE_PLUGIN_ROOT first so non-editable installs resolve correctly.
-    Falls back to __file__-relative path for editable dev installs.
+    Honors CLAUDE_PLUGIN_ROOT only when its templates/ subdirectory exists
+    (legacy override). Falls back to the in-package location so pip-installed
+    and editable installs both resolve correctly without env vars.
     """
     env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if env_root:
-        return Path(env_root) / "templates"
-    return Path(__file__).resolve().parent.parent.parent.parent / "templates"
+        env_path = Path(env_root) / "templates"
+        if env_path.is_dir():
+            return env_path
+    return Path(__file__).resolve().parent.parent / "templates"
 
 
 def _glob_match(pattern: str, root: Path) -> bool:

@@ -1018,7 +1018,7 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
    ```
 2. Verify template file exists:
    ```bash
-   ls -la hooks/prompts/optimize-prompt-hook.md
+   ls -la scripts/little_loops/hooks/prompts/optimize-prompt-hook.md
    ```
 3. Test hook with a sample prompt:
    ```bash

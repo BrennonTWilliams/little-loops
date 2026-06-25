@@ -40,10 +40,16 @@ agents/         # Subagent definitions
 skills/         # Skill definitions
 hooks/          # Lifecycle hooks (subdivided below)
   adapters/     # Host translation layer; one subdir per host (claude-code/, opencode/, codex/) that envelopes the host event into LLHookEvent
-  prompts/      # Prompt-text files referenced from hooks/hooks.json entries
+                # Note: hooks/adapters/codex/hooks.json moved to scripts/little_loops/hooks/adapters/codex/ (FEAT-2274)
+  prompts/      # Prompt-text files referenced from hooks/hooks.json entries (continuation-prompt-template.md stays here)
+                # Note: optimize-prompt-hook.md moved to scripts/little_loops/hooks/prompts/ (FEAT-2274)
                 # Host-agnostic Python handlers live under scripts/little_loops/hooks/ (session_start, pre_compact, ...) and are invoked by main_hooks()
 scripts/        # Python package (little_loops)
-templates/      # Project-type config templates
+                # Package data (consumed by CLI code) lives inside scripts/little_loops/:
+                #   templates/    — project-type configs, section templates, design tokens
+                #   assets/       — ll-cli-logo.txt
+                #   hooks/prompts/optimize-prompt-hook.md
+                #   hooks/adapters/codex/hooks.json
 .issues/        # Issue tracking (bugs/, features/, enhancements/, epics/)
 .ll/decisions.yaml # Decisions and rules log (opt-in; managed by `ll-issues decisions`)
 thoughts/       # Plans and research documents

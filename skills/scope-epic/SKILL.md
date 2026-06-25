@@ -293,7 +293,7 @@ Write the EPIC first, then each child in order. Call `ll-issues next-id` **immed
    Slugify: lowercase, replace spaces/special chars with hyphens.
 
 3. **Build EPIC content** using the full template:
-   - Read `templates/epic-sections.json` to get section definitions.
+   - Read `scripts/little_loops/templates/epic-sections.json` to get section definitions.
    - Use `variant="full"` with `scripts/little_loops/issue_template.py:assemble_issue_markdown()`.
    - Frontmatter must include: `id: EPIC-NNN`, `type: EPIC`, `priority: [PRIORITY]`, `status: open`, `captured_at` (ISO 8601 UTC via `date -u +"%Y-%m-%dT%H:%M:%SZ"`), `discovered_date` (date-only), `discovered_by: scope-epic`, `relates_to: []`.
    - `## Summary`: the EPIC summary from decomposition.
@@ -355,7 +355,7 @@ For each selected **implementation** child in order (the children from Phase 2, 
 2. **Generate filename**: `P[priority]-[TYPE]-[NNN]-[slugified-title].md`
 
 3. **Build child content** using the minimal template:
-   - Read `templates/{type}-sections.json` for the child's type.
+   - Read `scripts/little_loops/templates/{type}-sections.json` for the child's type.
    - Use `variant="minimal"` with `assemble_issue_markdown()`.
    - Frontmatter must include: `id: TYPE-NNN`, `type: [TYPE]`, `priority: [priority]`, `status: open`, `captured_at` (ISO 8601 UTC), `discovered_date` (date-only), `discovered_by: scope-epic`, `parent: EPIC-NNN`.
    - When `LT_IDS` is non-empty, also include:

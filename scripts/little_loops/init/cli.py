@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from little_loops.issue_template import get_bundled_templates_dir
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 # Feature keys toggleable via --enable/--disable in the headless path. These map
@@ -589,7 +590,7 @@ Exit codes:
 
         project_root = (args.root or Path.cwd()).resolve()
         plug_root = _plugin_root()
-        templates_dir = plug_root / "templates"
+        templates_dir = get_bundled_templates_dir()
 
         # Resolve hosts: --hosts takes precedence; --codex is a deprecated alias.
         # When neither is given, auto-detect from installed binaries / project dirs.

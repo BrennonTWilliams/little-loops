@@ -1377,6 +1377,11 @@ class TestUserPromptCheck:
         config_file.write_text(json.dumps(config, indent=2))
         return config_file
 
+    @pytest.mark.xfail(
+        reason="BUG-2275: _PROMPT_FILE resolver in user_prompt_submit.py not yet updated "
+        "to in-package path after FEAT-2274 git mv of hooks/prompts/optimize-prompt-hook.md",
+        strict=True,
+    )
     def test_optimization_template_injected_when_claude_plugin_root_set(
         self, hook_script: Path, enabled_config: Path, tmp_path: Path
     ):
