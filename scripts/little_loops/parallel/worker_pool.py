@@ -921,8 +921,7 @@ class WorkerPool:
                 # if the issue is already done/cancelled, return success without spawning.
                 if self._check_issue_already_done(issue_id, working_dir):
                     self.logger.info(
-                        f"{tag} Issue already done/cancelled; "
-                        "skipping Option J continuation"
+                        f"{tag} Issue already done/cancelled; skipping Option J continuation"
                     )
                     result = subprocess.CompletedProcess(
                         args=result.args,

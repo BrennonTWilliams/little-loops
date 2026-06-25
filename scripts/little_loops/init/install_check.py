@@ -30,8 +30,7 @@ def _is_editable_install() -> bool:
             timeout=10,
         )
         return any(
-            line.startswith("Editable project location:")
-            for line in result.stdout.splitlines()
+            line.startswith("Editable project location:") for line in result.stdout.splitlines()
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False

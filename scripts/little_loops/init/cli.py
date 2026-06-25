@@ -180,7 +180,10 @@ def _run_yes(
             except _subprocess.CalledProcessError as exc:
                 print(f"  Warning: auto-install failed: {exc}", file=sys.stderr)
         else:
-            print("  Hint: pip install little-loops  (pass --upgrade to act automatically)", file=sys.stderr)
+            print(
+                "  Hint: pip install little-loops  (pass --upgrade to act automatically)",
+                file=sys.stderr,
+            )
     elif installed_version is not None:
         _latest = fetch_latest_pypi()
         if _latest is not None:
@@ -233,7 +236,14 @@ def _run_yes(
                     else:
                         try:
                             _subprocess.run(
-                                [sys.executable, "-m", "pip", "install", "--upgrade", "little-loops"],
+                                [
+                                    sys.executable,
+                                    "-m",
+                                    "pip",
+                                    "install",
+                                    "--upgrade",
+                                    "little-loops",
+                                ],
                                 check=True,
                             )
                         except _subprocess.CalledProcessError as exc:

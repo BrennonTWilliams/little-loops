@@ -365,7 +365,9 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
-    def test_1m_model_suffix_auto_detection(self, hook_script: Path, test_config: Path, tmp_path: Path):
+    def test_1m_model_suffix_auto_detection(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
         """[1m]-suffixed model triggers auto-detection of 1M context limit.
 
         Uses baseline of 700K tokens. At 1M limit: 70% → no trigger (exit 0).

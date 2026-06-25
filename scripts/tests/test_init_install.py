@@ -6,7 +6,7 @@ from __future__ import annotations
 import importlib.metadata
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from little_loops.init.install_check import (
     InstallStatus,

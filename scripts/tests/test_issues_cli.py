@@ -130,7 +130,9 @@ class TestIssuesCLINextId:
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
-            sys, "argv", ["ll-issues", "next-id", "--count", "-1", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "next-id", "--count", "-1", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -923,12 +925,13 @@ class TestIssuesCLIList:
             f"---\nstatus: open\n---\n# BUG-001: {long_title}\n"
         )
 
-        with patch(
-            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
-        ), patch.object(
-            sys,
-            "argv",
-            ["ll-issues", "list", "--config", str(temp_project_dir)],
+        with (
+            patch("little_loops.cli.issues.list_cmd.terminal_width", return_value=40),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "list", "--config", str(temp_project_dir)],
+            ),
         ):
             from little_loops.cli import main_issues
 
@@ -955,12 +958,13 @@ class TestIssuesCLIList:
             f"---\nstatus: open\n---\n# BUG-001: {long_title}\n"
         )
 
-        with patch(
-            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
-        ), patch.object(
-            sys,
-            "argv",
-            ["ll-issues", "list", "--no-truncate", "--config", str(temp_project_dir)],
+        with (
+            patch("little_loops.cli.issues.list_cmd.terminal_width", return_value=40),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "list", "--no-truncate", "--config", str(temp_project_dir)],
+            ),
         ):
             from little_loops.cli import main_issues
 
@@ -987,12 +991,13 @@ class TestIssuesCLIList:
             f"---\nstatus: open\n---\n# BUG-001: {long_title}\n"
         )
 
-        with patch(
-            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
-        ), patch.object(
-            sys,
-            "argv",
-            ["ll-issues", "list", "--json", "--config", str(temp_project_dir)],
+        with (
+            patch("little_loops.cli.issues.list_cmd.terminal_width", return_value=40),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "list", "--json", "--config", str(temp_project_dir)],
+            ),
         ):
             from little_loops.cli import main_issues
 
@@ -1019,12 +1024,13 @@ class TestIssuesCLIList:
             f"---\nstatus: open\n---\n# BUG-001: {short_title}\n"
         )
 
-        with patch(
-            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
-        ), patch.object(
-            sys,
-            "argv",
-            ["ll-issues", "list", "--config", str(temp_project_dir)],
+        with (
+            patch("little_loops.cli.issues.list_cmd.terminal_width", return_value=40),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "list", "--config", str(temp_project_dir)],
+            ),
         ):
             from little_loops.cli import main_issues
 
@@ -1051,12 +1057,13 @@ class TestIssuesCLIList:
             f"---\nstatus: open\n---\n# BUG-001: {long_title}\n"
         )
 
-        with patch(
-            "little_loops.cli.issues.list_cmd.terminal_width", return_value=40
-        ), patch.object(
-            sys,
-            "argv",
-            ["ll-issues", "list", "--group-by", "epic", "--config", str(temp_project_dir)],
+        with (
+            patch("little_loops.cli.issues.list_cmd.terminal_width", return_value=40),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "list", "--group-by", "epic", "--config", str(temp_project_dir)],
+            ),
         ):
             from little_loops.cli import main_issues
 

@@ -181,7 +181,10 @@ def run_tui(
         if _pkg_latest is not None:
             _pkg_outdated = check_version(installed_version, _pkg_latest) == InstallStatus.OutOfDate
 
-    if "claude-code" in _selected_hosts and install_source in ("global-claude-code", "project-claude-code"):
+    if "claude-code" in _selected_hosts and install_source in (
+        "global-claude-code",
+        "project-claude-code",
+    ):
         _plugin_latest = fetch_latest_plugin()
         if installed_version is not None and _plugin_latest is not None:
             _plugin_outdated = (
@@ -203,13 +206,9 @@ def run_tui(
                 f"latest [cyan]{_pkg_latest}[/cyan]."
             )
             if install_source == "local-editable":
-                console.print(
-                    "  Upgrade: [cyan]pip install -e <editable-path>[dev][/cyan]"
-                )
+                console.print("  Upgrade: [cyan]pip install -e <editable-path>[dev][/cyan]")
             else:
-                console.print(
-                    "  Upgrade: [cyan]pip install --upgrade little-loops[/cyan]"
-                )
+                console.print("  Upgrade: [cyan]pip install --upgrade little-loops[/cyan]")
         if _plugin_outdated:
             console.print(
                 f"[yellow]Plugin outdated:[/yellow] installed [cyan]{installed_version}[/cyan], "

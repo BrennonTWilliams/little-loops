@@ -815,9 +815,7 @@ class TestDeployGoals:
         assert created is False
         assert (ll_dir / "ll-goals.md").read_text() == "existing"
 
-    def test_skips_if_template_missing(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_skips_if_template_missing(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         fake_tdir = tmp_path / "templates"
@@ -867,9 +865,7 @@ class TestDeployDesignTokens:
         assert not (ll_dir / "design-tokens").exists()
         assert "[write]" in capsys.readouterr().out
 
-    def test_skips_if_source_missing(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_skips_if_source_missing(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         fake_tdir = tmp_path / "templates"
@@ -1395,7 +1391,7 @@ class TestMainInit:
         self, tmp_project: Path, capsys: pytest.CaptureFixture
     ) -> None:
         """Without --upgrade, headless mode warns but never runs pip install/upgrade."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         from little_loops.init.cli import main_init
 
@@ -1418,11 +1414,9 @@ class TestMainInit:
         err = capsys.readouterr().err
         assert "mismatch" in err or "Hint" in err
 
-    def test_yes_upgrades_when_pypi_stale_with_upgrade_flag(
-        self, tmp_project: Path
-    ) -> None:
+    def test_yes_upgrades_when_pypi_stale_with_upgrade_flag(self, tmp_project: Path) -> None:
         """With --upgrade, headless mode runs pip install --upgrade for PyPI installs."""
-        from unittest.mock import MagicMock, call, patch
+        from unittest.mock import MagicMock, patch
 
         from little_loops.init.cli import main_init
 
@@ -1450,9 +1444,7 @@ class TestMainInit:
         upgrade_calls = [c for c in captured_runs if "--upgrade" in c and "little-loops" in c]
         assert upgrade_calls, f"Expected pip --upgrade little-loops call; got: {captured_runs}"
 
-    def test_yes_consumer_path_never_uses_editable_bare_name(
-        self, tmp_project: Path
-    ) -> None:
+    def test_yes_consumer_path_never_uses_editable_bare_name(self, tmp_project: Path) -> None:
         """pip install -e <bare-package-name> must never be constructed for PyPI installs."""
         from unittest.mock import MagicMock, patch
 

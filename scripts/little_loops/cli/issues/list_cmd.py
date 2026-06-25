@@ -220,8 +220,12 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                 colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
                 colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
                 status_tag = f" [{stat}]" if stat not in ("open", "in_progress") else ""
-                prefix_width = 2 + len(issue.priority) + 2 + len(issue.issue_id) + 2 + len(status_tag)
-                title = issue.title if no_truncate else _truncate_title(issue.title, tw - prefix_width)
+                prefix_width = (
+                    2 + len(issue.priority) + 2 + len(issue.issue_id) + 2 + len(status_tag)
+                )
+                title = (
+                    issue.title if no_truncate else _truncate_title(issue.title, tw - prefix_width)
+                )
                 lines.append(f"  {colored_priority}  {colored_id}  {title}{status_tag}")
             lines.append("")
         displayed = sum(len(g) for g in parent_buckets.values())

@@ -7641,9 +7641,18 @@ class TestOpenSCADModelGeneratorLoop:
     def test_required_states_exist(self, data: dict) -> None:
         """All required FSM states must be present."""
         required = {
-            "init", "plan", "generate", "render_views", "snapshot",
-            "score", "check_stall", "maybe_stl", "vision_gate",
-            "done", "diagnose", "failed",
+            "init",
+            "plan",
+            "generate",
+            "render_views",
+            "snapshot",
+            "score",
+            "check_stall",
+            "maybe_stl",
+            "vision_gate",
+            "done",
+            "diagnose",
+            "failed",
         }
         actual = set(data["states"].keys())
         missing = required - actual
@@ -7698,7 +7707,9 @@ class TestOpenSCADModelGeneratorLoop:
         state = data["states"].get("render_views", {})
         action = state.get("action", "")
         assert "--render" in action, "render_views must use --render for full CSG"
-        assert "--preview" not in action, "render_views must NOT use --preview (misses non-manifold geometry)"
+        assert "--preview" not in action, (
+            "render_views must NOT use --preview (misses non-manifold geometry)"
+        )
 
     def test_render_views_routes_to_snapshot_on_yes(self, data: dict) -> None:
         """render_views must route to snapshot when renders succeed."""
@@ -7752,7 +7763,9 @@ class TestOpenSCADModelGeneratorLoop:
         """vision_gate must output VISION_PASS when VISION_* env vars are absent."""
         state = data["states"].get("vision_gate", {})
         action = state.get("action", "")
-        assert "VISION_PASS" in action, "vision_gate.action must output VISION_PASS for graceful degradation"
+        assert "VISION_PASS" in action, (
+            "vision_gate.action must output VISION_PASS for graceful degradation"
+        )
         assert "VISION_BASE_URL" in action, "vision_gate.action must check VISION_BASE_URL env var"
 
     def test_context_has_view_presets_with_default(self, data: dict) -> None:
@@ -7791,4 +7804,3 @@ class TestOpenSCADModelGeneratorLoop:
         """Loop must import lib/harness.yaml for ll_rubric_score fragment."""
         imports = data.get("import", [])
         assert "lib/harness.yaml" in imports, "must import lib/harness.yaml"
-

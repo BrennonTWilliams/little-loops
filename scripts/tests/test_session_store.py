@@ -1568,9 +1568,7 @@ class TestBackfillSkillEvents:
             + "\n"
         )
 
-    def test_backfill_populates_skill_events_from_command_name_tag(
-        self, tmp_path: Path
-    ) -> None:
+    def test_backfill_populates_skill_events_from_command_name_tag(self, tmp_path: Path) -> None:
         text = "<command-name>/ll:tradeoff-review-issues</command-name>\n<command-args>BUG-100</command-args>"
         jsonl = tmp_path / "session.jsonl"
         jsonl.write_text(
