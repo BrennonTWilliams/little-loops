@@ -14,7 +14,16 @@ labels:
 - continuation
 - guillotine
 - context-handoff
-relates_to: [BUG-2280, BUG-1759, BUG-2201]
+relates_to:
+- BUG-2280
+- BUG-1759
+- BUG-2201
+confidence_score: 98
+outcome_confidence: 92
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 23
+score_change_surface: 23
 ---
 
 # BUG-2281: Option J guillotine path is missing the `_check_issue_already_done` guard
@@ -189,6 +198,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [[BUG-2201]] — Option J continuation scope escape (same path, sibling hardening).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25T01:10:00 - `60219707-55ed-4074-ac97-13cc49417dbb.jsonl`
 - `/ll:wire-issue` - 2026-06-25T00:35:24 - `f3b734be-ae79-4eac-832f-68c245c56458.jsonl`
 - `/ll:refine-issue` - 2026-06-25T00:27:50 - `5302a422-c0d1-420a-a9db-ea930a398524.jsonl`
 - `/ll:format-issue` - 2026-06-25T00:18:09 - `f30048c9-359d-4c6d-8a70-303dad3df064.jsonl`

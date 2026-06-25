@@ -14,11 +14,11 @@ relates_to:
 - BUG-885
 - BUG-938
 depends_on: []
-confidence_score: 91
-outcome_confidence: 78
-score_complexity: 17
-score_test_coverage: 18
-score_ambiguity: 23
+confidence_score: 92
+outcome_confidence: 80
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 22
 score_change_surface: 20
 decision_needed: false
 ---
@@ -205,9 +205,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-**`detect_project_type()` actual behavior (correction):** The issue summary and Current Behavior section say "falls back to generic." Research shows `detect_project_type()` calls `_load_templates(templates_dir)` which calls `templates_dir.glob("*.json")` — on a non-existent directory this **raises `FileNotFoundError`**, not a graceful fallback. The exception is uncaught by `_run_yes()`. Verify empirically before implementing; if the outer `main_init()` has a catch-all, behavior may differ.
+**`detect_project_type()` actual behavior (verified empirically):** `glob()` on a non-existent directory returns `[]` silently — no filesystem error. `_load_templates()` returns `[]`, and `detect_project_type()` then hits the explicit `raise FileNotFoundError(f"No project-type templates found in {templates_dir}")` at `detect.py:141`. This propagates uncaught through `_run_yes()`. The fix must insert an existence check (or fallback-to-generic) **before** calling `_load_templates()` in `detect_project_type()` — not around the glob call itself.
 
-**`detect.py` dual resolver:** `detect.py` has two path-resolution functions — `_find_templates_dir()` (~line 31, same buggy four-parent pattern) and `detect_project_type(templates_dir=None)`. `main_init()` always passes a `templates_dir` argument so `_find_templates_dir()` is never called in practice; but both must be fixed to avoid the same latent bug if `detect_project_type` is ever called without an argument.
+**`detect.py` dual resolver — `_find_templates_dir()` is dead code in the current call path:** All three callers of `detect_project_type()` (`cli.py:238`, `cli.py:362`, `tui.py:239`) pass `templates_dir` explicitly; the `if templates_dir is None` branch at `detect.py:136` is never reached in production. Fixing `_find_templates_dir()` is hygiene (guards future callers), not on the critical path for this bug.
+
+**No circular import risk — `issue_template._default_templates_dir` is directly importable from `init/cli.py`:** `issue_template.py` imports only stdlib (`json`, `os`, `pathlib`, `typing`). There is no risk of a circular import. `init/cli.py` can replace its `_plugin_root()` body with a direct call to the already-implemented `_default_templates_dir()` from `issue_template.py` (or inline the same two-step logic if cross-module import is undesirable).
 
 **Warning emission pattern:** Established in `init/cli.py`: `print(f"  Warning: ...", file=sys.stderr)`. Structured warnings use the `DepWarning` dataclass (`init/validate.py`) collected into a list and printed by the caller. Either pattern is valid; the inline `print` to stderr is simpler for the missing-source case.
 
@@ -288,6 +290,7 @@ _Updated by `/ll:confidence-check` on 2026-06-24 (re-check; BUG-2271 now done)_
 - **`detect_project_type()` raises `FileNotFoundError`, not graceful fallback**: `_load_templates()` calls `templates_dir.glob("*.json")` on a non-existent path — this raises, not returns. The warning must be inserted before the `_load_templates()` call in `detect_project_type()`. Verify empirically before writing warning code.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `b938aa04-fa3a-4235-a849-07024bf38247.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `052ee002-e687-4985-8087-f17ffa746259.jsonl`
 - `/ll:confidence-check` - 2026-06-24T23:59:00Z - `1dae7405-974b-4068-920d-3cf120a46bc9.jsonl`
 - `/ll:confidence-check` - 2026-06-24T22:00:00Z - `618231b5-3ed0-4735-8afd-ef8da6a14e53.jsonl`

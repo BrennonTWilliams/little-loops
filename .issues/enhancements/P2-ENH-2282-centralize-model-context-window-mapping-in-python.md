@@ -20,10 +20,10 @@ relates_to:
 - BUG-2054
 - FEAT-812
 confidence_score: 95
-outcome_confidence: 74
-score_complexity: 13
+outcome_confidence: 77
+score_complexity: 12
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 22
 score_change_surface: 18
 ---
 
@@ -125,11 +125,11 @@ full hybrid later:
    - Pass it through to the `run_with_continuation()` call inside Phase 2.
    - In `AutoManager._process_issue()`, after the model is stored in `self._detected_model`, derive `resolved_limit = context_window_for(self._detected_model[0] if self._detected_model else None)` and pass it as `context_limit=resolved_limit` to `process_issue_inplace()`.
 
-3. **`scripts/little_loops/subprocess_utils.py:write_sentinel()`** — change parameter default from `200_000` to `context_window_for()` call, or keep the default and rely on callers always passing the resolved value. The `assemble_guillotine_prompt()` fallback `200_000` at line 190 also needs updating to `context_window_for()`.
+3. **`scripts/little_loops/subprocess_utils.py:write_sentinel()`** — change `context_limit: int = 200_000` to `context_limit: int | None = None` and add `if context_limit is None: context_limit = context_window_for(None)` at the top of the body (lazy/call-time evaluation; avoids the Python eager-default trap where a module-import-time default would miss later `LL_CONTEXT_LIMIT` changes). The `assemble_guillotine_prompt()` fallback at line 190 (`token_stats.get("context_limit", 200_000)`) is a `dict.get()` evaluated at call time — change the fallback to `context_window_for(None)` directly.
 
 4. **`scripts/little_loops/parallel/worker_pool.py:WorkerPool._run_with_continuation()`** — read `LL_CONTEXT_LIMIT` via `context_window_for(None)` (which checks the env var as override) rather than threading `on_model_detected` through the worker infrastructure. Change the default `200_000` at line 831 to `context_window_for(None)`.
 
-5. **`hooks/scripts/context-monitor.sh:get_context_limit()`** — add a `[1m]`-suffix branch: `claude-*\[1m\]) echo 1000000 ;;` before the existing `claude-*-4*` branches, so the identifier-based path reaches 1M without relying solely on the transcript auto-upgrade heuristic.
+5. **`hooks/scripts/context-monitor.sh:get_context_limit()`** — add a `[1m]`-suffix branch: `claude-*\[1m\]) echo 1000000 ;;` before the existing `claude-*-4*` branches (static table, not Python delegation — delegating to Python adds ~100-200ms startup cost on a per-message hot path and a hard package-importability dependency from bash; sync risk is low and governed by a `# keep in sync with context_window.py` comment plus the cross-layer Success Metric test).
 
 6. **Re-check threshold economics at 1M**: sentinel fires at `0.60 * 1_000_000 = 600k` tokens; guillotine at `0.90 * 1_000_000 = 900k`. Confirm in tests that these thresholds compose correctly with the BUG-2280 fix (which stops conflating cumulative tokens with window occupancy); the denominators are independent so composition should be clean.
 
@@ -278,9 +278,10 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 
 ### Outcome Risk Factors
 - Wide change surface (16 files across 4 subsystems) — implement using the enumerated Integration Map checklist; the 5 doc-clause additions (CONFIGURATION.md, SESSION_HANDOFF.md, BUILTIN_HOOKS_GUIDE.md, API.md, config-schema.json) are easy to miss.
-- Two implementation steps have alternative paths without selection — step 3 (subprocess_utils.py default-change vs. rely-on-callers-always-passing) and step 5 (static bash table entry vs. Python delegation) should each be resolved at implementation start.
+- ~~Two implementation steps have alternative paths without selection~~ — resolved: step 3 uses None-sentinel pattern; step 5 uses static bash table entry. See updated Implementation Steps.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T17:00:00Z - `60219707-55ed-4074-ac97-13cc49417dbb.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `5c0be5b3-5eab-46ac-aee6-ef4d793bf8fc.jsonl`
 - `/ll:wire-issue` - 2026-06-25T02:48:07 - `a3a3017d-2eaa-4766-b353-55d8b52bace7.jsonl`
 - `/ll:refine-issue` - 2026-06-25T02:31:07 - `34b26a5a-d832-46f8-b8fa-760681ae32d9.jsonl`

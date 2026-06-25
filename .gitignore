@@ -103,6 +103,7 @@ deepcodebase-*.txt
 .ll/history.db-wal
 .ll/ll-update-docs.watermark
 .ll/ll-continue-prompt.md
+.ll/ll-context-handoff-needed
 .ll/loop-suggestions/
 .ll/workflow-analysis/
 .ll/user-messages-*.jsonl
