@@ -373,6 +373,16 @@ Examples:
         path_p.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
         add_config_arg(path_p)
 
+        sec_p = subs.add_parser(
+            "sections", aliases=["sec"], help="Print section template JSON for an issue type"
+        )
+        sec_p.set_defaults(command="sections")
+        sec_p.add_argument("type", help="Issue type: bug, feat, enh, or epic")
+        sec_p.add_argument(
+            "--path", action="store_true", help="Print path to template file instead of JSON content"
+        )
+        add_config_arg(sec_p)
+
         ie = subs.add_parser(
             "impact-effort", aliases=["ie"], help="Display impact vs effort matrix"
         )
@@ -767,4 +777,8 @@ Examples:
             return cmd_decisions(config, args)
         if args.command == "finalize-decomposition":
             return cmd_finalize_decomposition(config, args)
+        if args.command == "sections":
+            from little_loops.cli.issues.sections import cmd_sections
+
+            return cmd_sections(config, args)
         return 1

@@ -2,14 +2,22 @@
 id: ENH-2286
 type: ENH
 priority: P3
-status: open
-parent: ENH-2272
+status: done
+parent: EPIC-2279
 relates_to:
 - ENH-2285
 - FEAT-2274
+- ENH-2272
 captured_at: '2026-06-25T00:00:00Z'
+completed_at: '2026-06-25T07:50:50Z'
 discovered_date: 2026-06-25
 discovered_by: issue-size-review
+confidence_score: 98
+outcome_confidence: 92
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2286: ll-issues sections CLI subcommand
@@ -20,6 +28,19 @@ Implement the `ll-issues sections <type>` subcommand. Depends on ENH-2285
 (`resolve_templates_dir`). Produces the CLI accessor that the callsite rewrites
 (ENH-2288) will invoke, and replaces the ~60s `find /` filesystem walk with a
 ~50ms deterministic lookup.
+
+## Current Behavior
+
+`ll-issues` has no `sections` subcommand. Tools that need section template JSON
+(e.g., `/ll:ready-issue`, `/ll:format-issue`) resolve template paths via a
+filesystem `find /` walk — a ~60s, non-deterministic operation.
+
+## Expected Behavior
+
+`ll-issues sections <type>` prints the section template JSON to stdout using
+`resolve_templates_dir()` for a deterministic ~50ms lookup. `--path` prints the
+absolute path instead of content. Invalid type or missing template exits 1 with
+a clear message to stderr. Alias `ll-issues sec` works identically.
 
 ## Parent Issue
 
@@ -100,5 +121,29 @@ the `from little_loops.cli.issues.path_cmd import cmd_path` pattern.
 
 - ENH-2285 must ship first (provides `resolve_templates_dir`)
 
+## Scope Boundaries
+
+Out of scope:
+- Writing or modifying template JSON files (read-only accessor only)
+- Deploying templates to projects (that is ENH-2287)
+- Template content validation beyond existence check
+- Any change to existing `ll-issues` subcommands
+
+## Impact
+
+- **Priority**: P3 - low urgency; unblocks ENH-2288 callsite rewrites
+- **Effort**: Small - new ~30-line file + ~8-line parser registration; all existing patterns
+- **Risk**: Low - purely additive new subcommand; no existing behavior changed
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `ll-issues`, `cli`, `python`
+
+## Status
+
+**Open** | Created: 2026-06-25 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T07:47:48 - `474628c1-d89b-4dd4-9ddc-e6ef849658f7.jsonl`
 - `/ll:issue-size-review` - 2026-06-25T00:00:00Z - `fffe04a2-92e2-4f19-bafe-0d8c500f9b47.jsonl`
