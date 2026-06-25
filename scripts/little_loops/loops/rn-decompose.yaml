@@ -205,9 +205,6 @@ states:
         echo "$child $CHILD_DEPTH" >> "$RUN_DIR/depth_map.txt"
       done < "$RUN_DIR/children_$${ID}.txt"
 
-      # Mark parent as skipped (decomposed)
-      echo "$ID" >> "$RUN_DIR/skipped.txt"
-
       # Increment decomposed count
       DECOMP_COUNT=$(cat "$RUN_DIR/decomposed_count.txt" 2>/dev/null || echo 0)
       echo $((DECOMP_COUNT + 1)) > "$RUN_DIR/decomposed_count.txt"

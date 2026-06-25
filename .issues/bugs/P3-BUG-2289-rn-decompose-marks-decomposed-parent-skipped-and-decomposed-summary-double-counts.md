@@ -4,8 +4,9 @@ title: "rn-decompose records decomposed parent in both skipped.txt and decompose
   \ \u2014 summary breakdown double-counts"
 priority: P3
 type: BUG
-status: open
+status: done
 captured_at: '2026-06-25T13:53:17Z'
+completed_at: '2026-06-25T14:45:07Z'
 discovered_date: '2026-06-25'
 discovered_by: audit-loop-run
 source_loop: rn-implement
@@ -204,7 +205,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-06-25 | Priority: P3
 
+## Resolution
+
+Removed the `echo "$ID" >> "$RUN_DIR/skipped.txt"` line (and its misleading comment "Mark parent as skipped (decomposed)") from the `enqueue_children` state in `rn-decompose.yaml`. The decomposed parent was already tracked by `decomposed_count.txt` and the `DECOMPOSED` outcome token; the `skipped.txt` write was pure tally double-counting. Updated `docs/guides/LOOPS_REFERENCE.md` to correct the Notes paragraph. Added three regression tests.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-25T14:45:07Z - (current session)
+- `/ll:ready-issue` - 2026-06-25T14:39:39 - `3c41471e-c75b-4ef8-a52f-01212bd9b711.jsonl`
 - `/ll:wire-issue` - 2026-06-25T14:18:38 - `0dd67099-f064-444a-8696-874bdae766b0.jsonl`
 - `/ll:refine-issue` - 2026-06-25T14:05:29 - `cd1382df-2f0c-4a2c-9267-f984e7cc89aa.jsonl`
 - `/ll:format-issue` - 2026-06-25T14:01:09 - `825fcb47-9057-4fbe-b73f-2ff9366825b5.jsonl`

@@ -482,7 +482,7 @@ snap_for_size_review  (shell: snapshot current scores and pre-review ID list)
   → failed
 ```
 
-**Notes**: Child detection is a two-step filter: (1) `comm -13` identifies net-new IDs created during size review, (2) each candidate's issue file must contain an explicit `parent:` frontmatter reference or `"Decomposed from <PARENT_ID>"` body line to avoid picking up unrelated concurrently-created issues. Cycle detection checks candidates against the union of `visited.txt` and `queue.txt`; cycle candidates are logged to `cycles.txt` and filtered out. Depth-first prepend means children are inserted at the head of the queue before existing entries, so the tree is explored depth-first. The parent is recorded as skipped (decomposed) in `skipped.txt`. `max_steps: 100`, `timeout: 3600`, `on_handoff: spawn`.
+**Notes**: Child detection is a two-step filter: (1) `comm -13` identifies net-new IDs created during size review, (2) each candidate's issue file must contain an explicit `parent:` frontmatter reference or `"Decomposed from <PARENT_ID>"` body line to avoid picking up unrelated concurrently-created issues. Cycle detection checks candidates against the union of `visited.txt` and `queue.txt`; cycle candidates are logged to `cycles.txt` and filtered out. Depth-first prepend means children are inserted at the head of the queue before existing entries, so the tree is explored depth-first. The decomposed parent is tracked via `decomposed_count.txt` (incremented by `enqueue_children`) and the `DECOMPOSED` outcome token written by `finalize_parent`; it is not written to `skipped.txt`. `max_steps: 100`, `timeout: 3600`, `on_handoff: spawn`.
 
 ### `rn-remediate` — Iterative Deepening Remediation Sub-Loop
 

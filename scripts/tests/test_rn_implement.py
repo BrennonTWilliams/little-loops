@@ -389,6 +389,22 @@ class TestReportAndTerminal:
         for key in ("next", "on_yes", "on_no", "on_error", "on_success", "on_failure"):
             assert key not in done, f"Bare terminal done must not have '{key}' routing"
 
+    def test_report_decomposed_and_skipped_use_distinct_sources(self) -> None:
+        """BUG-2289: report reads decomposed and skipped from separate, disjoint files.
+
+        decomposed_count.txt and skipped.txt must both appear as distinct tally
+        sources in the report action so that no single issue can inflate both
+        counters simultaneously.
+        """
+        data = _load_loop()
+        action = data["states"]["report"]["action"]
+        assert "decomposed_count.txt" in action, (
+            "report must read decomposed count from decomposed_count.txt"
+        )
+        assert "skipped.txt" in action, (
+            "report must read skipped count from skipped.txt"
+        )
+
 
 # ---------------------------------------------------------------------------
 # TestRoutingStructure — All states have valid routing
@@ -669,6 +685,35 @@ class TestParentClassifier:
         assert "failures.txt" in crash["action"]
         assert "SUB_LOOP_CRASH" in crash["action"]
         assert crash["next"] == "dequeue_next"
+
+    def test_skip_issue_is_sole_skipped_txt_writer(self) -> None:
+        """BUG-2289: only skip_issue (and init) may write to skipped.txt in rn-implement.
+
+        The report state treats skipped.txt and decomposed_count.txt as disjoint
+        outcome buckets. Any state other than skip_issue or init that writes to
+        skipped.txt (via >> or >) would cause double-counting when the report tallies
+        are summed.
+        """
+        data = _load_loop()
+        allowed_writers = {"skip_issue", "init"}
+        for name, state in data["states"].items():
+            action = state.get("action", "")
+            # Check each line for write operations (>> append, or bare > redirect) to
+            # skipped.txt. Reads (wc -l <, cat) are not flagged.
+            for line in action.splitlines():
+                stripped = line.strip()
+                writes = ">>" in stripped and "skipped.txt" in stripped
+                writes = writes or (
+                    "skipped.txt" in stripped
+                    and stripped.startswith(":")
+                    and ">" in stripped
+                )
+                if writes and name not in allowed_writers:
+                    raise AssertionError(
+                        f"BUG-2289: state '{name}' writes to skipped.txt but is not "
+                        f"an allowed writer (allowed: {allowed_writers}). This causes "
+                        f"double-counting in the report state."
+                    )
 
     def test_report_tallies_sub_loop_crashes_distinctly(self) -> None:
         """ENH-2005: report emits a sub_loop_crashes count separate from failed."""

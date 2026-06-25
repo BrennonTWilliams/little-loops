@@ -177,6 +177,22 @@ class TestDecompositionChain:
         ec = data["states"]["enqueue_children"]
         assert ec["on_error"] == "emit_size_review_failed"
 
+    def test_enqueue_children_does_not_write_skipped_txt(self) -> None:
+        """BUG-2289: enqueue_children must not append parent ID to skipped.txt.
+
+        The decomposed parent is already tracked by decomposed_count.txt and the
+        DECOMPOSED outcome token written by finalize_parent. Writing it to
+        skipped.txt causes rn-implement's report state to double-count the parent
+        (once in 'decomposed', once in 'skipped'), making bucket sums exceed
+        total_processed.
+        """
+        data = _load_loop()
+        action = data["states"]["enqueue_children"]["action"]
+        assert "skipped.txt" not in action, (
+            "BUG-2289: enqueue_children must not write to skipped.txt — "
+            "decomposed parent is already counted via decomposed_count.txt"
+        )
+
 
 # ============================================================================
 # TestCycleDetection — State: enqueue_children (cycle detection logic)
