@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -37,10 +36,7 @@ _MIN_PROMPT_LENGTH = 10
 
 
 def _find_prompt_file() -> Path:
-    """Resolve the optimize-prompt-hook template: env-var-first, then in-package fallback."""
-    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if env_root:
-        return Path(env_root) / "hooks" / "prompts" / "optimize-prompt-hook.md"
+    """Resolve the optimize-prompt-hook template from the in-package path."""
     return Path(__file__).parent / "prompts" / "optimize-prompt-hook.md"
 
 
