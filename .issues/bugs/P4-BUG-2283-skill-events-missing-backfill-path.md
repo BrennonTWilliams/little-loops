@@ -3,12 +3,23 @@ id: BUG-2283
 type: BUG
 priority: P4
 status: open
-title: skill_events table has no backfill path — ll-logs stats undercounts pre-init invocations
+title: "skill_events table has no backfill path \u2014 ll-logs stats undercounts pre-init\
+  \ invocations"
 discovered_date: 2026-06-25
 discovered_by: capture-issue
 captured_at: '2026-06-25T01:38:33Z'
 relates_to:
 - ENH-1833
+labels:
+- bug
+- session-store
+- history
+confidence_score: 98
+outcome_confidence: 89
+score_complexity: 23
+score_test_coverage: 20
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # BUG-2283: skill_events table has no backfill path — ll-logs stats undercounts pre-init invocations
@@ -21,11 +32,26 @@ which is only populated by the `user_prompt_submit` runtime hook (added in ENH-1
 step, so any JSONL-logged invocations that predate the DB initialization timestamp are permanently
 absent from the count.
 
-**Observed**: `tradeoff-review-issues` shows 2 invocations in `ll-logs stats`.  
-**Actual**: 4 invocations exist in JSONL — 2 occurred before the DB was initialized (June 2 and June 3 before 01:06:22Z) and were never captured.
+## Current Behavior
 
-Post-DB-init capture rate is ~99-100% for all skills (hook is working correctly).
-The entire undercount is pre-init history.
+`ll-logs stats` reads skill invocation counts exclusively from `history.db`'s `skill_events` table.
+Because `backfill()` and `backfill_incremental()` in `session_store.py` have no
+`_backfill_skill_events()` step, JSONL-logged invocations that predate the DB initialization
+timestamp are permanently absent.
+
+**Example**: `tradeoff-review-issues` shows 2 invocations in `ll-logs stats`, but 4 invocations
+exist in JSONL — 2 occurred before the DB was initialized (June 2–3, before 01:06:22Z) and were
+never captured.
+
+Post-DB-init capture rate is ~99–100% (hook working correctly). The entire undercount is pre-init
+history.
+
+## Steps to Reproduce
+
+1. Identify a skill that was invoked before `history.db` was initialized (JSONL records exist pre-init)
+2. Run `ll-session backfill`
+3. Run `ll-logs stats --project .`
+4. Observe: pre-init invocations are absent from the count; only post-init sessions appear in the skill stats
 
 ## Root Cause
 
@@ -81,5 +107,14 @@ post-init sessions.
 After fix: run `ll-session backfill` on this project then `ll-logs stats --project .` and
 verify `tradeoff-review-issues` shows ≥ 4 (not 2).
 
+## Impact
+
+- **Priority**: P4 — Historical accuracy gap only; does not affect real-time capture (hook correct post-init). Low urgency with no user-facing breakage.
+- **Effort**: Small — Add `_backfill_skill_events()` following the `_backfill_messages` pattern and wire into two existing call sites (`backfill` and `backfill_incremental`).
+- **Risk**: Low — Uses `INSERT OR IGNORE`; idempotent, no existing data modified or at risk.
+- **Breaking Change**: No
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4646b6c-126e-4f42-b27d-67bef4444089.jsonl`
+- `/ll:format-issue` - 2026-06-25T01:43:19 - `9f7bef55-c353-41ec-9464-e2f083ac0301.jsonl`
 - `/ll:capture-issue` - 2026-06-25T01:38:33Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d627bb2-ced2-4076-9ec1-8bd9033c843a.jsonl`
