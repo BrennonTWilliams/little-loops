@@ -1216,6 +1216,25 @@ Append a session log entry to an issue file.
 | `issue_path` | Path to the issue markdown file |
 | `log_command` | Command name to record (e.g., `/ll:refine-issue`) |
 
+---
+
+#### `ll-issues sections <type>` / `ll-issues sec <type>`
+
+Print the JSON content of the per-type section template for `<type>`. Resolves via 4-tier precedence — explicit `issues.templates_dir` config → `<project_root>/.ll/templates/` (project-deployed copy) → bundled wheel templates — so project-local overrides (deployed via `ll-init --deploy-templates`) are returned automatically. Skills and commands should call this instead of reading `scripts/little_loops/templates/{type}-sections.json` directly.
+
+| Argument/Flag | Description |
+|---------------|-------------|
+| `type` | Issue type: `bug`, `feat`, `enh`, or `epic` |
+| `--path` | Output only the resolved file path (useful for shell scripting) |
+
+**Examples:**
+```bash
+ll-issues sections bug                # Print bug-sections.json content
+ll-issues sections feat --path        # Print resolved path (for shell scripting)
+ll-issues sec enh                     # Alias: sec
+ll-issues sections epic --path        # Resolved path to epic-sections.json
+```
+
 **Examples:**
 ```bash
 ll-issues next-id

@@ -275,6 +275,7 @@ Issue management settings:
 | `deferred_dir` | `deferred` | **Deprecated** — use `IssueInfo.status` instead; kept for backward compatibility |
 | `priorities` | `[P0-P5]` | Valid priority prefixes |
 | `templates_dir` | `null` | Directory for issue templates |
+| `deploy_templates` | `false` | When `true`, `ll-init` copies the bundled per-type section templates into `<project_root>/.ll/templates/` so projects can customise them. Deployed copies take precedence over the bundled wheel templates via `resolve_templates_dir()`. |
 | `capture_template` | `"full"` | Default template style for captured issues (`"full"`, `"minimal"`, or `"legacy"`) |
 | `duplicate_detection.exact_threshold` | `0.8` | Jaccard similarity threshold for exact duplicates (0.0-1.0) |
 | `duplicate_detection.similar_threshold` | `0.5` | Jaccard similarity threshold for similar issues (0.0-1.0) |

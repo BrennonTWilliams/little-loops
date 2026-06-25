@@ -273,7 +273,7 @@ ELSE:
 
 **Build issue from shared template:**
 
-1. Read the per-type template `scripts/little_loops/templates/{type}-sections.json` where `{type}` is `bug`, `feat`, `enh`, or `epic` based on the issue type (v2.0 - optimized for AI implementation)
+1. Run `ll-issues sections {type}` to get the per-type template where `{type}` is `bug`, `feat`, `enh`, or `epic` based on the issue type (v2.0 - optimized for AI implementation)
 2. Look up `creation_variants.[TEMPLATE_STYLE]` to determine which sections to include
 3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
 4. If `include_type_sections` is true, also include sections from `type_sections` that have a `creation_template`

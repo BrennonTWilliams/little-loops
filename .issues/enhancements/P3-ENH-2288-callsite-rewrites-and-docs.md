@@ -2,13 +2,24 @@
 id: ENH-2288
 type: ENH
 priority: P3
-status: open
-parent: ENH-2272
+status: done
+labels:
+- refactor
+- documentation
+parent: EPIC-2279
 relates_to:
 - ENH-2286
+- ENH-2272
 captured_at: '2026-06-25T00:00:00Z'
+completed_at: '2026-06-25T08:27:36Z'
 discovered_date: 2026-06-25
 discovered_by: issue-size-review
+confidence_score: 100
+outcome_confidence: 83
+score_complexity: 21
+score_test_coverage: 15
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # ENH-2288: Callsite rewrites (6 files) + docs updates
@@ -23,6 +34,37 @@ exist before callsite rewrites are useful in production).
 ## Parent Issue
 
 Decomposed from ENH-2272: ll-issues sections accessor + project-local template deploy
+
+## Current Behavior
+
+Six skill and command files reference the internal template path
+`scripts/little_loops/templates/{type}-sections.json` as a prose string. This
+couples them to the template's physical location and bypasses the 4-tier
+project-local override mechanism introduced in ENH-2285.
+
+## Expected Behavior
+
+All six files invoke `ll-issues sections {type}` (or `ll-issues sections {type} --path`)
+so the CLI resolves project-local overrides correctly via the precedence lookup
+added in ENH-2285.
+
+## Current Pain Point
+
+Hardcoded prose paths make skills brittle if the template directory moves or if a
+project has deployed local templates; the override mechanism is invisible to
+callsites that bypass the CLI accessor.
+
+## Impact
+
+Enables project-local template overrides to propagate to all skill and command
+callsites. No user-visible change for projects without custom templates; projects
+with custom templates gain consistent resolution.
+
+## Scope Boundaries
+
+Textual replacements in the 6 listed files only. No new functionality, no template
+content changes, no CLI behavior changes. Documentation updates (CLI.md, API.md,
+CONFIGURATION.md, CLAUDE.md) are in scope; architectural changes are not.
 
 ## Proposed Solution
 
@@ -92,5 +134,12 @@ Post-implementation verification: Run `grep -r "plugin directory\|scripts/little
 
 - ENH-2286 must ship first (the `ll-issues sections` CLI must exist)
 
+## Resolution
+
+Applied 11 verbatim callsite replacements across 6 skill/command files, replacing hardcoded `scripts/little_loops/templates/{type}-sections.json` paths with `ll-issues sections {type}` CLI invocations. Updated CLI.md (`sections` subcommand docs), API.md (`resolve_templates_dir()` + `load_issue_sections()` module section), CONFIGURATION.md (`deploy_templates` config row), and CLAUDE.md (`ll-issues` subcommand list).
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T08:15:26 - `12645b64-7801-4990-b732-37503485a8cd.jsonl`
 - `/ll:issue-size-review` - 2026-06-25T00:00:00Z - `fffe04a2-92e2-4f19-bafe-0d8c500f9b47.jsonl`
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `4395eb4a-2bbe-4468-bbcb-1003e7c691dc.jsonl`
+- `/ll:manage-issue` - 2026-06-25T08:27:36Z - `2c961fb0-039b-4e53-b4fa-3ce3652af076.jsonl`

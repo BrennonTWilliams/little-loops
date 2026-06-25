@@ -136,7 +136,7 @@ If matches exist, add each correction as a `Historical Concerns` sub-bullet in t
 
 #### Required Sections
 
-Read the per-type template `scripts/little_loops/templates/{type}-sections.json` v2.0 (relative to the little-loops plugin directory), where `{type}` is `bug`, `feat`, or `enh` based on the issue type, and verify:
+Run `ll-issues sections {type}` to get the per-type template, where `{type}` is `bug`, `feat`, or `enh` based on the issue type, and verify:
 - [ ] All `common_sections` where `required: true` are present and non-empty (Summary, Current Behavior, Expected Behavior, Impact, Labels, Status)
 - [ ] All `type_sections` entries where `level: "required"` are present and non-empty
 - [ ] Proposed Solution section is present (even if marked TBD)

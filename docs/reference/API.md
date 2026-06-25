@@ -878,6 +878,66 @@ Convert text to slug format for filenames.
 
 ---
 
+## little_loops.issue_template
+
+Issue template assembly using per-type section definition files.
+
+### resolve_templates_dir
+
+Return the templates directory using 4-tier precedence lookup.
+
+```python
+def resolve_templates_dir(config: BRConfig) -> Path
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config` | `BRConfig` | Project configuration |
+
+**Returns:** `Path` — resolved templates directory
+
+**Precedence (highest to lowest):**
+
+1. `config.issues.templates_dir` — explicit config override
+2. `<project_root>/.ll/templates/` — project-deployed copy (written by `ll-init --deploy-templates`)
+3. Bundled in-package `templates/` (always available)
+
+Skills and commands that need template JSON should invoke `ll-issues sections <type>` (which calls this internally) rather than reading the template path directly. This ensures project-local overrides propagate correctly.
+
+**Example:**
+
+```python
+from little_loops.issue_template import resolve_templates_dir
+from little_loops.config import load_config
+
+config = load_config()
+templates_dir = resolve_templates_dir(config)
+# Returns .ll/templates/ if deployed, otherwise bundled templates/
+```
+
+### load_issue_sections
+
+Load per-type sections JSON from the resolved templates directory.
+
+```python
+def load_issue_sections(issue_type: str, templates_dir: Path | None = None) -> dict[str, Any]
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue_type` | `str` | Issue type prefix (`BUG`, `FEAT`, `ENH`, `EPIC`) |
+| `templates_dir` | `Path \| None` | Optional override path; defaults to bundled `templates/` |
+
+**Returns:** `dict[str, Any]` — parsed JSON template data
+
+**Raises:** `FileNotFoundError` if the per-type sections file does not exist.
+
+---
+
 ## little_loops.dependency_graph
 
 Dependency graph construction for issue scheduling based on `Blocked By` relationships.
