@@ -3,10 +3,11 @@ id: ENH-2282
 title: "Centralize model\u2192context-window mapping in Python and add 1M-context\
   \ support"
 type: ENH
-status: open
+status: done
 priority: P2
 decision_needed: false
 captured_at: '2026-06-25T00:18:53Z'
+completed_at: '2026-06-25T04:47:51Z'
 discovered_date: '2026-06-25'
 discovered_by: capture-issue
 labels:
@@ -298,6 +299,7 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 - ~~Two implementation steps have alternative paths without selection~~ — resolved: step 3 uses None-sentinel pattern; step 5 uses static bash table entry. See updated Implementation Steps.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T04:33:19 - `abb28d89-c8b8-4206-baca-55ad85bc454a.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `705d356c-32d0-4c9e-9c21-25ec0999390e.jsonl`
 - `/ll:refine-issue` - 2026-06-25T03:32:54 - `1b4a4754-a949-4148-913b-4dea602b2d07.jsonl`
 - `/ll:ready-issue` - 2026-06-25T03:15:35 - `bb77529e-596a-4f0a-bd3d-91acaab198e3.jsonl`
@@ -310,6 +312,10 @@ _Added by `/ll:confidence-check` on 2026-06-24_
 
 ---
 
+## Resolution
+
+Implemented `scripts/little_loops/context_window.py` with `context_window_for()` as the single source of truth. Wired into `issue_manager.py`, `subprocess_utils.py`, `parallel/worker_pool.py`, and `hooks/scripts/context-monitor.sh`. Added `[1m]` suffix → 1M entry to bash `get_context_limit()`. Updated `context-handoff-sentinel.sh` to honor `LL_CONTEXT_LIMIT` in the fallback path. Updated documentation in 4 locations + config-schema.json + API.md.
+
 ## Status
 
-open
+done

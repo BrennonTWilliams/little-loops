@@ -31,6 +31,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.dependency_graph` | Dependency graph construction |
 | `little_loops.dependency_mapper` | Cross-issue dependency discovery and mapping (sub-package: `models`, `analysis`, `formatting`, `operations`) |
 | `little_loops.work_verification` | Verification helpers |
+| `little_loops.context_window` | Model→context-window size mapping (`context_window_for()`) |
 | `little_loops.subprocess_utils` | Subprocess handling |
 | `little_loops.host_runner` | Host-agnostic CLI invocation layer (`HostRunner` Protocol + `ClaudeCodeRunner` + `CodexRunner` + `OpenCodeRunner` + `PiRunner`) |
 | `little_loops.state` | State persistence |
@@ -2046,6 +2047,45 @@ logger = Logger()
 if not verify_work_was_done(logger):
     logger.warning("No implementation changes detected")
 ```
+
+---
+
+## little_loops.context_window
+
+Single source of truth for model → context-window size mapping. Used by `issue_manager`, `subprocess_utils`, and `worker_pool` to resolve the correct token denominator for handoff/guillotine decisions.
+
+### context_window_for
+
+```python
+def context_window_for(model: str | None, override: int | None = None) -> int:
+    """Resolve context-window size for a model id.
+
+    Precedence (highest to lowest):
+    1. Explicit ``override`` argument (non-zero)
+    2. ``LL_CONTEXT_LIMIT`` environment variable (non-zero integer)
+    3. ``[1m]`` suffix on model id → 1_000_000
+    4. Exact model-id lookup in MODEL_CONTEXT_WINDOW
+    5. 200_000 conservative floor
+    """
+```
+
+**Parameters**:
+- `model` — Model identifier string (e.g. `"claude-opus-4-8[1m]"`), or `None` to use env-var / floor.
+- `override` — Explicit token count; takes top precedence when non-zero.
+
+**Returns**: Context window size in tokens (always a positive `int`).
+
+**Examples**:
+```python
+from little_loops.context_window import context_window_for
+
+context_window_for("claude-opus-4-8[1m]")          # → 1_000_000
+context_window_for("claude-opus-4-8")               # → 200_000
+context_window_for(None)                             # → 200_000 (conservative floor)
+context_window_for("claude-opus-4-8", override=500_000)  # → 500_000
+```
+
+**Note**: The bash layer (`hooks/scripts/context-monitor.sh:get_context_limit()`) implements the same logic; both are kept in sync via a `# keep in sync with` comment. The env-var precedence means that `LL_CONTEXT_LIMIT` set by any CLI (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`) flows through `context_window_for()` into every Python continuation path.
 
 ---
 

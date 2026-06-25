@@ -703,7 +703,7 @@
         },
         "context_limit_estimate": {
           "type": "integer",
-          "description": "Override for the context window token limit. Omit or set to 0 for auto-detection (known claude-*-4* variants -> 200000; if transcript baseline exceeds that, auto-upgrades to 1000000). Set to an explicit non-zero value to override, e.g. 1000000 for 1M-context models.",
+          "description": "Override for the context window token limit. Omit or set to 0 for auto-detection ([1m]-suffixed model ids resolve to 1M by identifier; known claude-*-4* base variants -> 200000; if transcript baseline exceeds the resolved limit, auto-upgrades to 1000000). Set to an explicit non-zero value to override, e.g. 1000000 for 1M-context models.",
           "default": 0,
           "minimum": 0,
           "maximum": 2000000

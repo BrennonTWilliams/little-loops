@@ -304,7 +304,7 @@ Run /ll:handoff to generate one, or specify a custom path:
 |---------|---------|-------------|
 | `context_monitor.enabled` | `false` | Enable automatic context monitoring |
 | `context_monitor.auto_handoff_threshold` | `80` | Percentage (50-95) to trigger warnings |
-| `context_monitor.context_limit_estimate` | `0` (auto) | Override for the context window token limit. Omit or set to `0` for auto-detection (known Claude 4 models -> 200000; baseline exceeding that auto-upgrades to 1000000). Set explicitly to override, e.g. `1000000` for 1M-context sessions. |
+| `context_monitor.context_limit_estimate` | `0` (auto) | Override for the context window token limit. Omit or set to `0` for auto-detection (`[1m]`-suffixed model ids resolve to 1M by identifier; known Claude 4 base models → 200000; baseline exceeding the resolved limit auto-upgrades to 1000000 as a fallback). Set explicitly to override, e.g. `1000000` for 1M-context sessions. |
 | `context_monitor.estimate_weights.read_per_line` | `10` | Token cost per line for Read tool calls |
 | `context_monitor.estimate_weights.tool_call_base` | `100` | Base token overhead per tool call |
 | `context_monitor.estimate_weights.bash_output_per_char` | `0.3` | Token cost per character for Bash output |

@@ -365,6 +365,71 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
+    def test_1m_model_suffix_auto_detection(self, hook_script: Path, test_config: Path, tmp_path: Path):
+        """[1m]-suffixed model triggers auto-detection of 1M context limit.
+
+        Uses baseline of 700K tokens. At 1M limit: 70% → no trigger (exit 0).
+        At 200K limit: 350% → would trigger (exit 2). Exit code proves 1M was used.
+        State file confirms context_limit == 1000000.
+        """
+        import json as _json
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".ll" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            transcript_file = tmp_path / "transcript.jsonl"
+            assistant_entry = {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-opus-4-8[1m]",
+                    "usage": {
+                        "input_tokens": 700000,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 0,
+                    },
+                },
+            }
+            transcript_file.write_text(_json.dumps(assistant_entry) + "\n")
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x\n"},
+                "transcript_path": str(transcript_file),
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=_json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            # exit 0 = no handoff. 700K / 1M = 70% < 80% threshold.
+            # If denominator were 200K, 700K / 200K = 350% → would trigger (exit 2).
+            assert result.returncode == 0, (
+                f"Expected exit 0 (auto-detected 1M limit), got {result.returncode}. "
+                f"stderr: {result.stderr}"
+            )
+            # Confirm context_limit == 1000000 in state file
+            # test_config fixture sets state_file to tmp_path / "ll-context-state.json"
+            state_file = tmp_path / "ll-context-state.json"
+            assert state_file.exists(), "State file should be written by hook"
+            state = _json.loads(state_file.read_text())
+            assert state.get("context_limit") == 1000000, (
+                f"Expected context_limit=1000000 in state, got {state.get('context_limit')}. "
+                f"Full state: {state}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
     def test_unknown_model_config_fallback(self, hook_script: Path, tmp_path: Path):
         """Unknown model falls back to context_limit_estimate from config.
 

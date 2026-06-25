@@ -239,7 +239,7 @@ It also resets its estimate after a compaction event.
 
 - `context_monitor.enabled` (default **true**)
 - `context_monitor.auto_handoff_threshold` (default `80`, range 50–95)
-- `context_monitor.context_limit_estimate` (default `0` = auto-detect model limit; upgrades to 1M when the transcript baseline indicates it)
+- `context_monitor.context_limit_estimate` (default `0` = auto-detect model limit; `[1m]`-suffixed model ids resolve to 1M by identifier, or the transcript baseline exceeding the resolved limit auto-upgrades to 1000000 as a fallback)
 - `context_monitor.estimate_weights.*` and `context_monitor.post_compaction_percent` (default `30`) for fine-tuning
 
 This pairs with [Session Handoff](SESSION_HANDOFF.md).

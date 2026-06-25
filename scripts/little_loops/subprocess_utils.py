@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from little_loops.context_window import context_window_for
 from little_loops.host_runner import resolve_host
 
 if TYPE_CHECKING:
@@ -123,7 +124,7 @@ def read_sentinel(repo_path: Path | None = None) -> dict | None:
 def write_sentinel(
     repo_path: Path | None = None,
     token_count: int = 0,
-    context_limit: int = 200_000,
+    context_limit: int | None = None,
 ) -> None:
     """Write the context-handoff sentinel file.
 
@@ -134,6 +135,8 @@ def write_sentinel(
     """
     import datetime
 
+    if context_limit is None:
+        context_limit = context_window_for(None)
     sentinel_path = (repo_path or Path.cwd()) / SENTINEL_PATH
     usage_percent = int(token_count * 100 / context_limit) if context_limit > 0 else 0
     try:
@@ -187,7 +190,7 @@ def assemble_guillotine_prompt(
 
     input_tokens = token_stats.get("input_tokens", 0)
     output_tokens = token_stats.get("output_tokens", 0)
-    context_limit = token_stats.get("context_limit", 200_000)
+    context_limit = token_stats.get("context_limit") or context_window_for(None)
     trigger_reason = token_stats.get("trigger_reason", "context > 90%")
 
     scratch_listing = _list_scratch_files()

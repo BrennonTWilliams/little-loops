@@ -131,7 +131,9 @@ get_context_limit() {
     local config_override="$2"
     # Explicit user override: honor any non-empty, non-zero value (including 1000000 for 1M-context models).
     [ -n "$config_override" ] && [ "$config_override" != "0" ] && echo "$config_override" && return
+    # keep in sync with scripts/little_loops/context_window.py:context_window_for()
     case "$model" in
+        *\[1m\]) echo 1000000 ;;
         claude-opus-4*|claude-sonnet-4*|claude-haiku-4*) echo 200000 ;;
         *) echo 200000 ;;
     esac

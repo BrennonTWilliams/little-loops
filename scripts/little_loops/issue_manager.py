@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 from little_loops.cli_args import _id_matches
 from little_loops.config import BRConfig
+from little_loops.context_window import context_window_for
 from little_loops.dependency_graph import DependencyGraph
 from little_loops.events import EventBus
 from little_loops.git_operations import check_git_status, verify_work_was_done
@@ -564,6 +565,7 @@ def process_issue_inplace(
     preview_full: bool = False,
     event_bus: EventBus | None = None,
     sprint_context: SprintWorkerContext | None = None,
+    context_limit: int | None = None,
 ) -> IssueProcessingResult:
     """Process a single issue through the 3-phase workflow in the current working tree.
 
@@ -884,6 +886,7 @@ def process_issue_inplace(
                 preview_full=preview_full,
                 issue_path=info.path,
                 sprint_context=sprint_context,
+                context_limit=context_window_for(None, override=context_limit),
             )
         else:
             logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")
@@ -1352,6 +1355,9 @@ class AutoManager:
                 self._detected_model.append(m)
                 self.logger.info(f"model: {m}")
 
+        resolved_limit = context_window_for(
+            self._detected_model[0] if self._detected_model else None
+        )
         result = process_issue_inplace(
             info,
             self.config,
@@ -1360,6 +1366,7 @@ class AutoManager:
             on_model_detected=on_model,
             preview_full=self._preview_full,
             event_bus=self.event_bus,
+            context_limit=resolved_limit,
         )
 
         # Map result back to state tracking

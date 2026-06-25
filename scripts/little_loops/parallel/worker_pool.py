@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from little_loops.context_window import context_window_for
 from little_loops.host_runner import resolve_host
 from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.parallel.git_lock import GitLock
@@ -827,7 +828,7 @@ class WorkerPool:
         working_dir: Path,
         issue_id: str | None = None,
         max_continuations: int = 3,
-        context_limit: int = 200_000,
+        context_limit: int | None = None,
         run_dir: str | None = None,
         sprint_context: SprintWorkerContext | None = None,
     ) -> subprocess.CompletedProcess[str]:
@@ -845,6 +846,8 @@ class WorkerPool:
         Returns:
             Combined CompletedProcess with all session outputs
         """
+        if context_limit is None:
+            context_limit = context_window_for(None)
         all_stdout: list[str] = []
         all_stderr: list[str] = []
         current_command = command

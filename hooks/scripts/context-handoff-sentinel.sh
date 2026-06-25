@@ -59,8 +59,11 @@ if [ "${TOKEN_COUNT:-0}" -le 0 ]; then
     exit 0
 fi
 
-# Determine context limit: prefer state-file hint, fallback to config
+# Determine context limit: prefer state-file hint, then LL_CONTEXT_LIMIT env var, then config
 CONTEXT_LIMIT="${CONFIG_CONTEXT_LIMIT:-0}"
+if [ "$CONTEXT_LIMIT" -le 0 ] && [ -n "${LL_CONTEXT_LIMIT:-}" ] && [ "${LL_CONTEXT_LIMIT}" != "0" ]; then
+    CONTEXT_LIMIT="$LL_CONTEXT_LIMIT"
+fi
 if [ "$CONTEXT_LIMIT" -le 0 ]; then
     CONTEXT_LIMIT=$(ll_config_value "context_monitor.context_limit_estimate" "200000")
 fi
