@@ -2,8 +2,9 @@
 id: ENH-2277
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-24T00:00:00Z'
+completed_at: '2026-06-25T09:23:12Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
@@ -24,11 +25,11 @@ labels:
 - install
 - host-compat
 decision_needed: false
-confidence_score: 98
-outcome_confidence: 82
+confidence_score: 100
+outcome_confidence: 84
 score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 20
 score_change_surface: 25
 ---
 
@@ -298,7 +299,7 @@ _Wiring pass added by `/ll:wire-issue`:_
    manifest-completeness test (build wheel → assert every declared asset is
    shipped + loadable via `importlib.resources`). Make the manifest hard to
    forget to update (resolver self-registers keys).
-2. Build the `__file__`-escape AST lint (`.parent` chains + `.parents[n]`) +
+2. Build the `__file__`-escape regex lint (`.parent` chains + `.parents[n]`) +
    allowlist (in-package targets + the shared resolver); add self-tests.
 3. Register the `ll-verify-package-data` entry point (manifest check + lint);
    wire into the verify suite / CI.
@@ -438,6 +439,8 @@ Both marks are already declared in `[tool.pytest.ini_options]` in `scripts/pypro
 For subprocess invocations in the smoke test, follow the pattern in `test_rn_build.py`: `subprocess.run([...], capture_output=True, text=True, timeout=N)` without `check=True`; assert manually on `returncode`.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T09:03:46 - `fbdec738-9b28-4aa3-8f41-fc9de235379a.jsonl`
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `7b6f9ec9-cc2a-4e20-a5c8-0a86757448a3.jsonl`
 - `/ll:confidence-check` - 2026-06-24T00:00:00Z - `adfa305f-dade-431c-b1e2-ea277e3b8bd6.jsonl`
 - `/ll:wire-issue` - 2026-06-25T04:30:45 - `abb28d89-c8b8-4206-baca-55ad85bc454a.jsonl`
 - `/ll:decide-issue` - 2026-06-25T04:21:22 - `31eb1bb9-53b5-4aad-998f-729f66e478aa.jsonl`

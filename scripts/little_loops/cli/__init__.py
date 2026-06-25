@@ -18,6 +18,7 @@ Provides command-line interfaces for automated issue management:
 - ll-deps: Cross-issue dependency discovery and validation
 - ll-sync: GitHub Issues sync
 - ll-verify-docs: Documentation count verification
+- ll-verify-package-data: Lint package code for __file__ escapes and verify manifest assets are in-wheel
 - ll-check-links: Markdown link checking
 - ll-issues: Issue management and visualization utilities
 - ll-gitignore: Suggest and apply .gitignore patterns
@@ -72,6 +73,7 @@ from little_loops.cli.sprint import (
     main_sprint,
 )
 from little_loops.cli.sync import main_sync
+from little_loops.cli.verify_package_data import main_verify_package_data
 from little_loops.cli.verify_triggers import main_verify_triggers
 from little_loops.init.cli import main_init
 
@@ -106,6 +108,7 @@ __all__ = [
     "main_sprint",
     "main_sync",
     "main_verify_docs",
+    "main_verify_package_data",
     "main_verify_skill_budget",
     "main_verify_skills",
     "main_verify_triggers",

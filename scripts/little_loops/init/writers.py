@@ -35,6 +35,7 @@ _LL_PERMISSIONS: tuple[str, ...] = (
     "Bash(ll-deps:*)",
     "Bash(ll-sync:*)",
     "Bash(ll-verify-docs:*)",
+    "Bash(ll-verify-package-data:*)",
     "Bash(ll-verify-skills:*)",
     "Bash(ll-check-links:*)",
     "Bash(ll-gitignore:*)",
@@ -78,6 +79,7 @@ _CLAUDE_MD_COMMANDS_BLOCK = """\
 - `ll-deps` - Cross-issue dependency analysis and validation
 - `ll-sync` - Sync local issues with GitHub Issues
 - `ll-verify-docs` - Verify documented counts match actual file counts
+- `ll-verify-package-data` - Lint __file__ escapes and verify manifest assets are in-wheel
 - `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines
 - `ll-check-links` - Check markdown documentation for broken links
 - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint, epic-progress, decisions)

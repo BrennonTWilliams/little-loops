@@ -82,6 +82,7 @@ ll-generate-skill-descriptions = "little_loops.cli:main_generate_skill_descripti
 ll-adapt-skills-for-codex = "little_loops.cli:main_adapt_skills_for_codex"
 ll-learning-tests = "little_loops.cli:main_learning_tests"
 ll-verify-triggers = "little_loops.cli:main_verify_triggers"
+ll-verify-package-data = "little_loops.cli:main_verify_package_data"
 ll-adapt-agents-for-codex = "little_loops.cli:main_adapt_agents_for_codex"
 ll-init = "little_loops.cli:main_init"
 mcp-call = "little_loops.mcp_call:main"
