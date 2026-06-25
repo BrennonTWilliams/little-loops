@@ -7666,6 +7666,31 @@ class TestGeneralTaskLoop:
             "continue_work prompt must preserve DoD-criterion remediation logic for non-timeout failures"
         )
 
+    # ENH-2293: OOM resilience tests
+    def test_do_work_retryable_exit_codes_is_124_only(self, data: dict) -> None:
+        """do_work.retryable_exit_codes must be [124] to limit retry budget to timeout exits (ENH-2293)."""
+        state = data["states"].get("do_work", {})
+        assert state.get("retryable_exit_codes") == [124], (
+            "do_work.retryable_exit_codes should be [124] — prevents non-timeout exits "
+            "from consuming the full retry budget (ENH-2293)"
+        )
+
+    def test_continue_work_prompt_detects_oom_exit_code(self, data: dict) -> None:
+        """continue_work prompt must reference exit -9 / OOM / SIGKILL for OOM detection (ENH-2293)."""
+        state = data["states"].get("continue_work", {})
+        action = state.get("action", "")
+        assert any(marker in action for marker in ("-9", "OOM", "SIGKILL")), (
+            "continue_work prompt must reference '-9', 'OOM', or 'SIGKILL' in the OOM branch (ENH-2293)"
+        )
+
+    def test_continue_work_prompt_routes_to_diagnose_on_oom(self, data: dict) -> None:
+        """continue_work prompt must mention diagnose in the OOM branch (ENH-2293)."""
+        state = data["states"].get("continue_work", {})
+        action = state.get("action", "")
+        assert "diagnose" in action.lower(), (
+            "continue_work prompt must mention 'diagnose' in the OOM branch (ENH-2293)"
+        )
+
 
 class TestOpenSCADModelGeneratorLoop:
     """Structural tests for the openscad-model-generator built-in FSM loop (FEAT-2269)."""

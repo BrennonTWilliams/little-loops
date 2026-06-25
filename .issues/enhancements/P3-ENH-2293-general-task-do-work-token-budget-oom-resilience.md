@@ -4,8 +4,9 @@ title: "general-task do_work \u2014 token-budget / OOM resilience (pre-work cont
   \ guard)"
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-25T15:24:25Z'
+completed_at: '2026-06-25T16:40:27Z'
 discovered_date: 2026-06-25
 discovered_by: capture-issue
 labels:
@@ -268,6 +269,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Scope**: `scripts/little_loops/loops/general-task.yaml` (FSM only; no runner change expected).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T16:22:29 - `59280017-75bb-4f3b-91cd-67fc66fd1d23.jsonl`
 - `/ll:confidence-check` - 2026-06-25T16:30:00Z - `48eb6c56-fe87-4a7b-abd5-a2992ed6f148.jsonl`
 - `/ll:wire-issue` - 2026-06-25T15:59:22 - `36c21096-cd85-469c-bcaf-ae76d9650ce1.jsonl`
 - `/ll:decide-issue` - 2026-06-25T15:48:33 - `58d60d2e-2091-4283-b975-b472ea8c30c0.jsonl`

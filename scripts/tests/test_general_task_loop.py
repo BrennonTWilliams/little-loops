@@ -1380,3 +1380,20 @@ class TestCheckDoneErrorRoutingBUG1960:
             "on ${captured.selected_step.output} recover gracefully instead of "
             "terminating the loop"
         )
+
+
+class TestENH2293OOMResilience:
+    """ENH-2293: OOM-aware post-mortem — token-budget / SIGKILL resilience in general-task.yaml."""
+
+    def test_do_work_retryable_exit_codes(self, raw_data: dict) -> None:
+        """do_work must have retryable_exit_codes: [124] to avoid wasting retries on non-timeout exits."""
+        assert raw_data["states"]["do_work"].get("retryable_exit_codes") == [124], (
+            "do_work.retryable_exit_codes must be [124] (ENH-2293)"
+        )
+
+    def test_continue_work_handles_oom_exit_code(self, raw_data: dict) -> None:
+        """continue_work.action must reference OOM/SIGKILL signal for the exit -9 branch."""
+        action = raw_data["states"]["continue_work"]["action"]
+        assert any(marker in action for marker in ("-9", "OOM", "SIGKILL")), (
+            "continue_work.action must reference '-9', 'OOM', or 'SIGKILL' in the exit -9 branch (ENH-2293)"
+        )

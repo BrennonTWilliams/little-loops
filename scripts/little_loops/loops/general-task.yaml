@@ -209,6 +209,7 @@ states:
     next: verify_step
     on_error: do_work
     max_retries: 2
+    retryable_exit_codes: [124]
     on_retry_exhausted: capture_work_exit
     timeout: 900
 
@@ -507,7 +508,17 @@ states:
       step in ${context.run_dir}/plan.md. Do NOT append a remediation step for a DoD
       criterion — the step was sound but oversized. Print a summary of the split.
 
-      Otherwise (exit code is not 124): the last verify step may have failed. If
+      If the exit code is -9 (OOM/SIGKILL): the worker was killed by the operating
+      system due to memory pressure, not a task or code failure. Do NOT append a
+      remediation step. Write a brief OOM diagnostic to ${context.run_dir}/summary.md
+      describing which step was being executed and that memory pressure caused the
+      kill. Then print exactly this on its own line:
+      DIAGNOSE_OOM
+      The loop will route to diagnose via retry exhaustion for operator review.
+      The operator should reduce the scope of the step or run on a system with more
+      available memory.
+
+      Otherwise (exit code is not 124 and not -9): the last verify step may have failed. If
       ${context.run_dir}/verify-output.txt exists, read it FIRST to understand WHY —
       it holds the captured stdout/stderr of the resolved test command. Use it to
       classify the failure before deciding how to remediate:
