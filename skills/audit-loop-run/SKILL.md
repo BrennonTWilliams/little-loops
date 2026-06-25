@@ -16,7 +16,7 @@ arguments:
     description: Loop name to assess (optional — auto-selects most recent if omitted)
     required: false
   - name: tail
-    description: Limit history events analyzed to the N most recent (default 200)
+    description: Limit history events analyzed to the N most recent (default: all events; auto-scaled)
     required: false
   - name: no_rubric_audit
     description: Skip the LLM rubric-vs-description pass (cost gate)
@@ -89,10 +89,22 @@ ll-loop show <loop_name> --resolved --json
 
 This returns `FSMLoop.to_dict()` JSON with always-present keys `name`, `initial`, `states`, and conditionally `description`, `context` (threshold keys live here), `max_steps`, `parameters`, `commands`.
 
-Load the event history:
+Load the event history. If the user supplied `--tail N`, use that directly. Otherwise, auto-scale to load all events (`--tail 0`):
 
 ```bash
-ll-loop history <loop_name> [<LATEST_RUN_ID>] --json --tail <tail_arg_or_200>
+# Derive total event count from the archive (line count = event count)
+TOTAL_EVENTS=$(wc -l .loops/.history/<LATEST_RUN_ID>-<loop_name>/events.jsonl | awk '{print $1}')
+
+# Use user-supplied tail if provided, else 0 (all events)
+EFFECTIVE_TAIL=<tail_arg_or_0>
+
+ll-loop history <loop_name> [<LATEST_RUN_ID>] --json --tail ${EFFECTIVE_TAIL}
+```
+
+If `EFFECTIVE_TAIL` is greater than 0 and less than `TOTAL_EVENTS`, emit a truncation notice before proceeding:
+
+```
+ℹ️ Loaded last <EFFECTIVE_TAIL> of <TOTAL_EVENTS> events — fault analysis covers a partial window.
 ```
 
 If either command fails, report the error and stop.

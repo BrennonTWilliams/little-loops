@@ -833,7 +833,7 @@ Audit whether a loop's execution actually achieved its stated goal — checking 
 
 **Arguments:**
 - `loop_name` (optional): Loop name to assess. If omitted, auto-selects the most recently updated loop.
-- `tail` (optional): Limit history events analyzed to the N most recent (default 200)
+- `tail` (optional): Limit history events analyzed to the N most recent (default: all events; auto-scaled via `wc -l` on the run archive)
 - `--no-rubric-audit` (flag): Skip the LLM rubric-vs-description pass (cost gate)
 - `--skip-issue-creation` (flag): Skip issue creation entirely and exit cleanly after presenting proposals
 - `--auto` (flag): Non-interactive mode; suppress all `AskUserQuestion` calls and default to no for issue creation (implies `--skip-issue-creation`). Also activates when `--dangerously-skip-permissions` is in effect.

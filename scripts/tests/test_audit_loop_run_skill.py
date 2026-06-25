@@ -418,3 +418,55 @@ class TestAssessLoopSkill:
         # They should be within 2000 chars of each other (same section)
         assert abs(shallow_pos - stubbing_pos) < 2000
         # → both patterns co-located for discoverability
+
+    # ------------------------------------------------------------------
+    # ENH-2290: auto-scale --tail to run size
+    # ------------------------------------------------------------------
+
+    def test_skill_step2_uses_tail_zero_not_200(self) -> None:
+        """Step 2 must use --tail 0 (all events) as default, not --tail 200."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step2_start = content.index("## Step 2:")
+        step3_start = content.index("## Step 3:")
+        step2_section = content[step2_start:step3_start]
+        assert "--tail 200" not in step2_section, (
+            "Step 2 must not hardcode --tail 200 as the default tail value"
+        )
+        assert "--tail 0" in step2_section or "tail_arg_or_0" in step2_section, (
+            "Step 2 must use --tail 0 (or tail_arg_or_0 sentinel) as the auto-scaled default"
+        )
+
+    def test_skill_step2_derives_event_count_via_wc(self) -> None:
+        """Step 2 must derive total event count via 'wc -l' on events.jsonl."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step2_start = content.index("## Step 2:")
+        step3_start = content.index("## Step 3:")
+        step2_section = content[step2_start:step3_start]
+        assert "wc -l" in step2_section, (
+            "Step 2 must use 'wc -l' to derive the total event count"
+        )
+        assert "events.jsonl" in step2_section, (
+            "Step 2 must reference 'events.jsonl' for the event count derivation"
+        )
+
+    def test_skill_has_truncation_notice(self) -> None:
+        """Skill must include truncation-notice prose for explicit --tail on a larger run."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        assert "partial window" in content or "Loaded last" in content, (
+            "Skill must include truncation-notice prose (e.g. 'partial window' or 'Loaded last')"
+        )
+
+    def test_skill_tail_description_no_longer_says_default_200(self) -> None:
+        """Frontmatter arguments[tail].description must not say 'default 200'."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        # Extract frontmatter block (between first --- and second ---)
+        parts = content.split("---", 2)
+        assert len(parts) >= 3, "SKILL.md must have YAML frontmatter"
+        frontmatter = parts[1]
+        assert "default 200" not in frontmatter, (
+            "Frontmatter tail argument description must not say 'default 200' after auto-scaling"
+        )
