@@ -9,7 +9,7 @@ discovered_by: capture-issue
 parent: EPIC-2279
 relates_to: [BUG-2271, BUG-2273, BUG-2275, BUG-2276, FEAT-2274, BUG-885, BUG-938]
 labels: [enhancement, packaging, testing, lint, ci, install, host-compat]
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-2277: Left-shift gates for the "package-data escapes the wheel" bug class — manifest-completeness check (primary) + `__file__`-escape lint + wheel smoke test
@@ -113,6 +113,8 @@ Two viable mechanisms (decide in implementation):
   *installed* (non-editable) distribution. This also nudges the codebase off
   `__file__` traversal entirely (the structural cure).
 
+> **Selected:** `importlib.resources` round-trip in-process — resolver self-registers keys so the manifest updates automatically; also nudges the codebase toward `importlib.resources` (the structural cure for `__file__` traversal).
+
 Prefer the mechanism that makes the manifest **hard to forget to update** — e.g.
 the resolver itself registering keys, so adding an asset read automatically adds
 it to the checked set. Document any deliberately-excluded asset with a reason
@@ -150,6 +152,46 @@ Covers conditional/host-specific read paths the static manifest can't enumerate
 (e.g. the Codex-only adapter branch). Exercise more than one host where feasible.
 Generalize FEAT-2274's `unzip -l` check into a reusable assertion over the full
 package-data manifest rather than a single grep.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-24.
+
+**Decision 1 — Manifest-completeness mechanism**
+
+**Selected**: `importlib.resources` round-trip in-process (Mechanism B)
+
+**Reasoning**: The issue text explicitly prefers the approach that makes the manifest hard to forget to update — the resolver self-registers keys so any new asset read is automatically added to the checked set. This also nudges the codebase away from `__file__` traversal toward `importlib.resources`, which is the structural cure. The explicit registry (Mechanism A) requires manual updates, creating a gap where a forgotten entry produces a false-green result.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Resource registry + wheel assertion | 2/3 | 2/3 | 3/3 | 1/3 | 8/12 |
+| `importlib.resources` round-trip | 2/3 | 2/3 | 3/3 | 3/3 | 10/12 |
+
+**Key evidence**:
+- Resource registry: explicit list risks silent green when maintainer forgets to add an entry after adding a new asset read (risk 1/3)
+- `importlib.resources` round-trip: resolver self-registration eliminates the update gap; `importlib.metadata` is already used in `install_check.py`, making the `importlib` namespace familiar; zero `importlib.resources` usage today means this is a clean introduction at a single entry point
+
+---
+
+**Decision 2 — Lint implementation**
+
+**Selected**: Regex
+
+**Reasoning**: The `.parent` chain pattern on `Path(__file__)` is syntactically regular and well-suited to regex detection, consistent with the established `import_scan.py:_PY_IMPORT_RE` / `get_imported_packages()` pattern. The lint's role is a regression backstop for the syntactic symptom — semantic coverage (reads vs. what's shipped) is the manifest check's job. Regex is simpler, consistent, and sufficient for that narrower scope. AST would be more precise for chain-depth counting but introduces `ast.NodeVisitor` with no existing codebase precedent.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Regex | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+| AST | 1/3 | 2/3 | 3/3 | 3/3 | 9/12 |
+
+**Key evidence**:
+- Regex: `_PY_IMPORT_RE` in `learning_tests/import_scan.py` is the established scanning pattern; no `ast.parse`/`ast.NodeVisitor` exists anywhere in the codebase (AST = 1/3 consistency); regex is "likely sufficient for the backstop role" per the embedded codebase research
+- AST: more precise chain-depth counting, but overkill for the backstop role; would require introducing an entirely new scanning idiom to the codebase
 
 ## API/Interface
 
@@ -297,6 +339,9 @@ For the in-process read path, `importlib.resources.files("little_loops")` provid
 No `ast.parse` / `ast.walk` / `ast.NodeVisitor` usage exists in the codebase. Two options:
 
 - **Regex** (consistent with `scripts/little_loops/learning_tests/import_scan.py:_PY_IMPORT_RE` and `get_imported_packages()` — the established scanning pattern). Simpler, but can miss dynamic constructions.
+
+> **Selected:** Regex — matches the established `import_scan.py` scanning pattern; syntactically regular `.parent` chains are sufficient to detect without AST; appropriate for the backstop role (semantic coverage is the manifest check's job, not the lint's).
+
 - **AST** (more accurate for counting `.parent` chains; new to the codebase). `ast.NodeVisitor` walking `ast.Attribute` nodes can precisely detect `Path(__file__).parent.parent...` chains and count depth.
 
 Given the pattern is syntactically regular (`.parent` chains on `Path(__file__)`), regex is likely sufficient for the backstop role. AST is more future-proof if the lint needs to count chain depth exactly.
@@ -340,5 +385,6 @@ Both marks are already declared in `[tool.pytest.ini_options]` in `scripts/pypro
 For subprocess invocations in the smoke test, follow the pattern in `test_rn_build.py`: `subprocess.run([...], capture_output=True, text=True, timeout=N)` without `check=True`; assert manually on `returncode`.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-25T04:21:22 - `31eb1bb9-53b5-4aad-998f-729f66e478aa.jsonl`
 - `/ll:refine-issue` - 2026-06-25T04:17:08 - `a21d9f22-89f7-43e3-9e2d-36a72e4d4b27.jsonl`
 - `/ll:format-issue` - 2026-06-25T04:09:14 - `18bb767c-bb64-42b8-87dd-2614b8c50967.jsonl`

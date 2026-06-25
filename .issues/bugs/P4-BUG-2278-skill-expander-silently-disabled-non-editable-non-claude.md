@@ -2,8 +2,9 @@
 id: BUG-2278
 type: BUG
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-24T00:00:00Z'
+completed_at: '2026-06-25T04:29:14Z'
 discovered_date: 2026-06-24
 discovered_by: capture-issue
 parent: EPIC-2279
@@ -101,8 +102,8 @@ host-specific skill directories.
 ## Current Behavior
 
 `expand_skill()` returns `None` on non-editable / non-Claude contexts;
-`issue_manager.py` falls back to the slash command (`issue_manager.py:621, 675,
-837, 877`). Functional but the optimization is silently off, and the fallback's
+`issue_manager.py` falls back to the slash command (`issue_manager.py:616, 670,
+832, 872`). Functional but the optimization is silently off, and the fallback's
 viability on non-Claude hosts is unverified. Editable dev installs (or a set
 `CLAUDE_PLUGIN_ROOT`) mask the issue.
 
@@ -145,7 +146,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `_resolve_content_path()`.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/issue_manager.py:621, 675, 837, 877` — `expand_skill`
+- `scripts/little_loops/issue_manager.py:616, 670, 832, 872` — `expand_skill`
   call sites with slash-command fallbacks.
 - `scripts/little_loops/cli/action.py`,
   `scripts/little_loops/cli/adapt_skills_for_codex.py`,
@@ -257,6 +258,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-25T04:22:13 - `3a6a8f68-4500-492b-b6dc-aa52ad9ddb61.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00Z - `07abc172-0f51-46b6-ae83-e7273ddb4bc3.jsonl`
 - `/ll:wire-issue` - 2026-06-25T03:31:41 - `c1d60a39-e3ac-4d91-b682-b9d82e5ba0f1.jsonl`
 - `/ll:refine-issue` - 2026-06-25T03:24:40 - `f353a071-9adf-4f50-8426-b39c4da0b78d.jsonl`

@@ -11,12 +11,15 @@ command.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
 
 from little_loops.config import BRConfig
 from little_loops.frontmatter import strip_frontmatter
+
+_log = logging.getLogger(__name__)
 
 
 def _find_plugin_root() -> Path:
@@ -115,6 +118,12 @@ def expand_skill(name: str, args: list[str], config: BRConfig) -> str | None:
         plugin_root = _find_plugin_root()
         content_path = _resolve_content_path(plugin_root, name)
         if content_path is None:
+            _log.debug(
+                "skill_expander: pre-expansion unavailable for %r — "
+                "CLAUDE_PLUGIN_ROOT not set or skills/commands not found under %s",
+                name,
+                plugin_root,
+            )
             return None
 
         raw = content_path.read_text(encoding="utf-8")

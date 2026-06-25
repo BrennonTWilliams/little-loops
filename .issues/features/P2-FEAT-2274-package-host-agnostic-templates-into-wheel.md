@@ -154,6 +154,36 @@ Decided by `/ll:decide-issue` on 2026-06-24.
 ### No Changes Needed
 - `skills/` / `commands/` / `agents/` / `hooks/` packaging — stay plugin-delivered.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/logo.py` — `get_logo()` uses `parent.parent.parent / "assets"` traversal; FEAT-2274's git mv of `assets/ll-cli-logo.txt` makes this path stale (BUG-2276 owns the resolver fix; listed here as a breakage dependency) [Agent 1 finding]
+- `scripts/little_loops/hooks/user_prompt_submit.py` — `_PROMPT_FILE` uses `parents[3] / "hooks" / "prompts"` traversal; FEAT-2274's git mv of `hooks/prompts/optimize-prompt-hook.md` makes this path stale (BUG-2275 owns the resolver fix; listed here as a breakage dependency) [Agent 2 finding]
+- `scripts/little_loops/init/writers.py` — `install_codex_adapter()` constructs `plugin_root / "hooks" / "adapters" / "codex" / "hooks.json"`; path resolves correctly once `_plugin_root()` in `init/cli.py` is updated to resolve to `little_loops/` [Agent 1 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` — directory tree (lines ~186–206) lists `templates/` subtree at repo root; Mermaid diagram has `TPL[templates/*.json]`; hooks tree lists `hooks/prompts/optimize-prompt-hook.md` and `hooks/adapters/codex/hooks.json` — all become stale after git mv [Agent 2 finding]
+- `CONTRIBUTING.md` — line ~161 directory tree entry `├── templates/ # Project-type config templates` becomes stale after move [Agent 2 finding]
+- `.claude/CLAUDE.md` — Key Directories section lists `templates/ # Project-type config templates` at repo root [Agent 2 finding]
+- `docs/reference/OUTPUT_STYLING.md` — Logo section describes "Reads ASCII art from `assets/ll-cli-logo.txt`"; path changes to `scripts/little_loops/assets/ll-cli-logo.txt` after move [Agent 2 finding]
+- `docs/development/TROUBLESHOOTING.md` — diagnostic step `ls -la hooks/prompts/optimize-prompt-hook.md` references old repo-root path; update to `scripts/little_loops/hooks/prompts/optimize-prompt-hook.md` [Agent 2 finding]
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — `user_prompt_submit` section references `hooks/prompts/optimize-prompt-hook.md` by old path [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_design_tokens.py` — `TestIntegration._TEMPLATE_DIR` (line ~336) and `_make_config_from_template()` (line ~371) both compute `Path(__file__).parent.parent.parent / "templates" / "design-tokens"`; resolves to nonexistent path after git mv — update to `Path(__file__).parent.parent / "little_loops" / "templates" / "design-tokens"` [Agent 2/3 finding]
+- `scripts/tests/test_codex_adapter.py` — module-level `ADAPTER_DIR = REPO_ROOT / "hooks" / "adapters" / "codex"` drives five test methods that check `hooks.json`; `hooks.json` moves to `scripts/little_loops/hooks/adapters/codex/hooks.json` — all five methods break [Agent 1/3 finding]
+- `scripts/tests/test_hooks_integration.py` — `test_optimization_template_injected_when_claude_plugin_root_set` exercises bash shim for `optimize-prompt-hook.md`; investigate whether shim uses `SCRIPT_DIR/../prompts/` (safe) or `$CLAUDE_PLUGIN_ROOT/hooks/prompts/` (breaks after move) [Agent 3 finding]
+
+### Skill / Command Instructions
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/configure/areas.md` — contains `shutil.copytree('templates/design-tokens/profiles', ...)` Python snippet (CWD-relative path); update to `scripts/little_loops/templates/design-tokens/profiles` after git mv [Agent 2 finding]
+- `skills/capture-issue/SKILL.md`, `skills/format-issue/SKILL.md`, `skills/format-issue/templates.md`, `skills/scope-epic/SKILL.md`, `commands/scan-codebase.md`, `commands/ready-issue.md` — reference `templates/{type}-sections.json` as a CWD-relative Read path; after git mv the repo root has no `templates/` — update references to `scripts/little_loops/templates/{type}-sections.json` [Agent 2 finding]
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -220,6 +250,17 @@ _Added by `/ll:refine-issue` — concrete per-step details:_
 python -m build scripts/ --wheel && unzip -l dist/little_loops-*.whl | grep -E "(templates|assets)/"
 ```
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `scripts/tests/test_design_tokens.py` — fix `TestIntegration._TEMPLATE_DIR` and `_make_config_from_template()` hard-coded `parent×3 / "templates" / "design-tokens"` constants to new in-package path (`parent×2 / "little_loops" / "templates" / "design-tokens"`)
+7. Update `scripts/tests/test_codex_adapter.py` — fix `ADAPTER_DIR = REPO_ROOT / "hooks" / "adapters" / "codex"` to resolve `hooks.json` from new `scripts/little_loops/hooks/adapters/codex/` location; all five JSON-reading test methods depend on it
+8. Investigate `scripts/tests/test_hooks_integration.py:test_optimization_template_injected_when_claude_plugin_root_set` — confirm bash shim resolves `optimize-prompt-hook.md` via `SCRIPT_DIR/../prompts/` (safe) vs `$CLAUDE_PLUGIN_ROOT/hooks/prompts/` (breaks); fix if latter
+9. Update documentation directory trees — `docs/ARCHITECTURE.md` (Mermaid diagram + directory tree), `CONTRIBUTING.md` (line ~161), `.claude/CLAUDE.md` (Key Directories); update `docs/reference/OUTPUT_STYLING.md` logo path prose; update `docs/development/TROUBLESHOOTING.md` diagnostic `ls` step; update `docs/guides/BUILTIN_HOOKS_GUIDE.md` prompt-file path reference
+10. Update `skills/configure/areas.md` — fix `shutil.copytree('templates/design-tokens/profiles', ...)` snippet to `scripts/little_loops/templates/design-tokens/profiles`
+11. Update skill/command instruction files with CWD-relative `templates/{type}-sections.json` paths — `skills/capture-issue/SKILL.md`, `skills/format-issue/SKILL.md`, `skills/format-issue/templates.md`, `skills/scope-epic/SKILL.md`, `commands/scan-codebase.md`, `commands/ready-issue.md`
+
 ## Use Case
 
 A developer sets up little-loops on a Codex or Gemini host. They run `pip install little-loops` in a fresh virtual environment — no repo clone, no `CLAUDE_PLUGIN_ROOT` — and then execute `ll-init` in their project. They expect design tokens to deploy, project type to be detected, and issue-section templates to load. Currently this fails silently because the wheel ships without `templates/`. After this feature, the wheel is self-sufficient: `ll-init` completes successfully on every supported host through the one delivery mechanism they all share.
@@ -271,6 +312,7 @@ A developer sets up little-loops on a Codex or Gemini host. They run `pip instal
 **Note** (added by `/ll:audit-issue-conflicts`): FEAT-2274 owns the packaging `git mv` of `hooks/prompts/optimize-prompt-hook.md`, `hooks/adapters/codex/hooks.json`, and `assets/ll-cli-logo.txt` into the wheel (the "wheel" half of the Both decision). Related issues own complementary — non-overlapping — work: [BUG-2275] owns resolver changes + warning behavior + Bash script path update (`hooks/scripts/user-prompt-check.sh`) + template substitution decisions; [BUG-2276] owns the path fix in `logo.py:get_logo()` + test + doc update. Neither BUG-2275 nor BUG-2276 should perform the `git mv` independently.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-25T04:25:00 - `9a8ff45c-72c4-436a-a3dd-5e842eb87e61.jsonl`
 - `/ll:decide-issue` - 2026-06-25T04:15:30 - `7d489730-0081-4f8f-9a5b-aac0cb779c57.jsonl`
 - `/ll:refine-issue` - 2026-06-25T04:09:36 - `18bb767c-bb64-42b8-87dd-2614b8c50967.jsonl`
 - `/ll:format-issue` - 2026-06-25T03:58:38 - `06ffb4c9-80f3-4642-b0d8-8f65d0237b1c.jsonl`

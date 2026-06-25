@@ -220,6 +220,21 @@ class TestExpandSkill:
             result = expand_skill("any", [], config)
         assert result is None
 
+    def test_logs_debug_when_skill_not_found(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        config = _make_config()
+        with (
+            patch("little_loops.skill_expander._find_plugin_root", return_value=tmp_path),
+            caplog.at_level(logging.DEBUG, logger="little_loops.skill_expander"),
+        ):
+            result = expand_skill("nonexistent-skill", [], config)
+        assert result is None
+        assert "pre-expansion unavailable" in caplog.text
+        assert "nonexistent-skill" in caplog.text
+
     def test_converts_relative_refs(self, tmp_path: Path) -> None:
         skill_dir = tmp_path / "skills" / "test-skill"
         skill_dir.mkdir(parents=True)
