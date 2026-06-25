@@ -461,6 +461,41 @@ Both return `False`; `_dispatch_host_adapters()` cannot distinguish them. The fi
 
 Two files exist: `optimize-prompt-hook.md` (the one read by `user_prompt_submit.py`) and `continuation-prompt-template.md`. Verify whether `continuation-prompt-template.md` is read by any other Python code before deciding whether to move only `optimize-prompt-hook.md` or the entire `hooks/prompts/` directory.
 
+### Post-FEAT-2274 State Update (2026-06-25 — `/ll:refine-issue` pass 3)
+
+**`install_codex_adapter()` is now broken on ALL installs** (not just non-editable) — FEAT-2274 moved `hooks.json` to `scripts/little_loops/hooks/adapters/codex/hooks.json` and removed it from `hooks/adapters/codex/`. The function at `scripts/little_loops/init/writers.py:400` still reads `plugin_root / "hooks" / "adapters" / "codex" / "hooks.json"` which no longer exists at any plugin-root path. The confidence check notes only called out `_PROMPT_FILE`; this second resolver is equally broken and equally Day 1 critical.
+
+**`ll-verify-package-data` actively reports the `_PROMPT_FILE` violation** as its sole failure:
+```
+__file__ Escape Violations:
+  hooks/user_prompt_submit.py:37: Path(__file__).resolve().parents[3]  (depth=1, traversals=4)
+Manifest check: PASS — all assets accessible
+FAILED
+```
+Run `ll-verify-package-data` as the green-bar verification step after Steps 2 and 3 — it should exit 0 once `_PROMPT_FILE` is fixed (the `install_codex_adapter()` path uses `plugin_root` argument, not a `__file__` escape, so it falls outside the lint scope; verify it separately via the xfail tests).
+
+**Hybrid asset state (post-FEAT-2274)**:
+- `scripts/little_loops/hooks/prompts/optimize-prompt-hook.md` — EXISTS (moved in-package by FEAT-2274) ✓
+- `hooks/prompts/optimize-prompt-hook.md` — GONE (removed by FEAT-2274); `_PROMPT_FILE` now resolves a nonexistent path on all installs
+- `scripts/little_loops/hooks/adapters/codex/hooks.json` — EXISTS (moved in-package by FEAT-2274) ✓
+- `hooks/adapters/codex/hooks.json` — GONE (removed by FEAT-2274); `install_codex_adapter()` now resolves a nonexistent path on all installs
+- `hooks/adapters/codex/*.sh` (4 shell scripts + README.md) — STILL AT REPO ROOT; NOT moved in-package
+
+**Three `xfail(strict=True)` tests document the broken state** in `scripts/tests/test_init_core.py`:
+- Line 1605: `test_hosts_codex_installs_adapter` — asserts `.codex/hooks.json` is written; currently xfail
+- Line 1637: `test_hosts_comma_separated` — same assertion; currently xfail
+- Line 1650: `test_codex_deprecated_alias_still_works` — same; currently xfail
+All three use `patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT)` and will pass once Step 3 routes `template_path` to the in-package path. Remove the `xfail` decorator when the fix lands.
+
+**`test_codex_adapter.py:34` already has `HOOKS_JSON_DIR`** pointing to in-package:
+```python
+ADAPTER_DIR = REPO_ROOT / "hooks" / "adapters" / "codex"           # shell scripts (repo root)
+HOOKS_JSON_DIR = REPO_ROOT / "scripts" / "little_loops" / "hooks" / "adapters" / "codex"  # hooks.json (in-package)
+```
+`SESSION_START`, `PRE_COMPACT`, `PROMPT_SUBMIT`, `POST_TOOL_USE` still derive from `ADAPTER_DIR`; they remain correct until the `.sh` scripts move in-package.
+
+**Step 14 concrete substitution path**: `{{LL_PLUGIN_ROOT}}` in the template resolves to `{{LL_PLUGIN_ROOT}}/hooks/adapters/codex/session-start.sh` etc. After moving `.sh` scripts in-package, the substitution value in `install_codex_adapter()` (`str(plugin_root)` → line 408) must change to `str(Path(writers.__file__).parent.parent)` — i.e., `little_loops/` package root — so that the written `.codex/hooks.json` resolves `<site-packages>/little_loops/hooks/adapters/codex/session-start.sh` correctly on pip-installed systems. Verify: `Path(writers.__file__).parent` = `little_loops/init/`; `parent.parent` = `little_loops/`; appending `hooks/adapters/codex/session-start.sh` gives the correct in-package path.
+
 ### Verification Findings (2026-06-24 — `/ll:refine-issue` pass 2)
 
 **Step 6 confirmed out-of-scope**: `hooks/scripts/user-prompt-check.sh` is a 3-line pass-through that does `echo "$INPUT" | python -m little_loops.hooks user_prompt_submit; exit $?` — no direct template read at all. The Bash script never touches `optimize-prompt-hook.md`. Step 6 in the Integration Map ("Files to Modify") and Implementation Step 6 can be **removed from scope**; after the Python fix, the Claude Code host path is automatically correct.
@@ -504,22 +539,40 @@ Two files exist: `optimize-prompt-hook.md` (the one read by `user_prompt_submit.
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue covers resolver + warning behavior + Bash script path updates (Step 6) and template substitution decisions (Step 7) only. The packaging `git mv` of `hooks/prompts/` and `hooks/adapters/` into the wheel is owned by **FEAT-2274**, which explicitly includes these assets in its scope. Do NOT perform the `git mv` independently here — coordinate with FEAT-2274 to ensure a single packaging move. Related issue: [FEAT-2274].
+**Updated (2026-06-25)**: FEAT-2274 is now `done`. It moved `optimize-prompt-hook.md` and `hooks.json` into the in-package tree. The original scope-boundary constraint (don't do the `git mv` independently) no longer applies.
+
+**Current BUG-2275 scope** (what remains):
+- Move `hooks/adapters/codex/*.sh` in-package (complete Option A; FEAT-2274 moved only `hooks.json`)
+- Fix `_PROMPT_FILE` module constant → lazy in-package lookup (Step 2)
+- Fix `install_codex_adapter()` `template_path` → in-package lookup; return `None` for source-missing (Step 3)
+- Fix `{{LL_PLUGIN_ROOT}}` substitution value → `str(Path(writers.__file__).parent.parent)` (Step 14)
+- Update caller warning in `_dispatch_host_adapters()` (Step 3)
+- Remove three `xfail` decorators from `test_init_core.py:1605,1637,1650` once fixed
+- All doc/agent/skill/test updates enumerated in Implementation Steps 8–15
+
+**Not in scope**: The original `git mv` for `hooks/prompts/` and `hooks/adapters/` (now done by FEAT-2274).
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-06-25_
+_Updated by `/ll:confidence-check` on 2026-06-25 (re-run confirming stable scores)_
 
 **Readiness Score**: 92/100 → PROCEED
 **Outcome Confidence**: 61/100 → Below threshold
 
 ### Outcome Risk Factors
-- **`_PROMPT_FILE` now broken on ALL installs** — FEAT-2274 (now `done`) moved `optimize-prompt-hook.md` to `scripts/little_loops/hooks/prompts/` and removed it from `hooks/prompts/`; the module-level constant resolves a non-existent path even on editable installs; the lazy-resolver fix (Step 2) is now critical-path on Day 1.
-- **Optimization template rendering path still has zero test coverage** — `test_hook_user_prompt_submit.py` has no tests for `enabled=True` branch or the render path; tests are co-deliverables; implement tests first so regressions are caught as code changes land.
-- **Shell script placement open question** — FEAT-2274 moved `hooks.json` in-package but left `hooks/adapters/codex/*.sh` at repo root (hybrid state); Option A decision says to move all `.sh` files in-package; BUG-2275 must either move them (completing Option A) or explicitly document the hybrid and adjust the `{{LL_PLUGIN_ROOT}}` substitution value in Step 14; resolve before starting Step 1.
-- **Wide doc/agent surface with no verification grep** — 15+ enumerated change sites across docs, agent files, and skill SKILL.md files; add a final grep sweep before closing PR (e.g., `grep -rn "hooks/prompts/optimize-prompt-hook\|hooks/adapters/codex" docs/ agents/ skills/` to confirm all references updated).
+- **`_PROMPT_FILE` broken on ALL installs** — FEAT-2274 removed `hooks/prompts/optimize-prompt-hook.md`; `user_prompt_submit.py:37` module-level constant now resolves a non-existent path on every install including editable; lazy-resolver fix (Step 2) is Day 1 critical.
+- **`install_codex_adapter()` broken on ALL installs** — `writers.py:400` reads `plugin_root / "hooks/adapters/codex/hooks.json"` which no longer exists post-FEAT-2274; three `xfail(strict=True)` tests in `test_init_core.py:1605,1637,1650` document the breakage; fix `template_path` → `Path(writers.__file__).parent / "hooks/adapters/codex/hooks.json"` (Step 3).
+- **Render path has zero test coverage — tests are co-deliverables; implement tests first** — all 12 tests in `test_hook_user_prompt_submit.py` cover analytics/corrections only; `enabled=True` branch (lines 113-125) is entirely untested; write in-package fallback + env-var-override tests before landing the Python fix.
+- **Wide doc/agent surface (15+ sites) with no verification grep** — add final sweep before PR close: `grep -rn "hooks/prompts/optimize-prompt-hook\|hooks/adapters/codex" docs/ agents/ skills/`
+
+### Delta Confirmed (2026-06-25 re-run)
+- BUG-2273 `status: done` ✓, ENH-2272 `status: done` ✓ — all blockers resolved
+- `test_codex_adapter.py:34` already has `HOOKS_JSON_DIR` pointing to in-package; only `.sh`-derived constants need update after move
+- Step 6 (user-prompt-check.sh) confirmed out-of-scope — it's a pass-through to Python, not a direct template reader
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `2d7d1ea6-286a-44ba-ac2e-8609d33e0c76.jsonl`
+- `/ll:refine-issue` - 2026-06-25T14:00:42 - `51622a86-d799-4018-802f-382afb9f743c.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00Z - `a19c0bc7-9cea-45e9-bde8-1a1b51288c4b.jsonl`
 - `/ll:decide-issue` - 2026-06-25T08:39:26 - `fcbba724-0185-4e2d-a5b6-f8d741fdc3b1.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00Z - `8b0deb75-1c98-49de-9b8c-c14f0c419d15.jsonl`

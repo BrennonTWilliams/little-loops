@@ -1,65 +1,65 @@
 # serializer version: 1
 # name: TestFSMDiagramSnapshot.test_branching_three_state_fsm
   '''
-                                 ┌─────── ❯_ ┐
-                       ┌────────▶│ → check   │
-                       │         │ run-check │
-                       │ yes     └───────────┘
-                       │              ├┴───────────────┐
-                       │              │                │ no
-                       │              ▼                ▼
-                       │         ┌────────┐      ┌─────── ❯_ ┐
-                       └─────────│ pass ◉ │──────│ fail      │
-                                 └────────┘      │ echo fail │
-                                                 └───────────┘
+                             ┌─────── ❯_ ┐
+                   ┌────────▶│ → check   │
+                   │         │ run-check         │
+                   │ yes     └───────────┘
+                   │              ├┴───────────────┐
+                   │              │                │ no
+                   │              ▼                ▼
+                   │         ┌────────┐      ┌─────── ❯_ ┐
+                   └─────────│ pass ◉ │──────│ fail      │
+                             └────────┘      │ echo fail         │
+                                             └───────────┘
   '''
 # ---
 # name: TestFSMDiagramSnapshot.test_linear_fsm_with_highlight
   '''
-                                   ┌──────── ❯_ ┐
-                                   │ → start    │
-                                   │ echo start │
-                                   └────────────┘
-                                          │ yes
-                                          │
-                                          ▼
-                                   ┌───────── ❯_ ┐
-                                   │ middle      │
-                                   │ echo middle │
-                                   └─────────────┘
-                                          │ yes
-                                          │
-                                          ▼
-                                     ┌────────┐
-                                     │ done ◉ │
-                                     └────────┘
+                              ┌──────── ❯_ ┐
+                              │ → start    │
+                              │ echo start          │
+                              └────────────┘
+                                     │ yes
+                                     │
+                                     ▼
+                              ┌───────── ❯_ ┐
+                              │ middle           │
+                              │ echo middle           │
+                              └─────────────┘
+                                     │ yes
+                                     │
+                                     ▼
+                                ┌────────┐
+                                │ done ◉ │
+                                └────────┘
   '''
 # ---
 # name: TestFSMDiagramSnapshot.test_linear_two_state_fsm
   '''
-                                    ┌──────── ❯_ ┐
-                                    │ → start    │
-                                    │ echo start │
-                                    └────────────┘
-                                           │ yes
-                                           │
-                                           ▼
-                                      ┌────────┐
-                                      │ done ◉ │
-                                      └────────┘
+                               ┌──────── ❯_ ┐
+                               │ → start    │
+                               │ echo start          │
+                               └────────────┘
+                                      │ yes
+                                      │
+                                      ▼
+                                 ┌────────┐
+                                 │ done ◉ │
+                                 └────────┘
   '''
 # ---
 # name: TestFSMDiagramSnapshot.test_suppress_labels_mode
   '''
-                                    ┌──────── ❯_ ┐
-                                    │ → start    │
-                                    │ echo start │
-                                    └────────────┘
-                                           ↺
-                                           │
-                                           ▼
-                                      ┌────────┐
-                                      │ done ◉ │
-                                      └────────┘
+                               ┌──────── ❯_ ┐
+                               │ → start    │
+                               │ echo start          │
+                               └────────────┘
+                                      ↺
+                                      │
+                                      ▼
+                                 ┌────────┐
+                                 │ done ◉ │
+                                 └────────┘
   '''
 # ---

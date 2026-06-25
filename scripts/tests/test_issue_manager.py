@@ -3442,6 +3442,8 @@ class TestAutoManagerModelDetection:
             on_usage: Any = None,
             preview_full: bool = False,
             event_bus: Any = None,
+            sprint_context: Any = None,
+            context_limit: Any = None,
         ) -> IssueProcessingResult:
             if on_model_detected:
                 on_model_detected("claude-sonnet-4-6")

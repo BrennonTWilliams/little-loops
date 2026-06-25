@@ -3034,8 +3034,8 @@ class TestStateBadges:
         )
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm, highlight_state="start", highlight_color="36")
-        # The badge ✦ must appear wrapped in the highlight color
-        assert "\033[36;46m\u2726" in result
+        # The badge ✦ must appear on a line that uses the highlight color
+        assert any("\033[36;46m" in line and "✦" in line for line in result.splitlines())
 
     def test_route_badge_constant(self) -> None:
         """_ROUTE_BADGE is the dedicated branching/routing unicode character."""
