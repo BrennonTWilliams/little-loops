@@ -144,6 +144,7 @@ addopts = [
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "slow: marks tests as slow running (deselect with '-m \"not slow\"')",
+    "conformance: marks tests as host conformance tests (deselect with '-m \"not conformance\"')",
 ]
 
 [tool.coverage.run]

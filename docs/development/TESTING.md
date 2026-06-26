@@ -114,6 +114,10 @@ scripts/tests/
 ├── fixtures/                   # Test fixture data
 │   ├── fsm/                   # FSM YAML fixtures (17 files)
 │   └── issues/                # Issue markdown fixtures (18 files)
+├── conformance/                # Host conformance tests (parametrized over registered hosts)
+│   ├── __init__.py
+│   ├── conftest.py            # isolated_env fixture + --conformance-host option
+│   └── test_host_conformance.py  # Four golden-path tests × all registered hosts
 ├── test_*.py                   # Unit tests (50+ modules)
 ├── test_*_integration.py       # Integration tests
 ├── test_*_properties.py        # Property-based tests (Hypothesis)
@@ -1025,6 +1029,7 @@ Verify the line is exactly in `exclude_lines` configuration.
 |--------|---------|
 | `@pytest.mark.integration` | Integration test |
 | `@pytest.mark.slow` | Slow-running test |
+| `@pytest.mark.conformance` | Host conformance test (see `conformance/`) |
 
 ### Key Fixtures
 

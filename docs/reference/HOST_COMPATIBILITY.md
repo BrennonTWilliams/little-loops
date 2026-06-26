@@ -183,6 +183,12 @@ call sites.
 | `ll-harness`                  | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
 | `ll-sprint`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
 | FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
+| Conformance harness[^conf]    | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
+
+[^conf]: Generic host-parametrized conformance harness (FEAT-2259). Run with
+    `pytest -m conformance scripts/tests/` or per-host with
+    `--conformance-host <host>`. PASS/SKIP maps to ✓/stub in this table.
+    See `docs/development/CONFORMANCE.md`.
 
 [^orch]: All seven call sites now route through
     `scripts/little_loops/host_runner.py` (`HostRunner` Protocol +

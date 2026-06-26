@@ -2,9 +2,11 @@
 id: FEAT-2259
 title: Generic host-parameterized conformance harness
 type: feature
-status: open
+status: done
 priority: P4
 discovered_date: 2026-06-24
+captured_at: 2026-06-24 00:00:00+00:00
+completed_at: 2026-06-26 18:57:22+00:00
 discovered_by: planning-assessment
 parent: EPIC-2257
 decision_ref: ARCHITECTURE-049
@@ -19,11 +21,11 @@ relates_to:
 decision_needed: false
 learning_tests_required:
 - pytest
-confidence_score: 93
-outcome_confidence: 84
+confidence_score: 94
+outcome_confidence: 83
 score_complexity: 17
 score_test_coverage: 22
-score_ambiguity: 20
+score_ambiguity: 19
 score_change_surface: 25
 ---
 
@@ -228,12 +230,30 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Risk**: Low — test-only; no runtime behavior change.
 - **Breaking Change**: No.
 
+## Resolution
+
+Implemented 2026-06-26 via `/ll:manage-issue`.
+
+- `scripts/pyproject.toml`: registered `conformance` pytest marker
+- `scripts/tests/conformance/__init__.py`: empty package init
+- `scripts/tests/conformance/conftest.py`: `isolated_env` fixture + `--conformance-host` option
+- `scripts/tests/conformance/test_host_conformance.py`: 16 parametrized tests (4 golden paths × 4 hosts); 8 PASS (claude-code, codex), 8 SKIP (opencode, pi stubs)
+- `docs/development/CONFORMANCE.md`: harness run docs + baseline board
+- `docs/development/TESTING.md`: added `conformance/` to directory structure + marker table
+- `docs/reference/HOST_COMPATIBILITY.md`: added Conformance harness row + `[^conf]` footnote
+
+Codex conformance confirmed via `--conformance-host codex` (all 4 golden paths PASS).
+FEAT-1721 can be closed as superseded. FEAT-2192 pending GeminiRunner landing.
+
 ## Status
 
-**Open** | Created: 2026-06-24 | Priority: P4
+**Done** | Created: 2026-06-24 | Completed: 2026-06-26 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-26T18:57:22Z - implementation complete
+- `/ll:ready-issue` - 2026-06-26T18:46:59 - `f4c1b96c-6eb1-4b0d-9a01-f9a61ebd45f2.jsonl`
+- `/ll:confidence-check` - 2026-06-26T00:00:00 - `36fe0b13-b39e-4a8f-99e9-b13deb64e7b8.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00 - `4bf59de2-23a4-414b-a149-93b27c0b197d.jsonl`
 - `/ll:wire-issue` - 2026-06-25T18:48:08 - `0eaae7ef-edbe-497f-bc91-15b8fc518594.jsonl`
 - `/ll:decide-issue` - 2026-06-25T18:38:10 - `70f59565-7e94-410d-bf6c-c34dd59cbf9f.jsonl`
