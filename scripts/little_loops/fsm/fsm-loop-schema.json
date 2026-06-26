@@ -644,6 +644,11 @@
             },
             "additionalProperties": false
           }
+        },
+        "error_patterns": {
+          "type": "array",
+          "description": "Substrings that, when matched in output and main pattern not found, yield verdict='error' (output_contains only)",
+          "items": { "type": "string" }
         }
       },
       "additionalProperties": false,

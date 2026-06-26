@@ -1172,6 +1172,13 @@ class FSMExecutor:
                 if _handled:
                     return _target
                 # exhausted — fall through to normal verdict routing
+            elif action_result.exit_code != 0 and _failure_type == FailureType.NON_RECOVERABLE:
+                # Auth/credential failure — abort immediately, do not retry.
+                # Route to on_error if defined, otherwise let normal verdict routing handle it.
+                _on_error = state.on_error
+                if _on_error:
+                    return _on_error
+                # No on_error: fall through to verdict routing (will produce non-zero exit verdict)
             else:
                 # Not rate-limited or server-error (or exit_code=0): reset counters so
                 # future transients start fresh.

@@ -2263,6 +2263,8 @@ class TestFailureClassification:
             ("Error 429: Too many requests", True),
             ("Connection refused: localhost:8080", True),
             ("Error: Connection timeout after 30s", True),
+            ("HTTP 401 Unauthorized", True),  # NON_RECOVERABLE → suppress (BUG-2302)
+            ("Error: Invalid API key provided", True),  # NON_RECOVERABLE → suppress
             ("SyntaxError: unexpected token at line 42", False),
             ("FAILED tests/test_foo.py::test_bar - AssertionError", False),
         ],
@@ -2302,13 +2304,13 @@ class TestFailureClassification:
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 if expected_transient:
-                    # Transient: should NOT create bug issue
+                    # Transient or NON_RECOVERABLE: should NOT create bug issue
                     with patch(
                         "little_loops.issue_manager.create_issue_from_failure"
                     ) as mock_create:
                         result = process_issue_inplace(sample_issue, mock_config, mock_logger)
                         mock_create.assert_not_called()
-                        assert "Transient" in result.failure_reason
+                        assert "Transient" in result.failure_reason or "Non-recoverable" in result.failure_reason
                 else:
                     # Real failure: should create bug issue
                     with patch(

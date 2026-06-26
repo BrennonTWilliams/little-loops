@@ -6,8 +6,16 @@ priority: P3
 status: open
 discovered_date: 2026-06-26
 discovered_by: capture-issue
-captured_at: "2026-06-26T00:35:41Z"
-relates_to: [ENH-2299, FEAT-1023]
+captured_at: '2026-06-26T00:35:41Z'
+relates_to:
+- ENH-2299
+- FEAT-1023
+confidence_score: 94
+outcome_confidence: 69
+score_complexity: 14
+score_test_coverage: 15
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # FEAT-2301: Self-contained HTML builder for policy-router and rubric FSM loops
@@ -238,13 +246,15 @@ def render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str:
 - `scripts/little_loops/design_tokens.py` — add `render_as_css_vars_themed(light, dark)` (scoped two-theme emit; optional multi-profile variant)
 
 ### New Files
-- `scripts/little_loops/cli/emit_builder.py` — standalone CLI wrapper `main_emit_builder` (modeled on `cli/schemas.py`); stamps the active profile into the generated file. **DECIDED** emit-path shape (see Decision Rationale).
+- `scripts/little_loops/cli/artifact.py` (or `cli/artifact/__init__.py`) — top-level `main_artifact` dispatcher with argparse subparsers; routes `policy-builder` to `artifact/policy_builder.py`
+- `scripts/little_loops/cli/artifact/policy_builder.py` — core emit logic for the policy-builder subcommand; stamps the active design-token profile into the generated file. Modeled on `cli/schemas.py` `main_generate_schemas` (~49 lines).
 - The generated/template HTML builder (e.g. `docs/tools/policy-router-builder.html` as a checked-in stamped artifact, and/or a `templates/` source the emitter fills)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/lib/policy-router.yaml` — consumed by generated loops (no change)
 - `scripts/little_loops/loops/lib/rubric-router.yaml` — consumed in Rubric mode (no change)
-- `scripts/little_loops/loops/policy-refine.yaml` — canonical reference for the generated YAML shape
+- `scripts/little_loops/loops/policy-refine.yaml` — canonical reference for the generated YAML shape (Decision Table mode)
+- `scripts/little_loops/loops/rubric-refine.yaml` — reference implementation for Rubric mode output shape (parallel to `policy-refine.yaml`; use as the pattern for Rubric mode YAML generation)
 - `scripts/little_loops/fsm/policy_rules.py`, `scripts/little_loops/fsm/route_table.py` — canonical grammar/validation the builder's JS must mirror (and defer to via `ll-loop validate`)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -253,26 +263,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/config/core.py` — `BRConfig` aggregator loads `design_tokens` from `.ll/ll-config.json`; `load_design_tokens(config)` requires a `BRConfig` instance, not a raw path [Agent 1]
 - NOTE (negative finding): the runner callers (`run.py`, `lifecycle.py`) only call `render_as_prompt_context`, never `render_as_css_vars`. The FEAT-2301 emit path is the **first executed caller of the CSS-var render path** — there is no precedent caller for `render_as_css_vars` / `render_as_css_vars_themed` to copy. [Agent 2]
 
-### Registration / Manifest (conditional on emit-path choice)
+### Registration / Manifest
 
-> **Selected:** Standalone CLI tool (`ll-emit-builder`) — 6 direct generation-utility precedents, thinnest registration (2 code + 2 doc touchpoints), no doc-count gate, no `known_subcommands` misroute footgun. Decided by `/ll:decide-issue` 2026-06-25 (see Decision Rationale under Proposed Solution).
+> **Selected:** `ll-artifact policy-builder` — first subcommand of a new `ll-artifact` top-level CLI. `ll-artifact` becomes the durable namespace for all little-loops artifact generation (HTML builders, diagrams, exporters, etc.). Supersedes the earlier `ll-emit-builder` standalone decision (2026-06-25); updated 2026-06-25.
 
-_Wiring pass added by `/ll:wire-issue` — the "emit path (TBD)" New-Files entry is under-specified; each of the three plausible shapes touches a different registration + doc surface. Pick one in implementation:_
+**Registration touchpoints for `ll-artifact`:**
+- `scripts/pyproject.toml` — `ll-artifact = "little_loops.cli:main_artifact"` in `[project.scripts]` [Agent 2]
+- `scripts/little_loops/cli/artifact.py` (or `cli/artifact/__init__.py`) — top-level argparse dispatcher with `subparsers`; delegates `policy-builder` to `artifact/policy_builder.py` [Agent 2]
+- `scripts/little_loops/cli/__init__.py` — new import + `__all__` entry for `main_artifact` [Agent 2]
+- `docs/reference/CLI.md` — new `### ll-artifact` section with `#### ll-artifact policy-builder` subsection [Agent 2]
+- `.claude/CLAUDE.md` — new "CLI Tools" bullet for `ll-artifact` [Agent 2]
 
-**If emit is an `ll-loop` subcommand** (e.g. `ll-loop emit-builder`):
-- `scripts/little_loops/cli/loop/__init__.py` — `main_loop()` needs all of: (1) new entry in the `known_subcommands` set (~lines 53–84, else the shorthand `run` auto-insert misroutes it), (2) a `subparsers.add_parser(...)` block, (3) a dispatch `elif args.command == ...` branch (~lines 816–855), (4) an `argparse` epilog example [Agent 2]
-- `docs/reference/CLI.md` — new `#### ll-loop emit-builder` section under `### ll-loop` (~line 504) [Agent 2]
-- `docs/guides/LOOPS_GUIDE.md` — new row in the subcommands table (~line 687, next to `ll-loop edit-routes`) [Agent 2]
-- `.claude/CLAUDE.md` — extend the `ll-loop` bullet's parenthetical (~line 225) [Agent 2]
+_Future subcommands (e.g. `ll-artifact loop-diagram`, `ll-artifact decision-table`) add only a new `artifact/` module + a dispatch arm — no new pyproject entries or `__all__` exports needed._
 
-**If emit is a standalone CLI tool** (e.g. `ll-emit-builder`):
-- `scripts/pyproject.toml` — new entry in `[project.scripts]` (~lines 51–88) [Agent 2]
-- `scripts/little_loops/cli/__init__.py` — new import + `__all__` entry [Agent 2]
-- `docs/reference/CLI.md` — new `### ll-emit-builder` section; `.claude/CLAUDE.md` — new "CLI Tools" bullet [Agent 2]
-
-**If emit ships as a built-in loop YAML** under `scripts/little_loops/loops/`:
-- `docs/guides/LOOPS_REFERENCE.md` — new harness-category entry [Agent 2]
-- Triggers the `ll-verify-docs` loop-count gate: `scripts/little_loops/doc_counts.py` `COUNT_TARGETS["loops"]` counts `*.yaml`, cross-checked against `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md` — all must increment or CI fails [Agent 2]
+_Note: `ll-generate-schemas` / `ll-generate-skill-descriptions` remain as-is (release/maintainer utilities); `ll-artifact` owns interactive/visual artifact generation. The distinction: `ll-generate-*` produces machine-consumed artifacts (JSON schemas, description strings); `ll-artifact *` produces human-facing artifacts (HTML builders, diagrams)._
 
 ### Similar Patterns
 - `scripts/little_loops/loops/html-website-generator.yaml` (FEAT-1023) — precedent for self-contained inline-CSS/JS HTML with an embedded light/dark toggle and design-token injection
@@ -288,6 +292,32 @@ _Wiring pass added by `/ll:wire-issue` — concrete files + patterns to follow:_
 - Smoke test pattern for builder YAML → `ll-loop validate`: lowest-level is `test_fsm_fragments.py` (`load_and_validate` + filter `ValidationSeverity.ERROR`, cf. `test_policy_refine_loop_validates`); mid-level is `test_ll_loop_commands.py`'s `cmd_validate(...)` returning `0`. [Agent 3]
 - If an emit subcommand is added, test it via the `cmd_<name>(loop, argparse.Namespace(), loops_dir, Logger(use_color=False))` + `capsys` pattern in `test_ll_loop_commands.py`. [Agent 3]
 - Tests that patch `little_loops.design_tokens.load_design_tokens` by module path (`test_ll_loop_program_md.py:323`, `test_cli_loop_lifecycle.py:832`) are UNAFFECTED by the new function — no update needed. [Agent 2]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`TestRenderAsCssVarsThemed` — two-theme file setup**: `_write_tokens` writes only one theme file (`themes/<theme_name>.json`) and returns the `token_dir` path. The test must write the second theme file manually before loading:
+  ```python
+  token_dir = _write_tokens(tmp_path, primitives={"color": {"bg": {"light": "#FFF"}}}, theme_name="light", theme={"color": {"bg": "#FFF"}})
+  (token_dir / "themes" / "dark.json").write_text(json.dumps({"color": {"bg": "#000"}}))
+  config = _make_config(tmp_path)
+  light = load_design_tokens(config, theme="light")
+  dark = load_design_tokens(config, theme="dark")
+  assert light is not None and dark is not None
+  output = render_as_css_vars_themed(light, dark)
+  assert ":root {" in output
+  assert "[data-theme=dark] {" in output
+  ```
+- **Smoke test — `validate_fsm` is a required second step**: Step 12's wiring note says "`load_and_validate` + filter `ValidationSeverity.ERROR`" but `load_and_validate` returns `(fsm, fragment_warnings)`; the rule-checking violations come from a **separate** `validate_fsm(fsm)` call. All three imports are needed (exact pattern from `test_fsm_fragments.py:2397` `test_policy_refine_loop_validates` and `:2277` `test_rubric_refine_loop_validates`):
+  ```python
+  from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+
+  fsm, _ = load_and_validate(builder_yaml_path)
+  errors = validate_fsm(fsm)
+  error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+  assert not error_list, f"builder YAML validation errors: {[str(e) for e in error_list]}"
+  ```
 
 ### Documentation
 - `docs/guides/POLICY_ROUTER_GUIDE.md` — add a "Visual builder" section cross-linking the artifact and contrasting it with `ll-loop edit-routes` (greenfield vs round-trip)
@@ -321,26 +351,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Decision Rationale
 
-Decided by `/ll:decide-issue` on 2026-06-25.
+Initial decision by `/ll:decide-issue` on 2026-06-25: **standalone CLI `ll-emit-builder`**.
 
-**Selected**: Standalone CLI tool — `ll-emit-builder`
+**Superseded 2026-06-25**: Renamed to `ll-artifact policy-builder` — first subcommand of a new `ll-artifact` top-level CLI.
 
-**Reasoning**: The emit path is a deterministic, one-shot Python generator that loads `BRConfig` → `load_design_tokens` → `render_as_css_vars_themed` and writes a self-contained `.html`. This is exactly the shape of the existing generation utilities (`ll-generate-schemas`, `ll-create-extension`, `ll-gitignore`): `scripts/little_loops/cli/schemas.py` (`main_generate_schemas`, ~62 lines) is a copy-verbatim template for the CLI wrapper, delegating HTML assembly to a new `emit_builder.py` core module. Registration is the lightest of the three shapes (one line in `pyproject.toml` `[project.scripts]`, one import + one `__all__` entry in `cli/__init__.py`) and triggers neither the `ll-verify-docs` loop-count gate nor the `known_subcommands` misroute guard. The `ll-loop` subcommand option is conceptually loop-adjacent but costs four touchpoints inside `cli/loop/__init__.py` plus three doc files, and no peer subcommand writes a new file to a user-specified path (greenfield emit, unlike `edit-routes` which operates on an existing loop). The built-in-loop-YAML option conflicts with the harness pattern outright: its cited precedent `html-website-generator.yaml` is LLM-written HTML, the opposite of this Python-generated static emit, yielding a degenerate `emit → done` two-state loop the FSM runner adds no value to.
+**Revised Reasoning**: Artifact generation is a broad, recurring concern in little-loops (HTML builders, diagrams, exporters, etc.). Rather than proliferating `ll-generate-*` / `ll-emit-*` / `ll-build-*` standalone commands, `ll-artifact` establishes a durable namespace where all human-facing artifact generators live as subcommands. The registration cost is one more level of argparse dispatch compared to a standalone tool, but future artifact generators (`ll-artifact loop-diagram`, etc.) cost only a new module + dispatch arm — no additional `pyproject.toml` entries. The distinction from existing `ll-generate-*` tools: those produce machine-consumed artifacts (JSON schemas, description strings); `ll-artifact *` produces human-facing, interactive artifacts (HTML builders, visual tools).
 
-#### Scoring Summary
+The original scoring across `ll-loop` subcommand / standalone / built-in-loop-YAML still holds — the `ll-artifact` shape is the standalone option with a thin dispatcher layered on top. `cli/schemas.py` `main_generate_schemas` (~49 lines) remains the template for the `policy_builder.py` core module; only the top-level entry point changes from `main_emit_builder` to `main_artifact`.
 
-| Option | Consistency | Simplicity | Testability | Risk | Total |
-|--------|-------------|------------|-------------|------|-------|
-| Standalone CLI (`ll-emit-builder`) | 3/3 | 3/3 | 2/3 | 3/3 | **11/12** |
-| `ll-loop` subcommand (`ll-loop emit-builder`) | 2/3 | 1/3 | 2/3 | 2/3 | 7/12 |
-| Built-in loop YAML | 0/3 | 1/3 | 1/3 | 1/3 | 3/12 |
-
-**Key evidence**:
-- Standalone CLI: 6 generation-utility precedents in `pyproject.toml:51–88`; `cli/schemas.py` `main_generate_schemas` is a ~62-line copy template; `cli_event_context` + `cli_args` helpers + `BRConfig`/`load_design_tokens` all reused unchanged (reuse 2/3). No doc-count gate, no shared-state footgun.
-- `ll-loop` subcommand: mechanical 4-step registration copied from `edit_routes.py` (`__init__.py:53–84` known_subcommands, `add_parser`, dispatch `elif`, epilog), but writes-new-file-to-user-path has no peer precedent and unit tests land in a new file, not `test_ll_loop_commands.py` (reuse 2/3). `known_subcommands` omission silently misroutes to `run`.
-- Built-in loop YAML: cited precedent `html-website-generator.yaml` is LLM-driven (`action_type: prompt` writes the HTML), not Python-driven; only `cli-anything-bootstrap.yaml:423` shows deterministic emit, and only as one sub-state of a 30-step LLM harness. FSM iteration spine is absent for a one-shot emit (reuse 1/3).
-
-**Decision impact on the rest of the issue**: Implementation Step 9 ("Decide the emit-path shape first") is now resolved — proceed with the **Standalone CLI** registration arm of Steps 10 (`pyproject.toml` `[project.scripts]` + `cli/__init__.py` imports/`__all__` + `docs/reference/CLI.md` + `.claude/CLAUDE.md` CLI-Tools bullet). The New-Files "emit path (TBD)" entry resolves to `scripts/little_loops/cli/emit_builder.py` (CLI wrapper `main_emit_builder`) plus the generated/template HTML.
+**Decision impact on the rest of the issue**: Implementation Steps 9–10 resolve to the **`ll-artifact` subcommand** registration arm. See Registration / Manifest section above for the full touchpoint list.
 
 ## Implementation Steps
 
@@ -357,8 +376,8 @@ Decided by `/ll:decide-issue` on 2026-06-25.
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-9. **Emit-path shape: DECIDED — Standalone CLI tool (`ll-emit-builder`)** (`/ll:decide-issue`, 2026-06-25; see Decision Rationale under Proposed Solution). Implement `scripts/little_loops/cli/emit_builder.py` (`main_emit_builder`) modeled on `cli/schemas.py` `main_generate_schemas`.
-10. **Register the emit path** (Standalone CLI arm): add `ll-emit-builder = "little_loops.cli:main_emit_builder"` to `scripts/pyproject.toml` `[project.scripts]` + a `from little_loops.cli.emit_builder import main_emit_builder` import and `"main_emit_builder"` entry in `scripts/little_loops/cli/__init__.py` `__all__` + a `### ll-emit-builder` section in `docs/reference/CLI.md` + a "CLI Tools" bullet in `.claude/CLAUDE.md`.
+9. **Emit-path shape: DECIDED — `ll-artifact policy-builder`** (supersedes `ll-emit-builder` standalone decision; 2026-06-25). Implement `scripts/little_loops/cli/artifact/policy_builder.py` (core emit logic) + `scripts/little_loops/cli/artifact.py` (top-level `main_artifact` dispatcher with argparse subparsers). Core module modeled on `cli/schemas.py` `main_generate_schemas` (~49 lines).
+10. **Register `ll-artifact`**: add `ll-artifact = "little_loops.cli:main_artifact"` to `scripts/pyproject.toml` `[project.scripts]` + `from little_loops.cli.artifact import main_artifact` import and `"main_artifact"` entry in `scripts/little_loops/cli/__init__.py` `__all__` + a `### ll-artifact` section (with `#### ll-artifact policy-builder` subsection) in `docs/reference/CLI.md` + a "CLI Tools" bullet in `.claude/CLAUDE.md`.
 11. **Update `scripts/tests/test_design_tokens.py`** — add `render_as_css_vars_themed` to the import block and a `TestRenderAsCssVarsThemed` class (model on `TestRenderAsCssVars`, reuse `_write_tokens`/`_make_config`).
 12. **Add the `ll-loop validate` smoke test** following `test_fsm_fragments.py` (`load_and_validate` + ERROR-severity filter) or `test_ll_loop_commands.py` (`cmd_validate(...) == 0`).
 13. **(If a subcommand is added)** add a `cmd_<name>` test in `test_ll_loop_commands.py` using the `argparse.Namespace()` + `Logger(use_color=False)` + `capsys` pattern.
@@ -379,7 +398,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-06-26 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-25_
+
+**Readiness Score**: 94/100 → PROCEED
+**Outcome Confidence**: 69/100 → below threshold
+
+### Outcome Risk Factors
+- **JS grammar drift risk**: The in-browser validation mirrors Python logic from `fsm/policy_rules.py:27–34` (shadow detection, numeric-coercion ops, catch-all rules) but has no automated cross-validation path — the grammar can drift silently from the canonical Python source. Mitigated by deferring to `ll-loop validate` as the authoritative gate; still a maintenance risk.
+- **No automated JS test coverage**: Interactive browser behavior (drag-reorder, reactive decision grid, YAML serializer, theme toggle, live validation) requires manual browser verification; pytest covers only the Python emit path and the generated YAML smoke test. The JS layer is the primary complexity locus and has no programmatic coverage.
+- **Output artifact path not finalized**: The HTML output location uses "e.g." framing (`docs/tools/policy-router-builder.html`) — lock down the exact path before writing `CLI.md`, `CLAUDE.md`, and `POLICY_ROUTER_GUIDE.md` registration entries to avoid rework.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:refine-issue` - 2026-06-26T01:31:25 - `af981b92-c03e-478c-b61b-511a0b83ff43.jsonl`
+- `naming decision` - 2026-06-25 - Renamed emit path from `ll-emit-builder` (standalone) to `ll-artifact policy-builder` (subcommand of new `ll-artifact` CLI); `ll-artifact` established as the durable namespace for all human-facing artifact generation
 - `/ll:decide-issue` - 2026-06-26T01:11:10 - `81cb10d8-c7ce-4642-bb0e-3ecbdb6e258a.jsonl`
 - `/ll:wire-issue` - 2026-06-26T01:01:02 - `f9198542-abe8-4adb-a324-052b78ba3060.jsonl`
 - `/ll:refine-issue` - 2026-06-26T00:51:56 - `d6038229-795a-45ee-8ef3-49cfaf152cac.jsonl`

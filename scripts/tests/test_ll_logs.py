@@ -2406,6 +2406,35 @@ class TestScanFailures:
         captured = capsys.readouterr()
         assert "No ll-* failures found" in captured.out
 
+    def test_scan_failures_suppresses_non_recoverable_auth_errors(self, capsys) -> None:
+        """Auth failures (NON_RECOVERABLE) are suppressed from scan-failures output (BUG-2302)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-auto", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "HTTP 401 Unauthorized — invalid API key", is_error=True),
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "scan-failures", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No ll-* failures found" in captured.out
+
     def test_scan_failures_excludes_verify_tools(self, capsys) -> None:
         """ll-verify-* expected-exit-1 calls are excluded from candidates."""
         import tempfile

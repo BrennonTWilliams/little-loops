@@ -4603,6 +4603,7 @@ class EvaluateConfig:
     min_pairs: int = 1                 # For comparator: number of blind A/B comparison pairs
     pairs: list[dict] | None = None    # For contract: list of producer/consumer pair dicts
     line: str | int | None = None      # For classify: which line to read (last/first/<int index>)
+    error_patterns: list[str] | None = None  # For output_contains: patterns that yield verdict="error"
 ```
 
 #### RouteConfig
@@ -4695,9 +4696,12 @@ def evaluate_output_contains(
     output: str,
     pattern: str,
     negate: bool = False,
+    error_patterns: list[str] | None = None,
 ) -> EvaluationResult
 ```
-Check if pattern (regex or substring) exists in output.
+Check if pattern (regex or substring) exists in output. When `error_patterns` is set and the
+main pattern is not found, any matching error_pattern yields `verdict="error"` instead of `"no"`,
+enabling `on_error` routing for auth/error output even when the action exits with code 0.
 
 ```python
 def evaluate_convergence(

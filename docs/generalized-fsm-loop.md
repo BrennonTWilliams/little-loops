@@ -649,16 +649,24 @@ evaluate:
   type: output_contains
   pattern: "All tests passed"    # Substring or regex
   negate: false                  # If true, success when NOT found
+  error_patterns:                # Optional: substrings that yield verdict="error" when main pattern not found
+    - "401"
+    - "403"
+    - "unauthorized"
 ```
 
 | Match Result | Verdict |
 |--------------|---------|
 | Pattern found (negate=false) | `yes` |
 | Pattern not found (negate=false) | `no` |
+| Pattern not found + error_pattern matched | `error` |
 | Pattern found (negate=true) | `no` |
 | Pattern not found (negate=true) | `yes` |
 
-Result details: `{ matched: <bool>, pattern: <string>, negate: <bool> }`
+`error_patterns` only fires when the main pattern is **not** found and `negate=false`. This allows
+loops to route auth/error output (exit code 0) to `on_error` without an exception being raised.
+
+Result details: `{ matched: <bool>, pattern: <string>, negate: <bool> }` (or `{ ..., error_pattern: <string> }` on error verdict)
 
 #### `convergence`
 

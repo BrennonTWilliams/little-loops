@@ -92,6 +92,7 @@ class EvaluateConfig:
     min_pairs: int = 1  # for comparator: number of blind A/B comparisons to run
     pairs: list[dict] | None = None  # for contract: list of producer/consumer pair dicts
     line: str | int | None = None  # for classify: which line to read (last/first/<int index>)
+    error_patterns: list[str] | None = None  # for output_contains: patterns that yield verdict="error"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -142,6 +143,8 @@ class EvaluateConfig:
             result["pairs"] = self.pairs
         if self.line is not None:
             result["line"] = self.line
+        if self.error_patterns is not None:
+            result["error_patterns"] = self.error_patterns
 
         return result
 
@@ -172,6 +175,7 @@ class EvaluateConfig:
             min_pairs=data.get("min_pairs", 1),
             pairs=data.get("pairs"),
             line=data.get("line"),
+            error_patterns=data.get("error_patterns"),
         )
 
 

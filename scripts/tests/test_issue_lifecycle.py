@@ -619,6 +619,14 @@ class TestClassifyFailure:
                 "snippet",
             ),
             ('File "<stdin>", line 3\nSyntaxError: invalid syntax', "TRANSIENT", "snippet"),
+            # Auth/credential failure patterns (NON_RECOVERABLE — BUG-2302)
+            ("HTTP 401 Unauthorized", "NON_RECOVERABLE", "auth"),
+            ("Error: 403 Forbidden", "NON_RECOVERABLE", "auth"),
+            ("Error: Invalid API key provided", "NON_RECOVERABLE", "auth"),
+            ("Authentication failed: unauthorized", "NON_RECOVERABLE", "auth"),
+            ("Error: expired token, please re-authenticate", "NON_RECOVERABLE", "auth"),
+            ("invalid_api_key: the api key is invalid", "NON_RECOVERABLE", "auth"),
+            ("Request forbidden: access denied", "NON_RECOVERABLE", "auth"),
             # Real failure patterns
             ("SyntaxError: unexpected token at line 42", "REAL", "implementation"),
             (

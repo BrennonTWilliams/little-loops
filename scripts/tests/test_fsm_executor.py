@@ -2399,6 +2399,44 @@ class TestTimeoutHandling:
         # After fix: final_state == "error" (on_error, because exit non-zero short-circuits).
         assert result.final_state == "error"
 
+    def test_output_contains_error_patterns_routes_to_on_error(self) -> None:
+        """BUG-2302: exit-0 + pattern-not-found + error_patterns match → on_error (not on_no).
+
+        This is the auth-failure fast-fail: the subprocess succeeds (exit 0) but
+        output contains an auth error pattern rather than the expected JSON key.
+        """
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="ok_command.sh",
+                    evaluate=EvaluateConfig(
+                        type="output_contains",
+                        pattern='"commands"',
+                        error_patterns=["401", "403", "unauthorized"],
+                    ),
+                    on_yes="pass",
+                    on_no="retry",
+                    on_error="error",
+                ),
+                "pass": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+                "error": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result(
+            "ok_command.sh",
+            output="HTTP 401 Unauthorized",
+            exit_code=0,
+        )
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state == "error"
+
     def test_action_zero_exit_with_missing_pattern_still_routes_to_on_no(self) -> None:
         """BUG-1815: exit_code=0 with absent pattern still routes via on_no (regression guard).
 

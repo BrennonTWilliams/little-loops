@@ -283,7 +283,7 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `exit_code` | `yes` / `no` / `error` | shell commands | CLI tools that report pass/fail via exit code |
 | `output_numeric` | `yes` / `no` / `error` | — | Compare parsed numeric output to a target |
 | `output_json` | `yes` / `no` / `error` | — | Extract a JSON path value and compare |
-| `output_contains` | `yes` / `no` | — | Regex or substring match on stdout |
+| `output_contains` | `yes` / `no` / `error` (with `error_patterns`) | — | Regex or substring match on stdout; add `error_patterns` to route auth/error output via `on_error` |
 | `convergence` | `target` / `progress` / `stall` | metric-tracking states | Track a metric toward a goal value |
 | `diff_stall` | `yes` / `no` / `error` | — | Detect when consecutive iterations produce no git diff changes (see [Stall Detection](#stall-detection)) |
 | `action_stall` | `yes` / `no` | — | Detect when the same action string or context values repeat for N iterations (file-backed, no git required) |

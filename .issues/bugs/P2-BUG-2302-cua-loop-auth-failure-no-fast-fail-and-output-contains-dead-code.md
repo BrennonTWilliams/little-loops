@@ -2,8 +2,9 @@
 id: BUG-2302
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-25T18:00:00Z'
+completed_at: '2026-06-26T01:53:13Z'
 discovered_date: 2026-06-25
 discovered_by: cross-repo-audit
 relates_to:
@@ -17,6 +18,12 @@ labels:
 - error-classification
 - cua
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 78
+score_complexity: 16
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # BUG-2302: CUA loop never fast-fails on LLM auth failure; `output_contains` + `on_error` is a dead-code class
@@ -244,7 +251,7 @@ _check_plan_auth_failure:
 _auth_failure_abort:
   action_type: shell
   action: echo "Aborting: non-recoverable auth failure — see .plan_errors.log"
-  on_yes: failed
+  next: failed
 ```
 Note: the `diagnose` state at `cua-agent-desktop.yaml:990` already reads `.plan_errors.log` into `diagnostics.md` — a classified entry will surface there automatically.
 
@@ -383,6 +390,8 @@ Note: `docs/reference/CLI.md:627` lists `output_contains` as a valid MR-1 non-LL
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-26T01:24:52 - `01b1409f-85b6-4481-886a-1dfb6c6dac09.jsonl`
+- `/ll:confidence-check` - 2026-06-25T18:30:00Z - `5d5fc6c6-84ac-4a27-b633-955e67c2fcee.jsonl`
 - `/ll:wire-issue` - 2026-06-26T01:13:52 - `1d1f24c1-11ae-4edd-b18c-d140751e3f36.jsonl`
 - `/ll:refine-issue` - 2026-06-26T01:04:47 - `f21b7294-6303-4dd4-9786-189804da8078.jsonl`
 - `/ll:format-issue` - 2026-06-26T00:52:30 - `68368d4e-1eed-4865-91d4-e0d7215d922a.jsonl`

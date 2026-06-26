@@ -920,10 +920,12 @@ def process_issue_inplace(
             error_output = result.stderr or result.stdout or "Unknown error"
             failure_type, failure_reason_text = classify_failure(error_output, result.returncode)
 
-            if failure_type == FailureType.TRANSIENT:
-                # Transient failure - log but don't create bug issue
-                logger.warning(f"Transient failure for {info.issue_id}: {failure_reason_text}")
-                logger.warning("Not creating bug issue - this is a temporary error")
+            if failure_type in (FailureType.TRANSIENT, FailureType.NON_RECOVERABLE):
+                # Transient or non-recoverable failure — log but don't create bug issue.
+                # NON_RECOVERABLE (auth/credential) is not a code bug; retrying won't help.
+                label = "Transient" if failure_type == FailureType.TRANSIENT else "Non-recoverable"
+                logger.warning(f"{label} failure for {info.issue_id}: {failure_reason_text}")
+                logger.warning("Not creating bug issue - this is not a code defect")
                 logger.info("Error output (first 500 chars):")
                 logger.info(error_output[:500])
 
@@ -931,7 +933,7 @@ def process_issue_inplace(
                     success=False,
                     duration=time.time() - issue_start_time,
                     issue_id=info.issue_id,
-                    failure_reason=f"Transient: {failure_reason_text}",
+                    failure_reason=f"{label}: {failure_reason_text}",
                     corrections=corrections,
                 )
 

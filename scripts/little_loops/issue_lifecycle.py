@@ -48,6 +48,7 @@ class FailureType(Enum):
     """
 
     TRANSIENT = "transient"  # Temporary error, don't create issue
+    NON_RECOVERABLE = "non_recoverable"  # Auth/credential failure — retry won't help, not a code bug
     REAL = "real"  # Actual bug/error, create issue
 
 
@@ -128,6 +129,21 @@ def classify_failure(error_output: str, returncode: int) -> tuple[FailureType, s
     ]
     if any(pattern in error_lower for pattern in resource_patterns):
         return (FailureType.TRANSIENT, "System resource error")
+
+    # Auth/credential failure patterns — non-recoverable (retry cannot fix an expired/invalid token)
+    # Placed before server_error_patterns because "api error" in that list could also match auth text.
+    auth_patterns = [
+        "401",
+        "403",
+        "unauthorized",
+        "forbidden",
+        "authentication",
+        "invalid api key",
+        "invalid_api_key",
+        "expired token",
+    ]
+    if any(pattern in error_lower for pattern in auth_patterns):
+        return (FailureType.NON_RECOVERABLE, "Auth/credentials failure")
 
     # API server error patterns (distinct from rate-limits; trigger short-burst retry in executor)
     server_error_patterns = [

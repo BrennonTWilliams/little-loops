@@ -313,6 +313,7 @@ def evaluate_output_contains(
     output: str,
     pattern: str,
     negate: bool = False,
+    error_patterns: list[str] | None = None,
 ) -> EvaluationResult:
     """Check if pattern exists in output.
 
@@ -323,12 +324,15 @@ def evaluate_output_contains(
         output: The action stdout to search
         pattern: Regex pattern or substring
         negate: If True, invert the match result
+        error_patterns: Optional list of substrings that, when matched in output
+            and the main pattern is not found, yield verdict="error". This allows
+            loops to route auth/error output to on_error without raising an exception.
 
     Returns:
         EvaluationResult with verdict:
             - Found (negate=False) -> yes
             - Found (negate=True) -> no
-            - Not found (negate=False) -> no
+            - Not found (negate=False) -> no (or "error" if error_patterns matched)
             - Not found (negate=True) -> yes
     """
     # Try regex first, fall back to substring
@@ -341,6 +345,15 @@ def evaluate_output_contains(
         verdict = "no" if matched else "yes"
     else:
         verdict = "yes" if matched else "no"
+
+    # Check error_patterns before returning "no" — only when main pattern didn't match
+    if verdict == "no" and not negate and error_patterns:
+        for ep in error_patterns:
+            if ep in output:
+                return EvaluationResult(
+                    verdict="error",
+                    details={"matched": False, "pattern": pattern, "negate": negate, "error_pattern": ep},
+                )
 
     return EvaluationResult(
         verdict=verdict,
@@ -1570,6 +1583,7 @@ def evaluate(
             output=output,
             pattern=config.pattern or "",
             negate=config.negate,
+            error_patterns=config.error_patterns,
         )
 
     elif eval_type == "convergence":

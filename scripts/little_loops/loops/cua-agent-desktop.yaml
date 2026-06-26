@@ -322,8 +322,39 @@ states:
       type: output_contains
       pattern: '"commands"'
     on_yes: execute_action
-    on_no: _route_plan_verdict
+    on_no: _check_plan_auth_failure
     on_error: _handle_plan_error
+
+  _check_plan_auth_failure:
+    # Fast-fail guard for auth failures (BUG-2302): grep captured plan output for
+    # 401/403/unauthorized/forbidden signatures before continuing the routing chain.
+    # Auth failures exit with code 0 (the subprocess succeeded) but output lacks
+    # "commands" — so on_error never fires and the loop would retry up to max_steps.
+    action_type: shell
+    action: |
+      ABS_DIR="${captured.run_dir.output}"
+      if echo "${captured.plan_output.output}" | grep -qiE '401|403|unauthorized|forbidden'; then
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM auth failure (401/403) at iteration ${state.iteration}" \
+          >> "$ABS_DIR/.plan_errors.log"
+        echo "AUTH_FAILURE_DETECTED"
+      else
+        echo "NO_AUTH_FAILURE"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "AUTH_FAILURE_DETECTED"
+    on_yes: _auth_failure_abort
+    on_no: _route_plan_verdict
+
+  _auth_failure_abort:
+    # Terminal routing for non-recoverable auth failures. Logs a diagnostic
+    # echo so test_all_failure_terminals_have_diagnostic_action is satisfied,
+    # then routes to the existing failed terminal. The diagnose state reads
+    # .plan_errors.log automatically when invoked from other paths.
+    action_type: shell
+    action: |
+      echo "Aborting: non-recoverable LLM auth failure (see .plan_errors.log)"
+    next: failed
 
   _route_plan_verdict:
     # If plan output doesn't contain a commands array, check whether the
@@ -813,6 +844,14 @@ states:
     action_type: shell
     action: |
       ABS_DIR="${captured.run_dir.output}"
+      # Classify auth failures on the exception/exit-code path as well, routing
+      # directly to abort rather than burning retry budget on a non-recoverable error.
+      if echo "${captured.plan_output.output}" | grep -qiE '401|403|unauthorized|forbidden'; then
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM auth failure (401/403) at iteration ${state.iteration}" \
+          >> "$ABS_DIR/.plan_errors.log"
+        echo "PLAN_AUTH_FAILURE_DETECTED"
+        exit 0
+      fi
       echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM API error or timeout at iteration ${state.iteration}" \
         >> "$ABS_DIR/.plan_errors.log"
       COUNTER_FILE="$ABS_DIR/.plan_error_count"
@@ -828,8 +867,11 @@ states:
     evaluate:
       type: output_contains
       pattern: "PLAN_ERROR_LIMIT_EXCEEDED"
+      error_patterns:
+        - "PLAN_AUTH_FAILURE_DETECTED"
     on_yes: diagnose
     on_no: plan
+    on_error: _auth_failure_abort
 
   check_completion:
     # LLM determines whether the overall task is complete. Broader than the
