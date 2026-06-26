@@ -12,6 +12,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.132.0] - 2026-06-26
+
+### Added
+
+- **Package host-agnostic templates into the wheel** — Cross-host delivery of design tokens, hooks, and Codex adapter; all non-editable installs now resolve templates correctly. (FEAT-2274)
+- **`ll-verify-package-data` — package-data completeness gate** — Left-shift guard that lints `__file__` escapes, checks MANIFEST.in coverage, and smoke-tests wheel contents; exits 1 on any violation. (ENH-2277)
+- **4-tier issue template precedence lookup** — `resolve_templates_dir()` checks user override → project override → plugin root → shipped defaults in priority order. (ENH-2285)
+- **`ll-issues sections` CLI subcommand** — List and query issue template sections from the command line. (ENH-2286)
+- **`ll-init` deploys issue templates on init** — `deploy_issue_templates()` wired into the full init sequence. (ENH-2287)
+- **Policy-router branch in `create-loop` wizard** — New wizard path generates policy-router FSM templates. (ENH-2299)
+
+### Fixed
+
+- **CLI logo excluded from wheel** — Repoints `get_logo()` to in-package `assets/` path; no longer returns `None` on non-editable installs. (BUG-2276)
+- **`hooks/` package data excluded from wheel** — Prompt template and Codex adapter now included; prompt-optimization hook and Codex onboarding no longer silently break. (BUG-2275)
+- **`skill_expander` disables prompt pre-expansion on non-editable installs** — Host-skill-dir awareness restored; pre-expansion no longer silently disabled. (BUG-2278)
+- **Option J guillotine `usage_ratio` measures wrong metric** — Now measures context-window occupancy, not cumulative session tokens. (BUG-2280)
+- **Option J guillotine missing `_check_issue_already_done` guard** — Guard added to prevent re-processing completed issues. (BUG-2281)
+- **Per-character SGR wrapping in FSM diagrams** — Batch SGR sequences in `_draw_box` eliminate raw ANSI fragments in CLI recordings. (BUG-2284)
+- **`rn-decompose` double-counts decomposed parents** — Removed double-write to `skipped.txt` from `enqueue_children`. (BUG-2289)
+- **`_find_prompt_file` resolves wrong path when `CLAUDE_PLUGIN_ROOT` is set** — Drops stale `CLAUDE_PLUGIN_ROOT` branch; resolves correctly on all install types. (BUG-2295)
+- **CUA loop never fast-fails on LLM auth failure** — Added `NON_RECOVERABLE` error class and `output_contains` error-pattern routing; dead-code path removed. (BUG-2302)
+- **FSM diagram action-row border overflow** — Fixed layout rendering in `_draw_box`. (BUG-2303)
+- **`loop_complete` event missing `error` field** — Field added and child error surfaced to parent context. (BUG-2304)
+- **FSM validator silently passes unresolvable `loop:` references** — `_validate_loop_references()` now called at definition time; catches missing files before runtime. (BUG-2305)
+- **FSM runner not hardened against broken-pipe and spawn failures** — Runner now catches and handles these errors gracefully.
+- **`char_cap` default misaligned across config sources** — Aligned to 1200 across all sources.
+- **`state_enter` schema `iteration_count` field inadvertently removed** — Field restored.
+
+### Changed
+
+- **Centralized model→context-window mapping with 1M support** — Single authoritative table; 1M-token models now handled correctly. (ENH-2282)
+- **Updated doc/agent/skill references after hooks in-package move** — Post-BUG-2275 cleanup of all stale path references. (ENH-2291)
+- **`general-task` OOM resilience** — Added token-budget and OOM-aware post-mortem to `do_work`. (ENH-2293)
+- **`ll-issues list` truncates long titles** — Titles now fit one line in list output. (ENH-2284)
+- **`audit-loop-run` auto-scales `--tail`** — Tail size now proportional to run size instead of fixed at 200. (ENH-2290)
+- **`ll-logs tail` gains `--project DIR` flag** — Cross-project consistency with other `ll-logs` subcommands. (ENH-2297)
+
 ## [1.131.0] - 2026-06-25
 
 ### Added
@@ -3480,6 +3518,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.42.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.41.0...v1.42.0
 [1.41.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.40.0...v1.41.0
 [1.40.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.39.0...v1.40.0
+[1.132.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.131.0...v1.132.0
 [1.39.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.38.0...v1.39.0
 [1.38.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.37.3...v1.38.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
