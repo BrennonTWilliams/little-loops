@@ -6,7 +6,16 @@ priority: P3
 status: open
 discovered_date: 2026-06-26
 discovered_by: capture-issue
-captured_at: "2026-06-26T00:04:42Z"
+captured_at: '2026-06-26T00:04:42Z'
+relates_to:
+- FEAT-2301
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 68
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-2299: Add policy-router branch to create-loop wizard
@@ -102,28 +111,68 @@ states:
     terminal: true
 ```
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on analysis of `policy-refine.yaml` and `lib/rubric-router.yaml`:_
+
+The YAML shape above is missing `threshold_high` and `threshold_medium`. The canonical reference loop (`policy-refine.yaml`) includes them when importing `lib/rubric-router.yaml`, because `rubric-router.yaml`'s `rubric_parse_scores` fragment consumes them (defaults: 85 / 65). They are technically unused in the policy-router path (which uses `policy_parse_scores` instead), but are present in the reference loop for completeness. Include them when using the LLM rubric scorer so callers can override thresholds without patching the generated YAML:
+
+```yaml
+context:
+  subject: "<artifact>"
+  rubric_dimensions: "<dim1>|<dim2>|..."
+  threshold_high: "85"    # consumed by rubric-router fragments; default 85
+  threshold_medium: "65"  # consumed by rubric-router fragments; default 65
+  policy_rules: |
+    ...
+```
+
+**Import order is strict**: `lib/rubric-router.yaml` must appear before `lib/policy-router.yaml` in the `import:` list, because `rubric_score` (rubric-router) must be resolved before `policy_parse_scores` (policy-router) can consume its output.
+
+**Custom shell scorer path generates different YAML**: When the user selects a custom shell scorer (instead of LLM rubric), the `import:` list omits `lib/rubric-router.yaml`, the `score` state is a `shell` action that writes `rubric-dim-<name>.txt` files directly to `${context.run_dir}/`, and the `parse_scores` state may be omitted entirely (the shell scorer writes score files directly, bypassing `policy_parse_scores`). The wizard generates two distinct YAML shapes depending on the scorer selection.
+
 ## Integration Map
 
 ### Files to Modify
-- `skills/create-loop/templates.md` — add `policy-router` template block and wizard question flow
-- `skills/create-loop/loop-types.md` — add `policy-router` entry to the type-selection list and question/generation section
-- `skills/create-loop/SKILL.md` — update keyword inference map to route `"decision table"`, `"multi-score"`, `"policy router"` to the new type
+- `skills/create-loop/SKILL.md` — (1) add new keyword inference entries in Step -1; (2) add "Policy router (decision table)" option in Step 1 `AskUserQuestion`; (3) add type-mapping entry
+- `skills/create-loop/loop-types.md` — add full `## Policy Router Questions` section: sub-steps for scoring source / dimensions / subject / policy rules / action states / max iterations, plus `### Generate Policy Router FSM YAML` block with both LLM-rubric and custom-scorer variants
+- `skills/create-loop/templates.md` — (1) add "Policy router (decision table)" option to Step 0.1 type-selection `AskUserQuestion`; (2) add `### Template: policy-router` block with `{{token}}` substitutions; (3) add `### For "Policy router (decision table)"` section in Step 0.2 with customization questions
+
+_Note_: The wizard question flow and YAML generation belong in `loop-types.md` (Step 2, custom/wizard path). `templates.md` serves the "Start from template" path (Step 0.1–0.2) only — it contains pre-built `{{token}}`-substituted YAML templates, not wizard question flows.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/lib/policy-router.yaml` — fragment consumed by generated loops (no changes needed)
-- `scripts/little_loops/loops/lib/rubric-router.yaml` — optional fragment for LLM scoring (no changes needed)
-- `scripts/little_loops/loops/policy-refine.yaml` — canonical reference loop; may be cited in template as example
+- `scripts/little_loops/loops/lib/policy-router.yaml` — fragment library consumed by generated loops (`policy_parse_scores`, `policy_table_dispatch`); no changes needed
+- `scripts/little_loops/loops/lib/rubric-router.yaml` — optional fragment for LLM scoring (`rubric_score`); no changes needed
+- `scripts/little_loops/loops/policy-refine.yaml` — canonical reference loop; use as the template for wizard-generated YAML
+- `scripts/little_loops/fsm/policy_rules.py` — rule grammar engine (`parse_rules`, `evaluate_rules`); imported by `policy_table_dispatch` fragment; confirms rule syntax documented in the issue is correct
+- `scripts/little_loops/fsm/route_table.py` — route-table rendering for `ll-loop edit-routes`; used after loop creation to re-edit the decision table
+- `scripts/little_loops/cli/loop/edit_routes.py` — `ll-loop edit-routes` CLI command; already implemented and working — reference it in the completion message tip
 
 ### Similar Patterns
-- Other wizard branches in `skills/create-loop/loop-types.md` (e.g., "Harness a skill", "Optimize a harness") — follow their `AskUserQuestion` step structure and YAML generation shape for consistency
-- Existing YAML templates in `skills/create-loop/templates.md` — match substitution token format (`{{param}}`) and section ordering conventions
+- `## Optimize a Harness (Meta-Loop) Questions` in `skills/create-loop/loop-types.md` — closest structural analog: gathers context variables interactively (Steps M1–M5), uses a refusal guard for required fields, and generates YAML with a `context:` block; follow this pattern for policy-router steps
+- `## RL Policy Questions` in `skills/create-loop/loop-types.md` — cleanest minimal example of the `### Step X#: Title` + `AskUserQuestion` block + `#### Generate ... YAML` structure
+- `class TestHarnessPlanResearchImplementReport` in `scripts/tests/test_create_loop.py` — existing test class that validates wizard-generated YAML structure; use as the test pattern (not `test_builtin_loops.py`)
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — add smoke test for wizard-generated policy-router YAML (validate fragment imports, required context fields, route map completeness)
+- `scripts/tests/test_create_loop.py` — add `TestPolicyRouterWizardYAML` class following the `TestHarnessPlanResearchImplementReport` pattern: define the expected YAML as a module-level string, parse with `yaml.safe_load`, and assert required fields (`import` list contains both fragment libs, `context.policy_rules` is present, `policy_dispatch.route` contains `_:` and `_error:`, required states exist)
+- `scripts/tests/test_builtin_loops.py` — `test_expected_loops_exist` at line 74 already covers `policy-refine`; no new entry needed unless a new builtin loop file is added (the wizard does not add a builtin loop)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_wiring_skills_and_commands.py` — `DOC_STRINGS_PRESENT` parametrized list currently asserts ENH-1912 strings (`"Orch: Router (dynamic dispatch)"`, `"orch-router"`) in `SKILL.md`, `templates.md`, and `loop-types.md`; add parallel ENH-2299 entries: `("skills/create-loop/SKILL.md", "Policy router (decision table)", "ENH-2299")`, `("skills/create-loop/loop-types.md", "## Policy Router Questions", "ENH-2299")`, `("skills/create-loop/templates.md", "policy-router", "ENH-2299")`, `("docs/reference/COMMANDS.md", "policy-router", "ENH-2299")` [Agent 1 + Agent 3 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue`:_
+
+- **Keyword collision**: "policy" in the Step -1 inference table already routes to `rl-policy`. Add unambiguous phrases only: `"decision table"`, `"policy rules"`, `"policy router"`, `"multi-score routing"`, `"rubric route"`.
+- **`ll-loop edit-routes` confirmed**: The command exists at `scripts/little_loops/cli/loop/edit_routes.py` and uses `route_table.py` for round-trip editing of policy-router decision tables. Reference it in the wizard completion message: `Tip: Run ll-loop edit-routes <name> to re-edit the decision table.`
 
 ### Documentation
 - `docs/guides/POLICY_ROUTER_GUIDE.md` — add a "Using the Wizard" section cross-linking to `/ll:create-loop`
 - `docs/guides/LOOPS_GUIDE.md` — update type list to include policy-router
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md` — `/ll:create-loop` entry under `## Automation Loops` contains a hardcoded parenthetical type list `(fix-until-clean, ..., orch-router)`; add `policy-router` to keep it current [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -136,8 +185,15 @@ states:
 4. Write the `policy-router` YAML template in `templates.md` with substitution tokens for all wizard-collected values; ensure `route:` map always includes `_:` and `_error:` entries.
 5. Add validation: reject empty dimension list, require at least one non-catch-all rule before generating YAML.
 6. Emit `ll-loop edit-routes <name>` suggestion in the completion message.
-7. Add a test in `test_builtin_loops.py` that generates a policy-router loop via the wizard parameters and validates the output YAML structure.
+7. Add `TestPolicyRouterWizardYAML` class in `test_create_loop.py` (not `test_builtin_loops.py`) following the `TestHarnessPlanResearchImplementReport` pattern: define the representative YAML as a module-level string constant, parse with `yaml.safe_load`, and assert: `import` list contains both `lib/rubric-router.yaml` and `lib/policy-router.yaml`, `context.policy_rules` is present, `policy_dispatch.route` contains `_:` and `_error:` keys, and required states (`score`, `parse_scores`, `policy_dispatch`, `done`) all exist.
 8. Update `POLICY_ROUTER_GUIDE.md` with a "Using the Wizard" section.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. Update `docs/reference/COMMANDS.md` — add `policy-router` to the hardcoded parenthetical type list in the `/ll:create-loop` workflow step description
+10. Update `scripts/tests/test_wiring_skills_and_commands.py` — add four new `DOC_STRINGS_PRESENT` entries: `("skills/create-loop/SKILL.md", "Policy router (decision table)", "ENH-2299")`, `("skills/create-loop/loop-types.md", "## Policy Router Questions", "ENH-2299")`, `("skills/create-loop/templates.md", "policy-router", "ENH-2299")`, `("docs/reference/COMMANDS.md", "policy-router", "ENH-2299")`
 
 ## Impact
 
@@ -154,6 +210,21 @@ states:
 
 **Open** | Created: 2026-06-26 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-25_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 68/100 → MODERATE
+
+### Outcome Risk Factors
+- **8-site breadth across wizard, tests, and docs** — Changes touch SKILL.md, loop-types.md, templates.md, two test files, and three doc files; risk is missing a sync across the doc surface (LOOPS_GUIDE.md, POLICY_ROUTER_GUIDE.md, COMMANDS.md) since they don't have automated coverage
+- **Custom scorer YAML shape specified in prose only** — The custom shell scorer path differs materially from the LLM rubric path (no rubric import, no `parse_scores` state) but is described in prose rather than shown as an explicit template; implementer must derive it carefully to avoid subtle structural errors
+- **Wizard section authoring is the high-effort core** — Writing the `## Policy Router Questions` section in loop-types.md (multi-step question flow + two conditional YAML shapes) is the largest single-file change; following the RL Policy section pattern closely will reduce risk
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-25T00:00:00Z - `86b1c53c-f74c-432c-ba26-627fc7b5814b.jsonl`
+- `/ll:wire-issue` - 2026-06-26T00:56:31 - `206cefe7-3625-47fe-8d68-9becc11a2e20.jsonl`
+- `/ll:refine-issue` - 2026-06-26T00:48:30 - `dace4845-a459-498c-a40e-691d358094f6.jsonl`
 - `/ll:format-issue` - 2026-06-26T00:08:40 - `84c784f6-8af8-4e01-af14-823702d77101.jsonl`
 - `/ll:capture-issue` - 2026-06-26T00:04:42Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52c7663b-99b0-4ea2-9984-865b6cd49e08.jsonl`
