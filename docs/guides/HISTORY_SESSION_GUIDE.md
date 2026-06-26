@@ -415,7 +415,7 @@ All keys live under `history.*` and `analytics.*` in `.ll/ll-config.json`.
 | `history.max_age_days` | `null` | Global max age for all history queries (null = no limit) |
 | `history.session_digest.enabled` | `true` | Inject project-wide digest block at session start |
 | `history.session_digest.days` | `7` | Lookback window for session digest |
-| `history.session_digest.char_cap` | `800` | Max characters in injected context block |
+| `history.session_digest.char_cap` | `1200` | Max characters in injected context block |
 | `history.compaction.enabled` | `false` | LCM summarization during backfill |
 | `history.compaction.budget_tokens` | `4096` | Token budget per summary node |
 | `history.compaction.cross_session_enabled` | `true` | Build cross-session condensed nodes |

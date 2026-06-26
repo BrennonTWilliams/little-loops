@@ -782,6 +782,10 @@ states:
 
 `with:` and `context_passthrough` are mutually exclusive on the same state; missing `required: true` parameters and unknown `with:` keys are validation errors. Prefer `with:` for reusable children — a rename in the parent can't silently break the child.
 
+<!-- TODO: update-docs stub — BUG-2305 — drafted 2026-06-25 -->
+**`loop:` references are validated at definition time.** `ll-loop validate` (and `load_and_validate`) now checks that every `loop:` field resolves to an actual file on disk, reporting a `WARNING`-severity error if the referenced loop is missing. This catches typos and stale sub-loop names before a run starts rather than at runtime. Dynamically interpolated names (`loop: "${context.child_name}"`) are skipped — they can only be checked at runtime. If you see a warning like `Loop reference 'fix-quality-and-tests' does not resolve to any file.`, either correct the loop name or ensure the target YAML exists in your loops directory.
+<!-- END TODO stub -->
+
 When `--show-diagrams` is active, parent and child FSM diagrams render together, with the parent state highlighted throughout child execution — at any nesting depth.
 
 | Approach | Best for |
@@ -967,6 +971,30 @@ Branch with ternary syntax — `check_ready?run_impl:done` gives `check_ready` a
 **Scope conflict error.** Another loop holds a lock on overlapping paths. Find it with `ll-loop list --running` and stop it, or re-run with `--queue` to wait.
 
 **LLM evaluator errors.** Claude CLI auth or network issue. Ensure the `claude` CLI is authenticated, or use `--no-llm` to fall back to deterministic evaluators.
+
+<!-- TODO: update-docs stub — BUG-2302 — drafted 2026-06-25 -->
+**Auth/credential failure aborts the loop immediately.** When a loop action outputs authentication or credential error text (e.g., `"Not logged in"`, `"Authentication required"`), the executor classifies the failure as `NON_RECOVERABLE` and routes directly to `on_error` — without retrying. Unlike `TRANSIENT` failures (network blips, timeouts), credential failures cannot be resolved by re-running the same action, so the executor bypasses any `max_retries` or `retryable_exit_codes` config and aborts. To handle this cleanly, add an `on_error:` route to your auth-sensitive state and point it to a recovery or abort state:
+
+```yaml
+cua_observe:
+  action_type: shell
+  command: "agent-desktop screenshot"
+  evaluate:
+    type: output_contains
+    pattern: "screenshot captured"
+    error_patterns:
+      - "Not logged in"
+      - "Authentication required"
+  on_yes: cua_plan
+  on_no: cua_observe
+  on_error: auth_failed   # NON_RECOVERABLE routes here immediately
+
+auth_failed:
+  terminal: true
+```
+
+The `error_patterns` list on `output_contains` is what triggers the `NON_RECOVERABLE` path — patterns in that list yield `verdict="error"` (routing to `on_error`) when the main pattern is not found, without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`.
+<!-- END TODO stub -->
 
 **"No state found" on resume.** The loop already completed or was never started — completed loops have no resumable state. Check `ll-loop status <name>`.
 
