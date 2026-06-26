@@ -341,16 +341,24 @@ def run_claude_command(
     if "GIT_DIR" in invocation.env:
         logger.debug("Worktree detected: GIT_DIR=%s", invocation.env["GIT_DIR"])
 
-    process = subprocess.Popen(
-        cmd_args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,  # Line buffered
-        cwd=working_dir,
-        env=env,
-        start_new_session=True,
-    )
+    try:
+        process = subprocess.Popen(
+            cmd_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,  # Line buffered
+            cwd=working_dir,
+            env=env,
+            start_new_session=True,
+        )
+    except Exception as exc:
+        return subprocess.CompletedProcess(
+            args=cmd_args,
+            returncode=1,
+            stdout="",
+            stderr=f"Subprocess spawn failed: {exc}",
+        )
 
     if on_process_start:
         on_process_start(process)

@@ -142,6 +142,13 @@ class DefaultActionRunner:
                     exit_code=124,
                     duration_ms=timeout * 1000,
                 )
+            except Exception as exc:
+                return ActionResult(
+                    output="",
+                    stderr=f"Action failed: {exc}",
+                    exit_code=1,
+                    duration_ms=_now_ms() - start,
+                )
             return ActionResult(
                 output=completed.stdout,
                 stderr=completed.stderr,
