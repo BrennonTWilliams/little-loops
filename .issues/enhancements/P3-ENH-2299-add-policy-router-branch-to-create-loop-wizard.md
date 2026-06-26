@@ -34,9 +34,15 @@ A new wizard branch — "Policy router (decision table)" — appears in the Step
 
 The policy-router pattern is the recommended approach for any loop that needs to branch on a combination of scores (e.g. "ship only if both confidence and security are high"). The guide and fragment library already exist; the wizard is the missing step that makes the pattern discoverable and prevents authoring errors (missing catch-alls, unmatched `route:` keys, MR-4 dead-ends) from the start.
 
-## Proposed Solution
+## Scope Boundaries
 
-TBD - requires investigation
+- **In scope**: Adding the `policy-router` wizard branch to `/ll:create-loop` (Step 1 type selection, question flow, YAML template generation)
+- **Out of scope**: Modifying `lib/policy-router.yaml` or `lib/rubric-router.yaml` fragments (no changes to runtime logic)
+- **Out of scope**: Automated migration or detection of existing hand-authored policy-router loops
+- **Out of scope**: Nested or chained policy tables; the wizard produces a flat `context.policy_rules` table only
+- **Out of scope**: Visual/GUI policy editor — users re-edit the decision table via `ll-loop edit-routes` after creation
+
+## Proposed Solution
 
 ### Wizard Branch Parameters
 
@@ -108,6 +114,10 @@ states:
 - `scripts/little_loops/loops/lib/rubric-router.yaml` — optional fragment for LLM scoring (no changes needed)
 - `scripts/little_loops/loops/policy-refine.yaml` — canonical reference loop; may be cited in template as example
 
+### Similar Patterns
+- Other wizard branches in `skills/create-loop/loop-types.md` (e.g., "Harness a skill", "Optimize a harness") — follow their `AskUserQuestion` step structure and YAML generation shape for consistency
+- Existing YAML templates in `skills/create-loop/templates.md` — match substitution token format (`{{param}}`) and section ordering conventions
+
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — add smoke test for wizard-generated policy-router YAML (validate fragment imports, required context fields, route map completeness)
 
@@ -129,5 +139,21 @@ states:
 7. Add a test in `test_builtin_loops.py` that generates a policy-router loop via the wizard parameters and validates the output YAML structure.
 8. Update `POLICY_ROUTER_GUIDE.md` with a "Using the Wizard" section.
 
+## Impact
+
+- **Priority**: P3 — Discoverability improvement; the policy-router pattern already works but requires manual YAML authoring, no urgent unblock
+- **Effort**: Medium — Changes span 3 skill files (`SKILL.md`, `loop-types.md`, `templates.md`), 1 test file, 2 doc files; no runtime code changes
+- **Risk**: Low — Purely additive; existing wizard paths and FSM runtime are untouched
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `create-loop`, `loops`, `wizard`
+
+## Status
+
+**Open** | Created: 2026-06-26 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-26T00:08:40 - `84c784f6-8af8-4e01-af14-823702d77101.jsonl`
 - `/ll:capture-issue` - 2026-06-26T00:04:42Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52c7663b-99b0-4ea2-9984-865b6cd49e08.jsonl`
