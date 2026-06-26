@@ -135,6 +135,19 @@ A generated, self-contained `.html` file (no external dependencies; works over
   the output `policy_rules` table — so a builder-generated boolean predicate is live at
   runtime (matches a scored dimension), never a silent-inert `==true` against an unscored
   dimension. No change to `lib/rubric-router.yaml` / `lib/policy-router.yaml` is required.
+- [ ] Decision Table mode: dimension names are normalized identically (lowercase,
+  whitespace → hyphens) across the column header, the injected LLM scoring instruction,
+  AND the emitted `policy_rules` predicates — OR dimension input is restricted to
+  `[a-z0-9-]`. Without this, a header like `Has Citations` yields a score file keyed
+  `has-citations` (`policy_parse_scores` lowercases + spaces→hyphens) while the emitted
+  predicate stays `Has Citations:…`, so `evaluate_rules`'s exact-string `scores.get(pred.dim)`
+  misses, the predicate is silently inert, and routing falls through to the catch-all — the
+  same dead-predicate class the boolean encoding prevents, generalized to any mixed-case or
+  spaced dimension name. Base `ll-loop validate` does NOT catch this (no semantic liveness
+  check); ENH-2309 *can* catch it at the gate **iff** it compares the raw predicate dim
+  against the normalized scored-dimension set (its current step-1-raw / step-2-normalized
+  asymmetry — see ENH-2309 cross-ref), but the builder is the only place to guarantee
+  builder output is never inert
 - [ ] Decision Table mode: the grid has a final `→ Action` column (outcome) that is
   visually distinct from dimension columns (distinct header style or divider); the
   action cell is a dropdown of declared action-state names; the entire row
@@ -243,6 +256,37 @@ numeric that runs correctly with **zero fragment-runtime changes**. The literal
 `==true` never appears in generated output, so the dead-predicate class is
 structurally impossible for builder output. First-class `==true` literals (if ever
 wanted) are deferred to a separate fragment-scoped change.
+
+### Dimension-name normalization (generalizes the boolean fix)
+
+The boolean encoding closes one instance of a broader dead-predicate class. The
+general root cause: `policy_parse_scores` writes per-dimension score files under a
+**normalized** key — `dim_name = re.sub(r'\s+', '-', m.group(1).strip().lower())`
+(lowercase, whitespace → hyphens) — while `evaluate_rules` does an **exact-string**
+`scores.get(pred.dim)` against the *un-normalized* predicate dim parsed from the rule
+table (`policy_rules.py:_parse_predicate` only `.strip()`s `dim`, never lowercases).
+So any dimension with uppercase letters or spaces (e.g. a `Has Citations` column) is
+written as `rubric-dim-has-citations.txt` (key `has-citations`) but referenced as
+`Has Citations` in the predicate → `scores.get()` returns `None` → `_eval_predicate`
+matches only `!=` → silent fall-through to the catch-all.
+
+**Builder requirement:** normalize every dimension name with the *same*
+lowercase + whitespace→hyphens transform when emitting (a) the column header's
+canonical name, (b) the injected LLM scoring instruction's `DIMENSION: <name>` token,
+and (c) the `policy_rules` predicate dim — OR constrain the dimension-name input field
+to `[a-z0-9-]` so no normalization divergence is possible. This must hold for *all*
+dimensions, numeric and boolean alike; the boolean 0/100 path already happens to emit
+a normalized name, but numeric dimensions share the same hazard.
+
+**Gate coverage note:** base `ll-loop validate` has no semantic-liveness check, so it
+does not catch this. ENH-2309 *can* — its spec collects referenced predicate dims raw
+(step 1) but normalizes the scored-dimension set (step 2), so a raw `Has Citations`
+predicate is correctly flagged as never-scored against the `has-citations` score key.
+This only holds while ENH-2309 keeps that asymmetry; if an implementer "fairly"
+normalizes both sides, the warning disappears while the runtime bug remains (see the
+ENH-2309 cross-ref note added for this). Either way the builder is the only place to
+*prevent* the mismatch in builder output, which is why this is an acceptance criterion,
+not deferred to the gate.
 
 ### Generated YAML shape (Decision Table mode)
 
@@ -499,6 +543,7 @@ _Updated by `/ll:confidence-check` on 2026-06-26 (re-run; scores stable)_
 ### Outcome Risk Factors
 - **JS grammar drift**: In-browser validation mirrors `fsm/policy_rules.py:27–34` semantics (shadow detection, numeric-coercion ops, catch-all rules) with no automated cross-validation. Deferred to `ll-loop validate` as authoritative gate; still a maintenance surface.
 - **No automated JS test coverage**: Interactive browser behavior (drag-reorder, reactive decision grid, YAML serializer, theme toggle) requires manual verification. The JS layer is the dominant complexity locus and sits outside pytest's reach.
+- **Dimension-name normalization divergence**: `policy_parse_scores` keys score files by a lowercase + whitespace→hyphens normalized name, but `evaluate_rules` matches predicate dims by exact string. A mixed-case/spaced dimension yields a silently-inert predicate that passes base `ll-loop validate` (no liveness check). ENH-2309 catches it at the gate only while its referenced-raw / scored-normalized asymmetry holds. Mitigated by the new normalization acceptance criterion (builder normalizes header/scoring-instruction/predicate identically, or restricts input to `[a-z0-9-]`); functional correctness of generated YAML depends on it.
 - ~~**Output artifact path not finalized**~~ — _resolved 2026-06-25_: generated on-demand at `<artifacts.default_output_dir>/policy-router-builder.html` (default CWD); `--output` override; no checked-in artifact. `config-schema.json` gets a new `"artifacts"` block.
 
 ## Session Log

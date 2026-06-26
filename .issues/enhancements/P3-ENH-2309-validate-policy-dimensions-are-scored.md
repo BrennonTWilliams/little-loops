@@ -63,8 +63,22 @@ A new validator (`_validate_policy_dimensions_scored`) that, for any loop defini
 `context.policy_rules`:
 
 1. Parses the rule table with `fsm/policy_rules.parse_rules()` and collects the set
-   of referenced dimension names across all predicates (excluding the reserved
-   `aggregate` pseudo-dimension, which is always written by `policy_parse_scores`).
+   of referenced dimension names across all predicates **as raw `Predicate.dim`
+   strings — do NOT normalize them** (excluding the reserved `aggregate`
+   pseudo-dimension, which is always written by `policy_parse_scores`).
+
+   > **Asymmetry is intentional (do not "fix" it).** The referenced set stays raw
+   > while the scored set (step 2) is normalized. This is deliberate: at runtime
+   > `evaluate_rules` matches the raw `Predicate.dim` by exact string against score
+   > keys that `policy_parse_scores` wrote in normalized form (lowercase,
+   > spaces→hyphens). So a predicate dim is live **only if it is already in
+   > normalized form**. Comparing raw-referenced against normalized-scored therefore
+   > flags exactly the predicates that are inert at runtime — including a
+   > `Has Citations` predicate whose dimension *is* listed (un-normalized) in
+   > `rubric_dimensions`. Normalizing *both* sides for a "fair" comparison would hide
+   > this real runtime bug. (Surfaced reviewing FEAT-2301; the builder prevents it in
+   > builder output by normalizing predicates at emit time, but hand-authored and
+   > `edit-routes` loops still need this gate.)
 2. Collects the set of **scored** dimensions from:
    - `context.rubric_dimensions` (pipe-separated names, normalized lowercased +
      spaces→hyphens to match the `rubric-dim-<name>.txt` convention written by
@@ -94,6 +108,11 @@ legitimate loop on a false positive. (Decided 2026-06-26.)
   written by `policy_parse_scores`)
 - [ ] A dimension listed in `rubric_dimensions` (after lowercase + spaces→hyphens
   normalization) does NOT trigger the warning
+- [ ] A predicate dim that matches a `rubric_dimensions` entry only *after*
+  normalization (e.g. predicate `Has Citations` vs. `rubric_dimensions` entry
+  `Has Citations`, score key `has-citations`) **DOES** trigger the warning — the raw
+  predicate dim is inert at runtime, so the referenced set must stay un-normalized
+  (guards the intentional step-1-raw / step-2-normalized asymmetry)
 - [ ] A dimension written via a `rubric-dim-<name>.txt` literal in a shell action
   body does NOT trigger the warning (deterministic-scorer path, e.g. rn-remediate)
 - [ ] `policy_dims_scored_ok: true` at loop top-level suppresses the check
