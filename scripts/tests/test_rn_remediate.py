@@ -487,12 +487,12 @@ class TestRemediationActions:
         assert data["states"]["diagnose"]["route"]["REFINE"] == "refine"
 
     def test_check_complexity_pre_implement_on_yes_routes_to_wire_check(self) -> None:
-        """check_complexity_pre_implement on_yes routes to check_wire_pre_implement (ENH-2223).
+        """check_complexity_pre_implement routes both bands to check_wire_pre_implement (ENH-2223).
 
         An issue that already passes the readiness gate (confidence >= 85, outcome >= 75)
-        does not need --full-rewrite even if complexity is high. Both branches now
-        route to check_wire_pre_implement; gate_implement enforces refine+wire markers
-        for above-minimal issues.
+        does not need --full-rewrite even if complexity is high. Both branches route
+        to check_wire_pre_implement; ENH-2163 enforcement is applied by
+        check_wire_pre_implement.on_no → gate_implement (BUG-2306).
         """
         data = _load_loop()
         ccpi = data["states"]["check_complexity_pre_implement"]
@@ -603,19 +603,27 @@ class TestMarkerGate:
         assert rgw["on_error"] == "implement"
 
     def test_above_minimal_entry_points_route_through_gate(self) -> None:
-        """Both above-minimal routes to implement go through gate_implement first."""
+        """All above-minimal routes to implement go through gate_implement first (BUG-2306)."""
         data = _load_loop()
         # diagnose IMPLEMENT token routes through the marker-gate
         assert data["states"]["diagnose"]["route"]["IMPLEMENT"] == "gate_implement"
         # check_convergence CONVERGED_PASS token routes through the marker-gate
         assert data["states"]["check_convergence"]["route"]["CONVERGED_PASS"] == "gate_implement"
+        # check_wire_pre_implement on_no (change_surface > 0) must also route through gate
+        assert data["states"]["check_wire_pre_implement"]["on_no"] == "gate_implement"
 
-    def test_minimal_ready_path_does_not_require_gate(self) -> None:
-        """check_wire_pre_implement (only reachable when complexity < threshold) still
-        routes straight to implement — minimal issues are exempt from enforcement."""
+    def test_wire_pre_implement_routes_nonzero_change_surface_to_gate(self) -> None:
+        """check_wire_pre_implement on_no routes to gate_implement, not implement (BUG-2306).
+
+        check_wire_pre_implement is reachable from BOTH complexity bands (both
+        ABOVE_MINIMAL and MINIMAL route through check_complexity_pre_implement → here).
+        A non-zero change_surface (on_no, exit 1) must go through gate_implement so
+        ENH-2163 enforcement applies regardless of complexity band. Zero change_surface
+        (on_yes) continues to wire. Errors fail open to implement.
+        """
         data = _load_loop()
         cwpi = data["states"]["check_wire_pre_implement"]
-        assert cwpi["on_no"] == "implement"
+        assert cwpi["on_no"] == "gate_implement"
         assert cwpi["on_error"] == "implement"
 
 

@@ -122,6 +122,13 @@ one wire detour, then IMPLEMENT** — bounded, no unbounded looping.
    `check_wire_pre_implement → implement` was left unchanged — it is only reachable
    when `complexity < threshold` (MINIMAL), so the gate would be a no-op there.
 
+   **Stale** (fixed by BUG-2306): the assumption above held only if
+   `check_complexity_pre_implement` had distinct ABOVE_MINIMAL vs MINIMAL routing.
+   Because it was degenerate (both bands → `check_wire_pre_implement`), ABOVE_MINIMAL
+   issues with non-zero `change_surface` bypassed `gate_implement`.
+   BUG-2306 fixed this by routing `check_wire_pre_implement.on_no` →
+   `gate_implement` instead of `implement`.
+
 ### Termination argument
 
 `complexity_band_<ID>.txt` is fixed; `refined_<ID>.txt` / `wired_<ID>.txt` are

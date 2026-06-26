@@ -110,7 +110,7 @@ check_wire_needed_outcome:
 - Five routing scenarios desk-checked against the updated YAML:
   - confidence=90, outcome=80, complexity=20, CHANGE_SURFACE=0 → `check_complexity_pre_implement` on_yes → `refine` (not direct implement)
   - confidence=90, outcome=80, complexity=5, CHANGE_SURFACE=0 → `check_complexity_pre_implement` on_no → `check_wire_pre_implement` on_yes → `wire`
-  - confidence=90, outcome=80, complexity=5, CHANGE_SURFACE=15 → both gates on_no → `implement`
+  - confidence=90, outcome=80, complexity=5, CHANGE_SURFACE=15 → both gates on_no → `gate_implement` (was: `implement`; fixed by BUG-2306)
   - outcome=80, confidence=60, CHANGE_SURFACE=0 → `check_wire_needed_outcome` on_yes → `wire`
   - outcome=80, confidence=60, CHANGE_SURFACE=15 → `check_wire_needed_outcome` on_no → `refine`
 

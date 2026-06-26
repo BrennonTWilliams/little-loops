@@ -152,7 +152,7 @@ states:
       CHANGE_SURFACE=$(jq -r '.score_change_surface // 0' "$PRE" 2>/dev/null || echo 0)
       [ "$CHANGE_SURFACE" -eq 0 ] && exit 0 || exit 1
     on_yes: wire
-    on_no: implement
+    on_no: gate_implement   # BUG-2306: change_surface > 0 must enforce ENH-2163 gate
     on_error: implement
 
   check_outcome:
