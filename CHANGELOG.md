@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **FSM validator now emits WARNING for unresolvable `loop:` references at definition time** — `load_and_validate()` calls the new `_validate_loop_references()` check that catches missing files before runtime, shifting `FileNotFoundError` from deep sub-loop dispatch to a zero-cost definition-time warning. (BUG-2305)
 - **Per-character SGR wrapping artifacts in FSM diagrams** — Batch SGR sequences in `_draw_box` to eliminate per-character wrapping that caused visual artifacts in video/terminal recordings. (BUG-2284)
 - **`ll-session` skill events missing backfill path** — Added `_backfill_skill_events` to populate pre-init history so `ll-logs stats` no longer undercounts sessions. (BUG-2283)
 - **`ll-issues set-status --cascade` follows wrong edges** — Restricted `--cascade` to `parent:` edges only; `relates_to` and `blocked_by` edges are no longer traversed. (BUG-2265)

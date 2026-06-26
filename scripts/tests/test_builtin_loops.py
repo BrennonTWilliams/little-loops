@@ -7446,6 +7446,7 @@ class TestValidatorWarningBudget:
         "failure-terminal": "no predecessor state with a diagnostic action",
         "artifact-versioning": "to a flat path in an iterative cycle",
         "capture-ordering": "References ${captured.",
+        "loop-reference": "does not resolve to any file",
     }
 
     # (loop stem, category) -> allowed warning paths.
@@ -7473,6 +7474,11 @@ class TestValidatorWarningBudget:
         ("integrate-sdk", "capture-ordering"): {
             # Bucket A: targets injected by oracles/enumerate-and-prove sub-loop on success path
             "states.scaffold_integration.action",
+        },
+        ("refine-to-ready-issue", "loop-reference"): {
+            # resolve_loop_path only searches top-level of builtin loops dir; verify-confidence-scores
+            # lives in loops/oracles/ and resolves correctly at runtime via the executor's loops_dir.
+            "states.confidence_check.loop",
         },
     }
 

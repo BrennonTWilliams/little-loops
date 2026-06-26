@@ -4,8 +4,9 @@ type: BUG
 priority: P2
 title: 'FSM validator silently passes unresolvable loop: references, deferring failure
   to runtime'
-status: open
+status: done
 captured_at: '2026-06-26T02:05:38Z'
+completed_at: '2026-06-26T03:07:06Z'
 discovered_date: 2026-06-26
 discovered_by: capture-issue
 decision_needed: false
@@ -221,6 +222,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `bug`, `captured`, `fsm`, `validation`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-26T02:55:39 - `69903ac1-fea8-434a-aed1-8137e3d9eaeb.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00Z - `25233932-f705-4de6-93cd-6045765792e0.jsonl`
 - `/ll:wire-issue` - 2026-06-26T02:28:26 - `e9efdfbd-319c-4d2b-9c38-0a9e63fc8643.jsonl`
 - `/ll:refine-issue` - 2026-06-26T02:17:16 - `80518754-bc0a-4778-a1c1-8bedfb026b8a.jsonl`
@@ -229,6 +231,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ---
 
+## Resolution
+
+Added `_validate_loop_references()` to `scripts/little_loops/fsm/validation.py` (after `_validate_with_bindings()`) and wired it into `load_and_validate()`. The function iterates all states with a `loop:` field, skips dynamically interpolated names (`${...}`), and emits a `WARNING`-severity `ValidationError` with `path=states.<name>.loop` when `resolve_loop_path()` raises `FileNotFoundError`. This fires regardless of whether the state has a `with:` block, closing the original guard gap.
+
+Also replaced the bare `pass` in `StateFeedRenderer._handle_state_enter()` (`cli/loop/_helpers.py:572`) with `Logger().warning(...)` + explicit `self.child_fsm_stack[depth] = None` so rendering failures are visible.
+
+Added `"loop-reference"` to `TestValidatorWarningBudget.CATEGORY_PATTERNS` and an ALLOWLIST entry for the `verify-confidence-scores` oracle (lives in `loops/oracles/`, a subdirectory that `resolve_loop_path` doesn't search — pre-existing limitation, not a typo).
+
 ## Status
 
-open
+done

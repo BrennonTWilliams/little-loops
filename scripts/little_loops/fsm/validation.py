@@ -438,6 +438,34 @@ def _validate_with_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationErro
     return errors
 
 
+def _validate_loop_references(fsm: FSMLoop, loop_dir: Path) -> list[ValidationError]:
+    """Validate that every state's loop: reference resolves to an actual loop file.
+
+    Called from load_and_validate (not validate_fsm) because resolving child loops
+    requires file-system access via the loop directory path.
+    """
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if state.loop is None:
+            continue
+        # Skip dynamically interpolated loop names — they can only be checked at runtime
+        if "${" in state.loop:
+            continue
+        try:
+            from little_loops.cli.loop._helpers import resolve_loop_path
+
+            resolve_loop_path(state.loop, loop_dir)
+        except FileNotFoundError:
+            errors.append(
+                ValidationError(
+                    message=f"Loop reference '{state.loop}' does not resolve to any file.",
+                    path=f"states.{state_name}.loop",
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
+    return errors
+
+
 def _validate_fragment_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationError]:
     """Validate fragment with: bindings against fragment parameter contracts.
 
@@ -2155,6 +2183,7 @@ def load_and_validate(
 
     # Validate with: bindings against child loop parameters (requires file-system access)
     errors.extend(_validate_with_bindings(fsm, path.parent))
+    errors.extend(_validate_loop_references(fsm, path.parent))
     errors.extend(_validate_fragment_bindings(fsm, path.parent))
 
     # Filter to errors only (not warnings) for raising

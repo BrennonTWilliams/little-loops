@@ -3160,3 +3160,84 @@ class TestClassifyRouteDefault:
         )
         errors = _validate_classify_route_default(fsm)
         assert errors == []
+
+
+class TestLoopReferenceValidation:
+    """BUG-2305: _validate_loop_references emits WARNING for unresolvable loop: refs."""
+
+    def _write_yaml(self, tmp_path: Path, body: str) -> Path:
+        p = tmp_path / "test-loop.yaml"
+        p.write_text(body)
+        return p
+
+    def test_missing_loop_reference_emits_warning(self, tmp_path: Path) -> None:
+        """A bare loop: ref with no matching file produces one WARNING."""
+        loop_yaml = self._write_yaml(
+            tmp_path,
+            (
+                "name: parent-loop\n"
+                "description: test\n"
+                "initial: launch\n"
+                "states:\n"
+                "  launch:\n"
+                "    loop: nonexistent-loop\n"
+                "    on_complete: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+            ),
+        )
+        _, diagnostics = load_and_validate(loop_yaml, raise_on_error=False)
+        ref_warnings = [
+            d
+            for d in diagnostics
+            if d.severity == ValidationSeverity.WARNING and "nonexistent-loop" in d.message
+        ]
+        assert len(ref_warnings) == 1, f"Expected 1 loop-reference warning, got: {diagnostics}"
+        assert ref_warnings[0].path == "states.launch.loop"
+
+    def test_missing_loop_reference_no_with_block(self, tmp_path: Path) -> None:
+        """Bare loop: ref (no with: block) is checked — this was the original gap."""
+        loop_yaml = self._write_yaml(
+            tmp_path,
+            (
+                "name: parent-loop\n"
+                "description: test\n"
+                "initial: run\n"
+                "states:\n"
+                "  run:\n"
+                "    loop: missing-child\n"
+                "    on_complete: end\n"
+                "  end:\n"
+                "    terminal: true\n"
+            ),
+        )
+        _, diagnostics = load_and_validate(loop_yaml, raise_on_error=False)
+        ref_warnings = [d for d in diagnostics if "missing-child" in d.message]
+        assert ref_warnings, "Expected a warning for unresolvable bare loop: ref"
+
+    def test_resolvable_loop_reference_no_warning(self, tmp_path: Path) -> None:
+        """A loop: ref pointing to a real sibling file emits no warning."""
+        (tmp_path / "child-loop.yaml").write_text(
+            "name: child-loop\ndescription: child\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        loop_yaml = self._write_yaml(
+            tmp_path,
+            (
+                "name: parent-loop\n"
+                "description: test\n"
+                "initial: run\n"
+                "states:\n"
+                "  run:\n"
+                "    loop: child-loop\n"
+                "    on_complete: end\n"
+                "  end:\n"
+                "    terminal: true\n"
+            ),
+        )
+        _, diagnostics = load_and_validate(loop_yaml, raise_on_error=False)
+        ref_warnings = [
+            d
+            for d in diagnostics
+            if d.severity == ValidationSeverity.WARNING and "child-loop" in d.message
+        ]
+        assert ref_warnings == [], f"Expected no loop-reference warning for resolvable ref, got: {ref_warnings}"

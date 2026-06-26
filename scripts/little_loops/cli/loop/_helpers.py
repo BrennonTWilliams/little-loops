@@ -569,8 +569,11 @@ class StateFeedRenderer:
                         self.child_fsm_stack[depth] = load_loop(
                             fsm_state.loop, self.loops_dir, Logger()
                         )
-                    except (FileNotFoundError, ValueError):
-                        pass
+                    except (FileNotFoundError, ValueError) as e:
+                        Logger().warning(
+                            f"Could not load child loop '{fsm_state.loop}' for state '{state}': {e}"
+                        )
+                        self.child_fsm_stack[depth] = None
                 else:
                     self.child_fsm_stack[depth] = None
             else:
