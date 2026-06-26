@@ -2501,6 +2501,34 @@ ll-verify-package-data -C /path/to/root    # Run from a specific project root
 
 ---
 
+### ll-verify-design-tokens
+
+Structural lint for *half-flipped* design-token theme profiles. A profile's `themes/dark.json` (or any theme) that inverts the foreground/background pair — overriding both `surface` and `text` to move onto a near-black surface — but leaves `border`/`action` falling through to the light-tuned `semantic.json` defaults produces harsh gridlines, muddy accents, and a `danger == action.primary` collision. This lint catches that class at authoring time.
+
+For every profile under the profiles directory, each theme that performs a full inversion (overrides both `surface` and `text`) must override every semantic color group `semantic.json` defines (`border`, `action`). A theme that does not invert (e.g. a `light.json` restating only `surface`) is exempt.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | | Output as JSON |
+| `--directory` | `-C` | Project root to discover the profiles directory under (default: cwd) |
+| `--profiles-dir` | | Explicit path to a design-token `profiles/` directory (overrides `-C` discovery) |
+
+**Exit codes:** `0` = every inverting theme overrides all semantic color groups; `1` = one or more half-flipped themes (or no profiles directory found).
+
+> **Note:** Run against the bundled little-loops templates, this currently flags `editorial-mono`, a known-incomplete profile pending a follow-on. Point `--profiles-dir` at a complete profile set, or complete `editorial-mono`, to gate CI on exit 0.
+
+**Examples:**
+```bash
+ll-verify-design-tokens                          # Auto-discover profiles dir from cwd
+ll-verify-design-tokens --json                   # Machine-readable JSON output
+ll-verify-design-tokens --profiles-dir DIR       # Lint a specific profiles directory
+ll-verify-design-tokens -C /path/to/root         # Discover under a specific project root
+```
+
+---
+
 ### ll-check-links
 
 Check markdown documentation for broken links.

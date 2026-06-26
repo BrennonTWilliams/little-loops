@@ -397,3 +397,24 @@ class TestIntegration:
         assert tokens is not None
         # dark theme remaps surface.primary to neutral.950
         assert tokens.resolved.get("color.surface.primary") == "#101214"
+
+    def test_dark_theme_completes_border_action_shadow(self, tmp_path: Path) -> None:
+        """ENH-2308: default dark theme must override border/action/shadow with
+        dark-tuned values, not fall through to light-tuned semantic defaults."""
+        self._skip_if_absent()
+        config, theme = self._make_config_from_template(tmp_path, "dark")
+        tokens = load_design_tokens(config, theme=theme)
+        assert tokens is not None
+        r = tokens.resolved
+
+        # Borders recede into the near-black surface (dark neutral steps), not the
+        # light-tuned neutral.200/neutral.400 gridlines.
+        assert r.get("color.border.subtle") == "#343a40"  # neutral.800
+        assert r.get("color.border.strong") == "#868e96"  # neutral.600
+
+        # Action accent brightens for dark; destructive must NOT collide with primary.
+        assert r.get("color.action.primary") == "#3b82f6"  # brand.500
+        assert r.get("color.action.destructive") != r.get("color.action.primary")
+
+        # Theme-scoped shadow reads on near-black (high-alpha black, not light-tuned).
+        assert "rgba(0, 0, 0, 0.5)" in r.get("shadow.md", "")

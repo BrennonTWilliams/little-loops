@@ -15,7 +15,13 @@
       "text.primary(#ffffff)_on_surface.raised(#343a40)": "10.73:1 PASS AA",
       "text.secondary(#dee2e6)_on_surface.primary(#101214)": "17.33:1 PASS AA",
       "text.secondary(#dee2e6)_on_surface.secondary(#212529)": "13.59:1 PASS AA",
-      "text.muted(#adb5bd)_on_surface.primary(#101214)": "9.35:1 PASS AA"
+      "text.muted(#adb5bd)_on_surface.primary(#101214)": "9.35:1 PASS AA",
+      "border.subtle(#343a40)_on_surface.primary(#101214)": "1.63:1 structural (decorative — recedes by design)",
+      "border.strong(#868e96)_on_surface.primary(#101214)": "5.65:1 PASS AA",
+      "action.primary(#3b82f6)_on_surface.primary(#101214)": "5.10:1 PASS AA",
+      "danger.300(#f87171)_on_surface.primary(#101214)": "6.79:1 PASS AA",
+      "success.300(#4ade80)_on_surface.primary(#101214)": "10.77:1 PASS AA",
+      "warning.300(#fbbf24)_on_surface.primary(#101214)": "11.25:1 PASS AA"
     }
   },
   "color": {

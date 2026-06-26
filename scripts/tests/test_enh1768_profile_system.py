@@ -348,6 +348,40 @@ class TestBundledProfilesLoadEndToEnd:
             f"font.family.body must differ across profiles, got {body_fonts}"
         )
 
+    # ENH-2308: dark themes must be complete for the in-scope profiles. editorial-mono
+    # remains half-flipped pending a follow-on, so it is deliberately excluded here.
+    _DARK_COMPLETE_PROFILES = ("default", "warm-paper")
+
+    def test_dark_theme_overrides_all_semantic_groups(self) -> None:
+        """ENH-2308: each in-scope profile's dark theme overrides every semantic
+        color group (surface, text, border, action) — not just surface + text."""
+        for name in self._DARK_COMPLETE_PROFILES:
+            profile = PROFILES_TEMPLATE_DIR / name
+            semantic = json.loads((profile / "semantic.json").read_text())
+            dark = json.loads((profile / "themes" / "dark.json").read_text())
+            semantic_groups = set(semantic["color"].keys())
+            dark_groups = set(dark.get("color", {}).keys())
+            missing = semantic_groups - dark_groups
+            assert not missing, f"{name}/themes/dark.json missing color groups: {sorted(missing)}"
+
+    def test_dark_theme_breaks_danger_primary_collision(self, tmp_path: Path) -> None:
+        """ENH-2308: in dark mode, action.destructive must not resolve to the same
+        color as action.primary, and shadows must be dark-tuned (high-alpha black)."""
+        self._copy_templates(tmp_path)
+        for name in self._DARK_COMPLETE_PROFILES:
+            config = self._make_config(tmp_path, name)
+            result = load_design_tokens(config, theme="dark")
+            assert result is not None
+            primary = result.resolved.get("color.action.primary")
+            destructive = result.resolved.get("color.action.destructive")
+            assert primary and destructive
+            assert primary != destructive, (
+                f"{name} dark: action.destructive ({destructive}) collides with "
+                f"action.primary ({primary})"
+            )
+            # Dark shadow reads on near-black: high-alpha black, not light-tuned warm/low alpha.
+            assert "rgba(0, 0, 0, 0." in result.resolved.get("shadow.md", "")
+
 
 # ---------------------------------------------------------------------------
 # Schema + config-schema.json

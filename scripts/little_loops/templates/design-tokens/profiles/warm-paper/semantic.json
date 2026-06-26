@@ -8,7 +8,14 @@
     },
     "dark_mode": {
       "text.primary(#fdfbf6)_on_surface.primary(#0d0b08)": "19.31:1 PASS AA",
-      "text.secondary(#d4c5a7)_on_surface.primary(#0d0b08)": "13.71:1 PASS AA"
+      "text.secondary(#d4c5a7)_on_surface.primary(#0d0b08)": "13.71:1 PASS AA",
+      "text.muted(#b8a482)_on_surface.primary(#0d0b08)": "8.11:1 PASS AA",
+      "border.subtle(#2e2820)_on_surface.primary(#0d0b08)": "1.35:1 structural (decorative — recedes by design)",
+      "border.strong(#6b5d47)_on_surface.primary(#0d0b08)": "3.07:1 PASS (UI 3:1)",
+      "action.primary(#c84a1c)_on_surface.primary(#0d0b08)": "4.17:1 PASS (UI 3:1)",
+      "danger.300(#e06b3d)_on_surface.primary(#0d0b08)": "5.93:1 PASS AA",
+      "success.300(#8fae66)_on_surface.primary(#0d0b08)": "7.87:1 PASS AA",
+      "warning.300(#d9a44a)_on_surface.primary(#0d0b08)": "8.76:1 PASS AA"
     }
   },
   "color": {

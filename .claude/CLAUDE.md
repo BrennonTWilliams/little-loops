@@ -233,6 +233,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-sync` - Sync local issues with GitHub Issues
 - `ll-verify-docs` - Verify documented counts match actual file counts
 - `ll-verify-package-data` - Lint `__file__` escapes that break non-editable installs + verify manifest assets are in-wheel (exit 1 on any violation)
+- `ll-verify-design-tokens` - Structural lint for half-flipped design-token themes: a theme that inverts `surface`+`text` but leaves `border`/`action` at light-tuned `semantic.json` defaults (exit 1 on any violation; flags bundled `editorial-mono` pending its follow-on)
 - `ll-verify-skill-budget` - Check skill description token footprint against listing budget (exit 1 if over)
 - `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines (exit 1 if any violations)
 - `ll-verify-triggers` - Validate skill description trigger accuracy against should-fire/should-not-fire phrasings (exit 1 if below threshold or collisions)

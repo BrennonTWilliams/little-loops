@@ -8,8 +8,22 @@
     "text": {
       "primary":   "{color.paper.0}",
       "secondary": "{color.paper.300}",
-      "muted":     "{color.paper.500}",
+      "muted":     "{color.paper.400}",
       "inverse":   "{color.paper.950}"
+    },
+    "border": {
+      "subtle": "{color.paper.800}",
+      "strong": "{color.paper.600}"
+    },
+    "action": {
+      "primary":       "{color.terracotta.500}",
+      "primary-hover": "{color.terracotta.300}",
+      "destructive":   "{color.danger.300}"
     }
+  },
+  "shadow": {
+    "sm": "0 1px 2px rgba(0, 0, 0, 0.5)",
+    "md": "0 3px 8px rgba(0, 0, 0, 0.55)",
+    "lg": "0 8px 20px rgba(0, 0, 0, 0.6)"
   }
 }
