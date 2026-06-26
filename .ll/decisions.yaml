@@ -2075,3 +2075,14 @@
     mode (timeout, spawn failure, unexpected '
   enforcement: advisory
   issue: ENH-2300
+- id: ARCHITECTURE-057
+  type: decision
+  timestamp: '2026-06-26T00:37:00Z'
+  category: architecture
+  labels: []
+  rationale: Greenfield visual composer for policy-router/rubric loops; sibling to
+    ENH-2299 (wizard) and ll-loop edit-routes (round-trip). Reuses design_tokens.py
+    via new render_as_css_vars_themed; self-contained HTML with live light/dark toggle.
+  rule: 'Captured: Self-contained HTML builder for policy-router and rubric FSM loops'
+  scope: issue
+  issue: FEAT-2301
