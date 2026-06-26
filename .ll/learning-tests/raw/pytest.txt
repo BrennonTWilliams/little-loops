@@ -1,0 +1,8 @@
+[PASS] claim1_parametrize_iterates_once_per_value: PASSED count=3, expected 3
+[PASS] claim2_monkeypatch_setenv_restores_after_test: rc=0 PASSED=2
+[FAIL] claim3_strict_markers_blocks_unregistered: rc=0 has_error=True
+[PASS] claim4_skipif_true_skips_not_fails: rc=0 SKIPPED=True FAILED=False
+[PASS] claim5_conftest_fixture_visible_to_subdirs: rc=0 PASSED=True
+[PASS] claim6_non_conftest_fixture_invisible_to_siblings: rc=1 fixture_error=True
+
+Results: 5/6 claims proven
