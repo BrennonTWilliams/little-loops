@@ -243,6 +243,7 @@ class TestBuiltinLoopFiles:
         state that executes a prompt action before transitioning to a failure terminal.
         Loops without a diagnose state are skipped (not yet updated).
         """
+        asserted = 0  # count loops that actually exercise the diagnose assertion
         for loop_file in builtin_loops:
             with open(loop_file) as f:
                 data = yaml.safe_load(f)
@@ -264,6 +265,15 @@ class TestBuiltinLoopFiles:
             assert not diagnose.get("terminal", False), (
                 f"{loop_file.name}: 'diagnose' state must not be terminal"
             )
+            asserted += 1
+        # Vacuous-pass guard: if no loop exercises the assertion above, the per-loop
+        # `continue` branches would let this regression guard pass having checked nothing.
+        # Require at least one updated loop so a refactor that strips every diagnose state
+        # fails here instead of silently going green (BUG-1606).
+        assert asserted > 0, (
+            "No built-in loop exercised the diagnose-before-failure-terminal assertion; "
+            "the BUG-1606 regression guard is vacuous (all diagnose states removed?)."
+        )
 
 
 class TestMR6BuiltinFalsePositives:
