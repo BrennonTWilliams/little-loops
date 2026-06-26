@@ -44,6 +44,7 @@ Read the description and infer the following fields:
 - "bandit", "explore", "exploit", "A/B", "strategy" → `rl-bandit`
 - "generate", "score", "RLHF", "quality", "candidate" → `rl-rlhf`
 - "policy", "act", "observe", "reward", "agent" → `rl-policy`
+- "decision table", "policy rules", "policy router", "multi-score routing", "rubric route" → `policy-router`
 - "optimize", "meta", "improve loop", "improve skill", "improve command" → `meta-optimize`
 - "route", "dispatch", "compose", "orchestrate", "supervisor", "router" → `orch-router`
 
@@ -143,6 +144,8 @@ questions:
         description: "Generate candidate output, score quality, refine until quality target is met. Best for: iterative content improvement, prompt refinement, answer quality loops."
       - label: "RL: Policy iteration (act → observe → improve)"
         description: "Agent acts, observes reward, improves policy toward a target. Best for: environment interaction, agent training simulations, adaptive automation."
+      - label: "Policy router (decision table)"
+        description: "Score an artifact on multiple dimensions and route via a declarative rule table. Pattern: score → parse_scores → policy_dispatch → action states"
       - label: "Optimize a harness (meta-loop)"
         description: "Iteratively improve a loop YAML, skill, agent, or command using an external scorer. Generates diagnosis-first scaffolding required for meta-loops (SHOR-compliant)."
       - label: "Orch: Router (dynamic dispatch)"
@@ -166,6 +169,7 @@ questions:
 - "RL: Bandit (explore vs exploit)" -> `rl-bandit` type (states: explore, exploit, reward, done)
 - "RL: RLHF-style (generate → score → refine)" -> `rl-rlhf` type (states: generate, score, refine, done)
 - "RL: Policy iteration (act → observe → improve)" -> `rl-policy` type (states: act, observe, score, improve, done)
+- "Policy router (decision table)" -> `policy-router` type (states: score, parse_scores, policy_dispatch, action states, done)
 - "Optimize a harness (meta-loop)" -> `meta-optimize` type (states: diagnose, baseline, propose, apply, score, gate, commit_or_revert, done)
 - "Orch: Router (dynamic dispatch)" -> `orch-router` type (states: classify, score, dispatch, review, done)
 - "Orch: Composer (goal → DAG)" -> `loop-composer` built-in loop (run via `ll-loop run loop-composer --input "..."`)

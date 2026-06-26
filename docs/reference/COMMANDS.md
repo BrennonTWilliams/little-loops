@@ -552,7 +552,7 @@ Create FSM loop configurations — interactively or from a natural language desc
 - `description` — Natural language description of the loop. When provided, the skill infers loop type and parameters, shows a confirmation summary, and jumps directly to YAML preview — skipping the guided wizard.
 
 **Workflow (no args — interactive):**
-1. Select loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence, harness, RL variants, meta-optimize, orch-router)
+1. Select loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence, harness, RL variants, policy-router, meta-optimize, orch-router)
 2. Configure type-specific parameters
 3. For the **harness branch**: asks whether the loop calls external packages or third-party APIs (ENH-2215). If yes (or if `learning_tests_required` was already populated by `/ll:wire-issue` or `/ll:scope-epic`), auto-injects an `assumption_gate` state that runs the `assumption-firewall` loop to prove API assumptions before the implementation loop starts.
 4. Name and preview the FSM YAML

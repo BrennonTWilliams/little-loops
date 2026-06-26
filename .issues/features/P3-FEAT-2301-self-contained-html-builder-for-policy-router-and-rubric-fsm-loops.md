@@ -238,8 +238,8 @@ def render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str:
 - `scripts/little_loops/design_tokens.py` — add `render_as_css_vars_themed(light, dark)` (scoped two-theme emit; optional multi-profile variant)
 
 ### New Files
-- The generated/template HTML builder (location TBD — e.g. `docs/tools/policy-router-builder.html` as a checked-in stamped artifact, and/or a `templates/` source the emitter fills)
-- Optional emit path (e.g. an `ll-loop` subcommand or a `/ll:create-loop` hand-off) that stamps the active profile into the file
+- `scripts/little_loops/cli/emit_builder.py` — standalone CLI wrapper `main_emit_builder` (modeled on `cli/schemas.py`); stamps the active profile into the generated file. **DECIDED** emit-path shape (see Decision Rationale).
+- The generated/template HTML builder (e.g. `docs/tools/policy-router-builder.html` as a checked-in stamped artifact, and/or a `templates/` source the emitter fills)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/lib/policy-router.yaml` — consumed by generated loops (no change)
@@ -254,6 +254,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - NOTE (negative finding): the runner callers (`run.py`, `lifecycle.py`) only call `render_as_prompt_context`, never `render_as_css_vars`. The FEAT-2301 emit path is the **first executed caller of the CSS-var render path** — there is no precedent caller for `render_as_css_vars` / `render_as_css_vars_themed` to copy. [Agent 2]
 
 ### Registration / Manifest (conditional on emit-path choice)
+
+> **Selected:** Standalone CLI tool (`ll-emit-builder`) — 6 direct generation-utility precedents, thinnest registration (2 code + 2 doc touchpoints), no doc-count gate, no `known_subcommands` misroute footgun. Decided by `/ll:decide-issue` 2026-06-25 (see Decision Rationale under Proposed Solution).
 
 _Wiring pass added by `/ll:wire-issue` — the "emit path (TBD)" New-Files entry is under-specified; each of the three plausible shapes touches a different registration + doc surface. Pick one in implementation:_
 
@@ -317,6 +319,29 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **FEAT-1023 precedent clarification**: `html-website-generator.yaml` generates HTML via LLM prompt states (the LLM writes `index.html`). `design_tokens_context` injection at `run.py:195` feeds the LLM semantic names. FEAT-2301's builder is a **Python-generated** static artifact — a different architectural pattern; no LLM state writes the HTML.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-25.
+
+**Selected**: Standalone CLI tool — `ll-emit-builder`
+
+**Reasoning**: The emit path is a deterministic, one-shot Python generator that loads `BRConfig` → `load_design_tokens` → `render_as_css_vars_themed` and writes a self-contained `.html`. This is exactly the shape of the existing generation utilities (`ll-generate-schemas`, `ll-create-extension`, `ll-gitignore`): `scripts/little_loops/cli/schemas.py` (`main_generate_schemas`, ~62 lines) is a copy-verbatim template for the CLI wrapper, delegating HTML assembly to a new `emit_builder.py` core module. Registration is the lightest of the three shapes (one line in `pyproject.toml` `[project.scripts]`, one import + one `__all__` entry in `cli/__init__.py`) and triggers neither the `ll-verify-docs` loop-count gate nor the `known_subcommands` misroute guard. The `ll-loop` subcommand option is conceptually loop-adjacent but costs four touchpoints inside `cli/loop/__init__.py` plus three doc files, and no peer subcommand writes a new file to a user-specified path (greenfield emit, unlike `edit-routes` which operates on an existing loop). The built-in-loop-YAML option conflicts with the harness pattern outright: its cited precedent `html-website-generator.yaml` is LLM-written HTML, the opposite of this Python-generated static emit, yielding a degenerate `emit → done` two-state loop the FSM runner adds no value to.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Standalone CLI (`ll-emit-builder`) | 3/3 | 3/3 | 2/3 | 3/3 | **11/12** |
+| `ll-loop` subcommand (`ll-loop emit-builder`) | 2/3 | 1/3 | 2/3 | 2/3 | 7/12 |
+| Built-in loop YAML | 0/3 | 1/3 | 1/3 | 1/3 | 3/12 |
+
+**Key evidence**:
+- Standalone CLI: 6 generation-utility precedents in `pyproject.toml:51–88`; `cli/schemas.py` `main_generate_schemas` is a ~62-line copy template; `cli_event_context` + `cli_args` helpers + `BRConfig`/`load_design_tokens` all reused unchanged (reuse 2/3). No doc-count gate, no shared-state footgun.
+- `ll-loop` subcommand: mechanical 4-step registration copied from `edit_routes.py` (`__init__.py:53–84` known_subcommands, `add_parser`, dispatch `elif`, epilog), but writes-new-file-to-user-path has no peer precedent and unit tests land in a new file, not `test_ll_loop_commands.py` (reuse 2/3). `known_subcommands` omission silently misroutes to `run`.
+- Built-in loop YAML: cited precedent `html-website-generator.yaml` is LLM-driven (`action_type: prompt` writes the HTML), not Python-driven; only `cli-anything-bootstrap.yaml:423` shows deterministic emit, and only as one sub-state of a 30-step LLM harness. FSM iteration spine is absent for a one-shot emit (reuse 1/3).
+
+**Decision impact on the rest of the issue**: Implementation Step 9 ("Decide the emit-path shape first") is now resolved — proceed with the **Standalone CLI** registration arm of Steps 10 (`pyproject.toml` `[project.scripts]` + `cli/__init__.py` imports/`__all__` + `docs/reference/CLI.md` + `.claude/CLAUDE.md` CLI-Tools bullet). The New-Files "emit path (TBD)" entry resolves to `scripts/little_loops/cli/emit_builder.py` (CLI wrapper `main_emit_builder`) plus the generated/template HTML.
+
 ## Implementation Steps
 
 1. Add `render_as_css_vars_themed(light, dark)` to `design_tokens.py` (+ optional multi-profile variant); unit-test resolution and scoping.
@@ -332,11 +357,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-9. **Decide the emit-path shape first** (`ll-loop` subcommand vs standalone CLI vs built-in loop YAML) — this choice determines steps 10–11. The issue leaves it "TBD"; it cannot stay TBD because each shape fans out to different registration + doc files (see Integration Map → "Registration / Manifest").
-10. **Register the emit path** per the chosen shape:
-    - `ll-loop` subcommand → update `cli/loop/__init__.py` `main_loop()` (known_subcommands set, `add_parser`, dispatch `elif`, epilog) + `docs/reference/CLI.md` + `docs/guides/LOOPS_GUIDE.md` table + `.claude/CLAUDE.md` `ll-loop` bullet.
-    - Standalone CLI → `scripts/pyproject.toml` `[project.scripts]` + `cli/__init__.py` imports/`__all__` + `docs/reference/CLI.md` + `.claude/CLAUDE.md` CLI-Tools bullet.
-    - Built-in loop YAML → `docs/guides/LOOPS_REFERENCE.md` + increment loop counts in `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md` (the `ll-verify-docs` / `doc_counts.py` gate) — run `ll-verify-docs` before commit.
+9. **Emit-path shape: DECIDED — Standalone CLI tool (`ll-emit-builder`)** (`/ll:decide-issue`, 2026-06-25; see Decision Rationale under Proposed Solution). Implement `scripts/little_loops/cli/emit_builder.py` (`main_emit_builder`) modeled on `cli/schemas.py` `main_generate_schemas`.
+10. **Register the emit path** (Standalone CLI arm): add `ll-emit-builder = "little_loops.cli:main_emit_builder"` to `scripts/pyproject.toml` `[project.scripts]` + a `from little_loops.cli.emit_builder import main_emit_builder` import and `"main_emit_builder"` entry in `scripts/little_loops/cli/__init__.py` `__all__` + a `### ll-emit-builder` section in `docs/reference/CLI.md` + a "CLI Tools" bullet in `.claude/CLAUDE.md`.
 11. **Update `scripts/tests/test_design_tokens.py`** — add `render_as_css_vars_themed` to the import block and a `TestRenderAsCssVarsThemed` class (model on `TestRenderAsCssVars`, reuse `_write_tokens`/`_make_config`).
 12. **Add the `ll-loop validate` smoke test** following `test_fsm_fragments.py` (`load_and_validate` + ERROR-severity filter) or `test_ll_loop_commands.py` (`cmd_validate(...) == 0`).
 13. **(If a subcommand is added)** add a `cmd_<name>` test in `test_ll_loop_commands.py` using the `argparse.Namespace()` + `Logger(use_color=False)` + `capsys` pattern.
@@ -358,6 +380,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-06-26 | Priority: P3
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-26T01:11:10 - `81cb10d8-c7ce-4642-bb0e-3ecbdb6e258a.jsonl`
 - `/ll:wire-issue` - 2026-06-26T01:01:02 - `f9198542-abe8-4adb-a324-052b78ba3060.jsonl`
 - `/ll:refine-issue` - 2026-06-26T00:51:56 - `d6038229-795a-45ee-8ef3-49cfaf152cac.jsonl`
 - `/ll:format-issue` - 2026-06-26T00:42:29 - `dace4845-a459-498c-a40e-691d358094f6.jsonl`

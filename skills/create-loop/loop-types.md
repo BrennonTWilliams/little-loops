@@ -1374,6 +1374,256 @@ states:
 
 ---
 
+## Policy Router Questions
+
+If user selected "Policy router (decision table)":
+
+### Step PR1: Scoring Source
+
+```yaml
+questions:
+  - question: "How should dimensions be scored?"
+    header: "Scoring source"
+    multiSelect: false
+    options:
+      - label: "LLM rubric scorer (Recommended)"
+        description: "Use lib/rubric-router.yaml — Claude evaluates each dimension and outputs DIMENSION: <name>: <score> lines"
+      - label: "Custom shell scorer"
+        description: "A shell command that writes rubric-dim-<name>.txt files to ${context.run_dir}/ directly"
+```
+
+---
+
+### Step PR2: Scored Dimensions
+
+```yaml
+questions:
+  - question: "What dimensions should be scored? (comma-separated)"
+    header: "Dimensions"
+    multiSelect: false
+    options:
+      - label: "quality,feasibility,security (Recommended)"
+        description: "Default three-axis policy set"
+      - label: "clarity,completeness,feasibility,security"
+        description: "Four-axis set from policy-refine reference loop"
+      - label: "Custom dimensions"
+        description: "Enter your own comma-separated list (e.g. relevance,accuracy,tone)"
+```
+
+Captured as `rubric_dimensions` — convert commas to `|` for the `context.rubric_dimensions` field.
+
+---
+
+### Step PR3: Subject Artifact
+
+```yaml
+questions:
+  - question: "What artifact should be scored?"
+    header: "Subject"
+    multiSelect: false
+    options:
+      - label: "${context.subject} (pass at run time)"
+        description: "Set subject when running: ll-loop run my-loop --context subject=artifact.md"
+      - label: "artifact.md"
+        description: "Hard-coded path to a single file"
+      - label: "Custom path or context variable"
+        description: "Specify your own path or ${context.variable}"
+```
+
+Captured as the `subject` context variable.
+
+---
+
+### Step PR4: Initial Policy Rules
+
+Present an editable inline decision table and ask the user to customize it:
+
+```
+Here is a starter decision table for your dimensions. Each rule is evaluated
+top-to-bottom — first match wins. Edit as needed:
+
+  security:<65 -> escalate
+  <dim1>:>=85 & <dim2>:>=85 -> done
+  * -> repair
+
+Rules use the syntax: <dim>:<op><val> -> <state>
+Conjunctive rules: <pred1> & <pred2> -> <state>
+Catch-all (required): * -> <state>
+```
+
+```yaml
+questions:
+  - question: "Paste your completed decision table (or accept the starter above)."
+    header: "Policy rules"
+    multiSelect: false
+    options:
+      - label: "Use starter rules"
+        description: "Accept the starter table as-is — you can re-edit later with ll-loop edit-routes <name>"
+      - label: "Custom rules"
+        description: "Enter your own rules via the Other field"
+```
+
+Captured as `policy_rules` (multiline string). The starter includes one per-dimension predicate and a `* ->` catch-all.
+
+**Validation**: If the user's rules do not include a `*` catch-all line, warn and add one automatically:
+```
+⚠ No catch-all rule (*) detected — adding "* -> repair" to prevent unmatched routing.
+```
+
+---
+
+### Step PR5: Action States
+
+```yaml
+questions:
+  - question: "What action states should the loop route to? (comma-separated)"
+    header: "Action states"
+    multiSelect: false
+    options:
+      - label: "done,repair,escalate (Recommended)"
+        description: "Three-tier default: terminal success, repair loop, escalation"
+      - label: "done,repair"
+        description: "Two-tier: success or repair"
+      - label: "Custom states"
+        description: "Enter your own comma-separated target state names"
+```
+
+Captured as `action_states` list. States named `done` and `escalate` are generated as `terminal: true`. All others are generated as `prompt` repair states that route back to `score`.
+
+---
+
+### Step PR6: Max Iterations
+
+```yaml
+questions:
+  - question: "What is the maximum number of score-repair cycles?"
+    header: "Max iterations"
+    multiSelect: false
+    options:
+      - label: "10 (Recommended)"
+        description: "Good for most refinement loops"
+      - label: "20"
+        description: "For complex artifacts with many repair cycles"
+      - label: "5"
+        description: "Quick iteration budget"
+```
+
+---
+
+### Generate Policy Router FSM YAML
+
+Use the answers from Steps PR1–PR6 to generate one of two YAML shapes.
+
+#### Path A: LLM Rubric Scorer (PR1 = LLM rubric)
+
+```yaml
+name: "<loop-name>"
+initial: score
+max_steps: <pr6-max>
+
+import:
+  - lib/rubric-router.yaml      # must come first; provides rubric_score fragment
+  - lib/policy-router.yaml      # provides policy_parse_scores + policy_table_dispatch
+
+context:
+  subject: "<pr3-subject>"
+  rubric_dimensions: "<dim1>|<dim2>|..."   # PR2 dimensions joined with |
+  threshold_high: "85"    # consumed by rubric-router fragments; override via --context
+  threshold_medium: "65"  # consumed by rubric-router fragments; override via --context
+  policy_rules: |
+    <pr4-rules>
+    * -> <first-repair-state>   # catch-all added by wizard if not present
+
+initial: score
+
+states:
+  score:
+    fragment: rubric_score
+    action: |
+      Evaluate ${context.subject} on these dimensions: ${context.rubric_dimensions}.
+      For each dimension output: DIMENSION: <name>: <score 0-100> — <one-sentence rationale>
+      Final line: AGGREGATE: <int 0-100>
+    capture: scores
+    next: parse_scores
+
+  parse_scores:
+    fragment: policy_parse_scores
+    next: policy_dispatch
+
+  policy_dispatch:
+    fragment: policy_table_dispatch
+    route:
+      <state1>: <state1>    # one entry per action state from PR5
+      <state2>: <state2>
+      # ...
+      _: <first-repair-state>   # catch-all: route unmatched tokens to repair
+      _error: done              # error catch-all: terminate on parse failure
+
+  # Repair states (non-terminal action states from PR5):
+  <repair-state>:
+    action_type: prompt
+    action: "Repair ${context.subject} based on rubric feedback."
+    next: score
+
+  # Terminal states (action states named "done" or "escalate"):
+  <terminal-state>:
+    terminal: true
+```
+
+#### Path B: Custom Shell Scorer (PR1 = custom shell scorer)
+
+When the user selects a custom shell scorer, the `import:` list omits `lib/rubric-router.yaml`, the `score` state is a shell action that writes score files directly, and the `parse_scores` state is omitted (the shell scorer writes files directly, bypassing `policy_parse_scores`):
+
+```yaml
+name: "<loop-name>"
+initial: score
+max_steps: <pr6-max>
+
+import:
+  - lib/policy-router.yaml      # only fragment needed for custom scorer path
+
+context:
+  subject: "<pr3-subject>"
+  policy_rules: |
+    <pr4-rules>
+    * -> <first-repair-state>
+
+states:
+  score:
+    action_type: shell
+    action: |
+      # Replace with your scoring command.
+      # Write one file per dimension: ${context.run_dir}/rubric-dim-<name>.txt
+      # Each file must contain a single integer 0-100.
+      echo "TODO: write rubric-dim-<dim1>.txt, rubric-dim-<dim2>.txt, ..."
+    next: policy_dispatch
+
+  policy_dispatch:
+    fragment: policy_table_dispatch
+    route:
+      <state1>: <state1>
+      <state2>: <state2>
+      # ...
+      _: <first-repair-state>
+      _error: done
+
+  <repair-state>:
+    action_type: prompt
+    action: "Repair ${context.subject} based on scoring feedback."
+    next: score
+
+  <terminal-state>:
+    terminal: true
+```
+
+**Completion message** (append after wizard generates YAML):
+```
+Tip: Run ll-loop edit-routes <name> to re-edit the decision table interactively.
+     See docs/guides/POLICY_ROUTER_GUIDE.md for rule syntax and examples.
+```
+
+---
+
 ## Optimize a Harness (Meta-Loop) Questions
 
 If user selected "Optimize a harness (meta-loop)":

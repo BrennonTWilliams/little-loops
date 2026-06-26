@@ -3,10 +3,11 @@ id: ENH-2299
 title: Add policy-router branch to create-loop wizard
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-26
 discovered_by: capture-issue
 captured_at: '2026-06-26T00:04:42Z'
+completed_at: '2026-06-26T01:15:25Z'
 relates_to:
 - FEAT-2301
 decision_needed: false
@@ -222,7 +223,25 @@ _Added by `/ll:confidence-check` on 2026-06-25_
 - **Custom scorer YAML shape specified in prose only** — The custom shell scorer path differs materially from the LLM rubric path (no rubric import, no `parse_scores` state) but is described in prose rather than shown as an explicit template; implementer must derive it carefully to avoid subtle structural errors
 - **Wizard section authoring is the high-effort core** — Writing the `## Policy Router Questions` section in loop-types.md (multi-step question flow + two conditional YAML shapes) is the largest single-file change; following the RL Policy section pattern closely will reduce risk
 
+## Resolution
+
+Implemented all 10 steps from the implementation plan:
+
+1. Added `policy-router` type to Step 1 `AskUserQuestion` in `skills/create-loop/SKILL.md`
+2. Added keyword mappings (`decision table`, `policy rules`, `policy router`, `multi-score routing`, `rubric route`) to Step -1 inference block
+3. Wrote `## Policy Router Questions` wizard flow (Steps PR1–PR6) in `loop-types.md` — covers scoring source, dimensions, subject, policy rules, action states, max iterations
+4. Wrote two YAML generation paths (LLM rubric / custom shell scorer) with correct import order, `threshold_high`/`threshold_medium`, and `_:`/`_error:` catch-alls
+5. Added catch-all validation warning in wizard question flow
+6. Added `ll-loop edit-routes` suggestion in completion message
+7. Added `TestPolicyRouterWizardYAML` class in `test_create_loop.py` with 9 structural assertions
+8. Updated `POLICY_ROUTER_GUIDE.md` with "Using the Wizard" section
+9. Updated `docs/reference/COMMANDS.md` type list to include `policy-router`
+10. Added 4 new `DOC_STRINGS_PRESENT` entries in `test_wiring_skills_and_commands.py`
+
+All 216 tests in `test_create_loop.py` and `test_wiring_skills_and_commands.py` pass. No regressions.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-26T01:06:48 - `af4f04b2-3757-49a5-9070-5c5e2e83f4f3.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00Z - `86b1c53c-f74c-432c-ba26-627fc7b5814b.jsonl`
 - `/ll:wire-issue` - 2026-06-26T00:56:31 - `206cefe7-3625-47fe-8d68-9becc11a2e20.jsonl`
 - `/ll:refine-issue` - 2026-06-26T00:48:30 - `dace4845-a459-498c-a40e-691d358094f6.jsonl`

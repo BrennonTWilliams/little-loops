@@ -179,6 +179,10 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("agents/loop-specialist.md", "ll-loop history", "FEAT-1532"),
     ("skills/create-loop/loop-types.md", "assumption_gate", "ENH-2215"),
     ("skills/create-loop/loop-types.md", "assumption-firewall", "ENH-2215"),
+    ("skills/create-loop/SKILL.md", "Policy router (decision table)", "ENH-2299"),
+    ("skills/create-loop/loop-types.md", "## Policy Router Questions", "ENH-2299"),
+    ("skills/create-loop/templates.md", "policy-router", "ENH-2299"),
+    ("docs/reference/COMMANDS.md", "policy-router", "ENH-2299"),
 ]
 
 

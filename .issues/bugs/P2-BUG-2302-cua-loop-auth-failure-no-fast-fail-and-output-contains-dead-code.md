@@ -191,6 +191,33 @@ In `issue_lifecycle.py`:
   (b) filing a bug like `REAL`. **Enumerate every `FailureType` switch before
   adding the member** — a missed branch silently falls into a default.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+**Part 2 — dispatcher wiring (critical, easy to miss):**
+- Update `evaluate()` dispatcher in `scripts/little_loops/fsm/evaluators.py` at line 1568–1573: pass `error_patterns=config.error_patterns` when calling `evaluate_output_contains()`; the dataclass field addition alone is inert without this.
+
+**Part 3 — `_cmd_scan_failures()` filter:**
+- In `scripts/little_loops/cli/logs.py:1051`, extend `if failure_type == FailureType.TRANSIENT: continue` → `if failure_type in (FailureType.TRANSIENT, FailureType.NON_RECOVERABLE): continue` so auth failures are skipped in `ll-logs scan-failures` output.
+
+**Documentation (add after all Python changes are tested):**
+- `docs/guides/LOOPS_GUIDE.md:286` — update `output_contains` verdict column from `yes / no` to `yes / no / error (with error_patterns)`
+- `docs/reference/API.md` — update `EvaluateConfig` dataclass listing (line 4587) and `evaluate_output_contains` signature (line 4694) to include `error_patterns`
+- `docs/generalized-fsm-loop.md:643-659` — add `error_patterns` field to YAML example and `error` row to verdict table
+
+**New tests (one per part; add before merge):**
+- Part 1: `test_builtin_loops.py` — simulate CUA `plan` state with `"401"` output, assert single-iteration abort
+- Part 2: `test_fsm_executor.py` — exit-0 + pattern-not-found + `error_patterns` match → `on_error`
+- Part 3: `test_issue_manager.py` — `NON_RECOVERABLE` in `_process_single_issue()` routes to suppress path (not bug creation)
+- Part 3: `test_cli_logs.py` or `test_issue_lifecycle.py` — `NON_RECOVERABLE` filtered in `_cmd_scan_failures()` (coverage gap; no corpus-based test exists today)
+
+**Verify CUA YAML structure after Part 1:**
+- `test_builtin_loops.py::test_all_validate_as_valid_fsm` must pass; if `_check_plan_auth_failure` references `_auth_failure_abort` which references `failed`, all three must be defined
+- Check `test_all_failure_terminals_have_diagnostic_action` — `_auth_failure_abort` should emit a diagnostic echo (already in the code sketch) to satisfy this guard
+
+---
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -270,6 +297,10 @@ Match against `error_output.lower()`. Return `(FailureType.NON_RECOVERABLE, "Aut
 - All `FailureType` consumers in `scripts/little_loops/` — enumerate before adding new enum member (missed branch silently falls to default)
 - `ll-auto`/`ll-parallel` orchestration code that branches on `classify_failure()` return value
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/parallel/orchestrator.py` — imports from fsm modules; audit for any `FailureType` branches that must handle `NON_RECOVERABLE` (currently no direct import found, but verify before merging Part 3)
+- `scripts/little_loops/fsm/types.py` — TYPE_CHECKING import of `EvaluateConfig` at line 14; `EvaluatorFunction` type alias at line 89 uses `EvaluateConfig` in its signature — backward-compat with new `error_patterns` field, no code change needed but verify after schema change
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -293,8 +324,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_fsm_schema.py` — also update for `error_patterns` field acceptance/rejection
 - `scripts/tests/test_fsm_evaluators.py:TestEvaluateDispatcher` (~line 471) — add a `test_output_contains_error_patterns_match` case alongside the existing `test_dispatch_nonzero_exit_generalized_short_circuit` parametrize
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_executor.py` — add: `test_output_contains_error_patterns_routes_to_on_error` (exit-0 + pattern-not-found + `error_patterns` match → `on_error`); follow the structure of `test_action_zero_exit_with_missing_pattern_still_routes_to_on_no` (~line 2402), which is the exact BUG-2302 scenario pre-fix and will remain SAFE (its mock output `"nope"` won't match auth patterns)
+- `scripts/tests/test_issue_manager.py` — gap: no existing test covers `classify_failure`/`FailureType` branching in `_process_single_issue()`. Add: verify `NON_RECOVERABLE` routes to suppress path (not bug creation); follow pattern from `test_issue_lifecycle.py::TestClassifyFailure`
+- `scripts/tests/test_builtin_loops.py::test_all_validate_as_valid_fsm` — will BREAK if new CUA YAML states have dangling target references; no test code change needed, but YAML must be structurally valid before merge
+- `scripts/tests/test_builtin_loops.py::test_all_failure_terminals_have_diagnostic_action` — inspect whether `_auth_failure_abort → failed` triggers the "no diagnostic action before terminal" guard; may require a diagnostic echo-action in `_auth_failure_abort` (the issue sketch already includes one)
+- **Coverage gap**: `scripts/little_loops/cli/logs.py:1050-1052` (`_cmd_scan_failures`) — the only existing test (`test_scan_failures_returns_0`) uses an empty corpus and never reaches the classification branch. Add: verify `NON_RECOVERABLE` failures are filtered (skipped) same as `TRANSIENT` in scan-failures output
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md:286` — verdict table shows `output_contains` as `yes / no` only; update to `yes / no / error (when error_patterns set)` after Part 2 lands
+- `docs/reference/API.md:4587` — `EvaluateConfig` dataclass docs: add `error_patterns: list[str] | None = None  # For output_contains: patterns that yield verdict="error"` after `negate`
+- `docs/reference/API.md:4694-4698` — `evaluate_output_contains` function signature: add `error_patterns` parameter and update docstring to describe the three-verdict behavior
+- `docs/generalized-fsm-loop.md:643-659` — `#### output_contains` section: add `error_patterns` field to YAML example and add `error` row to the verdict table
+
+Note: `docs/reference/API.md` does NOT document `FailureType` or `classify_failure` — no doc update needed for Part 3.
+Note: `docs/reference/CLI.md:627` lists `output_contains` as a valid MR-1 non-LLM evaluator — remains accurate, no change needed.
 
 ### Configuration
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — `error_patterns` field definition (Part 2 schema change)
@@ -337,5 +383,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-26T01:13:52 - `1d1f24c1-11ae-4edd-b18c-d140751e3f36.jsonl`
 - `/ll:refine-issue` - 2026-06-26T01:04:47 - `f21b7294-6303-4dd4-9786-189804da8078.jsonl`
 - `/ll:format-issue` - 2026-06-26T00:52:30 - `68368d4e-1eed-4865-91d4-e0d7215d922a.jsonl`

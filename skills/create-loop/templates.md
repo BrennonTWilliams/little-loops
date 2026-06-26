@@ -20,6 +20,8 @@ questions:
         description: "Wrap any skill with evaluate-iterate. Pattern: execute → check → advance → done"
       - label: "Optimize a harness (meta-loop)"
         description: "Score-gated hill-climbing on a harness artifact. Pattern: diagnose → baseline → propose → apply → score → gate → commit/revert → done"
+      - label: "Policy router (decision table)"
+        description: "Score an artifact on multiple dimensions and route via a declarative rule table. Pattern: score → parse_scores → policy_dispatch → action states"
       - label: "Route / compose / supervise other loops"
         description: "Dispatch a goal to the best-fit existing loop, or compose a sequence of loops. Pattern: classify → score → dispatch → review → done"
 ```
@@ -225,6 +227,59 @@ states:
   done:
     terminal: true
 ```
+
+### Template: policy-router
+
+```yaml
+name: "{{loop_name}}"
+initial: score
+max_steps: {{max_steps}}
+
+import:
+  - lib/rubric-router.yaml
+  - lib/policy-router.yaml
+
+context:
+  subject: "{{subject}}"
+  rubric_dimensions: "{{rubric_dimensions}}"
+  threshold_high: "85"
+  threshold_medium: "65"
+  policy_rules: |
+    {{policy_rules}}
+    * -> repair
+
+states:
+  score:
+    fragment: rubric_score
+    action: |
+      Evaluate ${context.subject} on these dimensions: ${context.rubric_dimensions}.
+      For each dimension output: DIMENSION: <name>: <score 0-100> — <one-sentence rationale>
+      Final line: AGGREGATE: <int 0-100>
+    capture: scores
+    next: parse_scores
+
+  parse_scores:
+    fragment: policy_parse_scores
+    next: policy_dispatch
+
+  policy_dispatch:
+    fragment: policy_table_dispatch
+    route:
+      done: done
+      repair: repair
+      _: repair
+      _error: done
+
+  repair:
+    action_type: prompt
+    action: "Repair ${context.subject} based on rubric feedback."
+    next: score
+
+  done:
+    terminal: true
+```
+
+**Placeholders**: `{{loop_name}}`, `{{max_steps}}`, `{{subject}}`, `{{rubric_dimensions}}` (dimensions joined with `|`), `{{policy_rules}}` (user-provided rule lines, without the catch-all which is appended automatically).
 
 ---
 
@@ -447,6 +502,48 @@ Error: scorer is required for meta-optimize loops.
 ```
 
 **Apply substitutions:** Replace `{{targets}}`, `{{scorer}}`, `{{target_score}}`, `{{tasks_dir}}`, `{{diagnose_action_type}}` (`shell` or `prompt`), `{{diagnose_action}}`, `{{max_steps}}` (default 30), `{{loop_name}}` (auto-suggest: `optimize-<artifact-basename>`), `{{description}}`.
+
+### For "Policy router (decision table)"
+
+```yaml
+questions:
+  - question: "What artifact should be scored?"
+    header: "Subject"
+    multiSelect: false
+    options:
+      - label: "${context.subject} — pass at run time (Recommended)"
+        description: "Set when running: ll-loop run my-loop --context subject=artifact.md"
+      - label: "artifact.md"
+        description: "Hard-coded path to a file"
+      - label: "Custom path or context variable"
+        description: "Specify your own path or ${context.variable}"
+
+  - question: "What dimensions should be scored? (comma-separated)"
+    header: "Dimensions"
+    multiSelect: false
+    options:
+      - label: "quality,feasibility,security (Recommended)"
+        description: "Default three-axis set"
+      - label: "clarity,completeness,feasibility,security"
+        description: "Four-axis set from the policy-refine reference loop"
+      - label: "Custom dimensions"
+        description: "Enter your own comma-separated list"
+
+  - question: "What is the maximum number of score-repair cycles?"
+    header: "Max iterations"
+    multiSelect: false
+    options:
+      - label: "10 (Recommended)"
+        description: "Good for most refinement loops"
+      - label: "20"
+        description: "For complex artifacts"
+      - label: "5"
+        description: "Quick budget"
+```
+
+**Apply substitutions:** Replace `{{loop_name}}` (auto-suggest: `policy-<subject-basename>`), `{{subject}}`, `{{rubric_dimensions}}` (commas → `|`), `{{max_steps}}`, `{{policy_rules}}` (starter rules using the selected dimensions). Add initial catch-all `* -> repair` to `policy_rules` if not present in user input.
+
+**Completion tip**: After saving, append: `Tip: Run ll-loop edit-routes <name> to re-edit the decision table.`
 
 ### For "Route / compose / supervise other loops"
 

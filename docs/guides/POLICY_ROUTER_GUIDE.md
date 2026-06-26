@@ -9,6 +9,7 @@
 
 ## Contents
 
+- [Using the Wizard](#using-the-wizard)
 - [What Is the Policy Router?](#what-is-the-policy-router)
 - [The Rule Table Syntax](#the-rule-table-syntax)
 - [Wiring a Loop with `lib/policy-router.yaml`](#wiring-a-loop-with-libpolicy-routeryaml)
@@ -17,6 +18,36 @@
 - [Warnings: Gaps, Shadows, and Catch-alls](#warnings-gaps-shadows-and-catch-alls)
 - [Worked Example](#worked-example)
 - [See Also](#see-also)
+
+---
+
+## Using the Wizard
+
+The fastest way to create a policy-router loop is the `/ll:create-loop` wizard:
+
+```bash
+/ll:create-loop
+# → Step 1: select "Policy router (decision table)"
+# → Step PR1: choose LLM rubric scorer or custom shell scorer
+# → Step PR2: enter scored dimensions (e.g. quality,feasibility,security)
+# → Step PR3: specify the subject artifact path
+# → Step PR4: edit the starter decision table
+# → Step PR5: name the action states (e.g. done,repair,escalate)
+# → Step PR6: set max iterations
+# → Preview, save, and validate
+```
+
+Or via natural language shortcut:
+
+```bash
+/ll:create-loop score my proposal on quality, feasibility, and security and route via a policy table
+```
+
+After creation, re-edit the decision table at any time without touching the YAML directly:
+
+```bash
+ll-loop edit-routes <name>
+```
 
 ---
 
