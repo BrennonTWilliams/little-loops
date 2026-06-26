@@ -89,11 +89,16 @@ A generated, self-contained `.html` file (no external dependencies; works over
    preventing the parse-time numeric-coercion error class. The reserved
    `aggregate` pseudo-dimension is always available.
 4. **Reactive decision grid** (Decision Table mode): rows = rules in priority
-   order with a drag handle (reorder = precedence), columns = dimensions, each
-   cell either empty (`—`, unconstrained) or op+value; a **pinned, non-deletable
-   catch-all row** (`* → action`). Rubric mode replaces the grid with two
-   threshold sliders (`threshold_high`, `threshold_medium`) feeding a fixed
-   3-row high/medium/low table.
+   order with a drag handle (reorder = precedence), columns = dimensions + a
+   **final `→ Action` column** (the outcome); each condition cell is either empty
+   (`—`, unconstrained) or op+value; the action cell is a dropdown of declared
+   action-state names. The `→ Action` column is styled visually distinct from
+   condition columns (different header background, `→` prefix in the header, or a
+   divider) so it reads as outcome, not another condition. The entire row
+   (conditions + action) moves as a unit during drag-reorder. A **pinned,
+   non-deletable catch-all row** occupies the last position. Rubric mode replaces
+   the grid with two threshold sliders (`threshold_high`, `threshold_medium`)
+   feeding a fixed 3-row high/medium/low table.
 5. **Derived action states**: the set of `→ action` targets is auto-listed; each
    gets a forced `terminal` vs `next:` choice (+ optional prompt body). This is
    what makes MR-4 dead-ends unrepresentable. The `route:` map and `_:` / `_error:`
@@ -118,6 +123,10 @@ A generated, self-contained `.html` file (no external dependencies; works over
 - [ ] Decision Table mode: dimension chip type (numeric vs boolean) restricts operator
   dropdown to valid ops only (`>= <= < >` for numeric; `==true/==false` for boolean),
   preventing the numeric-coercion parse-error class
+- [ ] Decision Table mode: the grid has a final `→ Action` column (outcome) that is
+  visually distinct from dimension columns (distinct header style or divider); the
+  action cell is a dropdown of declared action-state names; the entire row
+  (conditions + action) moves as a unit during drag-reorder
 - [ ] Decision Table mode: catch-all row is always present and non-deletable; it is
   always last in the output YAML's rule list
 - [ ] Decision Table mode: row drag-reorder is reflected in the output YAML's rule precedence
