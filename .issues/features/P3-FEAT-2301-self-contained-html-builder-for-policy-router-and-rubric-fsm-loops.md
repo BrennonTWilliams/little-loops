@@ -10,6 +10,7 @@ captured_at: '2026-06-26T00:35:41Z'
 relates_to:
 - ENH-2299
 - FEAT-1023
+- ENH-2309
 confidence_score: 98
 outcome_confidence: 68
 score_complexity: 13
@@ -84,10 +85,15 @@ A generated, self-contained `.html` file (no external dependencies; works over
    (LLM rubric via `lib/rubric-router.yaml`, or custom shell scorer that writes
    `rubric-dim-<name>.txt`).
 3. **Dimensions as chips** that reactively define the decision-table columns; each
-   dimension typed numeric vs boolean/string so the operator dropdown only offers
+   dimension typed numeric vs boolean so the operator dropdown only offers
    valid ops (ordered ops `>= <= < >` for numeric; `==true/==false` for boolean) —
    preventing the parse-time numeric-coercion error class. The reserved
-   `aggregate` pseudo-dimension is always available.
+   `aggregate` pseudo-dimension is always available. **Boolean dimensions are a UI
+   affordance over a numeric encoding** (see "Boolean dimension encoding" below): the
+   chip reads `==true/==false`, but the generated YAML emits the dimension into
+   `rubric_dimensions` with a 0/100 scoring instruction and compiles the predicate to
+   a numeric form (`==true` → `>=50`, `==false` → `<50`). This keeps boolean
+   predicates live at runtime with **no change to the score/parse fragments**.
 4. **Reactive decision grid** (Decision Table mode): rows = rules in priority
    order with a drag handle (reorder = precedence), columns = dimensions + a
    **final `→ Action` column** (the outcome); each condition cell is either empty
@@ -123,6 +129,12 @@ A generated, self-contained `.html` file (no external dependencies; works over
 - [ ] Decision Table mode: dimension chip type (numeric vs boolean) restricts operator
   dropdown to valid ops only (`>= <= < >` for numeric; `==true/==false` for boolean),
   preventing the numeric-coercion parse-error class
+- [ ] Decision Table mode: a boolean dimension is **emitted into `rubric_dimensions`** in
+  the generated YAML (so the score prompt actually rates it) and its scoring instruction
+  asks for `100`/`0`; a `==true` predicate compiles to `>=50` and `==false` to `<50` in
+  the output `policy_rules` table — so a builder-generated boolean predicate is live at
+  runtime (matches a scored dimension), never a silent-inert `==true` against an unscored
+  dimension. No change to `lib/rubric-router.yaml` / `lib/policy-router.yaml` is required.
 - [ ] Decision Table mode: the grid has a final `→ Action` column (outcome) that is
   visually distinct from dimension columns (distinct header style or divider); the
   action cell is a dropdown of declared action-state names; the entire row
@@ -194,6 +206,43 @@ the YAML serializer are inlined — no fetch, works over `file://`, mirroring
 FEAT-1023's `html-website-generator` self-contained output. The light/dark toggle
 (and optional profile picker) are fully client-side; nothing requires
 regeneration. Only *which profile palette(s)* are inlined is decided at stamp time.
+
+### Boolean dimension encoding (Option B — decided 2026-06-26)
+
+A boolean dimension (`has_citations` with `==true/==false`) cannot be expressed
+naively, because the score → parse → dispatch pipeline is numeric-only end to end:
+
+- `lib/rubric-router.yaml` `rubric_score` asks the LLM for `<score 0-100>` per
+  dimension — never `true`/`false`.
+- `lib/policy-router.yaml` `policy_parse_scores` extracts per-dimension values with
+  `re.finditer(r'DIMENSION:\s*…:\s*(\d+)')` — the `(\d+)` group **drops any
+  non-digit value**, so no `rubric-dim-<name>.txt` is ever written for a boolean.
+- `fsm/policy_rules.py:_eval_predicate` treats a missing dimension as matching only
+  `!=` — so a `has_citations:==true` predicate against an unscored dimension is
+  **permanently inert**, and routing silently falls through to the catch-all.
+
+`ll-loop validate` does **not** catch this: `==` accepts any value (`_ALL_OPS`) and
+the route map is complete, so the gate greenlights a semantically dead table. (See
+ENH-2309, which adds the gate that does catch it.)
+
+**Decision: compile booleans to a numeric 0/100 encoding** rather than introduce
+first-class boolean scoring (which would require changing the shared fragments —
+out of scope per "Scope Boundaries"). The builder:
+
+1. Emits every boolean dimension into `context.rubric_dimensions` (so the LLM scores
+   it like any other dimension).
+2. Generates a scoring instruction for it of the form *"score `has_citations` as
+   `100` if the artifact has citations, else `0`"* — a digit value the existing
+   `(\d+)` parser captures into `rubric-dim-has-citations.txt`.
+3. Compiles the grid predicate: `==true` → `>=50`, `==false` → `<50`. (`>=50` is a
+   robust threshold for a 0/100 signal; it tolerates a stray `100`-vs-`0` LLM
+   wobble better than `==100`.)
+
+The chip stays a friendly boolean affordance in the UI; the output YAML is honest
+numeric that runs correctly with **zero fragment-runtime changes**. The literal
+`==true` never appears in generated output, so the dead-predicate class is
+structurally impossible for builder output. First-class `==true` literals (if ever
+wanted) are deferred to a separate fragment-scoped change.
 
 ### Generated YAML shape (Decision Table mode)
 
@@ -453,6 +502,7 @@ _Updated by `/ll:confidence-check` on 2026-06-26 (re-run; scores stable)_
 - ~~**Output artifact path not finalized**~~ — _resolved 2026-06-25_: generated on-demand at `<artifacts.default_output_dir>/policy-router-builder.html` (default CWD); `--output` override; no checked-in artifact. `config-schema.json` gets a new `"artifacts"` block.
 
 ## Session Log
+- `boolean-dim decision` - 2026-06-26 - Closed the dead boolean/string-dimension hole: boolean chips compile to a numeric 0/100 encoding (`==true`→`>=50`, dim emitted into `rubric_dimensions`), keeping the feature live with no fragment-runtime change. Spun off ENH-2309 (validator rule flagging unscored policy dimensions).
 - `/ll:confidence-check` - 2026-06-26 - `d8445ed0-55b6-4efb-8cb4-0c6d5010e8b9.jsonl`
 - `/ll:refine-issue` - 2026-06-26T19:31:35 - `bd56b623-ba39-47c4-bd64-a420b910b8ec.jsonl`
 - `/ll:confidence-check` - 2026-06-26 - `6ab2d0ba-0319-4ff2-829a-5b6224e5e954.jsonl`
