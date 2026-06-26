@@ -1048,7 +1048,10 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
 
                                 returncode = 1 if is_error_flag else 0
                                 failure_type, _reason = classify_failure(error_text, returncode)
-                                if failure_type in (FailureType.TRANSIENT, FailureType.NON_RECOVERABLE):
+                                if failure_type in (
+                                    FailureType.TRANSIENT,
+                                    FailureType.NON_RECOVERABLE,
+                                ):
                                     continue
 
                                 normalized_sig = _normalize_error_sig(error_text)

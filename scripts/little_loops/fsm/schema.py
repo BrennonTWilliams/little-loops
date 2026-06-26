@@ -92,7 +92,9 @@ class EvaluateConfig:
     min_pairs: int = 1  # for comparator: number of blind A/B comparisons to run
     pairs: list[dict] | None = None  # for contract: list of producer/consumer pair dicts
     line: str | int | None = None  # for classify: which line to read (last/first/<int index>)
-    error_patterns: list[str] | None = None  # for output_contains: patterns that yield verdict="error"
+    error_patterns: list[str] | None = (
+        None  # for output_contains: patterns that yield verdict="error"
+    )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""

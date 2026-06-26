@@ -2421,7 +2421,9 @@ class TestScanFailures:
                 "myproject",
                 [
                     self._assistant_bash_record("ll-auto", tool_use_id="t1"),
-                    self._user_tool_result_record("t1", "HTTP 401 Unauthorized — invalid API key", is_error=True),
+                    self._user_tool_result_record(
+                        "t1", "HTTP 401 Unauthorized — invalid API key", is_error=True
+                    ),
                 ],
             )
 

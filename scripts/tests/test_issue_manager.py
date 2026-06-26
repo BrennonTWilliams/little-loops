@@ -2310,7 +2310,10 @@ class TestFailureClassification:
                     ) as mock_create:
                         result = process_issue_inplace(sample_issue, mock_config, mock_logger)
                         mock_create.assert_not_called()
-                        assert "Transient" in result.failure_reason or "Non-recoverable" in result.failure_reason
+                        assert (
+                            "Transient" in result.failure_reason
+                            or "Non-recoverable" in result.failure_reason
+                        )
                 else:
                     # Real failure: should create bug issue
                     with patch(

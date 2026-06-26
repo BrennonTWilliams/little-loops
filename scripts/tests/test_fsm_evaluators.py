@@ -349,18 +349,24 @@ class TestOutputContainsEvaluator:
 
     def test_error_patterns_match_returns_error_verdict(self) -> None:
         """error_patterns match on unmatched main pattern returns 'error'."""
-        result = evaluate_output_contains("HTTP 401 Unauthorized", '"commands"', error_patterns=["401", "403"])
+        result = evaluate_output_contains(
+            "HTTP 401 Unauthorized", '"commands"', error_patterns=["401", "403"]
+        )
         assert result.verdict == "error"
         assert result.details.get("error_pattern") == "401"
 
     def test_error_patterns_no_match_returns_no(self) -> None:
         """error_patterns list present but nothing matches → 'no' (unchanged behavior)."""
-        result = evaluate_output_contains("some normal output", '"commands"', error_patterns=["401", "403"])
+        result = evaluate_output_contains(
+            "some normal output", '"commands"', error_patterns=["401", "403"]
+        )
         assert result.verdict == "no"
 
     def test_error_patterns_main_pattern_wins(self) -> None:
         """When main pattern matches, error_patterns are not checked."""
-        result = evaluate_output_contains('"commands": [] 401', '"commands"', error_patterns=["401"])
+        result = evaluate_output_contains(
+            '"commands": [] 401', '"commands"', error_patterns=["401"]
+        )
         assert result.verdict == "yes"
 
     def test_error_patterns_none_is_unchanged(self) -> None:
@@ -370,7 +376,9 @@ class TestOutputContainsEvaluator:
 
     def test_error_patterns_forbidden_pattern(self) -> None:
         """403 Forbidden output triggers error verdict."""
-        result = evaluate_output_contains("Error: 403 Forbidden", '"commands"', error_patterns=["401", "403"])
+        result = evaluate_output_contains(
+            "Error: 403 Forbidden", '"commands"', error_patterns=["401", "403"]
+        )
         assert result.verdict == "error"
 
 
@@ -562,7 +570,9 @@ class TestEvaluateDispatcher:
 
     def test_dispatch_output_contains_error_patterns(self) -> None:
         """output_contains with error_patterns passes through to evaluator via dispatcher."""
-        config = EvaluateConfig(type="output_contains", pattern='"commands"', error_patterns=["401", "403"])
+        config = EvaluateConfig(
+            type="output_contains", pattern='"commands"', error_patterns=["401", "403"]
+        )
         ctx = InterpolationContext()
         result = evaluate(config, "HTTP 401 Unauthorized", 0, ctx)
         assert result.verdict == "error"

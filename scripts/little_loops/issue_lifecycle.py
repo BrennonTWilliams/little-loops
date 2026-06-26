@@ -48,7 +48,9 @@ class FailureType(Enum):
     """
 
     TRANSIENT = "transient"  # Temporary error, don't create issue
-    NON_RECOVERABLE = "non_recoverable"  # Auth/credential failure — retry won't help, not a code bug
+    NON_RECOVERABLE = (
+        "non_recoverable"  # Auth/credential failure — retry won't help, not a code bug
+    )
     REAL = "real"  # Actual bug/error, create issue
 
 

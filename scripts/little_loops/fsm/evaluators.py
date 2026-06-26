@@ -352,7 +352,12 @@ def evaluate_output_contains(
             if ep in output:
                 return EvaluationResult(
                     verdict="error",
-                    details={"matched": False, "pattern": pattern, "negate": negate, "error_pattern": ep},
+                    details={
+                        "matched": False,
+                        "pattern": pattern,
+                        "negate": negate,
+                        "error_pattern": ep,
+                    },
                 )
 
     return EvaluationResult(
