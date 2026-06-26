@@ -339,13 +339,21 @@ class TestOrphanedWorktreeCleanup:
         orchestrator: ParallelOrchestrator,
         temp_repo_with_config: Path,
     ) -> None:
-        """Does nothing when worktree directory doesn't exist."""
+        """Cleanup is a side-effect-free, idempotent no-op when the dir is absent."""
         worktree_base = temp_repo_with_config / ".worktrees"
         if worktree_base.exists():
             worktree_base.rmdir()
+        assert not worktree_base.exists()
 
-        # Should not raise
+        # No-op contract: must not raise AND must not create the worktree dir.
         orchestrator._cleanup_orphaned_worktrees()
+        assert not worktree_base.exists(), (
+            "cleanup must not create the worktree dir when none exists"
+        )
+
+        # Idempotent: a second call remains a clean no-op.
+        orchestrator._cleanup_orphaned_worktrees()
+        assert not worktree_base.exists()
 
     def test_cleans_up_orphaned_worktrees(
         self,

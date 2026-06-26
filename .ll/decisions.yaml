@@ -2168,3 +2168,62 @@
     name row vs. action row), apply every fix or '
   enforcement: advisory
   issue: BUG-2303
+- id: ARCHITECTURE-059
+  type: decision
+  timestamp: '2026-06-26T22:09:33Z'
+  category: architecture
+  labels: []
+  rationale: User-facing target-project digest from .ll/history.db; distinct from
+    EPIC-1918 ll-telemetry framing
+  rule: 'Captured: ll-logs summary per-project work digest'
+  scope: issue
+  issue: FEAT-2315
+- id: ARCHITECTURE-060
+  type: decision
+  timestamp: '2026-06-26T22:09:33Z'
+  category: architecture
+  labels: []
+  rationale: Widen corpus beyond ll-only signal to feed loop-suggester with real workflows;
+    carry ENH-2093 noise discipline
+  rule: 'Captured: ll-logs whole-session corpus mode'
+  scope: issue
+  issue: FEAT-2316
+- id: ARCHITECTURE-061
+  type: decision
+  timestamp: '2026-06-26T22:09:33Z'
+  category: architecture
+  labels: []
+  rationale: Retarget at user failures for target projects; auto-detect ll repo to
+    keep FEAT-1925 loop / maintainer use working
+  rule: 'scan-failures dual-mode: project default, --ll-tools preserves current behavior'
+  scope: issue
+  issue: ENH-2318
+- id: ARCHITECTURE-062
+  type: decision
+  timestamp: '2026-06-26T22:17:10Z'
+  category: architecture
+  labels: []
+  rationale: Eliminates the preview/execution divergence class (this bug's recurring
+    root cause) by using one guarded code path; matches the dominant dry_run-threading
+    convention used by _dispatch_host_adapters, migrate.py, sync.py, issue_manager.py.
+    Scored 10/12 vs Option A 9/12.
+  rule: Option B — remove _print_dry_run, thread dry_run through real writer path
+  scope: issue
+  alternatives_rejected: 'Option A — targeted in-place fix to _print_dry_run (9/12):
+    lower risk but perpetuates the dual preview/execute paths that caused this bug;
+    manual-sync requirement recurs on future writer additions.'
+  issue: BUG-2312
+- id: ARCHITECTURE-063
+  type: decision
+  timestamp: '2026-06-26T22:20:48Z'
+  category: architecture
+  labels: []
+  rationale: _apply_config() in tui.py is a working template with same imports/call
+    order/force forwarding; all writers exist; reuse score 3/3; zero new infrastructure
+    required
+  rule: 'Option (a) — Full parity: factor shared write sequence from _run_yes and
+    reuse in _run_apply'
+  scope: issue
+  alternatives_rejected: 'Option (b) — Explicit limited-scope: breaks semantic contract
+    of apply; leaves documented --plan/apply workflow crippled'
+  issue: BUG-2313
