@@ -2005,3 +2005,73 @@
   scope: issue
   alternatives_rejected: Option B — CLI wrapper (ll-harness --suite conformance)
   issue: FEAT-2259
+- id: ARCH-085
+  type: rule
+  timestamp: '2026-06-26T00:10:51Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'An uncaught exception in DefaultActionRunner.run() can kill the runner
+    without emitting an action_error journal event, leaving state.json stuck at status:
+    running and the run unrecoverable until the next reconciliation pass.'
+  rule: Catch all exceptions at the FSM action execution boundary and convert them
+    to a routable ActionResult instead of propaga
+  enforcement: advisory
+  issue: ENH-2300
+- id: ARCH-086
+  type: rule
+  timestamp: '2026-06-26T00:10:51Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: A spawn-time OSError (e.g. binary not found) has the same effect as an
+    uncaught action exception — it bypasses the FSM's error routing and crashes the
+    runner without emitting a journal event.
+  rule: Wrap subprocess.Popen() in try/except and return a synthetic CompletedProcess(returncode=1)
+    on spawn failure rather than
+  enforcement: advisory
+  issue: ENH-2300
+- id: ARCH-087
+  type: rule
+  timestamp: '2026-06-26T00:10:51Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Catching configuration errors at a low layer hides the root cause; callers
+    need to distinguish 'the command failed' from 'the host is not configured' to
+    surface actionable diagnostics.
+  rule: Leave configuration and setup exceptions (e.g. HostNotConfigured) unguarded
+    at the subprocess layer so they propagate as
+  enforcement: advisory
+  issue: ENH-2300
+- id: ARCH-088
+  type: rule
+  timestamp: '2026-06-26T00:10:51Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'An orphaned action_start (no closing event) leaves run state stuck at
+    status: running, which only self-heals on the next _reconcile_stale_running()
+    call — a silent data integrity violation in the journal.'
+  rule: Every action_start journal event must be paired with exactly one action_error
+    or action_complete event before the runner
+  enforcement: advisory
+  issue: ENH-2300
+- id: TEST-089
+  type: rule
+  timestamp: '2026-06-26T00:10:51Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: The broken-pipe regression was only caught because the journal showed
+    an orphaned action_start; unit tests that only exercise the success path and TimeoutExpired
+    miss the broader exception surface.
+  rule: 'Add exception-handling tests for both the happy path and each distinct failure
+    mode (timeout, spawn failure, unexpected '
+  enforcement: advisory
+  issue: ENH-2300
