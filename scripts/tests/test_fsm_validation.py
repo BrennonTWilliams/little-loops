@@ -3240,4 +3240,6 @@ class TestLoopReferenceValidation:
             for d in diagnostics
             if d.severity == ValidationSeverity.WARNING and "child-loop" in d.message
         ]
-        assert ref_warnings == [], f"Expected no loop-reference warning for resolvable ref, got: {ref_warnings}"
+        assert ref_warnings == [], (
+            f"Expected no loop-reference warning for resolvable ref, got: {ref_warnings}"
+        )

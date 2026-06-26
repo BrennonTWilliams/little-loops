@@ -2278,7 +2278,9 @@ class TestErrorHandling:
 
         events: list[dict[str, Any]] = []
         executor = FSMExecutor(
-            fsm, event_callback=events.append, action_runner=FailingRunner()  # type: ignore[arg-type]
+            fsm,
+            event_callback=events.append,
+            action_runner=FailingRunner(),  # type: ignore[arg-type]
         )
         executor.run()
 

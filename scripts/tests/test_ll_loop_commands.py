@@ -255,9 +255,7 @@ states:
         assert result == 0  # WARNING does not cause non-zero exit
         data = json.loads(capsys.readouterr().out)
         assert data["valid"] is True
-        ref_warnings = [
-            v for v in data["violations"] if "no-such-loop" in v["message"]
-        ]
+        ref_warnings = [v for v in data["violations"] if "no-such-loop" in v["message"]]
         assert len(ref_warnings) == 1
         assert ref_warnings[0]["severity"] == "warning"
         assert ref_warnings[0]["path"] == "states.run.loop"
