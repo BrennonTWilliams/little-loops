@@ -69,14 +69,21 @@ def cmd_epic_progress(config: BRConfig, args: argparse.Namespace) -> int:
         print("  (no children)")
         return 0
 
-    done_count = prog.by_status.get("done", 0) + prog.by_status.get("cancelled", 0)
+    done_only = prog.by_status.get("done", 0)
+    cancelled_count = prog.by_status.get("cancelled", 0)
+    # "resolved" = terminal states (done + cancelled). Labeled distinctly from
+    # "done" so the numerator never contradicts the per-status breakdown below.
+    done_count = done_only + cancelled_count
     blocked_count = prog.by_status.get("blocked", 0)
     pct = round(prog.percent_done)
+    resolved_breakdown = (
+        f" ({done_only} done, {cancelled_count} cancelled)" if cancelled_count > 0 else ""
+    )
 
     if fmt == "markdown":
         lines = [
             f"## {epic_id}: {prog.epic_title}",
-            f"- **Progress**: {done_count}/{total} done ({pct}%)",
+            f"- **Progress**: {done_count}/{total} resolved ({pct}%){resolved_breakdown}",
         ]
         status_parts = [
             f"{prog.by_status[s]} {s}" for s in _STATUS_ORDER if prog.by_status.get(s, 0) > 0
@@ -101,7 +108,7 @@ def cmd_epic_progress(config: BRConfig, args: argparse.Namespace) -> int:
     print(colorize(f"{epic_id}: {prog.epic_title}", f"{epic_color};1"))
 
     bar = colorize(sparkline(done_count, total, width=16), "32")
-    print(f"  Progress:     {bar}  {done_count}/{total} done ({pct}%)")
+    print(f"  Progress:     {bar}  {done_count}/{total} resolved ({pct}%){resolved_breakdown}")
 
     status_parts = [
         f"{prog.by_status[s]} {s}" for s in _STATUS_ORDER if prog.by_status.get(s, 0) > 0

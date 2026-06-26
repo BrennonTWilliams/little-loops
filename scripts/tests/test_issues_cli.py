@@ -4713,6 +4713,9 @@ def issues_dir_with_epic_progress(issues_dir_with_epic: Path) -> Path:
     (enhancements_dir / "P3-ENH-012-epic-child-blocked.md").write_text(
         "---\nstatus: blocked\nparent: EPIC-001\nblocked_by:\n  - BUG-099\n---\n# ENH-012: Blocked child\n"
     )
+    (enhancements_dir / "P4-ENH-013-epic-child-cancelled.md").write_text(
+        "---\nstatus: cancelled\nparent: EPIC-001\n---\n# ENH-013: Cancelled child\n"
+    )
     return issues_dir_with_epic
 
 
@@ -4744,6 +4747,38 @@ class TestIssuesCLIEpicProgress:
         assert "EPIC-001" in captured.out
         assert "Progress" in captured.out
         assert "Status" in captured.out
+
+    def test_epic_progress_labels_terminal_count_as_resolved(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic_progress: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Progress numerator (done + cancelled) is labeled 'resolved', not 'done',
+        with a breakdown so it never contradicts the per-status line."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-progress", "EPIC-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Fixture has 1 done + 1 cancelled terminal child → "2/4 resolved".
+        assert "resolved" in captured.out
+        # Breakdown disambiguates the conflation that "done" used to imply.
+        assert "1 done, 1 cancelled" in captured.out
+        # The progress line itself must not call the terminal count "done".
+        progress_line = next(line for line in captured.out.splitlines() if "Progress:" in line)
+        assert "resolved" in progress_line
+        assert "/4 done" not in progress_line
 
     def test_epic_progress_json_output(
         self,

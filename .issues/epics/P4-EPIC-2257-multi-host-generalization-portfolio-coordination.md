@@ -71,7 +71,8 @@ epic.
 - **FEAT-2259** — Generic host-parameterized conformance harness
 - **FEAT-2260** — Generic host-parameterized skill + command adapter
 - **FEAT-2267** — Generic host-parameterized `ll-init --upgrade` surface refresh
-  (blocked by **BUG-2266** — scope-aware install detection)
+  (scope-aware install detection prerequisite **BUG-2266** is done; FEAT-2267 is
+  unblocked. BUG-2266 is a `relates_to` precursor, not a child of this epic.)
 
 ## Tracked sub-epics (sequenced under this epic)
 

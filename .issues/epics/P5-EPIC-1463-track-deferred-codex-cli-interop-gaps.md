@@ -8,6 +8,7 @@ captured_at: '2026-05-15T12:15:21Z'
 discovered_date: 2026-05-15
 discovered_by: capture-issue
 relates_to:
+- EPIC-2257
 - FEAT-957
 - FEAT-1462
 - FEAT-992
@@ -173,6 +174,17 @@ FEAT-992).
 - **FEAT-2122** — Exploit Codex's native spawn model (`spawn_agents_on_csv`, `agents.max_threads`) for `ll-parallel`'s per-issue fan-out, or document why worktree-per-issue stays the default.
 - **FEAT-2123** — Surface per-invocation token usage from Codex/OpenCode runners (fixes the orphaned `[^tok]` dead-link that pointed at the unrelated, completed EPIC-1744).
 - **ENH-2124** — Research/track the unverified `permission skip` and `tool allowlist` Codex runner-capability `✗` cells; wire or document as permanent gaps.
+
+<!-- Early-wave children (parent: EPIC-1463); listed here so the body matches the
+     `parent:`-linked set that `ll-issues epic-progress` counts. -->
+- **FEAT-1493** — Bridge `commands/*.md` to the Codex Skills API (`skills/ll-*/` entries) (done).
+- **FEAT-1496** — Host capability preflight check (`ll-doctor`) for Codex feature support (done).
+- **FEAT-1526** — Adapt `agents/*.md` for Codex subagents (`.codex/agents/*.toml`) (done).
+- **BUG-1494** — Skills missing `agents/openai.yaml`, breaking Codex Skills API discovery (done).
+- **ENH-1495** — Add Codex onboarding docs / HOST_COMPATIBILITY guidance (done).
+- **ENH-1497** — Adapt `disable-model-invocation` skills for Codex discovery (done).
+- **ENH-1531** — Research Codex CLI agent-selection gap (spawn-based vs flag-based) (done).
+- **ENH-2105** — Track or close the `Stop`/session-end deferred hook intent for Codex (**open**).
 
 ### Note (2026-06-13): Codex subagents correction
 
