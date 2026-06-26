@@ -585,8 +585,9 @@ Emitted once when the executor finishes, regardless of how it terminated.
 | `final_state` | `str` | Name of the state at termination. Usually the last state entered; when `terminated_by="timeout"` this may be a state that was routed to but never entered. **Exception (BUG-1226):** when that pending state is a shell action, the executor flushes it — emitting `state_enter` with `flushed: true` and running its action — before honoring the timeout, so `state_enter` for `final_state` is always emitted before `loop_complete`. Slash commands and sub-loops are not flushed. |
 | `iterations` | `int` | Total number of iterations completed |
 | `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"timeout"` (wall-clock timeout elapsed), `"terminal"` (a terminal state was reached), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), `"cycle_detected"` (same edge traversed more than `max_edge_revisits` times), `"max_steps"` (step cap reached), or `"max_iterations_reached"` (full-pass cap reached) |
+| `error` | `str` | only when `terminated_by="error"` | Error message explaining why the loop crashed. Read this field directly from the JSONL stream to diagnose crash reasons without filesystem forensics. |
 
-**Example:**
+**Example (normal termination):**
 ```json
 {
   "event": "loop_complete",
@@ -594,6 +595,18 @@ Emitted once when the executor finishes, regardless of how it terminated.
   "final_state": "done",
   "iterations": 5,
   "terminated_by": "terminal"
+}
+```
+
+**Example (error termination):**
+```json
+{
+  "event": "loop_complete",
+  "ts": "...",
+  "final_state": "cua_observe",
+  "iterations": 2,
+  "terminated_by": "error",
+  "error": "Loop file not found: cua-fix-verify"
 }
 ```
 

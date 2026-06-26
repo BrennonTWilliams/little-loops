@@ -4,8 +4,9 @@ type: BUG
 priority: P2
 title: loop_complete event omits the error field, hiding sub-loop crash reasons from
   audit tooling
-status: open
+status: done
 captured_at: '2026-06-26T02:05:38Z'
+completed_at: '2026-06-26T02:52:23Z'
 discovered_date: 2026-06-26
 discovered_by: capture-issue
 relates_to:
@@ -228,7 +229,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `bug`, `captured`, `fsm`, `observability`
 
+## Resolution
+
+Added `error` field to the `loop_complete` event payload in `_finish()` (guarded on `error is not None`). Also surfaced `child_result.error` into `self.captured[state_name]["error"]` at the sub-loop error routing boundary so parent `on_error` handlers can reference `${captured.<state>.error}`. Updated `generate_schemas.py` + regenerated `docs/reference/schemas/loop_complete.json`. Updated `info.py` to display the error string in human-readable history output. Added 4 new tests (2 executor, 2 history-command) and updated EVENT-SCHEMA.md, LOOPS_GUIDE.md, debug-loop-run/reference.md, COMMANDS.md.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-26T02:35:20 - `31cdb30d-b52f-48df-ae4d-8f8b7ce432ad.jsonl`
 - `/ll:confidence-check` - 2026-06-25T00:00:00Z - `c7b6754c-da25-4a60-8d9c-c8a7add2118c.jsonl`
 - `/ll:wire-issue` - 2026-06-26T02:26:04 - `0a840081-0788-4460-9fde-d46c92621d4d.jsonl`
 - `/ll:refine-issue` - 2026-06-26T02:15:51 - `a7de4d39-918e-442e-8ba7-d49e06022c2b.jsonl`

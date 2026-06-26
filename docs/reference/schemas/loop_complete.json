@@ -31,7 +31,11 @@
     },
     "terminated_by": {
       "type": "string",
-      "description": "What caused loop termination (e.g. terminal_state, max_steps, max_iterations_reached)"
+      "description": "What caused loop termination (e.g. terminal_state, max_iterations)"
+    },
+    "error": {
+      "type": "string",
+      "description": "Error message explaining why the loop crashed. Present only when terminated_by='error'."
     }
   },
   "additionalProperties": true

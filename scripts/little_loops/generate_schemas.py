@@ -391,6 +391,10 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "terminated_by": _str(
                 "What caused loop termination (e.g. terminal_state, max_iterations)"
             ),
+            "error": _str(
+                "Error message explaining why the loop crashed. "
+                "Present only when terminated_by='error'."
+            ),
         },
         ["final_state", "iterations", "terminated_by"],
     ),

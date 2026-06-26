@@ -23,7 +23,7 @@ type) and `"ts"` (ISO 8601 timestamp) plus the type-specific fields below:
 | `throttle_warn` | `state` (str), `count` (int), `normal_max` (int), `warn_max` (int), `hard_max` (int) |
 | `throttle_hard` | `state` (str), `count` (int), `hard_max` (int), `next` (str or null) |
 | `throttle_stop` | `state` (str), `count` (int), `hard_max` (int) |
-| `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int) |
+| `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int), `error` (str, optional — present only when `terminated_by="error"`) |
 | `loop_resume` | `from_state` (str), `iteration` (int) |
 | `max_steps_summary` | `summary_state` (str), `iterations` (int) |
 | `max_iterations_reached_summary` | `summary_state` (str), `iteration_count` (int) |

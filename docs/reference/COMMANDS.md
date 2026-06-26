@@ -760,7 +760,7 @@ Analyze loop execution history to synthesize actionable issues from fault signal
 _Fault Signals (BUG-class — broke the run):_
 - Action `exit_code ≠ 0` repeated 3+ times on same state → BUG P2
 - `loop_complete.terminated_by == "signal"` (SIGKILL) → BUG P2
-- `loop_complete.terminated_by == "error"` AND no `evaluate.verdict == "error"` in run (FATAL_ERROR catch-all) → BUG P2
+- `loop_complete.terminated_by == "error"` AND no `evaluate.verdict == "error"` in run (FATAL_ERROR catch-all) → BUG P2; the crash reason is available directly on `loop_complete.error` (primary) — no forensics required
 - Last `evaluate` before `loop_complete` has `verdict == "error"` (single occurrence — no threshold) → `BUG — Evaluate error terminated the loop` P2; uses `error` field (falls back to `reason`) from the failing evaluate event; de-duplicates against FATAL_ERROR when both hold (this signal supersedes)
 - `evaluate.verdict == "fail"` 3+ times on same state → BUG P3
 - State has `loop:` set AND `on_yes == on_no` (config-based, detected from FSM structure) → `BUG — Sub-loop verdict discarded` P3; child loop result is silently dropped regardless of outcome

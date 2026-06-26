@@ -2236,6 +2236,77 @@ class TestErrorHandling:
         assert result.terminated_by == "error"
         assert "Connection failed" in (result.error or "")
 
+    def test_exception_during_execution_emits_error_in_loop_complete_event(self) -> None:
+        """loop_complete event includes error field when terminated_by='error'."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test.sh",
+                    on_yes="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        class FailingRunner:
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+                on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
+                on_usage: Any = None,
+                on_usage_detailed: Any = None,
+                model: str | None = None,
+            ) -> ActionResult:
+                del (
+                    action,
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                    model,
+                )
+                raise RuntimeError("Connection failed")
+
+        events: list[dict[str, Any]] = []
+        executor = FSMExecutor(
+            fsm, event_callback=events.append, action_runner=FailingRunner()  # type: ignore[arg-type]
+        )
+        executor.run()
+
+        complete_event = next(e for e in events if e["event"] == "loop_complete")
+        assert complete_event["terminated_by"] == "error"
+        assert "Connection failed" in complete_event["error"]
+
+    def test_normal_termination_omits_error_from_loop_complete_event(self) -> None:
+        """loop_complete event has no error field on successful/normal termination."""
+        events: list[dict[str, Any]] = []
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="check",
+            states={
+                "check": StateConfig(action="test.sh", on_yes="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
+        executor.run()
+
+        complete_event = next(e for e in events if e["event"] == "loop_complete")
+        assert complete_event["terminated_by"] == "terminal"
+        assert "error" not in complete_event
+
 
 class TestTimeoutHandling:
     """Tests for timeout handling."""

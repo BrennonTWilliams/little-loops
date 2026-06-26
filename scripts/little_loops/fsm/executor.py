@@ -733,6 +733,8 @@ class FSMExecutor:
                 return interpolate(state.on_no, ctx) if state.on_no else None
         elif child_result.terminated_by == "error":
             # Runtime child failure (not a YAML load error)
+            if child_result.error:
+                self.captured.setdefault(self.current_state, {})["error"] = child_result.error
             if state.on_error:
                 return interpolate(state.on_error, ctx)
             return interpolate(state.on_no, ctx) if state.on_no else None
@@ -2043,14 +2045,14 @@ class FSMExecutor:
 
     def _finish(self, terminated_by: str, error: str | None = None) -> ExecutionResult:
         """Finalize execution and return result."""
-        self._emit(
-            "loop_complete",
-            {
-                "final_state": self.current_state,
-                "iterations": self.iteration,
-                "terminated_by": terminated_by,
-            },
-        )
+        payload: dict[str, Any] = {
+            "final_state": self.current_state,
+            "iterations": self.iteration,
+            "terminated_by": terminated_by,
+        }
+        if error is not None:
+            payload["error"] = error
+        self._emit("loop_complete", payload)
 
         # FEAT-1822: Write ab.json if baseline comparison results exist
         if self._ab_results:

@@ -359,6 +359,8 @@ def _format_history_event(
         iterations = event.get("iterations", "")
         terminated_by = event.get("terminated_by", "")
         detail = f"{final_state}  {iterations} iter  [{terminated_by}]"
+        if error := event.get("error"):
+            detail += f"  {colorize(error, '31')}"
 
     elif event_type == "loop_resume":
         etype_color = "1"

@@ -954,6 +954,8 @@ Branch with ternary syntax — `check_ready?run_impl:done` gives `check_ready` a
 
 ## Troubleshooting
 
+**Loop terminated with `terminated_by="error"` but no reason shown.** Open the run's `events.jsonl` (`ll-loop history <name> <run_id>`) and find the `loop_complete` event — it now includes an `error` field with the crash reason (e.g., `"Loop file not found: cua-fix-verify"`). For sub-loops that crash, the parent loop also captures the child's error string under `${captured.<state_name>.error}` so `on_error` handlers can log or surface it.
+
 **Loop stuck repeating the same states.** Check `ll-loop history <name>` — if the same verdict repeats, the fix action isn't changing what the evaluator sees. Adjust the fix action, or rely on the automatic guards: `max_edge_revisits` (default 100) terminates tight cycles with `terminated_by="cycle_detected"`.
 
 **`max_steps` hit unexpectedly.** Usually one work item (or one state) consuming the whole budget. Run `ll-loop history <name> --event route` to see where iterations went. Fixes: add `max_retries` + `on_retry_exhausted: advance` to the execute state (multi-item loops), or add a `diff_stall` gate so no-op iterations skip forward instead of repeating ([Stall Detection](#stall-detection)).

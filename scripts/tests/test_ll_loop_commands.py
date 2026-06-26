@@ -3960,6 +3960,77 @@ class TestHistoryFiltering:
         assert len(data) == 1
         assert data[0]["state"] == "fix"
 
+    def test_loop_complete_human_readable_normal(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """loop_complete event renders final_state, iterations, terminated_by (json=False)."""
+        from little_loops.cli.loop.info import cmd_history
+
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
+        archive_dir.mkdir(parents=True)
+        events_file = archive_dir / "events.jsonl"
+        events_file.write_text(
+            json.dumps(
+                {
+                    "event": "loop_complete",
+                    "ts": "2026-06-25T10:00:00",
+                    "final_state": "done",
+                    "iterations": 3,
+                    "terminated_by": "terminal",
+                }
+            )
+            + "\n"
+        )
+
+        args = argparse.Namespace(
+            tail=50, verbose=False, json=False, full=False, event=None, state=None, since=None
+        )
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "done" in out
+        assert "3" in out
+        assert "terminal" in out
+        assert "error" not in out
+
+    def test_loop_complete_human_readable_error(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """loop_complete event with error field renders crash reason in human output."""
+        from little_loops.cli.loop.info import cmd_history
+
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
+        archive_dir.mkdir(parents=True)
+        events_file = archive_dir / "events.jsonl"
+        events_file.write_text(
+            json.dumps(
+                {
+                    "event": "loop_complete",
+                    "ts": "2026-06-25T10:00:00",
+                    "final_state": "cua_observe",
+                    "iterations": 2,
+                    "terminated_by": "error",
+                    "error": "Loop file not found: cua-fix-verify",
+                }
+            )
+            + "\n"
+        )
+
+        args = argparse.Namespace(
+            tail=50, verbose=False, json=False, full=False, event=None, state=None, since=None
+        )
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "error" in out
+        assert "Loop file not found: cua-fix-verify" in out
+
     def test_no_filter_behavior_unchanged(
         self,
         tmp_path: Path,
