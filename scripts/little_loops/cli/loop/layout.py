@@ -122,6 +122,68 @@ def _badge_display_width(badge: str) -> int:
     return w if w >= 0 else len(badge)
 
 
+def _display_width(s: str) -> int:
+    """Terminal display width of a string (wcwidth), with a safe len() fallback.
+
+    Box layout reserves *display columns*, not characters, so widths must be
+    measured this way; using ``len()`` undercounts wide glyphs (CJK, some
+    symbols) and overflows the box border.
+    """
+    w = _wcswidth(s)
+    return w if w >= 0 else len(s)
+
+
+def _truncate_to_width(text: str, width: int) -> str:
+    """Truncate ``text`` so its display width is ≤ ``width``.
+
+    When truncation occurs the last column is replaced with ``…`` so the result
+    still fits ``width`` display columns. Wide glyphs are kept whole.
+    """
+    if width <= 0:
+        return ""
+    if _display_width(text) <= width:
+        return text
+    # Reserve one column for the ellipsis.
+    budget = width - 1
+    out: list[str] = []
+    used = 0
+    for ch in text:
+        cw = _wcwidth(ch)
+        if cw < 0:
+            cw = 1
+        if used + cw > budget:
+            break
+        out.append(ch)
+        used += cw
+    return "".join(out) + "…"
+
+
+def _wrap_to_width(text: str, width: int) -> list[str]:
+    """Hard-wrap ``text`` into chunks each ≤ ``width`` display columns.
+
+    Splits on display width (not character count) so wide glyphs are kept whole
+    and no chunk overflows the box border.
+    """
+    if width <= 0:
+        return [text] if text else []
+    chunks: list[str] = []
+    cur: list[str] = []
+    used = 0
+    for ch in text:
+        cw = _wcwidth(ch)
+        if cw < 0:
+            cw = 1
+        if used + cw > width and cur:
+            chunks.append("".join(cur))
+            cur = []
+            used = 0
+        cur.append(ch)
+        used += cw
+    if cur:
+        chunks.append("".join(cur))
+    return chunks
+
+
 def _get_state_badge(state: StateConfig | None, badges: dict[str, str] | None = None) -> str:
     """Return the unicode badge string for a state, or '' if none."""
     if state is None:
@@ -161,8 +223,9 @@ def _box_inner_lines(
     When ``title_only`` is True, only the name row is returned (used by
     ``--show-diagrams=mini`` for skeleton rendering).
     """
-    # Badge is now rendered in the top-right corner by _draw_box; name row is label only
-    name_line = display_label[:inner_width]
+    # Badge is now rendered in the top-right corner by _draw_box; name row is label only.
+    # Truncation is by display width so wide glyphs don't overflow the box border.
+    name_line = _truncate_to_width(display_label, inner_width)
 
     lines: list[str] = [name_line]
 
@@ -176,17 +239,12 @@ def _box_inner_lines(
             for src in action_src:
                 if not src:
                     continue
-                # Wrap long lines to inner_width
-                while len(src) > inner_width:
-                    lines.append(src[:inner_width])
-                    src = src[inner_width:]
-                if src:
-                    lines.append(src)
+                # Wrap long lines to inner_width (measured in display columns)
+                lines.extend(_wrap_to_width(src, inner_width))
         else:
-            # Show first non-empty line, truncated
+            # Show first non-empty line, truncated to display width
             first = next((ln for ln in action_src if ln), "")
-            if len(first) > inner_width:
-                first = first[: inner_width - 1] + "\u2026"
+            first = _truncate_to_width(first, inner_width)
             if first:
                 lines.append(first)
 
@@ -549,25 +607,25 @@ def _compute_box_sizes(
         box_badge[s] = badge
 
         # Width must fit: name label on content row, badge on top border (with one space
-        # of padding on each side: " badge ")
-        base_w = max(len(display_label[s]), badge_w + 2 if badge_w else 0)
+        # of padding on each side: " badge ").  All widths are display columns.
+        base_w = max(_display_width(display_label[s]), badge_w + 2 if badge_w else 0)
 
         inner_w = base_w
         if not title_only and state_obj and state_obj.action and max_box_inner > 0:
             action_lines = state_obj.action.strip().splitlines()
             if verbose:
                 max_action_w = max(
-                    (len(ln.rstrip()) for ln in action_lines if ln.rstrip()), default=0
+                    (_display_width(ln.rstrip()) for ln in action_lines if ln.rstrip()), default=0
                 )
                 inner_w = max(base_w, min(max_action_w, max_box_inner))
             else:
                 first_action = next((ln.rstrip() for ln in action_lines if ln.rstrip()), "")
-                inner_w = max(base_w, min(len(first_action), max_box_inner))
+                inner_w = max(base_w, min(_display_width(first_action), max_box_inner))
 
         content = _box_inner_lines(
             state_obj, display_label[s], verbose, inner_w, title_only=title_only
         )
-        actual_w = max(len(ln) for ln in content)
+        actual_w = max(_display_width(ln) for ln in content)
         inner_w = max(inner_w, actual_w)
         box_inner[s] = content
         box_width[s] = inner_w + 4  # "│ " + content + " │"
@@ -672,6 +730,45 @@ def _draw_box(
                 grid[ri][col + 1] = fill_str
 
     # ── Content rows ────────────────────────────────────────────────────
+    def _place_content_row(
+        r: int,
+        line: str,
+        lead_code: str | None,
+        text_code: str | None,
+        fill_code: str | None,
+    ) -> None:
+        """Lay one interior line into the grid: leading space, the line itself,
+        then trailing fill up to the right border.
+
+        The line (and the trailing-fill run) are each written into a *single*
+        grid cell as a multi-character string for SGR batching, so the grid
+        cells those strings visually cover MUST be cleared — otherwise their
+        original single-space contents survive ``"".join(row)`` and push the
+        right border out (the action-row overflow bug).  Widths are display
+        columns so wide glyphs are accounted for.
+        """
+        dw = _display_width(line)
+        if col + 1 < total_width:
+            grid[r][col + 1] = colorize(" ", lead_code) if lead_code else " "
+        if col + 2 < total_width:
+            grid[r][col + 2] = colorize(line, text_code) if text_code else line
+        # Clear the cells the content string visually covers.
+        for j in range(1, dw):
+            cc = col + 2 + j
+            if cc < col + width - 1 and cc < total_width:
+                grid[r][cc] = ""
+        # Trailing fill between content and the right border.
+        trail_pad = width - 3 - dw
+        fill_start = col + 2 + dw
+        if trail_pad > 0 and fill_start < total_width:
+            grid[r][fill_start] = (
+                colorize(" " * trail_pad, fill_code) if fill_code else " " * trail_pad
+            )
+            for j in range(1, trail_pad):
+                cc = fill_start + j
+                if cc < col + width - 1 and cc < total_width:
+                    grid[r][cc] = ""
+
     for i, line in enumerate(content):
         r = row + i + 1
         if r >= len(grid):
@@ -686,42 +783,27 @@ def _draw_box(
             grid[r][col] = _bc("\u2502")
         if col + width - 1 < total_width:
             grid[r][col + width - 1] = _bc("\u2502")
-        if is_highlighted and i == 0:
-            name_code = f"97;{bg_code};1" if bg_code else f"{highlight_color};1"
-            if col + 1 < total_width:
-                grid[r][col + 1] = colorize(" ", bg_code or highlight_color)
-            if col + 2 < total_width:
-                grid[r][col + 2] = colorize(line, name_code)
-            for j in range(1, len(line)):
-                if col + 2 + j < col + width - 1:
-                    grid[r][col + 2 + j] = ""
-            # Trailing fill after name line
-            trail_pad = width - 3 - len(line)
-            if trail_pad > 0 and col + 2 + len(line) < total_width:
-                grid[r][col + 2 + len(line)] = colorize(" " * trail_pad, bg_code or highlight_color)
-        elif i == 0:
-            if col + 1 < total_width:
-                grid[r][col + 1] = " "
-            if col + 2 < total_width:
-                grid[r][col + 2] = colorize(line, "1")
-            for j in range(1, len(line)):
-                if col + 2 + j < col + width - 1:
-                    grid[r][col + 2 + j] = ""
-        else:
-            # Batched action line with leading space + content + trailing fill.
-            if is_highlighted and bg_code:
-                if col + 1 < total_width:
-                    grid[r][col + 1] = colorize(" ", bg_code)
-                if col + 2 < total_width:
-                    grid[r][col + 2] = colorize(line, f"97;{bg_code}")
-                trail_pad = width - 3 - len(line)
-                if trail_pad > 0 and col + 2 + len(line) < total_width:
-                    grid[r][col + 2 + len(line)] = colorize(" " * trail_pad, bg_code)
+        if i == 0:
+            # Name row (bold; brightened on the highlighted box).
+            if is_highlighted:
+                lead_code: str | None = bg_code or highlight_color
+                text_code: str | None = f"97;{bg_code};1" if bg_code else f"{highlight_color};1"
+                fill_code: str | None = bg_code or highlight_color
             else:
-                if col + 1 < total_width:
-                    grid[r][col + 1] = " "
-                if col + 2 < total_width:
-                    grid[r][col + 2] = line
+                lead_code = None
+                text_code = "1"
+                fill_code = None
+        else:
+            # Action body rows.
+            if is_highlighted and bg_code:
+                lead_code = bg_code
+                text_code = f"97;{bg_code}"
+                fill_code = bg_code
+            else:
+                lead_code = None
+                text_code = None
+                fill_code = None
+        _place_content_row(r, line, lead_code, text_code, fill_code)
 
     # ── Padding rows ────────────────────────────────────────────────────
     for i in range(len(content) + 1, height - 1):
@@ -1589,7 +1671,7 @@ def _render_layered_diagram(
         lines.pop()
 
     # Center diagram
-    max_line_len = max((len(strip_ansi(ln)) for ln in lines), default=0)
+    max_line_len = max((_display_width(strip_ansi(ln)) for ln in lines), default=0)
     diagram_indent = max(0, (tw - max_line_len) // 2)
     if diagram_indent > 0:
         lines = [" " * diagram_indent + ln if ln.strip() else ln for ln in lines]
@@ -1729,7 +1811,7 @@ def _render_fsm_diagram(
             label = "\u2192 " + label
         if s in terminal_states:
             label = label + " \u25c9"
-        w = max(len(label), badge_w)
+        w = max(_display_width(label), badge_w)
         max_node_w = max(max_node_w, w + 4 + 4)  # inner + borders + padding
 
     max_width_per_layer = max(1, (tw - 10) // (max_node_w + 4))
@@ -1819,9 +1901,9 @@ def _render_neighborhood_diagram(
     active_label = _label(active_state)
     succ_labels = [_label(s) for s in succs]
 
-    inner_pred = max((len(lbl) for lbl in pred_labels), default=0)
-    inner_active = len(active_label)
-    inner_succ = max((len(lbl) for lbl in succ_labels), default=0)
+    inner_pred = max((_display_width(lbl) for lbl in pred_labels), default=0)
+    inner_active = _display_width(active_label)
+    inner_succ = max((_display_width(lbl) for lbl in succ_labels), default=0)
 
     box_w_pred = inner_pred + 4 if pred_labels else 0
     box_w_active = inner_active + 4
@@ -1842,7 +1924,8 @@ def _render_neighborhood_diagram(
     ) -> list[str]:
         top = "┌" + "─" * (inner_w + 2) + "┐"
         bot = "└" + "─" * (inner_w + 2) + "┘"
-        padded = label.ljust(inner_w)
+        # Pad by display width (not char count) so wide glyphs keep the box square.
+        padded = label + " " * max(0, inner_w - _display_width(label))
         if highlighted:
             border_code = f"{highlight_color};{nd_bg_code}" if nd_bg_code else highlight_color
             top = colorize(top, border_code)

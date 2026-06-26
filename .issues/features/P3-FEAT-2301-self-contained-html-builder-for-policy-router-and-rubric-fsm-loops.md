@@ -248,7 +248,8 @@ def render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str:
 ### New Files
 - `scripts/little_loops/cli/artifact.py` (or `cli/artifact/__init__.py`) — top-level `main_artifact` dispatcher with argparse subparsers; routes `policy-builder` to `artifact/policy_builder.py`
 - `scripts/little_loops/cli/artifact/policy_builder.py` — core emit logic for the policy-builder subcommand; stamps the active design-token profile into the generated file. Modeled on `cli/schemas.py` `main_generate_schemas` (~49 lines).
-- The generated/template HTML builder (e.g. `docs/tools/policy-router-builder.html` as a checked-in stamped artifact, and/or a `templates/` source the emitter fills)
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl` — source template stamped with resolved token CSS vars at generation time; checked in as package data, not as a pre-built output artifact
+- Output: `<artifacts.default_output_dir>/policy-router-builder.html` (default: CWD); `--output <path>` overrides. No checked-in output artifact. Filename `policy-router-builder.html` is fixed for v1; future builder subcommands use their own names.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/lib/policy-router.yaml` — consumed by generated loops (no change)
@@ -328,10 +329,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - (Emit-path docs — `CLI.md`, `LOOPS_GUIDE.md`, `LOOPS_REFERENCE.md`, `.claude/CLAUDE.md` — are listed under "Registration / Manifest" above, gated on the emit-path choice.)
 
 ### Configuration
-- Reads `design_tokens.active` / `design_tokens.active_theme` from `.ll/ll-config.json`; no new config keys
+- Reads `design_tokens.active` / `design_tokens.active_theme` from `.ll/ll-config.json` (existing keys; no change)
+- **New config key**: `artifacts.default_output_dir` (string, default `"."`) — default output directory for `ll-artifact` subcommands; `--output` flag takes precedence at runtime. Future subcommands share this namespace. _(2026-06-25 lockdown decision)_
 
-_Wiring pass added by `/ll:wire-issue` — NEGATIVE confirmation:_
-- `config-schema.json` (`"design_tokens"` block, ~lines 1440–1486) — both `active` (default `"default"`) and `active_theme` (default `"dark"`) are already defined; `additionalProperties: false` is set. No schema change is needed, confirming the issue's "no new config keys" claim. [Agent 1/2]
+_Wiring pass added by `/ll:wire-issue` — updated 2026-06-25:_
+- `config-schema.json` (`"design_tokens"` block, ~lines 1440–1486) — both `active` (default `"default"`) and `active_theme` (default `"dark"`) are already defined; no change needed for design-token keys. [Agent 1/2]
+- `config-schema.json` — **ADD** a new top-level `"artifacts"` block: `{ "type": "object", "properties": { "default_output_dir": { "type": "string", "default": "." } }, "additionalProperties": false }`. This is the only schema change required. _(2026-06-25 lockdown decision)_
 
 ### Codebase Research Findings
 
@@ -368,7 +371,7 @@ The original scoring across `ll-loop` subcommand / standalone / built-in-loop-YA
 3. Implement client-side validation mirroring `fsm/policy_rules.py` semantics (shadow, gap, missing catch-all, unknown action, numeric-coercion), colored from token semantics.
 4. Implement the YAML serializer + live preview + Copy/Download + printed `ll-loop validate <name>` hint.
 5. Wire the embedded theme toggle (precedence: prefers-color-scheme → config active_theme → localStorage) and optional profile picker.
-6. Add the emit/stamp path (inline the active profile's resolved tokens at generation time).
+6. Add the emit/stamp path: read `artifacts.default_output_dir` from `BRConfig` (or `--output` override), write `<dir>/policy-router-builder.html` with the active profile's resolved token CSS vars inlined via `render_as_css_vars_themed`.
 7. Smoke-test a generated YAML through `ll-loop validate`.
 8. Document in `POLICY_ROUTER_GUIDE.md`; cross-link from ENH-2299's wizard completion message as an alternative table-authoring surface.
 
@@ -377,10 +380,10 @@ The original scoring across `ll-loop` subcommand / standalone / built-in-loop-YA
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 9. **Emit-path shape: DECIDED — `ll-artifact policy-builder`** (supersedes `ll-emit-builder` standalone decision; 2026-06-25). Implement `scripts/little_loops/cli/artifact/policy_builder.py` (core emit logic) + `scripts/little_loops/cli/artifact.py` (top-level `main_artifact` dispatcher with argparse subparsers). Core module modeled on `cli/schemas.py` `main_generate_schemas` (~49 lines).
-10. **Register `ll-artifact`**: add `ll-artifact = "little_loops.cli:main_artifact"` to `scripts/pyproject.toml` `[project.scripts]` + `from little_loops.cli.artifact import main_artifact` import and `"main_artifact"` entry in `scripts/little_loops/cli/__init__.py` `__all__` + a `### ll-artifact` section (with `#### ll-artifact policy-builder` subsection) in `docs/reference/CLI.md` + a "CLI Tools" bullet in `.claude/CLAUDE.md`.
+10. **Register `ll-artifact`**: add `ll-artifact = "little_loops.cli:main_artifact"` to `scripts/pyproject.toml` `[project.scripts]` + `from little_loops.cli.artifact import main_artifact` import and `"main_artifact"` entry in `scripts/little_loops/cli/__init__.py` `__all__` + a `### ll-artifact` section (with `#### ll-artifact policy-builder` subsection) in `docs/reference/CLI.md` + a "CLI Tools" bullet in `.claude/CLAUDE.md` + add the top-level `"artifacts"` block to `config-schema.json` with `"default_output_dir"` (string, default `"."`, `additionalProperties: false`).
 11. **Update `scripts/tests/test_design_tokens.py`** — add `render_as_css_vars_themed` to the import block and a `TestRenderAsCssVarsThemed` class (model on `TestRenderAsCssVars`, reuse `_write_tokens`/`_make_config`).
 12. **Add the `ll-loop validate` smoke test** following `test_fsm_fragments.py` (`load_and_validate` + ERROR-severity filter) or `test_ll_loop_commands.py` (`cmd_validate(...) == 0`).
-13. **(If a subcommand is added)** add a `cmd_<name>` test in `test_ll_loop_commands.py` using the `argparse.Namespace()` + `Logger(use_color=False)` + `capsys` pattern.
+13. Add a `cmd_policy_builder` test in `test_ll_loop_commands.py` using the `argparse.Namespace()` + `Logger(use_color=False)` + `capsys` pattern; assert the output file is written to the expected path.
 14. **Update `docs/ARCHITECTURE.md`** (~line 846) if the builder is described as an architectural artifact.
 
 ## Impact
@@ -408,7 +411,7 @@ _Added by `/ll:confidence-check` on 2026-06-25_
 ### Outcome Risk Factors
 - **JS grammar drift risk**: The in-browser validation mirrors Python logic from `fsm/policy_rules.py:27–34` (shadow detection, numeric-coercion ops, catch-all rules) but has no automated cross-validation path — the grammar can drift silently from the canonical Python source. Mitigated by deferring to `ll-loop validate` as the authoritative gate; still a maintenance risk.
 - **No automated JS test coverage**: Interactive browser behavior (drag-reorder, reactive decision grid, YAML serializer, theme toggle, live validation) requires manual browser verification; pytest covers only the Python emit path and the generated YAML smoke test. The JS layer is the primary complexity locus and has no programmatic coverage.
-- **Output artifact path not finalized**: The HTML output location uses "e.g." framing (`docs/tools/policy-router-builder.html`) — lock down the exact path before writing `CLI.md`, `CLAUDE.md`, and `POLICY_ROUTER_GUIDE.md` registration entries to avoid rework.
+- ~~**Output artifact path not finalized**~~ — _resolved 2026-06-25_: generated on-demand at `<artifacts.default_output_dir>/policy-router-builder.html` (default CWD); `--output` override; no checked-in artifact. `config-schema.json` gets a new `"artifacts"` block.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-06-25 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
