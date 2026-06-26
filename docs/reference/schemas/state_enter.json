@@ -26,11 +26,7 @@
     },
     "iteration": {
       "type": "integer",
-      "description": "Step count (1-based); increments on every state entry"
-    },
-    "iteration_count": {
-      "type": "integer",
-      "description": "Full-pass (maintain-mode) restart count (0-based); 0 for loops without maintain"
+      "description": "Iteration count (1-based)"
     }
   },
   "additionalProperties": true
