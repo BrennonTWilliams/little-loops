@@ -31,7 +31,14 @@ Scope: complete the dark themes for both profiles (R1–R3), extend WCAG
 spot-check coverage (R4), and add a structural lint that catches half-flipped
 themes for any current or future profile.
 
-## Problem
+## Motivation
+
+Dark mode is currently unusable for both shipped design-token profiles:
+- Both `warm-paper` and `default` profiles override only `surface` and `text` tokens in their dark themes — borders become harsh gridlines, accents are muddy and low-contrast on near-black, and `danger == action.primary` makes error states indistinguishable from primary actions.
+- The gap is **systemic**: switching profiles is not a workaround — `default` has the identical structural leak.
+- Without a structural lint, any future profile is at risk of shipping the same half-flipped dark theme.
+
+## Current Behavior
 
 `warm-paper/themes/dark.json` flips only `surface` + `text`:
 
@@ -69,19 +76,59 @@ class of bug. Its `dark_mode` spot-check also omits `border`. So the
 "switch to the default profile" workaround is **not viable** — both profiles
 are affected.
 
-## Affected files
+## Expected Behavior
 
-- `scripts/little_loops/templates/design-tokens/profiles/warm-paper/themes/dark.json`
-- `scripts/little_loops/templates/design-tokens/profiles/warm-paper/primitives.json`
-- `scripts/little_loops/templates/design-tokens/profiles/warm-paper/semantic.json` (`_wcag_spot_check`)
-- `scripts/little_loops/templates/design-tokens/profiles/default/themes/dark.json`
-- `scripts/little_loops/templates/design-tokens/profiles/default/semantic.json` (`_wcag_spot_check`)
-- New: structural lint (in `design_tokens.py` or a new `ll-verify-*` tool)
+- `warm-paper/themes/dark.json` and `default/themes/dark.json` each override `border`, `action`, status, and shadow token groups with dark-tuned values.
+- `danger` and `action.primary` resolve to distinct colors in dark mode.
+- Status colors (`success`, `warning`, `danger`) have bright `*-300` primitive variants consumed in dark themes so they read on near-black surfaces.
+- `_wcag_spot_check.dark_mode` in both profiles covers `border`, `action.primary`, and status colors on `surface.primary`.
+- A structural lint catches any profile whose dark theme overrides only `surface` + `text`, failing at authoring time before it ships.
 
-**Out of scope (verified correct, no change):** `design_tokens.py` render path,
-`cli/artifact/*`, `policy-router-builder.html.tmpl`.
+## Integration Map
 
-## Proposed fix
+### Files to Modify
+- `scripts/little_loops/templates/design-tokens/profiles/warm-paper/themes/dark.json` — add `border`, `action`, shadow, and `text.muted` overrides (R1, R3)
+- `scripts/little_loops/templates/design-tokens/profiles/warm-paper/primitives.json` — add `*-300` bright steps for `danger`, `success`, `warning` (R2)
+- `scripts/little_loops/templates/design-tokens/profiles/warm-paper/semantic.json` — extend `_wcag_spot_check.dark_mode` (R4)
+- `scripts/little_loops/templates/design-tokens/profiles/default/themes/dark.json` — mirror dark overrides for neutral-tuned tokens (R1, R3)
+- `scripts/little_loops/templates/design-tokens/profiles/default/primitives.json` — add `*-300` bright steps (R2)
+- `scripts/little_loops/templates/design-tokens/profiles/default/semantic.json` — extend `_wcag_spot_check.dark_mode` (R4)
+- New: structural lint in `scripts/little_loops/design_tokens.py` or a new `ll-verify-*` tool (R5)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/design_tokens.py` — `load_design_tokens()` / `_resolve_token_root()` programmatically loads all profile JSON files; no hardcoded filename references outside this module
+- `scripts/tests/test_enh1768_profile_system.py` — `TestBundledProfilesLoadEndToEnd._copy_templates()` copies bundled templates and exercises all 3 profiles end-to-end; `TestBundledProfileTemplates.test_each_profile_has_full_layer()` asserts presence of `themes/dark.json` per profile
+- `scripts/tests/test_design_tokens.py` — `TestIntegration.test_round_trip_dark_theme()` exercises the dark-theme merge path against bundled `default` profile templates
+
+### Similar Patterns
+- `scripts/little_loops/templates/design-tokens/profiles/warm-paper/themes/light.json` — structural reference for theme override format
+
+### Tests
+- `scripts/tests/test_enh1768_profile_system.py` — `TestBundledProfileTemplates.test_each_profile_has_full_layer()` (structural presence); `TestBundledProfilesLoadEndToEnd` (end-to-end profile loads) — extend with a dark-theme completeness assertion for R5 (model: `PROFILE_NAMES = ("default", "editorial-mono", "warm-paper")` loop)
+- `scripts/tests/test_design_tokens.py` — `TestIntegration.test_round_trip_dark_theme()` — extend to assert resolved `color.border.*` and `color.action.*` values differ from their light-tuned `semantic.json` defaults after R1 is applied
+- New: `scripts/tests/test_verify_design_tokens.py` — unit tests for R5 `ll-verify-design-tokens` CLI tool; model after `scripts/tests/test_verify_package_data.py` (dataclass violations, text/JSON report formatting, exit codes)
+
+### Documentation
+- N/A — profile JSON files are self-documenting; render-path docs unchanged
+
+### Configuration
+- N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**R3 shadow override technical path**: Shadow tokens (`shadow.*`) live in `spacing.json`, not `semantic.json`. The merge order in `load_design_tokens()` is `**semantic_flat, **typography_flat, **spacing_flat, **theme_flat` — theme wins. Adding `shadow.*` keys directly to `themes/dark.json` (e.g. `"shadow": { "sm": "rgba(0,0,0,0.25)", "md": "rgba(0,0,0,0.4)", "lg": "rgba(0,0,0,0.55)" }`) correctly overrides the warm-brown `spacing.json` values; no changes to `spacing.json` needed.
+
+**R5 lint structure**: Core comparison is `set(semantic["color"].keys()) - set(theme.get("color", {}).keys())` for each `themes/*.json` in every profile directory. Token groups in `semantic.json` are: `surface`, `text`, `border`, `action`. A half-flipped dark theme produces `{"border", "action"}` in the diff set. Implement as `scripts/little_loops/cli/verify_design_tokens.py` → `main_verify_design_tokens()`. Registration: add `ll-verify-design-tokens = "little_loops.cli:main_verify_design_tokens"` to `scripts/pyproject.toml` `[project.scripts]` block; add import + `__all__` entry in `scripts/little_loops/cli/__init__.py`. Entry-point function wraps body in `cli_event_context(DEFAULT_DB_PATH, "ll-verify-design-tokens", sys.argv[1:])` and supports `-C`/`--directory` and `--json` flags (follow `verify_package_data.py:main_verify_package_data()` shape).
+
+**`_wcag_spot_check` is documentation-only**: Nothing in `design_tokens.py` reads or validates this key at runtime. `render_as_prompt_context()` skips `_`-prefixed keys. R4 is pure JSON editing — no Python changes required.
+
+**`ll-artifact` command (acceptance criteria step 7)**: The `ll-artifact policy-builder` command referenced in acceptance criteria does not yet exist as a CLI tool — it is planned in FEAT-2301 but not implemented. The visual diff verification step must be deferred until FEAT-2301 ships. For this issue, dark-theme correctness can be validated by extending `TestIntegration.test_round_trip_dark_theme()` in `test_design_tokens.py` to assert resolved token values.
+
+**`editorial-mono` gap (out of scope but noted)**: `editorial-mono/themes/dark.json` has the identical structural gap. Its `danger.500 == accent.500 = "#991b1b"`. The R5 lint will flag this profile automatically. Fixing `editorial-mono` is out of scope for ENH-2308 but should be tracked as a follow-on.
+
+## Proposed Solution
 
 ### R1 — Complete `warm-paper/themes/dark.json`
 
@@ -155,9 +202,43 @@ thing that catches both shipped profiles and any future profile. Wire it as a
 - [ ] New lint/test fails on a profile whose `themes/dark.json` flips only `surface` + `text`, and passes after R1–R4.
 - [ ] Re-emit and visually diff: `ll-artifact policy-builder && open policy-router-builder.html` shows legible borders, distinct accent/danger, and visible card elevation in dark mode.
 
+## Scope Boundaries
+
+- **In scope**: completing dark themes for `warm-paper` and `default` profiles (R1–R2); adding `*-300` bright primitive steps to both profiles (R2); theme-scoped shadow tokens for dark in both profiles (R3); extending `_wcag_spot_check.dark_mode` (R4); structural lint for half-flipped themes (R5).
+- **Out of scope**: `design_tokens.py` render/emit path (verified correct against `policy-router-builder.html`); `cli/artifact/*`; `policy-router-builder.html.tmpl` — no changes to these files.
+
+## Implementation Steps
+
+1. Complete `warm-paper/themes/dark.json` — add `border`, `action`, `text.muted`, and shadow overrides with dark-tuned values (R1, R3)
+2. Add `*-300` bright primitive steps to `warm-paper/primitives.json` for `danger`, `success`, `warning` (R2)
+3. Mirror R1–R3 changes in `default/themes/dark.json` and `default/primitives.json`
+4. Extend `_wcag_spot_check.dark_mode` in both profiles' `semantic.json` to cover `border`, `action.primary`, and status colors on `surface.primary` (R4)
+5. Add `scripts/little_loops/cli/verify_design_tokens.py` with `main_verify_design_tokens()`: for each profile under the profiles dir, load `semantic.json` and each `themes/*.json`, compute `set(semantic["color"].keys()) - set(theme.get("color", {}).keys())`, fail on non-empty diff. Register as `ll-verify-design-tokens = "little_loops.cli:main_verify_design_tokens"` in `scripts/pyproject.toml` and add import + `__all__` entry in `scripts/little_loops/cli/__init__.py`. Add unit tests in `scripts/tests/test_verify_design_tokens.py` (model after `test_verify_package_data.py`). (R5)
+6. Re-emit and visual-diff: `ll-artifact policy-builder && open policy-router-builder.html` — verify legible borders, distinct accent/danger, and visible card elevation in dark mode
+
+## Impact
+
+- **Priority**: P3 — Systemic dark-mode degradation across both shipped profiles; affects users with `active_theme: dark`; deferred over direct user impact because the render path is correct and the defect is profile-authoring-only
+- **Effort**: Medium — 6 additive JSON edits across 5 profile files + 1 new lint; no changes to the Python rendering path
+- **Risk**: Low — changes are additive and single-purpose per profile; render path verified unchanged; no breaking changes to the token-stamping API
+- **Breaking Change**: No
+
 ## Notes
 
 - Investigation source: `policy-builder-dark-mode-findings.md` (2026-06-26).
 - Low risk: changes are additive and single-purpose per profile; render path unchanged.
 - R5 (`default` is "complete, switch to it") from the original findings was
   **dropped** — `default` shares the same gap.
+
+## Labels
+
+`design-tokens`, `dark-mode`, `ux`
+
+## Status
+
+**Open** | Created: 2026-06-26 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-06-26T21:39:41 - `a3ad71ec-14e6-4cd4-b1cf-ee8ef18cadb6.jsonl`
+- `/ll:format-issue` - 2026-06-26T21:29:57 - `0aa41fec-b43c-4c53-8ca7-f55cef54ee67.jsonl`
