@@ -1,16 +1,22 @@
 ---
 id: BUG-2313
-title: "ll-init apply is lossy vs --yes; apply --force is an unused no-op"
+title: ll-init apply is lossy vs --yes; apply --force is an unused no-op
 type: BUG
 status: open
 priority: P3
-captured_at: "2026-06-26T21:55:52Z"
-discovered_date: "2026-06-26"
+captured_at: '2026-06-26T21:55:52Z'
+discovered_date: '2026-06-26'
 discovered_by: capture-issue
 decision_needed: false
 labels:
 - init
 - apply
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 19
+score_test_coverage: 15
+score_ambiguity: 23
+score_change_surface: 25
 ---
 
 # BUG-2313: ll-init apply is lossy vs --yes; apply --force is an unused no-op

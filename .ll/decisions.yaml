@@ -2227,3 +2227,84 @@
   alternatives_rejected: 'Option (b) — Explicit limited-scope: breaks semantic contract
     of apply; leaves documented --plan/apply workflow crippled'
   issue: BUG-2313
+- id: ARCHITECTURE-064
+  type: decision
+  timestamp: '2026-06-26T22:30:11Z'
+  category: architecture
+  labels: []
+  rationale: explore-api auto-invocation depends on learning_tests_required being
+    eagerly populated by refine/wire/scope; resolve targets just-in-time at the gate
+    via a shared helper so unrefined issues are still firewalled.
+  rule: 'Captured: Make learning-test target detection just-in-time and consistent
+    across runners'
+  scope: issue
+  issue: ENH-2319
+- id: ARCHITECTURE-065
+  type: decision
+  timestamp: '2026-06-26T22:37:02Z'
+  category: architecture
+  labels:
+  - epic
+  - issue-management
+  - parent-child
+  rationale: 'EPIC membership is currently recorded in three unsynchronized channels
+    (child parent:, EPIC relates_to:, EPIC body ## Children). epic-progress counts
+    parent: only (per BUG-2029) while review-epic counts parent: union relates_to,
+    so the two readers disagree whenever relates_to holds a non-child cross-ref. Designating
+    parent: as the single source of truth removes the ambiguity, lets ## Children
+    be mechanically reconciled, and frees relates_to for genuine cross-references.
+    Audit (2026-06-26) found 18/32 EPICs drifting under the current model.'
+  rule: 'parent: is the single source of truth for EPIC membership. The EPIC body
+    ## Children section is a derived/reconciled view of the parent: backref set. relates_to:
+    is reserved for non-membership cross-references (siblings, prerequisites, sub-epics)
+    and must NOT be counted as child membership by any reader.'
+  scope: project
+  alternatives_rejected: 'Union model (membership = parent: union relates_to everywhere,
+    reverting BUG-2029) — re-introduces the sibling/prereq inflation BUG-2029 fixed.
+    Keeping divergent readers as-is — leaves epic-progress and review-epic permanently
+    inconsistent.'
+- id: ARCHITECTURE-066
+  type: decision
+  timestamp: '2026-06-26T23:03:59Z'
+  category: architecture
+  labels: []
+  rationale: Only fix that repairs existing inert installs (incl. this repo); one-line
+    .get('enabled', True) aligns runtime with schema default, init write-on-opt-out
+    convention, and both init read-back sites. Do NOT route through feature_enabled
+    (hard-defaults absent keys to False).
+  rule: Option A — flip runtime default to True at user_prompt_submit.py:102
+  scope: issue
+  alternatives_rejected: 'Option B (ll-init always writes explicit block): fixes only
+    new installs, still needs runtime change for existing ones, requires inverting
+    3 unit tests + CLI integration assertion + docstring.'
+  issue: BUG-2321
+- id: ARCHITECTURE-067
+  type: decision
+  timestamp: '2026-06-26T23:07:23Z'
+  category: architecture
+  labels: []
+  rationale: Shared entrypoint removes over-broad selector hazard and perpetual bash/Python
+    drift; fixes rev-parse timing bug in orchestrator that affects all ll-parallel
+    runs
+  rule: 'Preferred path: delegate cleanup-worktrees to ll-parallel --cleanup-orphans'
+  scope: issue
+  alternatives_rejected: 'Minimal path (bash-only glob fix): illusory testability,
+    perpetuates drift'
+  issue: BUG-2324
+- id: ARCHITECTURE-068
+  type: decision
+  timestamp: '2026-06-26T23:25:12Z'
+  category: architecture
+  labels: []
+  rationale: Maps onto the existing ll-verify-* linter pattern (return 1 if violations
+    else 0) with proven exit-code tests; zero callers depend on ll-deps validate always-0;
+    Options B/C both mutate that contract (B breaks test_cli_deps.py:186,197 and inverts
+    ENH-2249; C adds a --strict convention with no CLI precedent).
+  rule: 'Option A — Standalone gate: epic-consistency owns its own non-zero exit;
+    ll-deps validate always-0 contract untouched; gate wired via PreToolUse deny precedent'
+  scope: issue
+  alternatives_rejected: Option B — fold into validate_dependencies (flips always-0
+    contract, breaks 2 tests, no file I/O in target fn); Option C — opt-in --strict
+    flag (no --strict precedent in CLI, departs from ll-verify-* convention, dual-strictness
+    confusion)
+  issue: FEAT-2332

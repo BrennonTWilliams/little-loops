@@ -22,6 +22,35 @@ Create `hooks/adapters/gemini/` with adapter scripts that translate gemini-cli
 lifecycle events into `LLHookEvent` format and invoke the ll hook handler.
 Analogous to `hooks/adapters/codex/` and `hooks/adapters/claude-code/`.
 
+## Current Behavior
+
+Gemini CLI users have no hook adapter. None of the ll hook intents
+(`session_start`, `pre_compact`, `pre_tool_use`, `post_tool_use`, etc.) fire
+during Gemini lifecycle events, so history capture, context injection, and tool
+auditing are unavailable when little-loops runs under Gemini. Only
+`hooks/adapters/codex/` and `hooks/adapters/claude-code/` exist;
+`hooks/adapters/gemini/` does not.
+
+## Expected Behavior
+
+`hooks/adapters/gemini/` exists with adapter scripts that mirror the Codex and
+Claude Code adapters. Gemini lifecycle events (`SessionStart`, `PreCompress`,
+`BeforeTool`, `AfterTool`, etc.) are translated into `LLHookEvent` format and
+dispatched to the host-agnostic ll hook handler, so history capture, context
+injection, and tool auditing behave the same as under Claude Code. Users
+activate the adapter via `ll:configure --gemini`, which injects the hook entries
+into `.gemini/settings.json`.
+
+## Motivation
+
+Gemini is one of the four hosts targeted by the host-compatibility epic
+(EPIC-2178). Without the hook adapter, a Gemini user gets none of little-loops'
+lifecycle automation — the analytics, history, and context-injection features
+silently no-op. The adapter is the bridge that makes ll's host-agnostic hook
+handler reachable from Gemini, bringing Gemini to parity with Codex and Claude
+Code. The work is low-risk and additive: Gemini's stdin/stdout JSON hook
+protocol is identical to Claude Code's, so the existing handler is reused as-is.
+
 ## Decision — RATIFIED 2026-06-24 (Option A; see ARCHITECTURE-046)
 
 **Resolved: Option A** — inject hook entries into `.gemini/settings.json` via
@@ -67,6 +96,36 @@ New events with no current ll intent (not wired in this issue):
 Protocol: stdin/stdout JSON — identical to Claude Code hooks. `CLAUDE_PROJECT_DIR`
 alias is provided by Gemini for compatibility.
 
+## Integration Map
+
+### Files to Modify
+- `ll:configure` command — add a `--gemini` path that injects the adapter's hook
+  entries into `.gemini/settings.json` (see Implementation Step 8).
+
+### New Files
+- See [API/Interface § New Files](#apiinterface) for the full list of adapter
+  scripts, `hooks.json`, `README.md`, and the test module.
+
+### Dependent Files (Callers/Importers)
+- The host-agnostic ll hook handler invoked by the adapter scripts — reused
+  unchanged (`scripts/little_loops/hooks/`).
+
+### Similar Patterns
+- `hooks/adapters/codex/` — closest pattern to follow (per-host adapter subdir).
+- `hooks/adapters/claude-code/` — alternate reference; same stdin/stdout JSON
+  protocol Gemini uses.
+
+### Tests
+- `scripts/tests/test_gemini_adapter.py` — new; assert event→intent mapping and
+  that each adapter script dispatches the correct `LLHookEvent`.
+
+### Documentation
+- `hooks/adapters/gemini/README.md` — installation instructions + event mapping.
+- `docs/reference/HOST_COMPATIBILITY.md` — note Gemini hook support once landed.
+
+### Configuration
+- `.gemini/settings.json` — user-local file patched by `ll:configure --gemini`.
+
 ## Implementation Steps
 
 1. Create `hooks/adapters/gemini/` directory.
@@ -109,9 +168,18 @@ alias is provided by Gemini for compatibility.
 
 ## Impact
 
+- **Priority**: P4 — Gemini is a later-phase host in EPIC-2178; blocked behind FEAT-2179 and ENH-2184 and not on the critical path for the primary (Claude Code / Codex) hosts.
 - **Effort**: S–M (4–8 hours)
 - **Risk**: Low — additive; Gemini's hook protocol is stdin/stdout JSON, same as Claude Code
 - **Breaking Change**: No
+
+## Related Key Documentation
+
+- `thoughts/research/gemini-cli-surface.md` — FEAT-2179 research spike confirming
+  the stdin/stdout JSON hook protocol.
+- `docs/reference/HOST_COMPATIBILITY.md` — host capability matrix.
+
+_Run `/ll:normalize-issues` to discover and link additional relevant docs._
 
 ---
 
@@ -120,3 +188,7 @@ alias is provided by Gemini for compatibility.
 2026-06-18 (UNSTARTED): `hooks/adapters/gemini/` directory does not exist. FEAT-2179 (research spike) is complete — `thoughts/research/gemini-cli-surface.md` exists and confirms stdin/stdout JSON hook protocol identical to Claude Code. ENH-2184 (GeminiRunner stub) not yet implemented; this issue's `depends_on` correctly captures that ordering.
 
 **Open** | Created: 2026-06-15 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-26T23:20:04 - `9c24a548-31d7-49d9-b376-2665d69b3ab4.jsonl`

@@ -21,6 +21,21 @@ Replace the `HostNotConfigured` stubs in `GeminiRunner` (ENH-2184) with real
 `build_version_check` implementations. Flag translation is fully established by
 FEAT-2179.
 
+## Current Behavior
+
+`GeminiRunner.build_streaming`, `build_blocking_json`, `build_detached`, and
+`build_version_check` all raise `HostNotConfigured` — the class exists as a
+stub (ENH-2184) with no functional implementations.
+
+## Expected Behavior
+
+Each method returns a valid `HostInvocation` with the correct Gemini CLI
+arguments:
+- `build_streaming` → `gemini -p <prompt> -o stream-json [--model <m>] [--approval-mode=yolo]`
+- `build_blocking_json` → `gemini -p <prompt> -o json`
+- `build_detached` → `gemini -p <prompt>` (fire-and-forget, no output capture)
+- `build_version_check` → `["gemini", "--version"]`
+
 ## Use Case
 
 `ll-auto`, `ll-sprint`, and `ll-loop` call `resolve_host().build_streaming(...)`.
@@ -55,12 +70,35 @@ functional with Gemini.
   `gemini` on PATH).
 - Tests pass.
 
-## API/Interface
+## Integration Map
 
 ### Files to Modify
 
 - `scripts/little_loops/host_runner.py` — `GeminiRunner` methods
-- `scripts/tests/test_host_runner.py` — functional test coverage
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/auto_runner.py` — calls `resolve_host().build_streaming(...)`
+- `scripts/little_loops/sprint_runner.py` — calls `resolve_host().build_streaming(...)`
+- `scripts/little_loops/loop_runner.py` — calls `resolve_host().build_streaming(...)`
+
+### Similar Patterns
+
+- `scripts/little_loops/host_runner.py` — `ClaudeRunner` methods (mirror flag mapping)
+
+### Tests
+
+- `scripts/tests/test_host_runner.py` — replace stub tests with functional coverage (mocking subprocess)
+- `scripts/tests/test_gemini_adapter.py` — `build_streaming` invocation tests (if exists)
+
+### Documentation
+
+- `docs/reference/HOST_COMPATIBILITY.md` — verify Gemini method coverage table
+- `docs/reference/API.md` — update `GeminiRunner` entries
+
+### Configuration
+
+- N/A
 
 ## Research Notes (FEAT-2179)
 
@@ -75,7 +113,8 @@ Session resume: `-r latest` / `-r <index>` / `-r <session-id>` — wire if `Host
 
 ## Impact
 
-- **Effort**: S (2–4 hours)
+- **Priority**: P4 — net-new host support gated behind ENH-2184 (stub) and FEAT-2179; does not block the established Claude/Codex/OpenCode workflows, so it only earns value once Gemini is a desired target.
+- **Effort**: S (2–4 hours) — four method bodies mirroring the existing `ClaudeRunner` flag mapping; mostly mechanical, with the bulk of the work in replacing stub tests with functional subprocess-mocked coverage.
 - **Risk**: Low — isolated to `GeminiRunner`; existing runners untouched
 - **Breaking Change**: No
 
@@ -86,3 +125,8 @@ Session resume: `-r latest` / `-r <index>` / `-r <session-id>` — wire if `Host
 2026-06-18 (BLOCKED): ENH-2184 (stub) is not yet implemented — no `GeminiRunner` in `host_runner.py`. Full implementation cannot start until the stub lands.
 
 **Open** | Created: 2026-06-15 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-06-26T23:18:13 - `4d6a8ad8-6bd0-49d7-b654-aa79c9184ffd.jsonl`
+- `/ll:format-issue` - 2026-06-26T23:17:01 - `4d6a8ad8-6bd0-49d7-b654-aa79c9184ffd.jsonl`

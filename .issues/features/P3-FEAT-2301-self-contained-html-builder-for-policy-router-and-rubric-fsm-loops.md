@@ -26,8 +26,9 @@ score_change_surface: 20
 Generate a single, self-contained `.html` artifact that lets a user visually
 configure a Policy Router + Decision Table FSM loop (`lib/policy-router.yaml`)
 or a Rubric 3-tier loop (`lib/rubric-router.yaml`) and export valid loop YAML.
-The page is a one-page minimalist form built around the decision table's natural
-2-D shape (rules × dimensions), with live validation, a light/dark theme toggle,
+The page is a one-page minimalist form built around action-grouped rule cards
+(rules grouped under the action they trigger, with a plain "Everything else →"
+fallback), with live plain-language validation, a light/dark theme toggle,
 an optional design-token profile picker, and a downloadable YAML output. It is
 the *visual, greenfield* sibling of ENH-2299 (the conversational `/ll:create-loop`
 wizard branch) and `ll-loop edit-routes` (the round-trip table editor for
@@ -56,8 +57,8 @@ embedded light/dark toggle).
 
 A little-loops author wants to design a new `policy-router` loop from scratch. They open
 `policy-router-builder.html` in their browser (no install, no server), fill in the loop name
-and dimensions (e.g. `overall_quality` numeric, `has_citations` boolean), drag the priority
-rows into order, verify the pinned catch-all fires last, then download `refine-quality.yaml`.
+and dimensions (e.g. `overall_quality` numeric, `has_citations` boolean), reorder the rules
+by precedence, verify the "Everything else →" fallback fires last, then download `refine-quality.yaml`.
 They run `ll-loop validate refine-quality.yaml` and it passes with no MR-4 dead-ends and no
 unmatched route keys — without hand-writing the `import:` block, `route:` map, or catch-all
 arms.
@@ -94,24 +95,35 @@ A generated, self-contained `.html` file (no external dependencies; works over
    `rubric_dimensions` with a 0/100 scoring instruction and compiles the predicate to
    a numeric form (`==true` → `>=50`, `==false` → `<50`). This keeps boolean
    predicates live at runtime with **no change to the score/parse fragments**.
-4. **Reactive decision grid** (Decision Table mode): rows = rules in priority
-   order with a drag handle (reorder = precedence), columns = dimensions + a
-   **final `→ Action` column** (the outcome); each condition cell is either empty
-   (`—`, unconstrained) or op+value; the action cell is a dropdown of declared
-   action-state names. The `→ Action` column is styled visually distinct from
-   condition columns (different header background, `→` prefix in the header, or a
-   divider) so it reads as outcome, not another condition. The entire row
-   (conditions + action) moves as a unit during drag-reorder. A **pinned,
-   non-deletable catch-all row** occupies the last position. Rubric mode replaces
-   the grid with two threshold sliders (`threshold_high`, `threshold_medium`)
-   feeding a fixed 3-row high/medium/low table.
+4. **Action-grouped rule cards** (Decision Table mode): instead of a wide, sparse
+   2-D grid, rules are grouped under the action-state they trigger. Each action is
+   a card ("`light_repair` happens when…") listing its rules as readable condition
+   rows (per-dimension op+value controls; an empty rule is unconstrained); multiple
+   rules targeting the same action stack as alternative situations within that
+   card. **Global precedence is preserved and visible**: every rule shows a sequence
+   badge (#1, #2, …) reflecting the single top-to-bottom "first match wins" order
+   *across all cards*, and precedence is reorderable (drag or ↑/↓). A rule's action
+   is reassigned via a **dropdown** on the rule — *not* card-drag (decided
+   2026-06-26; see "UI presentation" below). The catch-all renders as a visually
+   distinct, non-deletable **"Everything else → `<action>`" fallback footer**
+   (dashed/muted card) that always occupies the last position in the output YAML —
+   it reads as a sentence, not a `*` row that scans as missing data. Each action
+   card also surfaces its `terminal`-vs-`next:` choice as a human-worded toggle
+   ("re-scores, then loops" vs "finishes the loop"). Rubric mode replaces the cards
+   with two threshold sliders (`threshold_high`, `threshold_medium`) feeding a
+   fixed 3-row high/medium/low table.
 5. **Derived action states**: the set of `→ action` targets is auto-listed; each
    gets a forced `terminal` vs `next:` choice (+ optional prompt body). This is
    what makes MR-4 dead-ends unrepresentable. The `route:` map and `_:` / `_error:`
    arms are *generated*, never hand-typed (no unmatched keys).
-6. **Live validation**, colored from the active design-token semantics: shadowed
-   rule (warning), missing catch-all / unknown action (danger), clean table
-   (success).
+6. **Live, friendly validation** colored from the active design-token semantics,
+   with plain-language inline messages rather than color alone: a shadowed rule is
+   flagged in-place — "can never fire — rule #N above already matches everything
+   this would" (referencing the shadowing rule's sequence number); a rule with no
+   conditions is flagged as matching everything and starving the rules below it;
+   unknown action → danger; a clean, fully-reachable table whose fallback covers
+   the remainder → success. A summary banner counts unreachable rules. Severities:
+   shadowed / zero-condition → warning, unknown action → danger, clean → success.
 7. **Theming**: stamped from the active design-token profile in
    `.ll/ll-config.json` (e.g. `warm-paper`), with **both** light and dark CSS
    variable blocks inlined and an embedded sun/moon toggle. Theme precedence:
@@ -148,18 +160,23 @@ A generated, self-contained `.html` file (no external dependencies; works over
   against the normalized scored-dimension set (its current step-1-raw / step-2-normalized
   asymmetry — see ENH-2309 cross-ref), but the builder is the only place to guarantee
   builder output is never inert
-- [ ] Decision Table mode: the grid has a final `→ Action` column (outcome) that is
-  visually distinct from dimension columns (distinct header style or divider); the
-  action cell is a dropdown of declared action-state names; the entire row
-  (conditions + action) moves as a unit during drag-reorder
-- [ ] Decision Table mode: catch-all row is always present and non-deletable; it is
-  always last in the output YAML's rule list
-- [ ] Decision Table mode: row drag-reorder is reflected in the output YAML's rule precedence
+- [ ] Decision Table mode: rules are grouped into per-action cards ("`<action>` happens
+  when…"); multiple rules for the same action stack as alternative situations within the
+  card; each rule's action is reassignable via a dropdown (no card-drag)
+- [ ] Decision Table mode: every rule shows a global sequence badge (#1, #2, …) reflecting
+  the single top-to-bottom first-match-wins order across all cards; precedence is reorderable
+  (drag or ↑/↓) and the order is reflected in the output YAML's rule precedence
+- [ ] Decision Table mode: the catch-all renders as a non-deletable "Everything else →
+  `<action>`" fallback footer (visually distinct) and is always last in the output YAML's
+  rule list
 - [ ] Rubric mode: two threshold sliders produce a fixed high/medium/low 3-row table in YAML
-- [ ] Action-state list auto-populates from grid `→ action` targets; each requires an
-  explicit `terminal` or `next:` choice (MR-4 dead-ends are structurally unrepresentable)
-- [ ] Live validation colors the table using the active design-token semantic palette:
-  shadowed rule → warning, missing catch-all or unknown action → danger, clean table → success
+- [ ] Action-state list auto-populates from rule action targets; each requires an explicit
+  `terminal` or `next:` choice (MR-4 dead-ends are structurally unrepresentable), surfaced
+  per action card as a human-worded toggle ("re-scores, then loops" vs "finishes the loop")
+- [ ] Live validation surfaces plain-language inline messages (not color alone): a shadowed
+  rule reads "can never fire — rule #N above already matches everything this would"; a
+  zero-condition rule is flagged as matching everything; unknown action → danger; a clean
+  reachable table → success; a summary banner counts unreachable rules
 - [ ] Theme toggle follows correct precedence: `prefers-color-scheme` → config `active_theme`
   → `localStorage` user override
 - [ ] Generated `.html` stamps the active profile's resolved token values inline at generation
@@ -287,6 +304,34 @@ normalizes both sides, the warning disappears while the runtime bug remains (see
 ENH-2309 cross-ref note added for this). Either way the builder is the only place to
 *prevent* the mismatch in builder output, which is why this is an acceptance criterion,
 not deferred to the gate.
+
+### UI presentation: action-grouped cards (decided 2026-06-26)
+
+Early sketches used a literal 2-D grid (rows = rules, columns = dimensions + a
+final `→ Action` column). An interactive mockup review replaced that with an
+**action-grouped card layout**, which read clearer for non-FSM-expert authors:
+
+- **Rules grouped by outcome.** Each action-state is a card ("`light_repair`
+  happens when…"); rules targeting it stack as alternative situations. The outcome
+  reads first and the wide grid of empty `—` cells is gone.
+- **"Everything else →" fallback.** The catch-all is a visually distinct,
+  non-deletable footer card phrased as a sentence — not a pinned `*` row that scans
+  as missing data. Still emitted last in the YAML rule list.
+- **Global precedence stays visible.** Every rule carries a sequence badge
+  (#1, #2, …) for the single top-to-bottom first-match-wins order across all cards;
+  reorder via drag or ↑/↓. This stops action-grouping from hiding precedence.
+- **Friendly inline validation.** Plain-language messages, not color alone — a
+  shadowed rule reads "can never fire — rule #N above already matches everything
+  this would"; a zero-condition rule is flagged as matching everything.
+- **Action reassignment via dropdown, not card-drag.** Card-drag was considered
+  and rejected: the discoverability / touch / a11y cost outweighs the benefit when
+  an accessible menu is needed as a fallback regardless.
+
+The error-class-unrepresentability argument in Motivation is unchanged — cards
+enforce the same invariants (typed operators, forced `terminal`/`next:`, generated
+`route:` + catch-all) the grid would have. A reference interactive mockup of this
+layout (action cards + fallback footer + live shadow validation) was built during
+the 2026-06-26 review.
 
 ### Generated YAML shape (Decision Table mode)
 
@@ -547,6 +592,7 @@ _Updated by `/ll:confidence-check` on 2026-06-26 (re-run; scores stable)_
 - ~~**Output artifact path not finalized**~~ — _resolved 2026-06-25_: generated on-demand at `<artifacts.default_output_dir>/policy-router-builder.html` (default CWD); `--output` override; no checked-in artifact. `config-schema.json` gets a new `"artifacts"` block.
 
 ## Session Log
+- `UI design decision` - 2026-06-26 - Adopted action-grouped rule cards + "Everything else →" fallback footer + friendly inline validation (plain-language shadow/zero-condition messages); rejected card-drag for action reassignment (dropdown instead). From a Cowork interactive-mockup review.
 - `boolean-dim decision` - 2026-06-26 - Closed the dead boolean/string-dimension hole: boolean chips compile to a numeric 0/100 encoding (`==true`→`>=50`, dim emitted into `rubric_dimensions`), keeping the feature live with no fragment-runtime change. Spun off ENH-2309 (validator rule flagging unscored policy dimensions).
 - `/ll:confidence-check` - 2026-06-26 - `d8445ed0-55b6-4efb-8cb4-0c6d5010e8b9.jsonl`
 - `/ll:refine-issue` - 2026-06-26T19:31:35 - `bd56b623-ba39-47c4-bd64-a420b910b8ec.jsonl`

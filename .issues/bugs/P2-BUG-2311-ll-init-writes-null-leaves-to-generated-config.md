@@ -1,17 +1,23 @@
 ---
 id: BUG-2311
-title: "ll-init writes null leaves (build_cmd/run_cmd/mode) to generated config"
+title: ll-init writes null leaves (build_cmd/run_cmd/mode) to generated config
 type: BUG
 status: open
 priority: P2
-captured_at: "2026-06-26T21:55:52Z"
-discovered_date: "2026-06-26"
+captured_at: '2026-06-26T21:55:52Z'
+discovered_date: '2026-06-26'
 discovered_by: capture-issue
 labels:
 - init
 - config
 relates_to:
 - BUG-2310
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 19
+score_test_coverage: 25
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # BUG-2311: ll-init writes null leaves (build_cmd/run_cmd/mode) to generated config
@@ -146,6 +152,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - init, config
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-26T23:00:00Z - `840f1173-5e94-4576-82f8-387a3403a512.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:21:24 - `bb00a6b3-bb99-4165-8a0d-44506e20bca0.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:11:19 - `4405b36b-0acc-485d-bd10-aa2b8d7d1402.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:03:06 - `df942982-a9f6-4636-9b13-fcfbb439ce52.jsonl`

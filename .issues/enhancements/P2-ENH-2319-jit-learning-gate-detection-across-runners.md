@@ -80,6 +80,16 @@ reaches a runner without having been refined.
   assumptions from the issue text and routes them through `/ll:explore-api`
   before implementation begins.
 
+## Success Metrics
+
+- `resolve_learning_targets()` unit tests pass: 3 cases (populated field
+  short-circuits extraction; empty field triggers JIT extraction; `OSError` → `[]`)
+- `ll-auto` per-issue learning gate fires for an unrefined issue whose text
+  contains API assumptions, and skips implementation when the gate returns `blocked`
+- `--skip-learning-gate` flag in `ll-auto` correctly bypasses the gate
+- `ll-sprint` existing learning gate tests pass unchanged (regression parity)
+- All three runners produce identical gate behavior for the same unrefined issue
+
 ## Motivation
 
 The whole learning-test system exists to stop agents from writing production
@@ -118,6 +128,41 @@ Prefer factoring the gate-invocation itself (the `ll-loop run proof-first-task`
 subprocess + result classification) into a shared function so `ll-auto`,
 `ll-parallel` (BUG-2320), and `ll-sprint` call one code path, not three.
 
+## API/Interface
+
+New functions introduced in `scripts/little_loops/learning_tests/extractor.py`
+(or an adjacent `gate.py` module):
+
+```python
+def resolve_learning_targets(
+    issue: IssueInfo,
+    *,
+    llm_call: Callable | None = None,
+) -> list[str]:
+    """Return learning-test targets for an issue.
+
+    Returns `issue.learning_tests_required` when non-empty (field-first).
+    Falls back to JIT extraction from issue text via `extract_learning_targets`.
+    Returns [] on OSError (unreadable issue file).
+    """
+```
+
+Optional shared gate-runner (preferred — collapses three divergent subprocess paths):
+
+```python
+def run_learning_gate_for_issue(
+    issue_path: Path,
+    *,
+    skip: bool = False,
+) -> Literal["passed", "blocked", "skipped"]:
+    """Invoke proof-first-task loop for an issue and return the gate verdict.
+
+    `skip=True` short-circuits to "skipped" (honours --skip-learning-gate).
+    """
+```
+
+CLI change: add `--skip-learning-gate` flag to `ll-auto` (mirrors sprint's existing flag).
+
 ## Integration Map
 
 - **Files to modify**:
@@ -152,14 +197,28 @@ subprocess + result classification) into a shared function so `ll-auto`,
    remove the `TODO(stale-after-ENH-2209)`.
 5. Tests for the `ll-auto` gate path; update `ll-auto` docs/CLI help.
 
+## Scope Boundaries
+
+- **Out of scope**: Migrating `ll-parallel`'s `_run_per_worktree_proof_first_gate`
+  onto the shared helper — tracked separately in BUG-2320 to keep this PR focused.
+- **Out of scope**: Changes to `proof-first-task`, `assumption-firewall`, or
+  `ready-to-implement-gate` loops — consumed unchanged.
+- **Out of scope**: Backfilling `learning_tests_required` on existing unrefined
+  issues — JIT extraction handles them at runtime without backfill.
+- **Out of scope**: Changes to `ready-issue` gate logic — that gate remains field-only.
+- **Out of scope**: New config keys — this reuses `learning_tests.enabled`.
+
 ## Impact
 
-- **Scope**: 2–3 modules + tests. Single PR. No schema or data migration.
-- **Behavior change**: `ll-auto` will now pause to prove unproven assumptions for
-  unrefined issues (guardable via `--skip-learning-gate`). Sprint behavior is
-  unchanged in outcome — only deduplicated.
-- **Risk**: low. Just-in-time extraction already runs in sprint today; this
-  generalizes a proven path rather than introducing a new mechanism.
+- **Priority**: P2 — closes a silent hole in the learning-test guarantee for the
+  common `capture-issue → ll-auto` path; blocked by no other open work.
+- **Effort**: Small — `resolve_learning_targets()` is ~15 LOC; gate wiring in
+  `ll-auto` follows the pattern already in `ll-sprint`; sprint change is a
+  simplification (net removal of a TODO crutch).
+- **Risk**: Low — JIT extraction already runs in sprint today; this generalizes a
+  proven path rather than introducing a new mechanism.
+- **Breaking Change**: No — `--skip-learning-gate` provides an opt-out for callers
+  that cannot tolerate the gate pause; sprint behavior is unchanged in outcome.
 
 ## Related Key Documentation
 
@@ -176,10 +235,11 @@ subprocess + result classification) into a shared function so `ll-auto`,
 - automation
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-26T22:33:10 - `a4d7e1fc-3146-4ce2-8076-73b85d7fcb8e.jsonl`
 - `/ll:capture-issue` - 2026-06-26T22:27:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b5f4713-4801-485e-9909-111bcbcf1d9a.jsonl`
 
 ---
 
 ## Status
 
-open
+**Open** | Created: 2026-06-26 | Priority: P2

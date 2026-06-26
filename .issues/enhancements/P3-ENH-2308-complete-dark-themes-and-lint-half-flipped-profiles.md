@@ -2,7 +2,7 @@
 id: ENH-2308
 type: ENH
 priority: P3
-status: open
+status: done
 title: Complete dark themes in design-token profiles + lint half-flipped themes
 captured_at: '2026-06-26T00:00:00Z'
 discovered_date: '2026-06-26'
@@ -281,6 +281,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-26T22:08:53 - `c619bbe2-2f0b-4c0f-8966-375ca40f0190.jsonl`
+- `/ll:ready-issue` - 2026-06-26T22:08:41 - `c619bbe2-2f0b-4c0f-8966-375ca40f0190.jsonl`
+- `/ll:ready-issue` - 2026-06-26T22:08:33 - `c619bbe2-2f0b-4c0f-8966-375ca40f0190.jsonl`
 - `/ll:wire-issue` - 2026-06-26T21:51:50 - `c41b0be6-447c-4987-a77e-bb93caa058f6.jsonl`
 - `/ll:refine-issue` - 2026-06-26T21:39:41 - `a3ad71ec-14e6-4cd4-b1cf-ee8ef18cadb6.jsonl`
 - `/ll:format-issue` - 2026-06-26T21:29:57 - `0aa41fec-b43c-4c53-8ca7-f55cef54ee67.jsonl`
