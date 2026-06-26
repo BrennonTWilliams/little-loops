@@ -10,9 +10,9 @@ captured_at: '2026-06-26T00:35:41Z'
 relates_to:
 - ENH-2299
 - FEAT-1023
-confidence_score: 94
-outcome_confidence: 69
-score_complexity: 14
+confidence_score: 98
+outcome_confidence: 68
+score_complexity: 13
 score_test_coverage: 15
 score_ambiguity: 20
 score_change_surface: 20
@@ -249,6 +249,17 @@ def render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str:
 
 **MR-4 dead-end detection** (`fsm/validation.py`, `_validate_partial_route_dead_end()`): flagged when `action_type` is `"prompt"` or `"slash_command"`, AND `next == null`, AND `route == null`, AND `on_yes != null`, AND (`on_no == null` OR `on_partial == null`). The builder makes this unrepresentable by requiring each action state to declare either `terminal: true` or a `next:` target — so builder output should never trigger this warning.
 
+**Exact Python constant names** (`fsm/policy_rules.py:27–28`):
+```python
+_ORDERED_OPS: frozenset[str] = frozenset({">=", "<=", "<", ">"})
+_ALL_OPS: frozenset[str] = frozenset({">=", "<=", "==", "!=", "<", ">"})
+```
+The JS validation grammar should mirror these exact sets. `_ORDERED_OPS` → require `parseFloat(value)` (numeric coercion error class); `_ALL_OPS \ _ORDERED_OPS` → accept any string value.
+
+**`_PRED_PATTERN` named capture groups** (`fsm/policy_rules.py:32`): the regex uses named groups `(?P<dim>...)`, `(?P<op>...)`, `(?P<value>...)`. The JS equivalent should replicate these same three groups (dim, op, value) so grid-cell format `<op><value>` (column-header supplies the dim) is parsed correctly.
+
+**`DesignTokens.resolved` type confirmed** (`design_tokens.py:33`): declared as `dict[str, str]` — all values are string-coerced via `str()` in `_resolve_value`. The `render_as_css_vars_themed` implementation sketch using `{value}` directly (no conversion) is correct.
+
 ## Integration Map
 
 ### Files to Modify
@@ -256,7 +267,7 @@ def render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str:
 
 ### New Files
 - `scripts/little_loops/cli/artifact.py` (or `cli/artifact/__init__.py`) — top-level `main_artifact` dispatcher with argparse subparsers; routes `policy-builder` to `artifact/policy_builder.py`
-- `scripts/little_loops/cli/artifact/policy_builder.py` — core emit logic for the policy-builder subcommand; stamps the active design-token profile into the generated file. Modeled on `cli/schemas.py` `main_generate_schemas` (~49 lines).
+- `scripts/little_loops/cli/artifact/policy_builder.py` — core emit logic for the policy-builder subcommand; stamps the active design-token profile into the generated file. Modeled on `cli/schemas.py` `main_generate_schemas` (63 lines).
 - `scripts/little_loops/templates/policy-router-builder.html.tmpl` — source template stamped with resolved token CSS vars at generation time; checked in as package data, not as a pre-built output artifact
 - Output: `<artifacts.default_output_dir>/policy-router-builder.html` (default: CWD); `--output <path>` overrides. No checked-in output artifact. Filename `policy-router-builder.html` is fixed for v1; future builder subcommands use their own names.
 
@@ -329,6 +340,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   assert not error_list, f"builder YAML validation errors: {[str(e) for e in error_list]}"
   ```
 
+- **Inline import pattern for `validate_fsm`**: `load_and_validate` and `validate_fsm` are imported **inside** each test method in `test_fsm_fragments.py`, not at the file's top-level import block. The file's top-level imports only cover `_deep_merge` and `resolve_fragments`. Replicate this inline pattern in the smoke test:
+  ```python
+  def test_builder_yaml_validates(tmp_path):
+      from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+      # ... generate builder YAML into tmp_path ...
+      fsm, _ = load_and_validate(builder_yaml_path)
+      errors = validate_fsm(fsm)
+      error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+      assert not error_list, f"builder YAML validation errors: {[str(e) for e in error_list]}"
+  ```
+
+- **`rubric-refine.yaml` structural differences vs `policy-refine.yaml`** (critical for Rubric mode YAML generation):
+  - Extra top-level keys in `rubric-refine.yaml`: `category: quality`, `input_key: subject`, `required_inputs: ["subject"]` — these are absent from `policy-refine.yaml`
+  - `import:` block: only `lib/rubric-router.yaml` (no `lib/policy-router.yaml`)
+  - No `policy_rules` key in `context`; no `route:` map anywhere in the file
+  - Route states use `on_yes`/`on_no` binary routing; `policy-refine.yaml` uses a `route:` map with `_:` / `_error:` keys
+  - Repair states reference `${captured.scores.output}` to inline rubric scores in the repair action prompt
+  - Builder Rubric mode output should include `category`/`input_key`/`required_inputs` if the generated YAML is intended to be directly runnable by `ll-loop run`
+
 ### Documentation
 - `docs/guides/POLICY_ROUTER_GUIDE.md` — add a "Visual builder" section cross-linking the artifact and contrasting it with `ll-loop edit-routes` (greenfield vs round-trip)
 
@@ -369,7 +399,7 @@ Initial decision by `/ll:decide-issue` on 2026-06-25: **standalone CLI `ll-emit-
 
 **Revised Reasoning**: Artifact generation is a broad, recurring concern in little-loops (HTML builders, diagrams, exporters, etc.). Rather than proliferating `ll-generate-*` / `ll-emit-*` / `ll-build-*` standalone commands, `ll-artifact` establishes a durable namespace where all human-facing artifact generators live as subcommands. The registration cost is one more level of argparse dispatch compared to a standalone tool, but future artifact generators (`ll-artifact loop-diagram`, etc.) cost only a new module + dispatch arm — no additional `pyproject.toml` entries. The distinction from existing `ll-generate-*` tools: those produce machine-consumed artifacts (JSON schemas, description strings); `ll-artifact *` produces human-facing, interactive artifacts (HTML builders, visual tools).
 
-The original scoring across `ll-loop` subcommand / standalone / built-in-loop-YAML still holds — the `ll-artifact` shape is the standalone option with a thin dispatcher layered on top. `cli/schemas.py` `main_generate_schemas` (~49 lines) remains the template for the `policy_builder.py` core module; only the top-level entry point changes from `main_emit_builder` to `main_artifact`.
+The original scoring across `ll-loop` subcommand / standalone / built-in-loop-YAML still holds — the `ll-artifact` shape is the standalone option with a thin dispatcher layered on top. `cli/schemas.py` `main_generate_schemas` (63 lines) remains the template for the `policy_builder.py` core module; only the top-level entry point changes from `main_emit_builder` to `main_artifact`.
 
 **Decision impact on the rest of the issue**: Implementation Steps 9–10 resolve to the **`ll-artifact` subcommand** registration arm. See Registration / Manifest section above for the full touchpoint list.
 
@@ -388,7 +418,7 @@ The original scoring across `ll-loop` subcommand / standalone / built-in-loop-YA
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-9. **Emit-path shape: DECIDED — `ll-artifact policy-builder`** (supersedes `ll-emit-builder` standalone decision; 2026-06-25). Implement `scripts/little_loops/cli/artifact/policy_builder.py` (core emit logic) + `scripts/little_loops/cli/artifact.py` (top-level `main_artifact` dispatcher with argparse subparsers). Core module modeled on `cli/schemas.py` `main_generate_schemas` (~49 lines).
+9. **Emit-path shape: DECIDED — `ll-artifact policy-builder`** (supersedes `ll-emit-builder` standalone decision; 2026-06-25). Implement `scripts/little_loops/cli/artifact/policy_builder.py` (core emit logic) + `scripts/little_loops/cli/artifact.py` (top-level `main_artifact` dispatcher with argparse subparsers). Core module modeled on `cli/schemas.py` `main_generate_schemas` (63 lines).
 10. **Register `ll-artifact`**: add `ll-artifact = "little_loops.cli:main_artifact"` to `scripts/pyproject.toml` `[project.scripts]` + `from little_loops.cli.artifact import main_artifact` import and `"main_artifact"` entry in `scripts/little_loops/cli/__init__.py` `__all__` + a `### ll-artifact` section (with `#### ll-artifact policy-builder` subsection) in `docs/reference/CLI.md` + a "CLI Tools" bullet in `.claude/CLAUDE.md` + add the top-level `"artifacts"` block to `config-schema.json` with `"default_output_dir"` (string, default `"."`, `additionalProperties: false`).
 11. **Update `scripts/tests/test_design_tokens.py`** — add `render_as_css_vars_themed` to the import block and a `TestRenderAsCssVarsThemed` class (model on `TestRenderAsCssVars`, reuse `_write_tokens`/`_make_config`).
 12. **Add the `ll-loop validate` smoke test** following `test_fsm_fragments.py` (`load_and_validate` + ERROR-severity filter) or `test_ll_loop_commands.py` (`cmd_validate(...) == 0`).
@@ -412,17 +442,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-25_
+_Updated by `/ll:confidence-check` on 2026-06-26 (re-run; scores stable)_
 
-**Readiness Score**: 94/100 → PROCEED
-**Outcome Confidence**: 69/100 → below threshold
+**Readiness Score**: 98/100 → PROCEED
+**Outcome Confidence**: 68/100 → below threshold
 
 ### Outcome Risk Factors
-- **JS grammar drift risk**: The in-browser validation mirrors Python logic from `fsm/policy_rules.py:27–34` (shadow detection, numeric-coercion ops, catch-all rules) but has no automated cross-validation path — the grammar can drift silently from the canonical Python source. Mitigated by deferring to `ll-loop validate` as the authoritative gate; still a maintenance risk.
-- **No automated JS test coverage**: Interactive browser behavior (drag-reorder, reactive decision grid, YAML serializer, theme toggle, live validation) requires manual browser verification; pytest covers only the Python emit path and the generated YAML smoke test. The JS layer is the primary complexity locus and has no programmatic coverage.
+- **JS grammar drift**: In-browser validation mirrors `fsm/policy_rules.py:27–34` semantics (shadow detection, numeric-coercion ops, catch-all rules) with no automated cross-validation. Deferred to `ll-loop validate` as authoritative gate; still a maintenance surface.
+- **No automated JS test coverage**: Interactive browser behavior (drag-reorder, reactive decision grid, YAML serializer, theme toggle) requires manual verification. The JS layer is the dominant complexity locus and sits outside pytest's reach.
 - ~~**Output artifact path not finalized**~~ — _resolved 2026-06-25_: generated on-demand at `<artifacts.default_output_dir>/policy-router-builder.html` (default CWD); `--output` override; no checked-in artifact. `config-schema.json` gets a new `"artifacts"` block.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-26 - `d8445ed0-55b6-4efb-8cb4-0c6d5010e8b9.jsonl`
+- `/ll:refine-issue` - 2026-06-26T19:31:35 - `bd56b623-ba39-47c4-bd64-a420b910b8ec.jsonl`
+- `/ll:confidence-check` - 2026-06-26 - `6ab2d0ba-0319-4ff2-829a-5b6224e5e954.jsonl`
 - `/ll:confidence-check` - 2026-06-25 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:refine-issue` - 2026-06-26T01:31:25 - `af981b92-c03e-478c-b61b-511a0b83ff43.jsonl`
 - `naming decision` - 2026-06-25 - Renamed emit path from `ll-emit-builder` (standalone) to `ll-artifact policy-builder` (subcommand of new `ll-artifact` CLI); `ll-artifact` established as the durable namespace for all human-facing artifact generation
