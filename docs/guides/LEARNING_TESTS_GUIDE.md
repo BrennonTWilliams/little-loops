@@ -305,7 +305,7 @@ learning_tests_required:
 - **Refuted** → **auto-invokes** `/ll:explore-api "<target>"`, then re-checks; hard NOT_READY only if still refuted after exploration
 - **Missing** → **auto-invokes** `/ll:explore-api "<target>"`, then re-checks; NOT_READY only if still missing after exploration
 
-Issues without `learning_tests_required` are unaffected — the gate is opt-in.
+Issues without `learning_tests_required` are opt-in at the interactive `/ll:ready-issue` layer, but the automation runners differ on the absent field: `ll-auto` has no learning gate at all; `ll-sprint`'s pre-flight and `ll-parallel`'s per-worktree gate (BUG-2320) both fall back to just-in-time extraction from the issue text when the field is absent, so an unrefined issue routed straight to `ll-parallel` (e.g. `capture-issue → ll-parallel`) still has its external-API assumptions checked rather than silently bypassed.
 
 `/ll:go-no-go` pre-fetches registry status for all declared targets and injects a **Learning Test Context** block into both adversarial agent prompts and the judge prompt before Phase 3b, so unproven assumptions surface in the judge's RATIONALE without requiring numeric score deltas.
 

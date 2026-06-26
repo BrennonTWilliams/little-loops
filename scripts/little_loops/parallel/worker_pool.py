@@ -72,17 +72,35 @@ def _run_per_worktree_proof_first_gate(
     Called in WorkerPool._process_issue() between VALIDATING and IMPLEMENTING.
     Returns True if implementation may proceed, False if blocked or errored.
     """
-    if issue.learning_tests_required is None:
-        return True
+    # Short-circuits run BEFORE target resolution so disabled / skipped runs
+    # incur no JIT extraction cost (BUG-2320 — mirrors the ordering in
+    # cli/sprint/run.py:_run_learning_gate_preflight).
     if not br_config.learning_tests.enabled:
         return True
     if parallel_config.skip_learning_gate:
         logger.info(f"[{issue.issue_id}] Learning gate skipped (--skip-learning-gate)")
         return True
 
+    # Resolve targets just-in-time. A populated field is used as-is; an absent
+    # field (None) means "deps not yet computed" — extract from the issue text
+    # rather than treating it as "no deps" (BUG-2320). Once ENH-2319 lands a
+    # shared resolve_learning_targets() this inline extraction collapses into it.
+    if issue.learning_tests_required is not None:
+        targets = issue.learning_tests_required
+    else:
+        from little_loops.learning_tests.extractor import extract_learning_targets
+
+        try:
+            targets = extract_learning_targets(issue.path.read_text())
+        except OSError:
+            targets = []
+
+    if not targets:
+        logger.info(f"[{issue.issue_id}] Learning gate: no external dependencies detected")
+        return True
+
     logger.info(
-        f"[{issue.issue_id}] Running proof-first-task gate "
-        f"(targets: {', '.join(issue.learning_tests_required)})"
+        f"[{issue.issue_id}] Running proof-first-task gate (targets: {', '.join(targets)})"
     )
     gate_result = subprocess.run(
         [

@@ -2,9 +2,10 @@
 id: BUG-2320
 title: ll-parallel silently skips the learning gate for unrefined issues
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-06-26T22:27:56Z'
+completed_at: '2026-06-26T23:49:01Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 relates_to:
@@ -315,7 +316,46 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - ll-parallel
 - bug
 
+## Resolution
+
+_Resolved 2026-06-26 via `/ll:manage-issue` (TDD mode)._
+
+Rewrote `_run_per_worktree_proof_first_gate` in
+`scripts/little_loops/parallel/worker_pool.py` so the short-circuits run in the
+correct order and the gate resolves learning targets just-in-time:
+
+1. **Reordered** the `learning_tests.enabled` and `skip_learning_gate` checks
+   **ahead of** target resolution (mirroring
+   `cli/sprint/run.py:_run_learning_gate_preflight`), so disabled / skipped runs
+   incur no LLM extraction cost.
+2. **Replaced** the `if issue.learning_tests_required is None: return True`
+   short-circuit with JIT resolution: a populated field is used as-is; an absent
+   field calls `extract_learning_targets(issue.path.read_text())` (inline, with an
+   `OSError` guard — ENH-2319's shared `resolve_learning_targets` does not exist
+   yet).
+3. Empty resolution logs `"no external dependencies detected"` and returns `True`
+   (an auditable decision, not a silent bypass); non-empty resolution runs the
+   `proof-first-task` gate as before.
+4. The pre-gate log line now joins the **resolved `targets`** variable instead of
+   `issue.learning_tests_required` (which is `None` on the JIT path and would
+   `TypeError`).
+
+**Tests** (`scripts/tests/test_worker_pool.py::TestPerWorktreeProofFirstGate`):
+updated `test_gate_skipped_when_no_learning_tests_required` to patch the extractor
+(empty → no subprocess) and added `test_gate_resolves_targets_jit_when_field_none`
+(JIT targets → `proof-first-task` runs) and
+`test_gate_logs_no_external_deps_when_jit_empty` (audit-log assertion). Followed
+TDD: tests failed with assertion errors against the unmodified gate, then passed
+after the rewrite.
+
+**Docs**: updated `docs/reference/CLI.md` (per-worktree gate paragraph) and
+`docs/guides/LEARNING_TESTS_GUIDE.md` (per-runner opt-in qualification). Left the
+sprint paragraph at `CLI.md` untouched.
+
+Verification: full suite `12543 passed, 23 skipped`; `ruff check` and `mypy` clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-26T23:49:01Z - `7794311d-fe66-4031-a7ff-b9fb62b215bb.jsonl`
 - `/ll:ready-issue` - 2026-06-26T23:33:53 - `efe99123-da40-4a82-b80e-010de22783dd.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:54:12 - `6450c656-750b-4d27-8678-b5873c0b541e.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:44:59 - `aed09bae-4126-4c13-b831-260707aa5886.jsonl`
@@ -326,4 +366,4 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-open
+done

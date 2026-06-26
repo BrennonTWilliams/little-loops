@@ -3051,12 +3051,24 @@ class TestPerWorktreeProofFirstGate:
     def test_gate_skipped_when_no_learning_tests_required(
         self, lt_enabled_br_config: BRConfig, tmp_path: Path
     ) -> None:
-        """Gate subprocess not called when issue.learning_tests_required is None."""
+        """BUG-2320: field is None → JIT extraction runs; empty result → no subprocess.
+
+        With the field unset the gate now resolves targets just-in-time from the
+        issue text. When extraction yields nothing the gate proceeds without
+        invoking ``proof-first-task`` (same outcome as before, but now an
+        auditable decision rather than a silent short-circuit on ``is None``).
+        """
         from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
 
         issue = self._make_issue(tmp_path, "ENH-001", learning_tests_required=None)
 
-        with patch("little_loops.parallel.worker_pool.subprocess.run") as mock_sub:
+        with (
+            patch("little_loops.parallel.worker_pool.subprocess.run") as mock_sub,
+            patch(
+                "little_loops.learning_tests.extractor.extract_learning_targets",
+                return_value=[],
+            ) as mock_extract,
+        ):
             result = _run_per_worktree_proof_first_gate(
                 issue,
                 tmp_path,
@@ -3066,7 +3078,75 @@ class TestPerWorktreeProofFirstGate:
             )
 
         assert result is True
+        mock_extract.assert_called_once()
         mock_sub.assert_not_called()
+
+    def test_gate_resolves_targets_jit_when_field_none(
+        self, lt_enabled_br_config: BRConfig, tmp_path: Path
+    ) -> None:
+        """BUG-2320: field None but issue text names an API → gate runs proof-first-task.
+
+        The previous ``is None → return True`` short-circuit silently bypassed the
+        firewall for unrefined issues. The fix resolves targets JIT, so an issue
+        whose text yields targets must run the gate.
+        """
+        from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
+
+        issue = self._make_issue(tmp_path, "ENH-004", learning_tests_required=None)
+
+        with (
+            patch(
+                "little_loops.parallel.worker_pool.subprocess.run",
+                return_value=self._gate_ok_result(),
+            ) as mock_sub,
+            patch(
+                "little_loops.learning_tests.extractor.extract_learning_targets",
+                return_value=["stripe"],
+            ) as mock_extract,
+        ):
+            result = _run_per_worktree_proof_first_gate(
+                issue,
+                tmp_path,
+                lt_enabled_br_config,
+                ParallelConfig(),
+                MagicMock(),
+            )
+
+        assert result is True
+        mock_extract.assert_called_once()
+        mock_sub.assert_called_once()
+        cmd = mock_sub.call_args[0][0]
+        assert "proof-first-task" in cmd
+        assert f"issue_file={issue.path}" in " ".join(cmd)
+
+    def test_gate_logs_no_external_deps_when_jit_empty(
+        self, lt_enabled_br_config: BRConfig, tmp_path: Path
+    ) -> None:
+        """BUG-2320: empty JIT resolution logs an auditable 'no external deps' decision."""
+        from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
+
+        issue = self._make_issue(tmp_path, "ENH-005", learning_tests_required=None)
+        logger = MagicMock()
+
+        with (
+            patch("little_loops.parallel.worker_pool.subprocess.run") as mock_sub,
+            patch(
+                "little_loops.learning_tests.extractor.extract_learning_targets",
+                return_value=[],
+            ),
+        ):
+            result = _run_per_worktree_proof_first_gate(
+                issue,
+                tmp_path,
+                lt_enabled_br_config,
+                ParallelConfig(),
+                logger,
+            )
+
+        assert result is True
+        mock_sub.assert_not_called()
+        logged = " ".join(str(call) for call in logger.info.call_args_list)
+        assert "no external dependencies detected" in logged
 
     def test_blocked_result_skips_manage_issue(
         self, lt_enabled_br_config: BRConfig, tmp_path: Path
