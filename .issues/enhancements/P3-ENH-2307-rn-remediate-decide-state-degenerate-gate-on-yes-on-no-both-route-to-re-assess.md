@@ -4,8 +4,9 @@ title: "rn-remediate decide state degenerate gate \u2014 on_yes == on_no == re_a
   \ discards verdict"
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-26
+completed_at: 2026-06-26 21:32:45+00:00
 discovered_by: audit-loop-run
 source_loop: rn-implement
 source_state: decide
@@ -199,7 +200,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - The `on_yes == on_no` pattern is intentional in `run_remediation`/`run_decomposition` (side-channel file routing), but in `decide` there is no side-channel — the decision verdict represents genuine distinct outcomes.
 
 
+## Resolution
+
+- Fixed `decide` state in `rn-remediate.yaml`: `on_no` changed from `re_assess` to `emit_implement_failed`; `on_error: emit_implement_failed` added
+- Updated `test_rn_remediate.py`: renamed `test_decide_routes_to_re_assess` → split into `test_decide_routes_to_re_assess_on_yes` + `test_decide_failure_routes_to_emit_implement_failed`
+- Updated `test_builtin_loops.py`: renamed `test_decide_on_no_routes_to_re_assess` → `test_decide_on_no_routes_to_emit_implement_failed`; added `test_decide_on_error_routes_to_emit_implement_failed`
+- Updated `docs/guides/LOOPS_REFERENCE.md` line 554: reflects both routes
+- `ll-loop validate rn-remediate` passes; 1046 tests pass
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-26T21:29:53 - `18c50c57-72c7-4a5c-86f2-814bb3179600.jsonl`
 - `/ll:confidence-check` - 2026-06-26T20:10:00 - `3e2e5b14-7243-4e79-aea2-444e191dcd41.jsonl`
 - `/ll:wire-issue` - 2026-06-26T19:54:14 - `7c383e45-909b-4fa2-882f-ad3719e1906b.jsonl`
 - `/ll:decide-issue` - 2026-06-26T19:47:10 - `791a40e3-5254-431e-92c4-9f6e1d0bdc0a.jsonl`

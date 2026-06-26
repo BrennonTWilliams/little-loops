@@ -315,17 +315,29 @@ class TestRemediationActions:
         dec = data["states"]["decide"]
         assert dec.get("fragment") == "with_rate_limit_handling"
 
-    def test_decide_routes_to_re_assess(self) -> None:
-        """decide routes to re_assess on all verdicts (slash_command: on_yes/on_no/on_partial).
+    def test_decide_routes_to_re_assess_on_yes(self) -> None:
+        """decide routes to re_assess on yes (decision recorded → re-evaluate scores).
 
         BUG-2169: decide/wire/refine use on_yes/on_no/on_partial (slash_command routing),
         not on_success/on_error (sub-loop delegation routing).
+        ENH-2307: on_yes stays re_assess; on_no/on_error route to emit_implement_failed.
         """
         data = _load_loop()
         dec = data["states"]["decide"]
         assert dec["on_yes"] == "re_assess"
-        assert dec["on_no"] == "re_assess"
         assert dec["on_partial"] == "re_assess"
+
+    def test_decide_failure_routes_to_emit_implement_failed(self) -> None:
+        """decide routes to emit_implement_failed on no/error (ENH-2307).
+
+        When /ll:decide-issue --auto cannot resolve (no viable options or ambiguous scoring),
+        the loop surfaces failure immediately rather than silently re-assessing.
+        Mirrors the assert/re_assess pattern of on_error: emit_implement_failed.
+        """
+        data = _load_loop()
+        dec = data["states"]["decide"]
+        assert dec["on_no"] == "emit_implement_failed"
+        assert dec["on_error"] == "emit_implement_failed"
 
     def test_wire_is_slash_command_with_auto(self) -> None:
         """wire invokes /ll:wire-issue --auto as a slash_command."""

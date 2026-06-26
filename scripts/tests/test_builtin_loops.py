@@ -7139,11 +7139,18 @@ class TestRnRemediateAssessRouting:
             f"decide.on_yes should be 're_assess', got {state.get('on_yes')!r}"
         )
 
-    def test_decide_on_no_routes_to_re_assess(self, data: dict) -> None:
-        """decide.on_no must route to re_assess (no clear decision → re-evaluate rather than crash)."""
+    def test_decide_on_no_routes_to_emit_implement_failed(self, data: dict) -> None:
+        """decide.on_no must route to emit_implement_failed (ENH-2307: surface failure immediately)."""
         state = data["states"].get("decide", {})
-        assert state.get("on_no") == "re_assess", (
-            f"decide.on_no should be 're_assess', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "emit_implement_failed", (
+            f"decide.on_no should be 'emit_implement_failed', got {state.get('on_no')!r}"
+        )
+
+    def test_decide_on_error_routes_to_emit_implement_failed(self, data: dict) -> None:
+        """decide.on_error must route to emit_implement_failed (ENH-2307: mirrors assess pattern)."""
+        state = data["states"].get("decide", {})
+        assert state.get("on_error") == "emit_implement_failed", (
+            f"decide.on_error should be 'emit_implement_failed', got {state.get('on_error')!r}"
         )
 
     def test_decide_on_partial_routes_to_re_assess(self, data: dict) -> None:
