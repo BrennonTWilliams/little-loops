@@ -2086,3 +2086,85 @@
   rule: 'Captured: Self-contained HTML builder for policy-router and rubric FSM loops'
   scope: issue
   issue: FEAT-2301
+- id: ARCHITECTURE-058
+  type: decision
+  timestamp: '2026-06-26T01:11:06Z'
+  category: architecture
+  labels: []
+  rationale: 6 generation-utility precedents; cli/schemas.py is a copy-verbatim template;
+    thinnest registration (2 code + 2 doc); no doc-count gate or known_subcommands
+    footgun. Scored 11/12 vs 7/12 (ll-loop subcommand) and 3/12 (built-in loop YAML).
+  rule: Emit path = standalone CLI tool (ll-emit-builder)
+  scope: issue
+  alternatives_rejected: ll-loop emit-builder subcommand; built-in loop YAML
+  issue: FEAT-2301
+- id: TEST-090
+  type: rule
+  timestamp: '2026-06-26T01:38:56Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: In BUG-2303, snapshots were regenerated after a regression baked broken
+    box-border output in as 'expected', causing CI to pass on visually broken output
+    for the entire subsequent session.
+  rule: Never regenerate snapshot goldens to make a failing test pass without first
+    verifying the captured output is correct.
+  enforcement: advisory
+  issue: BUG-2303
+- id: TEST-091
+  type: rule
+  timestamp: '2026-06-26T01:38:56Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: Snapshots catch unexpected changes but cannot distinguish 'correct output
+    changed' from 'broken output matches broken golden'. A structural invariant test
+    fails on broken output regardless of what the snapshot says.
+  rule: Pair snapshot tests for rendered output with structural-invariant tests that
+    assert a measurable property (e.g., borders
+  enforcement: advisory
+  issue: BUG-2303
+- id: ARCH-092
+  type: rule
+  timestamp: '2026-06-26T01:38:56Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: len() counts Unicode code points; wide glyphs (CJK, emoji) occupy two
+    terminal columns. Using len() causes text to overflow its allocated box width
+    whenever wide characters appear.
+  rule: Use display width (wcwidth) not len() when computing layout positions, truncation,
+    or padding in terminal renderers.
+  enforcement: advisory
+  issue: BUG-2303
+- id: ARCH-093
+  type: rule
+  timestamp: '2026-06-26T01:38:56Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: A character grid initialised to single-space cells retains those spaces
+    under a batched string. On join, each surviving space inflates the row by one
+    column, shifting all subsequent content and borders out of alignment.
+  rule: When writing a multi-character string into a single cell of a character grid,
+    explicitly clear every cell the string vis
+  enforcement: advisory
+  issue: BUG-2303
+- id: ARCH-094
+  type: rule
+  timestamp: '2026-06-26T01:38:56Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: BUG-2303 regressed because the clear-loop from BUG-2284 was ported only
+    to the name-row branch; the two action-row branches were left with the old incomplete
+    pattern. A unified helper eliminates per-branch drift.
+  rule: 'When refactoring parallel branches (e.g., highlighted vs. non-highlighted,
+    name row vs. action row), apply every fix or '
+  enforcement: advisory
+  issue: BUG-2303
