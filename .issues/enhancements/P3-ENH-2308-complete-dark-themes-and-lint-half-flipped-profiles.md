@@ -7,7 +7,14 @@ title: Complete dark themes in design-token profiles + lint half-flipped themes
 captured_at: '2026-06-26T00:00:00Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
-relates_to: [FEAT-2301]
+relates_to:
+- FEAT-2301
+confidence_score: 93
+outcome_confidence: 83
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 21
 ---
 
 # ENH-2308: Complete dark themes in design-token profiles + lint half-flipped themes
@@ -95,10 +102,22 @@ are affected.
 - `scripts/little_loops/templates/design-tokens/profiles/default/semantic.json` — extend `_wcag_spot_check.dark_mode` (R4)
 - New: structural lint in `scripts/little_loops/design_tokens.py` or a new `ll-verify-*` tool (R5)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — add `### ll-verify-design-tokens` section after the `### ll-verify-package-data` block (flags table, exit codes, examples) [Agent 2 finding]
+- `commands/help.md` — add `ll-verify-design-tokens` one-liner in the `ll-verify-*` block (lines 276-279) [Agent 2 finding]
+- `.claude/CLAUDE.md` — add `ll-verify-design-tokens` entry to "CLI Tools" section alongside existing `ll-verify-*` entries [Agent 2 finding]
+- `skills/configure/areas.md` — add `ll-verify-design-tokens` to the CLI tool enumeration string; increment count `29 → 30` [Agent 2 finding]
+- `README.md` — increment `"35 typed CLI tools"` → `"36"` and `"35 CLI tools"` → `"36"` (two occurrences) [Agent 2 finding]
+- `scripts/tests/test_wiring_cli_registry.py` — add 3 `DOC_STRINGS_PRESENT` tuples for `"ll-verify-design-tokens"` targeting `commands/help.md`, `docs/reference/CLI.md`, and `.claude/CLAUDE.md` [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/design_tokens.py` — `load_design_tokens()` / `_resolve_token_root()` programmatically loads all profile JSON files; no hardcoded filename references outside this module
 - `scripts/tests/test_enh1768_profile_system.py` — `TestBundledProfilesLoadEndToEnd._copy_templates()` copies bundled templates and exercises all 3 profiles end-to-end; `TestBundledProfileTemplates.test_each_profile_has_full_layer()` asserts presence of `themes/dark.json` per profile
 - `scripts/tests/test_design_tokens.py` — `TestIntegration.test_round_trip_dark_theme()` exercises the dark-theme merge path against bundled `default` profile templates
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/run.py` — calls `load_design_tokens(_config)` + `render_as_prompt_context()` in `cmd_run()`; dark-tuned resolved values are injected into `fsm.context["design_tokens_context"]` — no code change required, but confirms dark-mode FSM context improves after R1–R3 [Agent 1/2 finding]
+- `scripts/little_loops/cli/loop/lifecycle.py` — identical injection pattern in the resume continuation path [Agent 2 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/templates/design-tokens/profiles/warm-paper/themes/light.json` — structural reference for theme override format
@@ -106,7 +125,12 @@ are affected.
 ### Tests
 - `scripts/tests/test_enh1768_profile_system.py` — `TestBundledProfileTemplates.test_each_profile_has_full_layer()` (structural presence); `TestBundledProfilesLoadEndToEnd` (end-to-end profile loads) — extend with a dark-theme completeness assertion for R5 (model: `PROFILE_NAMES = ("default", "editorial-mono", "warm-paper")` loop)
 - `scripts/tests/test_design_tokens.py` — `TestIntegration.test_round_trip_dark_theme()` — extend to assert resolved `color.border.*` and `color.action.*` values differ from their light-tuned `semantic.json` defaults after R1 is applied
-- New: `scripts/tests/test_verify_design_tokens.py` — unit tests for R5 `ll-verify-design-tokens` CLI tool; model after `scripts/tests/test_verify_package_data.py` (dataclass violations, text/JSON report formatting, exit codes)
+- New: `scripts/tests/test_verify_design_tokens.py` — unit tests for R5 `ll-verify-design-tokens` CLI tool; model after `scripts/tests/test_verify_package_data.py` (dataclass violations, text/JSON report formatting, exit codes); use **synthetic temp-dir fixtures only** (not bundled templates) so test pass/fail is independent of `editorial-mono` incomplete state
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_design_tokens.py::TestIntegration.test_round_trip_dark_theme()` — currently only asserts `color.surface.primary == "#101214"` for `default`; extend to assert dark-tuned values for `color.border.subtle`, `color.border.strong`, `color.action.primary`, and `shadow.*` after R1 is applied [Agent 3 finding]
+- `scripts/tests/test_enh1768_profile_system.py::TestBundledProfilesLoadEndToEnd` — `test_warm_paper_loads()` has no dark-theme token-group assertion; add dark-theme completeness check scoped to `("default", "warm-paper")` only (exclude `editorial-mono`, which remains incomplete pending follow-on) [Agent 2/3 finding]
+- **At risk**: `scripts/tests/test_enh1768_profile_system.py::TestBundledProfilesLoadEndToEnd.test_profile_outputs_diverge()` — asserts `color.action.primary` differs across all 3 profiles; verify dark-tuned values (`warm-paper: terracotta-500`, `default: brand step`) remain distinct from each other and from `editorial-mono` before closing [Agent 3 finding]
 
 ### Documentation
 - N/A — profile JSON files are self-documenting; render-path docs unchanged
@@ -127,6 +151,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **`ll-artifact` command (acceptance criteria step 7)**: The `ll-artifact policy-builder` command referenced in acceptance criteria does not yet exist as a CLI tool — it is planned in FEAT-2301 but not implemented. The visual diff verification step must be deferred until FEAT-2301 ships. For this issue, dark-theme correctness can be validated by extending `TestIntegration.test_round_trip_dark_theme()` in `test_design_tokens.py` to assert resolved token values.
 
 **`editorial-mono` gap (out of scope but noted)**: `editorial-mono/themes/dark.json` has the identical structural gap. Its `danger.500 == accent.500 = "#991b1b"`. The R5 lint will flag this profile automatically. Fixing `editorial-mono` is out of scope for ENH-2308 but should be tracked as a follow-on.
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**`editorial-mono` lint impact (R5 scope risk)**: After ENH-2308 completes R1–R4, `ll-verify-design-tokens` will still exit non-zero against the full bundled templates because `editorial-mono/themes/dark.json` remains incomplete. Two mitigations: (a) design `test_verify_design_tokens.py` exclusively around synthetic temp-dir fixtures (per `test_verify_package_data.py` pattern) so pass/fail is independent of bundled template state, and (b) document in the CLI help that `editorial-mono` is a known-incomplete profile. Without (a), the new CLI cannot serve as a CI gate until the `editorial-mono` follow-on resolves. [Agent 2 finding]
+
+**CLI documentation wiring (R5 registration)**: Per `CONTRIBUTING.md` "Documentation wiring for new CLI tools", every new `ll-` tool must appear in 5 locations: `docs/reference/CLI.md`, `commands/help.md`, `.claude/CLAUDE.md`, `skills/configure/areas.md` (count `29 → 30`), `README.md` (counts `35 → 36`). The `ll-verify-package-data` tool (ENH-2277) did not add these — ENH-2308 should complete them for `ll-verify-design-tokens`. Also add 3 `DOC_STRINGS_PRESENT` tuples in `test_wiring_cli_registry.py`. [Agent 2 finding]
+
+**`scripts/little_loops/cli/__init__.py` module docstring**: The module-level docstring (lines 1–36) lists every CLI tool by entry-point name; add a `ll-verify-design-tokens: Structural lint for half-flipped design-token theme profiles` bullet alongside the existing `ll-verify-*` entries (in addition to the import + `__all__` entry already in scope). [Agent 2 finding]
 
 ## Proposed Solution
 
@@ -216,6 +248,15 @@ thing that catches both shipped profiles and any future profile. Wire it as a
 5. Add `scripts/little_loops/cli/verify_design_tokens.py` with `main_verify_design_tokens()`: for each profile under the profiles dir, load `semantic.json` and each `themes/*.json`, compute `set(semantic["color"].keys()) - set(theme.get("color", {}).keys())`, fail on non-empty diff. Register as `ll-verify-design-tokens = "little_loops.cli:main_verify_design_tokens"` in `scripts/pyproject.toml` and add import + `__all__` entry in `scripts/little_loops/cli/__init__.py`. Add unit tests in `scripts/tests/test_verify_design_tokens.py` (model after `test_verify_package_data.py`). (R5)
 6. Re-emit and visual-diff: `ll-artifact policy-builder && open policy-router-builder.html` — verify legible borders, distinct accent/danger, and visible card elevation in dark mode
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Add `### ll-verify-design-tokens` section to `docs/reference/CLI.md` (after `### ll-verify-package-data`); add one-liner to `commands/help.md`; add entry to `.claude/CLAUDE.md` "CLI Tools" section; update `skills/configure/areas.md` enumeration + count (`29 → 30`); increment CLI tool counts in `README.md` (`35 → 36`, two occurrences); add docstring bullet to `scripts/little_loops/cli/__init__.py`
+8. Add 3 `DOC_STRINGS_PRESENT` tuples in `scripts/tests/test_wiring_cli_registry.py` for `"ll-verify-design-tokens"` targeting `commands/help.md`, `docs/reference/CLI.md`, `.claude/CLAUDE.md`
+9. Extend `TestIntegration.test_round_trip_dark_theme()` in `test_design_tokens.py` to assert `color.border.subtle`, `color.border.strong`, `color.action.primary`, and `shadow.*` contain dark-tuned values after R1; add dark-theme completeness check to `TestBundledProfilesLoadEndToEnd` scoped to `("default", "warm-paper")` only
+10. Verify `test_profile_outputs_diverge()` still passes — dark-tuned `action.primary` values must remain distinct across all 3 profiles
+
 ## Impact
 
 - **Priority**: P3 — Systemic dark-mode degradation across both shipped profiles; affects users with `active_theme: dark`; deferred over direct user impact because the render path is correct and the defect is profile-authoring-only
@@ -240,5 +281,6 @@ thing that catches both shipped profiles and any future profile. Wire it as a
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-26T21:51:50 - `c41b0be6-447c-4987-a77e-bb93caa058f6.jsonl`
 - `/ll:refine-issue` - 2026-06-26T21:39:41 - `a3ad71ec-14e6-4cd4-b1cf-ee8ef18cadb6.jsonl`
 - `/ll:format-issue` - 2026-06-26T21:29:57 - `0aa41fec-b43c-4c53-8ca7-f55cef54ee67.jsonl`
