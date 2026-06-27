@@ -37,6 +37,8 @@ from little_loops.issue_lifecycle import (
     verify_issue_completed,
 )
 from little_loops.issue_parser import IssueInfo, IssueParser, find_issues
+from little_loops.learning_tests.extractor import resolve_learning_targets
+from little_loops.learning_tests.gate import run_learning_gate_for_issue
 from little_loops.logger import Logger, format_duration
 from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.session_store import DEFAULT_DB_PATH, SQLiteTransport
@@ -566,6 +568,7 @@ def process_issue_inplace(
     event_bus: EventBus | None = None,
     sprint_context: SprintWorkerContext | None = None,
     context_limit: int | None = None,
+    skip_learning_gate: bool = False,
 ) -> IssueProcessingResult:
     """Process a single issue through the 3-phase workflow in the current working tree.
 
@@ -845,6 +848,33 @@ def process_issue_inplace(
         if decide_result.returncode != 0:
             logger.warning("decide-issue command failed, continuing to implementation anyway...")
 
+    # Learning gate: per-issue proof-first-task check (ENH-2319)
+    # Use `is True` (not truthiness) so MagicMock auto-specs in tests don't
+    # accidentally trigger the gate when `enabled` is not explicitly set.
+    if config.learning_tests.enabled is True and not dry_run:
+        targets = resolve_learning_targets(info)
+        if targets:
+            logger.info(
+                f"Learning gate: checking {len(targets)} target(s): {', '.join(targets)}"
+            )
+            gate_cwd = config.repo_path or Path.cwd()
+            verdict = run_learning_gate_for_issue(
+                info.path, skip=skip_learning_gate, cwd=gate_cwd
+            )
+            if verdict == "skipped":
+                logger.info(f"Learning gate skipped for {info.issue_id} (--skip-learning-gate)")
+            elif verdict == "blocked":
+                logger.warning(
+                    f"Learning gate blocked {info.issue_id}: unproven external-API deps"
+                )
+                return IssueProcessingResult(
+                    success=False,
+                    duration=time.time() - issue_start_time,
+                    issue_id=info.issue_id,
+                    failure_reason="Learning gate blocked: unproven external-API deps",
+                    corrections=corrections,
+                )
+
     # Phase 2: Implement the issue (with automatic continuation on context handoff)
     action = config.get_category_action(info.issue_type)
     logger.info(f"Phase 2: Implementing {info.issue_id}...")
@@ -1076,6 +1106,7 @@ class AutoManager:
         verbose: bool = True,
         preview_full: bool = False,
         db_path: Path | None = None,
+        skip_learning_gate: bool = False,
     ) -> None:
         """Initialize the auto manager.
 
@@ -1105,6 +1136,7 @@ class AutoManager:
         self.priority_filter = priority_filter
         self.label_filter = label_filter
         self._preview_full = preview_full
+        self.skip_learning_gate = skip_learning_gate
 
         from little_loops.cli.output import use_color_enabled
 
@@ -1369,6 +1401,7 @@ class AutoManager:
             preview_full=self._preview_full,
             event_bus=self.event_bus,
             context_limit=resolved_limit,
+            skip_learning_gate=self.skip_learning_gate,
         )
 
         # Map result back to state tracking

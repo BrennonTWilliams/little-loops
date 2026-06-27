@@ -10,6 +10,7 @@ from pathlib import Path
 from little_loops.cli.output import configure_output
 from little_loops.cli_args import (
     add_common_auto_args,
+    add_skip_learning_gate_arg,
     parse_issue_ids,
     parse_issue_ids_ordered,
     parse_issue_types,
@@ -50,6 +51,7 @@ Examples:
 
         # Add common arguments from shared module
         add_common_auto_args(parser)
+        add_skip_learning_gate_arg(parser)
 
         # Add tool-specific arguments
         parser.add_argument(
@@ -105,6 +107,7 @@ Examples:
             label_filter=label_filter,
             verbose=args.verbose or not args.quiet,
             preview_full=args.verbose,
+            skip_learning_gate=args.skip_learning_gate,
         )
 
         return manager.run()

@@ -14,8 +14,12 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from little_loops.issue_parser import slugify
+
+if TYPE_CHECKING:
+    from little_loops.issue_parser import IssueInfo
 
 _EXTRACTION_PROMPT = """\
 Analyze the following issue text and identify all external packages, SDKs, or \
@@ -112,3 +116,27 @@ def extract_learning_targets(
             seen.add(slug)
             result.append(name)
     return result
+
+
+def resolve_learning_targets(
+    issue: IssueInfo,
+    *,
+    llm_call: Callable[[str], str] | None = None,
+) -> list[str]:
+    """Return learning-test targets for an issue.
+
+    Returns ``issue.learning_tests_required`` when non-None (field-first).
+    Falls back to JIT extraction from issue text via ``extract_learning_targets``.
+    Returns [] on OSError (unreadable issue file).
+
+    The ``is not None`` sentinel is intentional: ``[]`` means "proven empty —
+    no external deps" and must NOT trigger JIT extraction; ``None`` means
+    "field not yet populated" and must trigger it.
+    """
+    if issue.learning_tests_required is not None:
+        return issue.learning_tests_required
+    try:
+        text = issue.path.read_text()
+    except OSError:
+        return []
+    return extract_learning_targets(text, llm_call=llm_call)

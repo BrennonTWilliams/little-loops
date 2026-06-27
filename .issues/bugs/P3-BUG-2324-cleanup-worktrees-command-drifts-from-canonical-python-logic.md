@@ -16,6 +16,8 @@ relates_to:
 - ENH-1248
 - ENH-1249
 - ENH-1255
+- ENH-2325
+- ENH-2326
 depends_on:
 - BUG-2323
 decision_needed: false
@@ -121,6 +123,24 @@ though its rev-parse timing is correct (before removal). It is exposed via
 without fixing it first would *regress* loop-branch deletion. The preferred path requires
 repairing the rev-parse timing and removing the `parallel/` prefix guard before it can safely
 replace the bash logic.
+
+#### Verification Pass (2026-06-26)
+
+_Added by second `/ll:refine-issue` pass — confirmed against current codebase:_
+
+**Exact line sequence in `_cleanup_orphaned_worktrees()` (`orchestrator.py` lines 273–308):**
+- Lines 275–279: `git worktree unlock`
+- Lines 281–285: `git worktree remove --force`
+- Lines 288–289: `shutil.rmtree(worktree_path, ...)` (conditional)
+- Lines 292–297: `subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree_path, ...)` ← always fails because `cwd` was just deleted
+
+**Why existing tests don't expose the timing bug:** `test_deletes_branch_via_rev_parse` (line 500) and `test_skips_branch_deletion_for_non_parallel_branch` (line 566) both patch `subprocess.run` but mock `_git_lock.run` to return success *without* actually removing the worktree directory. So `worktree_path` still exists on disk when the patched `subprocess.run` fires, hiding the production failure. The proposed `test_rev_parse_called_before_remove` must use `worktree_path.exists()` as a call-order signal to expose the bug meaningfully.
+
+**Correct reference pattern:** `worktree_utils.cleanup_worktree()` (lines 140–161) calls rev-parse at lines 141–147 *before* any removal — the exact ordering `_cleanup_orphaned_worktrees()` needs to adopt.
+
+**`worker_pool.py:_cleanup_worktree()` timing is correct** (rev-parse at lines 736–744 fires before removal); the bug there is solely the `parallel/` prefix guard at line 744, confirmed by the legacy comment: `# Only delete branches with the parallel/ prefix (legacy behavior for ll-parallel)`. After the safe-guard helper is in place, the pre-check in `_cleanup_worktree()` becomes redundant — `cleanup_worktree()` in `worktree_utils` does its own rev-parse at line 141 when `delete_branch=True`.
+
+**Related issues discovered in the same files:** ENH-2325 (remove fragile branch-name derivation residue in `orchestrator.py`) and ENH-2326 (serialize remaining git calls and add worktree concurrency test) address adjacent tech debt; added to `relates_to`.
 
 ## Proposed Solution
 
@@ -254,6 +274,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/ARCHITECTURE.md` (`:784` `WorkerPool` class diagram) and `docs/reference/API.md`
   (`:2905` methods table) document only the public `cleanup_all_worktrees()` — signature
   unchanged, so **no update required**; recorded here to mark them as audited. [Agent 2/3]
+- `docs/reference/COMMANDS.md` — `/ll:cleanup-worktrees` entry at `:513` (section) and
+  `:1023` (table row); update section description to reflect that the command now delegates
+  to `ll-parallel --cleanup-orphans` instead of running its own bash detection. [Agent 1/2/3 finding]
 
 ### Configuration
 - N/A — no config keys govern this command's behavior.
@@ -344,6 +367,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-27T05:10:05 - `c27a4feb-a659-4f2c-a93b-5a4a6ecb65d3.jsonl`
+- `/ll:refine-issue` - 2026-06-27T05:00:18 - `1ca5c0eb-921e-46b2-9d5f-af2ff3ccc1c0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:confidence-check` - 2026-06-26T23:50:00Z - `0c53424b-20aa-4cfb-80cf-802b5967df71.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:34:56 - `0ccf7a6a-f985-42f6-bb18-b2c54b21a3f0.jsonl`

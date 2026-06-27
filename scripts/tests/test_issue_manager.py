@@ -3449,6 +3449,7 @@ class TestAutoManagerModelDetection:
             event_bus: Any = None,
             sprint_context: Any = None,
             context_limit: Any = None,
+            skip_learning_gate: bool = False,
         ) -> IssueProcessingResult:
             if on_model_detected:
                 on_model_detected("claude-sonnet-4-6")
@@ -3559,3 +3560,161 @@ class TestDecisionNeededGate:
         assert mock_cmd.call_count == 1
         all_cmds = [str(call.args[0]) for call in mock_cmd.call_args_list]
         assert not any("decide-issue" in cmd for cmd in all_cmds)
+
+
+import json as _json  # noqa: E402 — appended fixture imports
+
+
+class TestAutoManagerLearningGate:
+    """ENH-2319: Per-issue learning gate wired into ll-auto (process_issue_inplace)."""
+
+    @pytest.fixture
+    def lt_enabled_config(self, temp_project_dir: Path) -> BRConfig:
+        config = MagicMock(spec=BRConfig)
+        config.project_root = temp_project_dir
+        config.repo_path = temp_project_dir
+        config.automation = MagicMock()
+        config.automation.timeout_seconds = 60
+        config.automation.stream_output = False
+        config.automation.idle_timeout_seconds = 0
+        config.automation.max_continuations = 3
+        config.learning_tests = MagicMock()
+        config.learning_tests.enabled = True
+        config.get_category_action.return_value = "fix"
+        config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+        return config
+
+    @pytest.fixture
+    def lt_disabled_config(self, temp_project_dir: Path) -> BRConfig:
+        config = MagicMock(spec=BRConfig)
+        config.project_root = temp_project_dir
+        config.repo_path = temp_project_dir
+        config.automation = MagicMock()
+        config.automation.timeout_seconds = 60
+        config.automation.stream_output = False
+        config.automation.idle_timeout_seconds = 0
+        config.automation.max_continuations = 3
+        config.learning_tests = MagicMock()
+        config.learning_tests.enabled = False
+        config.get_category_action.return_value = "fix"
+        config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+        return config
+
+    def _make_issue(
+        self,
+        tmp_path: Path,
+        *,
+        issue_id: str = "ENH-100",
+        learning_tests_required: list[str] | None = None,
+    ) -> IssueInfo:
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = issues_dir / f"P2-{issue_id}-stub.md"
+        issue_file.write_text(
+            f"---\nid: {issue_id}\ntitle: Stub\nstatus: open\n---\n# {issue_id}: Stub\n"
+        )
+        return IssueInfo(
+            path=issue_file,
+            issue_type="enhancements",
+            priority="P2",
+            issue_id=issue_id,
+            title="Stub issue",
+            learning_tests_required=learning_tests_required,
+        )
+
+    def _write_blocked_state(self, project_root: Path) -> None:
+        """Write a proof-first-task state file indicating blocked verdict."""
+        state_dir = project_root / ".loops" / ".running"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "proof-first-task.state.json").write_text(
+            _json.dumps({"current_state": "blocked", "status": "completed"})
+        )
+
+    def test_blocked_gate_verdict_skips_implement_phase(
+        self, lt_enabled_config: BRConfig, temp_project_dir: Path
+    ) -> None:
+        """When proof-first-task returns blocked, implement phase is skipped."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        issue = self._make_issue(temp_project_dir, learning_tests_required=["anthropic"])
+        self._write_blocked_state(temp_project_dir)
+
+        fail_ready = MagicMock(returncode=1, stdout="", stderr="")
+        gate_proc = MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("little_loops.issue_manager.run_claude_command", return_value=fail_ready),
+            patch(
+                "little_loops.issue_manager.run_learning_gate_for_issue",
+                return_value="blocked",
+            ),
+            patch("little_loops.issue_manager.run_with_continuation") as mock_impl,
+        ):
+            result = process_issue_inplace(
+                issue, lt_enabled_config, MagicMock(), skip_learning_gate=False
+            )
+
+        assert result.success is False
+        assert "blocked" in result.failure_reason.lower()
+        mock_impl.assert_not_called()
+
+    def test_skip_learning_gate_bypasses_gate_and_runs_implement(
+        self, lt_enabled_config: BRConfig, temp_project_dir: Path
+    ) -> None:
+        """--skip-learning-gate causes the gate to return skipped; implement runs."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        issue = self._make_issue(temp_project_dir, learning_tests_required=["anthropic"])
+
+        fail_ready = MagicMock(returncode=1, stdout="", stderr="")
+        impl_result = MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("little_loops.issue_manager.run_claude_command", return_value=fail_ready),
+            patch(
+                "little_loops.issue_manager.run_learning_gate_for_issue",
+                return_value="skipped",
+            ) as mock_gate,
+            patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ) as mock_impl,
+            patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
+            patch("little_loops.issue_manager.check_git_status", return_value=False),
+        ):
+            process_issue_inplace(
+                issue, lt_enabled_config, MagicMock(), skip_learning_gate=True
+            )
+
+        # Gate was called with skip=True
+        mock_gate.assert_called_once()
+        _, kwargs = mock_gate.call_args
+        assert kwargs.get("skip") is True
+        # Implement phase runs
+        mock_impl.assert_called_once()
+
+    def test_gate_not_invoked_when_learning_tests_disabled(
+        self, lt_disabled_config: BRConfig, temp_project_dir: Path
+    ) -> None:
+        """When learning_tests.enabled=False, gate function is never called."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        issue = self._make_issue(temp_project_dir, learning_tests_required=["anthropic"])
+
+        fail_ready = MagicMock(returncode=1, stdout="", stderr="")
+        impl_result = MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("little_loops.issue_manager.run_claude_command", return_value=fail_ready),
+            patch(
+                "little_loops.issue_manager.run_learning_gate_for_issue"
+            ) as mock_gate,
+            patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ),
+            patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
+            patch("little_loops.issue_manager.check_git_status", return_value=False),
+        ):
+            process_issue_inplace(issue, lt_disabled_config, MagicMock())
+
+        # Gate must NOT have been called (learning_tests disabled)
+        mock_gate.assert_not_called()

@@ -206,6 +206,9 @@ ll-sprint run sprint-name --quiet                         # suppress progress ou
 ll-sprint run sprint-name --handoff-threshold 80          # context window handoff threshold (1–100)
 ll-sprint run sprint-name --feature-branches              # enable feature-branch mode (overrides config)
 ll-sprint run sprint-name --skip-learning-gate            # bypass learning-test gate checks
+
+# ll-auto also supports the same flag for its per-issue gate:
+ll-auto --skip-learning-gate                              # bypass per-issue learning-test gate
 ```
 
 The `--handoff-threshold` flag controls when Claude Code hands off to a fresh session mid-issue. During a long-running issue, Claude's context window fills up as it reads files, runs tools, and accumulates output. When context usage reaches the threshold (expressed as a percentage from 1 to 100), the runner writes a continuation prompt and starts a new session to complete the remaining work. Lower values trigger handoff earlier and more conservatively; higher values let sessions run longer before handing off. The default is 80 (hand off at 80% context usage).

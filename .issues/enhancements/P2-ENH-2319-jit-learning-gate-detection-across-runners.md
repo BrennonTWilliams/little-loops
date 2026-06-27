@@ -3,8 +3,9 @@ id: ENH-2319
 title: Make learning-test target detection just-in-time and consistent across runners
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-26T22:27:56Z'
+completed_at: '2026-06-27T05:25:07Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 relates_to:
@@ -372,6 +373,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - automation
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T04:56:52 - `e90e386e-bb4c-4d68-b823-091b5aaf1693.jsonl`
 - `/ll:confidence-check` - 2026-06-26T22:00:00Z - `7a5637ae-9124-4731-93ea-c7fd3f704c74.jsonl`
 - `/ll:confidence-check` - 2026-06-26T00:00:00Z - `0ed4e422-dbd2-4b65-8f8d-67a06e3ee290.jsonl`
 - `/ll:wire-issue` - 2026-06-27T04:32:02 - `3b7d4f6a-f81f-49e3-945a-7a65004e0fa5.jsonl`

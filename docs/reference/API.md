@@ -3351,6 +3351,8 @@ def main_auto() -> int
 
 Entry point for `ll-auto` command. Process all backlog issues sequentially in priority order.
 
+Supports `--skip-learning-gate` to bypass the per-issue learning-test gate (equivalent to `ll-sprint`'s `--skip-learning-gate` flag). The gate runs `proof-first-task` between the ready and implement phases for each issue whose resolved targets are non-empty.
+
 **Returns:** Exit code
 
 ### main_loop
@@ -5591,6 +5593,8 @@ raw_output_path: ".ll/learning-tests/raw/anthropic-sdk-streaming.txt"
 | `list_records` | Return all records in the registry directory |
 | `mark_stale` | Set `status: stale` on an existing record, preserving other fields |
 | `check_learning_test` | Look up a record by target name (slugified); returns `None` if not found |
+| `resolve_learning_targets` | Return targets for an issue (field-first, JIT extraction fallback) — ENH-2319 |
+| `run_learning_gate_for_issue` | Invoke `proof-first-task` loop and return `"passed"`, `"blocked"`, or `"skipped"` — ENH-2319 |
 
 ### write_record
 
@@ -5661,6 +5665,33 @@ if rec and rec.status == "proven":
     # assertions are trusted
     pass
 ```
+
+### resolve_learning_targets
+
+```python
+def resolve_learning_targets(
+    issue: IssueInfo,
+    *,
+    llm_call: Callable[[str], str] | None = None,
+) -> list[str]
+```
+
+Return learning-test targets for an issue (ENH-2319). Returns `issue.learning_tests_required` when the field is non-`None` (field-first, no LLM call). Falls back to JIT extraction via `extract_learning_targets` when the field is `None`. Returns `[]` on `OSError`.
+
+The `is not None` sentinel is intentional: `[]` means "proven empty — no external deps" and must NOT trigger JIT extraction; `None` means "field not yet populated" and triggers it.
+
+### run_learning_gate_for_issue
+
+```python
+def run_learning_gate_for_issue(
+    issue_path: Path,
+    *,
+    skip: bool = False,
+    cwd: Path | None = None,
+) -> Literal["passed", "blocked", "skipped"]
+```
+
+Invoke the `proof-first-task` loop for an issue and return the gate verdict (ENH-2319). All terminal states exit 0; `"blocked"` is distinguished from `"passed"` by reading the loop state file at `<cwd>/.loops/.running/proof-first-task.state.json`. `skip=True` short-circuits to `"skipped"` without running the loop (honours `--skip-learning-gate`).
 
 ---
 

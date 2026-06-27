@@ -4,12 +4,18 @@ Exposes ``is_record_stale()`` and ``format_nudge_message()`` as standalone
 importable helpers consumed by the discoverability gate hook, the install
 learning gate hook (ENH-2212), and downstream sprint/release gates
 (ENH-2209, ENH-2210, ENH-2214, ENH-2217).
+
+Also exposes ``run_learning_gate_for_issue()`` — the shared subprocess wrapper
+for the ``proof-first-task`` loop used by ll-auto (ENH-2319).
 """
 
 from __future__ import annotations
 
 import datetime
-from typing import TYPE_CHECKING
+import json
+import subprocess
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from little_loops.learning_tests import LearnTestRecord
@@ -48,3 +54,61 @@ def is_record_stale(record: LearnTestRecord, stale_after_days: int) -> bool:
         return False
     age_days = (datetime.date.today() - record_date).days
     return age_days > threshold
+
+
+def _read_loop_final_state(cwd: Path, loop_name: str) -> str | None:
+    """Read the terminal state from a completed loop's running state file.
+
+    After ``ll-loop run`` exits, the state file remains at
+    ``<cwd>/.loops/.running/<loop_name>.state.json``. The ``current_state``
+    field holds the terminal state name (e.g. ``"done"``, ``"blocked"``).
+    """
+    state_file = cwd / ".loops" / ".running" / f"{loop_name}.state.json"
+    if not state_file.exists():
+        return None
+    try:
+        data = json.loads(state_file.read_text())
+        return data.get("current_state")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def run_learning_gate_for_issue(
+    issue_path: Path,
+    *,
+    skip: bool = False,
+    cwd: Path | None = None,
+) -> Literal["passed", "blocked", "skipped"]:
+    """Invoke proof-first-task loop for an issue and return the gate verdict.
+
+    ``skip=True`` short-circuits to "skipped" (honours --skip-learning-gate).
+    All terminal states (done, blocked, impl_failed) exit 0 — blocked is
+    distinguished from done by reading the loop state file left after execution.
+
+    Args:
+        issue_path: Absolute path to the issue file.
+        skip: If True, return "skipped" immediately without running the loop.
+        cwd: Working directory for the subprocess (and state-file lookup).
+            Defaults to ``Path.cwd()`` when None.
+    """
+    if skip:
+        return "skipped"
+
+    working_dir = cwd or Path.cwd()
+    subprocess.run(
+        [
+            "ll-loop",
+            "run",
+            "proof-first-task",
+            "--context",
+            f"issue_file={issue_path}",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=working_dir,
+    )
+
+    final_state = _read_loop_final_state(working_dir, "proof-first-task")
+    if final_state == "blocked":
+        return "blocked"
+    return "passed"

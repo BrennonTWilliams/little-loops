@@ -185,7 +185,7 @@ def _run_learning_gate_preflight(
         logger.info("Learning gate pre-flight skipped (--skip-learning-gate)")
         return 0
 
-    from little_loops.learning_tests.extractor import extract_learning_targets
+    from little_loops.learning_tests.extractor import resolve_learning_targets
 
     # Map target → contributing issue IDs (for attribution in error output)
     target_to_issues: dict[str, list[str]] = {}
@@ -193,15 +193,7 @@ def _run_learning_gate_preflight(
     all_targets: list[str] = []
 
     for info in issue_infos:
-        if info.learning_tests_required is not None:
-            targets = info.learning_tests_required
-        else:
-            # TODO(stale-after-ENH-2209): remove fallback once all active sprint
-            # issues have been re-refined with ENH-2209 auto-population.
-            try:
-                targets = extract_learning_targets(info.path.read_text())
-            except OSError:
-                targets = []
+        targets = resolve_learning_targets(info)
 
         for target in targets:
             if target not in seen:
