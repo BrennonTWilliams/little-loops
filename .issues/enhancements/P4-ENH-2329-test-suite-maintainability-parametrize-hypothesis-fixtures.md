@@ -216,7 +216,7 @@ or breaking work:_
   automatically — no runner/config registration step [Agent 2 finding].
 - **No CI workflow exists** (`.github/workflows/` is absent), so there is no
   marker-gating or test-subset config to update for the new `slow` tests [Agent 1 finding].
-- `scripts/little_loops/helpers.py` pattern source (`make_test_fsm`/`make_test_state`)
+- `scripts/tests/helpers.py` pattern source (`make_test_fsm`/`make_test_state`)
   is *not* modified — its ~8 consumer test files (`test_ll_loop_*.py`,
   `test_review_loop.py`, `test_snapshot_loop_layout.py`, …) are unaffected [Agent 1 finding].
 
@@ -329,6 +329,7 @@ _These touchpoints were identified by wiring analysis and must be included:_
 - testing, maintainability
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:07:53 - `9c00279d-038d-48ea-b8a2-3f7902367e8a.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:59:23 - `613d5df7-a8ed-405a-928c-ec037815b530.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:49:17 - `c946e127-c3f4-47cf-9f6e-d8296756e75a.jsonl`

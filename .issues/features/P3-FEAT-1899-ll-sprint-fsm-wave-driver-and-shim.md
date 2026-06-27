@@ -281,6 +281,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - Integration Map has an incorrect path: `scripts/little_loops/parallel_orchestrator.py` should be `scripts/little_loops/parallel/orchestrator.py` (flagged in Verification Notes but not yet corrected — fix before implementation).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:14:00 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:03 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
@@ -301,6 +302,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - `/ll:scope-epic` - 2026-06-03T19:12:39Z - `87e9f36b-36c2-4e9e-a0c8-3a57aa45d1f5.jsonl`
 
 ## Verification Notes
+_Added by `/ll:verify-issues` (2026-06-27):_ The Readiness/Concerns section contains a stale note stating the `parallel_orchestrator.py` path 'has not yet been corrected'. This is wrong — the Integration Map already uses the correct path `scripts/little_loops/parallel/orchestrator.py`, which exists. Ignore that stale note.
 
 - **Path correction needed**: References `scripts/little_loops/parallel_orchestrator.py` (standalone file)
   but `ParallelOrchestrator` is at `scripts/little_loops/parallel/orchestrator.py` (subpackage).

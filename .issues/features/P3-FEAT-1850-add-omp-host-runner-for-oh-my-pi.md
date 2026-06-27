@@ -177,6 +177,7 @@ class OmpRunner:
 
 
 ## Verification Notes
+_Added by `/ll:verify-issues` (2026-06-27):_ Implementation Step 6 (create `hooks/adapters/omp/` adapter) is superseded by FEAT-2261 per the Scope Boundaries note. Do not follow Step 6; implement FEAT-2261 separately.
 
 **Verdict**: VALID — 2026-06-05T21:00:23
 
@@ -186,6 +187,7 @@ class OmpRunner:
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:29:00 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:02 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

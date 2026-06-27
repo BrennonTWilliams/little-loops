@@ -40,14 +40,16 @@ mapping:
 
 ## Current Behavior
 
-`HOST_COMPATIBILITY.md` marks both cells `✗[^runnercap]`; the footnote (added
-by this epic's matrix cleanup) explicitly states the cells are unresearched and
-points here.
+`CodexRunner.describe_capabilities()` (`host_runner.py:590, 607`) already returns
+`"full"` for `permission_skip` and `"partial"` for `tool_allowlist`. The capability
+values are wired; what is missing is the rationale and the doc update:
 
-**Note (2026-06-17)**: `CodexRunner.describe_capabilities()` in `host_runner.py`
-already returns `"full"` for `permission_skip` and `"partial"` for `tool_allowlist`
-(lines 590, 607). The code is ahead of the doc matrix — the research note and
-`HOST_COMPATIBILITY.md` update remain the outstanding deliverables.
+- `HOST_COMPATIBILITY.md` still shows `✗[^runnercap]` for both Codex cells — the
+  matrix has not been updated to match the code.
+- `thoughts/research/codex-runner-capability-gaps.md` does not exist — no written
+  rationale explains why `"full"` / `"partial"` is correct.
+- The `[^runnercap]` footnote still says "unresearched" — it should be replaced with
+  evidence citations once the research note exists.
 
 ## Expected Behavior
 
@@ -110,15 +112,12 @@ Conditional — `describe_capabilities()` return dict may include updated values
 | ENH-2121 | Rich subagent fields incl. `mcp_servers`/`skills.config` |
 
 
-## Verification Notes (2026-06-17)
-
-- `CodexRunner.describe_capabilities()` in `host_runner.py` already returns `"full"` for `permission_skip` and `"partial"` for `tool_allowlist` (lines 590, 607) — the code has progressed beyond what the "Current Behavior" section describes.
-- `HOST_COMPATIBILITY.md` still shows `✗[^runnercap]` for both Codex cells, and `[^runnercap]` still calls them unresearched — the doc matrix and `thoughts/research/codex-runner-capability-gaps.md` remain outstanding deliverables.
-- Update the "Current Behavior" section to reflect the implemented capability values; the research note and doc update are still needed.
-
-2026-06-19 (NEEDS_UPDATE): Confirmed — `describe_capabilities()` still returns `"full"` for `permission_skip` and `"partial"` for `tool_allowlist` (lines 590/607 in host_runner.py) while HOST_COMPATIBILITY.md still shows `✗[^runnercap]` for both Codex cells. Current Behavior section remains stale; `thoughts/research/codex-runner-capability-gaps.md` and doc update still outstanding.
+## Verification Notes
+_Updated by `/ll:verify-issues` (2026-06-27):_ Current Behavior section corrected — `describe_capabilities()` already returns `"full"` / `"partial"` at `host_runner.py:590, 607`; the remaining work is the research rationale (`thoughts/research/codex-runner-capability-gaps.md`) and `HOST_COMPATIBILITY.md` doc update, not the code wiring. Prior notes from 2026-06-17 and 2026-06-19 calling for a body update have been addressed.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:22:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
+- `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:39:25 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`

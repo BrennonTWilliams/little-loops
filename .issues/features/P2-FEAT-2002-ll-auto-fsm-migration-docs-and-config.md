@@ -3,7 +3,7 @@ id: FEAT-2002
 title: Update docs and config for ll-auto FSM migration and AutoManager soft-deprecation
 type: FEAT
 priority: P2
-status: open
+status: blocked
 parent: EPIC-1867
 blocked_by:
 - FEAT-2001
@@ -211,6 +211,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 2026-06-18 (NEEDS_UPDATE): FEAT-2001 is still open (blocked on FEAT-2000; `loops/ll-auto.yaml` doesn't exist). This issue remains correctly blocked; replacement text for the docs remains undetermined. No action needed until FEAT-2001 merges. Wiring-test anchor assertions (`test_wiring_guides_and_meta.py:128`, `test_wiring_reference_docs.py`) verified as still correct for current code state.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:13:12 - `a3378f94-e4e2-4f51-9e6c-9fff5f286332.jsonl`
 - `/ll:refine-issue` - 2026-06-07T18:28:24 - `50077b98-472a-456e-9164-a749267bb4f6.jsonl`
 - `/ll:wire-issue` - 2026-06-07T18:22:57 - `7b81aa2e-d394-4723-837f-0505a69e6a12.jsonl`

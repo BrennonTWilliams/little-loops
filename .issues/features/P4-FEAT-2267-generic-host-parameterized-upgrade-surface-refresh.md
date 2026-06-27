@@ -235,6 +235,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-06-24 | Priority: P4
 
 ## Verification Notes
+_Added by `/ll:verify-issues` (2026-06-27):_ Multiple references to `writers.py:478` (skip-without-force guard) are stale — `scripts/little_loops/init/writers.py` is 472 lines; line 478 does not exist. The actual guard is at ~line 461. Confirm exact line number before implementation.
 
 - **2026-06-26** (/ll:verify-issues): Softened the stale "absolute
   version-stamped marketplace path" premise — `install_codex_adapter`
@@ -247,6 +248,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   kept; still unimplemented.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:27:28 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:wire-issue` - 2026-06-25T18:46:15 - `b48daf6e-e26f-40d4-9aab-ea94d716a199.jsonl`
 - `/ll:refine-issue` - 2026-06-25T18:36:28 - `70f59565-7e94-410d-bf6c-c34dd59cbf9f.jsonl`

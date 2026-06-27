@@ -123,6 +123,7 @@ ll-issues mark-failed <issue-id> --reason <text>
 
 
 ## Verification Notes
+_Added by `/ll:verify-issues` (2026-06-27):_ Prior Verification Notes from 2026-06-17 and 2026-06-19 incorrectly flag `commands/issues.py` as still present in the Implementation Steps — the body already uses the correct `cli/issues/__init__.py` path. Disregard those prior verification-note corrections; the body is accurate.
 
 **Verdict**: VALID — 2026-06-05T21:00:23
 
@@ -139,6 +140,7 @@ ll-issues mark-failed <issue-id> --reason <text>
 2026-06-19 (NEEDS_UPDATE): `verify-work`, `classify-failure`, `complete`, `mark-failed` subcommands still not implemented. `next-issue`/`next-issues` exist in `cli/issues/` but differ from the proposed `ll-issues next --respect-deps` API. Implementation Steps still reference `commands/issues.py` — correct target is `cli/issues/__init__.py`.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:22 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:46 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:14:03 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`

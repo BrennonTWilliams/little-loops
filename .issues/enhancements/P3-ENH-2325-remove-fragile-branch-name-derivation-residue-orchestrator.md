@@ -168,7 +168,12 @@ The feature-branch path through `_handle_worker_result` uses `WorkerResult.branc
 
 `worktree`, `parallel`, `tech-debt`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` (2026-06-27):_ Line numbers in Implementation Step 4 and the wiring note are stale. Current values in `test_orchestrator.py`: `TestOrphanedWorktreeCleanup` starts at line 334 (not 500–597); `TestInspectWorktree` starts at line 926 (not ~839); the assertion `result.branch_name == "parallel/enh-042-20260117-150000"` is at line 951 (not 863). Verify line numbers before implementation.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:55:10 - `613d5df7-a8ed-405a-928c-ec037815b530.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:47:54 - `72d2e412-ebe3-4dd9-98d5-4e6aebd0e9c8.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:42:32 - `e76e1a58-1ba1-4ea1-8434-33e83d6f08d4.jsonl`

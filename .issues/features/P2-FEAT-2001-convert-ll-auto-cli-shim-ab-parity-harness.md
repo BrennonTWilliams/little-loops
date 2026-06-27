@@ -120,7 +120,7 @@ FEAT-2000 must be merged first — this child invokes `ll-loop run ll-auto`, whi
    ```
 
 8. Add deprecation warning at the top of `AutoManager.run()` in
-   `scripts/little_loops/issue_manager.py` (class at L1021, `run()` at L1234):
+   `scripts/little_loops/issue_manager.py` (class at ~L1087, `run()` at ~L1266 — line numbers as of last verification; confirm before use):
    ```python
    warnings.warn(
        "AutoManager.run() is deprecated; use ll-loop run ll-auto instead",
@@ -143,7 +143,7 @@ FEAT-2000 must be merged first — this child invokes `ll-loop run ll-auto`, whi
 
     | Line | Test class / method |
     |------|---------------------|
-    | L2809 | `TestAutoManagerRun.test_run_processes_single_issue` |
+    | L2742 | `TestAutoManagerRun.test_run_processes_single_issue (class at ~L2742; method offsets below are approximate)` |
     | L2843 | `TestAutoManagerRun.test_run_stops_at_max_issues` |
     | L2874 | `TestAutoManagerRun.test_run_with_only_ids_filter` |
     | L2906 | `TestAutoManagerRun.test_run_with_numeric_only_id_filter` |
@@ -352,6 +352,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - **2026-06-26** (/ll:verify-issues): Updated stale line numbers — `AutoManager.run()` body/Files-to-Touch to `issue_manager.py:1234`; the 6 `manager.run()` call-sites in `test_issue_manager.py` to L2809/L2843/L2874/L2906/L2939/L3025; `--context` flag to `cli/loop/__init__.py:236`. Scope/dependency claims (shim unbuilt, blocked on FEAT-2000) unchanged.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:46 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`

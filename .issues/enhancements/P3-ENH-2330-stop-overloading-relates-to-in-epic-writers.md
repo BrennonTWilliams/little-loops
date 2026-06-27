@@ -91,8 +91,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scope-epic` and `link-epics` no longer add children to the EPIC `relates_to:`
   list (or the behavior is reconciled with ARCHITECTURE-065 and documented).
 - Both skills run a post-wiring consistency assertion and surface failures.
-- `skills/tests/test_scope_epic_skill.py` and
-  `skills/tests/test_link_epics_skill.py` updated to reflect the new wiring and
+- `scripts/tests/test_scope_epic_skill.py` and
+  `scripts/tests/test_link_epics_skill.py` updated to reflect the new wiring and
   the validation step.
 
 ## Implementation Steps
@@ -194,5 +194,6 @@ the files actually live under `scripts/tests/…`):
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:10:38 - `e233d8ff-bda5-44d0-b347-301325d49c53.jsonl`
 - `/ll:format-issue` - 2026-06-26T23:01:36 - `6584a8f8-113c-40e2-a4bb-bc7c209c1a03.jsonl`

@@ -27,7 +27,7 @@ score_change_surface: 25
 ## Summary
 
 Write `loops/ll-auto.yaml` as the FSM that defines `ll-auto` control flow, using
-queue-orchestration shape from `loops/autodev.yaml` as a template. Validate the
+queue-orchestration shape from `scripts/little_loops/loops/autodev.yaml` as a template. Validate the
 loop with `ll-loop validate`, `diagnose-evaluators`, and `--baseline` checks.
 
 ## Current Behavior
@@ -71,7 +71,7 @@ the Python implementation.
    that exits 0/1 based on a deterministic condition for testing.
 
 2. Author `loops/ll-auto.yaml` FSM:
-   - Model on `loops/autodev.yaml` queue-orchestration shape
+   - Model on `scripts/little_loops/loops/autodev.yaml` queue-orchestration shape
    - Top-level fields: `initial: init`, `max_iterations: 500`, `timeout: 28800`,
      `on_handoff: spawn`, `import: - lib/common.yaml`
    - States: `init` (count backlog), `dequeue_next` (`fragment: queue_pop` +
@@ -136,7 +136,7 @@ the Python implementation.
 - TBD — use grep to find references: `grep -r "ll-auto" scripts/`
 
 ### Similar Patterns
-- `loops/autodev.yaml` — closest structural template: queue-based orchestration loop
+- `scripts/little_loops/loops/autodev.yaml` — closest structural template: queue-based orchestration loop
 - `loops/rn-refine.yaml` — canonical MR-1 pattern with non-LLM evaluator
 - `scripts/tests/test_rn_plan.py` — template for per-loop YAML tests
 
@@ -171,6 +171,7 @@ the Python implementation.
 - Remaining blocker: FEAT-1901 (`ll-issues next`/`verify-work` subcommands still unimplemented).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-18T02:52:53 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:format-issue` - 2026-06-07T20:58:15 - `cd20bf16-b103-4e35-9958-d8e7c9147ee9.jsonl`
