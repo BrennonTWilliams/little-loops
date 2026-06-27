@@ -21,6 +21,12 @@ labels:
 - issue-management
 - tooling
 - parent-child
+confidence_score: 96
+outcome_confidence: 80
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # FEAT-2332: `ll-issues epic-consistency` — detect & reconcile EPIC drift
@@ -370,6 +376,7 @@ _Added by `/ll:refine-issue` — concrete anchors from codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-26T23:45:00 - `d398aa33-03ed-4b1a-b141-77db75682f71.jsonl`
 - `/ll:decide-issue` - 2026-06-26T23:25:25 - `9638d775-3967-4517-9cef-a97510938e46.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:03:37 - `53786629-d9b8-4f2a-8643-10c3f08458a2.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:53:47 - `912502f5-b03b-4128-acad-4241a97f2415.jsonl`
