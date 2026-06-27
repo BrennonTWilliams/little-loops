@@ -47,7 +47,7 @@ states:
     # newline-delimited queue file, and initialise per-run tracking files.
     # In order=next-action mode input is not required; skip queue setup entirely.
     action: |
-      ORDER="${context.order:-queue}"
+      ORDER="${context.order:default=queue}"
       mkdir -p "${context.run_dir}"
       _init_common() {
         printf '' > ${context.run_dir}/recursive-refine-passed.txt
@@ -67,8 +67,8 @@ states:
       if [ "$ORDER" = "next-action" ]; then
         _init_common
         > ${context.run_dir}/recursive-refine-skipped-depth.txt
-        COMMIT_EVERY="${context.commit_every:-0}"
-        NO_RECURSION="${context.no_recursion:-false}"
+        COMMIT_EVERY="${context.commit_every:default=0}"
+        NO_RECURSION="${context.no_recursion:default=false}"
         echo "Starting next-action mode: commit_every=${COMMIT_EVERY}, no_recursion=${NO_RECURSION}"
       else
         if [ -z "${context.input}" ]; then
@@ -103,7 +103,7 @@ states:
     # the refine-to-ready-issue sub-loop as context.input.
     # Exits 1 (→ aggregate_decomposition) when the queue/backlog is empty.
     action: |
-      ORDER="${context.order:-queue}"
+      ORDER="${context.order:default=queue}"
       DEQUEUED=$(cat ${context.run_dir}/recursive-refine-dequeued-count.txt 2>/dev/null || echo 0)
       PASSED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-passed.txt 2>/dev/null || echo 0)
       SKIPPED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-skipped.txt 2>/dev/null || echo 0)
@@ -272,7 +272,7 @@ states:
     # maybe_commit (preserving commit cadence). Otherwise routes to detect_children
     # for the normal recursive decomposition path.
     action: |
-      NO_RECURSION="${context.no_recursion:-false}"
+      NO_RECURSION="${context.no_recursion:default=false}"
       if [ "$NO_RECURSION" = "true" ]; then
         echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
         exit 0
@@ -288,7 +288,7 @@ states:
     # completions (both pass and no-recursion-skip paths converge here).
     # When commit_every=0 (default) this is a no-op pass-through to dequeue_next.
     action: |
-      COMMIT_EVERY="${context.commit_every:-0}"
+      COMMIT_EVERY="${context.commit_every:default=0}"
       if [ "$COMMIT_EVERY" = "0" ]; then
         echo "SKIP"
         exit 0

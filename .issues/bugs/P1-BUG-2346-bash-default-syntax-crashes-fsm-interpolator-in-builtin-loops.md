@@ -3,9 +3,10 @@ id: BUG-2346
 title: Bash ${var:-default} syntax crashes FSM interpolator across 7 builtin-loop
   sites
 type: BUG
-status: open
+status: done
 priority: P1
 captured_at: '2026-06-27T21:16:24Z'
+completed_at: '2026-06-27T22:24:55Z'
 discovered_date: '2026-06-27'
 discovered_by: capture-issue
 decision_needed: false
@@ -266,6 +267,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 3. Loop terminates in `failed`.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T22:15:47 - `5d9226e6-d661-431a-95de-1ee52b9fa296.jsonl`
 - `/ll:confidence-check` - 2026-06-27T22:00:00Z - `3bc5e776-bac2-4637-b313-116292da1660.jsonl`
 - `/ll:wire-issue` - 2026-06-27T21:45:04 - `c9c37fb9-c085-4081-b3d7-dbe77eaba98e.jsonl`
 - `/ll:refine-issue` - 2026-06-27T21:30:55 - `265ed482-e8e6-4a78-a5cf-d16f10ac38ee.jsonl`

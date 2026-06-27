@@ -238,6 +238,22 @@ class TestInterpolate:
         with pytest.raises(InterpolationError):
             interpolate("MAX_TOTAL=${MAX_TOTAL:-${context.max_refine_count}}", ctx)
 
+    def test_bash_default_operator_raises_interpolation_error(self) -> None:
+        """${context.key:-default} (bash :-) raises InterpolationError. BUG-2346.
+
+        The interpolator resolves 'context.order:-queue' as a literal path; there is
+        no such key, so _get_nested() raises. Use ${context.key:default=val} instead.
+        """
+        ctx = InterpolationContext(context={"order": "queue"})
+        with pytest.raises(InterpolationError):
+            interpolate('ORDER="${context.order:-queue}"', ctx)
+
+    def test_engine_default_is_correct_alternative_to_bash_default(self) -> None:
+        """${context.key:default=val} succeeds where ${context.key:-val} crashes. BUG-2346."""
+        ctx = InterpolationContext(context={})
+        result = interpolate('ORDER="${context.order:default=queue}"', ctx)
+        assert result == 'ORDER="queue"'
+
 
 class TestInterpolateDict:
     """Tests for the interpolate_dict function."""

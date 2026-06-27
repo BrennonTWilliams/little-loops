@@ -236,6 +236,21 @@ class TestBuiltinLoopFiles:
                     "${namespace.path}). Use $${{...}} to pass them through to the shell "
                     "(BUG-1675)."
                 )
+                # Secondary pass: catch ${valid_namespace.path:-default} patterns that
+                # pass the namespace check above but still cause InterpolationError because
+                # the interpolator resolves 'path:-default' as a literal context key.
+                # Use ${context.key:default=val} or $${VAR:-default} instead. BUG-2346.
+                bash_default_pattern = re.compile(
+                    r"(?<!\$)\$\{(?:"
+                    + "|".join(sorted(valid_namespaces))
+                    + r")\.[^}]*:-[^}]*\}"
+                )
+                bad_defaults = bash_default_pattern.findall(action)
+                assert not bad_defaults, (
+                    f"{loop_file.name}/{state_name} contains bash ':-' default operator(s) "
+                    f"{bad_defaults} inside FSM namespace references — raises InterpolationError "
+                    "(BUG-2346). Use ${namespace.key:default=val} or $${VAR:-default} instead."
+                )
 
     def test_all_failure_terminals_have_diagnostic_action(self, builtin_loops: list[Path]) -> None:
         """Loops with a diagnose state must have a diagnostic action before failure terminals.
@@ -4987,6 +5002,22 @@ class TestRlCodingAgentLoop:
         route = state.get("route", {})
         assert route.get("error") == "diagnose", (
             f"score.route.error should be 'diagnose', got {route.get('error')!r}"
+        )
+
+    def test_act_state_uses_no_bash_default_operator(self, data: dict) -> None:
+        """act state action must not contain bash ':-' default operator. BUG-2346.
+
+        rl-coding-agent.yaml line 26 previously used ${context.target_files:-<all changed files>}
+        which raises InterpolationError. The correct form is :default=.
+        """
+        import re
+
+        action = data["states"].get("act", {}).get("action", "")
+        bash_default = re.compile(r"(?<!\$)\$\{[^}]*:-[^}]*\}")
+        matches = bash_default.findall(action)
+        assert not matches, (
+            f"rl-coding-agent act state contains bash ':-' default(s) {matches} — "
+            "use ${context.key:default=val} instead (BUG-2346)."
         )
 
 

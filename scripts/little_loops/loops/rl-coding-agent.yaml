@@ -23,7 +23,7 @@ states:
   # prompt via claude -p, a patch application, etc.
   act:
     action: |
-      echo "Executing coding strategy on: ${context.target_files:-<all changed files>}"
+      echo "Executing coding strategy on: ${context.target_files:default=<all changed files>}"
       # Replace: run your coding action (ll-manage-issue, claude prompt, patch, etc.)
       echo "strategy_applied"
     action_type: shell

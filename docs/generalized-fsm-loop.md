@@ -1127,7 +1127,7 @@ ${env.PATH}
 | **Safe interpolation — `:default=`** | `${namespace.path:default=value}` returns the default string when the path is missing, and the actual value otherwise. Works across all namespaces. |
 | **Safe interpolation — `?`** | `${namespace.path?}` returns empty string when the path is missing, and the actual value otherwise. Shorthand for `:default=` |
 | **Escaping** | Use `$${` for literal `${`; bash parameter expansion operators (`:-`, `:+`, `[@]`, etc.) inside `$${...}` pass through unchanged to the shell |
-| **Bash default values** | `${var:-default}` syntax is resolved by the interpolation engine at runtime — if `var` is defined and non-empty its value is used; if absent or empty, `default` is substituted. Use this for optional context variables. |
+| **Bash default values** | `${context.key:-default}` (bash `:-`) is **not supported** for FSM namespace variables — the interpolator resolves `key:-default` as a literal path and raises `InterpolationError` (BUG-2346). Use `${context.key:default=val}` (engine-native default) or `$${VAR:-default}` (shell pass-through) instead. |
 | **Nesting** | Not supported |
 | **Suffix mutual exclusion** | `:default=` and `?` cannot be combined on the same reference. `:default=` is parsed first, so a `?` inside a default value is literal (e.g., `${captured.x:default=ready?}` → `"ready?"`). |
 
