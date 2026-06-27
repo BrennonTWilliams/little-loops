@@ -4340,6 +4340,7 @@ class FSMLoop:
     artifact_versioning: bool = False     # Declare that this loop versions artifacts per-iteration (satisfies MR-5)
     artifact_versioning_ok: bool = False  # Suppress MR-5 artifact-versioning lint rule (ENH-1957)
     generator_fix_ok: bool = False        # Suppress MR-6 generator-fix discipline lint rule (ENH-2079)
+    bash_default_ok: bool = False         # Suppress MR-7 bash-default interpolation lint rule (ENH-2348)
     imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
 
@@ -4988,6 +4989,7 @@ Validate FSM structure and return list of errors.
 - **MR-4 (WARNING)**: LLM-judged state maps `on_yes` but has no route for `no`/`partial` verdicts with no `next:` or `route:` table — dead-ends the loop; suppress with `partial_route_ok: true` (ENH-1917)
 - **MR-5 (WARNING)**: harness-category loop writes artifact files to a flat path in an iterative generate→evaluate→generate cycle — only the final iteration's output survives; add per-iteration snapshots and declare `artifact_versioning: true`, or set `artifact_versioning_ok: true` to suppress when intentional overwrite is desired (ENH-1957)
 - **MR-6 (WARNING)**: meta-loop has a `shell`-type state that writes to the same file path as an LLM-generator state — hand-patching creates fragile output that diverges from the generator on the next run; fix the generator action so every run produces correct output automatically, or set `generator_fix_ok: true` for intentional post-processing (ENH-2079)
+- **MR-7 (ERROR)**: any FSM action string contains an unescaped `${namespace.path:-default}` (bash `:-` default syntax) — the interpolation engine crashes at runtime; use `${ns.path:default=value}` (engine-native) or `$${VAR:-value}` (shell-escaped), or set `bash_default_ok: true` to suppress (ENH-2348)
 
 **Example:**
 ```python

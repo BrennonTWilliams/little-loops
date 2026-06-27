@@ -105,6 +105,11 @@ _META_LOOP_IMPORT_TRIGGERS: frozenset[str] = frozenset({"lib/benchmark.yaml"})
 # cause state corruption under concurrent runs (ll-parallel, retries, etc.).
 _SHARED_TMP_PATH_RE = re.compile(r"\.loops/tmp/[\w./-]+")
 
+# MR-7: bash-default interpolation detector. Matches ${namespace.path:-default}
+# (unescaped bash `:- ` default form) that the FSM interpolator does not support.
+# Negative lookbehind exempts the legitimate escaped form $${VAR:-value}.
+_BASH_DEFAULT_RE = re.compile(r"(?<!\$)\$\{[^}]*:-[^}]*\}")
+
 # ENH-1961: Regex for extracting captured variable names from ${captured.<var>.*} references
 _CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")
 
@@ -181,6 +186,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "artifact_versioning",
         "artifact_versioning_ok",
         "generator_fix_ok",
+        "bash_default_ok",
         "import",
         "fragments",
         "from",
@@ -1080,6 +1086,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_generator_fix_discipline(fsm))
 
+    errors.extend(_validate_bash_default_interpolation(fsm))
+
     errors.extend(_validate_classify_route_default(fsm))
 
     errors.extend(_validate_zero_retry_counter(fsm))
@@ -1596,6 +1604,57 @@ def _validate_generator_fix_discipline(fsm: FSMLoop) -> list[ValidationError]:
                     )
                 )
 
+    return errors
+
+
+def _find_bash_default_tokens(fsm: FSMLoop) -> list[tuple[str, str]]:
+    """Return (state_name, matched_token) for every action with unescaped ${ns.path:-...}.
+
+    Scans ``state.action`` only. The escaped form ``$${VAR:-value}`` is exempted by
+    the negative lookbehind in ``_BASH_DEFAULT_RE``; the engine-native ``:default=``
+    form does not contain ``:-`` and is therefore never matched.
+    """
+    findings: list[tuple[str, str]] = []
+    for state_name, state in fsm.states.items():
+        if not state.action:
+            continue
+        for match in _BASH_DEFAULT_RE.finditer(state.action):
+            findings.append((state_name, match.group(0)))
+    return findings
+
+
+def _validate_bash_default_interpolation(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-7 (ENH-2348): unescaped bash :-default interpolation.
+
+    The FSM interpolation engine supports ``${namespace.path:default=value}`` for
+    author-specified defaults, but does NOT support the bash parameter-expansion form
+    ``${namespace.path:-value}``. Any loop action that uses the bash form will crash
+    at runtime with ``Path 'ns.path:-value' not found in context``.
+
+    Supported alternatives:
+      - ``${context.x:default=queue}``  — engine-native default (always preferred)
+      - ``$${VAR:-value}``              — escaped, passed to the shell verbatim
+
+    Suppressed by ``bash_default_ok: true`` at the loop top-level for the rare case
+    where an author can justify the unsupported form.
+    """
+    if fsm.bash_default_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, token in _find_bash_default_tokens(fsm):
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] {token} uses unsupported bash ':-' default. "
+                    "The FSM interpolator will crash at runtime with 'Path not found in context'. "
+                    f"Use {token.split(':-')[0]}:default={token.split(':-')[1].rstrip('}')}}}"
+                    " (engine default) or $${{VAR:-value}} (shell, escaped). "
+                    "Set `bash_default_ok: true` to suppress. (ENH-2348)"
+                ),
+                path=f"states.{state_name}.action",
+                severity=ValidationSeverity.ERROR,
+            )
+        )
     return errors
 
 

@@ -2,9 +2,10 @@
 id: ENH-2348
 title: Add ll-loop validate lint for unescaped ${ns.path:-default} bash-default interpolation
 type: ENH
-status: open
+status: done
 priority: P2
 captured_at: '2026-06-27T21:16:24Z'
+completed_at: '2026-06-27T22:53:55Z'
 discovered_date: '2026-06-27'
 discovered_by: capture-issue
 labels:
@@ -195,7 +196,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Low — additive lint rule only; no changes to FSM runtime behavior
 - **Breaking Change**: No
 
+## Resolution
+
+Added MR-7 lint rule (`_validate_bash_default_interpolation`) to `scripts/little_loops/fsm/validation.py` following the established two-part scanner+rule pattern. The rule detects unescaped `${namespace.path:-default}` bash parameter-expansion syntax in FSM action strings, which the interpolation engine does not support and crashes on at runtime. Also added `bash_default_ok: bool = False` suppress flag to `FSMLoop` in `schema.py` and registered it in `KNOWN_TOP_LEVEL_KEYS`. Documentation updated in CLAUDE.md (Loop Authoring), HARNESS_OPTIMIZATION_GUIDE.md, CLI.md, API.md, and skills/review-loop/reference.md. 9 new tests added (6 validation, 3 schema round-trip).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-27T22:53:55Z - implementation complete
+- `/ll:ready-issue` - 2026-06-27T22:38:57 - `6505e395-5729-410b-bc59-81e300d69e46.jsonl`
 - `/ll:confidence-check` - 2026-06-27T22:00:00 - `5f815bfb-e7ec-4c41-8d88-81417a5bf1fe.jsonl`
 - `/ll:wire-issue` - 2026-06-27T21:45:57 - `0aa50755-d2cd-4dbe-a456-f77a9a6fedf8.jsonl`
 - `/ll:refine-issue` - 2026-06-27T21:31:57 - `a4e8f246-4b58-4fda-8b36-7c2676ca8027.jsonl`

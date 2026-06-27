@@ -3502,6 +3502,44 @@ class TestGeneratorFixOk:
         assert fsm.generator_fix_ok is False
 
 
+class TestBashDefaultOk:
+    """MR-7 (ENH-2348): bash_default_ok field round-trip serialization."""
+
+    def test_bash_default_ok_true_round_trips(self) -> None:
+        """bash_default_ok=True is present in to_dict() and restored by from_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            bash_default_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("bash_default_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.bash_default_ok is True
+
+    def test_bash_default_ok_false_omitted_from_dict(self) -> None:
+        """bash_default_ok=False (default) is omitted from to_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "bash_default_ok" not in d
+
+    def test_bash_default_ok_defaults_false(self) -> None:
+        """FSMLoop.from_dict() without bash_default_ok defaults to False."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+            }
+        )
+        assert fsm.bash_default_ok is False
+
+
 class TestFSMLoopMaxStepsAndIterations:
     """Tests for BUG-2204: max_steps (step cap) and max_iterations (full-pass cap)."""
 

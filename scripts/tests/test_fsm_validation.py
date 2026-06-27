@@ -25,6 +25,7 @@ from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_artifact_isolation,
     _validate_artifact_overwrite,
+    _validate_bash_default_interpolation,
     _validate_capture_reachability,
     _validate_classify_route_default,
     _validate_evaluator,
@@ -3069,6 +3070,78 @@ class TestGeneratorFixDiscipline:
             if e.severity == ValidationSeverity.WARNING and "ENH-2079" in e.message
         ]
         assert len(mr6) == 1
+
+
+class TestBashDefaultInterpolation:
+    """MR-7 (ENH-2348): unescaped ${ns.path:-default} bash-default interpolation lint."""
+
+    def _simple_fsm(self, action: str, *, bash_default_ok: bool = False) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(action=action, on_yes="done", on_no="work"),
+                "done": make_state(terminal=True),
+            },
+            bash_default_ok=bash_default_ok,
+        )
+
+    def test_mr7_fires_for_unescaped_bash_default(self) -> None:
+        """MR-7 ERROR fires when an action contains ${ns.path:-default}."""
+        fsm = self._simple_fsm("echo ${context.order:-queue}")
+        errors = _validate_bash_default_interpolation(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.ERROR
+        assert "${context.order:-queue}" in errors[0].message
+        assert errors[0].path == "states.work.action"
+
+    def test_mr7_does_not_fire_for_engine_default(self) -> None:
+        """MR-7 does not fire for ${ns.path:default=value} (engine-native form)."""
+        fsm = self._simple_fsm("echo ${context.order:default=queue}")
+        errors = _validate_bash_default_interpolation(fsm)
+        assert errors == []
+
+    def test_mr7_does_not_fire_for_escaped_bash_default(self) -> None:
+        """MR-7 does not fire for $${VAR:-value} (escaped, handled by shell)."""
+        fsm = self._simple_fsm("echo $${DEPTH:-0}")
+        errors = _validate_bash_default_interpolation(fsm)
+        assert errors == []
+
+    def test_mr7_suppressed_by_bash_default_ok(self) -> None:
+        """bash_default_ok: true suppresses MR-7."""
+        fsm = self._simple_fsm("echo ${context.order:-queue}", bash_default_ok=True)
+        errors = _validate_bash_default_interpolation(fsm)
+        assert errors == []
+
+    def test_mr7_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes MR-7 errors for bash-default interpolation."""
+        fsm = self._simple_fsm("echo ${context.order:-queue}")
+        errors = validate_fsm(fsm)
+        mr7 = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.ERROR and "ENH-2348" in e.message
+        ]
+        assert len(mr7) == 1
+
+    def test_bash_default_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level bash_default_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that intentionally uses bash default syntax\n"
+            "initial: work\n"
+            "bash_default_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
 
 
 class TestClassifyRouteDefault:

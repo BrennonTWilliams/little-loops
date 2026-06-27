@@ -164,6 +164,15 @@ next run; the stable fix is to update the generator action so every subsequent
 run produces correct output automatically. Set `generator_fix_ok: true` to
 suppress for intentional post-processing cases. See ENH-2079.
 
+`ll-loop validate` enforces rule 7 as ERROR severity (rule MR-7). Any FSM
+action string containing an unescaped `${namespace.path:-default}` (bash
+parameter-expansion default syntax) is flagged. The FSM interpolation engine
+does not support this form and will crash at runtime with
+`Path 'ns.path:-default' not found in context`. Use
+`${namespace.path:default=value}` (engine-native) or `$${VAR:-value}`
+(escaped, handled by the shell) instead. Set `bash_default_ok: true` to
+suppress. See ENH-2348.
+
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.
@@ -271,9 +280,9 @@ and
 
 ## Automation: Scratch Pad
 
-When running in automation contexts (ll-auto, ll-parallel, ll-sprint), use scratch pad files to keep large tool outputs out of conversation context:
+When running in automation contexts (ll-auto, ll-parallel, ll-sprint), use scratch pad files to keep large **command output** out of conversation context:
 
-- **Before reading a file**, check its size: `wc -l <path>`. If > 200 lines, use `Bash "mkdir -p .loops/tmp/scratch/ && cat <path> > .loops/tmp/scratch/<descriptive-name>.txt && echo 'Saved N lines to .loops/tmp/scratch/<descriptive-name>.txt'"` instead of the Read tool.
-- **For test/lint runs**, pipe output to scratch and tail the summary: `Bash "python -m pytest ... > .loops/tmp/scratch/test-results.txt 2>&1; tail -20 .loops/tmp/scratch/test-results.txt"`.
-- **Reference scratch paths** when reasoning about file contents. Use `Read` on the scratch file only when you need specific content later.
-- Small outputs (< 200 lines) should still be inlined normally.
+- **For test/lint runs and other large command output**, pipe to scratch and tail the summary: `Bash "python -m pytest ... > .loops/tmp/scratch/test-results.txt 2>&1; tail -20 .loops/tmp/scratch/test-results.txt"`. Bash output is uncapped, so this is the real source of context bloat. The `scratch-pad-redirect` hook does this automatically for allowlisted commands.
+- **To read a file**, use the `Read` tool — including large files. Read is self-capping (defaults to 2000 lines; use `offset`/`limit` to page). Do NOT `cat` a file to scratch as a substitute for reading it: that strips the content you need and leaves the file edit-locked because `Edit`/`Write` require a prior successful `Read` (BUG-2357).
+- **Reference scratch paths** when reasoning about command output. Use `Read` on the scratch file when you need specific lines later.
+- Small command output (< 200 lines) should still be inlined normally.
