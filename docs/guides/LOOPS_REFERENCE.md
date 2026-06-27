@@ -705,7 +705,7 @@ Pass `--context max_eval_retries=0` to skip the `eval_gate` retry cycle and redu
 
 ### `sprint-build-and-validate` — Automated Sprint Creation and Validation
 
-**Technique**: Selects up to `max_issues` open/active issues (P0–P1 first, then issues with no blocking dependencies), creates a sprint definition via `/ll:create-sprint --auto`, recursively refines all issues to confidence threshold, runs dependency mapping and conflict auditing, commits the validated sprint, executes it via `ll-sprint run`, and — on non-zero exit — reads `.sprint-state.json` to feed blocked/failed issues into `recursive-refine` for recovery.
+**Technique**: Selects up to `max_issues` open/active issues (P0–P1 first, then issues with no blocking dependencies), creates a sprint definition via `/ll:create-sprint --auto`, recursively refines all issues to confidence threshold, runs dependency mapping and conflict auditing, commits the validated sprint, executes it via `ll-sprint run`. A clean exit (0) routes to `done`; a non-zero exit reads `.sprint-state.json` to feed blocked/failed issues into `recursive-refine` for recovery; a crash/kill (no state file) routes to `sprint_failed`. Failed refinement sub-loops route to distinct failure terminals (`refine_failed`, `refine_unresolved_failed`) so downstream automation can distinguish the failure mode.
 
 **When to use**: When you want to go from a backlog to a running sprint in one automated pass, with dependency and conflict checks baked in. Pass an existing sprint name to skip creation and go straight to refinement. Prefer `ll-sprint run` directly if you already have a sprint defined, refined, and validated.
 
@@ -731,15 +731,22 @@ ll-loop run sprint-build-and-validate --context max_issues=5
 **FSM flow:**
 ```
 route_input → [sprint_name provided?]
-  ├─ YES (name given, file found) → extract_sprint_issues → refine_issues → map_dependencies → …
+  ├─ YES (name given, file found) → extract_sprint_issues → refine_issues → [child result?]
+  │                                   ├─ success → map_dependencies → …
+  │                                   └─ failure/error → refine_failed  (terminal)
   ├─ NO  (no name given)         → create_sprint → route_create → [sprint exists?]
   │                                   ├─ YES → extract_sprint_issues → refine_issues
   │                                   │           → map_dependencies → audit_conflicts
   │                                   │           → commit → run_sprint → [exit code?]
-  │                                   │                       ├─ 0 (clean) → done
-  │                                   │                       └─ non-zero  → extract_unresolved → refine_unresolved → done
+  │                                   │                       ├─ 0 (clean)   → done  (terminal)
+  │                                   │                       ├─ non-zero    → extract_unresolved → [state file?]
+  │                                   │                       │                   ├─ has failed issues → refine_unresolved → [child result?]
+  │                                   │                       │                   │                       ├─ success → done  (terminal)
+  │                                   │                       │                   │                       └─ failure/error → refine_unresolved_failed  (terminal)
+  │                                   │                       │                   └─ no file / no issues → sprint_failed  (terminal)
+  │                                   │                       └─ error (crash) → sprint_failed  (terminal)
   │                                   └─ NO  → create_sprint (retry)
-  └─ ERROR (name given, file missing) → failed
+  └─ ERROR (name given, file missing) → failed  (terminal)
 ```
 
 **State timeouts:**
@@ -747,19 +754,22 @@ route_input → [sprint_name provided?]
 | State | Timeout | Notes |
 |-------|---------|-------|
 | `route_input` | — | Shell routing: if `sprint_name` is set, validates `.sprints/<name>.yaml` and jumps to `extract_sprint_issues`; if empty, routes to `create_sprint`; file-not-found routes to `failed` |
-| `failed` | — | Terminal state; reached when a named sprint file does not exist |
+| `failed` | — | **Terminal** — named sprint file does not exist |
 | `create_sprint` | 300s | Headless `/ll:create-sprint --auto`; captures sprint name |
 | `route_create` | — | Shell check: `ll-sprint list \| grep -q .`; retries if no sprint found; routes to `extract_sprint_issues` on success |
-| `extract_sprint_issues` | 30s | Reads sprint YAML and emits comma-separated issue IDs; routes to `refine_issues` if issues found |
-| `refine_issues` | — | Delegates to `recursive-refine` sub-loop via `context_passthrough: true` |
+| `extract_sprint_issues` | 30s | Reads sprint YAML and emits comma-separated issue IDs; routes to `refine_issues` if issues found, `map_dependencies` if empty |
+| `refine_issues` | — | Delegates to `recursive-refine` sub-loop via `context_passthrough: true`; `on_success` → `map_dependencies`; `on_failure`/`on_error` → `refine_failed` |
+| `refine_failed` | — | **Terminal** — `recursive-refine` child exited via its `failed` terminal or crashed before refinement completed |
 | `map_dependencies` | 300s | `/ll:map-dependencies --auto` grouped across all sprint issues |
 | `audit_conflicts` | 300s | `/ll:audit-issue-conflicts --auto` grouped across all sprint issues |
 | `commit` | 120s | `/ll:commit --auto` with standard sprint commit message |
-| `run_sprint` | 21600s (6h) | `ll-sprint run <name>` — parallelized wave execution; routes on exit code |
-| `extract_unresolved` | 30s | Reads `.sprint-state.json`; merges `failed_issues` + `skipped_blocked_issues`; emits comma-separated IDs |
-| `refine_unresolved` | — | Delegates to `recursive-refine` sub-loop via `context_passthrough: true` |
+| `run_sprint` | 21600s (6h) | `ll-sprint run <name>` — parallelized wave execution; `on_yes` (exit 0) → `done`; `on_no` (non-zero) → `extract_unresolved`; `on_error` (crash/kill) → `sprint_failed` |
+| `extract_unresolved` | 30s | Reads `.sprint-state.json`; merges `failed_issues` + `skipped_blocked_issues`; emits comma-separated IDs; `on_no`/`on_error` (no state file or no failed issues) → `sprint_failed` |
+| `sprint_failed` | — | **Terminal** — sprint crashed before writing `.sprint-state.json`, or state file was absent/unreadable |
+| `refine_unresolved` | — | Delegates to `recursive-refine` sub-loop via `context_passthrough: true`; `on_yes` → `done`; `on_no`/`on_error` → `refine_unresolved_failed` |
+| `refine_unresolved_failed` | — | **Terminal** — recovery refinement of blocked/failed issues itself failed or crashed |
 
-**Notes**: The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_steps: 16`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase. Clean sprint exits (exit 0) route directly to `done`; non-zero exits trigger the `extract_unresolved` → `refine_unresolved` recovery path.
+**Notes**: The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_steps: 16`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase. Clean sprint exits (exit 0) route directly to `done`. Non-zero exits (partial failures) route through `extract_unresolved` → `refine_unresolved` for recovery; only the success outcome of that chain reaches `done`. Crash/kill exits (no `.sprint-state.json`) terminate at `sprint_failed`. A failed `recursive-refine` child during initial refinement terminates at `refine_failed`; a failed recovery refinement terminates at `refine_unresolved_failed`. All three failure terminals are distinct, so downstream automation can distinguish "sprint never ran" from "sprint ran but recovery refinement failed".
 
 ### `sprint-refine-and-implement` — Sprint-Scoped Refine-and-Implement Loop
 

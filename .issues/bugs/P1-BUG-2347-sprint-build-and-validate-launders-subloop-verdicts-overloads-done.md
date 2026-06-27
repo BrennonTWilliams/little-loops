@@ -3,9 +3,10 @@ id: BUG-2347
 title: sprint-build-and-validate launders sub-loop verdicts and overloads 'done' with
   sprint-never-ran
 type: BUG
-status: open
+status: done
 priority: P1
 captured_at: '2026-06-27T21:16:24Z'
+completed_at: '2026-06-27T22:36:28Z'
 discovered_date: '2026-06-27'
 discovered_by: capture-issue
 labels:
@@ -117,7 +118,7 @@ The parent distinguishes "refine succeeded", "refine failed", "sprint executed",
 - `scripts/little_loops/fsm/schema.py` — `StateConfig.from_dict()` (lines 589–590): `on_success` maps to `on_yes`, `on_failure` maps to `on_no` — either YAML form is valid in the fix
 - `scripts/little_loops/fsm/validation.py` — `_validate_partial_route_dead_end()` (line 1398): MR-4 does NOT catch sub-loop laundering (only flags `prompt`/`slash_command` states); the fix is correct by construction, not by MR-4 enforcement
 - `scripts/little_loops/cli/sprint/run.py` — `_save_sprint_state()` (line 145): writes `.sprint-state.json` in `finally` block when `exit_code != 0`; `_cleanup_sprint_state()` (line 156): deletes it on success
-- `scripts/little_loops/loops/recursive-refine.yaml` — child loop terminal states: `done` (line 909), `failed` (line 925)
+- `scripts/little_loops/loops/recursive-refine.yaml` — child loop terminal states: `done` (line 761), `failed` (line 925)
 
 ### Similar Patterns (Model)
 - `scripts/little_loops/loops/proof-first-task.yaml` — canonical model: bare `impl_failed: terminal: true`, `on_failure: impl_failed`, `on_error: impl_failed`
@@ -133,17 +134,17 @@ _Wiring pass added by `/ll:wire-issue`:_
   - **Notes paragraph** (line ~762): says "non-zero exits trigger the `extract_unresolved → refine_unresolved` recovery path" — must be rewritten to reflect that non-zero exits route to `sprint_failed`
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — `TestSprintBuildAndValidateLoop` class (line 3138+): add new test cases for failure routing here
+- `scripts/tests/test_builtin_loops.py` — `TestSprintBuildAndValidateLoop` class (line 3152+): add new test cases for failure routing here
 - `scripts/tests/fixtures/fsm/assess-subloop-laundering.yaml` — existing fixture demonstrating the laundering anti-pattern; useful reference for mock child loop setup
 
 _Wiring pass added by `/ll:wire-issue`:_
 
 **Tests to UPDATE** (will fail after the fix is applied):
-- `TestSprintBuildAndValidateLoop.test_extract_unresolved_on_no_routes_to_done` (line 3248) — currently asserts `on_no == "done"`; fix routes to `sprint_failed`
-- `TestSprintBuildAndValidateLoop.test_required_states_exist` (line 3153) — `required` set must include `sprint_failed`, `refine_failed`, `refine_unresolved_failed`
-- `TestSprintBuildAndValidateLoop.test_run_sprint_on_no_routes_to_extract_unresolved` (line 3227) — breaks only if `run_sprint.on_no` is rerouted directly to `sprint_failed` rather than kept via `extract_unresolved`
+- `TestSprintBuildAndValidateLoop.test_extract_unresolved_on_no_routes_to_done` (line 3263) — currently asserts `on_no == "done"`; fix routes to `sprint_failed`
+- `TestSprintBuildAndValidateLoop.test_required_states_exist` (line 3168) — `required` set must include `sprint_failed`, `refine_failed`, `refine_unresolved_failed`
+- `TestSprintBuildAndValidateLoop.test_run_sprint_on_no_routes_to_extract_unresolved` (line 3242) — breaks only if `run_sprint.on_no` is rerouted directly to `sprint_failed` rather than kept via `extract_unresolved`
 
-**New tests to write** (add to `TestSprintBuildAndValidateLoop`, following the `test_refine_current_has_success_and_failure_routes` pattern at `TestAutoRefineAndImplementLoop` line 1910):
+**New tests to write** (add to `TestSprintBuildAndValidateLoop`, following the `test_refine_current_has_success_and_failure_routes` pattern at `TestAutoRefineAndImplementLoop` line 1925):
 - `test_refine_failed_is_terminal` — new terminal
 - `test_sprint_failed_is_terminal` — new terminal
 - `test_refine_unresolved_failed_is_terminal` — new terminal
@@ -175,7 +176,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-5. Update `scripts/tests/test_builtin_loops.py` — **update** `test_required_states_exist` (line 3153, add new terminal names) and `test_extract_unresolved_on_no_routes_to_done` (line 3248, update assertion from `"done"` to `"sprint_failed"`); possibly update `test_run_sprint_on_no_routes_to_extract_unresolved` (line 3227) depending on implementation choice
+5. Update `scripts/tests/test_builtin_loops.py` — **update** `test_required_states_exist` (line 3153, add new terminal names) and `test_extract_unresolved_on_no_routes_to_done` (line 3248, update assertion from `"done"` to `"sprint_failed"`); possibly update `test_run_sprint_on_no_routes_to_extract_unresolved` (line 3242) depending on implementation choice
 6. Add 13 new tests to `TestSprintBuildAndValidateLoop` in `scripts/tests/test_builtin_loops.py` — covering all three new terminals (`refine_failed`, `sprint_failed`, `refine_unresolved_failed`) and anti-laundering guards for `refine_issues` and `refine_unresolved`; follow the pattern at `TestAutoRefineAndImplementLoop.test_refine_current_has_success_and_failure_routes` (line 1910)
 7. Update `docs/guides/LOOPS_REFERENCE.md` — revise the FSM flow diagram, state table rows, and Notes paragraph in the "sprint-build-and-validate" section to reflect the three new failure-terminal leaf nodes
 
@@ -212,6 +213,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   rather than failing fast. Address here or defer.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T22:29:06 - `3e726591-b394-4d11-aff2-034d40955d6f.jsonl`
 - `/ll:wire-issue` - 2026-06-27T21:47:08 - `4d80612c-9583-4d35-b849-8fb7bf4115f4.jsonl`
 - `/ll:refine-issue` - 2026-06-27T21:30:26 - `896cb5bd-4f64-4827-8a19-5f35ee7764e8.jsonl`
 - `/ll:format-issue` - 2026-06-27T21:21:38 - `fb662259-f1c0-459f-aa52-a7924d973eb2.jsonl`

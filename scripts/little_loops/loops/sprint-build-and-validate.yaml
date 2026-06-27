@@ -79,8 +79,8 @@ states:
     loop: recursive-refine
     context_passthrough: true
     on_success: map_dependencies
-    on_failure: map_dependencies
-    on_error: map_dependencies
+    on_failure: refine_failed
+    on_error: refine_failed
 
   map_dependencies:
     action_type: prompt
@@ -114,7 +114,7 @@ states:
     timeout: 21600
     on_yes: done
     on_no: extract_unresolved
-    on_error: extract_unresolved
+    on_error: sprint_failed
 
   extract_unresolved:
     action: |
@@ -130,15 +130,24 @@ states:
     timeout: 30
     capture: input
     on_yes: refine_unresolved
-    on_no: done
-    on_error: done
+    on_no: sprint_failed
+    on_error: sprint_failed
 
   refine_unresolved:
     loop: recursive-refine
     context_passthrough: true
     on_yes: done
-    on_no: done
-    on_error: done
+    on_no: refine_unresolved_failed
+    on_error: refine_unresolved_failed
+
+  refine_failed:
+    terminal: true
+
+  sprint_failed:
+    terminal: true
+
+  refine_unresolved_failed:
+    terminal: true
 
   done:
     terminal: true

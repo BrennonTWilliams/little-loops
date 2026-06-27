@@ -3180,6 +3180,9 @@ class TestSprintBuildAndValidateLoop:
             "run_sprint",
             "extract_unresolved",
             "refine_unresolved",
+            "refine_failed",
+            "sprint_failed",
+            "refine_unresolved_failed",
             "done",
         }
         actual = set(data["states"].keys())
@@ -3260,11 +3263,11 @@ class TestSprintBuildAndValidateLoop:
             f"extract_unresolved.on_yes should be 'refine_unresolved', got {state.get('on_yes')!r}"
         )
 
-    def test_extract_unresolved_on_no_routes_to_done(self, data: dict) -> None:
-        """extract_unresolved.on_no (no unresolved issues) must route to done."""
+    def test_extract_unresolved_on_no_routes_to_sprint_failed(self, data: dict) -> None:
+        """extract_unresolved.on_no (no state file or no failed issues) must route to sprint_failed."""
         state = data["states"].get("extract_unresolved", {})
-        assert state.get("on_no") == "done", (
-            f"extract_unresolved.on_no should be 'done', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "sprint_failed", (
+            f"extract_unresolved.on_no should be 'sprint_failed', got {state.get('on_no')!r}"
         )
 
     def test_refine_unresolved_delegates_to_recursive_refine(self, data: dict) -> None:
@@ -3285,6 +3288,99 @@ class TestSprintBuildAndValidateLoop:
         """done state must have terminal: true."""
         done_state = data["states"].get("done", {})
         assert done_state.get("terminal") is True
+
+    def test_refine_failed_is_terminal(self, data: dict) -> None:
+        """refine_failed must be a terminal state."""
+        state = data["states"].get("refine_failed", {})
+        assert state.get("terminal") is True, "refine_failed must have terminal: true"
+
+    def test_sprint_failed_is_terminal(self, data: dict) -> None:
+        """sprint_failed must be a terminal state."""
+        state = data["states"].get("sprint_failed", {})
+        assert state.get("terminal") is True, "sprint_failed must have terminal: true"
+
+    def test_refine_unresolved_failed_is_terminal(self, data: dict) -> None:
+        """refine_unresolved_failed must be a terminal state."""
+        state = data["states"].get("refine_unresolved_failed", {})
+        assert state.get("terminal") is True, "refine_unresolved_failed must have terminal: true"
+
+    def test_refine_issues_on_success_routes_to_map_dependencies(self, data: dict) -> None:
+        """refine_issues.on_success (child loop done) must still route to map_dependencies."""
+        state = data["states"].get("refine_issues", {})
+        success = state.get("on_success") or state.get("on_yes")
+        assert success == "map_dependencies", (
+            f"refine_issues.on_success should be 'map_dependencies', got {success!r}"
+        )
+
+    def test_refine_issues_on_failure_routes_to_refine_failed(self, data: dict) -> None:
+        """refine_issues.on_failure (child loop failed terminal) must route to refine_failed."""
+        state = data["states"].get("refine_issues", {})
+        failure = state.get("on_failure") or state.get("on_no")
+        assert failure == "refine_failed", (
+            f"refine_issues.on_failure should be 'refine_failed', got {failure!r}"
+        )
+
+    def test_refine_issues_on_error_routes_to_refine_failed(self, data: dict) -> None:
+        """refine_issues.on_error (child loop crash) must route to refine_failed."""
+        state = data["states"].get("refine_issues", {})
+        assert state.get("on_error") == "refine_failed", (
+            f"refine_issues.on_error should be 'refine_failed', got {state.get('on_error')!r}"
+        )
+
+    def test_refine_issues_success_and_failure_differ(self, data: dict) -> None:
+        """refine_issues success and failure routes must be distinct (anti-laundering guard)."""
+        state = data["states"].get("refine_issues", {})
+        success = state.get("on_success") or state.get("on_yes")
+        failure = state.get("on_failure") or state.get("on_no")
+        assert success != failure, (
+            f"refine_issues launders verdict: on_success and on_failure both map to {success!r}"
+        )
+
+    def test_run_sprint_on_error_routes_to_sprint_failed(self, data: dict) -> None:
+        """run_sprint.on_error (crash/killed, no sprint-state.json) must route to sprint_failed."""
+        state = data["states"].get("run_sprint", {})
+        assert state.get("on_error") == "sprint_failed", (
+            f"run_sprint.on_error should be 'sprint_failed', got {state.get('on_error')!r}"
+        )
+
+    def test_extract_unresolved_on_error_routes_to_sprint_failed(self, data: dict) -> None:
+        """extract_unresolved.on_error must route to sprint_failed."""
+        state = data["states"].get("extract_unresolved", {})
+        assert state.get("on_error") == "sprint_failed", (
+            f"extract_unresolved.on_error should be 'sprint_failed', got {state.get('on_error')!r}"
+        )
+
+    def test_refine_unresolved_on_success_routes_to_done(self, data: dict) -> None:
+        """refine_unresolved.on_yes (child loop done) must route to done."""
+        state = data["states"].get("refine_unresolved", {})
+        success = state.get("on_success") or state.get("on_yes")
+        assert success == "done", (
+            f"refine_unresolved.on_yes should be 'done', got {success!r}"
+        )
+
+    def test_refine_unresolved_on_failure_routes_to_refine_unresolved_failed(self, data: dict) -> None:
+        """refine_unresolved.on_no (child failed terminal) must route to refine_unresolved_failed."""
+        state = data["states"].get("refine_unresolved", {})
+        failure = state.get("on_failure") or state.get("on_no")
+        assert failure == "refine_unresolved_failed", (
+            f"refine_unresolved.on_no should be 'refine_unresolved_failed', got {failure!r}"
+        )
+
+    def test_refine_unresolved_on_error_routes_to_refine_unresolved_failed(self, data: dict) -> None:
+        """refine_unresolved.on_error (child crash) must route to refine_unresolved_failed."""
+        state = data["states"].get("refine_unresolved", {})
+        assert state.get("on_error") == "refine_unresolved_failed", (
+            f"refine_unresolved.on_error should be 'refine_unresolved_failed', got {state.get('on_error')!r}"
+        )
+
+    def test_refine_unresolved_success_and_failure_differ(self, data: dict) -> None:
+        """refine_unresolved success and failure routes must be distinct (anti-laundering guard)."""
+        state = data["states"].get("refine_unresolved", {})
+        success = state.get("on_success") or state.get("on_yes")
+        failure = state.get("on_failure") or state.get("on_no")
+        assert success != failure, (
+            f"refine_unresolved launders verdict: on_yes and on_no both map to {success!r}"
+        )
 
 
 class TestHtmlWebsiteGeneratorLoop:
