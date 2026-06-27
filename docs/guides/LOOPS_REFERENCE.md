@@ -193,8 +193,9 @@ ll-loop run integrate-sdk --context target="anthropic" --context goal="streaming
 | `deep-research-arxiv` | Arxiv-only variant of `deep-research` (`from: deep-research` stub, ENH-2161) — overrides `source_filter=site:arxiv.org` and `academic_mode=true`; inherits the full research FSM. Scores sources on relevance + recency (derived from arxiv submission date) instead of credibility, and emits an arxiv-ID-keyed sources table plus a `## BibTeX` section ready to drop into a `.bib` file. |
 | `apply-research` | Document ingestion pipeline — reads local `.txt`, `.md`, or `.pdf` files; scores each extracted idea by relevance to the project (0–1); filters below threshold; synthesizes actionable issue descriptions; and captures Issues via `/ll:capture-issue`. Use when you have research papers, RFCs, or design docs and want them translated into project issues automatically. |
 | `rn-plan` | Recursive task planning with self-scoring rubric — accepts a natural language task description, generates a 8-dimension rubric (breadth, depth, complexity, clarity, consistency, logic_strategy, feasibility, testability, risk_mitigation), then iteratively researches and refines the plan until all dimensions reach VERY-HIGH; delegates the per-iteration research chain to `oracles/plan-research-iteration` |
-| `rn-refine` | Recursive refinement loop for an existing plan document — accepts a path to a plan `.md` file, calibrates a 9-dimension rubric to the plan's current state, then iteratively researches and refines until all dimensions reach VERY-HIGH; delegates the per-iteration research chain to `oracles/plan-research-iteration` with `overwrite_source=true` for in-place file updates |
-| `oracles/plan-research-iteration` | Reusable research-and-synthesize oracle shared by `rn-plan` and `rn-refine` — runs one iteration: classify what research is needed (NEEDS_FILES or NEEDS_WEB) → route to file or web research (both with `timeout: 600`) → `check_research` guard (exits gracefully if `research.md` is empty/missing, preventing phantom no-op rewrites) → synthesize findings into `plan.md`; the `overwrite_source` parameter gates `rn-refine`'s in-place source-file overwrite; invoked via `loop: oracles/plan-research-iteration` with `with:` context passthrough |
+| `rn-refine` | Recursive refinement loop for an existing plan document — treats the plan as the root of a decomposition tree and refines it recursively to adaptive depth ("n" = as-needed, capped by `max_depth`/`max_nodes`): refine each node to rubric convergence, decide leaf-vs-decompose (ADaPT-style), split coarse nodes into child sub-plans enqueued depth-first, then synthesize the refined leaves bottom-up into a reassembled plan that overwrites the source in place. Per-node refinement + the decompose decision are delegated to `oracles/plan-node-refine` |
+| `oracles/plan-research-iteration` | Reusable research-and-synthesize oracle shared by `rn-plan` and (via `oracles/plan-node-refine`) `rn-refine` — runs one iteration: classify what research is needed (NEEDS_FILES or NEEDS_WEB) → route to file or web research (both with `timeout: 600`) → `check_research` guard (exits gracefully if `research.md` is empty/missing, preventing phantom no-op rewrites) → synthesize findings into `plan.md`; the `overwrite_source` parameter gates in-place source-file overwrite; invoked via `loop: oracles/plan-research-iteration` with `with:` context passthrough |
+| `oracles/plan-node-refine` | Per-node refinement oracle for `rn-refine`'s recursive tree — refines ONE node (a self-contained mini-plan under `nodes/<id>/`) to rubric convergence by reusing `oracles/plan-research-iteration` + `plan_rubric_score` scoped to the node, then makes the adaptive-depth decision: LEAF (atomic, coherent) vs DECOMPOSE (split 2–5 child sub-goals, write child sub-plans, allocate child node ids, enqueue depth-first). Depth/node caps suppress decomposition at `max_depth`/`max_nodes`. Emits `REFINED_LEAF` / `DECOMPOSED` / `REFINED_CAPPED` / `REFINE_FAILED` for the parent orchestrator |
 | `rn-implement` | Queue orchestrator for recursive plan-and-implement — manages a depth-bounded issue queue, delegating per-issue remediation to `rn-remediate` and decomposition to `rn-decompose` |
 | `rn-decompose` | Sub-loop for issue decomposition (size review → child detection → enqueue with cycle detection), extracted from `rn-implement` Phase 5 |
 | `rn-remediate` | Sub-loop for iterative deepening remediation cycle (diagnose → remediate → converge), extracted from `rn-implement` |
@@ -277,7 +278,7 @@ init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / researc
 
 ### `rn-refine` — Recursive Refinement of an Existing Plan
 
-**Technique**: Accepts a path to an existing plan `.md` file, copies it into a run directory, and calibrates a 9-dimension scoring rubric to the plan's **current** state (unlike `rn-plan`, which always initialises all dimensions at LOW). Then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 9 dimensions → loop until all reach VERY-HIGH or `max_steps` is exhausted. A `verify_score` shell state reads the rubric file after the LLM emits `ALL_VERY_HIGH` to guard against hallucinated convergence signals.
+**Technique**: Treats the plan as the **root of a decomposition tree** and refines it recursively to whatever depth the work demands ("n" depth, capped for safety). Each node is a self-contained mini-plan in its own working directory (`nodes/<id>/`). For every node the loop (1) refines it to rubric convergence — reusing the proven `oracles/plan-research-iteration` research/synthesize chain and the 9-dimension `plan_rubric_score`, scoped to the node — then (2) makes an ADaPT-style adaptive-depth decision: is the node an atomic, coherent work-package (**LEAF**), or does it bundle independent sub-goals that each deserve their own focused sub-plan (**DECOMPOSE**)? Decomposed nodes are split into child sub-plans, rewritten as an index, and their children are enqueued **depth-first** so a whole subtree is refined before the next sibling. Decomposition continues only where complexity warrants, bounded by `max_depth` and `max_nodes`. Once the queue drains, the refined leaves are rolled **bottom-up**: each internal node integrates its refined children into one coherent section until the root is reassembled into a single improved plan, which is scored and written back over the source in place. Per-node refinement and the decompose decision are delegated to the reusable `oracles/plan-node-refine` sub-loop.
 
 **When to use**: When you already have a draft plan (from `rn-plan`, `/ll:iterate-plan`, or written manually) and want to iteratively improve it without starting from scratch. Produces an in-place improved `plan.md` alongside a `plan-rubric.md` and `research.md` in the per-run artifact directory (`${context.run_dir}`).
 
@@ -292,39 +293,56 @@ ll-loop run rn-refine ".loops/runs/rn-plan-20260526T143022/plan.md"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `plan_file` | `""` | Path to the existing plan `.md` file (populated from positional CLI arg via `input_key: plan_file`) |
+| `max_depth` | `3` | Safety cap on recursion depth. Adaptive depth never exceeds this; nodes that want to decompose past it are finalized as leaves (`REFINED_CAPPED`). |
+| `max_node_iters` | `2` | Per-node refinement budget (research→synthesize→score passes) before the decompose decision is made with the best version produced. |
+| `max_nodes` | `40` | Global cap on total tree nodes; decomposition is suppressed once reached, bounding worst-case cost. |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-refine-{timestamp}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location. |
 
 **Output artifacts** (written to `${context.run_dir}`):
 
 | File | Description |
 |------|-------------|
-| `plan.md` | Working copy of the refined plan (kept for reference; the original file is updated in-place) |
-| `plan-rubric.md` | 9-dimension scores (LOW/MEDIUM/HIGH/VERY-HIGH) with aggregate verdict |
-| `research.md` | Accumulated file and web research findings |
+| `plan.md` | Working copy of the reassembled, refined plan (kept for reference; the original file is updated in-place) |
+| `plan-rubric.md` | Final 9-dimension scores (LOW/MEDIUM/HIGH/VERY-HIGH) with aggregate verdict for the reassembled plan |
+| `nodes/<id>/` | Per-node working dirs for the whole tree — each holds the node's `plan.md` (sub-plan / index), `plan-rubric.md`, `research.md`, and `final.md` (its bottom-up assembled output) |
+| `edges.tsv` | The decomposition tree as `<parent>\t<child>\t<title>` rows |
+| `queue.txt` / `depth_map.txt` | Work-tree bookkeeping: the depth-first node queue and per-node depth |
 
 **FSM flow:**
 
 ```
-init             (shell: validate plan_file exists, copy to run_dir/plan.md)
-  → assess_existing     (prompt: infer goal, score all 9 dims at ACTUAL current level)
-    → classify_research (prompt: emit NEEDS_FILES or NEEDS_WEB token)
-      → route_files / route_web  (router: dispatch to file or web research branch)
-        → research_files  (prompt: Read/Grep/Glob to inspect local code and files)
-        → research_web    (prompt: WebSearch/WebFetch to gather external facts)
-          → synthesize   (prompt: merge research.md findings into plan.md)
-            → score      (prompt: rate all 9 dims; emit ALL_VERY_HIGH or ITERATE)
-              on_yes (ALL_VERY_HIGH) → verify_score → report → done
-              on_no  (ITERATE)       → classify_research  (next iteration)
-              on_error               → diagnose → failed
+init              (shell: validate plan_file; seed root node n0 + work-tree files)
+  → dequeue_next  (shell: pop a node id; empty queue → build_synth)
+    → read_depth  (shell: surface this node's depth for the sub-loop binding)
+      → refine_node            (loop: oracles/plan-node-refine — refine to convergence,
+       │                        then decide LEAF vs DECOMPOSE; on DECOMPOSE it writes
+       │                        child sub-plans + enqueues them depth-first itself)
+       → classify_node         (shell: read node_outcome token)
+         route_decomposed → dequeue_next        (children already enqueued)
+         route_leaf       → record_leaf  → dequeue_next
+         route_capped     → record_capped → dequeue_next
+         (else)           → record_failure → dequeue_next
+
+  (queue drained) → build_synth   (shell+python: order internal nodes deepest-first;
+                  │                 backfill leaf final.md)
+    → synth_pop   (shell: pop next internal node; empty → assemble)
+      → integrate_node          (prompt: fold this node's refined children into one
+       │                         coherent section → nodes/<id>/final.md) → synth_pop
+      → assemble  (shell: root final.md → run_dir/plan.md)
+        → final_score (plan_rubric_score on the reassembled plan)
+          → finalize  (shell: overwrite the source file in place)
+            → report  (prompt: tree + scores + diff hint) → done
+
+init on_error → diagnose → failed
 ```
 
-**Notes**: The key difference from `rn-plan` is `assess_existing` — it reads the plan and scores dimensions at their *actual* current level rather than defaulting all to LOW. This avoids wasting iterations refining dimensions that are already HIGH or VERY-HIGH. `verify_score` is a two-stage deterministic shell check that guards against hallucinated convergence:
+**Notes**:
 
-1. **Stage 1 — rubric check**: Confirms `ALL_VERY_HIGH` appears in the rubric file before accepting the LLM's convergence claim. Guards against a model emitting the sentinel token while writing `ITERATE` to disk.
-2. **Stage 2 — diff check** (ENH-2270): Confirms the plan `.md` file content actually changed since the last iteration. Guards against *phantom convergence* — where the model scores all dimensions as VERY-HIGH but produces no meaningful edit to the plan itself. If the diff is empty, `verify_score` rejects convergence and routes back to `classify_research`, forcing at least one more substantive iteration.
-
-- **In-place update**: On completion, the loop overwrites the **original** plan file (the path passed to `ll-loop run rn-refine`) with the refined content. No manual copy from `.loops/` is needed. The `plan.md` under the run directory is kept as a working-copy reference you can diff against or delete.
-- **Report state**: Prints `diff` commands comparing the original file against the working copy, so you can review changes before discarding the reference copy.
+- **Adaptive depth (ADaPT-style)**: the tree depth is decided **per node by complexity**, not by a fixed constant. A coherent, atomic node stops (LEAF); a node bundling independent sub-goals is split. This is what makes refinement deep where it needs to be and shallow where it doesn't — the fix for the previous flat single-pass behavior.
+- **Reuse, not duplication**: each node is a mini-plan under `nodes/<id>/`, so the existing `oracles/plan-research-iteration` chain and the `plan_rubric_score` fragment are reused verbatim, scoped to the node. `rn-plan` is unaffected.
+- **Bounded cost**: a single OS process owns one wall-clock budget (no per-level timeout compounding); `max_depth`, `max_node_iters`, and `max_nodes` cap the tree, and per-run artifacts live under `${context.run_dir}` for concurrency safety.
+- **Bottom-up synthesis**: decomposed nodes are reassembled child-first, so the final root plan reflects every refined leaf while preserving each internal node's framing and ordering.
+- **In-place update**: on completion `finalize` overwrites the **original** plan file with the reassembled content. The run directory keeps the working copy plus the full `nodes/` tree and `edges.tsv` for inspection/diffing; the `report` state prints the `diff` command.
 
 ### `rn-implement` — Queue Orchestrator for Recursive Plan-and-Implement
 

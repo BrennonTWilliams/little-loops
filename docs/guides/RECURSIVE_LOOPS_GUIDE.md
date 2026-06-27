@@ -38,10 +38,11 @@ There are two sub-families, joined by that shared idea:
 | Loop | Family | Role | Input | Output |
 |------|--------|------|-------|--------|
 | `rn-plan` | Planning | Entry point | A task description (string) | `plan.md` + rubric |
-| `rn-refine` | Planning | Entry point | Path to an existing `plan.md` | Refined `plan.md` (in place) |
+| `rn-refine` | Planning | Entry point / orchestrator | Path to an existing `plan.md` | Recursively refined `plan.md` (in place) |
 | `rn-implement` | Implementation | Entry point / orchestrator | Issue ID(s) | Implemented issues + `summary.json` |
 | `rn-remediate` | Implementation | Sub-loop (per issue) | One issue ID | Outcome token |
 | `rn-decompose` | Implementation | Sub-loop (per issue) | One issue ID | Outcome token + enqueued children |
+| `oracles/plan-node-refine` | Planning | Sub-loop (per node) | One plan-tree node | Outcome token + enqueued child sub-plans |
 
 > **Note**: The sub-loops (`rn-remediate`, `rn-decompose`) are normally driven by
 > `rn-implement`, but each is independently runnable with `ll-loop run` if you
@@ -57,9 +58,14 @@ rn-build  (capstone: spec → plans → EPIC → implement)
   │
   ├── Planning ─────────────────────────────────────────────
   │     rn-plan   (task → plan.md)
-  │     rn-refine (existing plan.md → better plan.md)
   │         └── oracles/plan-research-iteration
   │               classify → research (files|web) → synthesize
+  │     rn-refine (existing plan.md → recursively refined plan.md)
+  │         │  dequeue node → refine → decide leaf|decompose
+  │         └── oracles/plan-node-refine  (per node)
+  │               refine to convergence (reuses plan-research-iteration)
+  │               then LEAF, or DECOMPOSE → enqueue child sub-plans
+  │                                         (depth-first recursion)
   │
   └── Implementation ───────────────────────────────────────
         rn-implement  (queue orchestrator)
@@ -74,10 +80,13 @@ rn-build  (capstone: spec → plans → EPIC → implement)
 ```
 
 The two families don't call each other directly at runtime — `rn-build` is the
-glue that runs planning first and implementation second. Within the
-implementation family, the feedback arrow that matters is `rn-decompose`
-prepending children back onto `rn-implement`'s queue: that is what makes the
-issue tree *recursive*.
+glue that runs planning first and implementation second. Both families share the
+same recursion shape: a depth-bounded queue where a node, when it is too large/
+coarse, is split into children that are *prepended* back onto the queue and
+processed depth-first. In implementation that feedback arrow is `rn-decompose`
+prepending child issues onto `rn-implement`'s queue; in planning it is
+`oracles/plan-node-refine` prepending child sub-plans onto `rn-refine`'s node
+queue. That prepend-and-re-enter step is what makes each tree *recursive*.
 
 ## Planning Loops: `rn-plan` & `rn-refine`
 
@@ -97,11 +106,16 @@ consistency, logic_strategy, feasibility, testability, risk_mitigation), startin
 ll-loop run rn-plan "build a rate-limiting middleware for the API"
 ```
 
-**`rn-refine` — improve an existing plan.** Give it a path to a draft `.md` plan
-(from `rn-plan`, `/ll:iterate-plan`, or written by hand). Its key difference is
-`assess_existing`: it calibrates a 9-dimension rubric to the plan's *current*
-state rather than assuming everything is `LOW`, so it doesn't waste iterations
-re-refining what's already strong. On completion it **overwrites the original
+**`rn-refine` — recursively deepen an existing plan.** Give it a path to a draft
+`.md` plan (from `rn-plan`, `/ll:iterate-plan`, or written by hand). Unlike a flat
+whole-document pass, `rn-refine` treats the plan as the **root of a decomposition
+tree** and refines it recursively to adaptive depth: it refines each node, then
+decides whether the node is atomic (a leaf) or bundles independent sub-goals worth
+splitting into their own focused sub-plans (ADaPT-style — depth grows only where
+complexity warrants, bounded by `max_depth`/`max_nodes`). Children are refined
+depth-first, then rolled **bottom-up** into a reassembled plan. Per-node work is
+delegated to the `oracles/plan-node-refine` sub-loop, which itself reuses the same
+research/synthesize chain as `rn-plan`. On completion it **overwrites the original
 file in place** — no manual copy out of `.loops/` needed.
 
 ```bash

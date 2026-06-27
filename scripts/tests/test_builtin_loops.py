@@ -6601,8 +6601,10 @@ class TestRnPlanDelegatesResearchToOracle:
         )
 
 
-class TestRnRefineDelegatesResearchToOracle:
-    """rn-refine must delegate the research chain to plan-research-iteration (ENH-2033)."""
+class TestRnRefineRecursiveDecomposition:
+    """rn-refine is a recursive, adaptive-depth planner: it refines the plan as a
+    decomposition tree (per-node refine -> decide leaf/decompose -> enqueue children
+    depth-first -> bottom-up synthesis -> reassemble -> overwrite source)."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-refine.yaml"
 
@@ -6612,54 +6614,46 @@ class TestRnRefineDelegatesResearchToOracle:
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
     def test_no_inline_classify_research(self, data: dict) -> None:
-        assert "classify_research" not in data.get("states", {}), (
-            "rn-refine must not have inline classify_research (extracted to oracle)"
-        )
+        """The research/synthesize chain still lives in oracles, never inline."""
+        assert "classify_research" not in data.get("states", {})
 
     def test_no_inline_synthesize(self, data: dict) -> None:
-        assert "synthesize" not in data.get("states", {}), (
-            "rn-refine must not have inline synthesize (extracted to oracle)"
+        assert "synthesize" not in data.get("states", {})
+
+    def test_refine_node_delegates_to_node_oracle(self, data: dict) -> None:
+        state = data.get("states", {}).get("refine_node", {})
+        assert state.get("loop") == "oracles/plan-node-refine", (
+            f"refine_node.loop must be 'oracles/plan-node-refine', got {state.get('loop')!r}"
         )
 
-    def test_research_iteration_state_exists(self, data: dict) -> None:
-        assert "research_iteration" in data.get("states", {}), (
-            "rn-refine must have a research_iteration state"
+    def test_refine_node_passes_node_id_and_depth_cap(self, data: dict) -> None:
+        with_ = data.get("states", {}).get("refine_node", {}).get("with", {})
+        for key in ("run_dir", "node_id", "depth", "max_depth"):
+            assert key in with_, f"refine_node.with must include {key}"
+
+    def test_decomposed_node_loops_back_to_dequeue(self, data: dict) -> None:
+        """A decomposed node's children are enqueued (in the oracle); control returns
+        to the queue to process them depth-first."""
+        assert data.get("states", {}).get("route_decomposed", {}).get("on_yes") == "dequeue_next"
+
+    def test_empty_queue_routes_to_bottom_up_synthesis(self, data: dict) -> None:
+        assert data.get("states", {}).get("dequeue_next", {}).get("on_yes") == "build_synth"
+
+    def test_has_bottom_up_synthesis_chain(self, data: dict) -> None:
+        states = data.get("states", {})
+        for s in ("build_synth", "synth_pop", "integrate_node", "assemble", "final_score"):
+            assert s in states, f"missing synthesis state: {s}"
+
+    def test_finalize_overwrites_source_in_place(self, data: dict) -> None:
+        """The reassembled plan is written back over the user's source file."""
+        action = data.get("states", {}).get("finalize", {}).get("action", "")
+        assert ".source-path" in action and "cp " in action, (
+            "finalize must read .source-path and copy the reassembled plan over the source"
         )
 
-    def test_research_iteration_delegates_to_oracle(self, data: dict) -> None:
-        state = data.get("states", {}).get("research_iteration", {})
-        assert state.get("loop") == "oracles/plan-research-iteration", (
-            f"research_iteration.loop must be 'oracles/plan-research-iteration', "
-            f"got {state.get('loop')!r}"
-        )
-
-    def test_research_iteration_passes_overwrite_source_true(self, data: dict) -> None:
-        """rn-refine must pass overwrite_source: 'true' for in-place overwrite."""
-        with_ = data.get("states", {}).get("research_iteration", {}).get("with", {})
-        assert with_.get("overwrite_source") == "true", (
-            f"rn-refine research_iteration.with.overwrite_source must be 'true', "
-            f"got {with_.get('overwrite_source')!r}"
-        )
-
-    def test_research_iteration_on_success_is_snapshot(self, data: dict) -> None:
-        """rn-refine research_iteration must route to snapshot for per-iter versioning."""
-        state = data.get("states", {}).get("research_iteration", {})
-        on_success = state.get("on_success") or state.get("on_yes")
-        assert on_success == "snapshot", (
-            f"research_iteration on_success must be 'snapshot', got {on_success!r}"
-        )
-
-    def test_score_on_no_is_research_iteration(self, data: dict) -> None:
-        score = data.get("states", {}).get("score", {})
-        assert score.get("on_no") == "research_iteration", (
-            f"score.on_no must be 'research_iteration', got {score.get('on_no')!r}"
-        )
-
-    def test_verify_score_on_no_is_research_iteration(self, data: dict) -> None:
-        verify_score = data.get("states", {}).get("verify_score", {})
-        assert verify_score.get("on_no") == "research_iteration", (
-            f"verify_score.on_no must be 'research_iteration', got {verify_score.get('on_no')!r}"
-        )
+    def test_adaptive_depth_cap_is_configurable(self, data: dict) -> None:
+        """Adaptive depth is bounded by a configurable max_depth (n = as-needed, capped)."""
+        assert "max_depth" in data.get("context", {})
 
 
 class TestRlhfSvgEvaluateSubLoop:
