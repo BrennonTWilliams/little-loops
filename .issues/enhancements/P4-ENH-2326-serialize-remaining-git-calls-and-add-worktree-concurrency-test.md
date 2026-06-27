@@ -16,6 +16,8 @@ relates_to:
 - BUG-140
 - BUG-142
 - BUG-579
+depends_on:
+- ENH-2329
 decision_needed: false
 ---
 
@@ -172,6 +174,7 @@ implementer prefers; kept together here as one robustness pass._
 `worktree`, `parallel`, `testing`, `tech-debt`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:02:41 - `9c00279d-038d-48ea-b8a2-3f7902367e8a.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:01:32 - `64adeb74-858e-4aba-8e05-0d67aa559f7c.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:56:42 - `f58246a8-2511-4fd7-9cc4-ccb76673c11e.jsonl`

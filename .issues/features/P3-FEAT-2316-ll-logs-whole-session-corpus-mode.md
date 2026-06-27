@@ -16,6 +16,8 @@ relates_to:
 - FEAT-2315
 - ENH-2317
 - ENH-2318
+depends_on:
+- ENH-2317
 labels:
 - captured
 - ll-logs
@@ -391,6 +393,7 @@ source repo; the `all` corpus is strictly additive and opt-in there.
   from EPIC-1918's "telemetry for ll itself" framing.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:51:36 - `bbbde623-e8a1-44fe-8766-f891d466029d.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:39:38 - `5f6a6610-169d-4eb1-8f91-368901ce51b9.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:27:57 - `6b5f4713-4801-485e-9909-111bcbcf1d9a.jsonl`

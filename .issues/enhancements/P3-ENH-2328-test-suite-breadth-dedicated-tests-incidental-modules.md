@@ -11,6 +11,8 @@ discovered_by: capture-issue
 labels:
 - testing
 - coverage
+relates_to:
+- ENH-2325
 ---
 
 # ENH-2328: Test-suite breadth — dedicated tests for incidental-only modules
@@ -117,6 +119,7 @@ the file — not a systemic hole.
 - testing, coverage
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:capture-issue` - 2026-06-26T22:35:39Z - test-suite audit remediation Phase 2
 
 ---

@@ -16,6 +16,8 @@ relates_to:
 - ENH-1248
 - ENH-1249
 - ENH-1255
+depends_on:
+- BUG-2323
 decision_needed: false
 confidence_score: 98
 outcome_confidence: 80
@@ -342,6 +344,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:confidence-check` - 2026-06-26T23:50:00Z - `0c53424b-20aa-4cfb-80cf-802b5967df71.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:34:56 - `0ccf7a6a-f985-42f6-bb18-b2c54b21a3f0.jsonl`
 - `/ll:decide-issue` - 2026-06-26T23:07:30 - `4c0744ee-e575-4909-b378-3548d491b5eb.jsonl`
