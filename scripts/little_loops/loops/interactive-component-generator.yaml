@@ -1,0 +1,558 @@
+name: interactive-component-generator
+category: harness
+input_key: description
+required_inputs: ["description"]
+# index.html is the single deliverable; latest-wins overwrite is intentional.
+artifact_versioning_ok: true
+description: |
+  Fan-out generator-evaluator harness for INTERACTIVE, self-contained HTML.
+  Where html-website-generator renders one static page, this loop ideates many
+  candidate interactive components from a natural-language brief or a referenced
+  data file, ranks them, BUILDS the best N (each as an isolated mini-artifact via
+  oracles/generator-evaluator), smoke-tests that each one actually works as
+  advertised, scores them, then SELECTS the best 1-3 and composes them into a
+  single self-contained index.html.
+
+  Architecture = three patterns this repo already ships, bolted together:
+    front end  → html-anything's classify -> brief -> per-item rubric, but it
+                 enumerates MANY component ideas instead of one artifact type.
+    middle     → harness-multi-item's worklist (pop one -> process -> loop back),
+                 where each build delegates to oracles/generator-evaluator unchanged.
+    back end   → best-of-N select -> compose -> re-verify the merged file.
+initial: init
+max_steps: 120
+timeout: 14400
+
+# HARNESS: Context variables control fan-out width, quality threshold, and the two
+# composition tradeoffs the operator may want to flip without editing the FSM.
+context:
+  description: ""              # populated from loop_input via input_key: description
+  pass_threshold: 7           # per-component minimum rubric score (1-10) to accept
+  n_build: 4                  # how many ranked candidates to implement (the "best 3-5")
+  n_final: 3                  # max winners embedded in the final file (the "best 1-3")
+  compose_isolation: "iframe" # iframe | shadow | scoped — how components are merged
+  allow_cdn: "false"          # "false" = vanilla, offline, truly self-contained.
+                              # "true"  = permit CDN libs (richer, but needs network).
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
+
+import:
+  - lib/common.yaml           # provides the shell_exit fragment (exit-code routing)
+
+states:
+
+  init:
+    # HARNESS: Setup — capture run_dir as an ABSOLUTE path so every later file://
+    # URL and sub-loop run_dir resolves identically. Mirrors html-anything/init.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$$DIR"
+      echo "$$(pwd)/$$DIR"
+    capture: run_dir          # later referenced as ${captured.run_dir.output}
+    next: profile_input
+
+  profile_input:
+    # FANOUT: Profile phase — accept either a natural-language description OR a file
+    # reference embedded in it, then characterize the DATA'S AFFORDANCES. Interactions
+    # are a function of data shape, so this inventory is the menu of what is buildable.
+    action_type: prompt
+    action: |
+      You are profiling input for an interactive-component generator.
+
+      Input: "${context.description}"
+
+      Step 1 — Resolve the source. If the input names or path-references a file
+      (e.g. a .csv, .json, .md, .txt, .tsv), read that file. Otherwise treat the
+      text itself as the subject/data description.
+
+      Step 2 — Write a brief to ${captured.run_dir.output}/brief.md containing:
+      - **Subject & intent**: what the user wants to explore/communicate, and the
+        single most important question a viewer should be able to answer.
+      - **Data inventory (affordances)**: enumerate the fields/structures present and
+        tag each with its shape — quantitative, categorical, temporal, geospatial,
+        relational (graph/network), hierarchical (tree/nesting), or free text. Note
+        cardinality (how many rows/categories) and any obvious relationships.
+      - **Interaction surface**: from the affordances, list which interaction idioms
+        are even POSSIBLE (e.g. temporal -> scrubber/animation; relational -> force
+        graph; hierarchical -> drill-down/treemap; many categories -> filter/sort;
+        parameters -> calculator/sliders; comparisons -> toggle/diff).
+
+      Be concrete. If the input has no real data, infer a small representative dataset
+      and state that you did so.
+    next: ideate
+
+  ideate:
+    # FANOUT: Divergence — generate a WIDE candidate pool spanning BOTH data-viz
+    # idioms and interactive widgets, so the ranker has real choices. (For heavier
+    # ideation you could delegate to the `brainstorm` loop; inline keeps this
+    # self-contained.)
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/brief.md.
+
+      Brainstorm 8-15 candidate INTERACTIVE components, each grounded in the brief's
+      affordances. Cover BOTH families:
+        - data-viz: charts, maps, timelines/scrubbers, treemaps/sunbursts, force
+          graphs, bar races, heatmaps, small multiples
+        - widgets: calculators, parameter explorers, filter/search panels, steppers,
+          configurators, comparison toggles, sortable/expandable tables
+
+      Write them to ${captured.run_dir.output}/candidates.md as a numbered list. For
+      EACH candidate include exactly these fields on their own lines:
+        - id: a short kebab-case slug, unique (e.g. `revenue-scrubber`)
+        - shows: the one insight or task it delivers
+        - interaction: the primary user action and what visibly changes in response
+        - data_used: which fields/affordances from the brief it consumes
+        - complexity: low | medium | high (as a buildable self-contained component)
+
+      Favor variety: do not propose five flavors of bar chart. Prefer ideas where the
+      interaction reveals something a static image cannot.
+    next: rank
+
+  rank:
+    # FANOUT: Cheap PRE-BUILD ranking — a single-pass rubric filters the pool down to
+    # the best ${context.n_build} so build budget is never spent on weak ideas
+    # (post-build scoring is the expensive, authoritative pass). For each survivor it
+    # also writes a dynamic per-component rubric (html-anything's rubric.md pattern)
+    # and the poppable worklist queue.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/candidates.md and ${captured.run_dir.output}/brief.md.
+
+      Score every candidate 1-10 on: data_fit, insight_value, interactivity,
+      self_contained_feasibility (buildable as one offline HTML file), build_risk
+      (inverse — higher = safer), and composability (plays well beside others).
+
+      Select the top ${context.n_build} by total score, breaking ties toward variety
+      and lower build_risk.
+
+      Then write three things:
+      1) ${captured.run_dir.output}/ranking.md — the full scored table and the chosen ids.
+      2) ${captured.run_dir.output}/queue.txt — the chosen ids, ONE id per line, best
+         first, and NOTHING else (this is the worklist the loop pops from).
+      3) For EACH chosen id, a rubric file at
+         ${captured.run_dir.output}/rubric-<id>.md with 3-5 criteria appropriate to
+         THAT component (always include a `functionality` criterion, threshold
+         ${context.pass_threshold}). Use this fenced format:
+         ```yaml
+         component_id: <id>
+         criteria:
+           - name: functionality
+             threshold: ${context.pass_threshold}
+             description: the primary interaction works and the component fulfills its stated purpose
+           - name: <criterion>
+             threshold: <6-8>
+             description: <what it checks>
+         ```
+    next: pop_next
+
+  pop_next:
+    # FANOUT: Worklist pop (harness-multi-item's `discover`). Removes the next id from
+    # queue.txt and emits it; exit 1 when the queue is empty -> route to wrap-up.
+    fragment: shell_exit
+    action: |
+      QUEUE="${captured.run_dir.output}/queue.txt"
+      [ -s "$$QUEUE" ] || exit 1
+      CID="$$(head -n1 "$$QUEUE")"
+      [ -n "$$CID" ] || exit 1
+      tail -n +2 "$$QUEUE" > "$$QUEUE.tmp" && mv "$$QUEUE.tmp" "$$QUEUE"
+      printf '%s\n' "$$CID"
+    capture: current_id        # ${captured.current_id.output}
+    on_yes: prep_component      # id found -> build it
+    on_no: check_any_built      # queue empty -> select winners
+    on_error: check_any_built
+
+  prep_component:
+    # FANOUT: Ensure the per-component run directory exists before the oracle writes
+    # into it (generator-evaluator assumes its run_dir already exists).
+    action_type: shell
+    action: |
+      mkdir -p "${captured.run_dir.output}/comp-${captured.current_id.output}"
+      echo "prepared ${captured.current_id.output}"
+    next: build_component
+
+  build_component:
+    # FANOUT: Per-component build — DELEGATES to the existing generator-evaluator
+    # oracle (generate -> Playwright screenshot -> snapshot -> rubric score -> refine)
+    # exactly as html-website-generator does for a whole site, but scoped to ONE
+    # component in its own subdir. The generator must ALSO emit manifest.json so the
+    # downstream smoke test can drive the real interactions. Build failure is not
+    # fatal: we route to smoke_component (which records a FAIL) and keep going —
+    # building ${context.n_build} to later keep ${context.n_final} gives redundancy.
+    loop: oracles/generator-evaluator
+    with:
+      run_dir: "${captured.run_dir.output}/comp-${captured.current_id.output}"
+      pass_threshold: "${context.pass_threshold}"
+      generate_prompt: |
+        Build the interactive component "${captured.current_id.output}".
+
+        Read ${captured.run_dir.output}/brief.md (subject + affordances) and
+        ${captured.run_dir.output}/candidates.md (find the entry whose id is
+        "${captured.current_id.output}" for its spec).
+        Read ${captured.run_dir.output}/rubric-${captured.current_id.output}.md for
+        the scoring criteria you must satisfy.
+
+        If ${captured.run_dir.output}/comp-${captured.current_id.output}/critique.md
+        exists, read it and resolve every item in its "Issues to Address" section
+        before adding anything new. If it does not exist, proceed silently.
+
+        ${context.design_tokens_context}
+
+        Write a single self-contained component to
+        ${captured.run_dir.output}/comp-${captured.current_id.output}/index.html that:
+        - Implements the component's stated interaction; the primary user action must
+          visibly change the view (filter, recompute, animate, drill, sort, etc.).
+        - Renders correctly from a file:// URL with NO HTTP server.
+        - Mounts its entire UI inside a single root element <div id="ll-root"> so it
+          can be embedded as-is during composition. Keep all state internal.
+        - Gives every interactive element a STABLE selector: an id or a
+          data-ll-action attribute (these are what the smoke test will target).
+        - Unless ALLOW_CDN is "true" (currently "${context.allow_cdn}"), embeds ALL
+          CSS and JS inline with NO external/CDN dependencies and uses only vanilla
+          JS + SVG + Canvas, so the file is fully offline and self-contained. If
+          ALLOW_CDN is "true", a single well-known CDN library is permitted.
+        - Uses any provided design tokens' semantic names/values for color.
+
+        Then write an interaction manifest to
+        ${captured.run_dir.output}/comp-${captured.current_id.output}/manifest.json —
+        a JSON array of 2-5 objects describing how to exercise the component:
+          [{"selector": "#sort-btn", "action": "click",  "describe": "re-sorts rows"},
+           {"selector": "#year",     "action": "fill", "value": "2024", "describe": "..."}]
+        Allowed actions: "click", "fill" (needs "value"), "hover", "select"
+        (needs "value"). Selectors MUST resolve in the HTML you just wrote.
+      rubric: |
+        Read ${captured.run_dir.output}/comp-${captured.current_id.output}/rubric-...
+        NOTE: the rubric file is at
+        ${captured.run_dir.output}/rubric-${captured.current_id.output}.md — read it
+        and parse the fenced YAML for criteria and per-criterion thresholds.
+
+        If ${captured.run_dir.output}/comp-${captured.current_id.output}/screenshot.png
+        exists, view it; otherwise read the component's index.html source. Also reread
+        the candidate's spec in ${captured.run_dir.output}/candidates.md.
+
+        Score each criterion 1-10 and write
+        ${captured.run_dir.output}/comp-${captured.current_id.output}/critique.md:
+
+        ```
+        # Evaluation
+        component_id: ${captured.current_id.output}
+
+        <criterion_name>: N/10 — [specific, actionable explanation]
+        <repeat for each criterion in the rubric file>
+
+        ## Issues to Address
+        [Concise, actionable fixes for the generator, or "No issues — all criteria pass."]
+        ```
+
+        If EVERY criterion is >= its threshold, output exactly: ALL_PASS
+        Otherwise output: ITERATE
+    on_yes: smoke_component
+    on_no: smoke_component       # accepted-imperfect or exhausted: still smoke + record
+    on_error: smoke_component    # build crashed: smoke will FAIL and record it
+
+  smoke_component:
+    # FANOUT: Functional smoke test (operator chose the light render+console gate).
+    # We reuse html-website-generator's "no pageerror + has content" check AND ALSO
+    # dispatch each manifest interaction — not to assert DOM deltas, but so a broken
+    # handler THROWS and is caught by the same pageerror net. That makes "works as
+    # advertised" real at ~zero extra cost. Result is written to smoke.txt for record.
+    action_type: shell
+    action: |
+      CDIR="${captured.run_dir.output}/comp-${captured.current_id.output}"
+      NODE_PATH="$$(npm root -g)" node -e "
+      const { chromium } = require('@playwright/test');
+      const fs = require('fs');
+      const dir = '${captured.run_dir.output}/comp-${captured.current_id.output}';
+      (async () => {
+        const browser = await chromium.launch();
+        const page = await browser.newPage();
+        const errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        await page.goto('file://' + dir + '/index.html');
+        await page.waitForTimeout(1200);
+        const textLen = await page.evaluate(() => document.body.innerText.trim().length);
+        let dispatched = 0;
+        try {
+          const manifest = JSON.parse(fs.readFileSync(dir + '/manifest.json', 'utf8'));
+          for (const step of manifest) {
+            try {
+              if (step.action === 'click')  await page.click(step.selector, { timeout: 1500 });
+              else if (step.action === 'fill')   await page.fill(step.selector, String(step.value), { timeout: 1500 });
+              else if (step.action === 'hover')  await page.hover(step.selector, { timeout: 1500 });
+              else if (step.action === 'select') await page.selectOption(step.selector, String(step.value), { timeout: 1500 });
+              dispatched++;
+              await page.waitForTimeout(250);
+            } catch (e) { errors.push('interaction[' + step.selector + ']: ' + e.message); }
+          }
+        } catch (e) { /* no/invalid manifest: render+console check still applies */ }
+        let verdict;
+        if (textLen < 20) verdict = 'SMOKE_FAIL:minimal_content';
+        else if (errors.length) verdict = 'SMOKE_FAIL:' + errors.slice(0,3).join(' | ');
+        else verdict = 'SMOKE_PASS interactions=' + dispatched;
+        fs.writeFileSync(dir + '/smoke.txt', verdict + '\n');
+        console.log(verdict);
+        await browser.close();
+      })().catch(e => {
+        try { fs.writeFileSync(dir + '/smoke.txt', 'SMOKE_FAIL:harness:' + e.message + '\n'); } catch (_) {}
+        console.log('SMOKE_FAIL:harness:' + e.message);
+      });
+      "
+    next: record
+
+  record:
+    # FANOUT: Append this component's outcome to the scoreboard, then loop back to pop
+    # the next id (harness-multi-item's `advance`). min_rubric is the lowest criterion
+    # score parsed from the component's critique.md (0 if none) — the composite signal
+    # select_best ranks on, alongside the smoke verdict.
+    action_type: shell
+    action: |
+      RD="${captured.run_dir.output}"
+      CID="${captured.current_id.output}"
+      CDIR="$$RD/comp-$$CID"
+      SMOKE="$$(grep -oE 'SMOKE_(PASS|FAIL)' "$$CDIR/smoke.txt" 2>/dev/null | head -1 || echo SMOKE_FAIL)"
+      MINSC="$$(grep -oE '[0-9]+/10' "$$CDIR/critique.md" 2>/dev/null | grep -oE '^[0-9]+' | sort -n | head -1)"
+      [ -n "$$MINSC" ] || MINSC=0
+      printf '{"id":"%s","smoke":"%s","min_rubric":%s}\n' "$$CID" "$$SMOKE" "$$MINSC" >> "$$RD/scoreboard.jsonl"
+      echo "recorded $$CID smoke=$$SMOKE min_rubric=$$MINSC"
+    next: pop_next
+
+  check_any_built:
+    # FANOUT: Guard before selection — if every build crashed (empty scoreboard),
+    # there is nothing to compose, so route to diagnose instead of producing a stub.
+    fragment: shell_exit
+    action: |
+      [ -s "${captured.run_dir.output}/scoreboard.jsonl" ] && exit 0 || exit 1
+    on_yes: select_best
+    on_no: diagnose
+    on_error: diagnose
+
+  select_best:
+    # FANOUT: Fan-in — composite-rank the scoreboard and keep the best ${context.n_final}.
+    # SMOKE_PASS dominates (a component that doesn't work can't ship), then min_rubric,
+    # then complementarity (don't pick three of the same idiom).
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/scoreboard.jsonl and each built component's
+      critique at ${captured.run_dir.output}/comp-<id>/critique.md.
+
+      Rank the components by: (1) smoke == SMOKE_PASS first, (2) higher min_rubric,
+      (3) complementarity — prefer a set that covers different idioms and reads well
+      together rather than near-duplicates.
+
+      Choose the best 1 to ${context.n_final} (never more than ${context.n_final};
+      include a component only if it adds clear value). If NONE passed smoke, pick the
+      single best-rendering one and note the caveat.
+
+      Write ${captured.run_dir.output}/selection.md: the ordered winner ids (final
+      layout order), a one-line rationale each, and a short title + intro sentence for
+      the combined page (drawn from brief.md). Also write
+      ${captured.run_dir.output}/winners.txt with the winner ids, one per line, in
+      layout order, and nothing else.
+    next: compose
+
+  compose:
+    # FANOUT: Compose the winners into ONE self-contained index.html. Isolation is set
+    # by ${context.compose_isolation}: iframe (default) gives total CSS+JS+lib isolation
+    # so independently-built widgets never collide; shadow/scoped trade isolation for
+    # seamless theming. verify_final re-tests the merged result.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/selection.md and
+      ${captured.run_dir.output}/winners.txt. For each winner id read its component at
+      ${captured.run_dir.output}/comp-<id>/index.html and its
+      ${captured.run_dir.output}/comp-<id>/manifest.json.
+
+      If ${captured.run_dir.output}/compose_critique.md exists (a prior merge failed),
+      read it and fix every issue it lists before anything else.
+
+      Produce ONE self-contained file at ${captured.run_dir.output}/index.html:
+      - A clean page shell: the title + intro from selection.md, then each winner in a
+        titled <section>, in winners.txt order.
+      - Embed each component using compose_isolation = "${context.compose_isolation}":
+          * iframe (default): one <iframe data-ll-component="<id>" srcdoc="...escaped
+            full component HTML..."></iframe> per winner. Include a small shared script
+            that auto-sizes each iframe to its content height (onload + ResizeObserver
+            on the frame's documentElement) so there are no inner scrollbars.
+          * shadow: mount each component's markup into its own ShadowRoot via a tiny
+            loader, so CSS does not leak between components.
+          * scoped: inline each component with ALL its CSS class names and top-level JS
+            identifiers prefixed by the component id, each script wrapped in an IIFE.
+      - Carry the data-ll-component="<id>" attribute on each component's outer wrapper
+        (iframe or section) so verify_final can map a frame/section back to its manifest.
+      - Keep the result self-contained: unless ALLOW_CDN is "true" (currently
+        "${context.allow_cdn}"), there must be NO external requests — it must render
+        offline from file://.
+    next: verify_final
+
+  verify_final:
+    # FANOUT: Re-verify the MERGED file — composition is where independently-built
+    # widgets break (global-name clashes, CSS bleed, double-mounted listeners). We
+    # re-run the smoke battery on index.html: no pageerrors anywhere, top-level content
+    # present, and every winner's manifest interactions re-dispatched in its own frame.
+    # A bounded recompose loop (.compose_rounds, cap 2) writes merge issues to
+    # compose_critique.md and routes back to compose; past the cap we accept best-so-far.
+    # Also captures screenshot.png for the optional vision_gate.
+    action_type: shell
+    action: |
+      RD="${captured.run_dir.output}"
+      ROUNDS="$$(cat "$$RD/.compose_rounds" 2>/dev/null || echo 0)"
+      NODE_PATH="$$(npm root -g)" node -e "
+      const { chromium } = require('@playwright/test');
+      const fs = require('fs');
+      const rd = '${captured.run_dir.output}';
+      (async () => {
+        const browser = await chromium.launch();
+        const page = await browser.newPage();
+        const errors = [];
+        page.on('pageerror', e => errors.push('page: ' + e.message));
+        await page.goto('file://' + rd + '/index.html');
+        await page.waitForTimeout(1500);
+        const textLen = await page.evaluate(() => document.body.innerText.trim().length);
+        let winners = [];
+        try { winners = fs.readFileSync(rd + '/winners.txt','utf8').split('\n').map(s=>s.trim()).filter(Boolean); } catch(_) {}
+        for (const id of winners) {
+          let manifest = [];
+          try { manifest = JSON.parse(fs.readFileSync(rd + '/comp-' + id + '/manifest.json','utf8')); } catch(_) { continue; }
+          const handle = await page.$('[data-ll-component=\"' + id + '\"]');
+          const frame = handle ? await handle.contentFrame() : null;
+          const ctx = frame || page;       // iframe -> its frame; shadow/scoped -> the page
+          for (const step of manifest) {
+            try {
+              if (step.action === 'click')  await ctx.click(step.selector, { timeout: 1500 });
+              else if (step.action === 'fill')   await ctx.fill(step.selector, String(step.value), { timeout: 1500 });
+              else if (step.action === 'hover')  await ctx.hover(step.selector, { timeout: 1500 });
+              else if (step.action === 'select') await ctx.selectOption(step.selector, String(step.value), { timeout: 1500 });
+              await page.waitForTimeout(150);
+            } catch (e) { errors.push(id + '[' + step.selector + ']: ' + e.message); }
+          }
+        }
+        await page.screenshot({ path: rd + '/screenshot.png', fullPage: true });
+        let verdict;
+        if (textLen < 40) verdict = 'VERIFY_FAIL:minimal_content';
+        else if (errors.length) verdict = 'VERIFY_FAIL:' + errors.slice(0,4).join(' | ');
+        else verdict = 'SMOKE_PASS';
+        fs.writeFileSync(rd + '/verify.txt', verdict + '\n');
+        console.log(verdict);
+        await browser.close();
+      })().catch(e => { console.log('VERIFY_FAIL:harness:' + e.message); });
+      "
+      VERDICT="$$(cat "$$RD/verify.txt" 2>/dev/null || echo VERIFY_FAIL)"
+      if echo "$$VERDICT" | grep -q SMOKE_PASS; then
+        echo "SMOKE_PASS"; exit 0
+      fi
+      if [ "$$ROUNDS" -ge 2 ]; then
+        echo "SMOKE_PASS: recompose cap reached, accepting best-so-far ($$VERDICT)"; exit 0
+      fi
+      echo "$$((ROUNDS + 1))" > "$$RD/.compose_rounds"
+      { echo "# Merge issues to fix (recompose round $$((ROUNDS + 1)))"; echo "$$VERDICT"; } >> "$$RD/compose_critique.md"
+      echo "VERIFY_RETRY: $$VERDICT"
+    evaluate:
+      type: output_contains
+      pattern: "SMOKE_PASS"
+    on_yes: vision_gate
+    on_no: compose
+    on_error: vision_gate
+
+  vision_gate:
+    # HARNESS: Optional external-vision evaluator on the FINAL render — reused, in
+    # spirit, from html-website-generator. Graceful degradation: a no-op pass unless
+    # VISION_BASE_URL / VISION_MODEL / VISION_API_KEY are all set (sourced from .env).
+    # For v1 this gate is ADVISORY — it records aesthetic scores but never blocks
+    # shipping a functionally-verified artifact (on_no routes to done). To make it
+    # iterate, repoint on_no -> compose (the .compose_rounds cap already bounds it).
+    action_type: shell
+    action: |
+      RD="${captured.run_dir.output}"
+      case "$$RD" in
+        /*) ABS_DIR="$$RD" ;;
+        *) ABS_DIR="$$(pwd)/$$RD" ;;
+      esac
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
+        echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0
+      fi
+      if [ ! -f "$$ABS_DIR/screenshot.png" ]; then
+        echo "VISION_PASS: skipped (no screenshot.png)"; exit 0
+      fi
+      export ABS_DIR
+      python3 <<'PY'
+      import os, re, sys, json, base64, urllib.request
+      abs_dir = os.environ["ABS_DIR"]
+      shot = os.path.join(abs_dir, "screenshot.png")
+      try:
+          with open(shot, "rb") as f:
+              b64 = base64.b64encode(f.read()).decode()
+      except Exception as e:
+          print("VISION_PASS: screenshot unreadable (%s)" % e); sys.exit(0)
+      base = os.environ["VISION_BASE_URL"].rstrip("/")
+      endpoint = base if base.endswith("completions") else base + "/chat/completions"
+      rubric = (
+          "You are a strict UI critic. Study this screenshot of a page of interactive "
+          "components and score 1-10: design_quality, clarity (is each component's "
+          "purpose obvious?), cohesion (do they read as one page?). "
+          'Reply with ONE JSON object only: {"scores": {"design_quality": N, '
+          '"clarity": N, "cohesion": N}, "issues": ["specific fix", ...]}'
+      )
+      payload = {
+          "model": os.environ["VISION_MODEL"], "temperature": 0.2, "max_tokens": 700,
+          "messages": [{"role": "user", "content": [
+              {"type": "text", "text": rubric},
+              {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}},
+          ]}],
+      }
+      req = urllib.request.Request(
+          endpoint, data=json.dumps(payload).encode(),
+          headers={"Authorization": "Bearer " + os.environ["VISION_API_KEY"],
+                   "Content-Type": "application/json"})
+      try:
+          with urllib.request.urlopen(req, timeout=120) as r:
+              content = json.load(r)["choices"][0]["message"]["content"]
+      except Exception as e:
+          print("VISION_PASS: vision API error (%s), not blocking" % e); sys.exit(0)
+      m = re.search(r"\{.*\}", content, re.S)
+      try:
+          data = json.loads(m.group(0)) if m else {}
+          scores = data.get("scores", {}) or {}
+      except Exception:
+          print("VISION_PASS: unparseable verdict, not blocking"); sys.exit(0)
+      print("VISION scores: " + json.dumps(scores))
+      print("VISION_PASS")
+      PY
+    evaluate:
+      type: output_contains
+      pattern: "VISION_PASS"
+    on_yes: done
+    on_no: done
+    on_error: done
+
+  done:
+    # HARNESS: Terminal — the combined interactive artifact is ready.
+    action_type: prompt
+    action: |
+      The interactive-component-generator loop completed.
+
+      Report these paths to the user:
+      - ${captured.run_dir.output}/index.html      — the combined self-contained artifact
+      - ${captured.run_dir.output}/selection.md    — which components were chosen and why
+      - ${captured.run_dir.output}/ranking.md      — the full candidate ranking
+      - ${captured.run_dir.output}/scoreboard.jsonl — per-component smoke + rubric results
+      - ${captured.run_dir.output}/screenshot.png  — final render
+      Built components remain at ${captured.run_dir.output}/comp-<id>/ for inspection.
+    terminal: true
+
+  diagnose:
+    # HARNESS: Failure analysis — reached when no component built successfully.
+    action_type: prompt
+    action: |
+      The loop could not produce a combined artifact.
+
+      Diagnose: read ${captured.run_dir.output}/scoreboard.jsonl (if present) and any
+      ${captured.run_dir.output}/comp-<id>/critique.md to summarize why each candidate
+      failed. Identify the most likely root cause and write a one-paragraph diagnostic
+      the operator can act on (e.g. re-run, widen n_build, or relax the brief).
+    next: failed
+
+  failed:
+    # HARNESS: Explicit failure terminal — distinct from a clean completion so log
+    # readers can tell "bailed" from "shipped". Artifacts remain for inspection.
+    terminal: true
