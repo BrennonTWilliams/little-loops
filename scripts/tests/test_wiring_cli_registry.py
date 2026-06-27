@@ -31,6 +31,8 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("commands/help.md", "/ll:scope-epic", "FEAT-1857"),
     ("commands/help.md", "scope-epic", "FEAT-1857"),
     (".claude/CLAUDE.md", "scope-epic", "FEAT-1857"),
+    ("commands/help.md", "create-epics-from-unparented", "FEAT-2338"),
+    (".claude/CLAUDE.md", "create-epics-from-unparented", "FEAT-2338"),
     (".claude/CLAUDE.md", "decisions", "FEAT-1894"),
     ("commands/help.md", "decisions", "FEAT-1894"),
     ("docs/reference/CLI.md", "ll-issues decisions", "FEAT-1894"),

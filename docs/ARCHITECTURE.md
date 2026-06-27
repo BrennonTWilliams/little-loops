@@ -23,7 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>28 slash commands]
         AGT[Agents<br/>9 specialized agents]
-        SKL[Skills<br/>38 composable skills]
+        SKL[Skills<br/>39 composable skills]
     end
 
     subgraph "Configuration"
@@ -108,7 +108,7 @@ little-loops/
 │       ├── user-prompt-check.sh
 │       └── lib/
 │           └── common.sh    # Shared shell functions
-├── skills/                  # 38 skill definitions
+├── skills/                  # 39 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── debug-loop-run/      # User-invoked
@@ -137,6 +137,9 @@ little-loops/
 │   │   ├── SKILL.md
 │   │   ├── areas.md
 │   │   └── show-output.md
+│   ├── create-epics-from-unparented/ # User-invoked
+│   │   ├── SKILL.md
+│   │   └── agents/openai.yaml
 │   ├── create-eval-from-issues/ # User-invoked
 │   │   └── SKILL.md
 │   ├── create-loop/         # User-invoked

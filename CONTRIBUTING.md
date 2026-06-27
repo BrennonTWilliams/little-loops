@@ -119,7 +119,7 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 38 skill definitions (user-invocable workflows)
+├── skills/               # 39 skill definitions (user-invocable workflows)
 │   ├── adversarial-verify-loop/      # Generate adversarial FSM verification loop
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history
@@ -135,6 +135,7 @@ little-loops/
 │   ├── explore-api/                  # Guided 4-phase external-API exploration with LearnTestRecord output
 │   ├── go-no-go/                     # Adversarial GO/NO-GO issue assessment
 │   ├── configure/                    # Configure ll-config.json
+│   ├── create-epics-from-unparented/ # Cluster orphans and propose new EPIC definitions
 │   ├── create-eval-from-issues/      # Generate eval harness YAML from issue IDs
 │   ├── create-loop/                  # Create FSM loop configurations
 │   ├── format-issue/                 # Format issues to template v2.0

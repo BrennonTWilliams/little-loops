@@ -260,6 +260,8 @@ DOC_FILES_MUST_EXIST: list[tuple[str, str]] = [
     ("skills/review-epic/agents/openai.yaml", "FEAT-1856"),
     ("skills/scope-epic/SKILL.md", "FEAT-1857"),
     ("skills/scope-epic/agents/openai.yaml", "FEAT-1857"),
+    ("skills/create-epics-from-unparented/SKILL.md", "FEAT-2338"),
+    ("skills/create-epics-from-unparented/agents/openai.yaml", "FEAT-2338"),
 ]
 
 

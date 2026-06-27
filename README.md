@@ -74,7 +74,7 @@ Harness-driven development is TDD's analog for agent-built software: define what
 
 - **28 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **9 specialized agents** — codebase analysis, quality assurance, automation, and research
-- **38 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
+- **39 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
 - **36 CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
 - **94 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
 - **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic

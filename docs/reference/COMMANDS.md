@@ -1008,6 +1008,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `map-dependencies`^ | Analyze cross-issue dependencies based on file overlap |
 | `audit-issue-conflicts`^ | Scan open issues for conflicting requirements and architectural decisions |
 | `link-epics`^ | Assign parentless open issues to open epics via similarity scoring |
+| `create-epics-from-unparented`^ | Cluster orphaned issues by similarity and propose new EPICs to cover them |
 | `go-no-go`^ | Adversarial go/no-go debate for issue implementation decisions |
 | `audit-architecture` | Analyze code structure |
 | `audit-docs`^ | Check documentation accuracy |

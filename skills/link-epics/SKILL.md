@@ -293,3 +293,8 @@ Files staged. Run /ll:commit to commit the changes.
 # Auto mode with custom threshold
 /ll:link-epics --auto --min-score 0.5
 ```
+
+**Sister skill:** When no EPICs exist yet (or orphaned issues don't fit any existing
+EPIC), use `/ll:create-epics-from-unparented` first — it clusters orphans by thematic
+similarity and proposes new EPIC files. Then run `/ll:link-epics` to assign any
+remaining orphans to the newly created EPICs.

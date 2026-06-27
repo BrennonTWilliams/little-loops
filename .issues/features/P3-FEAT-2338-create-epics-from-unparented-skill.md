@@ -3,8 +3,9 @@ id: FEAT-2338
 title: create-epics-from-unparented skill
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-27T01:47:26Z'
+completed_at: '2026-06-27T03:16:37Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
 decision_needed: false
@@ -274,6 +275,7 @@ interface:
 `skills`, `issue-management`, `epics`, `backlog-organization`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T03:09:01 - `18d4480a-0cc2-4e97-a447-2484775196a0.jsonl`
 - `/ll:confidence-check` - 2026-06-27T03:00:00 - `96ae5770-0ec2-48fd-992a-05dd5658edf0.jsonl`
 - `/ll:wire-issue` - 2026-06-27T02:22:59 - `c1277e67-74f1-489b-b65b-3a42430f1289.jsonl`
 - `/ll:decide-issue` - 2026-06-27T02:08:18 - `f8198fd5-0d5d-4335-952f-f7c46090643f.jsonl`
@@ -283,6 +285,10 @@ interface:
 
 ---
 
+## Resolution
+
+Implemented as Option A (standalone skill). Created `skills/create-epics-from-unparented/SKILL.md` with the 7-step structure (parse args → discover orphans → cluster via Jaccard → synthesize EPIC titles → propose via AskUserQuestion → create EPICs + write-back → report). Added Codex bridge at `skills/create-epics-from-unparented/agents/openai.yaml`. Updated all wiring: `link-epics/SKILL.md` Usage Examples, `.claude/CLAUDE.md` Issue Discovery list, `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/reference/COMMANDS.md`, `commands/help.md`, and three test files. All wiring tests, `ll-verify-docs`, Codex integration guard, and 500-line skill limit tests pass.
+
 ## Status
 
-- [ ] Implementation started
+- [x] Implementation started
