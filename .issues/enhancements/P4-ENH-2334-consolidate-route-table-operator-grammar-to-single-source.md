@@ -55,6 +55,13 @@ Nothing connects them to the canonical set, so they can drift out of sync.
 > is **not** about merging the two regexes — only about sourcing the shared *operator
 > alternation* and the error-string list from one definition.
 
+## Expected Behavior
+
+After this refactor, `route_table.py` has no hard-coded operator list:
+- `_COND_PATTERN` is built dynamically from the canonical `policy_rules._ALL_OPS` (or `grammar_spec()["all_ops"]` if FEAT-2301 has landed), with multi-char operators sorted before single-char prefixes to preserve longest-match
+- The parse-failure error string in the grid-cell condition parser is derived from the same set
+- No behavior change: all existing `edit-routes` / `route_table` round-trip tests pass unchanged; a regression test verifies the derived operator set matches `_ALL_OPS`
+
 ## Proposed Solution
 
 1. Build `_COND_PATTERN`'s operator alternation from the canonical set rather than a
@@ -99,6 +106,26 @@ regex alternation or the error list. Worth a one-line comment wherever this is d
 - **Out of scope**: the browser-side grammar stamping — that is FEAT-2301. This ENH
   is the Python↔Python half of the same single-source goal.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/route_table.py` — repoint `_COND_PATTERN` regex alternation and parse-failure error string to import from `policy_rules`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/policy_rules.py` — provides `_ALL_OPS`; if FEAT-2301 lands first, `grammar_spec()` is the public accessor to prefer
+
+### Similar Patterns
+- FEAT-2301 — browser-side half of the same single-source goal; coordinate accessor promotion (`grammar_spec()`) if worked in parallel
+
+### Tests
+- TBD — identify existing round-trip tests for `edit-routes` / `route_table`; add ordering regression test asserting `>=` parses as `>=` (not `>` + `=…`)
+
+### Documentation
+- N/A — pure refactor; no public API or user-visible behavior change
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P4 — pure maintainability; no functional bug today, only latent drift
@@ -117,4 +144,5 @@ regex alternation or the error list. Worth a one-line comment wherever this is d
 **Open** | Created: 2026-06-26 | Priority: P4
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-27T03:17:02 - `e931fe1e-b945-4c66-a5c8-cba8fbf6e4d4.jsonl`
 - `capture` - 2026-06-26 - Filed from the FEAT-2301 review: the browser re-implementing `policy_rules.py:27-34` surfaced that `route_table.py` already duplicates the operator set in-tree (`:382` `_COND_PATTERN`, `:455` error string). Split out as the Python↔Python consolidation so it isn't lost if FEAT-2301 ships without the optional `route_table` repoint.
