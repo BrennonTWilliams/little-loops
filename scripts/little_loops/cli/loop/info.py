@@ -43,7 +43,7 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
         desc_raw = spec.get("description", "") or ""
         if desc_raw.strip():
             raw_lines = desc_raw.splitlines()
-            desc = raw_lines[0]
+            desc = raw_lines[0].rstrip()
             if len(raw_lines) > 1:
                 desc += "…"
         else:
@@ -253,10 +253,21 @@ def cmd_list(
     if "uncategorized" in buckets:
         sorted_cats.append("uncategorized")
 
-    # Compute max name width for column alignment
+    # Cap name column so outlier names don't crush the description budget.
+    _MAX_NAME_COL = 32
+    _MAX_LABELS = 2
     max_name_len = max((len(lp["name"]) for lp in all_loops), default=0)
-    name_col = max_name_len + 2  # padding after longest name
+    name_col = min(max_name_len, _MAX_NAME_COL) + 2
     tw = terminal_width()
+
+    # Summary header
+    n_project = sum(1 for lp in all_loops if not lp["builtin"])
+    n_builtin = len(all_loops) - n_project
+    summary = f"  {len(all_loops)} loops · {len(buckets)} categories"
+    if n_project:
+        summary += f" · {n_project} project, {n_builtin} built-in"
+    print(colorize(summary, "2"))
+    print()
 
     cats_printed = False
     for cat in sorted_cats:
@@ -264,19 +275,25 @@ def cmd_list(
         if cats_printed:
             print()  # blank line between category groups
         cats_printed = True
-        print(colorize(f"{cat} ({len(group)}):", "1"))
+        cat_title = cat.replace("-", " ").title()
+        print(colorize(f"  ▸ {cat_title}  ({len(group)})", "36;1"))
         for lp in group:
             # Name: project loops get bold cyan, built-in loops get dimmer cyan
             name_color = "36" if lp["builtin"] else "36;1"
-            name_str = colorize(lp["name"].ljust(name_col), name_color)
+            display_name = _truncate(lp["name"], _MAX_NAME_COL) if len(lp["name"]) > _MAX_NAME_COL else lp["name"]
+            name_str = colorize(display_name.ljust(name_col), name_color)
 
-            # Suffix: labels + [built-in] tag
+            # Suffix: cap labels; mark only project loops (built-in is the default)
             suffix_parts: list[str] = []
-            if lp["labels"]:
-                for label in lp["labels"]:
-                    suffix_parts.append(colorize(f"[{label}]", "2"))
-            if lp["builtin"]:
-                suffix_parts.append(colorize("[built-in]", "2"))
+            labels = lp["labels"] or []
+            visible_labels = labels[:_MAX_LABELS]
+            hidden_label_count = len(labels) - _MAX_LABELS
+            for label in visible_labels:
+                suffix_parts.append(colorize(f"[{label}]", "2"))
+            if hidden_label_count > 0:
+                suffix_parts.append(colorize(f"[+{hidden_label_count}]", "2"))
+            if not lp["builtin"]:
+                suffix_parts.append(colorize("●", "36;1"))
 
             if suffix_parts:
                 suffix_raw = "  " + " ".join(suffix_parts)
@@ -296,17 +313,19 @@ def cmd_list(
 
     # Footer: surface hidden tiers and point users at the natural-language router
     # rather than asking them to scan dozens of loops.
+    print()
+    if n_project:
+        print(colorize("  ● = project loop (overrides built-in)", "2"))
     hidden_bits: list[str] = []
     if hidden_counts.get("internal"):
         hidden_bits.append(f"{hidden_counts['internal']} internal (--internal)")
     if hidden_counts.get("example"):
         hidden_bits.append(f"{hidden_counts['example']} example (--examples)")
     if hidden_bits:
-        print()
-        print(colorize(f"Hidden: {', '.join(hidden_bits)} · all with --all", "2"))
+        print(colorize(f"  Hidden: {', '.join(hidden_bits)} · all with --all", "2"))
     print(
         colorize(
-            'Not sure which loop? `ll-loop run loop-router --input goal="<what you want>"`',
+            '  Not sure which loop? `ll-loop run loop-router --input goal="<what you want>"`',
             "2",
         )
     )

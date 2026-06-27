@@ -498,7 +498,7 @@ class TestCmdList:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "uncategorized" in out
+        assert "Uncategorized" in out
         assert "my-loop" in out
 
     # --- BUG-1634: nested-loop enumeration -------------------------------
@@ -681,15 +681,15 @@ class TestLoopListCategoryFilter:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "apo" in out
-        assert "meta" in out
-        assert "uncategorized" in out
+        assert "Apo" in out
+        assert "Meta" in out
+        assert "Uncategorized" in out
         assert "loop-apo" in out
         assert "loop-meta" in out
         assert "loop-bare" in out
-        # apo and meta headers should appear before uncategorized
-        assert out.index("apo") < out.index("uncategorized")
-        assert out.index("meta") < out.index("uncategorized")
+        # Apo and Meta headers should appear before Uncategorized
+        assert out.index("Apo") < out.index("Uncategorized")
+        assert out.index("Meta") < out.index("Uncategorized")
 
     def test_json_output_includes_category_and_labels(
         self,
@@ -1275,13 +1275,20 @@ class TestLoopListFormatting:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Labels are displayed as [label] badges in list output."""
+        """Labels up to 2 are displayed as [label] badges; extras collapse to [+N]."""
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
+        # 2 labels: both shown, no overflow badge
         (loops_dir / "labeled.yaml").write_text(
             _runnable("name: labeled\ncategory: test\nlabels:\n  - experimental\n  - slow\n")
+        )
+        # 4 labels: first 2 shown, [+2] overflow badge
+        (loops_dir / "many-labels.yaml").write_text(
+            _runnable(
+                "name: many-labels\ncategory: test\nlabels:\n  - a\n  - b\n  - c\n  - d\n"
+            )
         )
 
         args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
@@ -1293,8 +1300,15 @@ class TestLoopListFormatting:
 
         assert result == 0
         out = capsys.readouterr().out
+        # First loop: 2 labels, both visible, no overflow
         assert "[experimental]" in out
         assert "[slow]" in out
+        # Second loop: 4 labels, only first 2 visible + overflow badge
+        assert "[a]" in out
+        assert "[b]" in out
+        assert "[c]" not in out
+        assert "[d]" not in out
+        assert "[+2]" in out
 
     def test_builtin_vs_project_name_color(
         self,
@@ -1332,22 +1346,24 @@ class TestLoopListFormatting:
         assert "\033[36mbuiltin-loop" in out
         assert "\033[36;1mbuiltin-loop" not in out
 
-    def test_builtin_tag_on_same_line(
+    def test_builtin_tag_absent_project_marker_present(
         self,
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """[built-in] tag stays on same line as name at 80 columns with long description."""
+        """[built-in] tag no longer appears; project loops get ● marker instead."""
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        long_desc = "A" * 200  # Very long description
+        (loops_dir / "project-loop.yaml").write_text(
+            _runnable("name: project-loop\ncategory: test\n")
+        )
 
         builtin_dir = tmp_path / "builtin"
         builtin_dir.mkdir()
-        (builtin_dir / "my-loop.yaml").write_text(
-            _runnable(f"name: my-loop\ncategory: test\ndescription: {long_desc}\n")
+        (builtin_dir / "builtin-loop.yaml").write_text(
+            _runnable("name: builtin-loop\ncategory: test\n")
         )
 
         args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
@@ -1355,18 +1371,18 @@ class TestLoopListFormatting:
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=builtin_dir,
         ):
-            with patch("little_loops.cli.loop.info.terminal_width", return_value=80):
-                result = cmd_list(args, loops_dir)
+            result = cmd_list(args, loops_dir)
 
         assert result == 0
         out = capsys.readouterr().out
-        # Each entry line that has [built-in] should be a single line
-        lines = out.strip().split("\n")
-        entry_lines = [line for line in lines if "[built-in]" in line]
-        assert len(entry_lines) == 1
-        # The [built-in] tag stays on the same line as the name
-        assert "…" in entry_lines[0]
-        assert entry_lines[0].index("[built-in]") > entry_lines[0].index("…")
+        # [built-in] tag is never shown (P1: inverted marker)
+        assert "[built-in]" not in out
+        # Project loop gets ● marker; built-in loop does not
+        lines = out.split("\n")
+        project_line = next(line for line in lines if "project-loop" in line)
+        builtin_line = next(line for line in lines if "builtin-loop" in line)
+        assert "●" in project_line
+        assert "●" not in builtin_line
 
     def test_blank_line_between_categories(
         self,
@@ -1391,11 +1407,76 @@ class TestLoopListFormatting:
         assert result == 0
         out = capsys.readouterr().out
         lines = out.split("\n")
-        # Check there's a blank line before the second category header
-        # "beta (1):" should follow a blank line after the first group
-        beta_header_idx = next(i for i, line in enumerate(lines) if "beta" in line and "(" in line)
+        # Check there's a blank line before the second category header (now title-cased: "Beta")
+        beta_header_idx = next(i for i, line in enumerate(lines) if "Beta" in line and "(" in line)
         assert beta_header_idx > 0
         assert lines[beta_header_idx - 1] == ""
+
+    def test_name_column_capped_at_32(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A name longer than 32 chars is truncated; descriptions still get a real budget."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        long_name = "a" * 50  # 50 chars — well over the 32-char cap
+        (loops_dir / "long.yaml").write_text(
+            _runnable(f"name: {long_name}\ncategory: test\ndescription: Some description here\n")
+        )
+
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.loop.info.terminal_width", return_value=80):
+                result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        import re
+
+        ansi_re = re.compile(r"\033\[[0-9;]*m")
+        lines = [ansi_re.sub("", line) for line in out.split("\n")]
+        entry_line = next(line for line in lines if "Some description here" in line)
+        # Name column capped: truncated name is at most 33 chars (32 + ellipsis)
+        name_part = entry_line.lstrip()
+        assert len(name_part.split()[0]) <= 33
+        # Description is visible (not an ellipsis stub)
+        assert "Some description here" in entry_line
+
+    def test_summary_header(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A summary header with loop count and category count is printed before groups."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "loop-a.yaml").write_text(_runnable("name: loop-a\ncategory: cat1\n"))
+        (loops_dir / "loop-b.yaml").write_text(_runnable("name: loop-b\ncategory: cat2\n"))
+
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # Summary header appears before any category header
+        assert "2 loops" in out
+        assert "2 categories" in out
+        # Summary appears before first category
+        first_cat_pos = min(out.index("Cat1") if "Cat1" in out else len(out),
+                            out.index("Cat2") if "Cat2" in out else len(out))
+        assert out.index("2 loops") < first_cat_pos
 
     def test_no_color_output_no_ansi(
         self,

@@ -2340,3 +2340,86 @@
   rule: 'Captured: Built-in FSM loop that generates reusable Claude Code workflows'
   scope: issue
   issue: FEAT-2354
+- id: ARCH-095
+  type: rule
+  timestamp: '2026-06-27T22:14:39Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Direct SDK use silently routes to the wrong backend on non-Anthropic
+    hosts and crashes when ANTHROPIC_API_KEY is absent, violating the host-abstraction
+    contract documented in CLAUDE.md.
+  rule: All LLM calls in automation code must go through resolve_host(), never the
+    Anthropic SDK directly.
+  enforcement: advisory
+  issue: BUG-2355
+- id: ARCH-096
+  type: rule
+  timestamp: '2026-06-27T22:14:39Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: A hardcoded model ID (e.g. claude-haiku-4-5-20251001) is meaningless
+    or fatal against MiniMax, Codex, OpenCode, or pi backends. model=None delegates
+    the choice to the resolved host.
+  rule: Never hardcode Anthropic model IDs in shared automation paths; pass model=None
+    to let the host pick its default.
+  enforcement: advisory
+  issue: BUG-2355
+- id: ARCH-097
+  type: rule
+  timestamp: '2026-06-27T22:14:39Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The learning gate is advisory; letting its uncaught exception bubble
+    up aborted an entire backlog run. Optional enrichment steps should never have
+    fatal blast radius.
+  rule: Best-effort / safety-net steps must catch all exceptions, log a warning, and
+    degrade gracefully instead of propagating.
+  enforcement: advisory
+  issue: BUG-2355
+- id: ARCH-098
+  type: rule
+  timestamp: '2026-06-27T22:14:39Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The fix mirrors the established pattern in session_store._call_llm_for_summary.
+    Omitting os.environ drops PATH and other runtime vars, silently breaking subprocess
+    execution.
+  rule: 'When shelling out via HostInvocation, merge env with os.environ: env={**os.environ,
+    **inv.env}.'
+  enforcement: advisory
+  issue: BUG-2355
+- id: ARCH-099
+  type: rule
+  timestamp: '2026-06-27T22:14:39Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: A single non-host-aware default in _default_llm_call propagated the defect
+    to all three runners simultaneously. Shared automation utilities are high-blast-radius
+    targets.
+  rule: Shared LLM-call utilities used by multiple runners (ll-auto, ll-sprint, ll-parallel)
+    must be host-aware from the start.
+  enforcement: advisory
+  issue: BUG-2355
+- id: ARCHITECTURE-072
+  type: decision
+  timestamp: '2026-06-27T22:28:15Z'
+  category: architecture
+  labels: []
+  rationale: Options tied at 9/12; shared lib fragment wins Consistency tiebreaker
+    (3/3 vs 2/3) — lib/common.yaml already has with_rate_limit_handling and subloop_rate_limit_diagnostic
+    precedents; 3/4 target loops already import lib/common.yaml; all 4 call sites
+    covered vs 1 for inline-only
+  rule: Shared lib fragment for ll-auto auth fast-fail
+  scope: issue
+  alternatives_rejected: Inline guard in rn-remediate.implement only
+  issue: ENH-2353

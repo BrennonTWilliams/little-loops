@@ -7,7 +7,7 @@ captured_at: '2026-06-27T21:58:52Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
 relates_to: [FEAT-1496]
-decision_needed: true
+decision_needed: false
 labels:
 - captured
 - loops
@@ -71,6 +71,9 @@ Implementation approaches (pick during refinement):
    captures output, and routes to an `ENV_NOT_READY` emit on signature match.
    Apply it to `rn-remediate.implement`, `autodev`, `eval-driven-development`,
    and `oracles/implement-issue-chain`.
+
+> **Selected:** Shared lib fragment — DRY cross-cutting auth guard fits `lib/common.yaml` pattern; 3/4 loops already import it; ties on overall score (9/12 each), wins on Consistency tiebreaker (3/3 vs 2/3).
+
 2. **Inline guard** in `rn-remediate.implement` only (smaller blast radius,
    leaves the other three uncovered).
 
@@ -115,6 +118,31 @@ grep -qiE '401|403|unauthorized|forbidden|could not resolve authentication|authe
 
 **Shared lib fragment (Option 1) cannot be a transparent wrapper.** Loop FSM lib fragments replace a state, not inject middleware. To share the auth-check logic, the preferred approach is: (a) add a new `ll_auto_auth_check` fragment to `lib/common.yaml` that operates on a named `captured` variable, and (b) each call site adds a `capture:` field to its implement state + inserts a new `check_auth` state referencing the fragment. This means 4 state edits + 4 new check states, but the grep pattern stays in one place.
 
+**`ENV_NOT_READY` token is new** — no existing loop YAML uses this sentinel. It must be introduced alongside the abort terminal state.
+
+**Global test guard: `test_all_failure_terminals_have_diagnostic_action` (line 240 of `test_builtin_loops.py`).** Any new terminal state (`terminal: true`) representing failure must carry a diagnostic `echo` in its `action:`, or this cross-cutting assertion fails. The `cua-agent-desktop.yaml:_auth_failure_abort` state already satisfies this with `echo "Aborting: non-recoverable LLM auth failure (see .plan_errors.log)"`. The new `emit_env_not_ready` terminal state must follow the same pattern.
+
+**Routing-only states** (evaluator with no action) can also route on captured output — `route_gate_refine` in `rn-remediate.yaml` has no `action_type:`/`action:` and uses only `evaluate.source: "${captured.gate_decision.output}"`. This lighter pattern is an alternative to the full shell-grep state used in `_check_plan_auth_failure` when the check is simpler.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-27.
+
+**Selected**: Shared lib fragment (DRY across 4 call sites)
+
+**Reasoning**: Options tie on overall score (9/12 each). The shared lib fragment wins on the Consistency tiebreaker (3/3 vs 2/3): `lib/common.yaml` already holds `with_rate_limit_handling` and `subloop_rate_limit_diagnostic` as direct precedents for cross-cutting shell fragments, 3/4 target loops already import `lib/common.yaml`, and the inline-only option would leave `autodev` (`scan-and-implement` caller), `eval-driven-development`, and `oracles/implement-issue-chain` (`auto-refine-and-implement` + `sprint-refine-and-implement` caller) perpetually unprotected — covering all 4 active call sites is required to achieve honest failure attribution across all `ll-auto`-calling loops.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Shared lib fragment | 3/3 | 2/3 | 2/3 | 2/3 | 9/12 |
+| Inline guard (rn-remediate only) | 2/3 | 3/3 | 3/3 | 1/3 | 9/12 |
+
+**Key evidence**:
+- Shared lib fragment: `lib/common.yaml` has `with_rate_limit_handling` and `subloop_rate_limit_diagnostic` as direct structural precedents; 3/4 target loops already import `lib/common.yaml`; all 4 call sites covered
+- Inline guard: direct copy template from `cua-agent-desktop.yaml:_check_plan_auth_failure` (lines 328–358); minimal change scope; but `autodev` and `oracles/implement-issue-chain` serve high-traffic orchestrator loops — leaving them unguarded perpetuates the auth-failure attribution problem
+
 ## Implementation Steps
 
 1. **Extend the grep pattern** beyond `cua-agent-desktop.yaml:_check_plan_auth_failure`'s `401|403|unauthorized|forbidden` to include `could not resolve authentication|authentication method` — the `ll-auto` fatal credential string does not match the existing pattern
@@ -144,7 +172,8 @@ grep -qiE '401|403|unauthorized|forbidden|could not resolve authentication|authe
 - `loops/lib/cli.yaml` `ll_auto` fragment (line 22) — the existing `ll-auto` fragment with bare `exit_code` evaluator; new auth-check fragment pairs with this
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — add test verifying auth-signature detection routes to `ENV_NOT_READY`
+- `scripts/tests/test_builtin_loops.py` — add per-loop test classes (`TestRnRemediateLoop`, etc.) with structural assertions following patterns at lines 553, 674, 1103; use `yaml.safe_load` only (no mocks, no subprocess)
+- Test assertions to add per loop: (a) `implement` state has `capture:` set, (b) `check_auth` state exists with `output_contains` evaluator, (c) `emit_env_not_ready` terminal state has diagnostic `echo` (required by `test_all_failure_terminals_have_diagnostic_action` line 240), (d) `on_yes` from auth check routes to abort terminal
 
 ### Documentation
 - N/A
@@ -159,6 +188,7 @@ grep -qiE '401|403|unauthorized|forbidden|could not resolve authentication|authe
 - **Scope**: all autonomous loops that call `ll-auto`.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-27T22:28:21 - `e0ce2dea-8fca-4b08-b38d-f983f2d62cd9.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:13:25 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:format-issue` - 2026-06-27T22:06:59 - `6b0c656c-eeda-41cc-b69d-3c47161977e7.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:58:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09e0f30a-d9cd-4afe-a20d-1b4ab9afdd5a.jsonl`

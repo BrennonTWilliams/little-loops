@@ -2,12 +2,22 @@
 id: ENH-2350
 title: Improve ll-loop list output readability and formatting
 type: ENH
-status: open
+status: done
 priority: P3
-captured_at: "2026-06-27T21:43:31Z"
+captured_at: '2026-06-27T21:43:31Z'
+completed_at: '2026-06-27T22:31:07Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
-labels: [cli, dx, output-formatting]
+labels:
+- cli
+- dx
+- output-formatting
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-2350: Improve ll-loop list output readability and formatting
@@ -23,7 +33,7 @@ tell loops apart by their descriptions.
 
 ## Current Behavior
 
-Rendered by `cmd_list` in `scripts/little_loops/cli/loop/info.py:243-313`.
+Rendered by `cmd_list` in `scripts/little_loops/cli/loop/info.py:66-315`.
 
 Example rows (80-col terminal):
 
@@ -97,6 +107,15 @@ categories are scannable, and a count orients the reader up front. Proposed
 every description is an ellipsis stub, users can't distinguish loops and fall
 back to reading YAML or guessing — defeating the list. The P0 fix is ~3 lines
 and improves every row at once, with near-zero risk.
+
+## Scope Boundaries
+
+- **In scope**: human-readable output of `ll-loop list` only — column widths,
+  per-row tag suppression, label capping, category header style, summary header,
+  and ellipsis normalization.
+- **Out of scope**: the `--json` output path (must remain unchanged — consumed
+  by downstream tooling); `ll-loop show`, `ll-loop run`, or any other subcommand;
+  new CLI flags or filter options; loop YAML changes.
 
 ## Proposed Solution
 
@@ -225,7 +244,7 @@ before checking length.
 
 ### Files to Modify
 - `scripts/little_loops/cli/loop/info.py` — `cmd_list` rendering
-  (lines ~243-313) and `_truncate` (line ~319).
+  (lines ~66-315) and `_truncate` (line ~319).
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/output.py` — `colorize`, `terminal_width`,
@@ -332,6 +351,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Benefit**: every row of the most-used discovery surface becomes legible.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T22:23:30 - `567c4d00-9ba7-4b64-8c58-6d0231d254b8.jsonl`
+- `/ll:confidence-check` - 2026-06-27T22:30:00 - `df3795a0-4c42-418a-b848-17bf2aaaccc9.jsonl`
 - `/ll:wire-issue` - 2026-06-27T22:12:45 - `e61208ac-a505-4f00-9646-b676ce7f4f5f.jsonl`
 - `/ll:refine-issue` - 2026-06-27T21:59:58 - `8c2cb2c3-a9c6-420a-9fce-18dc166b500b.jsonl`
 - `/ll:format-issue` - 2026-06-27T21:48:53 - `4db93a84-28af-46ec-8824-975ef1360e97.jsonl`

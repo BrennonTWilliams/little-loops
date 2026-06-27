@@ -69,6 +69,17 @@ and `run_decomposition`/`classify_decomposition`; the ENH-2005 rationale is
 documented inline in those states. Relates to BUG-2351 (sibling verdict-accuracy
 fix in the same skill).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Suppression precedent**: `skills/confidence-check/SKILL.md` Phase 4.5 implements an identical shape — detect finding, apply a secondary structural test, suppress and log if matched. Follow that pattern: (1) detect `on_yes == on_no`, (2) inspect shared target's `action` for `subloop_outcome_` read and confirm `on_error` is distinct, (3) suppress/downgrade if both hold.
+- **FSM JSON structure**: `scripts/little_loops/fsm/schema.py:StateConfig.from_dict()` normalizes `on_success`/`on_failure` YAML keys → `on_yes`/`on_no` during parse; `to_dict()` serializes only `on_yes`/`on_no`. The audit receives `on_yes`/`on_no` exclusively in the resolved JSON (via `ll-loop show <loop> --resolved --json` in Step 2). `on_error` IS preserved as-is.
+- **Exact secondary-check algorithm**: After detecting `state.on_yes == state.on_no`, (1) look up the shared target state by name in the FSM JSON's `states` dict, (2) read its `action` field and test for `subloop_outcome_` as a substring, (3) check that `state.on_error` is non-null and not equal to the shared target. If all three pass → suppress/mitigated.
+- **Three sidecar invocation sites exist** (not two): `rn-implement.yaml` `run_remediation` (on_error → `record_sub_loop_crash`) and `run_decomposition` (on_error → `record_sub_loop_crash`), plus `rn-refine.yaml` `refine_node` (on_error → `record_node_crash`, reads `node_outcome_<node_id>.txt`). The `rn-refine.yaml` variant is structurally safe but uses a different artifact prefix — out of scope for this issue per Scope Boundaries.
+- **Counter-example to keep flagging**: `rn-build.yaml` `refine_seed` collapses `on_success`, `on_failure`, AND `on_error` into the same target — there is no distinct crash route and no artifact-channel read. This MUST continue to flag.
+- **The ENH-2005 decision is canonical**: `.ll/decisions.yaml` line 1312 registers this pattern as the established convention; the audit false-positive directly contradicts a recorded decision.
+
 ## Scope Boundaries
 
 **In scope:**
@@ -99,6 +110,13 @@ fix in the same skill).
 5. Run existing tests: `python -m pytest scripts/tests/test_audit_loop_run_skill.py -v` to confirm no regressions.
 6. Verify with a live audit of `rn-implement` that `run_remediation` and `run_decomposition` no longer produce the false positive.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. In `scripts/tests/test_audit_loop_run_skill.py`, add **4 test methods** (not the 1 implied by Step 4) in `TestAssessLoopSkill` near lines 278–315: `test_fixture_subloop_laundering_mitigated_validates`, `test_subloop_laundering_mitigated_has_distinct_on_error`, `test_subloop_laundering_mitigated_shared_target_reads_artifact`, and `test_subloop_laundering_mitigated_skill_does_not_flag` — all load `assess-subloop-laundering-mitigated.yaml` via `_load_fixture()` and follow the fixture-shape validator pattern of the existing four `test_subloop_laundering_*` tests
+8. Note for follow-on: `skills/debug-loop-run/reference.md` has a parallel `BUG — Sub-loop verdict discarded` rule with the same trigger; ENH-2352 only fixes `audit-loop-run`, leaving a residual false positive in `debug-loop-run` — create a follow-on ENH if that signal path is exercised regularly
+
 ## Integration Map
 
 ### Files to Modify
@@ -107,17 +125,35 @@ fix in the same skill).
 - `scripts/tests/test_audit_loop_run_skill.py` — add test(s) near `test_subloop_laundering_*` (lines 278–312) asserting the skill does NOT flag the mitigated fixture
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/rn-implement.yaml` — the loop triggering the false positive; verify it clears after the fix (`run_remediation` state: on_success/on_failure → `classify_remediation`; `run_decomposition` state: on_success/on_failure → `classify_decomposition`; both with `on_error` → `record_sub_loop_crash`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/outer-loop-eval.yaml` — invokes `/ll:audit-loop-run` in `generate_report` and `refine_analysis` states; evaluates output via `llm_structured` checking `"None identified."` — suppressing the false positive changes the finding count but not the evaluator gate; no code change needed [Agent 1 finding]
+- `scripts/tests/test_debug_loop_run_synthesis.py` — loads the same `assess-subloop-laundering.yaml` fixture (at lines 202, 210, 221, 233) for parallel `debug-loop-run` laundering tests; not modified by ENH-2352 but tracks the same fixture [Agent 2 finding]
+
+### Reference Files (Read-Only — No Changes Needed)
+- `scripts/little_loops/fsm/schema.py:StateConfig.from_dict()` — normalizes `on_success`/`on_failure` → `on_yes`/`on_no`; explains why the audit JSON always uses `on_yes`/`on_no` keys regardless of YAML source
+- `scripts/little_loops/loops/rn-implement.yaml` — verify after fix: `run_remediation` (on_success/on_failure → `classify_remediation`, on_error → `record_sub_loop_crash`) and `run_decomposition` (on_success/on_failure → `classify_decomposition`, on_error → `record_sub_loop_crash`) should no longer produce a laundering flag
 
 ### Similar Patterns
-- `scripts/little_loops/loops/rn-remediate.yaml` — writes `subloop_outcome_<ID>.txt`; may surface similar false positives if audited
-- `scripts/little_loops/loops/rn-decompose.yaml` — writes `subloop_outcome_<ID>.txt`; same
+- `scripts/little_loops/loops/rn-refine.yaml` — uses the sidecar pattern with `refine_node`/`classify_node` states and `on_error: record_node_crash`; reads `node_outcome_<node_id>.txt` (not `subloop_outcome_`) — a variant that would also false-positive if audited; out of scope per Scope Boundaries but worth noting
+- `scripts/little_loops/loops/rn-remediate.yaml` — child loop that WRITES `subloop_outcome_<ID>.txt`; not the parent using the sidecar, but context for understanding the pattern
+- `skills/confidence-check/SKILL.md` Phase 4.5 — suppression precedent: detects a structural pattern (mechanical fanout with verification chain), then suppresses a normally-flagged finding and logs `mechanical_fanout_suppressed: true`; follow the same secondary-structural-test + suppress shape
 - `scripts/tests/fixtures/fsm/assess-subloop-laundering.yaml` — the existing (genuinely unsafe) fixture; keep as-is to verify unsafe case still flags
+- **Note**: `rn-plan.yaml` does NOT use the sidecar pattern (distinct `on_success`/`on_failure` targets); `rn-build.yaml`'s `refine_seed` collapses all three routes including `on_error` — that IS genuinely unsafe and should keep flagging
+- `skills/debug-loop-run/reference.md` — defines an independent `BUG — Sub-loop verdict discarded` rule with the same trigger (`loop:` + `on_yes == on_no`); **residual gap**: after ENH-2352, `/ll:audit-loop-run` suppresses the rn-implement sidecar false positive but `/ll:debug-loop-run` will still flag it — a parallel fix in `debug-loop-run/reference.md` is a follow-on [Agent 2 finding]
 
 ### Tests
 - `scripts/tests/test_audit_loop_run_skill.py` (lines 275–312) — existing laundering tests using the fixture below; extend or add alongside
 - `scripts/tests/fixtures/fsm/assess-subloop-laundering.yaml` — the fixture that exercises the unsafe (genuinely laundering) case; keep this fixture and its tests unchanged
 - New fixture needed: `scripts/tests/fixtures/fsm/assess-subloop-laundering-mitigated.yaml` — models the ENH-2005 safe pattern (`on_success == on_failure` with `on_error` distinct and shared target reading `subloop_outcome_<ID>.txt`); skill should NOT flag it as a laundering defect
+- `scripts/tests/fixtures/fsm/inner-eval.yaml` — existing dependency fixture referenced by `assess-subloop-laundering.yaml` for the `loop:` key; the new mitigated fixture should reference it too [Agent 3 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **4 test methods to add** in `TestAssessLoopSkill` (Step 4 implies 1; wiring analysis identifies 4), following the `_load_fixture()` + fixture-shape-validator pattern from the existing `test_subloop_laundering_*` block:
+  - `test_fixture_subloop_laundering_mitigated_validates` — `load_and_validate(FIXTURES_DIR / "assess-subloop-laundering-mitigated.yaml")` + `validate_fsm()`, assert no ERROR-severity results
+  - `test_subloop_laundering_mitigated_has_distinct_on_error` — assert the sidecar state's `on_error` ≠ its `on_yes`/`on_no` shared target
+  - `test_subloop_laundering_mitigated_shared_target_reads_artifact` — assert the shared target state's `action` contains `subloop_outcome_`
+  - `test_subloop_laundering_mitigated_skill_does_not_flag` — assert `skills/audit-loop-run/SKILL.md` Step 8 prose contains the sidecar exemption condition (artifact-channel check + distinct `on_error` check)
 
 ### Documentation
 - N/A — behavioral fix; no new docs needed
@@ -133,6 +169,7 @@ fix in the same skill).
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-27T22:27:58 - `df3795a0-4c42-418a-b848-17bf2aaaccc9.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:13:25 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:format-issue` - 2026-06-27T22:07:01 - `6b0c656c-eeda-41cc-b69d-3c47161977e7.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:58:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09e0f30a-d9cd-4afe-a20d-1b4ab9afdd5a.jsonl`

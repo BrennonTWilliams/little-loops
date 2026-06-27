@@ -199,11 +199,10 @@ states:
 
         assert result == 0
         captured = capsys.readouterr()
-        # Built-in loops are shown when no project loops exist, grouped by category
-        if "[built-in]" in captured.out:
-            assert any(kw in captured.out for kw in ["(", "uncategorized", "No loops"])
-        else:
-            assert "No loops" in captured.out or captured.out.strip() == ""
+        # Built-in loops are shown when no project loops exist (P1: [built-in] tag removed)
+        assert "[built-in]" not in captured.out
+        # Either loops were shown or the directory had none
+        assert captured.out.strip() != "" or "No loops" in captured.out
 
     def test_list_multiple_loops(
         self,
