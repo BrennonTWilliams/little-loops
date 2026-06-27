@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.file_utils import atomic_write, atomic_write_json
+from little_loops.init.core import strip_none_leaves
 
 # Entries added to .gitignore by ll-init (idempotently)
 _GITIGNORE_COMMENT = "# little-loops state files"
@@ -117,28 +118,6 @@ def load_existing_config(project_root: Path) -> dict[str, Any]:
     except (json.JSONDecodeError, OSError):
         return {}
     return data if isinstance(data, dict) else {}
-
-
-def strip_none_leaves(config: dict[str, Any]) -> dict[str, Any]:
-    """Return a deep copy of *config* with all ``None``-valued leaves removed.
-
-    ``config.core.deep_merge`` treats a ``None`` in the override as a key-removal
-    sentinel. ``build_config`` emits ``None`` leaves (e.g. ``loops.run_defaults.mode``)
-    and the TUI emits ``project.<cmd>`` ``None`` for cleared fields; merging those
-    over an existing config would silently delete the user's corresponding keys.
-    Stripping them first makes the merge additive (coordinates with BUG-2311; this
-    becomes a no-op once build_config stops emitting ``None`` leaves). Nested dicts
-    are recursed; every other value type passes through unchanged.
-    """
-    result: dict[str, Any] = {}
-    for key, value in config.items():
-        if value is None:
-            continue
-        if isinstance(value, dict):
-            result[key] = strip_none_leaves(value)
-        else:
-            result[key] = value
-    return result
 
 
 def merge_with_existing(

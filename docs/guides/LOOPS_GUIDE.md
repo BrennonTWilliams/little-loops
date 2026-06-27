@@ -518,8 +518,7 @@ The `loops.run_defaults` block in `.ll/ll-config.json` lets you declare persiste
   "loops": {
     "run_defaults": {
       "clear": true,
-      "show_diagrams": "clean",
-      "mode": null
+      "show_diagrams": "clean"
     }
   }
 }

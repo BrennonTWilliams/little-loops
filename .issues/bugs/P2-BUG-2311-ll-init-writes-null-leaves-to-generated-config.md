@@ -2,9 +2,10 @@
 id: BUG-2311
 title: ll-init writes null leaves (build_cmd/run_cmd/mode) to generated config
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-06-26T21:55:52Z'
+completed_at: '2026-06-27T00:22:08Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 labels:
@@ -12,12 +13,12 @@ labels:
 - config
 relates_to:
 - BUG-2310
-confidence_score: 100
-outcome_confidence: 87
-score_complexity: 19
+confidence_score: 95
+outcome_confidence: 83
+score_complexity: 22
 score_test_coverage: 25
-score_ambiguity: 23
-score_change_surface: 20
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-2311: ll-init writes null leaves (build_cmd/run_cmd/mode) to generated config
@@ -46,7 +47,7 @@ And `build_config` itself writes (`core.py:121-127`):
 "loops": { "run_defaults": { "mode": null } }
 ```
 
-This is the recurring "null template value" concern. `test_init_core.py:525`
+This is the recurring "null template value" concern. `test_init_core.py:528`
 currently asserts `mode is None` is intentional.
 
 ## Expected Behavior
@@ -82,7 +83,7 @@ against a user's existing value.
 
 ### Files to Modify
 - `scripts/little_loops/init/core.py` — add `strip_none_leaves()` helper before `build_config()` return; no callers need updating (fix is transparent to all three call sites)
-- `scripts/tests/test_init_core.py` — update `is None` assertions to key-absence assertions (lines 525, 537–538); audit any test asserting `config["project"]["build_cmd"] is None` or `config["project"]["run_cmd"] is None`
+- `scripts/tests/test_init_core.py` — update `is None` assertions to key-absence assertions (lines 528, 540–541); audit any test asserting `config["project"]["build_cmd"] is None` or `config["project"]["run_cmd"] is None`
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/init/cli.py:303` (`_run_yes()`) — calls `build_config()`; fix is automatic; result flows to `write_config()` → `atomic_write_json()` in `scripts/little_loops/file_utils.py`
@@ -98,12 +99,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/config/core.py:deep_merge()` — lines 44–71; `if value is None: result.pop(key, None)` — null leaves in a generated config are a confirmed footgun: they will silently delete the user's key when BUG-2310's re-init merge lands
 
 ### Tests
-- `scripts/tests/test_init_core.py:TestBuildConfig.test_loops_run_defaults_keys` (line 518) — asserts `rd["mode"] is None` at line 525; must become `assert "mode" not in rd`
-- `scripts/tests/test_init_core.py:TestBuildConfig.test_loops_run_defaults_override_via_choices` (line 527) — asserts `rd["mode"] is None` at line 538 and `rd["show_diagrams"] is None` at line 537; both must become key-absence assertions after `strip_none_leaves()` removes them
-- `scripts/tests/test_init_core.py` — fake-template fixtures at lines 86–87, 129–130, 170–171, 211–212 carry `"build_cmd": None, "run_cmd": None`; any test asserting those values exist must be updated to assert key absence
+- `scripts/tests/test_init_core.py:TestBuildConfig.test_loops_run_defaults_keys` (line 521) — asserts `rd["mode"] is None` at line 528; must become `assert "mode" not in rd`
+- `scripts/tests/test_init_core.py:TestBuildConfig.test_loops_run_defaults_override_via_choices` (line 530) — asserts `rd["mode"] is None` at line 541 and `rd["show_diagrams"] is None` at line 540; both must become key-absence assertions after `strip_none_leaves()` removes them
+- `scripts/tests/test_init_core.py` — fake-template fixtures at lines 89–90, 133, 173, 214–215 carry `"build_cmd": None` / `"run_cmd": None`; any test asserting those values exist must be updated to assert key absence
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_init_tui.py:TestBuildFinalConfig.test_command_overrides_applied` (lines 503–504) — asserts `config["project"]["type_cmd"] is None` and `config["project"]["format_cmd"] is None`; these are SAFE: `_build_final_config` re-inserts the `None` values *after* `build_config()` returns (via `val or None` on empty-string inputs), so `strip_none_leaves()` never sees them
+- `scripts/tests/test_init_tui.py:TestBuildFinalConfig.test_command_overrides_applied` (lines 549–550) — asserts `config["project"]["type_cmd"] is None` and `config["project"]["format_cmd"] is None`; these are SAFE: `_build_final_config` re-inserts the `None` values *after* `build_config()` returns (via `val or None` on empty-string inputs), so `strip_none_leaves()` never sees them
 - `scripts/tests/test_init_core.py:TestStripNoneLeaves` (new class to add) — write direct unit tests for the `strip_none_leaves()` helper covering: empty dict, single null leaf removed, falsy-but-not-None values preserved (`False`, `0`, `""`), nested null removed, deeply nested null removed, mixed dict; add `strip_none_leaves` to the import at line 14 alongside `build_config`
 
 ### Templates (read-only — null values stay in source files, stripped at `build_config()` time)
@@ -124,9 +125,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 1. **Add `strip_none_leaves()` in `scripts/little_loops/init/core.py`** — recursive helper that removes any key whose value is `None` at any depth; call as `return strip_none_leaves(config)` at the end of `build_config()`
 2. **Update assertions in `scripts/tests/test_init_core.py`**:
-   - Line 525: `assert rd["mode"] is None` → `assert "mode" not in rd`
-   - Line 537: `assert rd["show_diagrams"] is None` → `assert "show_diagrams" not in rd`
-   - Line 538: `assert rd["mode"] is None` → `assert "mode" not in rd`
+   - Line 528: `assert rd["mode"] is None` → `assert "mode" not in rd`
+   - Line 540: `assert rd["show_diagrams"] is None` → `assert "show_diagrams" not in rd`
+   - Line 541: `assert rd["mode"] is None` → `assert "mode" not in rd`
    - Audit tests referencing `build_cmd`/`run_cmd` in the project block; change any `is None` checks to `not in config["project"]`
 3. **Verify plan path is also clean** — `_run_plan()` in `cli.py:398` shares `build_config()`; run `ll-init --plan /tmp/scratch` and confirm `proposed_config` in the plan JSON also contains no null leaves
 4. **Run targeted tests**: `python -m pytest scripts/tests/test_init_core.py -v -k "build_config or loops_run_defaults or build_cmd or run_cmd"` — all should pass
@@ -151,7 +152,33 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - init, config
 
+## Resolution
+
+Moved `strip_none_leaves` from `init/writers.py` to `init/core.py` (the natural
+dependency direction is writers→core, not the reverse) and called it from
+`build_config()` before return. Dropped the explicit `mode: None` assignment in
+`loops.run_defaults`. The helper already existed for BUG-2310's `merge_with_existing`
+path and its docstring anticipated this consolidation.
+
+### Changes
+- `scripts/little_loops/init/core.py` — added `strip_none_leaves` (moved from
+  writers), called at end of `build_config()`; dropped `mode: None`
+- `scripts/little_loops/init/writers.py` — removed local definition; imports from
+  `init.core`; `merge_with_existing` still calls `strip_none_leaves` as a safety net
+  for the TUI path
+- `scripts/tests/test_init_core.py` — updated 3 `is None` assertions to key-absence;
+  added `test_build_config_emits_no_null_leaves` and
+  `test_strip_none_leaves_preserves_falsy_values`
+- `docs/reference/CONFIGURATION.md` — removed `build_cmd: null` and `run_cmd: null`
+  from full example
+- `docs/guides/LOOPS_GUIDE.md` — removed `mode: null` from `run_defaults` example
+
+### Smoke test
+Generated config with `ll-init --yes` shows zero None-valued keys.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T00:12:43 - `696f206c-1d14-4131-8ccf-8599ac145a53.jsonl`
+- `/ll:confidence-check` - 2026-06-26T23:30:00Z - `9ef7d81c-a3d5-4f76-92f6-3908ca920a6f.jsonl`
 - `/ll:confidence-check` - 2026-06-26T23:00:00Z - `840f1173-5e94-4576-82f8-387a3403a512.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:21:24 - `bb00a6b3-bb99-4165-8a0d-44506e20bca0.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:11:19 - `4405b36b-0acc-485d-bd10-aa2b8d7d1402.jsonl`

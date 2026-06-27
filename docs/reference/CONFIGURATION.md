@@ -17,9 +17,7 @@ For interactive editing, use `/ll:configure`.
     "test_cmd": "pytest tests/",
     "lint_cmd": "ruff check src/",
     "type_cmd": "mypy src/",
-    "format_cmd": "ruff format src/",
-    "build_cmd": null,
-    "run_cmd": null
+    "format_cmd": "ruff format src/"
   },
 
   "issues": {

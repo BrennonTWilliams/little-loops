@@ -185,14 +185,28 @@ Decided by `/ll:decide-issue` on 2026-06-26.
 - `scripts/little_loops/parallel/orchestrator.py:ParallelOrchestrator.run()` (line 165) —
   calls `_cleanup_orphaned_worktrees()` unconditionally before `_load_state()`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/worktree-health.yaml` — the `cleanup_worktrees` state (`:25-31`,
+  `action_type: prompt`) invokes `/ll:cleanup-worktrees`. It inherits the delegated behavior
+  automatically once the command body changes — **no YAML edit required**, but it is the one
+  loop-ecosystem consumer of this command. [Agent 2/3 finding]
+- `scripts/little_loops/parallel/orchestrator.py:_cleanup_orphaned_worktrees()` gains a `dry_run`
+  param: all 13 call sites in `test_orchestrator.py:TestOrphanedWorktreeCleanup` and the
+  production call at `orchestrator.py:165` pass no args, so a `dry_run=False` default keeps them
+  valid without edits. [Agent 2/3 finding]
+
 ### Tests
 - `scripts/tests/test_orchestrator.py:TestOrphanedWorktreeCleanup` — existing test class
   (lines 334–564); extend with: loop-worktree branch deletion case, non-ll digit-prefixed dir
   not selected (e.g. `2024-archive`).
-  - **WILL BREAK** — `test_skips_branch_deletion_for_non_parallel_branch` (line 566) asserts
-    `deleted_branches == []` for non-`parallel/` branches; this is precisely the behavior being
-    fixed. Rename to `test_deletes_loop_worktree_branch` and flip the assertion to confirm
-    deletion. [Agent 1/3 finding]
+  - **Sensitive to the guard design** — `test_skips_branch_deletion_for_non_parallel_branch`
+    (line 566) feeds `"main\n"` and asserts `deleted_branches == []`. With the **safe replacement
+    guard** (Impl Step 1 — accept loop+parallel shapes, reject `main`/`master`/`HEAD`) this test
+    stays GREEN and is load-bearing: it proves orphan cleanup never deletes `main`. Do NOT flip
+    it to assert deletion; instead add a separate `test_deletes_loop_worktree_branch` for the
+    loop-branch case. [Agent 1/3 + Agent 3/3 finding]
+  - **Missing timing test** — no existing test asserts `git rev-parse` fires *before*
+    `worktree remove` (the core of the timing-bug fix); add one (see Impl Step 5). [Agent 3/3]
 - `scripts/tests/test_cli.py:TestParallelArgumentParsing` — add `--cleanup-orphans` / `--dry-run`
   arg-parsing test following the `test_dry_run_flag` pattern.
 - `scripts/tests/test_worker_pool.py:TestWorktreeSetupCleanup` — existing test class covering
@@ -204,13 +218,34 @@ Decided by `/ll:decide-issue` on 2026-06-26.
     dirs; no structural change needed. [Agent 1/3 finding]
 - `scripts/tests/test_cli_args.py` — verifies `add_dry_run_arg` wiring across CLI modules;
   update to cover `--cleanup-orphans` + `--dry-run` for `main_parallel`. [Agent 1/3 finding]
-- `scripts/tests/test_cli_loop_worktree.py` — imports `_is_ll_worktree` directly; verify no
-  assertions rely on the old `[0-9]*`-style matching that the fix narrows. [Agent 1/3 finding]
+- `scripts/tests/test_cli_loop_worktree.py:TestWorkerPoolCleanupBackwardsCompat::test_non_parallel_branch_not_deleted`
+  (line 488) — **WILL BREAK** (legitimately): feeds a loop branch `20260101-000000-my-loop` and
+  asserts it is NOT deleted by `WorkerPool._cleanup_worktree()`. The fix's whole point is that
+  loop branches DO get deleted, so this assertion must invert to assert deletion. The enclosing
+  class `TestWorkerPoolCleanupBackwardsCompat` (line 433) and its docstring ("…still only deletes
+  parallel/ branches") encode the old contract and must be renamed/rewritten. [Agent 2/3 finding]
+- `scripts/tests/test_subprocess_mocks.py:TestWorkerPoolGitOperations::test_cleanup_worktree_removes_worktree`
+  (line 679) — **stale comment, won't fail**: mock returns `"main\n"` with a comment claiming the
+  `parallel/` guard suppresses deletion. With the safe guard (rejects `main`) the behavior is
+  preserved, but the comment's rationale is now wrong — update the comment to reference the
+  `main`/`master`/`HEAD` exclusion instead of the `parallel/` prefix. [Agent 2/3 finding]
 - Add integration test: live-process-owned worktree is skipped; orphaned one is cleaned.
 
 ### Documentation
-- `docs/reference/CLI.md` — update `ll-parallel` entry if `--cleanup-orphans` is added.
+- `docs/reference/CLI.md` — update `ll-parallel` entry if `--cleanup-orphans` is added (the
+  existing `--cleanup` row is at `:343`, usage example at `:379`).
 - `commands/help.md` — verify cleanup-worktrees description remains accurate.
+- `docs/development/TROUBLESHOOTING.md` — two sections point users at `ll-parallel --cleanup` as
+  the post-interruption recovery tool: "Worktree creation fails" (`:131`) and "Too many
+  worktrees" (`:200`). After the fix, `--cleanup` (wipes ALL worktrees via
+  `cleanup_all_worktrees`) and `--cleanup-orphans` (liveness-aware, skips live-process worktrees
+  via `_cleanup_orphaned_worktrees`) have different semantics — clarify which to use for recovery.
+  [Agent 2/3 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` (`:784` `WorkerPool` class diagram) and `docs/reference/API.md`
+  (`:2905` methods table) document only the public `cleanup_all_worktrees()` — signature
+  unchanged, so **no update required**; recorded here to mark them as audited. [Agent 2/3]
 
 ### Configuration
 - N/A — no config keys govern this command's behavior.
@@ -242,6 +277,11 @@ Decided by `/ll:decide-issue` on 2026-06-26.
 4. **Update `commands/cleanup-worktrees.md`** — replace the `find … [0-9]*` detection block
    and branch-teardown logic with a single `ll-parallel --cleanup-orphans [--dry-run]` call;
    add `Bash(ll-parallel:*)` to the `allowed-tools` frontmatter; remove now-redundant bash.
+   (Skill bridge `skills/ll-cleanup-worktrees/SKILL.md` is a body-less Codex stub — no edit
+   needed; it points at this command. [Agent 2/3])
+4b. **Update `docs/development/TROUBLESHOOTING.md`** — in "Worktree creation fails" (`:131`) and
+   "Too many worktrees" (`:200`), distinguish `--cleanup` (removes ALL worktrees) from the new
+   liveness-aware `--cleanup-orphans` and point recovery guidance at the latter. [Agent 2/3]
 5. **Tests** — extend `test_orchestrator.py:TestOrphanedWorktreeCleanup` with loop-branch
    deletion and non-ll digit-dir exclusion cases; add `--cleanup-orphans` arg test to
    `test_cli.py:TestParallelArgumentParsing`.
@@ -269,6 +309,13 @@ Decided by `/ll:decide-issue` on 2026-06-26.
      follows `test_main_parallel_cleanup_mode` (line 493) but patches `ParallelOrchestrator` and
      asserts `_cleanup_orphaned_worktrees()` is called (NOT `pool.cleanup_all_worktrees()`, which
      is the existing `--cleanup` path). [Agent 3/3 finding]
+   - **Update** `test_cli_loop_worktree.py:TestWorkerPoolCleanupBackwardsCompat::test_non_parallel_branch_not_deleted`
+     (line 488) — this asserts a loop branch is NOT deleted; invert it to assert deletion and
+     rename the enclosing class/docstring (its "still only deletes parallel/ branches" contract is
+     exactly what the fix removes). [Agent 2/3 finding]
+   - **Update** `test_subprocess_mocks.py:test_cleanup_worktree_removes_worktree` (line 679
+     comment) — fix the stale "skips branch deletion" rationale to reference the `main`/`HEAD`
+     exclusion, not the `parallel/` prefix. [Agent 2/3 finding]
    - **Add** `test_cli_args.py` coverage for `--cleanup-orphans` + `--dry-run` combo.
 
 ### Minimal path (bash-only fix, no new entrypoint)

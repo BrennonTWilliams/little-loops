@@ -18,6 +18,29 @@ _DEFAULT_ANALYTICS_CAPTURE: dict[str, Any] = {
 }
 
 
+def strip_none_leaves(config: dict[str, Any]) -> dict[str, Any]:
+    """Return a deep copy of *config* with all ``None``-valued leaves removed.
+
+    ``config.core.deep_merge`` treats a ``None`` in the override as a key-removal
+    sentinel (BUG-2310). ``build_config`` emitted ``None`` leaves (e.g.
+    ``loops.run_defaults.mode``, ``project.build_cmd``) and the TUI emitted
+    ``project.<cmd>`` ``None`` for cleared fields; merging those over an existing
+    config would silently delete the user's corresponding keys. Stripping them
+    from generated output makes the merge additive (fix for BUG-2311).
+
+    Nested dicts are recursed; every other value type passes through unchanged.
+    """
+    result: dict[str, Any] = {}
+    for key, value in config.items():
+        if value is None:
+            continue
+        if isinstance(value, dict):
+            result[key] = strip_none_leaves(value)
+        else:
+            result[key] = value
+    return result
+
+
 def build_config(
     template: TemplateMatch,
     choices: dict[str, Any] | None = None,
@@ -122,8 +145,7 @@ def build_config(
         "run_defaults": {
             "clear": loop_clear,
             "show_diagrams": loop_show_diagrams,
-            "mode": None,
         }
     }
 
-    return config
+    return strip_none_leaves(config)
