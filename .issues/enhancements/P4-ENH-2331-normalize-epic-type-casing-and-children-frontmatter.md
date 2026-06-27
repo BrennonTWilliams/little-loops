@@ -17,6 +17,12 @@ labels:
 - issue-management
 - schema
 - normalization
+confidence_score: 93
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2331: Normalize EPIC schema (type casing + EPIC-1880 children migration)
@@ -293,6 +299,7 @@ implementation:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-26T23:30:00Z - `746d760f-c9de-4326-b62f-23786bf7c45f.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:14:28 - `f73d0bf6-c23d-4784-89ac-3dfc12aa0b8a.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:01:53 - `64adeb74-858e-4aba-8e05-0d67aa559f7c.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:50:09 - `33bd8519-5b11-4f17-8c2a-08d7788bb9b2.jsonl`
