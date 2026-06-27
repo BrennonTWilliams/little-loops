@@ -118,13 +118,30 @@ regex alternation or the error list. Worth a one-line comment wherever this is d
 - FEAT-2301 — browser-side half of the same single-source goal; coordinate accessor promotion (`grammar_spec()`) if worked in parallel
 
 ### Tests
-- TBD — identify existing round-trip tests for `edit-routes` / `route_table`; add ordering regression test asserting `>=` parses as `>=` (not `>` + `=…`)
+- `scripts/tests/test_ll_loop_edit_routes.py` — primary test file; key relevant classes:
+  - `TestCompoundGridParser.test_parse_markdown_round_trip` — in-memory round-trip; passes unchanged after this refactor
+  - `TestPolicyRuleApplier.test_apply_round_trip` — file-write round-trip through `load_and_validate`; passes unchanged
+  - `test_parse_markdown_raises_invalid_cell` (line 874) — asserts `"Cannot parse condition cell"` in the `ValueError` message; does **not** assert the operator list portion, so the error string can be rephrased freely
+- `scripts/tests/test_policy_rules.py` — `test_all_operators_parsed`, `test_parse_serialize_parse_stability` — reference patterns for new regression test structure
+- **New tests to add** (in `TestCompoundGridParser` in `test_ll_loop_edit_routes.py`):
+  - `test_cond_pattern_ops_match_all_ops` — assert that the operator set derivable from `_COND_PATTERN` equals `_ALL_OPS` (regression gate: catches drift if `_ALL_OPS` is later extended)
+  - `test_parse_cond_cell_longest_match_gte` — assert that cell value `">=85"` parses as operator `">="` + value `"85"`, not `">"` + `"=85"` (longest-match ordering guard)
 
 ### Documentation
 - N/A — pure refactor; no public API or user-visible behavior change
 
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Full call chain into `_COND_PATTERN`**: `edit_routes.py:cmd_edit_routes()` → `CompoundGridParser.parse_markdown()`/`parse_csv()` → `_parse_rule_cells()` (lines 460–486) → `_parse_cond_cell()` (lines 447–457) → `_COND_PATTERN.match()`; `_parse_cond_cell` is the **only** consumer of `_COND_PATTERN`
+- **`grammar_spec()` does not exist** — FEAT-2301 is still `open`; no public accessor is available in the current tree; the implementation must import `_ALL_OPS` directly (`from little_loops.fsm.policy_rules import _ALL_OPS`)
+- **`_PRED_PATTERN`** at `policy_rules.py:32–34` also hardcodes the same six operators — out of scope per the issue scope note, but a natural follow-on once `grammar_spec()` lands in FEAT-2301
+- **No external file currently imports `_ALL_OPS`** — `route_table.py` would be the first cross-module consumer; importing a private name is the only viable path until FEAT-2301 ships
+- **`test_parse_markdown_raises_invalid_cell` (line 874) asserts only on `"Cannot parse condition cell"`** — it does not pin the operator list text, so the error string in `_parse_cond_cell()` can be freely rephrased to derive from `_ALL_OPS` without breaking that test
 
 ## Impact
 
@@ -144,5 +161,6 @@ regex alternation or the error list. Worth a one-line comment wherever this is d
 **Open** | Created: 2026-06-26 | Priority: P4
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-27T03:22:24 - `b57d4d23-0b03-479a-8de4-c2edac01f6ff.jsonl`
 - `/ll:format-issue` - 2026-06-27T03:17:02 - `e931fe1e-b945-4c66-a5c8-cba8fbf6e4d4.jsonl`
 - `capture` - 2026-06-26 - Filed from the FEAT-2301 review: the browser re-implementing `policy_rules.py:27-34` surfaced that `route_table.py` already duplicates the operator set in-tree (`:382` `_COND_PATTERN`, `:455` error string). Split out as the Python↔Python consolidation so it isn't lost if FEAT-2301 ships without the optional `route_table` repoint.
