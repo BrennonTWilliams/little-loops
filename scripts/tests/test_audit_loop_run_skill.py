@@ -104,12 +104,42 @@ class TestAssessLoopSkill:
         assert "--resolved" in content
         # → skill must use --resolved --json for sub-loop visibility in Step 2
 
-    def test_skill_scorecard_has_four_verdicts(self) -> None:
+    def test_skill_scorecard_verdicts(self) -> None:
         skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         content = skill_path.read_text()
-        for verdict in ("met", "phantom", "partial", "degraded"):
+        for verdict in ("met", "phantom", "partial", "degraded", "honest-failure"):
             assert f"`{verdict}`" in content or f'"{verdict}"' in content or verdict in content
-        # → scorecard verdict must be one of the four defined values
+        # → scorecard must define all five verdict values including honest-failure
+
+    def test_skill_step6_has_honest_failure_verdict(self) -> None:
+        """Step 6 verdict table must contain honest-failure as a distinct row from phantom."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step6_start = content.index("## Step 6:")
+        step7_start = content.index("## Step 7:")
+        step6_section = content[step6_start:step7_start]
+        assert "honest-failure" in step6_section
+        assert "phantom" in step6_section
+        # → phantom and honest-failure must be distinct rows in the verdict table
+
+    def test_skill_step6_reads_summary_json(self) -> None:
+        """Step 6 must reference summary.json to disambiguate honest-failure from phantom."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step6_start = content.index("## Step 6:")
+        step7_start = content.index("## Step 7:")
+        step6_section = content[step6_start:step7_start]
+        assert "summary.json" in step6_section
+        # → skill must cross-check claimed outcome before emitting phantom or honest-failure
+
+    def test_skill_final_report_includes_honest_failure_verdict(self) -> None:
+        """Final Report block must include honest-failure in the verdict enum."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        final_report_start = content.index("## Final Report")
+        final_report_section = content[final_report_start:]
+        assert "honest-failure" in final_report_section
+        # → Final Report verdict enum must include honest-failure
 
     # ------------------------------------------------------------------
     # Fixture structural validation
@@ -135,6 +165,12 @@ class TestAssessLoopSkill:
 
     def test_fixture_subloop_laundering_validates(self) -> None:
         fsm, _ = load_and_validate(FIXTURES_DIR / "assess-subloop-laundering.yaml")
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, f"FSM errors: {[str(e) for e in error_list]}"
+
+    def test_fixture_honest_failure_validates(self) -> None:
+        fsm, _ = load_and_validate(FIXTURES_DIR / "assess-honest-failure.yaml")
         errors = validate_fsm(fsm)
         error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
         assert not error_list, f"FSM errors: {[str(e) for e in error_list]}"
@@ -468,3 +504,69 @@ class TestAssessLoopSkill:
         assert "default 200" not in frontmatter, (
             "Frontmatter tail argument description must not say 'default 200' after auto-scaling"
         )
+
+
+class TestHonestFailureDiscriminator:
+    """Discriminator tests for the honest-failure fixture and its distinguishing properties.
+
+    Parallel to the phantom-success discriminator tests in TestAssessLoopSkill.
+    The key distinction: honest-failure means the loop's own summary claims failure
+    (implemented == 0, failed > 0) with no artifact mutation — the loop told the truth.
+    """
+
+    def _load_fixture(self, name: str) -> dict:
+        path = FIXTURES_DIR / name
+        assert path.exists(), f"Fixture not found: {path}"
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    def _happy_path(self, spec: dict) -> list[str]:
+        states = spec.get("states", {})
+        current = spec.get("initial")
+        path: list[str] = []
+        seen: set[str] = set()
+        while current and current not in seen:
+            path.append(current)
+            seen.add(current)
+            state = states.get(current, {})
+            if state.get("terminal"):
+                break
+            current = state.get("on_yes") or state.get("next")
+        return path
+
+    def test_honest_failure_context_has_implemented_counter(self) -> None:
+        """Honest-failure fixture declares implemented in context — the claimed-success signal."""
+        spec = self._load_fixture("assess-honest-failure.yaml")
+        context = spec.get("context", {})
+        assert "implemented" in context
+        # → skill reads this counter (or equivalent from summary.json) to distinguish from phantom
+
+    def test_honest_failure_claimed_success_is_zero(self) -> None:
+        """Honest-failure fixture reports implemented == 0 — no claimed success."""
+        spec = self._load_fixture("assess-honest-failure.yaml")
+        context = spec.get("context", {})
+        assert context.get("implemented", -1) == 0
+        # → claimed success == 0; with no mutation → honest-failure, not phantom
+
+    def test_honest_failure_failed_count_is_nonzero(self) -> None:
+        """Honest-failure fixture reports failed > 0 — loop explicitly recorded failures."""
+        spec = self._load_fixture("assess-honest-failure.yaml")
+        context = spec.get("context", {})
+        assert context.get("failed", 0) > 0
+        # → non-zero failure count confirms this is not silent non-progress
+
+    def test_honest_failure_no_artifact_path_in_context(self) -> None:
+        """No output_file or prompt_file in context — no expected artifact mutation to verify."""
+        spec = self._load_fixture("assess-honest-failure.yaml")
+        context = spec.get("context", {})
+        path_keys = {"output_file", "prompt_file", "system_file", "input_file"}
+        assert not any(k in context for k in path_keys)
+        # → zero claimed-success + no artifact path + no mutation → honest-failure
+
+    def test_honest_failure_happy_path_reaches_terminal(self) -> None:
+        """Happy-path traversal reaches terminal — loop completed, failure is self-reported."""
+        spec = self._load_fixture("assess-honest-failure.yaml")
+        path = self._happy_path(spec)
+        states = spec.get("states", {})
+        assert states.get(path[-1], {}).get("terminal") is True
+        # → loop completes normally; failure is self-reported, not due to SIGKILL/timeout

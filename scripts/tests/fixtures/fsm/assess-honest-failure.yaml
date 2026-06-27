@@ -1,0 +1,13 @@
+name: assess-honest-failure
+description: "Process open issues through ll-auto and report implementation results"
+initial: process
+context:
+  implemented: 0
+  failed: 5
+states:
+  process:
+    action_type: prompt
+    action: "Process all open BUG issues and report counts."
+    next: done
+  done:
+    terminal: true

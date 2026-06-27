@@ -2,8 +2,9 @@
 id: BUG-2351
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-27T21:58:52Z'
+completed_at: '2026-06-27T23:05:27Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
 labels:
@@ -170,6 +171,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No — `honest-failure` is a new label; existing `phantom` verdicts are unaffected
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T22:58:29 - `c14761a1-cfcd-4700-b1ea-c7d90f0e74b3.jsonl`
 - `/ll:confidence-check` - 2026-06-27T22:45:00Z - `c505fdec-528c-43ee-bb73-c9762312bc9c.jsonl`
 - `/ll:wire-issue` - 2026-06-27T22:28:20 - `e0ce2dea-8fca-4b08-b38d-f983f2d62cd9.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:19:27 - `b87fb21f-6776-487a-a31c-d78f2b3cc986.jsonl`

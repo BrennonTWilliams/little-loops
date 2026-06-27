@@ -847,7 +847,8 @@ Audit whether a loop's execution actually achieved its stated goal — checking 
 | Verdict | Condition |
 |---------|-----------|
 | `met` | Terminal reached AND all threshold contracts verified AND all expected artifact mutations occurred |
-| `phantom` | Terminal reached AND (artifacts unchanged OR threshold unverified — only model self-reported) |
+| `phantom` | Terminal reached AND claimed success > 0 (or no `summary.json`) AND (artifacts unchanged OR threshold unverified — only model self-reported) |
+| `honest-failure` | Terminal reached AND `summary.json` present AND claimed success == 0 (`implemented: 0, failed: N`) AND no artifact mutation — loop truthfully reported failure; root cause is upstream |
 | `partial` | Terminal reached AND some but not all contracts satisfied |
 | `degraded` | Loop completed but metric trended downward vs baseline |
 
@@ -860,7 +861,7 @@ Audit whether a loop's execution actually achieved its stated goal — checking 
 **Contract**: <threshold keys and values, or "none detected">
 **Artifacts checked**: <list of paths and mutation status>
 **Phase 1 signals**: <fault signal count, or "none">
-**Verdict**: `<met | phantom | partial | degraded>`
+**Verdict**: `<met | phantom | honest-failure | partial | degraded>`
 
 **Rationale**: <one paragraph explaining the verdict>
 ```

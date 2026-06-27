@@ -212,7 +212,7 @@ AUTOMATION & LOOPS
     Audit loop effectiveness: detect phantom success, verify artifact mutations,
     score against rubric, and propose improvements
     Flags: --no-rubric-audit, --resolved
-    Verdicts: met, partial, phantom, degraded
+    Verdicts: met, partial, phantom, honest-failure, degraded
 
     Skills: workflow-automation-proposer
     CLI: ll-loop

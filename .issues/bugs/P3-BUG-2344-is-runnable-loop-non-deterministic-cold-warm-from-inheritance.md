@@ -1,12 +1,19 @@
 ---
 id: BUG-2344
-title: "is_runnable_loop is non-deterministic within a process for from:-inheritance loops"
+title: is_runnable_loop is non-deterministic within a process for from:-inheritance
+  loops
 type: BUG
 priority: P3
 status: open
-captured_at: "2026-06-27T18:13:55Z"
-discovered_date: "2026-06-27"
+captured_at: '2026-06-27T18:13:55Z'
+discovered_date: '2026-06-27'
 discovered_by: capture-issue
+confidence_score: 96
+outcome_confidence: 87
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 23
 ---
 
 # BUG-2344: is_runnable_loop is non-deterministic within a process for from:-inheritance loops
@@ -115,5 +122,6 @@ Two complementary fixes:
 **Open** | Created: 2026-06-27 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T00:00:00Z - `7e3b50b6-ae1b-4168-aadd-7ec9338b36d0.jsonl`
 - `/ll:format-issue` - 2026-06-27T18:16:40 - `6eafd1d5-40d0-4472-a29e-7de46e962138.jsonl`
 - `/ll:capture-issue` - 2026-06-27T18:13:55Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46b79929-8b51-4525-bc64-06d247303c56.jsonl`

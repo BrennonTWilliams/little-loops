@@ -208,12 +208,28 @@ Pass `result` and `TOOL_CALL_COUNT` to the scorecard in Step 6.
 
 ## Step 6: Goal-vs-Outcome Scorecard
 
-Determine the verdict using the terminal state from `loop_complete` event (`terminated_by`) and the artifact/contract evidence:
+### Step 6a: Summary Cross-Check
+
+Before determining the verdict, check whether the run wrote a `summary.json` to its run directory:
+
+```bash
+SUMMARY_FILE=".loops/.history/<LATEST_RUN_ID>-<loop_name>/summary.json"
+```
+
+If the file exists, extract the claimed-outcome counters (`implemented`, `failed`, `decomposed`). Use these counters as the **claimed-success signal**:
+
+- **claimed_success > 0**: `implemented > 0` or any equivalent success token is present
+- **claimed_success == 0**: `implemented == 0` (or key absent) — the run honestly reports it produced nothing
+
+### Step 6b: Verdict Table
+
+Determine the verdict using the terminal state from `loop_complete` event (`terminated_by`), the artifact/contract evidence from Step 4, and the claimed-success signal from Step 6a:
 
 | Verdict | Condition |
 |---|---|
 | `met` | Terminal reached AND all threshold contracts verified AND all expected artifact mutations occurred |
-| `phantom` | Terminal reached AND (artifacts unchanged OR threshold unverified — only model self-reported via `llm_structured` evaluator) |
+| `phantom` | Terminal reached AND claimed success > 0 (or `summary.json` absent — loop provides no failure evidence) AND (artifacts unchanged OR threshold unverified — only model self-reported via `llm_structured` evaluator) |
+| `honest-failure` | Terminal reached AND `summary.json` present AND claimed success == 0 (`implemented: 0, failed: N`) AND no artifact mutation observed. The loop told the truth about its failure; the root cause is upstream (e.g. environment error, auth failure, misconfiguration). |
 | `partial` | Terminal reached AND some but not all contracts satisfied |
 | `partial` | `terminated_by == "max_steps"` AND `max_steps_summary` event present in JSONL (summary state ran; artifact written) |
 | `degraded` | Loop completed but metric trended downward vs baseline captured in `state.json` |
@@ -228,7 +244,7 @@ Output the structured scorecard block:
 **Artifacts checked**: <list of paths and mutation status>
 **Phase 1 signals**: <fault signal count from Step 5, or "none">
 **Shallow-iteration check**: `<warning | corroborated | clear>` (<TOOL_CALL_COUNT> tool calls, <AUX_MUTATION_COUNT> auxiliary mutations)
-**Verdict**: `<met | phantom | partial | degraded>`
+**Verdict**: `<met | phantom | honest-failure | partial | degraded>`
 
 **Rationale**: <one paragraph explaining the verdict>
 ```
@@ -327,7 +343,7 @@ For each approved proposal, allocate an ID (`ll-issues next-id`) and write the i
 ```
 Assessment complete for loop: <loop_name>
 
-Verdict: `<met | phantom | partial | degraded>`
+Verdict: `<met | phantom | honest-failure | partial | degraded>`
 Rubric audit: <N evaluators checked, M flagged — or "skipped (--no-rubric-audit)">
 Laundering check: <N sub-loop states checked, M flagged — or "no sub-loop states">
 Shallow-iteration check: `<warning | corroborated | clear>` (<N> tool calls, <M> auxiliary mutations — or "below threshold")

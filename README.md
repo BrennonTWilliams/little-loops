@@ -66,7 +66,7 @@ Harness-driven development is TDD's analog for agent-built software: define what
 **The harness improves itself:**
 - `harness-optimize` — hill-climbing on harness artifacts. One targeted edit per iteration, benchmark, accept on rising score, revert otherwise.
 - Prompt optimization loops — point at a prompt, converge to a target score.
-- `/ll:audit-loop-run` — four-valued verdict catches failure modes humans miss.
+- `/ll:audit-loop-run` — five-valued verdict catches failure modes humans miss.
 
 *Point at context. Get a harness.*
 
