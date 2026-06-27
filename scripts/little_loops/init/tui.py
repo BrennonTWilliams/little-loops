@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -143,7 +142,6 @@ def run_tui(
         )
         return 1
 
-    from little_loops.config.core import resolve_config_path
     from little_loops.init.detect import detect_project_type
     from little_loops.init.install_check import (
         InstallStatus,
@@ -152,19 +150,14 @@ def run_tui(
         fetch_latest_plugin,
         fetch_latest_pypi,
     )
+    from little_loops.init.writers import load_existing_config
 
     console = Console()
     ll_dir = project_root / ".ll"
     config_path = ll_dir / "ll-config.json"
 
-    # Load existing config for pre-population (if present).
-    existing_config: dict[str, Any] = {}
-    _existing_path = resolve_config_path(project_root)
-    if _existing_path is not None:
-        try:
-            existing_config = json.loads(_existing_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            existing_config = {}
+    # Load existing config for pre-population and the merge in _apply_config.
+    existing_config = load_existing_config(project_root)
 
     _selected_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
 
@@ -597,6 +590,7 @@ def run_tui(
         force=force,
         console=console,
         claude_md_opt_in=claude_md_opt_in,
+        existing_config=existing_config,
     )
     return 0
 
@@ -817,6 +811,7 @@ def _apply_config(
     force: bool,
     console: Console,
     claude_md_opt_in: bool = False,
+    existing_config: dict[str, Any] | None = None,
 ) -> None:
     """Write all ll-init artifacts to disk."""
     from little_loops import __version__
@@ -829,10 +824,14 @@ def _apply_config(
         make_issue_dirs,
         make_learning_tests_dir,
         merge_settings,
+        merge_with_existing,
         update_gitignore,
         write_claude_md,
         write_config,
     )
+
+    # Preserve any config keys the wizard does not model (BUG-2310); --force resets.
+    config = merge_with_existing(config, existing_config or {}, force)
 
     issues_base = project_root / config.get("issues", {}).get("base_dir", ".issues")
 

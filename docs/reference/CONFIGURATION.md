@@ -1290,6 +1290,8 @@ Each summary is stored as a node in `summary_nodes`. Condensed nodes receive `pa
 
 The following fields are defined in `config-schema.json` but are not exposed through `ll-init` or `/ll:configure`. To set them, edit `.ll/ll-config.json` directly. All have sensible defaults and rarely need changing.
 
+> **Re-init preserves these.** Re-running `ll-init` (without `--force`) deep-merges the regenerated config over your existing one, so any manually-set values here — and any other keys `ll-init` does not model — survive. Pass `--force` to reset to template defaults and drop them.
+
 ### `scan.custom_agents`
 
 Custom scanning agent names to include during `/ll:scan-codebase`:

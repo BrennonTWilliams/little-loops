@@ -136,7 +136,6 @@ def _run_yes(
     upgrade: bool = False,
 ) -> int:
     """Execute the non-interactive --yes init flow."""
-    from little_loops.config.core import resolve_config_path
     from little_loops.init.core import build_config
     from little_loops.init.detect import detect_project_type
     from little_loops.init.install_check import (
@@ -150,9 +149,11 @@ def _run_yes(
         deploy_design_tokens,
         deploy_goals,
         deploy_issue_templates,
+        load_existing_config,
         make_issue_dirs,
         make_learning_tests_dir,
         merge_settings,
+        merge_with_existing,
         update_gitignore,
         write_claude_md,
         write_config,
@@ -161,19 +162,14 @@ def _run_yes(
     ll_dir = project_root / ".ll"
     config_path = ll_dir / "ll-config.json"
 
-    # Load existing config as baseline for pre-population.
-    existing_config: dict[str, Any] = {}
-    _existing_path = resolve_config_path(project_root)
-    if _existing_path is not None:
-        try:
-            existing_config = json.loads(_existing_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            existing_config = {}
+    # Load existing config as baseline for pre-population (and the merge below).
+    existing_config = load_existing_config(project_root)
 
     if existing_config and not dry_run:
-        print("Merging with existing configuration.")
-    elif config_path.exists() and force and not dry_run:
-        print("Overwriting existing configuration.")
+        # --force resets to template defaults; a plain re-init merges (BUG-2310).
+        print(
+            "Overwriting existing configuration." if force else "Merging with existing configuration."
+        )
 
     # Detect installation; notify-and-act (only with --upgrade) or warn-only.
     install_source, installed_version, _install_path = detect_installation(project_root)
@@ -302,6 +298,10 @@ def _run_yes(
         choices.update(feature_choices)
     config = build_config(template, choices)
 
+    # Preserve any config keys build_config does not model (BUG-2310); --force
+    # bypasses the merge to reset to template defaults.
+    config = merge_with_existing(config, existing_config, force)
+
     if install_source:
         config["install_source"] = install_source
 
@@ -426,8 +426,10 @@ def _run_apply(
     """Apply writes from a --plan JSON (file path or raw JSON string)."""
     from little_loops.init.writers import (
         deploy_goals,
+        load_existing_config,
         make_issue_dirs,
         merge_settings,
+        merge_with_existing,
         update_gitignore,
         write_config,
     )
@@ -447,6 +449,9 @@ def _run_apply(
 
     config: dict[str, Any] = plan.get("proposed_config") or plan
     ll_dir = project_root / ".ll"
+
+    # Preserve any config keys the plan does not model (BUG-2310); --force resets.
+    config = merge_with_existing(config, load_existing_config(project_root), force)
 
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
     issues_base = project_root / issues_base_rel
@@ -495,7 +500,7 @@ Feature flags (headless --yes / --plan only):
 
 Exit codes:
   0 - Success
-  1 - Error (config exists, template missing, etc.)
+  1 - Error (template missing, stdin not a TTY, etc.)
   2 - Usage error
 """,
         )

@@ -473,6 +473,52 @@ class TestExistingConfig:
         config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
         assert "$schema" in config  # real config, not the empty placeholder
 
+    @patch("little_loops.init.tui.questionary")
+    def test_tui_reinit_preserves_unmodeled_keys(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        """A full TUI re-init round-trip preserves keys the wizard does not model (BUG-2310)."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        existing = {
+            "project": {"name": "oldproject"},
+            "sprints": {"default_max_workers": 7},
+            "my_custom_section": {"key": "value"},
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(existing))
+
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, name="oldproject")
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, force=False)
+
+        assert rc == 0
+        config = json.loads((ll_dir / "ll-config.json").read_text())
+        assert config["sprints"] == {"default_max_workers": 7}
+        assert config["my_custom_section"] == {"key": "value"}
+
+    @patch("little_loops.init.tui.questionary")
+    def test_tui_reinit_force_drops_unmodeled_keys(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        """A forced TUI re-init resets to template defaults, dropping unmodeled keys (BUG-2310)."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        existing = {
+            "project": {"name": "oldproject"},
+            "my_custom_section": {"key": "value"},
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(existing))
+
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, name="oldproject")
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, force=True)
+
+        assert rc == 0
+        config = json.loads((ll_dir / "ll-config.json").read_text())
+        assert "my_custom_section" not in config
+
 
 # ---------------------------------------------------------------------------
 # _build_final_config unit tests

@@ -2,9 +2,10 @@
 id: BUG-2310
 title: ll-init re-init clobbers unmodeled config keys despite "Merging" message
 type: BUG
-status: open
+status: done
 priority: P1
 captured_at: '2026-06-26T21:55:52Z'
+completed_at: '2026-06-27T00:02:26Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 labels:
@@ -210,7 +211,44 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `init`, `config`, `data-loss`
 
+## Resolution
+
+Fixed in all **three** ll-init write paths by wiring `config.core.deep_merge` through new
+helpers in `scripts/little_loops/init/writers.py`:
+
+- `load_existing_config(project_root)` — DRY loader (`resolve_config_path` + safe JSON),
+  replacing the duplicated inline blocks in `_run_yes` and `run_tui`.
+- `strip_none_leaves(config)` — removes `None` leaves before merging so `deep_merge`'s
+  key-removal sentinel cannot delete user keys (e.g. `loops.run_defaults.mode`). Coordinates
+  with BUG-2311; becomes a no-op once `build_config` stops emitting `None` leaves.
+- `merge_with_existing(new_config, existing_config, force)` — returns `new_config` unchanged
+  when `force` (reset-to-template contract) or when no existing config; otherwise
+  `deep_merge(existing, strip_none_leaves(new))`.
+
+Wired (all force-gated):
+- `init/cli.py` `_run_yes` — merge after `build_config`, before the dry-run preview so the
+  preview reflects the merge.
+- `init/cli.py` `_run_apply` — loads existing config (previously did not) and merges.
+- `init/tui.py` `_apply_config` — new `existing_config` param threaded from `run_tui`; merges
+  before any `config.get(...)` usage.
+
+Also fixed the dead message branch (`--force` now prints "Overwriting", plain re-init prints
+"Merging") and removed the dead `config exists` clause from the `--help` exit-code epilog.
+
+**Tests:** preservation + force-reset round-trips for all three paths (`test_init_core.py`,
+`test_init_tui.py`) plus `TestMergeHelpers` unit tests. Full suite: 12557 passed, 23 skipped.
+Ruff + mypy clean on changed modules.
+
+**Docs:** `docs/reference/CONFIGURATION.md` Manual Configuration now notes re-init preserves
+manually-set keys. `CLI.md` / `GETTING_STARTED.md` / `skills/init/SKILL.md` claims verified
+accurate (no change needed).
+
+Note: BUG-2313 (apply-lossy / dead-force-flag) overlaps this fix — `_run_apply` is no longer
+lossy and `apply --force` now has a real effect.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-27T00:02:26Z - `86f97a97-23ba-4414-b018-6fcb83a97ce7.jsonl`
+- `/ll:confidence-check` - 2026-06-26T23:10:00Z - `c6ef244d-80bb-4b15-9f66-96ebe399d4bc.jsonl`
 - `/ll:confidence-check` - 2026-06-26T22:35:00Z - `6b5f4713-4801-485e-9909-111bcbcf1d9a.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:21:26 - `bb00a6b3-bb99-4165-8a0d-44506e20bca0.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:09:59 - `afe96ddb-ff74-49fc-b0a9-7bd525432c1d.jsonl`
@@ -221,5 +259,5 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-- **Status**: open
+- **Status**: done
 - **Priority**: P1

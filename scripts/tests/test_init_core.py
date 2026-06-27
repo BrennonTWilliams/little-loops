@@ -32,9 +32,12 @@ from little_loops.init.writers import (
     deploy_design_tokens,
     deploy_goals,
     install_codex_adapter,
+    load_existing_config,
     make_issue_dirs,
     make_learning_tests_dir,
     merge_settings,
+    merge_with_existing,
+    strip_none_leaves,
     update_gitignore,
     write_claude_md,
     write_config,
@@ -1243,6 +1246,135 @@ class TestMainInit:
         # Existing analytics=disabled should be preserved
         assert result["analytics"]["enabled"] is False
 
+    def test_yes_preserves_unmodeled_keys(self, tmp_project: Path) -> None:
+        """--yes on an existing config preserves keys build_config does not model (BUG-2310)."""
+        import json
+
+        from little_loops.init.cli import main_init
+
+        (tmp_project / ".ll").mkdir()
+        existing = {
+            "project": {"name": "preserved"},
+            # Sections build_config never emits — must survive re-init.
+            "sprints": {"default_max_workers": 7},
+            "documents": {"enabled": True, "categories": {"arch": {"files": ["x.md"]}}},
+            "commands": {"confidence_gate": {"enabled": True, "readiness_threshold": 91}},
+            "context_monitor": {"enabled": True, "auto_handoff_threshold": 42},
+            "history": {
+                "compaction": {"enabled": True, "budget_tokens": 4096},
+                "session_digest": {"enabled": True, "char_cap": 1200},
+            },
+            "my_custom_section": {"key": "value"},
+        }
+        (tmp_project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        result = json.loads((tmp_project / ".ll" / "ll-config.json").read_text())
+        # Wholly unmodeled sections survive verbatim.
+        assert result["sprints"] == {"default_max_workers": 7}
+        assert result["documents"]["categories"] == {"arch": {"files": ["x.md"]}}
+        assert result["commands"]["confidence_gate"]["readiness_threshold"] == 91
+        assert result["my_custom_section"] == {"key": "value"}
+        # Unmodeled leaves inside a section build_config *does* touch survive too.
+        assert result["context_monitor"]["auto_handoff_threshold"] == 42
+        assert result["history"]["compaction"] == {"enabled": True, "budget_tokens": 4096}
+        assert result["history"]["session_digest"]["char_cap"] == 1200
+
+    def test_yes_force_drops_unmodeled_keys(self, tmp_project: Path) -> None:
+        """--yes --force resets to template defaults, dropping unmodeled keys (BUG-2310)."""
+        import json
+
+        from little_loops.init.cli import main_init
+
+        (tmp_project / ".ll").mkdir()
+        existing = {
+            "project": {"name": "preserved"},
+            "my_custom_section": {"key": "value"},
+        }
+        (tmp_project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--force", "--root", str(tmp_project)])
+        assert code == 0
+        result = json.loads((tmp_project / ".ll" / "ll-config.json").read_text())
+        assert "my_custom_section" not in result
+
+    def test_apply_preserves_unmodeled_keys(self, tmp_project: Path, tmp_path: Path) -> None:
+        """`apply` on an existing config preserves unmodeled keys (BUG-2310 third write path)."""
+        import io
+        import json
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        # Generate a plan JSON from a clean source.
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(buf.getvalue())
+
+        # Apply destination already has a config with an unmodeled key.
+        apply_dest = tmp_path / "apply_dest"
+        (apply_dest / ".ll").mkdir(parents=True)
+        (apply_dest / ".ll" / "ll-config.json").write_text(
+            json.dumps({"project": {"name": "dest"}, "my_custom_section": {"key": "value"}})
+        )
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
+        assert code == 0
+        result = json.loads((apply_dest / ".ll" / "ll-config.json").read_text())
+        assert result["my_custom_section"] == {"key": "value"}
+
+    def test_apply_force_drops_unmodeled_keys(self, tmp_project: Path, tmp_path: Path) -> None:
+        """`apply --force` resets to the plan config, dropping unmodeled keys (BUG-2310)."""
+        import io
+        import json
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(buf.getvalue())
+
+        apply_dest = tmp_path / "apply_dest"
+        (apply_dest / ".ll").mkdir(parents=True)
+        (apply_dest / ".ll" / "ll-config.json").write_text(
+            json.dumps({"project": {"name": "dest"}, "my_custom_section": {"key": "value"}})
+        )
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                ["--root", str(apply_dest), "apply", "--config", str(plan_file), "--force"]
+            )
+        assert code == 0
+        result = json.loads((apply_dest / ".ll" / "ll-config.json").read_text())
+        assert "my_custom_section" not in result
+
     def test_plan_emits_json(self, tmp_project: Path, capsys: pytest.CaptureFixture) -> None:
         from little_loops.init.cli import main_init
 
@@ -1779,3 +1911,62 @@ class TestTemplateCommandOptions:
     def test_generic_has_no_command_options(self, templates_dir: Path) -> None:
         data = json.loads((templates_dir / "generic.json").read_text())
         assert "command_options" not in data["_meta"]
+
+
+# ---------------------------------------------------------------------------
+# Merge helpers (BUG-2310)
+# ---------------------------------------------------------------------------
+
+
+class TestMergeHelpers:
+    def test_strip_none_leaves_removes_nested_nulls(self) -> None:
+        src = {
+            "a": 1,
+            "b": None,
+            "c": {"d": None, "e": 2, "f": {"g": None}},
+            "h": [None, 1],  # lists pass through untouched
+        }
+        assert strip_none_leaves(src) == {"a": 1, "c": {"e": 2, "f": {}}, "h": [None, 1]}
+        # Input is not mutated.
+        assert src["b"] is None
+
+    def test_merge_with_existing_force_returns_new_unchanged(self) -> None:
+        existing = {"keep": 1, "project": {"name": "old"}}
+        new = {"project": {"name": "new"}}
+        assert merge_with_existing(new, existing, force=True) is new
+
+    def test_merge_with_existing_no_existing_returns_new(self) -> None:
+        new = {"project": {"name": "new"}}
+        assert merge_with_existing(new, {}, force=False) is new
+
+    def test_merge_with_existing_preserves_unmodeled_and_overrides_modeled(self) -> None:
+        existing = {
+            "project": {"name": "old", "src_dir": "kept/"},
+            "sprints": {"default_max_workers": 7},
+        }
+        new = {"project": {"name": "new"}}
+        merged = merge_with_existing(new, existing, force=False)
+        assert merged["project"]["name"] == "new"  # modeled key overridden
+        assert merged["project"]["src_dir"] == "kept/"  # unmodeled leaf preserved
+        assert merged["sprints"] == {"default_max_workers": 7}  # unmodeled section preserved
+
+    def test_merge_with_existing_null_leaf_does_not_delete_user_key(self) -> None:
+        existing = {"loops": {"run_defaults": {"mode": "auto", "clear": False}}}
+        new = {"loops": {"run_defaults": {"mode": None, "clear": True}}}
+        merged = merge_with_existing(new, existing, force=False)
+        # The None leaf is stripped, so the user's mode survives; clear is overridden.
+        assert merged["loops"]["run_defaults"]["mode"] == "auto"
+        assert merged["loops"]["run_defaults"]["clear"] is True
+
+    def test_load_existing_config_absent_returns_empty(self, tmp_path: Path) -> None:
+        assert load_existing_config(tmp_path) == {}
+
+    def test_load_existing_config_reads_ll_dir(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps({"project": {"name": "x"}}))
+        assert load_existing_config(tmp_path) == {"project": {"name": "x"}}
+
+    def test_load_existing_config_malformed_returns_empty(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text("{ not json")
+        assert load_existing_config(tmp_path) == {}

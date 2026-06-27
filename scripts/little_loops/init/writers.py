@@ -99,6 +99,73 @@ Install: `pip install -e "./scripts[dev]"`
 _CLAUDE_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _CLAUDE_MD_COMMANDS_BLOCK
 
 
+def load_existing_config(project_root: Path) -> dict[str, Any]:
+    """Load the existing ll-config.json for *project_root* as a dict.
+
+    Resolves via :func:`little_loops.config.core.resolve_config_path` (so host
+    state dirs like ``.codex/`` are honored), returning ``{}`` when no config is
+    present or the file cannot be parsed. Shared by every ll-init write path that
+    pre-populates from — and now merges with — the existing config.
+    """
+    from little_loops.config.core import resolve_config_path
+
+    existing_path = resolve_config_path(project_root)
+    if existing_path is None:
+        return {}
+    try:
+        data = json.loads(existing_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def strip_none_leaves(config: dict[str, Any]) -> dict[str, Any]:
+    """Return a deep copy of *config* with all ``None``-valued leaves removed.
+
+    ``config.core.deep_merge`` treats a ``None`` in the override as a key-removal
+    sentinel. ``build_config`` emits ``None`` leaves (e.g. ``loops.run_defaults.mode``)
+    and the TUI emits ``project.<cmd>`` ``None`` for cleared fields; merging those
+    over an existing config would silently delete the user's corresponding keys.
+    Stripping them first makes the merge additive (coordinates with BUG-2311; this
+    becomes a no-op once build_config stops emitting ``None`` leaves). Nested dicts
+    are recursed; every other value type passes through unchanged.
+    """
+    result: dict[str, Any] = {}
+    for key, value in config.items():
+        if value is None:
+            continue
+        if isinstance(value, dict):
+            result[key] = strip_none_leaves(value)
+        else:
+            result[key] = value
+    return result
+
+
+def merge_with_existing(
+    new_config: dict[str, Any],
+    existing_config: dict[str, Any],
+    force: bool,
+) -> dict[str, Any]:
+    """Layer *new_config* over *existing_config*, preserving unmodeled keys.
+
+    Fixes BUG-2310: re-running ll-init rebuilt only the keys ``build_config``
+    models and overwrote the file wholesale, silently destroying every other key
+    the user had set (sprints, commands, documents, scratch_pad sub-config,
+    history.compaction, context_monitor threshold, …).
+
+    When ``force`` is True (or there is no existing config) *new_config* is
+    returned unchanged — the documented ``--force`` "reset to template defaults"
+    contract. Otherwise the ``None``-stripped *new_config* is deep-merged over
+    *existing_config* so unmodeled keys survive while modeled keys take the new
+    values. Neither input is mutated.
+    """
+    if force or not existing_config:
+        return new_config
+    from little_loops.config.core import deep_merge
+
+    return deep_merge(existing_config, strip_none_leaves(new_config))
+
+
 def write_config(config: dict[str, Any], ll_dir: Path, dry_run: bool = False) -> None:
     """Write ll-config.json into *ll_dir*.
 
