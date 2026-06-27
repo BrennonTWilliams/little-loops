@@ -426,6 +426,61 @@ repoint `route_table.py`'s hand-listed operator string and `_COND_PATTERN` deriv
 at it, closing the pre-existing Python↔Python drift. Split out as **ENH-2334** so it
 isn't lost if FEAT-2301 ships without the optional repoint.
 
+### JS validator test runner (PROPOSED — needs ratification 2026-06-26)
+
+**The gap.** The "Grammar as single source" split pins the *Python* side: the
+conformance corpus is asserted against `evaluate_rules` / `_detect_shadows`, and the
+drift-guard test compares the HTML-embedded operator sets / regex back to the Python
+grammar. But the corpus is only described as "the contract a JS validator test consumes
+*if a node test runner is added*." No such runner exists today (no `package.json`, no
+JS test infra in-tree). So as currently specced, the hand-written JS re-expression of
+the *logic* half — shadow detection, catch-all detection, numeric-coercion eval — has
+**no automated test holding it to the corpus**. The drift-guard covers the data half;
+the logic half is "pinned" only in principle. This is the dominant contributor to the
+68 outcome-confidence score.
+
+**Options considered.**
+- **(A) Add a minimal `node:test` runner that consumes the shared corpus** *(recommended)*.
+  Node 22 is already available in this environment and ships a stable built-in test
+  runner (`node:test`) + `assert` — **zero new dependencies, no `package.json`, no
+  jest/vitest**. A single `scripts/tests/js/policy_validator.test.mjs` imports the JS
+  validator module, reads the same checked-in fixture the Python tests use, and asserts
+  `(rule_table, scores) → expected_target` and `(rule_table) → expected_shadow_warnings`
+  identically. This requires factoring the builder's validation logic into an importable
+  ES module that the HTML template inlines (rather than logic written only as an inline
+  `<script>` blob), so the same source is both shipped and tested.
+- **(B) Accept manual QA for the JS logic half.** Cheapest now, but then the spec should
+  stop calling the logic half "pinned by the corpus" and the outcome-risk note should
+  state plainly that JS shadow/eval correctness rests on manual verification. The corpus
+  still has value as the Python-side contract and as a future hook.
+- **(C) Port nothing to JS; have the page shell out to `ll-loop validate`.** Rejected —
+  violates the `file://` / no-runtime-fetch AC; the whole point of in-browser validation
+  is live feedback while authoring offline.
+
+**Recommendation: (A).** It is the single change that most closes the outcome-confidence
+gap, costs no new dependency, and makes the conformance corpus do the cross-language job
+it was designed for. The cost is a structural constraint on the builder — the JS
+validator must be an importable module, not an inline blob — which is good hygiene anyway.
+
+**If (A) is ratified, follow-on changes to this issue:**
+- Add AC: *"A `node:test` suite (`scripts/tests/js/policy_validator.test.mjs`) runs the
+  shared conformance corpus against the builder's JS validator module and asserts target
+  selection + shadow warnings match the Python fixtures."*
+- Add Implementation Step: stand up the `node --test` invocation; factor builder
+  validation into an inlined-but-importable ES module.
+- Downgrade the "No automated JS test coverage" outcome risk from *dominant* to
+  *bounded to interactive-only behavior* (drag-reorder, theme toggle, DOM wiring) — the
+  validation *logic* would then be covered on both sides.
+- Re-run `/ll:confidence-check`; outcome confidence should clear threshold once the
+  logic half is genuinely pinned.
+
+**Open flag (independent of A/B/C): no CI present.** There is no `.github/workflows/`
+directory in-tree, yet several ACs and the drift-guard say "CI fails if…". Either CI
+runs out-of-tree (confirm where) or these gates are aspirational. Whichever runner is
+chosen, decide where the drift-guard + corpus tests (Python and, under A, node) actually
+execute on each change — otherwise the anti-drift guarantees are unenforced regardless
+of how the mirror is structured.
+
 ### Project-enriched stamping: skill/command catalog (decided 2026-06-26)
 
 The Axis-A **Run a skill** (`slash_command`) target needs a dropdown of invokable
@@ -741,6 +796,7 @@ _Updated by `/ll:confidence-check` on 2026-06-26 (re-run; scores stable)_
 - ~~**Output artifact path not finalized**~~ — _resolved 2026-06-25_: generated on-demand at `<artifacts.default_output_dir>/policy-router-builder.html` (default CWD); `--output` override; no checked-in artifact. `config-schema.json` gets a new `"artifacts"` block.
 
 ## Session Log
+- `js-test-runner note (proposed)` - 2026-06-26 - Drafted a follow-up decision (see "JS validator test runner" in Proposed Solution) addressing the dominant outcome-confidence gap: the conformance corpus pins the Python side but the hand-written JS *logic* re-expression (shadow/catch-all/eval) has no automated test, since no node runner exists in-tree. Recommended Option A — a zero-dependency `node:test` suite (Node 22 already present) that runs the shared corpus against the JS validator, requiring the validator be factored into an inlined-but-importable ES module. Also flagged that no `.github/workflows/` exists despite "CI fails if…" ACs — anti-drift gates may be unenforced. Awaiting ratification before adding the AC / step / risk-downgrade.
 - `target-state authoring decision` - 2026-06-26 - Expanded the builder beyond routing: action cards now author the **full target state** along two independent axes — Does (`action_type` + body: Prompt textarea / Run-a-skill `slash_command` dropdown / Nothing) and Then (transition: re-score / go-to-outcome / finish). Established that routed-to state names (`light_repair`, etc.) are author-invented identifiers, NOT reserved defaults — each plays three roles (rule token, `route:` entry, state name), so the builder MUST emit the states or the loop references undefined targets. Skill catalog is stamped at emit time (no runtime fetch), same pattern as design tokens + `grammar_spec()`. Thesis (user-affirmed): these artifacts are **project-enriched, generated on-demand** — coupling to the project's tokens/skills is the source of value, not a portability defect. Added the no-inert-output (non-empty body) invariant.
 - `grammar single-source decision` - 2026-06-26 - Replaced hand-re-implementation of the JS predicate grammar with emit-time stamping from a new public `policy_rules.grammar_spec()` (operator sets + regex), a `_py_pattern_to_js` named-group transform, a drift-guard test, and a shared shadow/eval conformance corpus; flagged the pre-existing `route_table.py:455` operator duplication for consolidation. Downgraded the "JS grammar drift" outcome risk from open maintenance surface to "data half eliminated, logic half bounded".
 - `UI design decision` - 2026-06-26 - Adopted action-grouped rule cards + "Everything else →" fallback footer + friendly inline validation (plain-language shadow/zero-condition messages); rejected card-drag for action reassignment (dropdown instead). From a Cowork interactive-mockup review.

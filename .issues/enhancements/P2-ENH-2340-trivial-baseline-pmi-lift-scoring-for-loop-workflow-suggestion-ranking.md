@@ -109,13 +109,40 @@ leverage rung: PMI/lift on existing counts.
 5. Update docs (`API.md` for the sequences subcommand; CLAUDE.md tool note if
    the JSON contract changes).
 
+## Scope Boundaries
+
+**In scope:**
+- A pure-Python PMI/lift helper computed from the n-gram + unigram counts
+  `ll-logs sequences` already collects (no new corpus pass).
+- An additive `pmi`/`lift` field on the `sequences` ChainResult / `--json`
+  schema, with raw count preserved.
+- A lift-threshold "frequency-prior equivalent" guard wired into
+  `loop-suggester`'s `--from-sequences` confidence mapping.
+
+**Out of scope:**
+- A full Markov transition-memory model.
+- The `ll-loop run --baseline` arm work (tracked separately).
+- The optional `analyze-workflows` "vs. frequency prior" note — a follow-on
+  (step 4 of Proposed Solution), not required for this issue.
+
+Ordering of sequences/messages is already preserved everywhere and is not in
+scope to change; it must not regress.
+
 ## Impact
 
+- **Priority**: P2 — raises suggestion quality and gives a defensible "why this
+  loop" signal, but no user is currently blocked and existing ranking still
+  functions.
+- **Effort**: Small — a pure-Python helper over counts already in hand, one
+  additive field, and one confidence-rule change; no new corpus pass or schema
+  migration.
 - **Files**: `scripts/little_loops/cli/logs.py`,
   `scripts/little_loops/analytics/` (new helper),
   `commands/loop-suggester.md`, tests, docs.
 - **Risk**: Low — additive field + opt-in ranking adjustment; existing raw-count
   output preserved.
+- **Breaking Change**: No — new field is additive; raw-count output and ordering
+  are unchanged.
 - **Value**: Stops the suggestion tools from confidently recommending dataset
   imbalance as automation; gives users a defensible "why this loop" signal.
 
@@ -127,6 +154,7 @@ leverage rung: PMI/lift on existing counts.
 | `.claude/CLAUDE.md` § Loop Authoring | Existing external-measurement philosophy this extends |
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-27T04:49:22 - `8fc23559-5acb-4deb-a2be-144622a379a8.jsonl`
 - `/ll:capture-issue` - 2026-06-27T04:45:41Z - conversation mode (research-paper analysis)
 
 ---

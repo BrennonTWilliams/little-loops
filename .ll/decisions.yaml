@@ -2319,3 +2319,14 @@
   rule: 'Captured: Per-EPIC integration branch strategy'
   scope: issue
   issue: FEAT-2339
+- id: ARCHITECTURE-070
+  type: decision
+  timestamp: '2026-06-27T04:46:54Z'
+  category: architecture
+  labels: []
+  rationale: Research paper shows mined routines must beat a frequency/transition
+    prior; ll suggestion ranking has no such control
+  rule: 'Captured: Trivial-baseline PMI/lift scoring for loop/workflow suggestion
+    ranking'
+  scope: issue
+  issue: ENH-2340

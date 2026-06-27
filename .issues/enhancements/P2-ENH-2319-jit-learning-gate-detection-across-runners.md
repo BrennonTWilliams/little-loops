@@ -1,6 +1,6 @@
 ---
 id: ENH-2319
-title: 'Make learning-test target detection just-in-time and consistent across runners'
+title: Make learning-test target detection just-in-time and consistent across runners
 type: ENH
 priority: P2
 status: open
@@ -20,6 +20,12 @@ labels:
 - explore-api
 - automation
 - runners
+confidence_score: 98
+outcome_confidence: 82
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # ENH-2319: Make learning-test target detection just-in-time and consistent across runners
@@ -366,6 +372,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - automation
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-26T22:00:00Z - `7a5637ae-9124-4731-93ea-c7fd3f704c74.jsonl`
+- `/ll:confidence-check` - 2026-06-26T00:00:00Z - `0ed4e422-dbd2-4b65-8f8d-67a06e3ee290.jsonl`
 - `/ll:wire-issue` - 2026-06-27T04:32:02 - `3b7d4f6a-f81f-49e3-945a-7a65004e0fa5.jsonl`
 - `/ll:refine-issue` - 2026-06-27T04:23:56 - `b6aa1e1f-003f-4499-8b9c-5f36a757715d.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:33:10 - `a4d7e1fc-3146-4ce2-8076-73b85d7fcb8e.jsonl`
