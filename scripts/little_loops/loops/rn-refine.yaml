@@ -2,16 +2,35 @@ name: rn-refine
 category: planning
 input_key: plan_file
 description: |
-  Recursive-N refinement loop for an existing plan document. Accepts a path to
-  a plan .md file, calibrates a 9-dimension scoring rubric to the plan's current
-  state, then iteratively researches and refines until all dimensions reach
-  VERY-HIGH or max_iterations is exhausted.
+  Recursive-N refinement loop for an existing plan document. Unlike a flat
+  whole-document pass, rn-refine treats the plan as the ROOT of a decomposition
+  tree and refines it recursively to whatever depth the work demands ("n" depth):
+
+    1. The root plan is refined to rubric convergence, then classified — is it an
+       atomic work-package, or does it bundle independent sub-goals?
+    2. If it bundles sub-goals, it is DECOMPOSED into child sub-plans (each its own
+       node), and the parent is rewritten as an index. Children are enqueued
+       depth-first and the same refine→classify→decompose cycle is applied to each.
+    3. Decomposition continues adaptively (ADaPT-style: depth grows only where
+       complexity warrants) until every branch reaches a leaf or the safety cap
+       (max_depth / max_nodes).
+    4. Once the whole tree is refined, leaves are rolled UP bottom-first: each
+       internal node integrates its refined children into a coherent section, until
+       the root is reassembled into a single improved plan.
+    5. The reassembled plan is scored, written back over the user's source file
+       in-place, and a tree summary is reported.
+
+  Per-node refinement and the decompose decision are delegated to the reusable
+  oracles/plan-node-refine sub-loop; each node is a self-contained mini-plan under
+  ${run_dir}/nodes/<id>/, reusing the proven research/synthesize chain and the
+  9-dimension scorer verbatim.
+
   Run as: ll-loop run rn-refine "path/to/plan.md"
 scope:
   - "${context.plan_file}"
 initial: init
-max_steps: 30
-timeout: 7200
+max_steps: 300
+timeout: 14400
 on_handoff: spawn
 required_inputs: ["plan_file"]
 artifact_versioning: true
@@ -19,12 +38,17 @@ import:
   - lib/common.yaml
 
 context:
-  plan_file: "" # populated from positional CLI arg via input_key: plan_file
+  plan_file: ""        # populated from positional CLI arg via input_key: plan_file
+  max_depth: 3         # safety cap on recursion depth (adaptive depth never exceeds this)
+  max_node_iters: 2    # per-node refinement budget (research→synthesize→score passes)
+  max_nodes: 40        # global cap on total tree nodes (decomposition stops when reached)
 
 states:
   init:
-    # Setup phase — validate the source plan file exists, copy it into the
-    # runner-injected run_dir, and initialize supporting files.
+    # Setup — validate the source plan, seed the decomposition tree with the root
+    # node (n0 = the whole plan), and initialize the shared work-tree bookkeeping
+    # files (queue, depth map, node-id counter, edge list). Per-run isolation: all
+    # state lives under the runner-injected ${context.run_dir}.
     action_type: shell
     action: |
       if [ ! -f "${context.plan_file}" ]; then
@@ -32,199 +56,351 @@ states:
         exit 1
       fi
       DIR="${context.run_dir}"
-      mkdir -p "$DIR"
+      mkdir -p "$DIR/nodes/n0"
+      # Canonical working copy of the (eventually reassembled) plan + final rubric.
       cp "${context.plan_file}" "$DIR/plan.md"
-      realpath "${context.plan_file}" > "$DIR/.source-path"
       : > "$DIR/plan-rubric.md"
-      : > "$DIR/research.md"
+      realpath "${context.plan_file}" > "$DIR/.source-path"
+      # Root node working dir: a self-contained mini-plan seeded from the source.
+      cp "${context.plan_file}" "$DIR/nodes/n0/plan.md"
+      : > "$DIR/nodes/n0/plan-rubric.md"
+      : > "$DIR/nodes/n0/research.md"
+      # Work-tree bookkeeping (shared across all node sub-loops).
+      echo "n0" > "$DIR/queue.txt"        # FIFO/depth-first queue of node ids to process
+      echo "n0 0" > "$DIR/depth_map.txt"  # "<node_id> <depth>" per line
+      echo "1" > "$DIR/node_counter.txt"  # next free node-id index (n1, n2, …)
+      : > "$DIR/edges.tsv"                 # "<parent>\t<child>\t<title>" per decomposition
+      : > "$DIR/visited.txt"
+      : > "$DIR/leaves.txt"
+      : > "$DIR/capped.txt"
+      : > "$DIR/failed_nodes.txt"
+      echo "0" > "$DIR/dequeue_count.txt"
       echo "$(pwd)/$DIR"
     capture: run_dir
     on_error: diagnose
-    next: assess_existing
+    next: dequeue_next
 
-  assess_existing:
-    # Rubric initialization — reads the copied plan.md and infers the task/goal
-    # from its content. Scores all 9 dimensions at their ACTUAL current level
-    # (not all-LOW) to reflect the plan's real quality. This is the key difference
-    # from rn-plan's generate_rubric state, which always starts from all-LOW.
-    action_type: prompt
-    action: |
-      Read the existing plan at ${captured.run_dir.output}/plan.md.
-
-      Step 1: Infer the task and goal from the plan content. Do not ask the user —
-      derive it from whatever title, objective, or goal statement appears in the plan.
-
-      Step 2: Write the scoring rubric to ${captured.run_dir.output}/plan-rubric.md.
-      Score each dimension at its ACTUAL current level based on the plan as written.
-      Do NOT default all dimensions to LOW — calibrate each one to what the plan
-      currently achieves.
-
-      Use exactly this format:
-
-      ```
-      # Planning Rubric
-
-      task: "<inferred task/goal from the plan>"
-
-      ## Dimensions
-
-      breadth: <LOW|MEDIUM|HIGH|VERY-HIGH>
-      # Does the plan cover all relevant concerns, stakeholders, and edge cases?
-
-      depth: <LOW|MEDIUM|HIGH|VERY-HIGH>
-      # Are sub-steps sufficiently detailed and granular to be actionable without further clarification?
-
-      complexity: <LOW|MEDIUM|HIGH|VERY-HIGH>
-      # Is the plan's complexity calibrated to the task — neither over- nor under-engineered?
-
-      clarity: <LOW|MEDIUM|HIGH|VERY-HIGH>
-      # Is language unambiguous, specific, and free of vague directives like "handle X" or "ensure Y"?
-
-      consistency: <LOW|MEDIUM|HIGH|VERY-HIGH>
-      # Are steps non-contradictory? Are no concerns addressed twice with conflicting advice?
-
-      logic_strategy: <LOW|MEDIUM|HIGH|VERY-HIGH>
-      # Does the ordering and approach make sense? Is the strategy sound for this specific task?
-
-      feasibility: <LOW|MEDIUM|HIGH|VERY-HIGH>
-      # Are the steps achievable given realistic constraints (time, resources, skills, access)?
-
-      testability: <LOW|MEDIUM|HIGH|VERY-HIGH>
-      # Does the plan define clear success criteria and verification steps for each phase?
-
-      risk_mitigation: <LOW|MEDIUM|HIGH|VERY-HIGH>
-      # Are key risks identified with concrete contingencies or mitigation strategies?
-
-      ## Aggregate
-
-      score: <mean of all 9 dimension values on 1.00–4.00 scale>
-      verdict: <ALL_VERY_HIGH if all 9 are VERY-HIGH, otherwise ITERATE>
-      ```
-
-      Scoring scale: LOW=1, MEDIUM=2, HIGH=3, VERY-HIGH=4.
-      Update the aggregate score = mean of all dimension scores (1.00–4.00).
-      If all 9 dimensions are already VERY-HIGH, set verdict: ALL_VERY_HIGH.
-      Otherwise set verdict: ITERATE.
-    next: research_iteration
-
-  research_iteration:
-    # Delegates the classify → research → synthesize chain to the shared oracle.
-    # Passes overwrite_source: "true" so the oracle's synthesize state executes
-    # Steps 7/8 (in-place source-file overwrite + rubric task: update). On success,
-    # proceed to snapshot for per-iteration versioning.
-    loop: oracles/plan-research-iteration
-    with:
-      run_dir: "${captured.run_dir.output}"
-      overwrite_source: "true"
-    on_success: snapshot
-    on_failure: diagnose
-    on_error: diagnose
-
-  snapshot:
-    description: |
-      Per-iteration plan versioning — copies plan.md into iter-N/ subdirectory
-      so every iteration's plan is preserved for comparison and rollback.
+  dequeue_next:
+    # Pop the head of the work-tree queue (depth-first: children are prepended by a
+    # decomposing node, so a whole subtree is refined before the next sibling).
+    # An empty queue means the entire tree is refined → move to bottom-up synthesis.
     action_type: shell
     action: |
       RUN_DIR="${captured.run_dir.output}"
-      COUNTER=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0)
-      COUNTER=$((COUNTER + 1))
-      echo "$COUNTER" > "$RUN_DIR/.iter_counter"
-      mkdir -p "$RUN_DIR/iter-$COUNTER"
-      cp "$RUN_DIR/plan.md" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
-    next: score
-
-  score:
-    fragment: plan_rubric_score
-    on_yes: verify_score
-    on_no: research_iteration
-    on_error: diagnose
-
-  verify_score:
-    # Two-stage verification — (1) confirms ALL_VERY_HIGH is present in the rubric
-    # file, then (2) diffs the current plan against the previous iteration's snapshot
-    # to detect phantom convergence (plan unchanged despite model claiming improvement).
-    # Guards against LLM self-evaluation bias: the model that writes the plan also
-    # scores it, so it can claim convergence on a plan it hasn't actually improved.
-    # PHANTOM_CONVERGENCE naturally falls through to on_no → research_iteration
-    # because the output_contains pattern only matches ALL_VERY_HIGH.
-    action_type: shell
-    action: |
-      RUBRIC="${captured.run_dir.output}/plan-rubric.md"
-      if [ ! -f "$RUBRIC" ]; then echo "RUBRIC_MISSING"; exit 0; fi
-      if ! grep -q "ALL_VERY_HIGH" "$RUBRIC"; then echo "ITERATE"; exit 0; fi
-      # Stage 2: Diff-based phantom convergence check.
-      # The snapshot state (before score) copies plan.md into iter-N/. If the
-      # current plan is byte-for-byte identical to the previous iteration's plan,
-      # the model re-scored an unchanged plan higher without real improvement.
-      RUN_DIR="${captured.run_dir.output}"
-      COUNTER=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0)
-      if [ "$COUNTER" -gt 1 ]; then
-        PREV="$RUN_DIR/iter-$((COUNTER - 1))/plan.md"
-        if [ -f "$PREV" ] && diff -q "$RUN_DIR/plan.md" "$PREV" > /dev/null 2>&1; then
-          echo "PHANTOM_CONVERGENCE"
-          exit 0
-        fi
+      QUEUE="$RUN_DIR/queue.txt"
+      if [ ! -s "$QUEUE" ]; then
+        echo "QUEUE_EMPTY"
+        exit 0
       fi
-      echo "ALL_VERY_HIGH"
-    capture: rubric_check
+      CURRENT=$(head -1 "$QUEUE")
+      tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
+      DEPTH=$(grep "^$CURRENT " "$RUN_DIR/depth_map.txt" 2>/dev/null | awk '{print $2}')
+      echo "$${DEPTH:-0}" > "$RUN_DIR/current_depth.txt"
+      echo "$CURRENT" >> "$RUN_DIR/visited.txt"
+      C=$(cat "$RUN_DIR/dequeue_count.txt" 2>/dev/null || echo 0)
+      echo $((C + 1)) > "$RUN_DIR/dequeue_count.txt"
+      echo "$CURRENT"
     evaluate:
       type: output_contains
-      source: "${captured.rubric_check.output}"
-      pattern: "ALL_VERY_HIGH"
-    on_yes: report
-    on_no: research_iteration
-    on_error: diagnose
+      pattern: "QUEUE_EMPTY"
+    capture: input
+    on_yes: build_synth
+    on_no: read_depth
+    on_error: build_synth
+
+  read_depth:
+    # Surface the dequeued node's depth as a capture for the sub-loop binding.
+    action_type: shell
+    action: |
+      cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0
+    capture: current_depth
+    next: refine_node
+    on_error: refine_node
+
+  refine_node:
+    # Delegate the node to the per-node oracle: refine to convergence (or budget),
+    # then decide LEAF vs DECOMPOSE. On DECOMPOSE the oracle creates child node dirs
+    # and prepends them to queue.txt itself, so the parent just loops back to
+    # dequeue_next. The real outcome is read from the node_outcome token file.
+    loop: oracles/plan-node-refine
+    with:
+      run_dir: "${captured.run_dir.output}"
+      node_id: "${captured.input.output}"
+      depth: "${captured.current_depth.output}"
+      max_depth: "${context.max_depth}"
+      max_node_iters: "${context.max_node_iters}"
+      max_nodes: "${context.max_nodes}"
+    on_success: classify_node
+    on_failure: classify_node
+    on_error: record_node_crash
+
+  classify_node:
+    # Read the outcome token the oracle wrote for this node and route on it.
+    action_type: shell
+    action: |
+      cat "${captured.run_dir.output}/node_outcome_${captured.input.output}.txt" 2>/dev/null \
+        || echo "REFINE_FAILED"
+    capture: node_outcome
+    next: route_decomposed
+
+  route_decomposed:
+    evaluate:
+      type: output_contains
+      source: "${captured.node_outcome.output}"
+      pattern: "DECOMPOSED"
+    on_yes: dequeue_next       # children already enqueued by the oracle
+    on_no: route_leaf
+    on_error: record_failure
+
+  route_leaf:
+    evaluate:
+      type: output_contains
+      source: "${captured.node_outcome.output}"
+      pattern: "REFINED_LEAF"
+    on_yes: record_leaf
+    on_no: route_capped
+    on_error: record_failure
+
+  route_capped:
+    evaluate:
+      type: output_contains
+      source: "${captured.node_outcome.output}"
+      pattern: "REFINED_CAPPED"
+    on_yes: record_capped
+    on_no: record_failure      # REFINE_FAILED or unknown token
+    on_error: record_failure
+
+  record_leaf:
+    action_type: shell
+    action: |
+      echo "${captured.input.output}" >> "${captured.run_dir.output}/leaves.txt"
+      echo "[LEAF] ${captured.input.output}"
+    next: dequeue_next
+    on_error: dequeue_next
+
+  record_capped:
+    action_type: shell
+    action: |
+      echo "[CAPPED] ${captured.input.output} (refined; decomposition suppressed by cap)"
+    next: dequeue_next
+    on_error: dequeue_next
+
+  record_failure:
+    action_type: shell
+    action: |
+      echo "${captured.input.output}" >> "${captured.run_dir.output}/failed_nodes.txt"
+      echo "[FAILED] ${captured.input.output}"
+    next: dequeue_next
+    on_error: dequeue_next
+
+  record_node_crash:
+    action_type: shell
+    action: |
+      echo "${captured.input.output} CRASH" >> "${captured.run_dir.output}/failed_nodes.txt"
+      echo "[NODE_CRASH] ${captured.input.output} — sub-loop infrastructure failure"
+    next: dequeue_next
+    on_error: dequeue_next
+
+  build_synth:
+    # Bottom-up synthesis setup. The refinement phase produced a tree of nodes;
+    # leaves already have a final.md (the refined node). Internal (decomposed) nodes
+    # need their refined children integrated. Emit internal node ids deepest-first
+    # into synth_queue.txt so every node is integrated only after all its children
+    # are. Also backfill final.md for any non-internal node missing one (defensive).
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      export LL_RUN_DIR="$RUN_DIR"
+      python3 << 'PYEOF'
+      import os
+      from pathlib import Path
+
+      run_dir = os.environ["LL_RUN_DIR"]
+      edges_p = Path(run_dir) / "edges.tsv"
+      depth_p = Path(run_dir) / "depth_map.txt"
+      nodes_dir = Path(run_dir) / "nodes"
+
+      children = {}
+      if edges_p.exists():
+          for line in edges_p.read_text().splitlines():
+              parts = line.split("\t")
+              if len(parts) >= 2:
+                  children.setdefault(parts[0], []).append(parts[1])
+
+      depth = {}
+      if depth_p.exists():
+          for line in depth_p.read_text().splitlines():
+              p = line.split()
+              if len(p) >= 2:
+                  try:
+                      depth[p[0]] = int(p[1])
+                  except ValueError:
+                      pass
+
+      # Defensive: every node that is NOT internal must have a final.md so the
+      # integration passes (and final assembly) always find their inputs.
+      all_nodes = [d.name for d in nodes_dir.iterdir() if d.is_dir()] if nodes_dir.exists() else []
+      internal = set(children.keys())
+      for nid in all_nodes:
+          if nid in internal:
+              continue
+          fp = nodes_dir / nid / "final.md"
+          pp = nodes_dir / nid / "plan.md"
+          if not fp.exists() and pp.exists():
+              fp.write_text(pp.read_text())
+
+      # Internal nodes deepest-first (children always have strictly greater depth).
+      ordered = sorted(internal, key=lambda n: depth.get(n, 0), reverse=True)
+      (Path(run_dir) / "synth_queue.txt").write_text("".join(f"{n}\n" for n in ordered))
+      print(f"SYNTH_QUEUE {len(ordered)}")
+      PYEOF
+    capture: synth_setup
+    next: synth_pop
+    on_error: assemble
+
+  synth_pop:
+    # Pop the next internal node to integrate; empty queue → final assembly.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      SQ="$RUN_DIR/synth_queue.txt"
+      if [ ! -s "$SQ" ]; then
+        echo "SYNTH_DONE"
+        exit 0
+      fi
+      NODE=$(head -1 "$SQ")
+      tail -n +2 "$SQ" > "$SQ.tmp" && mv "$SQ.tmp" "$SQ"
+      echo "$NODE"
+    evaluate:
+      type: output_contains
+      pattern: "SYNTH_DONE"
+    capture: synth_node
+    on_yes: assemble
+    on_no: integrate_node
+    on_error: assemble
+
+  integrate_node:
+    # Roll a decomposed node back up: integrate its refined children into one
+    # coherent section. Children are already assembled (deepest-first ordering),
+    # so this reads each child's final.md and the node's own index plan.md.
+    action_type: prompt
+    action: |
+      You are reassembling one node of a refined plan tree, bottom-up.
+
+      Node id: ${captured.synth_node.output}
+      Run dir: ${captured.run_dir.output}
+
+      Step 1: Read ${captured.run_dir.output}/edges.tsv and select the lines whose
+      FIRST tab-separated column equals "${captured.synth_node.output}". Those rows
+      give this node's children (second column = child id, third = title), in order.
+
+      Step 2: Read this node's index/overview at
+      ${captured.run_dir.output}/nodes/${captured.synth_node.output}/plan.md, and read
+      each child's fully-refined content at
+      ${captured.run_dir.output}/nodes/<child_id>/final.md (one per child row).
+
+      Step 3: Write an integrated section to
+      ${captured.run_dir.output}/nodes/${captured.synth_node.output}/final.md that:
+        - keeps this node's framing, goal, and any cross-cutting concerns from its index,
+        - inlines each child's refined content in order under clear sub-headings,
+        - removes duplication and resolves any contradictions between children,
+        - ensures the ordering and dependencies across children are explicit and sound.
+
+      The result must read as one continuous, self-contained section — not a list of
+      links. Do not lose any concrete detail from the children's final.md files.
+    next: synth_pop
+    on_error: synth_pop
+
+  assemble:
+    # Final assembly: the root's reassembled content becomes the working plan.md.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      if [ -f "$RUN_DIR/nodes/n0/final.md" ]; then
+        cp "$RUN_DIR/nodes/n0/final.md" "$RUN_DIR/plan.md"
+      elif [ -f "$RUN_DIR/nodes/n0/plan.md" ]; then
+        cp "$RUN_DIR/nodes/n0/plan.md" "$RUN_DIR/plan.md"
+      fi
+    next: final_score
+    on_error: finalize
+
+  final_score:
+    # Score the fully reassembled plan on the 9-dimension rubric. This records final
+    # quality (written to plan-rubric.md); it does not loop — the recursive per-node
+    # refinement is where convergence happens. Both verdicts proceed to finalize.
+    fragment: plan_rubric_score
+    on_yes: finalize
+    on_no: finalize
+    on_error: finalize
+
+  finalize:
+    # Overwrite the user's original source file in-place with the reassembled plan,
+    # preserving the established UX (the source is updated; the .loops working copy
+    # is kept for diffing).
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      SOURCE=$(cat "$RUN_DIR/.source-path" 2>/dev/null || echo "")
+      if [ -n "$SOURCE" ] && [ -f "$RUN_DIR/plan.md" ]; then
+        cp "$RUN_DIR/plan.md" "$SOURCE"
+      fi
+    next: report
+    on_error: report
 
   report:
-    # Pre-terminal report — reads the final rubric and summarises results for the user
-    # before transitioning to the bare terminal anchor. Exists as a separate state
-    # because the FSM runner skips actions on terminal states (fires loop_complete
-    # immediately on routing to a terminal without entering it).
+    # Pre-terminal report — summarizes the decomposition tree and final scores, and
+    # prints the diff hint. Separate state because the runner skips actions on
+    # terminal states (it fires loop_complete on routing to a terminal).
     action_type: prompt
     action: |
       The rn-refine recursive refinement loop has completed.
 
-      Final output files:
-      - ${captured.run_dir.output}/plan.md          — working copy of the refined plan
-      - ${captured.run_dir.output}/plan-rubric.md   — the final rubric scores
-      - ${captured.run_dir.output}/research.md      — accumulated research findings
+      Output files (under ${captured.run_dir.output}):
+      - plan.md          — the reassembled, refined plan (working copy)
+      - plan-rubric.md   — final 9-dimension rubric scores
+      - nodes/<id>/      — per-node sub-plans (plan.md/final.md) for the whole tree
+      - edges.tsv        — the decomposition tree ("<parent>\t<child>\t<title>")
 
-      Step 1: Read ${captured.run_dir.output}/plan-rubric.md and report the final dimension
-      scores and aggregate verdict to the user. Confirm the plan is ready for implementation.
+      Step 1: Read ${captured.run_dir.output}/plan-rubric.md and report the final
+      dimension scores and aggregate verdict.
 
-      Step 2: Read ${captured.run_dir.output}/.source-path to get the absolute path of the
-      original plan file the user passed in. Call this value SOURCE. Confirm to the user that
-      SOURCE has been updated in-place with the refined plan.
+      Step 2: Summarize the decomposition tree from ${captured.run_dir.output}/edges.tsv
+      and ${captured.run_dir.output}/depth_map.txt: how many nodes, the maximum depth
+      reached, and how many leaves vs. decomposed vs. capped nodes
+      (${captured.run_dir.output}/leaves.txt and capped.txt). Render the tree with
+      indentation so the recursive structure is visible.
 
-      Step 3: Print the following block VERBATIM to the user, replacing <SOURCE> with the
-      absolute path read from .source-path and <WORKING> with ${captured.run_dir.output}/plan.md.
-      Use the actual absolute paths — do not leave the placeholders in. Both paths must be
-      absolute so the commands work from any working directory.
+      Step 3: Read ${captured.run_dir.output}/.source-path to get the absolute path of
+      the original file (call it SOURCE). Confirm SOURCE has been updated in-place with
+      the reassembled plan.
+
+      Step 4: Print the following block VERBATIM, replacing <SOURCE> with the absolute
+      path from .source-path and <WORKING> with ${captured.run_dir.output}/plan.md. Use
+      the actual absolute paths — do not leave the placeholders in.
 
       ```
       To review changes against the working copy:
         diff <SOURCE> <WORKING>
 
-      The original file has already been updated. The working copy in .loops/ is kept as a
-      reference — you can delete it when you're satisfied.
+      The original file has already been updated. The working copy in .loops/ (plus the
+      per-node tree under nodes/) is kept as a reference — you can delete it when satisfied.
       ```
     next: done
 
   done:
-    # Terminal anchor — clean exit point with no action. Report is handled by the
-    # preceding `report` state to work around the runner's terminal short-circuit.
+    # Terminal anchor — clean exit with no action (report runs in the preceding state
+    # to work around the runner's terminal short-circuit).
     terminal: true
 
   diagnose:
+    # Failure handler — reached when init cannot find/seed the source plan.
     fragment: loop_failure_diagnose
     with:
       loop_name: rn-refine
       extra_bullets: |
-        - If ${captured.run_dir.output}/plan.md exists, note whether any refinement occurred.
+        - If ${captured.run_dir.output}/queue.txt exists, note how many nodes remained unprocessed.
         - If failure was in the init state, report whether the source plan file was found.
 
   failed:
-    # Error terminal — reached when the score state encounters an unrecoverable error,
-    # or when init cannot find the source plan file.
+    # Error terminal.
     terminal: true

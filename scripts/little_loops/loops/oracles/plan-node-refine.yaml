@@ -1,0 +1,365 @@
+name: plan-node-refine
+visibility: internal
+category: planning
+description: |
+  Per-node refinement oracle for the recursive rn-refine planner. Refines ONE node
+  of the plan decomposition tree to rubric convergence (or a per-node iteration
+  budget), then makes the ADaPT-style adaptive-depth decision: is this node an
+  atomic, coherent work-package (LEAF), or does it span several independent
+  sub-goals that each warrant their own focused sub-plan (DECOMPOSE)?
+
+  A node is a self-contained mini-plan living in its own working directory at
+  ${run_dir}/nodes/<node_id>/ with the same {plan.md, plan-rubric.md, research.md}
+  contract as a top-level rn-plan run. This lets the proven classify→research→
+  synthesize chain (oracles/plan-research-iteration) and the 9-dimension scorer
+  (plan_rubric_score) be reused verbatim, scoped to the node.
+
+  Outcome is written to ${run_dir}/node_outcome_<node_id>.txt for the parent
+  orchestrator to route on:
+    REFINED_LEAF    — node refined; atomic, no decomposition
+    DECOMPOSED      — node split into children (enqueued into ${run_dir}/queue.txt)
+    REFINED_CAPPED  — node wanted to decompose but hit the depth/node-budget cap;
+                      treated as a leaf
+    REFINE_FAILED   — node refinement could not complete
+
+  Invoked by rn-refine via:
+    loop: oracles/plan-node-refine
+    with:
+      run_dir: "${captured.run_dir.output}"   # GLOBAL run dir (queue/edges/counter live here)
+      node_id: "${captured.input.output}"
+      depth: "${captured.current_depth.output}"
+      max_depth: "${context.max_depth}"
+    on_success: classify_node
+    on_failure: classify_node
+    on_error: record_node_crash
+
+initial: setup
+max_steps: 60
+timeout: 5400
+on_handoff: spawn
+import:
+  - lib/common.yaml
+meta_self_eval_ok: false
+shared_state_ok: false
+partial_route_ok: true
+
+parameters:
+  run_dir:
+    type: path
+    required: true
+    description: "GLOBAL run directory (holds queue.txt, edges.tsv, node_counter.txt, nodes/)"
+  node_id:
+    type: string
+    required: true
+    description: "Identifier of the node to refine (e.g. n0, n3)"
+  depth:
+    type: integer
+    required: true
+    description: "Current depth of this node in the decomposition tree (root = 0)"
+  max_depth:
+    type: integer
+    required: false
+    description: "Maximum decomposition depth; decomposition is capped at this depth"
+  max_node_iters:
+    type: integer
+    required: false
+    description: "Per-node refinement budget (research→synthesize→score passes)"
+  max_nodes:
+    type: integer
+    required: false
+    description: "Global cap on total nodes; decomposition is suppressed once reached"
+
+context:
+  depth: 0
+  max_depth: 3
+  max_node_iters: 2
+  max_nodes: 40
+
+states:
+  setup:
+    # Resolve this node's working directory and capture it as `run_dir` so the
+    # reused plan_rubric_score fragment (which reads ${captured.run_dir.output})
+    # and the delegated plan-research-iteration sub-loop both operate scoped to
+    # the node. NOTE the two namespaces in play:
+    #   ${context.run_dir}        = GLOBAL run dir (queue/edges/counter bookkeeping)
+    #   ${captured.run_dir.output} = THIS node's dir (its plan.md/rubric/research)
+    action_type: shell
+    action: |
+      NODE_DIR="${context.run_dir}/nodes/${context.node_id}"
+      mkdir -p "$NODE_DIR"
+      [ -f "$NODE_DIR/plan.md" ] || : > "$NODE_DIR/plan.md"
+      : > "$NODE_DIR/plan-rubric.md"
+      [ -f "$NODE_DIR/research.md" ] || : > "$NODE_DIR/research.md"
+      echo "0" > "$NODE_DIR/.node_iter"
+      rm -rf "$NODE_DIR/children"
+      echo "$NODE_DIR"
+    capture: run_dir
+    on_error: refine_failed
+    next: calibrate_node
+
+  calibrate_node:
+    # Calibrate a node-scoped 9-dimension rubric to the node's ACTUAL current
+    # state (not all-LOW) so refinement targets the node's real weak spots.
+    action_type: prompt
+    action: |
+      Read this plan node at ${captured.run_dir.output}/plan.md. It is one node of a
+      larger plan decomposition tree (node id: ${context.node_id}, depth: ${context.depth}).
+
+      Step 1: Infer this node's LOCAL goal — the specific sub-objective this node is
+      responsible for. Derive it from the node's content; do not ask the user.
+
+      Step 2: Write a scoring rubric to ${captured.run_dir.output}/plan-rubric.md, scoring
+      each dimension at its ACTUAL current level for THIS node's scope (not the whole plan).
+      Do NOT default everything to LOW — calibrate to what this node currently achieves.
+
+      Use exactly this format:
+
+      ```
+      # Planning Rubric
+
+      task: "<inferred local goal of this node>"
+
+      ## Dimensions
+
+      breadth: <LOW|MEDIUM|HIGH|VERY-HIGH>
+      depth: <LOW|MEDIUM|HIGH|VERY-HIGH>
+      complexity: <LOW|MEDIUM|HIGH|VERY-HIGH>
+      clarity: <LOW|MEDIUM|HIGH|VERY-HIGH>
+      consistency: <LOW|MEDIUM|HIGH|VERY-HIGH>
+      logic_strategy: <LOW|MEDIUM|HIGH|VERY-HIGH>
+      feasibility: <LOW|MEDIUM|HIGH|VERY-HIGH>
+      testability: <LOW|MEDIUM|HIGH|VERY-HIGH>
+      risk_mitigation: <LOW|MEDIUM|HIGH|VERY-HIGH>
+
+      ## Aggregate
+
+      score: <mean of the 9 dimensions on a 1.00–4.00 scale>
+      verdict: <ALL_VERY_HIGH if all 9 are VERY-HIGH, otherwise ITERATE>
+      ```
+
+      Scoring scale: LOW=1, MEDIUM=2, HIGH=3, VERY-HIGH=4.
+    next: refine_iteration
+    on_error: refine_failed
+
+  refine_iteration:
+    # Delegate one classify→research→synthesize pass to the shared oracle, scoped
+    # to THIS node's directory. overwrite_source is "false": individual node
+    # refinements must NEVER touch the user's source file — only the final
+    # assembled plan does (in rn-refine's finalize state).
+    loop: oracles/plan-research-iteration
+    with:
+      run_dir: "${captured.run_dir.output}"
+      overwrite_source: "false"
+    on_success: node_snapshot
+    on_failure: score_node
+    on_error: score_node
+
+  node_snapshot:
+    # Per-iteration node versioning + budget counter bump. Snapshots the node plan
+    # so a later diff can detect a no-op refinement, and increments .node_iter.
+    action_type: shell
+    action: |
+      NODE_DIR="${captured.run_dir.output}"
+      N=$(cat "$NODE_DIR/.node_iter" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      echo "$N" > "$NODE_DIR/.node_iter"
+      mkdir -p "$NODE_DIR/iter-$N"
+      cp "$NODE_DIR/plan.md" "$NODE_DIR/iter-$N/" 2>/dev/null || true
+    next: score_node
+    on_error: score_node
+
+  score_node:
+    # Reuse the 9-dimension scorer, scoped to the node via captured.run_dir.
+    # ALL_VERY_HIGH → node converged → make the decompose decision.
+    # ITERATE → maybe refine again (budget permitting).
+    fragment: plan_rubric_score
+    on_yes: decide_decompose
+    on_no: check_node_budget
+    on_error: decide_decompose
+
+  check_node_budget:
+    # Per-node refinement budget. Continue refining only while .node_iter is below
+    # max_node_iters; otherwise stop iterating and make the decompose decision with
+    # the best version produced so far. Bounds cost so a never-converging node
+    # cannot spin.
+    action_type: shell
+    action: |
+      cat "${captured.run_dir.output}/.node_iter" 2>/dev/null || echo 0
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_node_iters}"
+    on_yes: refine_iteration
+    on_no: decide_decompose
+    on_error: decide_decompose
+
+  decide_decompose:
+    # ADaPT-style adaptive-depth decision. The depth of the tree is decided here,
+    # per node, by complexity — not by a fixed constant. A node that is a single
+    # coherent, executable work-package is a LEAF; a node that bundles several
+    # independent sub-goals is split so each child gets its own focused sub-plan.
+    action_type: prompt
+    action: |
+      Read this refined plan node at ${captured.run_dir.output}/plan.md.
+      Node id: ${context.node_id} | current depth: ${context.depth} | max depth: ${context.max_depth}.
+
+      Decide whether this node should be DECOMPOSED or is a LEAF:
+
+      - LEAF: the node describes a single, coherent unit of work that is already
+        specific and actionable on its own. Further splitting would add structure
+        without adding clarity. Prefer LEAF as depth approaches max depth, and for
+        nodes that are inherently atomic.
+      - DECOMPOSE: the node bundles two or more genuinely independent sub-goals,
+        phases, or components that would each be clearer and more actionable as
+        their own focused sub-plan. Only decompose when it materially improves the
+        plan — do NOT split a coherent task just to add depth.
+
+      If you choose DECOMPOSE:
+        1. Identify 2–5 child sub-goals that together fully cover this node.
+        2. For EACH child k (starting at 1), write a self-contained focused sub-plan
+           to ${captured.run_dir.output}/children/<k>.md. Begin each file with a
+           level-1 heading naming the sub-goal (e.g. "# <sub-goal title>"). Seed it
+           from the relevant portion of this node's content, made more specific and
+           actionable — this child will itself be refined (and possibly decomposed)
+           recursively, so it does not need to be perfect, but it must be a coherent
+           standalone sub-plan.
+        3. Rewrite ${captured.run_dir.output}/plan.md as a concise INDEX/overview of
+           this node: keep the framing, goal, and cross-cutting concerns, and list
+           the children as "Child 1: <title>", "Child 2: <title>", … Do not
+           duplicate the full child detail here — the children own it.
+
+      If you choose LEAF: do not create any children directory; leave plan.md as the
+      refined node.
+
+      End your response with EXACTLY one of these tokens on its own final line, with
+      no backticks, quotes, or other text on that line:
+      DECISION: DECOMPOSE
+      DECISION: LEAF
+    capture: decision
+    next: route_decision
+    on_error: emit_leaf
+
+  route_decision:
+    evaluate:
+      type: output_contains
+      source: "${captured.decision.output}"
+      pattern: "DECISION: DECOMPOSE"
+    on_yes: gate_decompose
+    on_no: emit_leaf
+    on_error: emit_leaf
+
+  gate_decompose:
+    # Safety caps on the adaptive depth. Decomposition is suppressed when the
+    # children would exceed max_depth, OR when the global node budget (max_nodes)
+    # is already spent. Either way the node is finalized as a (capped) leaf so the
+    # tree stays bounded even with an over-eager decomposition classifier.
+    action_type: shell
+    action: |
+      NEXT_DEPTH=$(( ${context.depth} + 1 ))
+      MAX_DEPTH=${context.max_depth}
+      MAX_NODES=${context.max_nodes}
+      TOTAL=$(cat "${context.run_dir}/node_counter.txt" 2>/dev/null || echo 1)
+      if [ "$NEXT_DEPTH" -gt "$MAX_DEPTH" ]; then
+        echo "CAP_DEPTH"
+      elif [ "$TOTAL" -ge "$MAX_NODES" ]; then
+        echo "CAP_NODES"
+      else
+        echo "OK"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "OK"
+    on_yes: materialize_children
+    on_no: emit_capped
+    on_error: emit_capped
+
+  materialize_children:
+    # Bookkeeping for decomposition (the LLM already wrote the child sub-plans +
+    # parent index in decide_decompose). For each staged child file: allocate a
+    # globally-unique node id from node_counter.txt, move it into its own node dir,
+    # record the parent→child edge + child depth, and prepend it to the shared
+    # queue depth-first (children processed before the next sibling). Mirrors the
+    # rn-decompose enqueue idiom.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      PARENT="${context.node_id}"
+      STAGE="${captured.run_dir.output}/children"
+      NEXT_DEPTH=$(( ${context.depth} + 1 ))
+      if [ ! -d "$STAGE" ] || [ -z "$(ls -A "$STAGE" 2>/dev/null)" ]; then
+        echo "NO_CHILDREN"
+        exit 0
+      fi
+      CHILD_IDS=""
+      for f in $(ls "$STAGE"/*.md 2>/dev/null | sort -V); do
+        [ -f "$f" ] || continue
+        IDX=$(cat "$RUN_DIR/node_counter.txt" 2>/dev/null || echo 1)
+        CID="n$IDX"
+        echo "$((IDX + 1))" > "$RUN_DIR/node_counter.txt"
+        CDIR="$RUN_DIR/nodes/$CID"
+        mkdir -p "$CDIR"
+        cp "$f" "$CDIR/plan.md"
+        : > "$CDIR/plan-rubric.md"
+        : > "$CDIR/research.md"
+        TITLE=$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# *//' | tr -d '\t' || echo "$CID")
+        [ -z "$TITLE" ] && TITLE="$CID"
+        printf '%s\t%s\t%s\n' "$PARENT" "$CID" "$TITLE" >> "$RUN_DIR/edges.tsv"
+        echo "$CID $NEXT_DEPTH" >> "$RUN_DIR/depth_map.txt"
+        CHILD_IDS="$CHILD_IDS $CID"
+      done
+      # Depth-first: prepend new children before existing queue entries.
+      EXISTING=$(cat "$RUN_DIR/queue.txt" 2>/dev/null || true)
+      { for c in $CHILD_IDS; do echo "$c"; done; echo "$EXISTING"; } \
+        | grep -v '^[[:space:]]*$' > "$RUN_DIR/queue.txt"
+      rm -rf "$STAGE"
+      echo "DECOMPOSED_OK"
+    evaluate:
+      type: output_contains
+      pattern: "DECOMPOSED_OK"
+    on_yes: emit_decomposed
+    on_no: emit_leaf
+    on_error: emit_leaf
+
+  emit_decomposed:
+    action_type: shell
+    action: |
+      echo "DECOMPOSED" > "${context.run_dir}/node_outcome_${context.node_id}.txt"
+      echo "Node ${context.node_id} decomposed"
+    next: done
+
+  emit_leaf:
+    # Atomic node: outcome REFINED_LEAF and pre-seed the node's assembled output
+    # (final.md = the refined node) so the bottom-up synthesis phase can use it
+    # directly without an integration pass.
+    action_type: shell
+    action: |
+      NODE_DIR="${captured.run_dir.output}"
+      cp "$NODE_DIR/plan.md" "$NODE_DIR/final.md" 2>/dev/null || true
+      echo "REFINED_LEAF" > "${context.run_dir}/node_outcome_${context.node_id}.txt"
+      echo "Node ${context.node_id} finalized as leaf"
+    next: done
+
+  emit_capped:
+    # Wanted to decompose but hit the depth/node-budget cap. Finalize as a leaf and
+    # record the cap so the parent can report it.
+    action_type: shell
+    action: |
+      NODE_DIR="${captured.run_dir.output}"
+      cp "$NODE_DIR/plan.md" "$NODE_DIR/final.md" 2>/dev/null || true
+      echo "REFINED_CAPPED" > "${context.run_dir}/node_outcome_${context.node_id}.txt"
+      echo "${context.node_id}" >> "${context.run_dir}/capped.txt"
+      echo "Node ${context.node_id} depth/node-budget capped → leaf"
+    next: done
+
+  refine_failed:
+    action_type: shell
+    action: |
+      echo "REFINE_FAILED" > "${context.run_dir}/node_outcome_${context.node_id}.txt"
+      echo "Node ${context.node_id} refinement failed"
+    next: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
