@@ -11,6 +11,7 @@ relates_to:
 - ENH-2299
 - FEAT-1023
 - ENH-2309
+- ENH-2334
 confidence_score: 98
 outcome_confidence: 68
 score_complexity: 13
@@ -141,6 +142,24 @@ A generated, self-contained `.html` file (no external dependencies; works over
 - [ ] Decision Table mode: dimension chip type (numeric vs boolean) restricts operator
   dropdown to valid ops only (`>= <= < >` for numeric; `==true/==false` for boolean),
   preventing the numeric-coercion parse-error class
+- [ ] The in-browser validator's operator sets and predicate regex are **stamped at emit
+  time** from a new public `fsm/policy_rules.grammar_spec()` accessor (exposing `_ORDERED_OPS`,
+  `_ALL_OPS`, and `_PRED_PATTERN.pattern`) — never hand-written as JS literals in the template.
+  The emit path injects them as a JSON `<script>` block; the operator dropdown and the
+  numeric-coercion branch are built from that data. Python named groups `(?P<name>…)` are
+  converted to JS `(?<name>…)` by a single deterministic `_py_pattern_to_js` helper. This removes
+  the *data* half of the grammar-drift surface entirely: a new operator added to `policy_rules.py`
+  flows into builder output on the next emit with no template edit
+- [ ] A grammar drift-guard test asserts (a) the operator sets embedded in generated HTML exactly
+  equal `sorted(_ALL_OPS)` / `sorted(_ORDERED_OPS)`, and (b) the emitted + translated regex
+  accepts/rejects a shared predicate corpus identically to Python's `_PRED_PATTERN` (re-compiled in
+  the test). CI fails if the canonical grammar changes shape and builder output is not regenerated
+- [ ] The rule *logic* the validator cannot stamp (shadow detection, catch-all detection, predicate
+  evaluation) is pinned by a checked-in conformance corpus of `(rule_table, scores) →
+  expected_target` and `(rule_table) → expected_shadow_warnings` cases, consumed by the Python tests
+  against `evaluate_rules` / `_detect_shadows`; the same fixture is the contract a JS validator test
+  consumes if a node test runner is added. This bounds the logic half that genuinely must be
+  re-expressed in JS
 - [ ] Decision Table mode: a boolean dimension is **emitted into `rubric_dimensions`** in
   the generated YAML (so the score prompt actually rates it) and its scoring instruction
   asks for `100`/`0`; a `==true` predicate compiles to `>=50` and `==false` to `<50` in
@@ -200,8 +219,10 @@ A generated, self-contained `.html` file (no external dependencies; works over
 - **Out of scope**: nested/chained policy tables; the builder produces one flat
   `context.policy_rules` table.
 - **Out of scope**: re-implementing the canonical rule grammar / MR validation in
-  a way that can drift from `fsm/policy_rules.py` / `fsm/route_table.py` — the
-  builder validates for UX, but `ll-loop validate` remains the source of truth.
+  a way that can drift from `fsm/policy_rules.py` / `fsm/route_table.py`. The grammar
+  *data* (operator sets + predicate regex) is stamped from `policy_rules.grammar_spec()`
+  rather than hand-copied (see "Grammar as single source"); the validator's *logic* is
+  pinned by a shared conformance corpus. `ll-loop validate` remains the authoritative gate.
 
 ## Proposed Solution
 
@@ -305,6 +326,71 @@ ENH-2309 cross-ref note added for this). Either way the builder is the only plac
 *prevent* the mismatch in builder output, which is why this is an acceptance criterion,
 not deferred to the gate.
 
+### Grammar as single source: stamp, don't hand-write (decided 2026-06-26)
+
+The in-browser validator must mirror the canonical predicate grammar
+(`fsm/policy_rules.py:27–34`: `_ORDERED_OPS`, `_ALL_OPS`, `_PRED_PATTERN`). The naive
+approach — hand-copying those constants into the template's JS — creates a silent
+drift surface: a future operator or regex change in `policy_rules.py` would not
+propagate, and base `ll-loop validate` has no way to flag builder JS that lags the
+Python grammar. That drift surface **already exists in-tree**: `route_table.py`
+re-lists the operators by hand (`route_table.py:455`, "expected operator prefix
+(>=, <=, ==, !=, <, >)") and maintains its own `_COND_PATTERN`, independent of
+`policy_rules.py`'s set — nothing imports the canonical constants because they are
+private. So this is worth fixing structurally, not waving off.
+
+**Decision: split the mirror into a *data* half (stamp it) and a *logic* half (pin it
+with a shared corpus).**
+
+- **Data — operator sets + predicate regex — are generated, not written.** Add a public
+  `grammar_spec()` accessor to `policy_rules.py`:
+  ```python
+  def grammar_spec() -> dict[str, object]:
+      """Public, serializable view of the canonical predicate grammar.
+
+      Single source for any consumer that must mirror the grammar out-of-process
+      (the FEAT-2301 HTML builder's JS, route_table's operator list, …).
+      """
+      return {
+          "ordered_ops": sorted(_ORDERED_OPS),
+          "all_ops": sorted(_ALL_OPS),
+          "pred_pattern": _PRED_PATTERN.pattern,
+      }
+  ```
+  The emit path (`policy_builder.py`) injects `grammar_spec()` into the HTML as a JSON
+  `<script>` block — the same "Python is source of truth, emit a derived artifact"
+  pattern the issue already follows for `cli/schemas.py` → JSON Schema, and the same
+  emit-time stamping already used for the design-token CSS vars. The JS builds its
+  operator dropdown from `all_ops`, selects the numeric-coercion branch from
+  `ordered_ops`, and constructs its validator via `new RegExp(...)` from `pred_pattern`.
+  No operator literal or regex source is hand-typed in the template.
+
+  The regex is portable with **one deterministic transform**: Python named groups
+  `(?P<dim>…)` → JS `(?<dim>…)`. Everything else in `_PRED_PATTERN` (`\w \s \S \-`, the
+  `>=|<=|==|!=|<|>` alternation, lazy `*?`, `^…$` anchors) is byte-identical in the JS
+  engine. The one semantic gap — Python `\w` is Unicode, JS `\w` is ASCII — is moot here
+  because the dimension-name normalization AC restricts names to `[a-z0-9-]`. A ~3-line
+  `_py_pattern_to_js(pattern)` helper performs the named-group rewrite and is unit-tested
+  directly.
+
+- **Logic — shadow / catch-all / eval — is pinned by a conformance corpus.** The
+  validator's behavioral logic (`_detect_shadows`, catch-all detection, `_eval_predicate`
+  numeric coercion) is algorithm, not data, so it cannot be stamped; it must be
+  re-expressed in JS. To stop *that* half from drifting, add a checked-in fixture of
+  `(rule_table, scores) → expected_target` and `(rule_table) → expected_shadow_warnings`
+  cases. The Python tests assert it against `evaluate_rules` / `_detect_shadows`; the same
+  file is the contract a node JS test consumes (the standard shared-conformance-corpus
+  approach for unavoidable cross-language logic).
+
+- **Drift guard.** A test asserts the HTML-embedded `all_ops` / `ordered_ops` equal the
+  Python sets and that the translated regex matches the predicate corpus identically to
+  `_PRED_PATTERN`, so a grammar change that isn't propagated fails CI.
+
+**Bonus consolidation (tracked as ENH-2334):** once `grammar_spec()` is public,
+repoint `route_table.py`'s hand-listed operator string and `_COND_PATTERN` derivation
+at it, closing the pre-existing Python↔Python drift. Split out as **ENH-2334** so it
+isn't lost if FEAT-2301 ships without the optional repoint.
+
 ### UI presentation: action-grouped cards (decided 2026-06-26)
 
 Early sketches used a literal 2-D grid (rows = rules, columns = dimensions + a
@@ -376,7 +462,9 @@ def render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str:
 
 **`RouteConfig` serialization** (`fsm/schema.py`, `RouteConfig.to_dict()`): writes `default → "_"` and `error → "_error"`. The YAML serializer must follow this convention — these sentinel keys are not arbitrary strings.
 
-**JS validation grammar** — exact constants to re-implement from `fsm/policy_rules.py:27–34`:
+**JS validation grammar** — stamped at emit time from `fsm/policy_rules.grammar_spec()`
+(see "Grammar as single source" in Proposed Solution), **not** hand-re-implemented. For
+reference, the underlying constants in `fsm/policy_rules.py:27–34`:
 - Ordered ops (require `float(value)` parse, raise on non-numeric): `>=, <=, <, >`
 - String-value ops (accept any string): `==, !=`
 - Predicate regex: `/^([\w][\w\s\-]*?)\s*:\s*(>=|<=|==|!=|<|>)\s*(\S.*?)$/`
@@ -402,6 +490,7 @@ The JS validation grammar should mirror these exact sets. `_ORDERED_OPS` → req
 
 ### Files to Modify
 - `scripts/little_loops/design_tokens.py` — add `render_as_css_vars_themed(light, dark)` (scoped two-theme emit; optional multi-profile variant)
+- `scripts/little_loops/fsm/policy_rules.py` — add a public `grammar_spec()` accessor over `_ORDERED_OPS` / `_ALL_OPS` / `_PRED_PATTERN.pattern` so the builder's JS grammar is stamped from a single source (not hand-copied). Optionally repoint `fsm/route_table.py`'s hand-listed operator string (`route_table.py:455`) + `_COND_PATTERN` at it to close the pre-existing in-tree duplication (tracked separately as **ENH-2334**).
 
 ### New Files
 - `scripts/little_loops/cli/artifact.py` (or `cli/artifact/__init__.py`) — top-level `main_artifact` dispatcher with argparse subparsers; routes `policy-builder` to `artifact/policy_builder.py`
@@ -443,6 +532,9 @@ _Note: `ll-generate-schemas` / `ll-generate-skill-descriptions` remain as-is (re
 
 ### Tests
 - `scripts/tests/` — unit test for `render_as_css_vars_themed` (both scoped blocks present, references resolved to hex)
+- `scripts/tests/` — unit test for `grammar_spec()` (returns `sorted(_ALL_OPS)` / `sorted(_ORDERED_OPS)` and `_PRED_PATTERN.pattern`) and for `_py_pattern_to_js` (named-group rewrite; the translated regex round-trips a predicate corpus identically to `_PRED_PATTERN`)
+- `scripts/tests/` — grammar drift-guard: assert the operator sets embedded in generated HTML equal `sorted(_ALL_OPS)` / `sorted(_ORDERED_OPS)`, and the emitted regex matches the predicate corpus identically to `_PRED_PATTERN`
+- `scripts/tests/fixtures/` — checked-in policy-rule conformance corpus (`(rule_table, scores) → expected_target`, `(rule_table) → expected_shadow_warnings`) consumed by the Python tests against `evaluate_rules` / `_detect_shadows`; same file is the contract for a future JS validator test
 - Smoke test that a builder-generated YAML passes `ll-loop validate` (catch-alls present, route map complete, no MR-4 dead-ends)
 
 _Wiring pass added by `/ll:wire-issue` — concrete files + patterns to follow:_
@@ -545,7 +637,7 @@ The original scoring across `ll-loop` subcommand / standalone / built-in-loop-YA
 
 1. Add `render_as_css_vars_themed(light, dark)` to `design_tokens.py` (+ optional multi-profile variant); unit-test resolution and scoping.
 2. Build the one-page HTML: mode switch (Rubric / Decision Table), identity fields, dimension chips (typed), reactive decision grid with pinned catch-all + drag-reorder, derived action-state list with forced terminal/next.
-3. Implement client-side validation mirroring `fsm/policy_rules.py` semantics (shadow, gap, missing catch-all, unknown action, numeric-coercion), colored from token semantics.
+3. Add a public `grammar_spec()` to `fsm/policy_rules.py` and a `_py_pattern_to_js` named-group transform; stamp the operator sets + predicate regex into the HTML as a JSON `<script>` block. Implement client-side validation that builds its operator dropdown / numeric-coercion branch from the stamped data and re-expresses the *logic* (shadow, gap, missing catch-all, unknown action), colored from token semantics. Add the conformance corpus + grammar drift-guard test.
 4. Implement the YAML serializer + live preview + Copy/Download + printed `ll-loop validate <name>` hint.
 5. Wire the embedded theme toggle (precedence: prefers-color-scheme → config active_theme → localStorage) and optional profile picker.
 6. Add the emit/stamp path: read `artifacts.default_output_dir` from `BRConfig` (or `--output` override), write `<dir>/policy-router-builder.html` with the active profile's resolved token CSS vars inlined via `render_as_css_vars_themed`.
@@ -567,7 +659,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Priority**: P3 — discoverability/authoring quality-of-life; the pattern already works via hand-authoring and `edit-routes`. No urgent unblock.
 - **Effort**: Medium — one self-contained HTML artifact + a ~15-line token helper + an emit path + tests/docs. No FSM runtime changes.
-- **Risk**: Low — purely additive; runtime, fragments, and existing wizard/edit-routes paths are untouched. Main risk is JS validation drifting from the canonical Python grammar — mitigated by deferring to `ll-loop validate` as the authoritative gate.
+- **Risk**: Low — purely additive; runtime, fragments, and existing wizard/edit-routes paths are untouched. The JS-drift risk is now structurally reduced, not just deferred: the grammar *data* (operator sets + regex) is stamped from `policy_rules.grammar_spec()` so it cannot drift, the *logic* half is pinned by a shared conformance corpus, and `ll-loop validate` remains the authoritative gate as a backstop.
 - **Breaking Change**: No
 
 ## Labels
@@ -586,12 +678,13 @@ _Updated by `/ll:confidence-check` on 2026-06-26 (re-run; scores stable)_
 **Outcome Confidence**: 68/100 → below threshold
 
 ### Outcome Risk Factors
-- **JS grammar drift**: In-browser validation mirrors `fsm/policy_rules.py:27–34` semantics (shadow detection, numeric-coercion ops, catch-all rules) with no automated cross-validation. Deferred to `ll-loop validate` as authoritative gate; still a maintenance surface.
+- **JS grammar drift** (mitigated): the grammar *data* (operator sets + predicate regex) is no longer hand-copied — it is stamped from a new public `policy_rules.grammar_spec()` at emit time and guarded by a test asserting the HTML-embedded ops equal the Python sets, so the data half cannot silently drift. The *logic* half (shadow detection, catch-all, numeric-coercion eval) must still be re-expressed in JS but is pinned by a shared conformance corpus; `ll-loop validate` remains the authoritative backstop. Residual surface is the JS logic re-expression, bounded by the corpus.
 - **No automated JS test coverage**: Interactive browser behavior (drag-reorder, reactive decision grid, YAML serializer, theme toggle) requires manual verification. The JS layer is the dominant complexity locus and sits outside pytest's reach.
 - **Dimension-name normalization divergence**: `policy_parse_scores` keys score files by a lowercase + whitespace→hyphens normalized name, but `evaluate_rules` matches predicate dims by exact string. A mixed-case/spaced dimension yields a silently-inert predicate that passes base `ll-loop validate` (no liveness check). ENH-2309 catches it at the gate only while its referenced-raw / scored-normalized asymmetry holds. Mitigated by the new normalization acceptance criterion (builder normalizes header/scoring-instruction/predicate identically, or restricts input to `[a-z0-9-]`); functional correctness of generated YAML depends on it.
 - ~~**Output artifact path not finalized**~~ — _resolved 2026-06-25_: generated on-demand at `<artifacts.default_output_dir>/policy-router-builder.html` (default CWD); `--output` override; no checked-in artifact. `config-schema.json` gets a new `"artifacts"` block.
 
 ## Session Log
+- `grammar single-source decision` - 2026-06-26 - Replaced hand-re-implementation of the JS predicate grammar with emit-time stamping from a new public `policy_rules.grammar_spec()` (operator sets + regex), a `_py_pattern_to_js` named-group transform, a drift-guard test, and a shared shadow/eval conformance corpus; flagged the pre-existing `route_table.py:455` operator duplication for consolidation. Downgraded the "JS grammar drift" outcome risk from open maintenance surface to "data half eliminated, logic half bounded".
 - `UI design decision` - 2026-06-26 - Adopted action-grouped rule cards + "Everything else →" fallback footer + friendly inline validation (plain-language shadow/zero-condition messages); rejected card-drag for action reassignment (dropdown instead). From a Cowork interactive-mockup review.
 - `boolean-dim decision` - 2026-06-26 - Closed the dead boolean/string-dimension hole: boolean chips compile to a numeric 0/100 encoding (`==true`→`>=50`, dim emitted into `rubric_dimensions`), keeping the feature live with no fragment-runtime change. Spun off ENH-2309 (validator rule flagging unscored policy dimensions).
 - `/ll:confidence-check` - 2026-06-26 - `d8445ed0-55b6-4efb-8cb4-0c6d5010e8b9.jsonl`

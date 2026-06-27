@@ -17,8 +17,8 @@ labels: [gemini, host-compat, docs]
 ## Summary
 
 Update `docs/reference/HOST_COMPATIBILITY.md` to populate the Gemini column from
-its current stub values (`(unknown)` / `(deferred)`) to accurate ✓, ✗ (with
-tracking issue), or N/A as each EPIC-2178 child issue lands.
+its current `(deferred)[^gemini]` values to accurate ✓, ✗ (with tracking issue),
+or N/A as each EPIC-2178 child issue lands.
 
 The Gemini column stub was added as part of FEAT-2179. This issue is the
 tracking/completion step — flip each cell once the corresponding implementation
@@ -28,7 +28,7 @@ is verified.
 
 A developer evaluating Gemini CLI support opens `HOST_COMPATIBILITY.md` and sees
 accurate parity status for each feature. The end-state acceptance for EPIC-2178
-requires no `(unknown)` cells in the Gemini column.
+requires no `(deferred)[^gemini]` cells in the Gemini column.
 
 ## Cell Update Map (from FEAT-2179)
 
@@ -57,13 +57,13 @@ This issue should be updated incrementally as children land. Final pass:
 1. Read current Gemini column in `HOST_COMPATIBILITY.md`.
 2. For each landed child, flip the corresponding cell(s) to ✓.
 3. For any remaining ✗ cells, link the tracking issue.
-4. Remove all `(unknown)` / `(deferred)` values.
+4. Remove all `(deferred)[^gemini]` values.
 5. Verify no Gemini cells are blank.
 
 ## Acceptance Criteria
 
 - Every Gemini column cell in `HOST_COMPATIBILITY.md` is ✓, ✗ (linked), or N/A.
-- No `(unknown)` or `(deferred)` cells remain.
+- No `(deferred)[^gemini]` cells remain.
 - EPIC-2178 end-state acceptance is satisfied.
 
 ## API/Interface
@@ -88,6 +88,8 @@ This issue should be updated incrementally as children land. Final pass:
 - The actual remaining work (flipping deferred/✗ cells to ✓ as child issues land) is still valid; update the issue body to reflect the current state of the column.
 
 2026-06-19 (NEEDS_UPDATE): Confirmed — HOST_COMPATIBILITY.md Gemini column already has `(deferred)[^gemini]` values, not the `(unknown)` stubs the issue body describes. Remaining work (flip deferred→✓ as children land) is still valid; update Summary and Use Case sections to reflect the current column state.
+
+- **2026-06-26** (/ll:verify-issues): Replaced all `(unknown)` references (no such cells exist) with `(deferred)[^gemini]` in Summary, Use Case, Implementation step 4, and Acceptance Criteria, matching the actual Gemini cells at HOST_COMPATIBILITY.md:25-30.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`

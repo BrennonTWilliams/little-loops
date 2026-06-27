@@ -1,6 +1,6 @@
 ---
 id: BUG-2333
-title: 'review-epic counts relates_to as children, diverging from epic-progress'
+title: review-epic counts relates_to as children, diverging from epic-progress
 type: BUG
 priority: P2
 status: open
@@ -19,6 +19,12 @@ labels:
 - issue-management
 - review-epic
 - parent-child
+confidence_score: 100
+outcome_confidence: 88
+score_complexity: 23
+score_test_coverage: 15
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2333: `review-epic` counts `relates_to` as children
@@ -107,7 +113,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   as a stalled/drifting child, not merely mis-counted.
 - **Full delegation is NOT a drop-in option**: Step 3 (line 103) already calls
   `ll-issues epic-progress` for *aggregates*, but `EpicProgress.to_dict()`
-  (`scripts/little_loops/cli/issues/epic_progress.py:30-48`) omits the `children`
+  (`scripts/little_loops/issue_progress.py:30-48`) omits the `children`
   list from JSON (emits only `total`, `by_status`, `percent_done`,
   `percent_blocked`, `oldest_open`). review-epic must keep resolving children
   locally; the fix is to mirror the parent:-only rule inline. (Extending the CLI
@@ -205,7 +211,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Reference implementation (do not modify — mirror it)**
 - `scripts/little_loops/issue_progress.py:87` — `compute_epic_progress`, the exact
   parent:-only expression to copy.
-- `scripts/little_loops/cli/issues/epic_progress.py:30-48` — `EpicProgress.to_dict()`,
+- `scripts/little_loops/issue_progress.py:30-48` — `EpicProgress.to_dict()`,
   proof the CLI JSON omits the child list (rules out full delegation).
 
 **Tests**
@@ -274,6 +280,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T01:21:29 - `dd3156d9-e668-4509-bc13-e0d34e27bb9e.jsonl`
+- `/ll:confidence-check` - 2026-06-26T23:45:00Z - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:23:14 - `80f7e865-5668-4056-97f7-9794b7b8c70e.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:09:00 - `abd8a5ef-13d7-492f-b92f-c138327f6bce.jsonl`
 - `/ll:format-issue` - 2026-06-26T23:00:30 - `64adeb74-858e-4aba-8e05-0d67aa559f7c.jsonl`

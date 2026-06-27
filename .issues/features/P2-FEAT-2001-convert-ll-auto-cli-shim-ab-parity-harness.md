@@ -71,7 +71,7 @@ FEAT-2000 must be merged first — this child invokes `ll-loop run ll-auto`, whi
    ```
 
    **Flag forwarding split** — `ll-loop run` accepts `--context KEY=VALUE` (action=`append`,
-   registered at `scripts/little_loops/cli/loop/__init__.py:211`) for arbitrary context overrides.
+   registered at `scripts/little_loops/cli/loop/__init__.py:236`) for arbitrary context overrides.
    However, `--handoff-threshold` and `--context-limit` have **dedicated flags** on the `run`
    subparser (`cli/loop/__init__.py:238-239`) — pass these as direct args, not via `--context`:
    ```python
@@ -120,7 +120,7 @@ FEAT-2000 must be merged first — this child invokes `ll-loop run ll-auto`, whi
    ```
 
 8. Add deprecation warning at the top of `AutoManager.run()` in
-   `scripts/little_loops/issue_manager.py` (class at L1021, `run()` at L1165):
+   `scripts/little_loops/issue_manager.py` (class at L1021, `run()` at L1234):
    ```python
    warnings.warn(
        "AutoManager.run() is deprecated; use ll-loop run ll-auto instead",
@@ -143,12 +143,12 @@ FEAT-2000 must be merged first — this child invokes `ll-loop run ll-auto`, whi
 
     | Line | Test class / method |
     |------|---------------------|
-    | L2604 | `TestAutoManagerRun.test_run_processes_single_issue` |
-    | L2638 | `TestAutoManagerRun.test_run_stops_at_max_issues` |
-    | L2669 | `TestAutoManagerRun.test_run_with_only_ids_filter` |
-    | L2701 | `TestAutoManagerRun.test_run_with_numeric_only_id_filter` |
-    | L2734 | `TestAutoManagerRun.test_run_returns_one_when_only_ids_all_gate_blocked` |
-    | L2820 | `TestTimingSummaryAndStateUpdates.test_timing_summary_logged` |
+    | L2809 | `TestAutoManagerRun.test_run_processes_single_issue` |
+    | L2843 | `TestAutoManagerRun.test_run_stops_at_max_issues` |
+    | L2874 | `TestAutoManagerRun.test_run_with_only_ids_filter` |
+    | L2906 | `TestAutoManagerRun.test_run_with_numeric_only_id_filter` |
+    | L2939 | `TestAutoManagerRun.test_run_returns_one_when_only_ids_all_gate_blocked` |
+    | L3025 | `TestTimingSummaryAndStateUpdates.test_timing_summary_logged` |
 
     Each needs the `pytest.warns(DeprecationWarning, match="AutoManager.run")` context manager
     wrapping the `.run()` call, following the exact pattern at `test_config.py:668`.
@@ -258,7 +258,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Files to Touch
 
 - `scripts/little_loops/cli/auto.py` — convert `main_auto()` to thin shim
-- `scripts/little_loops/issue_manager.py` — add `DeprecationWarning` to `AutoManager.run()` (L1165)
+- `scripts/little_loops/issue_manager.py` — add `DeprecationWarning` to `AutoManager.run()` (L1234)
 - `scripts/tests/test_issue_manager.py` — A/B parity harness + `pytest.warns` wrappers
 - `scripts/tests/test_cli.py` — rewrite `TestMainAutoIntegration`, `TestMainAutoAdditionalCoverage`
 - `scripts/tests/test_cli_e2e.py` — update `test_ll_auto_dry_run`, `test_ll_auto_max_issues_limit`, `test_ll_auto_category_filter`
@@ -270,7 +270,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/__init__.py` — imports and re-exports `main_auto` in `__all__` (L39/81); shim body changes but import contract is stable — verify no wrapper logic in this file [Agent 1]
-- `scripts/little_loops/cli/loop/__init__.py` — `--context` flag registered at L211 (`action="append"`, `metavar="KEY=VALUE"`); `--handoff-threshold` and `--context-limit` registered at L238-239 as dedicated flags on `run` subparser — forward these directly, not via `--context` [research]
+- `scripts/little_loops/cli/loop/__init__.py` — `--context` flag registered at L236 (`action="append"`, `metavar="KEY=VALUE"`); `--handoff-threshold` and `--context-limit` registered at L238-239 as dedicated flags on `run` subparser — forward these directly, not via `--context` [research]
 - `scripts/little_loops/cli/loop/_helpers.py:launch_background()` (L1018) — reference implementation for invoking `little_loops.cli.loop` as a subprocess using `sys.executable -m`; follow this pattern for the shim's subprocess call [research]
 - `scripts/little_loops/__init__.py` — imports and re-exports `AutoManager` in `__all__` (line 40/121); public API consumers calling `from little_loops import AutoManager` will start hitting `DeprecationWarning` on `.run()` — verify no doc/test asserts on absence of warning from the public import [Agent 1]
 - `scripts/little_loops/cli_args.py` — `add_common_auto_args()` is called only by `main_auto()`; when the shim no longer parses args internally (or passes them through), this call site disappears — audit whether the function still needs to be invoked or if arg-forwarding replaces it [Agent 1/2]
@@ -330,7 +330,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 
 ### Outcome Risk Factors
 - `loops/ll-auto.yaml` does not exist — it is a prerequisite from FEAT-2000, not a co-deliverable of this issue; the A/B parity harness cannot be exercised until FEAT-2000 is merged
-- **Call-site count corrected** (codebase research, `/ll:refine-issue`): `test_issue_manager.py` has exactly **6** direct `AutoManager.run()` call sites (L2604, L2638, L2669, L2701, L2734, L2820). The prior "53+ matches" figure was a raw grep count of all `.run()` calls on any object in the file. All 6 are already enumerated in Implementation Step 11.
+- **Call-site count corrected** (codebase research, `/ll:refine-issue`): `test_issue_manager.py` has exactly **6** direct `AutoManager.run()` call sites (L2809, L2843, L2874, L2906, L2939, L3025). The prior "53+ matches" figure was a raw grep count of all `.run()` calls on any object in the file. All 6 are already enumerated in Implementation Step 11.
 
 ---
 
@@ -348,6 +348,8 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 2026-06-17: Further drift — `AutoManager.run()` now at :1234 (was :1198/1165). All 6 `manager.run()` test call-sites have drifted ~149 lines (e.g. L2604→L2753, L2820→L2969). `--context` flag in `cli/loop/__init__.py` now at L234/382 (issue says L211). `loops/ll-auto.yaml` still does not exist; remains blocked on FEAT-2000.
 
 2026-06-19 (NEEDS_UPDATE): All 6 `manager.run()` test call-sites in `test_issue_manager.py` have drifted ~149 lines since 2026-06-17 (now at L2753/L2787/L2818/L2850/L2883/L2969 vs. body's L2604–L2820). `--context` flag now at L234/L382. `loops/ll-auto.yaml` still absent; remains blocked on FEAT-2000.
+
+- **2026-06-26** (/ll:verify-issues): Updated stale line numbers — `AutoManager.run()` body/Files-to-Touch to `issue_manager.py:1234`; the 6 `manager.run()` call-sites in `test_issue_manager.py` to L2809/L2843/L2874/L2906/L2939/L3025; `--context` flag to `cli/loop/__init__.py:236`. Scope/dependency claims (shim unbuilt, blocked on FEAT-2000) unchanged.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`

@@ -2,7 +2,7 @@
 id: EPIC-2279
 title: Wheel-self-sufficient package data + unified asset resolver
 type: epic
-status: open
+status: done
 priority: P2
 discovered_date: 2026-06-24
 discovered_by: capture-issue
@@ -139,6 +139,27 @@ ENH-2277 gates the result:
 - BUG-938 — closed invalid; ARCHITECTURE-053 refines its rule here.
 - BUG-885 — precedent: moved `loops/` into the package for the same class.
 
+## Resolution
+
+**Closed 2026-06-26.** All 12 children are `done`
+(`ll-issues epic-progress EPIC-2279` = 12/12 resolved, 100%) — FEAT-2274 plus
+BUG-2271 / BUG-2273 / BUG-2275 / BUG-2276 / BUG-2278 and the ENH-2272 /
+ENH-2277 / ENH-2291 follow-ups. The defect class is now gated: the
+package-data prevention gate (`ll-verify-package-data`) ships and is wired as a
+console entry point (`scripts/pyproject.toml:85`), the Codex adapter is packaged
+in-wheel (`scripts/little_loops/hooks/adapters/codex/hooks.json`), and the
+per-callsite `__file__` traversals are consolidated behind the shared resolver
+(`skill_expander._find_plugin_root`). Both acceptance axes — the dominant
+`pip install` → `ll-init` Claude path and the non-Claude host surface — are
+satisfied, and a future unshipped asset fails the build rather than an end user.
+
+## Verification Notes
+
+- **2026-06-26** (/ll:verify-issues): Closed EPIC-2279 — set `status: done` and
+  added a Resolution note; all 12 children verified `done` (epic-progress 100%)
+  and the `ll-verify-package-data` prevention gate confirmed wired at
+  `scripts/pyproject.toml:85`.
+
 ## Status
 
-**Open** | Created: 2026-06-24 | Priority: P2
+**Done** | Created: 2026-06-24 | Closed: 2026-06-26 | Priority: P2

@@ -10,11 +10,11 @@ status: open
 parent: EPIC-1463
 ---
 
-# ENH-1615: Add disable-model-invocation to all 28 ll-* Codex bridge skills
+# ENH-1615: Add disable-model-invocation to all 30 ll-* Codex bridge skills
 
 ## Summary
 
-The 30 `ll-*` bridge skills (e.g., `ll-align-issues`, `ll-commit`, `ll-help`) are 11-line stubs that bridge `commands/*.md` to the Codex Skills API. They consume 388/720 tokens (54%) of the skill listing budget but provide zero routing value for Claude Code users — Claude Code already routes through the identically-named slash commands. Adding `disable-model-invocation: true` to all 28 would cut the listing budget from 720 to ~332 tokens with no functional impact for Claude Code users.
+The 30 `ll-*` bridge skills (e.g., `ll-align-issues`, `ll-commit`, `ll-help`) are 11-line stubs that bridge `commands/*.md` to the Codex Skills API. They consume 388/720 tokens (54%) of the skill listing budget but provide zero routing value for Claude Code users — Claude Code already routes through the identically-named slash commands. Adding `disable-model-invocation: true` to all 30 would cut the listing budget from 720 to ~332 tokens with no functional impact for Claude Code users.
 
 ## Current Behavior
 
@@ -30,7 +30,7 @@ The 30 `ll-*` bridge skills (was 28 at capture; `ll-capture-issue` and `ll-go-no
 
 ## Proposed Solution
 
-Add `disable-model-invocation: true` to the YAML frontmatter of all 28 `skills/ll-*/SKILL.md` files. This field already exists in several non-bridge skills (e.g., `cleanup-loops`, `debug-loop-run`). A bulk Python edit is sufficient — no logic changes needed:
+Add `disable-model-invocation: true` to the YAML frontmatter of all 30 `skills/ll-*/SKILL.md` files. This field already exists in several non-bridge skills (e.g., `cleanup-loops`, `debug-loop-run`). A bulk Python edit is sufficient — no logic changes needed:
 
 ```python
 import re
@@ -104,6 +104,8 @@ _Updated by `/ll:verify-issues` on 2026-06-09_
 2026-06-18 (OUTDATED): Minor stale count in the Proposed Solution section — line 33 still reads "all 28 `skills/ll-*/SKILL.md` files" while the correct count is 30 (confirmed by filesystem). All other sections correctly say 30. Fix "28" → "30" in the `Proposed Solution` prose before merging.
 
 2026-06-19 (NEEDS_UPDATE): Confirmed — Proposed Solution prose still reads "all 28 `skills/ll-*/SKILL.md` files"; correct count is 30 (verified by filesystem). No ll-* bridge skills have `disable-model-invocation: true` yet. Fix "28" → "30" in prose before merging.
+
+- **2026-06-26** (/ll:verify-issues): Replaced stale "28" → "30" in the H1 title, Summary, and Proposed Solution prose to match the 30 `skills/ll-*/SKILL.md` bridge skills on disk. Core claim (none carry `disable-model-invocation: true`) still valid.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-20T00:34:44 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`

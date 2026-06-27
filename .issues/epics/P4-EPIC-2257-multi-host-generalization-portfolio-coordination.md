@@ -68,8 +68,8 @@ epic.
 
 ## Children
 
-- **FEAT-2259** — Generic host-parameterized conformance harness
-- **FEAT-2260** — Generic host-parameterized skill + command adapter
+- **FEAT-2259** — Generic host-parameterized conformance harness (**done**)
+- **FEAT-2260** — Generic host-parameterized skill + command adapter (pending)
 - **FEAT-2267** — Generic host-parameterized `ll-init --upgrade` surface refresh
   (scope-aware install detection prerequisite **BUG-2266** is done; FEAT-2267 is
   unblocked. BUG-2266 is a `relates_to` precursor, not a child of this epic.)
@@ -77,10 +77,11 @@ epic.
 ## Tracked sub-epics (sequenced under this epic)
 
 - **EPIC-2279** — Wheel-self-sufficient package data + unified asset resolver
-  (packages host-agnostic `templates/` / `hooks/` / `assets/` into the wheel so
-  `ll-init` + section loading + the prompt hook + the Codex adapter work on every
-  host via pip; owns FEAT-2274 + the BUG-2271 / BUG-2273 / BUG-2275 / BUG-2276 /
-  BUG-2278 resolver fixes + ENH-2272 deploy + ENH-2277 prevention gate).
+  (**done**, 12/12 children resolved) — packaged host-agnostic `templates/` /
+  `hooks/` / `assets/` into the wheel so `ll-init` + section loading + the prompt
+  hook + the Codex adapter work on every host via pip; landed FEAT-2274 + the
+  BUG-2271 / BUG-2273 / BUG-2275 / BUG-2276 / BUG-2278 resolver fixes + ENH-2272
+  deploy + ENH-2277 prevention gate (`ll-verify-package-data`).
 
 ## Tracked per-host epics (sequenced under this epic)
 
@@ -92,9 +93,9 @@ epic.
 
 - Host order is recorded once (ARCHITECTURE-048) and every per-host epic
   references it rather than re-deriving priority.
-- FEAT-2259 and FEAT-2260 land as generic components, and the bespoke
-  per-host conformance / skill / command children are either folded into them
-  or explicitly closed as superseded.
+- FEAT-2259 landed as a generic component (**done**); FEAT-2260 still pending —
+  and the bespoke per-host conformance / skill / command children are either
+  folded into them or explicitly closed as superseded.
 - `HOST_COMPATIBILITY.md` columns for every active host are driven by the
   generic conformance harness output.
 
@@ -104,6 +105,13 @@ epic.
 - **Effort**: Small (this epic is coordination; the work lives in children).
 - **Risk**: Low — planning/consolidation, no behavioral change.
 - **Breaking Change**: No.
+
+## Verification Notes
+
+- **2026-06-26** (/ll:verify-issues): Updated Children, Tracked sub-epics prose,
+  and the "FEAT-2259 and FEAT-2260 land as generic components" acceptance
+  criterion to reflect that FEAT-2259 landed (`done`) and EPIC-2279 is 100%
+  complete; FEAT-2260 remains pending. Cross-references/backlinks left unchanged.
 
 ## Status
 

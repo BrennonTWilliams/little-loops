@@ -78,9 +78,8 @@ functional with Gemini.
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/auto_runner.py` — calls `resolve_host().build_streaming(...)`
-- `scripts/little_loops/sprint_runner.py` — calls `resolve_host().build_streaming(...)`
-- `scripts/little_loops/loop_runner.py` — calls `resolve_host().build_streaming(...)`
+- `scripts/little_loops/subprocess_utils.py:329` — central orchestration dispatch that calls `resolve_host().build_streaming(...)` (used by ll-auto/ll-parallel; ll-sprint/ll-loop reach `build_streaming` through this module, not via direct runner modules)
+- `scripts/little_loops/cli/harness.py:283` — calls `resolve_host().build_streaming(...)`
 
 ### Similar Patterns
 
@@ -123,6 +122,8 @@ Session resume: `-r latest` / `-r <index>` / `-r <session-id>` — wire if `Host
 ## Verification Notes
 
 2026-06-18 (BLOCKED): ENH-2184 (stub) is not yet implemented — no `GeminiRunner` in `host_runner.py`. Full implementation cannot start until the stub lands.
+
+- **2026-06-26** (/ll:verify-issues): Corrected Dependent Files — replaced three nonexistent modules (`auto_runner.py`, `sprint_runner.py`, `loop_runner.py`) with the actual `build_streaming` consumers `subprocess_utils.py:329` and `cli/harness.py:283`.
 
 **Open** | Created: 2026-06-15 | Priority: P4
 

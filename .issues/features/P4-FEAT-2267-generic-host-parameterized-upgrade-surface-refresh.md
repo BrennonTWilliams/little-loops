@@ -43,7 +43,7 @@ warn/advise path for the **Claude marketplace plugin**, but:
 
 - **claude-code**: the marketplace plugin is never updated, even with `--upgrade`.
 - **Non-Claude hosts** (codex, gemini, omp): no upgrade surface exists; `fetch_latest_plugin()` returns `None` for these hosts.
-- Generated adapter files embed absolute `plugin_root` paths that become stale; `install_codex_adapter()` skips existing files without `--force`, so stale adapters persist after an upgrade.
+- Generated adapter files can drift across package versions (template content changes; install-mode switches change the resolved package dir), and `install_codex_adapter()` skips existing files without `--force`, so stale adapters persist after an upgrade. (Post-EPIC-2279 the `{{LL_PLUGIN_ROOT}}` substitution is the in-package dir, not a version-stamped marketplace path — see "Why the adapter can still go stale".)
 
 ## Expected Behavior
 
@@ -60,7 +60,7 @@ A developer uses little-loops with both claude-code and codex. After `pip instal
 
 ## Motivation
 
-After a package upgrade, integration adapter files silently become stale — they embed absolute `plugin_root` paths pointing to deleted version directories. Users discover this only when codex/gemini/omp integrations break with path errors. The upgrade surface must be as multi-host-aware as initial installation; without this, every package upgrade requires manual adapter regeneration for each non-Claude host.
+After a package upgrade, integration adapter files can silently drift from the upgraded package — stale template content (renamed hooks, schema bumps) or an install-mode change that shifts the resolved package dir. (The original "absolute path pointing at a deleted version directory" failure largely dissolved with EPIC-2279's in-package `{{LL_PLUGIN_ROOT}}` substitution — see "Why the adapter can still go stale".) Users discover drift only when codex/gemini/omp integrations misbehave after an upgrade. The upgrade surface must be as multi-host-aware as initial installation; without this, every package upgrade requires manual adapter regeneration for each non-Claude host.
 
 ## The two surface flavors
 
@@ -69,15 +69,36 @@ After a package upgrade, integration adapter files silently become stale — the
 | claude-code | versioned marketplace plugin | `<host> plugin update ll@little-loops` (scope-aware) | marketplace version query |
 | codex / gemini / omp | generated adapter files in the project | **regenerate** against the new `plugin_root` | stamped gen-version vs installed package |
 
-## Why non-Claude is more fragile
+## Why the adapter can still go stale (premise updated post-EPIC-2279)
 
-`install_codex_adapter()` (`writers.py:343-385`) renders the adapter by
-substituting `{{LL_PLUGIN_ROOT}}` with an **absolute** `plugin_root` path
-(`writers.py:374`). For a Claude plugin install that path is version-stamped
-(`…/cache/…/ll/<version>/…`), so a package/plugin upgrade can leave
-`.codex/hooks.json` pointing at an **old or deleted** version dir. And the
-writer **skips existing files without `--force`** (`writers.py:371`), so a
-plain re-run will not refresh a stale adapter.
+> **Updated 2026-06-26:** The original "absolute version-stamped marketplace
+> path" fragility that motivated *forced* regeneration largely dissolved with
+> EPIC-2279's in-package move. `install_codex_adapter()`
+> (`writers.py:450-490`) now substitutes `{{LL_PLUGIN_ROOT}}` with
+> `str(Path(__file__).parent.parent)` — the installed **`little_loops` package
+> directory** (`writers.py:481-482`) — **not** a version-stamped
+> `…/cache/…/ll/<version>/…` marketplace path. The `plugin_root` argument is now
+> explicitly marked **unused** (`writers.py:464`, kept only for call-site
+> compatibility). So a package upgrade no longer leaves `.codex/hooks.json`
+> pointing at a deleted version dir: a non-editable wheel resolves the package
+> dir to a stable site-packages location, and an editable install resolves it
+> into the source tree.
+
+The **residual** staleness this branch must still address is narrower:
+
+- The writer **skips existing files without `--force`** (`writers.py:478`), so a
+  plain re-run never refreshes an adapter whose **template content** changed
+  between package versions (new keys, renamed hooks, schema bumps) — the
+  substituted path is fine, but the rest of the file is stale.
+- An editable→non-editable reinstall (or vice-versa) **does** change the
+  resolved package dir, so an adapter generated under one install mode can point
+  at the other's path.
+
+Net: the case for a host-parameterized refresh stands, but it is now a
+**template-drift / install-mode** concern gated on `--force`, not the
+deleted-version-directory hazard the issue was originally filed against. The
+adapter-staleness branch should be re-justified (and the gen-version stamp
+scoped) against template/package-version drift rather than path rot.
 
 ## Acceptance Criteria
 
@@ -115,7 +136,7 @@ plain re-run will not refresh a stale adapter.
 
 - `scripts/little_loops/init/cli.py:159-236` — current package/plugin upgrade block.
 - `scripts/little_loops/init/install_check.py:105-146` — `fetch_latest_plugin`.
-- `scripts/little_loops/init/writers.py:343-385` — `install_codex_adapter` (skip-without-force + plugin_root substitution).
+- `scripts/little_loops/init/writers.py:450-490` — `install_codex_adapter` (skip-without-force at ~:478 + package-relative `{{LL_PLUGIN_ROOT}}` substitution at ~:481-482; `plugin_root` arg now unused, ~:464).
 - `scripts/little_loops/init/cli.py:57-80` — `_dispatch_host_adapters`.
 - ENH-2256 — originating work. FEAT-2260 — generic skill/command adapter (sibling shared-infra child).
 
@@ -171,7 +192,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Exact upgrade hook point**: `_run_yes` calls `_dispatch_host_adapters(hosts, project_root, plugin_root, force=force)` at `cli.py:339`. The upgrade (pip) runs in the block at `cli.py:200-265`, **before** this call. The `_dispatch_host_upgrade()` dispatcher should be inserted **between** the pip-upgrade block and the normal `_dispatch_host_adapters` call, calling `_dispatch_host_adapters(hosts, project_root, plugin_root, force=True)` when an upgrade was performed (instead of routing through the normal `force` flag).
 
-**`install_codex_adapter` already has `force` param** (`writers.py:383-423`): returns `True|False|None`. Gen-version stamp is not yet written. The rendered output is `.codex/hooks.json` (JSON) — JSON does not support comments, so a `# generated by little-loops v0.9.0`-style comment is invalid. Options for stamp location: (a) a `"_ll_gen_version"` key inside the JSON (codex may reject unknown fields), or (b) a sidecar file (e.g., `.codex/ll-gen-version`) mirroring the `.claude/ll-update-docs.watermark` pattern. **This is one of the open design questions — do not pre-decide.** Document the constraint (no JSON comments) when implementing.
+**`install_codex_adapter` already has `force` param** (`writers.py:450-490`): returns `True|False|None`; skips an existing dest without `--force` at ~:478. Note (post-EPIC-2279): the `{{LL_PLUGIN_ROOT}}` substitution now uses `str(Path(__file__).parent.parent)` — the in-package dir (~:481-482) — and the `plugin_root` arg is unused (~:464), so the substituted path is no longer a version-stamped marketplace path. Gen-version stamp is not yet written. The rendered output is `.codex/hooks.json` (JSON) — JSON does not support comments, so a `# generated by little-loops v0.9.0`-style comment is invalid. Options for stamp location: (a) a `"_ll_gen_version"` key inside the JSON (codex may reject unknown fields), or (b) a sidecar file (e.g., `.codex/ll-gen-version`) mirroring the `.claude/ll-update-docs.watermark` pattern. **This is one of the open design questions — do not pre-decide.** Document the constraint (no JSON comments) when implementing.
 
 **Watermark format mismatch**: `.claude/ll-update-docs.watermark` stores a **git commit hash**, not a package version string. The gen-version stamp for adapters needs the **package version** (`importlib.metadata.version("little-loops")`), not a commit hash. The watermark "pattern" to mirror is the sidecar-file concept, not the hash format.
 
@@ -213,6 +234,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-06-24 | Priority: P4
 
+## Verification Notes
+
+- **2026-06-26** (/ll:verify-issues): Softened the stale "absolute
+  version-stamped marketplace path" premise — `install_codex_adapter`
+  (`writers.py:450-490`) now substitutes `{{LL_PLUGIN_ROOT}}` with the in-package
+  dir (`str(Path(__file__).parent.parent)`, ~:481-482), `plugin_root` is unused
+  (~:464), so the deleted-version-dir hazard dissolved with EPIC-2279.
+  Re-justified the adapter-staleness branch against template/install-mode drift
+  and refreshed stale `writers.py` line refs (was 343-385/374/371 and
+  research-note 383-423; now the 450-490 range, skip-without-force ~:478). Intent
+  kept; still unimplemented.
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:27:28 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`

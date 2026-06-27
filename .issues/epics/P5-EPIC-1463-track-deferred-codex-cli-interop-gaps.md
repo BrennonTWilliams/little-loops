@@ -297,6 +297,8 @@ were filed for the genuine remaining depth gaps.
 
 2026-06-19 (NEEDS_UPDATE): Stale "5 of 12 children done" footer (Update 2026-06-04) still present. Actual: 6 done across 17+ total children (ENH-2105 added 2026-06-12; FEAT-1720 cancelled). Remove footer count — use `ll-issues epic-progress EPIC-1463` for live counts.
 
+- **2026-06-26** (/ll:verify-issues): Removed the stale hand-typed progress parenthetical ("as of 2026-06-24: 13/23 done, 10 open, 1 cancelled") from the footer; live `ll-issues epic-progress EPIC-1463` reports 12 done / 8 open / 3 cancelled (15/23 resolved). Footer now points only at the live command.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
@@ -316,9 +318,9 @@ were filed for the genuine remaining depth gaps.
 
 **Open** | Created: 2026-05-15 | Priority: P5
 
-**Progress**: run `ll-issues epic-progress EPIC-1463` for live counts (as of
-2026-06-24: 13/23 done, 10 open, 1 cancelled). Codex core landed in production;
-the remaining open children are all polish/refinement — none block "Codex is
-supported." The stale "5 of 12 children done" footer (Update 2026-06-04) was
-removed 2026-06-24 — it had been flagged by three verify-issues runs and never
-matched live counts. Do not re-add a hand-maintained count; use the live command.
+**Progress**: run `ll-issues epic-progress EPIC-1463` for live counts. Codex core
+landed in production; the remaining open children are all polish/refinement — none
+block "Codex is supported." The stale "5 of 12 children done" footer (Update
+2026-06-04) was removed 2026-06-24 — it had been flagged by three verify-issues
+runs and never matched live counts. Do not re-add a hand-maintained count; use the
+live command.

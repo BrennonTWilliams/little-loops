@@ -40,7 +40,7 @@ Four robustness gaps in `ll-init`:
 1. `_dispatch_host_adapters` (`cli.py`) silently ignores unrecognized `--hosts`
    values; a typo like `--hosts codx` does nothing. `opencode` is a documented
    host (`host_runner.py`) but absent from `_detect_hosts` and adapter dispatch.
-2. `merge_settings` (`writers.py:185`) strips every permission matching the
+2. `merge_settings` (`writers.py:252`) strips every permission matching the
    `Bash(ll-` prefix, so a user's custom `Bash(ll-mytool:*)` entry is silently
    removed on re-init.
 3. `check_version` (`install_check.py:157-169`) compares versions as strings
@@ -75,7 +75,7 @@ Four robustness gaps in `ll-init`:
    → Validate host names against a known set; warn/error on unknown.
 
 2. **`merge_settings` over-aggressive sweep.** The idempotency sweep strips *every*
-   entry matching `Bash(ll-` (`scripts/little_loops/init/writers.py:185`), so a
+   entry matching `Bash(ll-` (`scripts/little_loops/init/writers.py:252`), so a
    user's custom `Bash(ll-mytool:*)` permission is silently removed on re-init.
    → Scope the sweep to the canonical `_LL_PERMISSIONS` set rather than the
    `Bash(ll-` prefix.
@@ -177,7 +177,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Fix 1 — host validation**: `_dispatch_host_adapters()` is at `cli.py:67–98`; `_detect_hosts()` is at `cli.py:55–64`. The canonical known-host set lives in `host_runner._HOST_RUNNER_REGISTRY` (keys: `claude-code`, `codex`, `opencode`, `pi`). The `--hosts` argument enters `main_init()` at `cli.py:609–617` with comma-splitting but no validation before reaching `_dispatch_host_adapters`. `opencode` only needs a dispatch branch added to `_dispatch_host_adapters` — it is intentionally absent from `_PROBE_ORDER` and auto-detection should stay that way. Validation pattern to follow: `resolve_host()` raises `HostNotConfigured(f"Host {explicit!r} is not registered. Available: {sorted(_HOST_RUNNER_REGISTRY)}.")` for unknown names.
-- **Fix 2 — permission sweep**: `_LL_PERMISSIONS` is defined at `writers.py:24–52` (27 entries: 26 `Bash(ll-…:*)` + 1 trailing `Write(.ll/ll-continue-prompt.md)`). The idempotency sweep at `writers.py:185` uses `e.startswith("Bash(ll-")`. Replace with `e in _LL_PERMISSIONS` (or `e in set(_LL_PERMISSIONS)` for O(1) — the tuple is small so either is fine).
+- **Fix 2 — permission sweep**: `_LL_PERMISSIONS` is defined at `writers.py:24–52` (27 entries: 26 `Bash(ll-…:*)` + 1 trailing `Write(.ll/ll-continue-prompt.md)`). The idempotency sweep at `writers.py:252` uses `e.startswith("Bash(ll-")`. Replace with `e in _LL_PERMISSIONS` (or `e in set(_LL_PERMISSIONS)` for O(1) — the tuple is small so either is fine).
 - **Fix 3 — version comparison ⚠ dependency gap**: `check_version()` is at `install_check.py:157–169`; current body is `if installed == latest: return UpToDate; return OutOfDate`. `packaging` is **not declared** in `scripts/pyproject.toml` `[project.dependencies]` (lines 37–43) — it must be added there, or a stdlib alternative used (e.g., `tuple(int(x) for x in v.split("."))` works for strict `MAJOR.MINOR.PATCH` strings). The scope boundary says "no new top-level dependency expected" but research shows `packaging` is not a current transitive — either add it or use the stdlib tuple approach.
 - **Fix 4 — bare except**: `fetch_latest_plugin()` Zone 1 catch is at `install_check.py:122–127`: `except (HostNotConfigured, Exception)`. `HostNotConfigured` is a `RuntimeError` subclass and is already subsumed by `Exception`, making the tuple redundant. The correct narrowing is `except HostNotConfigured` — this is the only expected error from `resolve_host()` / `build_version_check()` when no host is configured. Zones 2 and 3 in the same function already use properly narrowed catches (`subprocess.TimeoutExpired, FileNotFoundError, OSError` / `…, json.JSONDecodeError`) and need no changes.
 
@@ -191,6 +191,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Labels
 
 - init, robustness
+
+## Verification Notes
+
+- **2026-06-26** (/ll:verify-issues): Updated Fix-2's permission-sweep edit site from `writers.py:185` to `writers.py:252` (the `e.startswith("Bash(ll-")` line drifted); Current Behavior, Proposed Solution, Implementation, and Codebase Research now point at the correct line. The four other nits and the `install_check.py` refs (126, 157-169) verified accurate and left unchanged.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-06-26T22:31:07 - `6b5f4713-4801-485e-9909-111bcbcf1d9a.jsonl`

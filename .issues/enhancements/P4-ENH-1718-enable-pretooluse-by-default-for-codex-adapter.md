@@ -24,31 +24,31 @@ FEAT-1489's resolution explicitly tied the opt-in/default decision to the benchm
 
 ## Current Behavior
 
-`hooks/adapters/codex/hooks.json` has no `PreToolUse` entry. The Python handler (`scripts/little_loops/hooks/pre_tool_use.py`) exists and is registered in `_dispatch_table()`, but neither the Codex `hooks.json` nor the OpenCode `index.ts` enables it by default. Codex users who want PreToolUse must manually add the entry to their `.codex/hooks.json`.
+`scripts/little_loops/hooks/adapters/codex/hooks.json` has no `PreToolUse` entry. The Python handler (`scripts/little_loops/hooks/pre_tool_use.py`) exists and is registered in `_dispatch_table()`, but neither the Codex `hooks.json` nor the OpenCode `index.ts` enables it by default. Codex users who want PreToolUse must manually add the entry to their `.codex/hooks.json`.
 
 ## Expected Behavior
 
-`hooks/adapters/codex/hooks.json` includes a `PreToolUse` entry pointing to a `pre-tool-use.sh` adapter script, matching the `PostToolUse` shape (timeout: 5s). Codex users get PreToolUse firing automatically after `/ll:init --codex`, consistent with the Claude Code default behavior.
+`scripts/little_loops/hooks/adapters/codex/hooks.json` includes a `PreToolUse` entry pointing to a `pre-tool-use.sh` adapter script, matching the `PostToolUse` shape (timeout: 5s). Codex users get PreToolUse firing automatically after `/ll:init --codex`, consistent with the Claude Code default behavior.
 
 ## Acceptance Criteria
 
-- `hooks/adapters/codex/hooks.json` includes a `PreToolUse` entry with `timeout: 5` and `statusMessage: "Checking tool use..."`
-- `hooks/adapters/codex/pre-tool-use.sh` exists, is executable, sets `LL_HOOK_HOST=codex`, invokes `python -m little_loops.hooks pre_tool_use`
+- `scripts/little_loops/hooks/adapters/codex/hooks.json` includes a `PreToolUse` entry with `timeout: 5` and `statusMessage: "Checking tool use..."`
+- `scripts/little_loops/hooks/adapters/codex/pre-tool-use.sh` exists, is executable, sets `LL_HOOK_HOST=codex`, invokes `python -m little_loops.hooks pre_tool_use`
 - `scripts/tests/test_codex_adapter.py` covers the new script (file-exists, executable, LL_HOOK_HOST sentinel, hooks.json presence)
 - `docs/reference/HOST_COMPATIBILITY.md` `pre_tool_use` Codex CLI cell updated from `(opt-in)[^hot]` to `✓`
 - `hooks/adapters/codex/README.md` event table updated: `PreToolUse` row reflects default enablement
 
 ## Implementation Steps
 
-1. Create `hooks/adapters/codex/pre-tool-use.sh` — 4-line shim mirroring `post-tool-use.sh`, replacing intent with `pre_tool_use`
-2. Add `PreToolUse` entry to `hooks/adapters/codex/hooks.json` mirroring the `PostToolUse` shape (no `matcher`, `timeout: 5`, `statusMessage: "Checking tool use..."`)
+1. Create `scripts/little_loops/hooks/adapters/codex/pre-tool-use.sh` — 4-line shim mirroring `post-tool-use.sh`, replacing intent with `pre_tool_use`
+2. Add `PreToolUse` entry to `scripts/little_loops/hooks/adapters/codex/hooks.json` mirroring the `PostToolUse` shape (no `matcher`, `timeout: 5`, `statusMessage: "Checking tool use..."`)
 3. Update `scripts/tests/test_codex_adapter.py` — add `PRE_TOOL_USE` path constant; extend `test_adapter_files_exist`, `test_adapter_scripts_are_executable`; add `test_hooks_json_has_pre_tool_use` and `test_pre_tool_use_sets_ll_hook_host_codex`
 4. Flip `pre_tool_use` Codex CLI cell in `docs/reference/HOST_COMPATIBILITY.md` from `(opt-in)[^hot]` to `✓`; update or remove `[^hot]` footnote for Codex
 5. Update `hooks/adapters/codex/README.md` event table
 
 ## Notes
 
-- Trust-hash churn: adding `PreToolUse` to `hooks/adapters/codex/hooks.json` changes the file hash; existing Codex users will be prompted to re-trust on next startup. Document in PR.
+- Trust-hash churn: adding `PreToolUse` to `scripts/little_loops/hooks/adapters/codex/hooks.json` changes the file hash; existing Codex users will be prompted to re-trust on next startup. Document in PR.
 - `pre_tool_use.py` handler is already a no-op (`LLHookResult(exit_code=0)`) — no behavioral change until a consumer populates it.
 - Benchmark evidence on record: `scripts/tests/bench_opencode_adapter.py` p95 ≈ 10ms (from FEAT-1489 resolution), well under `_DECISION_TARGET_MS = 200`.
 
@@ -56,8 +56,8 @@ FEAT-1489's resolution explicitly tied the opt-in/default decision to the benchm
 
 | Document | Why Relevant |
 |----------|--------------|
-| `hooks/adapters/codex/hooks.json` | File to modify — add `PreToolUse` entry |
-| `hooks/adapters/codex/post-tool-use.sh` | Direct template for the new script |
+| `scripts/little_loops/hooks/adapters/codex/hooks.json` | File to modify — add `PreToolUse` entry |
+| `scripts/little_loops/hooks/adapters/codex/post-tool-use.sh` | Direct template for the new script |
 | `docs/reference/HOST_COMPATIBILITY.md` | `pre_tool_use` row to flip |
 | `scripts/tests/bench_opencode_adapter.py` | Benchmark evidence justifying default enablement |
 
@@ -76,6 +76,8 @@ FEAT-1489's resolution explicitly tied the opt-in/default decision to the benchm
 - Dependency references are valid (no broken refs, missing backlinks, or cycles)
 
 2026-06-18 (VALID): Confirmed — `hooks/adapters/codex/hooks.json` still has no `PreToolUse` entry (only SessionStart, PreCompact, UserPromptSubmit, PostToolUse). `hooks/adapters/codex/pre-tool-use.sh` does not exist (expected — to be created by this issue). `pre_tool_use` Codex cell in HOST_COMPATIBILITY.md still reads `(opt-in)[^hot]`. Issue accurately describes unimplemented work; all Current Behavior claims are correct.
+
+- **2026-06-26** (/ll:verify-issues): Confirmed all substantive moved-file path references (hooks.json, post-tool-use.sh, pre-tool-use.sh) already point at the post-FEAT-2274 in-package location `scripts/little_loops/hooks/adapters/codex/`; the remaining bare `hooks/adapters/codex/README.md` refs are correct since that README legitimately stays at the repo root. PreToolUse-not-default gap remains real and unimplemented — no substantive change needed.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

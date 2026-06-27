@@ -65,6 +65,11 @@ transcript format (we see real values, not placeholder ~9s).
 
 2026-06-19 (NEEDS_UPDATE): Implementation Status section is accurate (BUG-2145/2146 done, ENH-2148 deferred). Additionally, the Success Criteria section still reads "BUG-865, BUG-924, and BUG-869 resolved as a side-effect of ENH-2148" — those bugs are now done via independent resolutions, not via the still-deferred ENH-2148. Remove or update the side-effect claim in Success Criteria.
 
+- **2026-06-26** (/ll:verify-issues): Decoupled the Success Criteria bullet —
+  BUG-865/BUG-924/BUG-869 are all independently `done`, so the criterion no
+  longer ties their resolution to the still-`deferred` ENH-2148. Implementation
+  Status left unchanged (accurate).
+
 ## Session Log
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
@@ -73,6 +78,7 @@ transcript format (we see real values, not placeholder ~9s).
 
 - On a 100-turn session, `context-monitor.sh` reports usage within ±5% of the
   `Status` hook's `used_percentage`.
-- BUG-865, BUG-924, and BUG-869 resolved as a side-effect of ENH-2148.
+- BUG-865, BUG-924, and BUG-869 resolved independently (all `done` via their own
+  fixes — not as a side-effect of ENH-2148, which remains `deferred`).
 - No regression in handoff trigger behavior on short sessions or non-Claude-Code
   hosts.

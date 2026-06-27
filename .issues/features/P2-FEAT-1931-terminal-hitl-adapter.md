@@ -101,7 +101,14 @@ class TerminalAdapter(CommunicationAdapter):
     received or timeout expires. Always available with zero configuration.
     """
 
-    def send_alert(self, prompt: str, context: dict, timeout: float) -> None:
+    def send_alert(
+        self,
+        loop_name: str,
+        state_name: str,
+        prompt: str,
+        captured_context: dict,
+        timeout: float,
+    ) -> str:
         """Render formatted prompt + context to stdout."""
 
     def await_response(self, timeout: float) -> HumanResponse | TimeoutResponse:
@@ -118,7 +125,7 @@ only renders, not resolves, variables.
 ## Proposed Solution
 
 Wrap `input()` in an `_interruptible_sleep()`-style polling loop (see
-`_interruptible_sleep()` in `executor.py`) that checks the shutdown signal between reads.
+`_interruptible_sleep()` at `scripts/little_loops/fsm/executor.py:1955`) that checks the shutdown signal between reads.
 Use `sys.stdin` directly rather than `input()` for finer control over blocking
 and signal handling.
 
@@ -209,6 +216,8 @@ open
 2026-06-17: `_interruptible_sleep` has drifted further to :1886 (was :1766). `send_alert()` signature mismatch with FEAT-1930 protocol still unresolved — missing `loop_name`, `state_name` params. `scripts/little_loops/fsm/adapters/terminal_adapter.py` does not exist (expected).
 
 2026-06-19: `_interruptible_sleep` has drifted to :1911 (was :1886). `send_alert()` signature mismatch with FEAT-1930 protocol still unresolved — missing `loop_name`, `state_name` params. `fsm/adapters/terminal_adapter.py` does not exist (expected, blocked on FEAT-1930).
+
+- **2026-06-26** (/ll:verify-issues): Aligned `API/Interface` `send_alert()` to FEAT-1930's ratified protocol `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> str`; corrected `_interruptible_sleep` body reference to `scripts/little_loops/fsm/executor.py:1955`. Baseline (no `fsm/adapters/` yet, blocked on FEAT-1930) unchanged.
 
 ---
 

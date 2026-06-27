@@ -22,22 +22,22 @@ Codex exposes a `PostCompact` event with the same payload shape as `PreCompact`.
 
 ## Motivation
 
-`PostCompact` is a Codex-native event with no ll consumer yet, but the gap is invisible — there is no documented "this intentionally does nothing" entry in `hooks/adapters/codex/hooks.json`. When a consumer is built (e.g., post-compaction state reset, index refresh), the adapter hook needs to exist. Capturing now makes the gap explicit and the wiring path clear.
+`PostCompact` is a Codex-native event with no ll consumer yet, but the gap is invisible — there is no documented "this intentionally does nothing" entry in `scripts/little_loops/hooks/adapters/codex/hooks.json`. When a consumer is built (e.g., post-compaction state reset, index refresh), the adapter hook needs to exist. Capturing now makes the gap explicit and the wiring path clear.
 
 ## Current Behavior
 
-`hooks/adapters/codex/hooks.json` has no `PostCompact` entry. The `HOST_COMPATIBILITY.md` marks it `(deferred)[^postcompact]` with a footnote acknowledging the payload shape is compatible. No `post_compact.py` handler module exists in `scripts/little_loops/hooks/`.
+`scripts/little_loops/hooks/adapters/codex/hooks.json` has no `PostCompact` entry. The `HOST_COMPATIBILITY.md` marks it `(deferred)[^postcompact]` with a footnote acknowledging the payload shape is compatible. No `post_compact.py` handler module exists in `scripts/little_loops/hooks/`.
 
 ## Expected Behavior
 
-A `PostCompact` entry exists in `hooks/adapters/codex/hooks.json` pointing to a `post-compact-after.sh` adapter script. A no-op `post_compact` Python handler is registered in `_dispatch_table()`. The HOST_COMPATIBILITY matrix `PostCompact` Codex cell reflects wired status.
+A `PostCompact` entry exists in `scripts/little_loops/hooks/adapters/codex/hooks.json` pointing to a `post-compact-after.sh` adapter script. A no-op `post_compact` Python handler is registered in `_dispatch_table()`. The HOST_COMPATIBILITY matrix `PostCompact` Codex cell reflects wired status.
 
 ## Acceptance Criteria
 
 - `scripts/little_loops/hooks/post_compact.py` exists with a no-op `handle(event: LLHookEvent) -> LLHookResult` returning `LLHookResult(exit_code=0)`
 - `scripts/little_loops/hooks/__init__.py` `_dispatch_table()` includes `post_compact` and `_USAGE` string is updated
-- `hooks/adapters/codex/post-compact-after.sh` exists, is executable, sets `LL_HOOK_HOST=codex`, invokes `python -m little_loops.hooks post_compact`
-- `hooks/adapters/codex/hooks.json` includes a `PostCompact` entry (timeout: 30s to match `PreCompact`, `statusMessage: "Post-compaction cleanup..."`)
+- `scripts/little_loops/hooks/adapters/codex/post-compact-after.sh` exists, is executable, sets `LL_HOOK_HOST=codex`, invokes `python -m little_loops.hooks post_compact`
+- `scripts/little_loops/hooks/adapters/codex/hooks.json` includes a `PostCompact` entry (timeout: 30s to match `PreCompact`, `statusMessage: "Post-compaction cleanup..."`)
 - `scripts/tests/test_codex_adapter.py` covers the new script
 - `docs/reference/HOST_COMPATIBILITY.md` `post_compact` Codex CLI cell updated from `(deferred)` to `✓`
 
@@ -45,8 +45,8 @@ A `PostCompact` entry exists in `hooks/adapters/codex/hooks.json` pointing to a 
 
 1. Create `scripts/little_loops/hooks/post_compact.py` — mirror `post_tool_use.py` (no-op handler, `LLHookResult(exit_code=0)`)
 2. Register in `scripts/little_loops/hooks/__init__.py` — add `post_compact` to `_dispatch_table()` built_ins dict and `_USAGE` string
-3. Create `hooks/adapters/codex/post-compact-after.sh` — 4-line shim mirroring `pre-compact.sh`, intent `post_compact`
-4. Add `PostCompact` entry to `hooks/adapters/codex/hooks.json`
+3. Create `scripts/little_loops/hooks/adapters/codex/post-compact-after.sh` — 4-line shim mirroring `pre-compact.sh`, intent `post_compact`
+4. Add `PostCompact` entry to `scripts/little_loops/hooks/adapters/codex/hooks.json`
 5. Extend `scripts/tests/test_codex_adapter.py` (file-exists, executable, hooks.json presence, LL_HOOK_HOST sentinel)
 6. Flip `post_compact` Codex cell in `docs/reference/HOST_COMPATIBILITY.md`; remove or update `[^postcompact]` footnote
 
@@ -60,8 +60,8 @@ A `PostCompact` entry exists in `hooks/adapters/codex/hooks.json` pointing to a 
 
 | Document | Why Relevant |
 |----------|--------------|
-| `hooks/adapters/codex/hooks.json` | File to modify |
-| `hooks/adapters/codex/pre-compact.sh` | Template for new script |
+| `scripts/little_loops/hooks/adapters/codex/hooks.json` | File to modify |
+| `scripts/little_loops/hooks/adapters/codex/pre-compact.sh` | Template for new script |
 | `docs/reference/HOST_COMPATIBILITY.md` | `post_compact` row to flip |
 | `scripts/little_loops/hooks/post_tool_use.py` | Template for no-op handler module |
 
@@ -70,6 +70,8 @@ A `PostCompact` entry exists in `hooks/adapters/codex/hooks.json` pointing to a 
 2026-06-13 (OUTDATED): Implementation not started. `scripts/little_loops/hooks/post_compact.py` does not exist. `_dispatch_table()` in hooks/__init__.py has no post_compact entry. PostCompact is absent from `hooks/adapters/codex/hooks.json`. Scope includes PermissionRequest handling (absorbed from cancelled FEAT-1720). Create handler, register in dispatch table, add to hooks.json, create post-compact-after.sh shim.
 
 2026-06-18 (OUTDATED): `scripts/little_loops/hooks/post_compact.py` still absent. `_dispatch_table()` has no `post_compact` entry. `hooks/adapters/codex/hooks.json` still has no PostCompact or PermissionRequest entries. Implementation not started; issue scope (absorbing FEAT-1720's PermissionRequest) is accurate.
+
+- **2026-06-26** (/ll:verify-issues): Updated stale repo-root `hooks/adapters/codex/` path references (hooks.json, post-compact-after.sh, pre-compact.sh) to the post-FEAT-2274 in-package location `scripts/little_loops/hooks/adapters/codex/` across Motivation, Current/Expected Behavior, Acceptance Criteria, Implementation Steps, doc table, and the shared-files Scope Boundary note. PostCompact handler/dispatch/hooks.json gap is real and unstarted — substance unchanged.
 
 ## Status
 
@@ -92,7 +94,7 @@ A `PostCompact` entry exists in `hooks/adapters/codex/hooks.json` pointing to a 
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1720 both modify the same three shared files: `scripts/little_loops/hooks/__init__.py` (`_dispatch_table()` and `_USAGE`), `hooks/adapters/codex/hooks.json`, and `scripts/tests/test_codex_adapter.py`. FEAT-1720 `depends_on: [FEAT-1719]` — this issue's PR **must be merged first**. FEAT-1720's PR must be rebased on this merged commit before opening. Alternatively, batch both handler registrations into a single PR to eliminate the coordination burden entirely.
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1720 both modify the same three shared files: `scripts/little_loops/hooks/__init__.py` (`_dispatch_table()` and `_USAGE`), `scripts/little_loops/hooks/adapters/codex/hooks.json`, and `scripts/tests/test_codex_adapter.py`. FEAT-1720 `depends_on: [FEAT-1719]` — this issue's PR **must be merged first**. FEAT-1720's PR must be rebased on this merged commit before opening. Alternatively, batch both handler registrations into a single PR to eliminate the coordination burden entirely.
 
 ---
 

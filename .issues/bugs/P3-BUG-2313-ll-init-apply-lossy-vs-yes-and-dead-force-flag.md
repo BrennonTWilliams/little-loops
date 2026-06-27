@@ -1,6 +1,6 @@
 ---
 id: BUG-2313
-title: ll-init apply is lossy vs --yes; apply --force is an unused no-op
+title: ll-init apply is lossy vs --yes
 type: BUG
 status: open
 priority: P3
@@ -19,25 +19,25 @@ score_ambiguity: 23
 score_change_surface: 25
 ---
 
-# BUG-2313: ll-init apply is lossy vs --yes; apply --force is an unused no-op
+# BUG-2313: ll-init apply is lossy vs --yes
 
 ## Summary
 
 The `ll-init --plan` → `ll-init apply` round-trip does not reproduce a full init,
-even though the docs present it as the headless apply path. Separately, the `apply`
-subcommand's `--force` flag is parsed but never used.
+even though the docs present it as the headless apply path. `_run_apply` writes a
+reduced subset of `_run_yes`'s sequence, so the resulting install is silently
+incomplete.
 
 ## Motivation
 
 Users following the documented `--plan`/`apply` two-phase workflow (e.g., for CI/CD,
 dry-run review, or scripted provisioning) receive a silently incomplete install. The
 missing steps (`CLAUDE.md`, design tokens, issue templates, host adapters, dependency
-validation) are critical to a functioning little-loops installation. The presence of
-`--force` in help output implies functionality that is absent, eroding CLI trust.
+validation) are critical to a functioning little-loops installation.
 
 ## Current Behavior
 
-`_run_apply` (`scripts/little_loops/init/cli.py:420-464`) writes only:
+`_run_apply` (`scripts/little_loops/init/cli.py:420-471`) writes only:
 config + issue dirs + goals + gitignore + settings.
 
 It **skips** steps `_run_yes` performs: `write_claude_md`,
@@ -46,9 +46,10 @@ host-adapter dispatch (`_dispatch_host_adapters`), and `validate_deps`. So
 `ll-init --plan > p.json && ll-init apply -c p.json` yields a materially different
 result than `ll-init --yes`.
 
-The `--force` argument is declared on the apply subparser (`cli.py:594-599`) and
-threaded into `_run_apply(force=...)` (`cli.py:620-625`), but the body of
-`_run_apply` never references `force` — so `apply --force` is a silent no-op.
+(Note: `--force` is **not** dead — the BUG-2310 fix wired it into
+`merge_with_existing(config, load_existing_config(project_root), force)` at
+`cli.py:454`, where it controls whether unmodeled existing config keys are
+preserved or reset. This issue is scoped purely to the apply-lossiness gap above.)
 
 ## Steps to Reproduce
 
@@ -57,27 +58,22 @@ threaded into `_run_apply(force=...)` (`cli.py:620-625`), but the body of
 3. Compare the resulting directory against `ll-init --yes` output
 4. Observe: `CLAUDE.md`, design tokens, issue templates, host adapters, and
    learning-tests dir are absent from the `apply` path
-5. Run `ll-init apply --force -c plan.json` — observe no change in behavior vs.
-   without `--force`
 
 ## Expected Behavior
 
 `apply` produces the same on-disk result as `--yes` for the same config (modulo
 install/upgrade checks), or the docs/help clearly scope `apply` as a config-only
-operation. `apply --force` either does something meaningful or is removed.
+operation.
 
 ## Root Cause
 
-`_run_apply` was implemented as a reduced subset of `_run_yes`'s write sequence
-and the `force` parameter was wired through without a use site.
+`_run_apply` was implemented as a reduced subset of `_run_yes`'s write sequence.
 
 ## Proposed Solution
 
 Either (a) factor the shared write sequence out of `_run_yes` and reuse it in
 `_run_apply` (preferred — single source of truth), or (b) explicitly document
-`apply` as config+dirs+goals+gitignore+settings only. Remove `--force` from the
-apply subparser if it has no semantics, or implement it (e.g. gate codex-adapter
-overwrite / existing-file overwrite).
+`apply` as config+dirs+goals+gitignore+settings only.
 
 ## Implementation Steps
 
@@ -85,7 +81,7 @@ overwrite / existing-file overwrite).
 > **Selected:** Option (a) — Full parity — `_apply_config()` in `tui.py` is a working template (same imports, call order, `force` forwarding); reuse score 3/3; zero new infrastructure required.
 1. Add `plugin_root: Path` and `hosts: list[str]` parameters to `_run_apply` signature (`cli.py:420`); update the call site at `cli.py:619–625` to pass `plugin_root` (already computed at line 604) and `hosts` (already computed at lines 610–617)
 2. Add the missing writer imports to `_run_apply`'s import block: `write_claude_md` (`writers.py:333`), `make_learning_tests_dir` (`writers.py:222`), `deploy_design_tokens` (`writers.py:269`), `deploy_issue_templates` (`writers.py:306`), plus `validate_deps` from `little_loops.init.validate`
-3. After the existing five write calls in `_run_apply`, add the missing conditional calls following `_run_yes`'s pattern: `deploy_design_tokens` (if `config.design_tokens.enabled`), `deploy_issue_templates` (if `config.issues.deploy_templates`), `make_learning_tests_dir` (if `config.learning_tests.enabled`), `write_claude_md` (unconditional), `_dispatch_host_adapters(hosts, project_root, plugin_root, force=force)` (which gives `force` its use site), `validate_deps`
+3. After the existing five write calls in `_run_apply`, add the missing conditional calls following `_run_yes`'s pattern: `deploy_design_tokens` (if `config.design_tokens.enabled`), `deploy_issue_templates` (if `config.issues.deploy_templates`), `make_learning_tests_dir` (if `config.learning_tests.enabled`), `write_claude_md` (unconditional), `_dispatch_host_adapters(hosts, project_root, plugin_root, force=force)` (forward the live `force` here too, so it gates codex-adapter overwrite in addition to its existing `merge_with_existing` use at `cli.py:454`), `validate_deps`
 4. Fix `merge_settings` call in `_run_apply` to pass `extra_permissions=["Skill(ll:explore-api)"]` when `learning_tests` is enabled (matches `_run_yes` behavior at line 334–335)
 5. Update `test_apply_from_plan` (`test_init_core.py:1335`) to assert full artifact parity: CLAUDE.md, `.ll/design-tokens/profiles/`, `.ll/templates/`, `.ll/learning-tests/.gitkeep`; model new assertions after `test_yes_deploys_design_tokens_when_enabled` (line 1361) and `test_yes_deploys_issue_templates_when_enabled` (line 1385)
 6. Run `python -m pytest scripts/tests/test_init_core.py -v -k "apply"` to verify
@@ -104,11 +100,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 14. Write `test_apply_installs_codex_adapter_when_host_detected` — assert `(.codex/hooks.json).exists()` after apply with `--hosts codex`
 15. Write `test_plan_apply_produces_same_artifacts_as_yes` in `test_init_e2e.py` (`TestInitHeadlessEndToEnd`) — end-to-end parity test comparing `--yes` artifact tree vs `--plan`→`apply` artifact tree
 
-**Option (b) — Explicit limited-scope + remove --force:**
-1. Remove `--force` from apply subparser (`cli.py:594–599`)
-2. Remove `force` parameter from `_run_apply` signature (`cli.py:424`) and the `force=getattr(args, "force", False)` kwarg from the call site (`cli.py:624`)
-3. Update `docs/reference/CLI.md` and `docs/reference/COMMANDS.md` to explicitly state apply is config+dirs+goals+gitignore+settings only
-4. Update `.claude/CLAUDE.md` `ll-init` entry to scope the `--plan`/`apply` path accordingly
+**Option (b) — Explicit limited-scope:**
+1. Update `docs/reference/CLI.md` and `docs/reference/COMMANDS.md` to explicitly state apply is config+dirs+goals+gitignore+settings only (retain `--force`, which is live: it gates whether unmodeled existing config keys are preserved via `merge_with_existing` at `cli.py:454`)
+2. Update `.claude/CLAUDE.md` `ll-init` entry to scope the `--plan`/`apply` path accordingly
 
 ### Decision Rationale
 
@@ -198,7 +192,7 @@ _Added by `/ll:refine-issue` — based on direct code analysis:_
 | `_dispatch_host_adapters` | ✓ | ✗ **MISSING** |
 | `validate_deps` | ✓ | ✗ **MISSING** |
 
-**`force` data flow**: `_run_yes` forwards `force` to `_dispatch_host_adapters` (line 339), which passes it to `install_codex_adapter` in `writers.py`. `install_codex_adapter` uses it to guard `.codex/hooks.json` overwrites. In `_run_apply`, `force` is received at line 424 but never forwarded anywhere.
+**`force` data flow**: `_run_yes` forwards `force` to `_dispatch_host_adapters` (line 339), which passes it to `install_codex_adapter` in `writers.py`. `install_codex_adapter` uses it to guard `.codex/hooks.json` overwrites. In `_run_apply`, `force` is received at line 424 and (since BUG-2310) forwarded to `merge_with_existing(..., force)` at `cli.py:454`, where it controls whether unmodeled existing config keys are preserved or reset. Under option (a) it should additionally be forwarded to `_dispatch_host_adapters` for codex-adapter overwrite parity with `_run_yes`.
 
 **Signature gap in `_run_apply`**: The function currently accepts `(plan_config, project_root, templates_dir, force)`. To support option (a), it needs two additional parameters: `plugin_root: Path` (for `_dispatch_host_adapters`) and `hosts: list[str]` (for host-adapter dispatch). Both are available in `main_init` at the call site (lines 604 and 617) and just need to be threaded through.
 
@@ -214,6 +208,10 @@ _Added by `/ll:refine-issue` — based on direct code analysis:_
 ## Labels
 
 - init, apply
+
+## Verification Notes
+
+- **2026-06-26** (/ll:verify-issues): Removed the now-FALSE "`--force` is a dead/unused no-op" claim (title, summary, motivation, current behavior, repro, root cause, proposed solution, option-b steps, codebase research); the BUG-2310 fix wired `force` into `merge_with_existing(...)` at `cli.py:454`. Rescoped the issue purely to the apply-lossiness gap and updated `_run_apply`'s body line range to `cli.py:420-471`.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-06-26T22:32:54 - `f021f33c-5e61-4358-a597-9532143b16da.jsonl`

@@ -28,8 +28,8 @@ Gemini CLI users have no hook adapter. None of the ll hook intents
 (`session_start`, `pre_compact`, `pre_tool_use`, `post_tool_use`, etc.) fire
 during Gemini lifecycle events, so history capture, context injection, and tool
 auditing are unavailable when little-loops runs under Gemini. Only
-`hooks/adapters/codex/` and `hooks/adapters/claude-code/` exist;
-`hooks/adapters/gemini/` does not.
+`hooks/adapters/codex/`, `hooks/adapters/claude-code/`, and
+`hooks/adapters/opencode/` exist; `hooks/adapters/gemini/` does not.
 
 ## Expected Behavior
 
@@ -186,6 +186,8 @@ _Run `/ll:normalize-issues` to discover and link additional relevant docs._
 ## Verification Notes
 
 2026-06-18 (UNSTARTED): `hooks/adapters/gemini/` directory does not exist. FEAT-2179 (research spike) is complete — `thoughts/research/gemini-cli-surface.md` exists and confirms stdin/stdout JSON hook protocol identical to Claude Code. ENH-2184 (GeminiRunner stub) not yet implemented; this issue's `depends_on` correctly captures that ordering.
+
+- **2026-06-26** (/ll:verify-issues): Corrected Current Behavior — added `hooks/adapters/opencode/` to the list of existing adapter subdirs (previously omitted, only codex and claude-code were listed); the central claim that `hooks/adapters/gemini/` is absent remains accurate.
 
 **Open** | Created: 2026-06-15 | Priority: P4
 

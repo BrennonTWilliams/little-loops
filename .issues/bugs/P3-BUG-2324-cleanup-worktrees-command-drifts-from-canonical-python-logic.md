@@ -1,11 +1,11 @@
 ---
 id: BUG-2324
-title: "cleanup-worktrees command drifts from canonical _is_ll_worktree logic"
+title: cleanup-worktrees command drifts from canonical _is_ll_worktree logic
 type: BUG
 status: open
 priority: P3
-captured_at: "2026-06-26T22:26:49Z"
-discovered_date: "2026-06-26"
+captured_at: '2026-06-26T22:26:49Z'
+discovered_date: '2026-06-26'
 discovered_by: audit
 labels:
 - worktree
@@ -17,6 +17,12 @@ relates_to:
 - ENH-1249
 - ENH-1255
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 80
+score_complexity: 14
+score_test_coverage: 23
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # BUG-2324: cleanup-worktrees command drifts from canonical _is_ll_worktree logic
@@ -336,6 +342,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-26T23:50:00Z - `0c53424b-20aa-4cfb-80cf-802b5967df71.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:34:56 - `0ccf7a6a-f985-42f6-bb18-b2c54b21a3f0.jsonl`
 - `/ll:decide-issue` - 2026-06-26T23:07:30 - `4c0744ee-e575-4909-b378-3548d491b5eb.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:59:28 - `585197a2-6eeb-4c75-8344-69370d9d5505.jsonl`
