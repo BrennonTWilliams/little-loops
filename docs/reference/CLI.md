@@ -1012,6 +1012,7 @@ List issues with optional filters.
 | `--parent EPIC-NNN` | Filter to issues whose `parent:` frontmatter matches the given EPIC or issue ID (e.g. `--parent EPIC-101`). Accepts short form (`101`), type-prefixed (`EPIC-101`), or full prefix (`P2-EPIC-101`). |
 | `--flat` | Output flat list for scripting |
 | `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, `labels`, `milestone`, and `parent` (the parent EPIC or issue ID when set) |
+| `--include-summary` | When combined with `--json`, adds a `"summary"` key to each JSON object containing the plain text of the issue's `## Summary` section (empty string if absent). No-op without `--json`. |
 | `--sort` / `-s` | Sort by field: `priority` (default), `id`, `type`, `title`, `created`, `completed`, `confidence`, `outcome`, `refinement` |
 | `--asc` | Sort ascending |
 | `--desc` | Sort descending |

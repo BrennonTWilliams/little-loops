@@ -3,8 +3,9 @@ id: ENH-2345
 title: Add --include-summary flag to ll-issues list --json
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-27T18:58:04Z'
+completed_at: '2026-06-27T19:49:40Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
 confidence_score: 98
@@ -150,11 +151,23 @@ Return `.group(1).strip()` or `""` if no match. The `^` anchor and `\s*` handle 
 - **Risk**: Low — Additive-only change; flag defaults to off, so existing `--json` output is unchanged.
 - **Breaking Change**: No
 
+## Resolution
+
+Implemented `--include-summary` flag on `ll-issues list --json`:
+- Added `_parse_summary_from_content()` helper to `search.py` (regex matches `^## Summary` section)
+- Added `--include-summary` flag to `ls` subparser in `__init__.py`
+- Extended enriched tuple to 6 elements; emits `"summary"` key in JSON when flag set
+- Updated `docs/reference/CLI.md` flag table and `docs/reference/json-output-contracts.md` schema
+- Updated `skills/create-epics-from-unparented/SKILL.md` Step 2 to use `--include-summary`
+- Added `test_list_json_include_summary_flag` and `test_list_json_no_summary_without_flag`
+
+
 ## Labels
 
 `enhancement`, `cli-tool`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T19:37:20 - `55a07f80-9fc9-4528-bc5b-d3ebcf7b12e8.jsonl`
 - `/ll:wire-issue` - 2026-06-27T19:22:23 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:refine-issue` - 2026-06-27T19:09:27 - `62c82d91-b927-47f1-9a31-b33885804e70.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:07:11 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`

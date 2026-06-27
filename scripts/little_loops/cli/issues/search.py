@@ -95,6 +95,14 @@ def _parse_labels_from_content(content: str) -> list[str]:
     return [m.lower() for m in re.findall(r"`([^`]+)`", match.group(1))]
 
 
+def _parse_summary_from_content(content: str) -> str:
+    """Extract plain text of the ## Summary section body."""
+    match = re.search(r"^## Summary\s*\n+(.*?)(?:\n\n|\n##|\Z)", content, re.MULTILINE | re.DOTALL)
+    if not match:
+        return ""
+    return match.group(1).strip()
+
+
 def _parse_priority_filter(priority_values: list[str]) -> set[str]:
     """Parse priority filter values, supporting ranges like P0-P2."""
     priorities: set[str] = set()

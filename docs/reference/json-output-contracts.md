@@ -134,3 +134,4 @@ Returns a JSON array. Each element describes one issue file.
 | `parent` | string or null | yes | Parent epic ID (null if not set) |
 | `labels` | array of strings | yes | Labels from the issue frontmatter |
 | `milestone` | string or null | yes | Milestone tag (null if not set) |
+| `summary` | string | no | Plain text of the `## Summary` section body; only present when `--include-summary` is passed (empty string `""` if the section is absent) |

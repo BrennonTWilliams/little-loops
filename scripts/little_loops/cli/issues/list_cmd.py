@@ -33,6 +33,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         _load_issues_with_status,
         _parse_discovered_date,
         _parse_labels_from_content,
+        _parse_summary_from_content,
         _sort_issues,
     )
 
@@ -68,6 +69,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     sort_field = getattr(args, "sort", "priority") or "priority"
     need_content = sort_field in {"created", "completed"}
     want_json = getattr(args, "json", False)
+    want_summary = want_json and getattr(args, "include_summary", False)
     enriched: list[tuple] = []
     for issue, stat in filtered:
         disc_date: datetime | None = None
@@ -86,9 +88,12 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                 from little_loops.issue_history.parsing import _parse_completion_date
 
                 comp_date = _parse_completion_date(content, issue.path)
+        summary = ""
         if want_json:
             labels = _parse_labels_from_content(content)
-        enriched.append((issue, stat, disc_date, comp_date, labels))
+            if want_summary:
+                summary = _parse_summary_from_content(content)
+        enriched.append((issue, stat, disc_date, comp_date, labels, summary))
 
     if getattr(args, "desc", False):
         descending = True
@@ -129,8 +134,9 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                     "parent": issue.parent,
                     "labels": lbls,
                     "milestone": issue.milestone,
+                    **({"summary": smry} if want_summary else {}),
                 }
-                for issue, stat, disc_date, _comp_date, lbls in enriched
+                for issue, stat, disc_date, _comp_date, lbls, smry in enriched
             ]
         )
         return 0

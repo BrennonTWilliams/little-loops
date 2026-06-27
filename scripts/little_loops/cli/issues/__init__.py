@@ -177,6 +177,13 @@ Examples:
         )
         ls.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
         ls.add_argument(
+            "--include-summary",
+            action="store_true",
+            dest="include_summary",
+            default=False,
+            help="Include ## Summary body in each JSON object (no-op without --json)",
+        )
+        ls.add_argument(
             "--limit",
             "-n",
             type=int,

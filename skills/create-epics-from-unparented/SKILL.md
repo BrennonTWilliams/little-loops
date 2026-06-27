@@ -46,9 +46,9 @@ Issues under `{{config.issues.base_dir}}` are found via three separate calls
 (one per type, since `--type` is single-valued):
 
 ```bash
-ll-issues list --status open --type BUG --json
-ll-issues list --status open --type FEAT --json
-ll-issues list --status open --type ENH --json
+ll-issues list --status open --type BUG --json --include-summary
+ll-issues list --status open --type FEAT --json --include-summary
+ll-issues list --status open --type ENH --json --include-summary
 ```
 
 Filter orphans from the JSON output: the `parent` key is `null` when absent. Keep
@@ -59,11 +59,9 @@ orphans = [i for i in data if not i.get("parent")]
 ```
 
 For each orphan:
-1. Record its `id`, `path`, and `title` from the JSON.
-2. Read the file content (needed for summary extraction in scoring).
-3. Extract summary: find text under `## Summary` heading using pattern
-   `## Summary\n(.+?)(?=\n##|\Z)` with DOTALL matching.
-4. Build score text: `orphan_score_text = orphan_title + " " + summary_text`.
+1. Record its `id`, `path`, `title`, and `summary` from the JSON (`summary` is already
+   embedded by `--include-summary` — no per-file `Read` calls needed).
+2. Build score text: `orphan_score_text = orphan_title + " " + orphan["summary"]`.
 
 If fewer than 2 orphaned issues exist, report:
 ```

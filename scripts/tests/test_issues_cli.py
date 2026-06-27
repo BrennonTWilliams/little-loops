@@ -701,6 +701,65 @@ class TestIssuesCLIList:
         for item in data:
             assert "labels" in item
 
+    def test_list_json_include_summary_flag(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --json --include-summary includes 'summary' key with ## Summary body."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (bugs_dir / "P1-BUG-500-with-summary.md").write_text(
+            "---\nstatus: open\n---\n# BUG-500: With Summary\n\n## Summary\n\nThis is the summary text.\n\n## Other\n\nOther content.\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--json", "--include-summary", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) > 0
+        for item in data:
+            assert "summary" in item
+        bug_item = next((i for i in data if i["id"] == "BUG-500"), None)
+        assert bug_item is not None
+        assert bug_item["summary"] == "This is the summary text."
+
+    def test_list_json_no_summary_without_flag(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --json without --include-summary must NOT include 'summary' key (no regression)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) > 0
+        for item in data:
+            assert "summary" not in item
+
+
     def test_list_filter_by_milestone_match(
         self,
         temp_project_dir: Path,
