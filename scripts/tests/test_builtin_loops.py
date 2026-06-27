@@ -160,6 +160,7 @@ class TestBuiltinLoopFiles:
             "policy-refine",
             "brainstorm",
             "openscad-model-generator",
+            "interactive-component-generator",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -7898,3 +7899,63 @@ class TestOpenSCADModelGeneratorLoop:
         """Loop must import lib/harness.yaml for ll_rubric_score fragment."""
         imports = data.get("import", [])
         assert "lib/harness.yaml" in imports, "must import lib/harness.yaml"
+
+
+class TestInteractiveComponentGeneratorLoop:
+    """Structural tests for the interactive-component-generator fan-out FSM loop (FEAT-2343)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "interactive-component-generator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must declare name, initial, input_key, category, and a states dict."""
+        assert data.get("name") == "interactive-component-generator"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "description"
+        assert data.get("category") == "harness"
+        assert isinstance(data.get("states"), dict)
+
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        assert data.get("max_steps", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+    def test_pipeline_states_exist(self, data: dict) -> None:
+        """Fan-out pipeline: profile -> ideate -> rank -> worklist build/smoke/record -> select -> compose -> verify."""
+        required = {
+            "init", "profile_input", "ideate", "rank", "pop_next", "prep_component",
+            "build_component", "smoke_component", "record", "check_any_built",
+            "select_best", "compose", "verify_final", "vision_gate", "done",
+            "diagnose", "failed",
+        }
+        missing = required - set(data["states"].keys())
+        assert not missing, f"Missing states: {missing}"
+
+    def test_build_component_delegates_to_oracle(self, data: dict) -> None:
+        """Each candidate build reuses the generator-evaluator oracle unchanged."""
+        assert data["states"]["build_component"].get("loop") == "oracles/generator-evaluator"
+
+    def test_worklist_pop_routing(self, data: dict) -> None:
+        """pop_next routes to a build on item found and to selection wrap-up when the queue is empty."""
+        pop = data["states"]["pop_next"]
+        assert pop.get("on_yes") == "prep_component"
+        assert pop.get("on_no") == "check_any_built"
+
+    def test_terminal_states(self, data: dict) -> None:
+        assert data["states"]["done"].get("terminal") is True
+        assert data["states"]["failed"].get("terminal") is True
+
+    def test_imports_common_fragments(self, data: dict) -> None:
+        """Imports lib/common.yaml for the shell_exit fragment used by the worklist gates."""
+        assert "lib/common.yaml" in data.get("import", [])
+
+    def test_compose_isolation_and_cdn_knobs(self, data: dict) -> None:
+        """Composition tradeoffs are exposed as context knobs."""
+        ctx = data.get("context", {})
+        assert "compose_isolation" in ctx
+        assert "allow_cdn" in ctx
+        assert "n_build" in ctx
+        assert "n_final" in ctx

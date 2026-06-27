@@ -14,6 +14,7 @@ relates_to:
 - FEAT-2000
 - FEAT-2001
 - FEAT-2002
+- BUG-2323
 ---
 
 # EPIC-1867: Orchestrator FSM Decomposition (ll-auto / ll-sprint / ll-parallel)
@@ -105,6 +106,7 @@ When this epic is done:
 - **FEAT-1899** — Implement ll-sprint FSM wave driver and shim (Layer 2)
 - **ENH-1903** — Document ll-parallel as canonical parallel substrate (Layer 3)
 - ✓ **ENH-2106** — Decide: reusable sub-loop composition vs inlined per-issue states for Layers 1+2 (added 2026-06-12; **done 2026-06-13** — decision recorded in `.ll/decisions.yaml`; blocker on FEAT-2000 and FEAT-1899 cleared)
+- **BUG-2323** — ll-parallel/ll-sprint hardcode 'main' as base branch; no default-branch detection
 
 ### Critical path (audit note 2026-06-12)
 

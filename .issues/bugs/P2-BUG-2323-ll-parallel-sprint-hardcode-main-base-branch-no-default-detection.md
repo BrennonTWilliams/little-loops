@@ -14,6 +14,7 @@ labels:
 - worktree
 relates_to:
 - BUG-180
+parent: EPIC-1867
 ---
 
 # BUG-2323: ll-parallel/ll-sprint hardcode 'main' as base branch; no default-branch detection
