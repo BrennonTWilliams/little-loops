@@ -1700,6 +1700,148 @@ class TestMainInit:
         config = json.loads((tmp_project / ".ll" / "ll-config.json").read_text())
         assert config.get("install_source") == "project-claude-code"
 
+    def test_dry_run_shows_epics_not_completed_deferred(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """--dry-run [mkdir] lines list 'epics' (not stale 'completed'/'deferred')."""
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--dry-run", "--root", str(tmp_project)])
+        assert code == 0
+        out = capsys.readouterr().out
+        mkdir_lines = [line for line in out.splitlines() if "[mkdir]" in line]
+        assert any("epics" in line for line in mkdir_lines)
+        assert not any("completed" in line for line in mkdir_lines)
+        assert not any("deferred" in line for line in mkdir_lines)
+
+    def test_dry_run_shows_design_tokens_when_enabled(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """--dry-run output includes design-token write when design_tokens.enabled."""
+        from little_loops.init import core as init_core
+        from little_loops.init.cli import main_init
+
+        real_build = init_core.build_config
+
+        def patched_build(template, choices=None):
+            cfg = real_build(template, choices)
+            cfg["design_tokens"] = {"enabled": True, "active": "warm-paper"}
+            return cfg
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch("little_loops.init.core.build_config", side_effect=patched_build),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--dry-run", "--root", str(tmp_project)])
+        assert code == 0
+        assert "design-token" in capsys.readouterr().out
+
+    def test_dry_run_shows_issue_templates_when_enabled(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """--dry-run output includes issue templates write when issues.deploy_templates."""
+        from little_loops.init import core as init_core
+        from little_loops.init.cli import main_init
+
+        real_build = init_core.build_config
+
+        def patched_build(template, choices=None):
+            cfg = real_build(template, choices)
+            cfg.setdefault("issues", {})["deploy_templates"] = True
+            return cfg
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch("little_loops.init.core.build_config", side_effect=patched_build),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--dry-run", "--root", str(tmp_project)])
+        assert code == 0
+        assert "section templates" in capsys.readouterr().out
+
+    def test_dry_run_shows_learning_tests_when_enabled(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """--dry-run output includes learning-tests mkdir and explore-api permission."""
+        from little_loops.init import core as init_core
+        from little_loops.init.cli import main_init
+
+        real_build = init_core.build_config
+
+        def patched_build(template, choices=None):
+            cfg = real_build(template, choices)
+            cfg["learning_tests"] = {"enabled": True}
+            return cfg
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch("little_loops.init.core.build_config", side_effect=patched_build),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--dry-run", "--root", str(tmp_project)])
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "learning-tests" in out
+        assert "Skill(ll:explore-api)" in out
+
+    def test_dry_run_output_matches_yes_writes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Issue-subdir [mkdir] names in --dry-run match the directories --yes creates."""
+        from little_loops.init.cli import main_init
+
+        dry_root = tmp_path / "dry"
+        live_root = tmp_path / "live"
+        dry_root.mkdir()
+        live_root.mkdir()
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--dry-run", "--root", str(dry_root)])
+        assert code == 0
+        out = capsys.readouterr().out
+        dry_mkdir_names = {
+            Path(line.strip().split(None, 1)[1].strip()).name
+            for line in out.splitlines()
+            if "[mkdir]" in line and ".issues" in line
+        }
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code2 = main_init(["--yes", "--root", str(live_root)])
+        assert code2 == 0
+        live_issue_dir = live_root / ".issues"
+        live_mkdir_names = {p.name for p in live_issue_dir.iterdir() if p.is_dir()}
+
+        assert dry_mkdir_names == live_mkdir_names
+
 
 # ===========================================================================
 # TestDetectHosts

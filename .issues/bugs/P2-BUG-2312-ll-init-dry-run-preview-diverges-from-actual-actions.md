@@ -2,9 +2,10 @@
 id: BUG-2312
 title: ll-init --dry-run preview diverges from actual --yes actions
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-06-26T21:55:52Z'
+completed_at: '2026-06-27T00:46:19Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 decision_needed: false
@@ -43,7 +44,7 @@ feature's purpose.
 - Line 370 iterates `("bugs", "features", "enhancements", "completed", "deferred")`
   for `[mkdir]` lines — but `make_issue_dirs` actually creates
   `_ISSUE_SUBDIRS = ("bugs", "features", "enhancements", "epics")`
-  (`scripts/little_loops/init/writers.py:54`). So the preview shows
+  (`scripts/little_loops/init/writers.py:55`). So the preview shows
   `completed`/`deferred` (never made) and hides `epics` (made).
 - The preview omits actions `_run_yes` performs when enabled:
   `make_learning_tests_dir`, `deploy_design_tokens`, `deploy_issue_templates`,
@@ -105,11 +106,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/integration/test_init_e2e.py` — `TestInitHeadlessEndToEnd.test_dry_run_writes_nothing_then_apply_generates_config` (line 39): runs `--yes --dry-run` then `--yes`, asserts dry-run writes nothing. No stdout assertions → passes under Option B unchanged. Strong candidate to **extend** with the `[mkdir]`/`[write]` stdout-parity check (it already runs both modes). [Agent 1+3 finding]
 - `scripts/tests/test_wheel_smoke.py` — `test_ll_init_dry_run_succeeds` (line 156): subprocess smoke test against an installed venv, asserts only `returncode == 0`. Passes under Option B; verify still green after the refactor. [Agent 2 finding]
 - `scripts/tests/test_deploy_issue_templates.py` — `test_dry_run` (line 72): exercises `deploy_issue_templates(dry_run=True)` directly and asserts `[write]` in stdout. Unaffected, but confirms the writer already emits the correct token Option B will surface. [Agent 2 finding — supporting evidence]
-- **No existing tests break.** Both `test_dry_run_yes_exits_zero` (`test_init_core.py:1186`) and the two `TestHostDispatch` dry-run tests (`:1655`, `:1665`) assert on tokens emitted by writers / `_dispatch_host_adapters`, not by `_print_dry_run`'s headers — all remain valid. [Agent 2+3 finding]
+- **No existing tests break.** Both `test_dry_run_yes_exits_zero` (`test_init_core.py:1215`) and the two `TestHostDispatch` dry-run tests (`:1813`, `:1823`) assert on tokens emitted by writers / `_dispatch_host_adapters`, not by `_print_dry_run`'s headers — all remain valid. [Agent 2+3 finding]
 
 **Test patterns confirmed (model new tests after these):**
-- CLI-level dry-run capture: `TestHostDispatch.test_dry_run_codex_shows_write_line` (`test_init_core.py:1655`) — `patch("...cli._plugin_root", return_value=_PROJECT_ROOT)`, call `main_init([...,"--dry-run",...])`, assert token in `capsys.readouterr().out`.
-- Feature-flag injection for CLI tests: `TestMainInit.test_yes_deploys_design_tokens_when_enabled` (`:1361`) and `test_yes_adds_explore_api_permission_when_learning_tests` (`:1410`) use a `patched_build` wrapper around `init.core.build_config` to force `design_tokens.enabled`/`learning_tests.enabled` — reuse this for the new `test_dry_run_shows_*_when_enabled` tests.
+- CLI-level dry-run capture: `TestHostDispatch.test_dry_run_codex_shows_write_line` (`test_init_core.py:1813`) — `patch("...cli._plugin_root", return_value=_PROJECT_ROOT)`, call `main_init([...,"--dry-run",...])`, assert token in `capsys.readouterr().out`.
+- Feature-flag injection for CLI tests: `TestMainInit.test_yes_deploys_design_tokens_when_enabled` (`:1519`) and `test_yes_adds_explore_api_permission_when_learning_tests` (`:1568`) use a `patched_build` wrapper around `init.core.build_config` to force `design_tokens.enabled`/`learning_tests.enabled` — reuse this for the new `test_dry_run_shows_*_when_enabled` tests.
 
 ### Codebase Research Findings
 
@@ -120,18 +121,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `_run_yes()` — the actual writer-call sequence lives at lines 308–351; the `if dry_run` early-exit branch is at lines 308–310
 
 **Writer functions already support `dry_run=True` (all confirmed):**
-- `make_issue_dirs(base_dir, dry_run=False)` — `writers.py:207` — prints `[mkdir] <base_dir>/<subdir>` for each of `_ISSUE_SUBDIRS` and returns without creating dirs
-- `make_learning_tests_dir(ll_dir, dry_run=False)` — `writers.py:222` — prints `[mkdir] <path>` and returns
-- `deploy_design_tokens(ll_dir, templates_dir, active_profile, dry_run=False)` — `writers.py:269` — prints `[write]` and returns
-- `deploy_issue_templates(ll_dir, templates_dir, dry_run=False)` — `writers.py:306` — prints `[write]` and returns
+- `make_issue_dirs(base_dir, dry_run=False)` — `writers.py:253` — prints `[mkdir] <base_dir>/<subdir>` for each of `_ISSUE_SUBDIRS` and returns without creating dirs
+- `make_learning_tests_dir(ll_dir, dry_run=False)` — `writers.py:268` — prints `[mkdir] <path>` and returns
+- `deploy_design_tokens(ll_dir, templates_dir, active_profile, dry_run=False)` — `writers.py:315` — prints `[write]` and returns
+- `deploy_issue_templates(ll_dir, templates_dir, dry_run=False)` — `writers.py:352` — prints `[write]` and returns
 - `merge_settings(..., dry_run=False)` — already has dry-run support; `extra_permissions` argument carries the conditional `Skill(ll:explore-api)` entry
 - `_dispatch_host_adapters(hosts, project_root, plugin_root, force, dry_run=False)` — already threads `dry_run` into `install_codex_adapter()` (Pattern 3 confirmed in `cli.py:67–98`)
 
 **`merge_settings` and `extra_permissions` nuance for structural fix:** `extra_permissions` is computed at `_run_yes` line 332–335 (after the current `if dry_run` early-exit at 308–310). Any structural fix that removes the early-exit must ensure `extra_permissions` is computed before the `merge_settings` call so the dry-run preview also reflects the conditional `Skill(ll:explore-api)` permission.
 
 **Test patterns to follow:**
-- `TestMainInit.test_dry_run_yes_exits_zero` (`test_init_core.py:1186`) — add `capsys.readouterr().out` assertions to this test or add sibling tests
-- `TestHostDispatch.test_dry_run_codex_shows_write_line` (`test_init_core.py:1655`) — canonical shape: call `main_init()` with `--dry-run`, capture stdout, assert token appears and file does not exist
+- `TestMainInit.test_dry_run_yes_exits_zero` (`test_init_core.py:1215`) — add `capsys.readouterr().out` assertions to this test or add sibling tests
+- `TestHostDispatch.test_dry_run_codex_shows_write_line` (`test_init_core.py:1813`) — canonical shape: call `main_init()` with `--dry-run`, capture stdout, assert token appears and file does not exist
 
 **Missing test names to add inside `TestMainInit`:**
 - `test_dry_run_shows_epics_not_completed_deferred` — asserts `"epics"` in stdout, `"completed"` not in stdout, `"deferred"` not in stdout
@@ -249,6 +250,8 @@ manual-sync requirement will keep recurring on future writer additions.
 - init, dry-run
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T00:29:59 - `5d1547b1-76d6-46c9-8a24-8313f8419fc0.jsonl`
+- `/ll:confidence-check` - 2026-06-26T23:30:00 - `4b080503-4c71-4702-a078-09c688f2a45e.jsonl`
 - `/ll:confidence-check` - 2026-06-26T23:00:00 - `0738aae2-208f-4800-b6cb-aef4cfec50d1.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:33:12 - `f021f33c-5e61-4358-a597-9532143b16da.jsonl`
 - `/ll:decide-issue` - 2026-06-26T22:17:14 - `603866f5-8095-4955-b453-410ab44be55e.jsonl`

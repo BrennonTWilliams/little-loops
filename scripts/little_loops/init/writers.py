@@ -244,6 +244,9 @@ def merge_settings(
 
     if dry_run:
         print(f"[update] {settings_file}")
+        if extra_permissions:
+            for perm in extra_permissions:
+                print(f"  + {perm}")
         return
 
     target.parent.mkdir(parents=True, exist_ok=True)

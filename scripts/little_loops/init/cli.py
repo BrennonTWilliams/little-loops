@@ -305,80 +305,49 @@ def _run_yes(
     if install_source:
         config["install_source"] = install_source
 
-    if dry_run:
-        _print_dry_run(config, project_root, ll_dir, hosts=hosts)
-        return 0
-
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
     issues_base = project_root / issues_base_rel
 
-    write_config(config, ll_dir)
-    make_issue_dirs(issues_base)
+    write_config(config, ll_dir, dry_run=dry_run)
+    make_issue_dirs(issues_base, dry_run=dry_run)
 
     if config.get("product", {}).get("enabled"):
-        deploy_goals(ll_dir, templates_dir)
+        deploy_goals(ll_dir, templates_dir, dry_run=dry_run)
 
     if config.get("design_tokens", {}).get("enabled"):
-        deploy_design_tokens(ll_dir, templates_dir)
+        deploy_design_tokens(ll_dir, templates_dir, dry_run=dry_run)
 
     if config.get("issues", {}).get("deploy_templates"):
-        deploy_issue_templates(ll_dir, templates_dir)
+        deploy_issue_templates(ll_dir, templates_dir, dry_run=dry_run)
 
     if config.get("learning_tests", {}).get("enabled"):
-        make_learning_tests_dir(ll_dir)
+        make_learning_tests_dir(ll_dir, dry_run=dry_run)
 
-    update_gitignore(project_root)
+    update_gitignore(project_root, dry_run=dry_run)
 
     extra_permissions: list[str] | None = None
     if config.get("learning_tests", {}).get("enabled"):
         extra_permissions = ["Skill(ll:explore-api)"]
-    merge_settings(project_root, extra_permissions=extra_permissions)
+    merge_settings(project_root, extra_permissions=extra_permissions, dry_run=dry_run)
 
-    write_claude_md(project_root)
+    write_claude_md(project_root, dry_run=dry_run)
 
-    _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
+    _dispatch_host_adapters(hosts, project_root, plugin_root, force=force, dry_run=dry_run)
 
-    print("\nValidating dependencies...")
-    warnings = validate_deps(config, _plugin_version(), project_root)
-    for w in warnings:
-        msg = f"Warning: {w.message}"
-        if w.install_hint:
-            msg += f"\n  Install/fix: {w.install_hint}"
-        print(msg, file=sys.stderr)
+    if not dry_run:
+        print("\nValidating dependencies...")
+        warnings = validate_deps(config, _plugin_version(), project_root)
+        for w in warnings:
+            msg = f"Warning: {w.message}"
+            if w.install_hint:
+                msg += f"\n  Install/fix: {w.install_hint}"
+            print(msg, file=sys.stderr)
 
-    print(f"\n✓ little-loops initialized in {project_root}")
-    print(f"  Config: {config_path}")
+    if not dry_run:
+        print(f"\n✓ little-loops initialized in {project_root}")
+        print(f"  Config: {config_path}")
     return 0
 
-
-def _print_dry_run(
-    config: dict[str, Any],
-    project_root: Path,
-    ll_dir: Path,
-    hosts: list[str],
-) -> None:
-    issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
-    issues_base = project_root / issues_base_rel
-
-    print("\n=== DRY RUN: ll-init ===\n")
-    print("--- Configuration Preview (.ll/ll-config.json) ---")
-    print(json.dumps(config, indent=2))
-    print("\n--- Actions that would be taken ---")
-    print(f"  [write]  {ll_dir / 'll-config.json'}")
-    if config.get("product", {}).get("enabled"):
-        print(f"  [write]  {ll_dir / 'll-goals.md'} (from ll-goals-template.md)")
-    for sd in ("bugs", "features", "enhancements", "completed", "deferred"):
-        print(f"  [mkdir]  {issues_base / sd}")
-    print("  [update] .gitignore (add state file exclusions)")
-    print("  [update] .claude/settings.local.json (add ll- CLI tool permissions)")
-    from little_loops.init.writers import write_claude_md
-
-    write_claude_md(project_root, dry_run=True)
-    if "codex" in hosts:
-        print("  [write]  .codex/hooks.json (Codex CLI hook adapter)")
-    if "pi" in hosts:
-        print("  [Pi]     Adapter not yet available — tracked in EPIC-1622.")
-    print("\n=== END DRY RUN (no changes made) ===")
 
 
 def _run_plan(
