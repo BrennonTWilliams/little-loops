@@ -2,9 +2,10 @@
 id: BUG-2313
 title: ll-init apply is lossy vs --yes
 type: BUG
-status: open
+status: done
 priority: P3
 captured_at: '2026-06-26T21:55:52Z'
+completed_at: '2026-06-27T04:47:24Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 decision_needed: false
@@ -37,7 +38,7 @@ validation) are critical to a functioning little-loops installation.
 
 ## Current Behavior
 
-`_run_apply` (`scripts/little_loops/init/cli.py:420-471`) writes only:
+`_run_apply` (`scripts/little_loops/init/cli.py:389-439`) writes only:
 config + issue dirs + goals + gitignore + settings.
 
 It **skips** steps `_run_yes` performs: `write_claude_md`,
@@ -48,7 +49,7 @@ result than `ll-init --yes`.
 
 (Note: `--force` is **not** dead — the BUG-2310 fix wired it into
 `merge_with_existing(config, load_existing_config(project_root), force)` at
-`cli.py:454`, where it controls whether unmodeled existing config keys are
+`cli.py:423`, where it controls whether unmodeled existing config keys are
 preserved or reset. This issue is scoped purely to the apply-lossiness gap above.)
 
 ## Steps to Reproduce
@@ -79,11 +80,11 @@ Either (a) factor the shared write sequence out of `_run_yes` and reuse it in
 
 **Option (a) — Full parity (preferred):**
 > **Selected:** Option (a) — Full parity — `_apply_config()` in `tui.py` is a working template (same imports, call order, `force` forwarding); reuse score 3/3; zero new infrastructure required.
-1. Add `plugin_root: Path` and `hosts: list[str]` parameters to `_run_apply` signature (`cli.py:420`); update the call site at `cli.py:619–625` to pass `plugin_root` (already computed at line 604) and `hosts` (already computed at lines 610–617)
-2. Add the missing writer imports to `_run_apply`'s import block: `write_claude_md` (`writers.py:333`), `make_learning_tests_dir` (`writers.py:222`), `deploy_design_tokens` (`writers.py:269`), `deploy_issue_templates` (`writers.py:306`), plus `validate_deps` from `little_loops.init.validate`
-3. After the existing five write calls in `_run_apply`, add the missing conditional calls following `_run_yes`'s pattern: `deploy_design_tokens` (if `config.design_tokens.enabled`), `deploy_issue_templates` (if `config.issues.deploy_templates`), `make_learning_tests_dir` (if `config.learning_tests.enabled`), `write_claude_md` (unconditional), `_dispatch_host_adapters(hosts, project_root, plugin_root, force=force)` (forward the live `force` here too, so it gates codex-adapter overwrite in addition to its existing `merge_with_existing` use at `cli.py:454`), `validate_deps`
+1. Add `plugin_root: Path` and `hosts: list[str]` parameters to `_run_apply` signature (`cli.py:389`); update the call site at `cli.py:593–599` to pass `plugin_root` (already computed at line 578) and `hosts` (already computed at line 591)
+2. Add the missing writer imports to `_run_apply`'s import block: `write_claude_md` (`writers.py:382`), `make_learning_tests_dir` (`writers.py:271`), `deploy_design_tokens` (`writers.py:318`), `deploy_issue_templates` (`writers.py:355`), plus `validate_deps` from `little_loops.init.validate`
+3. After the existing five write calls in `_run_apply`, add the missing conditional calls following `_run_yes`'s pattern: `deploy_design_tokens` (if `config.design_tokens.enabled`), `deploy_issue_templates` (if `config.issues.deploy_templates`), `make_learning_tests_dir` (if `config.learning_tests.enabled`), `write_claude_md` (unconditional), `_dispatch_host_adapters(hosts, project_root, plugin_root, force=force)` (forward the live `force` here too, so it gates codex-adapter overwrite in addition to its existing `merge_with_existing` use at `cli.py:423`), `validate_deps`
 4. Fix `merge_settings` call in `_run_apply` to pass `extra_permissions=["Skill(ll:explore-api)"]` when `learning_tests` is enabled (matches `_run_yes` behavior at line 334–335)
-5. Update `test_apply_from_plan` (`test_init_core.py:1335`) to assert full artifact parity: CLAUDE.md, `.ll/design-tokens/profiles/`, `.ll/templates/`, `.ll/learning-tests/.gitkeep`; model new assertions after `test_yes_deploys_design_tokens_when_enabled` (line 1361) and `test_yes_deploys_issue_templates_when_enabled` (line 1385)
+5. Update `test_apply_from_plan` (`test_init_core.py:1493`) to assert full artifact parity: CLAUDE.md, `.ll/design-tokens/profiles/`, `.ll/templates/`, `.ll/learning-tests/.gitkeep`; model new assertions after `test_yes_deploys_design_tokens_when_enabled` (line 1519) and `test_yes_deploys_issue_templates_when_enabled` (line 1543)
 6. Run `python -m pytest scripts/tests/test_init_core.py -v -k "apply"` to verify
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -101,7 +102,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 15. Write `test_plan_apply_produces_same_artifacts_as_yes` in `test_init_e2e.py` (`TestInitHeadlessEndToEnd`) — end-to-end parity test comparing `--yes` artifact tree vs `--plan`→`apply` artifact tree
 
 **Option (b) — Explicit limited-scope:**
-1. Update `docs/reference/CLI.md` and `docs/reference/COMMANDS.md` to explicitly state apply is config+dirs+goals+gitignore+settings only (retain `--force`, which is live: it gates whether unmodeled existing config keys are preserved via `merge_with_existing` at `cli.py:454`)
+1. Update `docs/reference/CLI.md` and `docs/reference/COMMANDS.md` to explicitly state apply is config+dirs+goals+gitignore+settings only (retain `--force`, which is live: it gates whether unmodeled existing config keys are preserved via `merge_with_existing` at `cli.py:423`)
 2. Update `.claude/CLAUDE.md` `ll-init` entry to scope the `--plan`/`apply` path accordingly
 
 ### Decision Rationale
@@ -120,7 +121,7 @@ Decided by `/ll:decide-issue` on 2026-06-26.
 | Option (b) — Limited scope | 1/3 | 3/3 | 3/3 | 2/3 | 9/12 |
 
 **Key evidence**:
-- Option (a): `_apply_config()` in `tui.py` (lines 808–881) is a working template; `plugin_root` and `hosts` are already computed in `main_init` before the `apply` branch; all writers are reusable; `test_apply_from_plan` (line 1335) and `test_yes_deploys_design_tokens_when_enabled` (line 1361) give assertion models.
+- Option (a): `_apply_config()` in `tui.py` (lines 802–879) is a working template; `plugin_root` and `hosts` are already computed in `main_init` before the `apply` branch; all writers are reusable; `test_apply_from_plan` (line 1493) and `test_yes_deploys_design_tokens_when_enabled` (line 1519) give assertion models.
 - Option (b): Simplest code change (remove `--force`, update docs) but breaks the documented `--plan`/`apply` headless install workflow and contradicts the TUI's `_apply_config()` precedent, which does perform full parity.
 
 ## Integration Map
@@ -130,7 +131,7 @@ Decided by `/ll:decide-issue` on 2026-06-26.
 - `scripts/little_loops/init/writers.py` — no changes needed; all writer functions used by `_run_yes` already exist and are reusable
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/init/cli.py:620` — only call site for `_run_apply`, inside `main_init()` guarded by `args.command == "apply"`; `plugin_root` (line 604) and `hosts` (lines 610–617) are computed here but not currently threaded into `_run_apply`
+- `scripts/little_loops/init/cli.py:593` — only call site for `_run_apply`, inside `main_init()` guarded by `args.command == "apply"`; `plugin_root` (line 578) and `hosts` (line 591) are computed here but not currently threaded into `_run_apply`
 
 ### Similar Patterns
 - `_run_yes` (lines 128–351) — the reference write sequence; imports 9 writers from `little_loops.init.writers` plus calls `_dispatch_host_adapters` and `validate_deps`
@@ -140,22 +141,22 @@ Decided by `/ll:decide-issue` on 2026-06-26.
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_init_core.py:1335` — `test_apply_from_plan` exists but only asserts `.ll/ll-config.json` is present; needs parity assertions for CLAUDE.md, design tokens, issue templates, learning-tests dir — **update existing test**
-- `scripts/tests/test_init_core.py:1361` — `test_yes_deploys_design_tokens_when_enabled` — model for parallel apply-path tests (no changes needed)
-- `scripts/tests/test_init_core.py:1385` — `test_yes_deploys_issue_templates_when_enabled` — model for parallel apply-path tests (no changes needed)
-- `scripts/tests/test_init_core.py:1410` — `test_yes_adds_explore_api_permission_when_learning_tests` — model for `apply` path `extra_permissions` test (no changes needed)
-- `scripts/tests/test_init_core.py:1612` — `test_hosts_codex_installs_adapter` — model for `apply --hosts codex` test (no changes needed)
-- `scripts/tests/test_init_core.py:927` — `test_overwrites_with_force` — low-level writer test for `force=True`; confirms writer already handles it (no changes needed)
+- `scripts/tests/test_init_core.py:1493` — `test_apply_from_plan` exists but only asserts `.ll/ll-config.json` is present; needs parity assertions for CLAUDE.md, design tokens, issue templates, learning-tests dir — **update existing test**
+- `scripts/tests/test_init_core.py:1519` — `test_yes_deploys_design_tokens_when_enabled` — model for parallel apply-path tests (no changes needed)
+- `scripts/tests/test_init_core.py:1543` — `test_yes_deploys_issue_templates_when_enabled` — model for parallel apply-path tests (no changes needed)
+- `scripts/tests/test_init_core.py:1568` — `test_yes_adds_explore_api_permission_when_learning_tests` — model for `apply` path `extra_permissions` test (no changes needed)
+- `scripts/tests/test_init_core.py:1912` — `test_hosts_codex_installs_adapter` — model for `apply --hosts codex` test (no changes needed)
+- `scripts/tests/test_init_core.py:956` — `test_overwrites_with_force` — low-level writer test for `force=True`; confirms writer already handles it (no changes needed)
 - `scripts/tests/integration/test_init_e2e.py:39` — `test_dry_run_writes_nothing_then_apply_generates_config` exercises `--yes`, not the `apply` subcommand; no `apply` subcommand coverage here — **no change needed but gap noted**
 
 **New tests to write** (in `scripts/tests/test_init_core.py`, class `TestMainInit`):
 - `test_apply_deploys_design_tokens_when_enabled` — assert `(.ll/design-tokens/profiles).is_dir()` after apply with `design_tokens.enabled`; model after `test_yes_deploys_design_tokens_when_enabled` + plan-then-apply two-phase setup from `test_apply_from_plan`
 - `test_apply_deploys_issue_templates_when_enabled` — assert `(.ll/templates).is_dir()` and `≥4 *-sections.json` files; model after `test_yes_deploys_issue_templates_when_enabled`
-- `test_apply_creates_learning_tests_dir_when_enabled` — assert `(.ll/learning-tests/.gitkeep).exists()`; model after `TestMakeLearningTestsDir` (line 785)
+- `test_apply_creates_learning_tests_dir_when_enabled` — assert `(.ll/learning-tests/.gitkeep).exists()`; model after `TestMakeLearningTestsDir` (line 814)
 - `test_apply_writes_claude_md` — assert `(.claude/CLAUDE.md).exists()` after apply
 - `test_apply_adds_explore_api_permission_when_learning_tests` — assert `Skill(ll:explore-api)` in settings allow list when `learning_tests.enabled`; model after `test_yes_adds_explore_api_permission_when_learning_tests`
-- `test_apply_force_overwrites_codex_adapter` — write stub `.codex/hooks.json`, apply with `--force`, assert overwritten; model at writer level from `test_overwrites_with_force` (line 927)
-- `test_apply_installs_codex_adapter_when_host_detected` — assert `(.codex/hooks.json).exists()` after apply with `--hosts codex`; model after `test_hosts_codex_installs_adapter` (line 1612)
+- `test_apply_force_overwrites_codex_adapter` — write stub `.codex/hooks.json`, apply with `--force`, assert overwritten; model at writer level from `test_overwrites_with_force` (line 956)
+- `test_apply_installs_codex_adapter_when_host_detected` — assert `(.codex/hooks.json).exists()` after apply with `--hosts codex`; model after `test_hosts_codex_installs_adapter` (line 1912)
 
 **New integration test** (in `scripts/tests/integration/test_init_e2e.py`, class `TestInitHeadlessEndToEnd`):
 - `test_plan_apply_produces_same_artifacts_as_yes` — run `--yes` in one dir, `--plan`→`apply` in another, assert same key artifacts (CLAUDE.md, design-tokens, issue templates, learning-tests dir, settings)
@@ -192,9 +193,9 @@ _Added by `/ll:refine-issue` — based on direct code analysis:_
 | `_dispatch_host_adapters` | ✓ | ✗ **MISSING** |
 | `validate_deps` | ✓ | ✗ **MISSING** |
 
-**`force` data flow**: `_run_yes` forwards `force` to `_dispatch_host_adapters` (line 339), which passes it to `install_codex_adapter` in `writers.py`. `install_codex_adapter` uses it to guard `.codex/hooks.json` overwrites. In `_run_apply`, `force` is received at line 424 and (since BUG-2310) forwarded to `merge_with_existing(..., force)` at `cli.py:454`, where it controls whether unmodeled existing config keys are preserved or reset. Under option (a) it should additionally be forwarded to `_dispatch_host_adapters` for codex-adapter overwrite parity with `_run_yes`.
+**`force` data flow**: `_run_yes` forwards `force` to `_dispatch_host_adapters` (line 335), which passes it to `install_codex_adapter` in `writers.py`. `install_codex_adapter` uses it to guard `.codex/hooks.json` overwrites. In `_run_apply`, `force` is received at line 393 and (since BUG-2310) forwarded to `merge_with_existing(..., force)` at `cli.py:423`, where it controls whether unmodeled existing config keys are preserved or reset. Under option (a) it should additionally be forwarded to `_dispatch_host_adapters` for codex-adapter overwrite parity with `_run_yes`.
 
-**Signature gap in `_run_apply`**: The function currently accepts `(plan_config, project_root, templates_dir, force)`. To support option (a), it needs two additional parameters: `plugin_root: Path` (for `_dispatch_host_adapters`) and `hosts: list[str]` (for host-adapter dispatch). Both are available in `main_init` at the call site (lines 604 and 617) and just need to be threaded through.
+**Signature gap in `_run_apply`**: The function currently accepts `(plan_config, project_root, templates_dir, force)`. To support option (a), it needs two additional parameters: `plugin_root: Path` (for `_dispatch_host_adapters`) and `hosts: list[str]` (for host-adapter dispatch). Both are available in `main_init` at the call site (lines 578 and 591) and just need to be threaded through.
 
 **apply subparser gap**: The apply subparser (lines 583–599) has no `--hosts` argument. The `main_init` already computes `hosts` via `_detect_hosts()` before dispatching to `_run_apply`, so no new subparser argument is needed — hosts just need to be passed in the `_run_apply` call at lines 619–625.
 
@@ -213,7 +214,13 @@ _Added by `/ll:refine-issue` — based on direct code analysis:_
 
 - **2026-06-26** (/ll:verify-issues): Removed the now-FALSE "`--force` is a dead/unused no-op" claim (title, summary, motivation, current behavior, repro, root cause, proposed solution, option-b steps, codebase research); the BUG-2310 fix wired `force` into `merge_with_existing(...)` at `cli.py:454`. Rescoped the issue purely to the apply-lossiness gap and updated `_run_apply`'s body line range to `cli.py:420-471`.
 
+## Resolution
+
+Fixed in `scripts/little_loops/init/cli.py`. Added `plugin_root: Path` and `hosts: list[str]` parameters to `_run_apply`, added missing writer imports (`deploy_design_tokens`, `deploy_issue_templates`, `make_learning_tests_dir`, `write_claude_md`, `validate_deps`), and added all missing conditional write calls matching `_run_yes`'s sequence. Updated call site in `main_init` to thread `plug_root` and `hosts`. Also corrected `apply --force` documentation in `docs/reference/CLI.md` to describe the actual adapter-overwrite semantic.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-27T04:47:24Z - implementation
+- `/ll:ready-issue` - 2026-06-27T04:38:24 - `5174f701-03a9-477f-8a43-6408de850ace.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:32:54 - `f021f33c-5e61-4358-a597-9532143b16da.jsonl`
 - `/ll:decide-issue` - 2026-06-26T22:20:54 - `3416107d-7c94-4246-a2a6-aa66474de885.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:13:00 - `bb00a6b3-bb99-4165-8a0d-44506e20bca0.jsonl`

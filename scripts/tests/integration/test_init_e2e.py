@@ -89,3 +89,40 @@ class TestInitHeadlessEndToEnd:
         assert config.project.name == "round_trip"
         # The issues base dir resolves to the scaffolded tree.
         assert (project / config.issues.base_dir / "bugs").is_dir()
+
+    def test_plan_apply_produces_same_artifacts_as_yes(self, tmp_path: Path) -> None:
+        """--plan→apply round-trip produces the same key artifacts as --yes."""
+        import io
+        from contextlib import redirect_stdout
+
+        yes_root = tmp_path / "yes_project"
+        yes_root.mkdir()
+        apply_root = tmp_path / "apply_project"
+        apply_root.mkdir()
+
+        # Run --yes (no codex adapter; host adapter dispatch is a no-op for claude-code)
+        yes_code = _run_init(["--yes", "--hosts", "claude-code", "--root", str(yes_root)])
+        assert yes_code == 0
+
+        # Generate plan from a scratch project
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            plan_code = _run_init(["--plan", "--root", str(plan_src)])
+        assert plan_code == 0
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(buf.getvalue())
+
+        # Apply the plan — _run_apply now delegates host dispatch via --hosts
+        apply_code = _run_init(
+            ["--hosts", "claude-code", "--root", str(apply_root), "apply", "--config", str(plan_file)]
+        )
+        assert apply_code == 0
+
+        # Assert key artifacts exist in both destinations
+        for root in (yes_root, apply_root):
+            assert (root / ".ll" / "ll-config.json").exists(), f"config missing in {root}"
+            assert (root / ".claude" / "CLAUDE.md").exists(), f"CLAUDE.md missing in {root}"
+            assert (root / ".claude" / "settings.local.json").exists(), f"settings missing in {root}"
+            assert (root / ".issues" / "bugs").is_dir(), f"bugs dir missing in {root}"

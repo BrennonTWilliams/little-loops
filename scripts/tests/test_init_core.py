@@ -1515,6 +1515,201 @@ class TestMainInit:
             code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
         assert code == 0
         assert (apply_dest / ".ll" / "ll-config.json").exists()
+        assert (apply_dest / ".claude" / "CLAUDE.md").exists()
+
+    def test_apply_writes_claude_md(self, tmp_project: Path, tmp_path: Path) -> None:
+        """_run_apply must write .claude/CLAUDE.md (was missing before BUG-2313 fix)."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(buf.getvalue())
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
+        assert code == 0
+        assert (apply_dest / ".claude" / "CLAUDE.md").exists()
+
+    def test_apply_deploys_design_tokens_when_enabled(self, tmp_project: Path, tmp_path: Path) -> None:
+        """_run_apply copies design-token profiles when plan config has design_tokens.enabled."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan = json.loads(buf.getvalue())
+        plan["proposed_config"]["design_tokens"] = {"enabled": True, "active": "warm-paper"}
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(plan))
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
+        assert code == 0
+        assert (apply_dest / ".ll" / "design-tokens" / "profiles").is_dir()
+
+    def test_apply_deploys_issue_templates_when_enabled(self, tmp_project: Path, tmp_path: Path) -> None:
+        """_run_apply copies *-sections.json files when plan config has issues.deploy_templates."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan = json.loads(buf.getvalue())
+        plan["proposed_config"].setdefault("issues", {})["deploy_templates"] = True
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(plan))
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
+        assert code == 0
+        assert (apply_dest / ".ll" / "templates").is_dir()
+        assert len(list((apply_dest / ".ll" / "templates").glob("*-sections.json"))) >= 4
+
+    def test_apply_creates_learning_tests_dir_when_enabled(self, tmp_project: Path, tmp_path: Path) -> None:
+        """_run_apply creates .ll/learning-tests/ when plan config has learning_tests.enabled."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan = json.loads(buf.getvalue())
+        plan["proposed_config"]["learning_tests"] = {"enabled": True}
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(plan))
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
+        assert code == 0
+        assert (apply_dest / ".ll" / "learning-tests" / ".gitkeep").exists()
+
+    def test_apply_adds_explore_api_permission_when_learning_tests(
+        self, tmp_project: Path, tmp_path: Path
+    ) -> None:
+        """_run_apply injects Skill(ll:explore-api) into settings when learning_tests.enabled."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan = json.loads(buf.getvalue())
+        plan["proposed_config"]["learning_tests"] = {"enabled": True}
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(plan))
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
+        assert code == 0
+        settings = json.loads((apply_dest / ".claude" / "settings.local.json").read_text())
+        assert "Skill(ll:explore-api)" in settings["permissions"]["allow"]
+
+    def test_apply_installs_codex_adapter_when_host_detected(
+        self, tmp_project: Path, tmp_path: Path
+    ) -> None:
+        """_run_apply installs .codex/hooks.json when --hosts codex is specified."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(buf.getvalue())
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                ["--hosts", "codex", "--root", str(apply_dest), "apply", "--config", str(plan_file)]
+            )
+        assert code == 0
+        assert (apply_dest / ".codex" / "hooks.json").exists()
+
+    def test_apply_force_overwrites_codex_adapter(self, tmp_project: Path, tmp_path: Path) -> None:
+        """_run_apply with --force overwrites an existing .codex/hooks.json."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(buf.getvalue())
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        codex_dir = apply_dest / ".codex"
+        codex_dir.mkdir()
+        stub = codex_dir / "hooks.json"
+        stub.write_text('{"stub": true}')
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                [
+                    "--hosts",
+                    "codex",
+                    "--root",
+                    str(apply_dest),
+                    "apply",
+                    "--config",
+                    str(plan_file),
+                    "--force",
+                ]
+            )
+        assert code == 0
+        content = json.loads(stub.read_text())
+        assert "stub" not in content
 
     def test_yes_deploys_design_tokens_when_enabled(self, tmp_project: Path) -> None:
         """_run_yes copies design-token profiles when config has design_tokens.enabled."""

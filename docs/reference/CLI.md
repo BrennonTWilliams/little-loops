@@ -58,7 +58,7 @@ Richer features (`parallel`, `sync`, `documents`, `design_tokens`, `confidence_g
 
 | Subcommand | Description |
 |------------|-------------|
-| `apply --config PLAN` | Apply writes from a `--plan` JSON output. `--config` accepts a file path or raw JSON string. Accepts `--force` to overwrite existing configuration. |
+| `apply --config PLAN` | Apply writes from a `--plan` JSON output. `--config` accepts a file path or raw JSON string. Produces the same artifacts as `--yes` (config, issue dirs, design tokens, issue templates, CLAUDE.md, host adapters, etc.). Accepts `--force` to overwrite existing configuration keys and overwrite existing host adapter files (e.g. `.codex/hooks.json`). |
 
 **Exit codes:** `0` = success, `1` = error (template missing, stdin not a TTY, etc.), `2` = usage error
 

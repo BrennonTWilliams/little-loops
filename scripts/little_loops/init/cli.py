@@ -390,16 +390,23 @@ def _run_apply(
     plan_config: str,
     project_root: Path,
     templates_dir: Path,
+    plugin_root: Path,
+    hosts: list[str],
     force: bool,
 ) -> int:
     """Apply writes from a --plan JSON (file path or raw JSON string)."""
+    from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
+        deploy_design_tokens,
         deploy_goals,
+        deploy_issue_templates,
         load_existing_config,
         make_issue_dirs,
+        make_learning_tests_dir,
         merge_settings,
         merge_with_existing,
         update_gitignore,
+        write_claude_md,
         write_config,
     )
 
@@ -431,8 +438,32 @@ def _run_apply(
     if config.get("product", {}).get("enabled"):
         deploy_goals(ll_dir, templates_dir)
 
+    if config.get("design_tokens", {}).get("enabled"):
+        deploy_design_tokens(ll_dir, templates_dir)
+
+    if config.get("issues", {}).get("deploy_templates"):
+        deploy_issue_templates(ll_dir, templates_dir)
+
+    if config.get("learning_tests", {}).get("enabled"):
+        make_learning_tests_dir(ll_dir)
+
     update_gitignore(project_root)
-    merge_settings(project_root)
+
+    extra_permissions: list[str] | None = None
+    if config.get("learning_tests", {}).get("enabled"):
+        extra_permissions = ["Skill(ll:explore-api)"]
+    merge_settings(project_root, extra_permissions=extra_permissions)
+
+    write_claude_md(project_root)
+
+    _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
+
+    warnings = validate_deps(config, _plugin_version(), project_root)
+    for w in warnings:
+        msg = f"Warning: {w.message}"
+        if w.install_hint:
+            msg += f"\n  Install/fix: {w.install_hint}"
+        print(msg, file=sys.stderr)
 
     print(f"✓ Applied init plan to {project_root}")
     return 0
@@ -595,6 +626,8 @@ Exit codes:
                 plan_config=args.plan_config,
                 project_root=project_root,
                 templates_dir=templates_dir,
+                plugin_root=plug_root,
+                hosts=hosts,
                 force=getattr(args, "force", False),
             )
 
