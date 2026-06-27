@@ -174,6 +174,7 @@ implementer prefers; kept together here as one robustness pass._
 `worktree`, `parallel`, `testing`, `tech-debt`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T22:09:56 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:13:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:02:41 - `9c00279d-038d-48ea-b8a2-3f7902367e8a.jsonl`
@@ -182,6 +183,12 @@ implementer prefers; kept together here as one robustness pass._
 - `/ll:format-issue` - 2026-06-26T22:49:54 - `72d2e412-ebe3-4dd9-98d5-4e6aebd0e9c8.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:42:47 - `3ae3140c-819c-420a-ab85-bf3d642198e7.jsonl`
 - audit (branch & worktree management) - 2026-06-26 - `thoughts/audits/2026-06-26-branch-worktree-management-audit.md`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2325 explicitly mandates that branch-detection in worktree tear-down paths uses bare `subprocess.run` — not `GitLock` — because the lock machinery must not block on a partially torn-down worktree. This conflicts with this issue's plan to convert `worktree_utils.py:141` (`rev-parse --abbrev-ref HEAD` inside `cleanup_worktree()`) to `git_lock.run()`. Before implementing, coordinate with ENH-2325: the safest resolution is to restrict this issue's GitLock conversion to `worktree_utils.py:78` only (the `setup_worktree` git-identity copy — a safe, live-worktree call), and to add an exemption comment at `:141` explaining the intentional lock-free pattern. Do not convert `:141` without confirming with ENH-2325's implementer that the dying-worktree risk is addressed. Related issue: ENH-2325.
 
 ---
 

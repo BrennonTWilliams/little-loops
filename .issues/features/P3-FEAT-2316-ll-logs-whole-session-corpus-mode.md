@@ -18,6 +18,7 @@ relates_to:
 - ENH-2318
 depends_on:
 - ENH-2317
+- ENH-2318
 labels:
 - captured
 - ll-logs
@@ -392,7 +393,17 @@ source repo; the `all` corpus is strictly additive and opt-in there.
 - Part of the target-project cluster with [FEAT-2315] and [ENH-2317]; distinct
   from EPIC-1918's "telemetry for ll itself" framing.
 
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Two coordination requirements with ENH-2318:
+
+1. **Repo-detection helper.** Both this issue and ENH-2318 independently implement an "am I in the ll source repo?" detector. ENH-2318's `is_ll_source_repo()` (pyproject.toml probe) is the designated canonical helper — it is more precise about repo identity than `detect_installation()` from `init/install_check.py`, which detects install mode and can diverge on edge installs. This issue must import and call `is_ll_source_repo()` from ENH-2318 for its default-scope-by-project-type logic rather than calling `detect_installation()` directly. This dependency is captured in `depends_on: ENH-2318`.
+
+2. **`--scope` flag collision.** ENH-2318 introduces `--scope {project,ll-tools}` on `scan-failures` as the failure-source dimension selector. This issue must not introduce a second `--scope` flag with different value space on the same subcommand. When extending corpus-breadth selection to `scan-failures`, use `--all-tools` (already the primary spelling elsewhere in this issue) rather than a second `--scope`. Agreed split: `--scope` = failure-source selector on `scan-failures` (ENH-2318); `--all-tools` = corpus-breadth selector everywhere (this issue). Related issue: ENH-2318.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T22:09:56 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:51:36 - `bbbde623-e8a1-44fe-8766-f891d466029d.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:39:38 - `5f6a6610-169d-4eb1-8f91-368901ce51b9.jsonl`

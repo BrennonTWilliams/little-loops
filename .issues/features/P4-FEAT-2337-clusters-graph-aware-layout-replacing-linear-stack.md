@@ -10,6 +10,8 @@ discovered_by: capture-issue
 relates_to:
 - ENH-2335
 - ENH-2336
+depends_on:
+- ENH-2336
 labels:
 - captured
 - cli
@@ -124,5 +126,10 @@ default with ENH-2336's `--compact` so the two compact paths don't diverge.
 **Open** | Created: 2026-06-26 | Priority: P4
 
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `--layout list` compact rendering path in this issue and ENH-2336's `--compact`/`--summary` flag produce functionally equivalent one-line-per-issue output. To prevent two diverging compact renderers, this issue must extend or supersede ENH-2336's renderer rather than building a second one. Preferred resolution: when FEAT-2337 ships, make `--compact` an alias for `--layout list` so there is a single compact rendering path with one owner. This is why this issue declares `depends_on: ENH-2336` — ENH-2336 must ship the compact renderer first, and FEAT-2337 absorbs it. Related issue: ENH-2336.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T22:09:56 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:format-issue` - 2026-06-27T01:46:26 - `d17000fe-362f-45af-a322-565b1890ad14.jsonl`

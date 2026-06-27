@@ -12,13 +12,14 @@ relates_to:
 - ENH-1921
 - FEAT-1925
 - FEAT-2316
-- ENH-2317
 - ENH-2318
 labels:
 - captured
 - ll-logs
 - target-project
 - digest
+depends_on:
+- ENH-2317
 confidence_score: 91
 outcome_confidence: 75
 score_complexity: 15
@@ -330,7 +331,13 @@ that 4 tests are still red — without grepping logs or opening the issue tracke
 - Mind the boundary with `ll-session` (raw SQLite queries) and `ll-history`
   (completed-issue stats) — `summary` is the curated human roll-up across them.
 
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The "Dependent / sibling integration" note in this issue's Integration Map leaves open a fork: either depend on ENH-2317 for the `summary` subcommand's CWD default, or implement a bespoke `Path.cwd()/.ll/history.db` resolver. This fork is now closed: this issue adopts ENH-2317's shared three-way resolver (`--project` | `--all` | CWD-default) rather than a bespoke DB-path resolver, ensuring `summary` behaves consistently with the other `ll-logs` subcommands. Implement ENH-2317 first (hence `depends_on: ENH-2317`). The `summary` subcommand should also appear in ENH-2317's `docs/reference/CLI.md` mutual-exclusion note update (~line 2020). Related issue: ENH-2317.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T22:09:57 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:confidence-check` - 2026-06-26T23:30:00Z - `bbbde623-e8a1-44fe-8766-f891d466029d.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:48:52 - `5abe280f-1381-4870-967b-c1984b8aafbb.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:39:10 - `0738aae2-208f-4800-b6cb-aef4cfec50d1.jsonl`

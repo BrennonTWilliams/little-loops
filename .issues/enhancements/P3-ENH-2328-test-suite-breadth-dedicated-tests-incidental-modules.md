@@ -13,6 +13,8 @@ labels:
 - coverage
 relates_to:
 - ENH-2325
+depends_on:
+- ENH-2329
 ---
 
 # ENH-2328: Test-suite breadth — dedicated tests for incidental-only modules
@@ -118,7 +120,12 @@ the file — not a systemic hole.
 
 - testing, coverage
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): New test modules added under this issue should use ENH-2329's project-setup factory fixture (from `conftest.py`) rather than the raw `tempfile.TemporaryDirectory` + hand-rolled config patterns referenced in the "Proposed Solution." ENH-2329 consolidates those raw fixtures into a stable parameterized factory; test files written before ENH-2329 lands will immediately become refactoring targets. Implement ENH-2329 first (hence `depends_on: ENH-2329`), then write test modules once in the stable fixture pattern. Related issue: ENH-2329.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T22:09:57 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:capture-issue` - 2026-06-26T22:35:39Z - test-suite audit remediation Phase 2
 

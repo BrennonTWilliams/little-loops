@@ -145,5 +145,10 @@ This enhancement makes `ll-issues clusters` output self-explanatory and consiste
 **Open** | Created: 2026-06-26 | Priority: P3
 
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Step 5 (unify skip-edge notation, aligning `_render_skip_edges` to match the inline arrow format) is provisional. FEAT-2337 plans to eliminate the skip-edge renderer entirely by promoting all edges into the primary graph-aware layout — when FEAT-2337 ships, the renderer step 5 polishes ceases to exist in its current form. Implement step 5 to improve the current box-stack output, but the implementation need not be forward-compatible with FEAT-2337's new renderer. Related issue: FEAT-2337.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T22:09:57 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:format-issue` - 2026-06-27T01:46:36 - `b75f8bb7-5276-4075-a005-0b4de6a3121b.jsonl`

@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from little_loops.issue_parser import IssueInfo
-from little_loops.learning_tests.extractor import extract_learning_targets, resolve_learning_targets
+from little_loops.learning_tests.extractor import (
+    _default_llm_call,
+    extract_learning_targets,
+    resolve_learning_targets,
+)
 
 
 def _make_llm(response: str):
@@ -159,3 +165,99 @@ class TestResolveLearningTargets:
         result = resolve_learning_targets(issue)
 
         assert result == []
+
+
+_MODULE = "little_loops.learning_tests.extractor"
+
+
+def _patch_host_call(stdout: str, *, returncode: int = 0):
+    """Patch resolve_host + subprocess.run for _default_llm_call tests.
+
+    Returns a context-manager-producing helper bound to the given fake stdout
+    and return code. resolve_host().build_blocking_json(...) yields a stub
+    HostInvocation; subprocess.run returns a stub CompletedProcess.
+    """
+    inv = SimpleNamespace(binary="fake-host", args=["-p"], env={})
+    host = MagicMock()
+    host.build_blocking_json.return_value = inv
+    proc = SimpleNamespace(returncode=returncode, stdout=stdout, stderr="")
+    return inv, host, proc
+
+
+class TestDefaultLlmCall:
+    """BUG: _default_llm_call must be host-aware (no direct Anthropic SDK) and fail soft."""
+
+    def test_routes_through_host_runner_not_anthropic_sdk(self) -> None:
+        """Success path returns the prose 'result' via resolve_host(), not the SDK."""
+        inv, host, proc = _patch_host_call(
+            '{"result": "analysis\\nTARGETS_JSON:{\\"targets\\": [\\"anthropic\\"], \\"count\\": 1}"}'
+        )
+        with (
+            patch(f"{_MODULE}.resolve_host", return_value=host) as mock_resolve,
+            patch(f"{_MODULE}.subprocess.run", return_value=proc) as mock_run,
+        ):
+            out = _default_llm_call("some prompt")
+
+        mock_resolve.assert_called_once()
+        host.build_blocking_json.assert_called_once()
+        # model must be None so non-Anthropic backends use their own default
+        assert host.build_blocking_json.call_args.kwargs.get("model") is None
+        mock_run.assert_called_once()
+        assert "TARGETS_JSON" in out
+
+    def test_end_to_end_extraction_via_default_path(self) -> None:
+        """extract_learning_targets() with the default path stubbed returns targets."""
+        _inv, host, proc = _patch_host_call(
+            '{"result": "TARGETS_JSON:{\\"targets\\": [\\"requests\\"], \\"count\\": 1}"}'
+        )
+        with (
+            patch(f"{_MODULE}.resolve_host", return_value=host),
+            patch(f"{_MODULE}.subprocess.run", return_value=proc),
+        ):
+            result = extract_learning_targets("uses requests")
+        assert result == ["requests"]
+
+    def test_nonzero_exit_returns_empty_string(self) -> None:
+        _inv, host, proc = _patch_host_call("boom", returncode=1)
+        with (
+            patch(f"{_MODULE}.resolve_host", return_value=host),
+            patch(f"{_MODULE}.subprocess.run", return_value=proc),
+        ):
+            assert _default_llm_call("p") == ""
+
+    def test_file_not_found_returns_empty_string(self) -> None:
+        """Missing host CLI must not raise (regression guard for the fatal-crash defect)."""
+        _inv, host, _proc = _patch_host_call("")
+        with (
+            patch(f"{_MODULE}.resolve_host", return_value=host),
+            patch(f"{_MODULE}.subprocess.run", side_effect=FileNotFoundError),
+        ):
+            assert _default_llm_call("p") == ""
+
+    def test_timeout_returns_empty_string(self) -> None:
+        _inv, host, _proc = _patch_host_call("")
+        with (
+            patch(f"{_MODULE}.resolve_host", return_value=host),
+            patch(
+                f"{_MODULE}.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="fake-host", timeout=60),
+            ),
+        ):
+            assert _default_llm_call("p") == ""
+
+    def test_unparseable_stdout_returns_empty_string(self) -> None:
+        _inv, host, proc = _patch_host_call("not json at all")
+        with (
+            patch(f"{_MODULE}.resolve_host", return_value=host),
+            patch(f"{_MODULE}.subprocess.run", return_value=proc),
+        ):
+            assert _default_llm_call("p") == ""
+
+    def test_extraction_failure_does_not_propagate(self) -> None:
+        """A host failure degrades extract_learning_targets() to [] rather than raising."""
+        _inv, host, _proc = _patch_host_call("")
+        with (
+            patch(f"{_MODULE}.resolve_host", return_value=host),
+            patch(f"{_MODULE}.subprocess.run", side_effect=FileNotFoundError),
+        ):
+            assert extract_learning_targets("uses anthropic") == []

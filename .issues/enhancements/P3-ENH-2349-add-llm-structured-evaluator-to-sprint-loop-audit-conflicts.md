@@ -14,6 +14,8 @@ labels:
 - evaluators
 relates_to:
 - BUG-2347
+depends_on:
+- ENH-2342
 confidence_score: 82
 outcome_confidence: 73
 score_complexity: 21
@@ -191,11 +193,18 @@ _Added by `/ll:confidence-check` on 2026-06-27_
 - `max_steps` bump (16→18) is marked "consider" — must be decided and applied before closing
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T22:09:56 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:confidence-check` - 2026-06-27T22:00:00Z - `4db93a84-28af-46ec-8824-975ef1360e97.jsonl`
 - `/ll:wire-issue` - 2026-06-27T21:41:27 - `b1ff643a-138f-45dd-be1d-f42546ce8905.jsonl`
 - `/ll:refine-issue` - 2026-06-27T21:32:33 - `265ed482-e8e6-4a78-a5cf-d16f10ac38ee.jsonl`
 - `/ll:format-issue` - 2026-06-27T21:21:09 - `d9d01f4a-6f9b-4201-87a6-de089e4470ef.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:16:24Z - conversation analysis of audit-sprint-build-and-validate-2026-06-27.md
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2342 will globally coerce every `llm_structured` verdict to "no" when the LLM response contains no verbatim evidence — enforced in `evaluate_llm_structured()` in `evaluators.py`. The judge prompt for the `audit_conflicts` state added by this issue is explicitly unwritten ("must be authored during implementation"). If the prompt is authored without awareness of ENH-2342's evidence contract, the evaluator will return permanent "no" verdicts and spin the retry loop until `max_steps` is hit. Implement ENH-2342 first (hence `depends_on: ENH-2342`), then author the `audit_conflicts` judge prompt to include the evidence-contract block (verbatim citation required per condition; absent evidence defaults to No). Draft the prompt against `CHECK_SEMANTIC_EVIDENCE_CONTRACT` in `evaluators.py` once ENH-2342 is merged. Related issue: ENH-2342.
 
 ---
 

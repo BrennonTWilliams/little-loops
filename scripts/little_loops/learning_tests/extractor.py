@@ -2,8 +2,11 @@
 
 Exposes ``extract_learning_targets()`` as an importable callable Python module
 so downstream tools (ENH-2210 sprint pre-flight) can import it directly without
-a shell-out. The Anthropic SDK is used for SDK-direct invocation; the ``llm_call``
-parameter allows mock injection for unit tests.
+a shell-out. The default LLM call shells out through the active host CLI via
+``resolve_host()`` (the same host abstraction used by
+``session_store._call_llm_for_summary``) so extraction works with whichever
+backend ``ll-auto`` / ``ll-sprint`` / ``ll-parallel`` is configured to use, not
+just Anthropic. The ``llm_call`` parameter allows mock injection for unit tests.
 
 Follow the same pattern as ``gate.py`` (``is_record_stale``) — importable helper,
 unit-testable with mock injection.
@@ -12,14 +15,20 @@ unit-testable with mock injection.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
+import subprocess
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from little_loops.host_runner import resolve_host
 from little_loops.issue_parser import slugify
 
 if TYPE_CHECKING:
     from little_loops.issue_parser import IssueInfo
+
+logger = logging.getLogger(__name__)
 
 _EXTRACTION_PROMPT = """\
 Analyze the following issue text and identify all external packages, SDKs, or \
@@ -53,21 +62,88 @@ Issue text to analyze:
 
 _TARGETS_JSON_RE = re.compile(r"TARGETS_JSON:(\{.*\})", re.MULTILINE)
 
+# Host-call timeout for the default extraction call (seconds), matching
+# session_store._call_llm_for_summary.
+_LLM_TIMEOUT_S = 60
+
 
 def _default_llm_call(prompt: str) -> str:
-    """Call the Anthropic API via the SDK and return the response text."""
-    import anthropic
+    """Call the active host CLI for extraction and return the response prose.
 
-    client = anthropic.Anthropic()
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    block = message.content[0]
-    if not isinstance(block, anthropic.types.TextBlock):
+    Routes through ``resolve_host().build_blocking_json()`` (mirroring
+    ``session_store._call_llm_for_summary``) so extraction respects the
+    configured backend (``LL_HOST_CLI`` / ``orchestration.host_cli``) instead of
+    instantiating the Anthropic SDK directly. ``model=None`` lets the host pick
+    its own default model — a hardcoded Anthropic model id would fail against a
+    non-Anthropic backend.
+
+    Fails soft: returns ``""`` on any host-call or parse failure (logged as a
+    warning). The learning gate is a best-effort safety net, so a failed
+    extraction must degrade to "no targets" rather than abort the whole run.
+    """
+    try:
+        inv = resolve_host().build_blocking_json(prompt=prompt, model=None)
+        proc = subprocess.run(
+            [inv.binary, *inv.args],
+            env={**os.environ, **inv.env},
+            capture_output=True,
+            text=True,
+            timeout=_LLM_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("_default_llm_call: host CLI timed out after %ds", _LLM_TIMEOUT_S)
         return ""
-    return block.text
+    except FileNotFoundError:
+        logger.warning(
+            "_default_llm_call: host CLI not found. Install the active host CLI (see LL_HOST_CLI)."
+        )
+        return ""
+
+    if proc.returncode != 0:
+        stderr_preview = proc.stderr.strip()[:200] if proc.stderr else "(no stderr)"
+        logger.warning(
+            "_default_llm_call: host CLI returned exit code %d (stderr: %s)",
+            proc.returncode,
+            stderr_preview,
+        )
+        return ""
+
+    if not proc.stdout.strip():
+        logger.warning("_default_llm_call: host CLI returned empty stdout on exit 0")
+        return ""
+
+    # Parse the JSON envelope and extract the prose 'result' field — the same
+    # pattern as session_store._call_llm_for_summary. The prose still carries the
+    # TARGETS_JSON:{...} line that _TARGETS_JSON_RE scans for downstream.
+    try:
+        stdout = proc.stdout.strip()
+        try:
+            envelope = json.loads(stdout)
+        except json.JSONDecodeError:
+            # Try JSONL: take the last non-empty line
+            lines = [line for line in stdout.split("\n") if line.strip()]
+            if not lines:
+                raise
+            envelope = json.loads(lines[-1])
+
+        if envelope.get("subtype") == "error_max_structured_output_retries":
+            logger.warning(
+                "_default_llm_call: host CLI could not produce valid output after retries"
+            )
+            return ""
+        if envelope.get("is_error", False):
+            err_text = str(envelope.get("result", "") or "")[:200]
+            logger.warning("_default_llm_call: host CLI reported error: %s", err_text)
+            return ""
+
+        result = envelope.get("result", "")
+        return str(result) if result else ""
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        raw_preview = proc.stdout[:300] if proc.stdout else "(empty)"
+        logger.warning(
+            "_default_llm_call: failed to parse host response: %s (raw: %s)", e, raw_preview
+        )
+        return ""
 
 
 def extract_learning_targets(
@@ -84,7 +160,7 @@ def extract_learning_targets(
     Args:
         issue_text: Full issue file content (frontmatter + body).
         llm_call: Optional callable accepting a prompt string and returning
-            response text. Defaults to SDK-direct Anthropic call.
+            response text. Defaults to a host-aware call via ``resolve_host()``.
             Inject a mock for unit tests.
 
     Returns:

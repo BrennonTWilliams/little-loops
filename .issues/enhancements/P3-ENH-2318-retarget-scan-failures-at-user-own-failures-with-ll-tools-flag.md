@@ -22,6 +22,8 @@ labels:
 - ll-logs
 - target-project
 - scan-failures
+depends_on:
+- ENH-2317
 ---
 
 # ENH-2318: Retarget `ll-logs scan-failures` at the user's own failures (keep current behavior behind a flag)
@@ -353,7 +355,17 @@ be edited to pass `--scope ll-tools`.
 - Completes the target-project cluster with [FEAT-2315] / [FEAT-2316] /
   [ENH-2317]; distinct from EPIC-1918's "telemetry for ll itself" framing.
 
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Two coordination requirements with sibling ll-logs issues:
+
+1. **`--scope` flag ownership.** This issue introduces `--scope {project,ll-tools}` on `scan-failures` as the failure-source dimension selector. FEAT-2316 must not introduce a second `--scope` flag with a different value space (`{ll,all}`) on the same subcommand. Agreed split: `--scope` = failure-source selector on `scan-failures` (this issue); `--all-tools` = corpus-breadth selector everywhere (FEAT-2316). Update the flag-naming section of this issue and FEAT-2316's integration notes to document the agreed split explicitly.
+
+2. **`scan-failures` argparse group.** This issue's wiring step 6 identifies the required `--project`/`--all` mutually-exclusive group on `scan-failures` (logs.py:1798) as a blocker and leaves the resolution open with three options (a/b/c). ENH-2317 already commits to option (a) — CWD-default three-way resolver — which resolves this blocker. Implement ENH-2317 first (hence `depends_on: ENH-2317`), then remove wiring step 6 from this issue's scope: the argparse group blocker is resolved by ENH-2317 and need not be re-solved here. Related issues: ENH-2317, FEAT-2316.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T22:09:56 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:05:35 - `64adeb74-858e-4aba-8e05-0d67aa559f7c.jsonl`
 - `/ll:decide-issue` - 2026-06-26T22:54:54 - `585197a2-6eeb-4c75-8344-69370d9d5505.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:44:38 - `05b90e4c-3bca-408a-b27e-c7f150dd4fb0.jsonl`

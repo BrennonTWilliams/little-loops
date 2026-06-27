@@ -150,5 +150,10 @@ No changes to `--json` output schema or default box-stack rendering.
 **Open** | Created: 2026-06-26 | Priority: P3
 
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The Acceptance Criteria clause "Existing default (full box) output and `--json` remain available and unchanged" applies within the scope of this issue only — it is not a permanent commitment. FEAT-2337 explicitly plans to change the default layout to `tree` (via `--layout {tree,list,boxes}`), superseding the full-box default. Read the AC clause as: "the full-box default is preserved while this issue ships; the default will change when FEAT-2337 ships." This prevents the AC language from being read as a blocking constraint on FEAT-2337. Related issue: FEAT-2337.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-27T22:09:57 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:format-issue` - 2026-06-27T01:47:42 - `1a5326db-d2cc-4813-89e2-ca0885d6f0c4.jsonl`
