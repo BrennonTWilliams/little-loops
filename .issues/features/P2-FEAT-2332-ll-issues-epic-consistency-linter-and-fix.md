@@ -376,6 +376,7 @@ _Added by `/ll:refine-issue` — concrete anchors from codebase analysis:_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T03:09:15 - `7d2aa461-8f7c-47a4-be7f-63378073ab98.jsonl`
 - `/ll:confidence-check` - 2026-06-26T23:45:00 - `d398aa33-03ed-4b1a-b141-77db75682f71.jsonl`
 - `/ll:decide-issue` - 2026-06-26T23:25:25 - `9638d775-3967-4517-9cef-a97510938e46.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:03:37 - `53786629-d9b8-4f2a-8643-10c3f08458a2.jsonl`

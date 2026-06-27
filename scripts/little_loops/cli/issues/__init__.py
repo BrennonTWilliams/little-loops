@@ -28,6 +28,10 @@ def main_issues() -> int:
             add_decisions_parser,
             cmd_decisions,
         )
+        from little_loops.cli.issues.epic_consistency import (
+            add_epic_consistency_parser,
+            cmd_epic_consistency,
+        )
         from little_loops.cli.issues.epic_progress import (
             add_epic_progress_parser,
             cmd_epic_progress,
@@ -716,6 +720,7 @@ Examples:
 
         add_finalize_decomposition_parser(subs)
         add_epic_progress_parser(subs)
+        add_epic_consistency_parser(subs)
         add_decisions_parser(subs)
 
         args = parser.parse_args()
@@ -775,6 +780,8 @@ Examples:
             return cmd_skip(config, args)
         if args.command == "epic-progress":
             return cmd_epic_progress(config, args)
+        if args.command == "epic-consistency":
+            return cmd_epic_consistency(config, args)
         if args.command == "decisions":
             return cmd_decisions(config, args)
         if args.command == "finalize-decomposition":
