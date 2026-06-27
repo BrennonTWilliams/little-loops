@@ -78,35 +78,103 @@ The rubric config (thresholds, signal lists) lives in `ll-config.json` under `ho
 
 ## Implementation Steps
 
-1. Add `should_compact()` rubric function to `pre_compact.py` with signal lists for each condition
-2. Wire it into the main `pre_compact` handler before emitting the compaction payload
-3. Add `hooks.pre_compact.rubric` config schema to `config-schema.json` with defaults
-4. Add config read path in `pre_compact.py` via `resolve_config_path`
-5. Add hard-ceiling bypass: if token count exceeds `rubric.hard_ceiling_pct` (default 95%) of context, compact regardless
-6. Write tests in `scripts/tests/test_pre_compact.py` covering: rubric pass, rubric fail (each condition), hard-ceiling bypass, evidence-absent → no-compact
-7. Update `hooks/prompts/continuation-prompt-template.md` to note the rubric timing policy
+1. **Add `PreCompactRubricConfig` dataclass** — create in `scripts/little_loops/config/features.py` following `LearningTestsConfig` shape: outer class with `enabled: bool = False`, `hard_ceiling_pct: float = 0.95`; inner class with `closed_unit_signals`, `reducible_signals`, `progress_signals`, `stuck_signals` lists and `from_dict()` classmethod
+2. **Add `hooks.pre_compact.rubric` to `config-schema.json`** — add a `pre_compact` property under `hooks.properties` (currently the parent block has `additionalProperties: false`, so the property must be explicitly declared); include `enabled`, `hard_ceiling_pct`, and per-condition signal array defaults
+3. **Add config read + `should_compact()` to `pre_compact.py`** — import `resolve_config_path` from `little_loops.config.core`; add `_load_rubric_config(cwd)` helper following `learning_tests_gate.py:_load_lt_config()` pattern; add `_find_evidence(text, signals)` using compiled-regex approach from `session_store.py:is_correction()`; add `should_compact(trajectory_excerpt, config)` returning `tuple[bool, str]`
+4. **Wire rubric into `pre_compact.handle()`** — before writing the state file: (a) read `transcript_path` from payload, tail it for a trajectory excerpt; (b) call `_load_rubric_config()`; (c) if `rubric_config.enabled`, call `should_compact(excerpt, rubric_config)` — if result is `(False, reason)` and token count is below `hard_ceiling_pct`, return early `LLHookResult(exit_code=0)` (or appropriate code per verified exit-code semantics); (d) proceed to state-write on pass or hard-ceiling
+5. **Verify exit code semantics** — check `docs/claude-code/hooks-reference.md` or `docs/guides/BUILTIN_HOOKS_GUIDE.md` to confirm whether `exit_code=0` from a PreCompact hook defers compaction or allows it silently; adjust return values accordingly
+6. **Add test classes to `scripts/tests/test_pre_compact.py`** — add `TestRubricGating` class covering: rubric disabled (bypass), rubric pass all conditions, rubric fail each condition individually, hard-ceiling bypass, evidence-absent → no-compact, transcript-read error (graceful degradation); follow `_event(**payload)` factory and `monkeypatch.chdir(tmp_path)` pattern from existing tests; seed config using `_write_config()` helper pattern from `test_hook_user_prompt_submit.py`
+7. **Update `hooks/prompts/continuation-prompt-template.md`** — add a `### Compaction Timing` subsection under `## Template Usage Notes` noting the rubric timing policy
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. **Re-export from `scripts/little_loops/config/__init__.py`** — add `PreCompactRubricConfig` (and any inner config class) to the `from little_loops.config.features import (...)` block and to `__all__`; mandatory per project pattern for every dataclass in `features.py`
+9. **Add `TestPreCompactRubricConfig` to `scripts/tests/test_config.py`** — cover `from_dict({})` defaults, each field override, and `BRConfig` round-trip; follow `TestLearningTestsConfig` template (10 methods)
+10. **Add `test_hooks_pre_compact_rubric_in_schema` to `scripts/tests/test_config_schema.py`** — assert `hooks.pre_compact.rubric` is declared in `config-schema.json` with `enabled`, `hard_ceiling_pct`, and signal-array keys
+11. **Update `docs/guides/BUILTIN_HOOKS_GUIDE.md`** — add rubric opt-in qualifier to `## PreCompact` prose and new config rows in `## Configuration Reference` table
+12. **Update `docs/reference/CONFIGURATION.md`** — add `hooks.pre_compact.rubric` subsection under `### hooks`
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/hooks/pre_compact.py` — add `should_compact()` rubric function and wire into main handler
 - `config-schema.json` — add `hooks.pre_compact.rubric` schema with signal-list and threshold defaults
+- `scripts/little_loops/config/features.py` — add `PreCompactRubricConfig` dataclass (outer: `enabled: bool = False`, `hard_ceiling_pct: float = 0.95`; inner: signal-list fields and `from_dict()` classmethod); Implementation Step 1 references this file but it was absent from the list [Agent 1 finding]
+- `scripts/little_loops/config/__init__.py` — add `PreCompactRubricConfig` to the `from little_loops.config.features import (...)` block and to `__all__`; every config dataclass in `features.py` follows this mandatory re-export pattern [Agent 1 + 2 finding]
 
 ### Dependent Files (Callers/Importers)
-- `hooks/adapters/claude-code/hooks.json` — invokes `pre_compact.py` as the Claude Code adapter
-- Any opencode/codex adapter hooks that delegate to the same Python handler
+- `hooks/adapters/claude-code/hooks.json` — two `matcher: "*"` `PreCompact` entries pointing to `precompact.sh`
+- `hooks/adapters/claude-code/precompact.sh` — bash bridge: `echo "$INPUT" | python -m little_loops.hooks pre_compact`
+- `scripts/little_loops/hooks/adapters/codex/hooks.json` — Codex `PreCompact` entry pointing to `pre-compact.sh`
+- `scripts/little_loops/hooks/adapters/codex/pre-compact.sh` — sets `LL_HOOK_HOST=codex`, same Python invocation
+- `hooks/adapters/opencode/index.ts` — `session.compacted` event → `spawnIntent("pre_compact", ...)` (TypeScript adapter)
 
 ### Similar Patterns
 - `scripts/little_loops/hooks/session_start.py` — sibling hook handler; follow the same `resolve_config_path` pattern for config reads
 
 ### Tests
-- `scripts/tests/test_pre_compact.py` — new test file (rubric pass, rubric fail per condition, hard-ceiling bypass, evidence-absent → no-compact)
+- `scripts/tests/test_pre_compact.py` — **already exists** (8 test classes for current handler); add new classes here for rubric pass, rubric fail per condition, hard-ceiling bypass, evidence-absent → no-compact. Do not create a separate file.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_config.py` — add new `TestPreCompactRubricConfig` class; follows `TestLearningTestsConfig` pattern (cover `from_dict({})` defaults, each field override, nested sub-config, and `BRConfig` round-trip); this file already tests every dataclass in `features.py` [Agent 1 + 3 finding]
+- `scripts/tests/test_config_schema.py` — add `test_hooks_pre_compact_rubric_in_schema` method asserting `hooks.pre_compact.rubric` is declared in `config-schema.json` with `enabled`, `hard_ceiling_pct`, and signal-array keys [Agent 2 + 3 finding]
+- `scripts/tests/test_hooks_integration.py` — `TestPrecompactState.test_atomic_write_with_missing_directory` and `test_concurrent_precompact_writes` assert `returncode == 2`; safe only if rubric defaults to `enabled=False` when no config present — must be verified during implementation [Agent 3 finding]
 
 ### Documentation
 - `hooks/prompts/continuation-prompt-template.md` — add a note about rubric timing policy (Implementation Step 7)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — `## PreCompact` prose ("always-on" description needs conditional qualifier); `## Configuration Reference` table needs rows for `hooks.pre_compact.rubric.enabled` and `hooks.pre_compact.rubric.hard_ceiling_pct`; `## The Lifecycle at a Glance` PreCompact row needs annotation [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md` — `### hooks` section currently documents only `host` and `stale_ref_fix`; add `hooks.pre_compact.rubric` subsection with key table [Agent 2 finding]
+
 ### Configuration
 - `.ll/ll-config.json` — `hooks.pre_compact.rubric` block with `hard_ceiling_pct`, signal lists, and enabled flag
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Critical: `config-schema.json` `additionalProperties: false` constraint**
+The `hooks` object in `config-schema.json` (lines 1228–1244) currently only has `host` and `stale_ref_fix` properties and declares `"additionalProperties": false`. Adding `hooks.pre_compact.rubric` requires explicitly adding a `pre_compact` nested object to `hooks.properties` — the schema block won't accept unknown keys. Follow the nested object shape in the `epics.scope` block as a reference.
+
+**`pre_compact.py` has no config read path**
+Unlike `session_start.py` (line 41–96) or `learning_tests_gate.py:_load_lt_config()`, `pre_compact.py` currently does not import `resolve_config_path`. The config-read pattern to follow:
+```python
+from little_loops.config.core import resolve_config_path  # add to imports
+# inside handle():
+cwd = Path.cwd()
+config_path = resolve_config_path(cwd)
+rubric_cfg: dict = {}
+if config_path is not None:
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        rubric_cfg = data.get("hooks", {}).get("pre_compact", {}).get("rubric", {})
+    except (OSError, json.JSONDecodeError):
+        pass
+```
+
+**Config dataclass pattern**
+Define a `PreCompactRubricConfig` dataclass following `LearningTestsConfig` + `DiscoverabilityConfig` in `scripts/little_loops/config/features.py`. Outer class holds `enabled: bool = False`; inner holds signal lists and `hard_ceiling_pct: float = 0.95`.
+
+**Signal detection pattern**
+Follow `is_correction()` in `scripts/little_loops/session_store.py:150` — compiled module-level `re.Pattern` constants for each signal category; config-supplied signal strings are OR-joined at call time. Each `_find_evidence(text, signals)` call mirrors `is_correction(text, extra_patterns=signals)` with a text cap.
+
+**`should_compact()` tuple return**
+Follow `_verify_work_was_done()` in `scripts/little_loops/parallel/worker_pool.py:1144` for `tuple[bool, str]` shape: `(True, "")` on pass, `(False, "closed_unit, reducible")` with the failing conditions on defer.
+
+**Trajectory excerpt source**
+The hook payload carries `transcript_path` (a JSONL file path) but does NOT include transcript content. To evaluate rubric over recent trajectory, the handler must read and tail that file. Use `Path(transcript_path).read_text()` with a size cap (last N bytes or last N lines) to avoid reading large transcripts.
+
+**Exit code semantics — VERIFY BEFORE IMPLEMENTING**
+Claude Code's `PreCompact` hook treats `exit_code=2` as "inject feedback into compaction prompt" (compaction still proceeds). It is not confirmed whether `exit_code=0` from a PreCompact hook defers compaction or just silently allows it. The issue's "defer until next check" behavior must be validated against actual Claude Code PreCompact documentation before implementing. If exit_code cannot defer, the rubric can only gate whether state is preserved (exit 2 with message) vs. silently skipped (exit 0) — not whether compaction fires.
+
+**Test config-seeding pattern**
+Follow `_write_config()` helper in `scripts/tests/test_hook_user_prompt_submit.py` and config-seeding in `scripts/tests/test_hook_session_start.py:TestSessionStartConfigLoad` — write a `.ll/ll-config.json` with `{"hooks": {"pre_compact": {"rubric": {...}}}}` inside `tmp_path / ".ll"` before calling `pre_compact.handle()`.
+
+**`continuation-prompt-template.md` update location**
+The template at `hooks/prompts/continuation-prompt-template.md` has a `## Template Usage Notes` section listing trigger scenarios. The rubric timing policy note fits as a new `### Compaction Timing` callout there.
 
 ## Scope Boundaries
 
@@ -147,5 +215,7 @@ The rubric config (thresholds, signal lists) lives in `ll-config.json` under `ho
 **Open** | Created: 2026-06-27 | Priority: P2
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-27T06:13:39 - `5c164999-cef5-4e23-b356-71ebf3af4e40.jsonl`
+- `/ll:refine-issue` - 2026-06-27T05:33:04 - `15663aad-3484-4d3c-b333-946a0e331e1a.jsonl`
 - `/ll:format-issue` - 2026-06-27T05:22:30 - `b1f554bc-7cd6-42a8-af86-2e0e2a418a25.jsonl`
 - `/ll:capture-issue` - 2026-06-27T05:17:49Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd21288e-7370-4e7e-8040-6f118e73e291.jsonl`

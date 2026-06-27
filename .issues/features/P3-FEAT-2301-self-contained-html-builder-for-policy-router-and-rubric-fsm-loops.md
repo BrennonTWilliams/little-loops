@@ -18,6 +18,7 @@ score_complexity: 13
 score_test_coverage: 15
 score_ambiguity: 20
 score_change_surface: 20
+decision_needed: true
 ---
 
 # FEAT-2301: Self-contained HTML builder for policy-router and rubric FSM loops
@@ -598,6 +599,16 @@ The JS validation grammar should mirror these exact sets. `_ORDERED_OPS` → req
 
 **`DesignTokens.resolved` type confirmed** (`design_tokens.py:33`): declared as `dict[str, str]` — all values are string-coerced via `str()` in `_resolve_value`. The `render_as_css_vars_themed` implementation sketch using `{value}` directly (no conversion) is correct.
 
+**`route_table.py` pre-existing drift partially resolved** (stale claim correction): `route_table.py:15` already imports `_ALL_OPS` directly from `policy_rules` (`from little_loops.fsm.policy_rules import _ALL_OPS`) and derives its regex alternation as `_OP_ALT = "|".join(sorted(_ALL_OPS, key=len, reverse=True))` at line 385 — not a hand-coded list. The "nothing imports the canonical constants because they are private" claim in "Grammar as single source" is stale: `route_table.py` already tracks the canonical operator set. ENH-2334's remaining scope is limited to any `_COND_PATTERN` defined independently or literal operator string still present at `route_table.py:455`. Adding `grammar_spec()` to `policy_rules.py` still closes the primary goal (cross-language Python→JS stamping) with no dependency on ENH-2334.
+
+**`policy-refine.yaml` has `visibility: public`** at the top level (absent from `rubric-refine.yaml`). Builder-generated YAML should omit `visibility:` by default — it is not required for `ll-loop run` and would incorrectly mark user-generated loops as part of the built-in catalog. Builder output shape should follow `rubric-refine.yaml` (no `visibility:`) rather than `policy-refine.yaml` for this key.
+
+**`render_as_css_vars` implementation confirmed** (`design_tokens.py:320–327`): iterates `tokens.resolved` in sorted order with no key filtering — the `_`-prefix filter in `render_as_css_vars_themed` is required and is not inherited from the existing function. Confirmed full implementation matches the implementation sketch already in this section.
+
+**`main_generate_schemas` pattern confirmed** (`cli/schemas.py`, 63 lines): uses `cli_event_context(DEFAULT_DB_PATH, "<name>", sys.argv[1:])` as outer context manager, performs heavy imports inside the `with` block, calls `configure_output()` + `Logger(use_color=use_color_enabled())` before the `try/except`, and returns `int` exit code. The `policy_builder.py` core module must follow this pattern exactly (module imports: `configure_output`, `use_color_enabled` from `cli.output`; `Logger` from `little_loops.logger`; `DEFAULT_DB_PATH`, `cli_event_context` from `little_loops.session_store`).
+
+**None of the following exist yet** (all are new files/functions for this feature — confirmed absent): `grammar_spec()` in `policy_rules.py`; `render_as_css_vars_themed` in `design_tokens.py`; `scripts/little_loops/cli/artifact.py` or `cli/artifact/` directory; `ll-artifact` in `pyproject.toml [project.scripts]`; `main_artifact` in `cli/__init__.py`; `.github/workflows/` CI directory; `scripts/tests/js/` directory; `scripts/tests/fixtures/` directory.
+
 ## Integration Map
 
 ### Files to Modify
@@ -784,18 +795,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-06-26 (re-run; scores stable)_
+_Updated by `/ll:confidence-check` on 2026-06-27 (4th re-run; scores stable)_
 
 **Readiness Score**: 98/100 → PROCEED
 **Outcome Confidence**: 68/100 → below threshold
 
 ### Outcome Risk Factors
-- **JS grammar drift** (mitigated): the grammar *data* (operator sets + predicate regex) is no longer hand-copied — it is stamped from a new public `policy_rules.grammar_spec()` at emit time and guarded by a test asserting the HTML-embedded ops equal the Python sets, so the data half cannot silently drift. The *logic* half (shadow detection, catch-all, numeric-coercion eval) must still be re-expressed in JS but is pinned by a shared conformance corpus; `ll-loop validate` remains the authoritative backstop. Residual surface is the JS logic re-expression, bounded by the corpus.
-- **No automated JS test coverage**: Interactive browser behavior (drag-reorder, reactive decision grid, YAML serializer, theme toggle) requires manual verification. The JS layer is the dominant complexity locus and sits outside pytest's reach.
-- **Dimension-name normalization divergence**: `policy_parse_scores` keys score files by a lowercase + whitespace→hyphens normalized name, but `evaluate_rules` matches predicate dims by exact string. A mixed-case/spaced dimension yields a silently-inert predicate that passes base `ll-loop validate` (no liveness check). ENH-2309 catches it at the gate only while its referenced-raw / scored-normalized asymmetry holds. Mitigated by the new normalization acceptance criterion (builder normalizes header/scoring-instruction/predicate identically, or restricts input to `[a-z0-9-]`); functional correctness of generated YAML depends on it.
+- **No automated JS test coverage** — shadow detection, catch-all detection, and numeric-coercion eval must be re-expressed in JS and currently have no automated test. Open question: ratify JS test runner option A/B/C (see "JS validator test runner (PROPOSED)" in Proposed Solution) before implementing Step 3. Option A (`node:test` on Node 22, zero new deps) closes this gap; it is the recommended path.
+- **CI location undetermined** — no `.github/workflows/` exists in-tree; multiple ACs say "CI fails if…" (drift-guard, corpus tests). These gates are currently aspirational. Determine where these tests execute before marking ACs complete.
+- **JS grammar drift** (mitigated): the grammar *data* (operator sets + predicate regex) is stamped from a new public `policy_rules.grammar_spec()` at emit time and guarded by a drift-guard test. The *logic* half (shadow detection, catch-all, numeric-coercion eval) must still be re-expressed in JS but is pinned by a shared conformance corpus; `ll-loop validate` remains the authoritative backstop.
+- **Dimension-name normalization divergence** (mitigated by AC): `policy_parse_scores` keys score files by a lowercase + whitespace→hyphens normalized name, but `evaluate_rules` matches predicate dims by exact string. Builder must normalize header/scoring-instruction/predicate identically, or restrict input to `[a-z0-9-]`; functional correctness of generated YAML depends on it.
 - ~~**Output artifact path not finalized**~~ — _resolved 2026-06-25_: generated on-demand at `<artifacts.default_output_dir>/policy-router-builder.html` (default CWD); `--output` override; no checked-in artifact. `config-schema.json` gets a new `"artifacts"` block.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T00:00:00Z - `4a8cf70b-e4ab-4972-9b16-9ffaac31a9d5.jsonl`
+- `/ll:refine-issue` - 2026-06-27T06:18:06 - `5c164999-cef5-4e23-b356-71ebf3af4e40.jsonl`
 - `js-test-runner note (proposed)` - 2026-06-26 - Drafted a follow-up decision (see "JS validator test runner" in Proposed Solution) addressing the dominant outcome-confidence gap: the conformance corpus pins the Python side but the hand-written JS *logic* re-expression (shadow/catch-all/eval) has no automated test, since no node runner exists in-tree. Recommended Option A — a zero-dependency `node:test` suite (Node 22 already present) that runs the shared corpus against the JS validator, requiring the validator be factored into an inlined-but-importable ES module. Also flagged that no `.github/workflows/` exists despite "CI fails if…" ACs — anti-drift gates may be unenforced. Awaiting ratification before adding the AC / step / risk-downgrade.
 - `target-state authoring decision` - 2026-06-26 - Expanded the builder beyond routing: action cards now author the **full target state** along two independent axes — Does (`action_type` + body: Prompt textarea / Run-a-skill `slash_command` dropdown / Nothing) and Then (transition: re-score / go-to-outcome / finish). Established that routed-to state names (`light_repair`, etc.) are author-invented identifiers, NOT reserved defaults — each plays three roles (rule token, `route:` entry, state name), so the builder MUST emit the states or the loop references undefined targets. Skill catalog is stamped at emit time (no runtime fetch), same pattern as design tokens + `grammar_spec()`. Thesis (user-affirmed): these artifacts are **project-enriched, generated on-demand** — coupling to the project's tokens/skills is the source of value, not a portability defect. Added the no-inert-output (non-empty body) invariant.
 - `grammar single-source decision` - 2026-06-26 - Replaced hand-re-implementation of the JS predicate grammar with emit-time stamping from a new public `policy_rules.grammar_spec()` (operator sets + regex), a `_py_pattern_to_js` named-group transform, a drift-guard test, and a shared shadow/eval conformance corpus; flagged the pre-existing `route_table.py:455` operator duplication for consolidation. Downgraded the "JS grammar drift" outcome risk from open maintenance surface to "data half eliminated, logic half bounded".
@@ -803,6 +817,7 @@ _Updated by `/ll:confidence-check` on 2026-06-26 (re-run; scores stable)_
 - `boolean-dim decision` - 2026-06-26 - Closed the dead boolean/string-dimension hole: boolean chips compile to a numeric 0/100 encoding (`==true`→`>=50`, dim emitted into `rubric_dimensions`), keeping the feature live with no fragment-runtime change. Spun off ENH-2309 (validator rule flagging unscored policy dimensions).
 - `/ll:confidence-check` - 2026-06-26 - `d8445ed0-55b6-4efb-8cb4-0c6d5010e8b9.jsonl`
 - `/ll:refine-issue` - 2026-06-26T19:31:35 - `bd56b623-ba39-47c4-bd64-a420b910b8ec.jsonl`
+- `/ll:confidence-check` - 2026-06-27 - `281d646e-c587-44cb-b047-52f6994301f5.jsonl`
 - `/ll:confidence-check` - 2026-06-26 - `6ab2d0ba-0319-4ff2-829a-5b6224e5e954.jsonl`
 - `/ll:confidence-check` - 2026-06-25 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:refine-issue` - 2026-06-26T01:31:25 - `af981b92-c03e-478c-b61b-511a0b83ff43.jsonl`
