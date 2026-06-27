@@ -7,6 +7,7 @@ discovered_date: 2026-06-27
 captured_at: "2026-06-27T05:17:49Z"
 discovered_by: capture-issue
 decision_needed: false
+labels: ["evaluator", "loop-quality", "llm-accuracy"]
 ---
 
 # ENH-2342: Evidence-Gate check_semantic LLM Evaluator Verdicts
@@ -62,6 +63,31 @@ Do not assert a verdict without evidence. "The task appears complete" is not evi
 
 **4. Update the `AUTOMATIC_HARNESSING_GUIDE.md` and loop authoring docs** to document the evidence-gating contract as a standard requirement alongside MR-1.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/` — `check_semantic` / `llm_structured` prompt construction and verdict parser (locate via `grep -r check_semantic scripts/`)
+- `scripts/little_loops/` — `ll-loop validate` rule addition for evidence-contract detection
+
+### Dependent Files (Callers/Importers)
+- All loop YAML files using `check_semantic` or `llm_structured` states — affected at runtime; no YAML edits required (runtime enforcement coerces absent evidence to conservative verdict)
+
+### Similar Patterns
+- Existing MR-1 validator rule in `ll-loop validate` — follow same WARNING-severity pattern for the new rule
+
+### Tests
+- Unit tests: verdict coercion (empty `evidence` → conservative verdict, partial coercion path)
+- Unit tests: schema enforcement (`evidence` field required, non-empty validation)
+- `ll-loop validate` tests: new WARNING rule detects missing evidence-contract keyword
+
+### Documentation
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add evidence-contract section
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — reference evidence-gating alongside MR-1
+- `.claude/CLAUDE.md` § Loop Authoring — document the new validator rule and severity
+
+### Configuration
+- N/A
+
 ## Implementation Steps
 
 1. Locate the `check_semantic` / `llm_structured` prompt construction code in `scripts/little_loops/`
@@ -72,6 +98,45 @@ Do not assert a verdict without evidence. "The task appears complete" is not evi
 6. Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` with evidence-contract documentation
 7. Write tests covering: verdict with evidence accepted, verdict without evidence coerced, partial coercion, schema enforcement
 
+## Impact
+
+- **Priority**: P2 — directly addresses the documented 33–55% LLM self-grade accuracy failure (SHOR Table 1; Sonnet 4.6 = 33.4%); pairs with MR-1 to make LLM evaluators meaningfully discriminating rather than optimism-defaulting
+- **Effort**: Medium — prompt template injection is low-risk; parser coercion + schema enforcement + validator rule + test coverage adds up; documentation updates straightforward
+- **Risk**: Low — conservative coercion (No/Partial when evidence absent) is the safe-fail direction; validator is WARNING only; no existing loop YAMLs require modification
+- **Breaking Change**: Yes — `llm_structured` / `check_semantic` output schema adds required `evidence: str` field; loops whose prompts don't elicit evidence will have verdicts coerced to conservative (intended behavior)
+
+## Scope Boundaries
+
+- **In scope**: prompt-template contract constant, verdict parser coercion logic, `ll-loop validate` WARNING rule, documentation updates
+- **Out of scope**: modifying existing loop YAML files to add evidence prompts (runtime enforcement handles this; loops fix forward as authors encounter the WARNING)
+- **Out of scope**: non-LLM evaluators (`exit_code`, `output_numeric`, `convergence`, `diff_stall`, `mcp_result`) — evidence contract applies only to LLM-judged states
+- **Out of scope**: replacing MR-1 (non-LLM pairing requirement) — this enhancement is additive, not a substitute
+- **Out of scope**: retroactive backfilling of evidence in archived loop run transcripts
+
+## Success Metrics
+
+- `ll-loop validate` detects `check_semantic` states missing the evidence-contract keyword with 0 false negatives in the test suite
+- Verdict coercion triggers and is logged when `evidence` is empty or missing (covered by unit tests)
+- `AUTOMATIC_HARNESSING_GUIDE.md` evidence-contract section passes `ll-check-links` and `ll-verify-docs`
+- No regression in existing loop runs where evidence is already present in prompts
+
+## API/Interface
+
+Updated `llm_structured` / `check_semantic` structured output schema:
+
+```python
+# Verdict schema — evidence field added (required)
+class SemanticVerdict(BaseModel):
+    verdict: Literal["yes", "no", "partial"]
+    evidence: str  # Verbatim quote from trajectory; empty string → coerced to conservative verdict
+    reasoning: str | None = None
+```
+
+New `ll-loop validate` rule:
+- **Severity**: WARNING
+- **Trigger**: `check_semantic` state whose prompt template does not contain evidence-contract keywords (`"verbatim"`, `"quote"`, or `"evidence"`)
+- **Message**: `check_semantic state missing evidence contract — verdicts may default to optimism`
+
 ## Related Key Documentation
 
 | Document | Relevance |
@@ -81,5 +146,10 @@ Do not assert a verdict without evidence. "The task appears complete" is not evi
 | `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` | Where the evidence contract must be documented |
 | `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | Evaluator health context |
 
+## Status
+
+**Open** | Created: 2026-06-27 | Priority: P2
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-27T05:22:57 - `9f4322ee-5b7f-41c1-ae57-47e6963891ed.jsonl`
 - `/ll:capture-issue` - 2026-06-27T05:17:49Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd21288e-7370-4e7e-8040-6f118e73e291.jsonl`

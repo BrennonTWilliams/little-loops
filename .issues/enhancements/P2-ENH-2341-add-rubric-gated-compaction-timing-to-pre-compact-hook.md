@@ -29,6 +29,13 @@ Before compacting, the hook evaluates a lightweight structural rubric over the r
 
 Each condition requires a verbatim quote from the trajectory as evidence. If any condition lacks evidence it defaults to `no`, and compaction is deferred until the next check. Compaction still fires at the hard token ceiling regardless.
 
+## Success Metrics
+
+- Token cost per compaction window reduced by 30–70% vs. threshold-only baseline (per SELFCOMPACT research)
+- Downstream task quality improves +5–18 points when rubric gates compaction
+- Hard-ceiling bypass rate does not increase (rubric must not cause excessive deferral)
+- All 4 rubric conditions independently testable in unit tests with clear pass/fail signal
+
 ## Motivation
 
 SELFCOMPACT (research: `docs/research/05-26-2026-batch/`) shows that **the rubric — not the act of compacting — is where the quality gain comes from**. Fixed-interval / fixed-threshold compaction fails by firing blind: qualitative traces show it re-summarizing a dead-end shortlist into every summary window, while rubric-gated compaction waits for the lead to be corrected first. The result: 30–70% lower token cost and +5–18 points on downstream tasks, training-free.
@@ -79,6 +86,49 @@ The rubric config (thresholds, signal lists) lives in `ll-config.json` under `ho
 6. Write tests in `scripts/tests/test_pre_compact.py` covering: rubric pass, rubric fail (each condition), hard-ceiling bypass, evidence-absent → no-compact
 7. Update `hooks/prompts/continuation-prompt-template.md` to note the rubric timing policy
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/hooks/pre_compact.py` — add `should_compact()` rubric function and wire into main handler
+- `config-schema.json` — add `hooks.pre_compact.rubric` schema with signal-list and threshold defaults
+
+### Dependent Files (Callers/Importers)
+- `hooks/adapters/claude-code/hooks.json` — invokes `pre_compact.py` as the Claude Code adapter
+- Any opencode/codex adapter hooks that delegate to the same Python handler
+
+### Similar Patterns
+- `scripts/little_loops/hooks/session_start.py` — sibling hook handler; follow the same `resolve_config_path` pattern for config reads
+
+### Tests
+- `scripts/tests/test_pre_compact.py` — new test file (rubric pass, rubric fail per condition, hard-ceiling bypass, evidence-absent → no-compact)
+
+### Documentation
+- `hooks/prompts/continuation-prompt-template.md` — add a note about rubric timing policy (Implementation Step 7)
+
+### Configuration
+- `.ll/ll-config.json` — `hooks.pre_compact.rubric` block with `hard_ceiling_pct`, signal lists, and enabled flag
+
+## Scope Boundaries
+
+**In scope:**
+- `should_compact()` rubric function in `pre_compact.py` with the four conditions above
+- Config schema for `hooks.pre_compact.rubric` (signal lists, `hard_ceiling_pct`)
+- Hard-ceiling bypass (compact regardless at ≥ `hard_ceiling_pct` of context, default 95%)
+- Unit tests covering all rubric branches
+
+**Out of scope:**
+- Changing the hard token ceiling mechanism or compaction payload format
+- ML-based or learned compaction decisions
+- Storing full trajectory history across sessions
+- Modifying how other hooks invoke or respond to compaction events
+
+## Impact
+
+- **Priority**: P2 — High leverage for token efficiency and post-compaction quality; not blocking, but multiplies value of the multi-host story for weaker/open hosts
+- **Effort**: Medium — New `should_compact()` function + signal definitions + config schema + tests; implementation surface is well-scoped to `pre_compact.py`
+- **Risk**: Low — Hard-ceiling bypass preserves existing behavior as permanent fallback; rubric is additive and never prevents compaction permanently
+- **Breaking Change**: No — Defaults to existing threshold-only behavior when rubric config is absent; opt-in via `hooks.pre_compact.rubric.enabled`
+
 ## Related Key Documentation
 
 | Document | Relevance |
@@ -88,5 +138,14 @@ The rubric config (thresholds, signal lists) lives in `ll-config.json` under `ho
 | `hooks/prompts/continuation-prompt-template.md` | Handoff template that pairs with this |
 | `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | Structural-state gating context |
 
+## Labels
+
+`hooks`, `compaction`, `pre-compact`, `captured`
+
+## Status
+
+**Open** | Created: 2026-06-27 | Priority: P2
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-27T05:22:30 - `b1f554bc-7cd6-42a8-af86-2e0e2a418a25.jsonl`
 - `/ll:capture-issue` - 2026-06-27T05:17:49Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd21288e-7370-4e7e-8040-6f118e73e291.jsonl`

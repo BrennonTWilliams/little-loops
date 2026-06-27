@@ -21,7 +21,7 @@ relates_to:
 depends_on:
 - BUG-2323
 decision_needed: false
-confidence_score: 98
+confidence_score: 94
 outcome_confidence: 80
 score_complexity: 14
 score_test_coverage: 23
@@ -367,6 +367,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T12:00:00Z - `2841a396-d9ad-49fe-b2ad-231892b671df.jsonl`
 - `/ll:wire-issue` - 2026-06-27T05:10:05 - `c27a4feb-a659-4f2c-a93b-5a4a6ecb65d3.jsonl`
 - `/ll:refine-issue` - 2026-06-27T05:00:18 - `1ca5c0eb-921e-46b2-9d5f-af2ff3ccc1c0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
