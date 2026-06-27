@@ -1,0 +1,30 @@
+name: assess-subloop-laundering-mitigated
+description: "Run child evaluation loop and act on result"
+initial: run_child
+states:
+  run_child:
+    loop: inner-eval
+    on_yes: classify_outcome
+    on_no: classify_outcome
+    on_error: record_crash
+  classify_outcome:
+    action_type: shell
+    action: |
+      result=$(cat "${context.run_dir}/subloop_outcome_${context.issue_id}.txt" 2>/dev/null || echo "unknown")
+      echo "$result"
+    on_yes: report_done
+    on_no: report_failed
+  record_crash:
+    action_type: prompt
+    action: "Record that the sub-loop crashed with an infrastructure error."
+    next: done
+  report_done:
+    action_type: prompt
+    action: "Write a summary of the successful evaluation outcome."
+    next: done
+  report_failed:
+    action_type: prompt
+    action: "Write a summary of the failed evaluation outcome."
+    next: done
+  done:
+    terminal: true

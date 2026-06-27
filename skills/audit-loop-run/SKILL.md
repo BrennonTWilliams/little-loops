@@ -280,7 +280,13 @@ state.on_no   # child did not reach terminal
 
 **Laundering defect**: `state.on_yes == state.on_no` (after any `${context.*}` interpolation). This means the parent loop treats child success and child failure identically — the child verdict is silently discarded.
 
-Flag each laundering defect with:
+**ENH-2005 sidecar exemption**: Before flagging, check whether the artifact-channel sidecar pattern is present. A state is exempt when **all** of the following hold:
+1. The shared next state's `action` contains `subloop_outcome_` — the child writes its real verdict to this artifact and the parent recovers it downstream.
+2. `state.on_error` is set and routes to a **distinct** state (not the shared classifier target) — ensuring an infrastructure crash is attributed separately, not collapsed into the generic failure path.
+
+When both conditions hold, do **not** flag as a laundering defect. Instead, note `[mitigated — ENH-2005 artifact-channel sidecar: verdict recovered via subloop_outcome_ artifact, on_error routes to distinct crash state]`. When `on_error` is also collapsed into the shared target, or the shared target does not read `subloop_outcome_`, flag as before — those cases are genuinely unsafe.
+
+Flag each **unmitigated** laundering defect with:
 - State name
 - Child loop name (`loop:` value)
 - The shared next state (both `on_yes` and `on_no` point to)

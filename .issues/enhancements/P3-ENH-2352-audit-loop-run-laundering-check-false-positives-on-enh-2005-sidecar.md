@@ -2,8 +2,9 @@
 id: ENH-2352
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-27T21:58:52Z'
+completed_at: '2026-06-27T23:11:17Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
 labels:
@@ -175,6 +176,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T23:07:57 - `d5657ca3-2f17-45a3-8c9d-f7b85c97181c.jsonl`
 - `/ll:confidence-check` - 2026-06-27T22:45:00Z - `c505fdec-528c-43ee-bb73-c9762312bc9c.jsonl`
 - `/ll:wire-issue` - 2026-06-27T22:27:58 - `df3795a0-4c42-418a-b848-17bf2aaaccc9.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:13:25 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`

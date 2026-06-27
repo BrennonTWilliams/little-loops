@@ -350,6 +350,60 @@ class TestAssessLoopSkill:
         assert states.get(path[-1], {}).get("terminal") is True
         # → loop completes but child verdict was lost; skill must detect this structurally
 
+    def test_fixture_subloop_laundering_mitigated_validates(self) -> None:
+        """Mitigated fixture passes FSM validation with no ERROR-severity issues."""
+        fsm, _ = load_and_validate(FIXTURES_DIR / "assess-subloop-laundering-mitigated.yaml")
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, f"FSM errors: {[str(e) for e in error_list]}"
+        # → safe sidecar pattern is structurally valid
+
+    def test_subloop_laundering_mitigated_has_distinct_on_error(self) -> None:
+        """Sidecar state routes on_error to a distinct crash state, not the shared classifier."""
+        spec = self._load_fixture("assess-subloop-laundering-mitigated.yaml")
+        states = spec.get("states", {})
+        sidecar_states = [d for d in states.values() if "loop" in d]
+        assert sidecar_states, "No sub-loop state found in mitigated fixture"
+        for s in sidecar_states:
+            shared_target = s.get("on_yes")
+            assert s.get("on_error") is not None, "on_error must be set in sidecar state"
+            assert s.get("on_error") != shared_target, (
+                "on_error must route to a distinct crash state, not the shared classifier"
+            )
+        # → infrastructure crash is attributed separately from the success/failure path
+
+    def test_subloop_laundering_mitigated_shared_target_reads_artifact(self) -> None:
+        """The shared classifier state's action reads subloop_outcome_ (artifact-channel)."""
+        spec = self._load_fixture("assess-subloop-laundering-mitigated.yaml")
+        states = spec.get("states", {})
+        sidecar_states = [d for d in states.values() if "loop" in d]
+        assert sidecar_states, "No sub-loop state found in mitigated fixture"
+        for s in sidecar_states:
+            shared_target = s.get("on_yes")
+            assert shared_target in states, f"Shared target '{shared_target}' must exist in states"
+            target_action = states[shared_target].get("action", "")
+            assert "subloop_outcome_" in target_action, (
+                f"Shared target '{shared_target}' must read subloop_outcome_ artifact"
+            )
+        # → parent recovers child verdict via artifact channel — laundering is mitigated
+
+    def test_subloop_laundering_mitigated_skill_does_not_flag(self) -> None:
+        """Step 8 prose exempts the sidecar pattern — artifact-channel check and distinct on_error both required."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        assert skill_path.exists(), f"SKILL.md not found: {skill_path}"
+        text = skill_path.read_text()
+        step8_start = text.find("## Step 8")
+        step9_start = text.find("## Step 9")
+        assert step8_start != -1, "Step 8 section not found in SKILL.md"
+        step8_text = text[step8_start:step9_start] if step9_start != -1 else text[step8_start:]
+        assert "subloop_outcome_" in step8_text, (
+            "Step 8 must reference 'subloop_outcome_' as the artifact-channel signal to check"
+        )
+        assert "on_error" in step8_text, (
+            "Step 8 must verify on_error routes to a distinct state (not the shared classifier)"
+        )
+        # → skill suppresses the ENH-2005 sidecar false positive when both conditions hold
+
     # ------------------------------------------------------------------
     # Discriminator: shallow-iteration
     # ------------------------------------------------------------------
