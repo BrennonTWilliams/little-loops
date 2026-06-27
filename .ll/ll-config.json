@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/config-schema.json",
+  "install_source": "local-editable",
   "project": {
     "name": "little-loops",
     "src_dir": "scripts/",
