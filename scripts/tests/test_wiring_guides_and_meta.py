@@ -19,8 +19,8 @@ import pytest
 
 DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # (doc_path, expected_string, issue_id)
-    ("README.md", "36 skills", "FEAT-1287"),
-    ("CONTRIBUTING.md", "36 skill definitions", "FEAT-1287"),
+    ("README.md", "39 skills", "FEAT-1287"),
+    ("CONTRIBUTING.md", "39 skill definitions", "FEAT-1287"),
     ("CONTRIBUTING.md", "explore-api/", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "## Learning Test Registry", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "LearnTestRecord", "FEAT-1287"),
@@ -147,7 +147,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/ARCHITECTURE.md", "epics/", "FEAT-1407"),
     # REMOVED (stale/false-positive): ("README.md", "verify-issue-loop/", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("CONTRIBUTING.md", "63 composable skills", "FEAT-1447"),
-    ("CONTRIBUTING.md", "# 36 skill definitions", "FEAT-1447"),
+    ("CONTRIBUTING.md", "# 39 skill definitions", "FEAT-1447"),
     ("docs/guides/LOOPS_GUIDE.md", "distill-traces", "FEAT-2078"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "/ll:verify-issue-loop", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "verify-issue-loop", "FEAT-1447"),
@@ -197,8 +197,8 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "design token", "FEAT-1758"),
     # REMOVED (stale/false-positive): ("README.md", "design token", "FEAT-1758"),
     ("README.md", "CLI.md", "README-STRUCTURE"),
-    ("README.md", "Run asynchronous agents until done", "README-STRUCTURE"),
-    ("README.md", "Smart tools create smart processes.", "README-STRUCTURE"),
+    ("README.md", "Run agents until done", "README-STRUCTURE"),
+    ("README.md", "Smart tools create smart processes", "README-STRUCTURE"),
     ("README.md", "Harness-driven development", "README-STRUCTURE"),
     (
         "docs/ARCHITECTURE.md",
