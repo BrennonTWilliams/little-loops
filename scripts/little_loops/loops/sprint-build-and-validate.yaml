@@ -1,5 +1,5 @@
 name: sprint-build-and-validate
-category: meta
+category: issue-management
 input_key: sprint_name
 required_inputs: ["sprint_name"]
 description: |
