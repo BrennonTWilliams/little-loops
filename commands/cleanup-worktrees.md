@@ -1,8 +1,8 @@
 ---
-description: Clean orphaned git worktrees from interrupted ll-parallel runs
+description: Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs
 argument-hint: "[mode]"
 allowed-tools:
-  - Bash(git:*, find:*, rm:*)
+  - Bash(ll-parallel:*)
 arguments:
   - name: mode
     description: Execution mode (run|dry-run)
@@ -11,185 +11,34 @@ arguments:
 
 # Cleanup Worktrees
 
-You are tasked with cleaning up orphaned git worktrees that may remain after interrupted or failed ll-parallel runs.
+You are tasked with cleaning up orphaned git worktrees that may remain after interrupted or failed ll-parallel or ll-loop runs.
 
-## Configuration
-
-This command uses project configuration from `.ll/ll-config.json`:
-- **Worktree base**: `{{config.parallel.worktree_base}}` (default: `.worktrees`)
+This command delegates to `ll-parallel --cleanup-orphans`, which uses the canonical Python orphan-detection logic (`_is_ll_worktree` / `_cleanup_orphaned_worktrees`). It skips worktrees owned by live processes and deletes both the worktree directory and its associated branch (for both `parallel/*` and loop-style `YYYYMMDD-HHMMSS-*` branches).
 
 ## Process
 
 ### 1. Parse Mode
 
-```bash
+```
 MODE="${mode:-run}"
-WORKTREE_BASE="{{config.parallel.worktree_base}}"
-
-echo "========================================"
-echo "WORKTREE CLEANUP"
-echo "========================================"
-echo ""
-echo "Mode: $MODE"
-echo "Worktree base: $WORKTREE_BASE"
-echo ""
 ```
 
-### 2. Check for Worktrees
-
-First, check if the worktree base directory exists:
-
-```bash
-if [ ! -d "$WORKTREE_BASE" ]; then
-    echo "No worktree directory found at $WORKTREE_BASE"
-    echo "Nothing to clean."
-    exit 0
-fi
-```
-
-### 3. List ll-parallel Worktrees
-
-Find all worktrees matching the ll-parallel pattern:
-
-```bash
-# Get list of worker worktrees
-WORKTREES=$(find "$WORKTREE_BASE" -maxdepth 1 -type d \( -name "worker-*" -o -name "[0-9]*" \) 2>/dev/null || true)
-
-if [ -z "$WORKTREES" ]; then
-    echo "No ll-parallel worktrees found in $WORKTREE_BASE"
-    echo "Nothing to clean."
-    exit 0
-fi
-
-# Count worktrees
-COUNT=$(echo "$WORKTREES" | wc -l | tr -d ' ')
-echo "Found $COUNT ll-parallel worktree(s):"
-echo ""
-echo "$WORKTREES" | while read -r w; do
-    if [ -n "$w" ]; then
-        echo "  - $(basename "$w")"
-    fi
-done
-echo ""
-```
-
-### 4. Execute Cleanup (or Dry Run)
+### 2. Execute
 
 #### Mode: dry-run
 
-If dry-run mode, just show what would be cleaned:
+Preview what would be cleaned without making changes:
 
 ```bash
-if [ "$MODE" = "dry-run" ]; then
-    echo "DRY RUN - No changes will be made"
-    echo ""
-    echo "Would remove the following worktrees:"
-    echo "$WORKTREES" | while read -r w; do
-        if [ -n "$w" ]; then
-            WORKTREE_NAME=$(basename "$w")
-            if echo "$WORKTREE_NAME" | grep -q "^worker-"; then
-                BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"
-            else
-                BRANCH_NAME="$WORKTREE_NAME"
-            fi
-            MARKER=$(ls "${w}/.ll-session-"* 2>/dev/null | head -1)
-            if [ -n "$MARKER" ]; then
-                PID=$(basename "$MARKER" | sed 's/^\.ll-session-//')
-                if kill -0 "$PID" 2>/dev/null; then
-                    echo "  - Worktree: $w  [SKIP - live ${PID}]"
-                    echo "    Branch: $BRANCH_NAME"
-                    continue
-                fi
-            fi
-            echo "  - Worktree: $w  [REMOVE]"
-            echo "    Branch: $BRANCH_NAME"
-        fi
-    done
-    echo ""
-    echo "Run '/ll:cleanup-worktrees' (without dry-run) to execute cleanup."
-    exit 0
-fi
+ll-parallel --cleanup-orphans --dry-run
 ```
 
 #### Mode: run
 
-Execute the actual cleanup:
+Remove orphaned worktrees (skips any worktree whose session-marker PID is still alive):
 
 ```bash
-if [ "$MODE" = "run" ]; then
-    echo "Cleaning up worktrees..."
-    echo ""
-
-    echo "$WORKTREES" | while read -r w; do
-        if [ -n "$w" ] && [ -d "$w" ]; then
-            WORKTREE_NAME=$(basename "$w")
-            if echo "$WORKTREE_NAME" | grep -q "^worker-"; then
-                BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"
-            else
-                BRANCH_NAME="$WORKTREE_NAME"
-            fi
-
-            # Liveness check: skip worktrees owned by a running process
-            MARKER=$(ls "${w}/.ll-session-"* 2>/dev/null | head -1)
-            if [ -n "$MARKER" ]; then
-                PID=$(basename "$MARKER" | sed 's/^\.ll-session-//')
-                if kill -0 "$PID" 2>/dev/null; then
-                    echo "Skipping ${WORKTREE_NAME}: worker process ${PID} is alive"
-                    echo ""
-                    continue
-                fi
-            fi
-
-            echo "Removing: $WORKTREE_NAME"
-
-            # Try git worktree remove first
-            if git worktree remove --force "$w" 2>/dev/null; then
-                echo "  [OK] Worktree removed"
-            else
-                # Fallback: force delete directory
-                rm -rf "$w" 2>/dev/null || true
-                if [ ! -d "$w" ]; then
-                    echo "  [OK] Directory removed (fallback)"
-                else
-                    echo "  [FAIL] Could not remove directory"
-                fi
-            fi
-
-            # Try to delete the associated branch
-            if git branch -D "$BRANCH_NAME" 2>/dev/null; then
-                echo "  [OK] Branch deleted: $BRANCH_NAME"
-            else
-                echo "  [SKIP] Branch not found or already deleted"
-            fi
-
-            echo ""
-        fi
-    done
-
-    # Prune git worktree references
-    echo "Pruning git worktree references..."
-    git worktree prune 2>/dev/null || true
-    echo ""
-fi
-```
-
-### 5. Summary Report
-
-```bash
-echo "========================================"
-echo "CLEANUP COMPLETE"
-echo "========================================"
-echo ""
-
-# Check what's left
-REMAINING=$(find "$WORKTREE_BASE" -maxdepth 1 -type d \( -name "worker-*" -o -name "[0-9]*" \) 2>/dev/null | wc -l | tr -d ' ')
-
-if [ "$REMAINING" = "0" ]; then
-    echo "All ll-parallel worktrees have been cleaned."
-else
-    echo "Warning: $REMAINING worktree(s) could not be removed."
-    echo "These may require manual cleanup."
-fi
+ll-parallel --cleanup-orphans
 ```
 
 ---

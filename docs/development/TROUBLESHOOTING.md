@@ -126,15 +126,19 @@ git worktree prune
 **Cause**: Branch already exists, or worktree directory locked
 
 **Solution**:
-1. Clean up stale worktrees:
+1. Remove orphaned worktrees from interrupted runs (liveness-aware — skips any worktree
+   whose session-marker PID is still alive):
+   ```bash
+   ll-parallel --cleanup-orphans
+   ```
+   Use `--dry-run` to preview first: `ll-parallel --cleanup-orphans --dry-run`
+
+2. If you want to wipe **all** worktrees unconditionally (including active ones):
    ```bash
    ll-parallel --cleanup
    ```
-2. Delete orphaned branches:
-   ```bash
-   git branch -D $(git branch | grep 'parallel/')
-   ```
-3. Remove leftover directories:
+
+3. Remove leftover directories that `--cleanup-orphans` missed:
    ```bash
    rm -rf .worktrees/
    git worktree prune
@@ -196,10 +200,13 @@ git status   # now works correctly
 # List all worktrees
 git worktree list
 
-# Clean up all worktrees
+# Remove orphaned worktrees from interrupted runs (skips live-process worktrees)
+ll-parallel --cleanup-orphans
+
+# Remove ALL worktrees unconditionally (use when --cleanup-orphans leaves stragglers)
 ll-parallel --cleanup
 
-# Or manually
+# Or manually for a specific worktree
 git worktree remove .worktrees/worker-1 --force
 git worktree prune
 ```

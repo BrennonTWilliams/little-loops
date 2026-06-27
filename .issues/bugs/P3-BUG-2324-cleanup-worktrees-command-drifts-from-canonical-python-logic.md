@@ -2,9 +2,10 @@
 id: BUG-2324
 title: cleanup-worktrees command drifts from canonical _is_ll_worktree logic
 type: BUG
-status: open
+status: done
 priority: P3
 captured_at: '2026-06-26T22:26:49Z'
+completed_at: '2026-06-27T05:42:28Z'
 discovered_date: '2026-06-26'
 discovered_by: audit
 labels:
@@ -367,6 +368,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T05:32:21 - `34129952-4562-46d3-8f9c-64cd8e4081c0.jsonl`
 - `/ll:confidence-check` - 2026-06-27T12:00:00Z - `2841a396-d9ad-49fe-b2ad-231892b671df.jsonl`
 - `/ll:wire-issue` - 2026-06-27T05:10:05 - `c27a4feb-a659-4f2c-a93b-5a4a6ecb65d3.jsonl`
 - `/ll:refine-issue` - 2026-06-27T05:00:18 - `1ca5c0eb-921e-46b2-9d5f-af2ff3ccc1c0.jsonl`

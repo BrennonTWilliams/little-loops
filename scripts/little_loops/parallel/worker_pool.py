@@ -733,7 +733,9 @@ class WorkerPool:
                 )
                 return
 
-        # Only delete branches with the parallel/ prefix (legacy behavior for ll-parallel)
+        # Delete ll-managed branches (parallel/* and loop YYYYMMDD-HHMMSS-* shapes)
+        from little_loops.worktree_utils import _is_ll_branch
+
         branch_result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=worktree_path,
@@ -741,7 +743,7 @@ class WorkerPool:
             text=True,
         )
         branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
-        delete_branch = branch_name is not None and branch_name.startswith("parallel/")
+        delete_branch = branch_name is not None and _is_ll_branch(branch_name)
 
         from little_loops.worktree_utils import cleanup_worktree
 

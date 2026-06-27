@@ -511,7 +511,10 @@ Open a pull request for the current branch.
 **Flags:** `--draft` (create as draft PR)
 
 ### `/ll:cleanup-worktrees`
-Clean up stale git worktrees and branches from parallel processing.
+Clean orphaned git worktrees and branches from interrupted ll-parallel or ll-loop runs.
+Delegates to `ll-parallel --cleanup-orphans`, which uses the canonical Python orphan-detection
+logic: selects only ll-managed worktrees (`worker-*` or `YYYYMMDD-HHMMSS-*`), skips worktrees
+owned by live processes, and deletes both the directory and its branch (parallel/* and loop-style).
 
 **Arguments:**
 - `mode`: `run` (default), `dry-run`

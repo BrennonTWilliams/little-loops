@@ -168,3 +168,14 @@ def _is_ll_worktree(name: str) -> bool:
     ll-loop worktree dirs (``<YYYYMMDD>-<HHMMSS>-<safe-name>``).
     """
     return name.startswith("worker-") or re.match(r"^\d{8}-\d{6}-", name) is not None
+
+
+def _is_ll_branch(branch_name: str) -> bool:
+    """Return True if branch_name is an ll-managed branch safe to auto-delete.
+
+    Accepts ``parallel/*`` (ll-parallel) and ``YYYYMMDD-HHMMSS-<safe-name>`` (ll-loop).
+    Rejects ``main``, ``master``, ``HEAD``, detached state, and any other name.
+    """
+    if not branch_name or branch_name in ("HEAD", "main", "master"):
+        return False
+    return branch_name.startswith("parallel/") or re.match(r"^\d{8}-\d{6}-", branch_name) is not None

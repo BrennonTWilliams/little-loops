@@ -563,12 +563,12 @@ class TestOrphanedWorktreeCleanup:
 
         assert deleted_branches == [], "branch -D should not be called when rev-parse fails"
 
-    def test_skips_branch_deletion_for_non_parallel_branch(
+    def test_skips_branch_deletion_for_non_ll_branch(
         self,
         orchestrator: ParallelOrchestrator,
         temp_repo_with_config: Path,
     ) -> None:
-        """Does not delete a branch that does not start with 'parallel/' (BUG-823)."""
+        """Safe guard never deletes main/master/HEAD even when an orphaned worktree resolves to them."""
         worktree_base = temp_repo_with_config / ".worktrees"
         orphan = worktree_base / "worker-bug-003-20260101-120000"
         orphan.mkdir()
@@ -594,7 +594,42 @@ class TestOrphanedWorktreeCleanup:
         with patch("subprocess.run", return_value=rev_parse_result):
             orchestrator._cleanup_orphaned_worktrees()
 
-        assert deleted_branches == [], "branch -D should not be called for non-parallel branches"
+        assert deleted_branches == [], "branch -D must never be called for main/master/HEAD"
+
+    def test_deletes_loop_worktree_branch(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Deletes the branch for a loop-style worktree (YYYYMMDD-HHMMSS-name, BUG-2324)."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        loop_orphan = worktree_base / "20260101-120000-my-loop"
+        loop_orphan.mkdir()
+
+        deleted_branches: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            if args[:2] == ["branch", "-D"]:
+                deleted_branches.append(args[2])
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+                return result
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "20260101-120000-my-loop\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert deleted_branches == ["20260101-120000-my-loop"], (
+            "Branch deletion must fire for loop-style YYYYMMDD-HHMMSS-* branches"
+        )
 
     def test_unlock_called_before_remove(
         self,
@@ -626,6 +661,59 @@ class TestOrphanedWorktreeCleanup:
             orchestrator._cleanup_orphaned_worktrees()
 
         assert call_order.index("unlock") < call_order.index("remove")
+
+    def test_rev_parse_called_before_remove(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """rev-parse fires while the worktree path still exists (BUG-2324 timing fix)."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        stale_dir = worktree_base / "worker-bug-timing"
+        stale_dir.mkdir()
+        (stale_dir / ".ll-session-99999").write_text("99999")
+
+        call_order: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            if args[:2] == ["worktree", "remove"]:
+                # Simulate git worktree remove actually deleting the directory
+                import shutil as _shutil
+
+                if Path(args[-1]).exists():
+                    _shutil.rmtree(args[-1], ignore_errors=True)
+                call_order.append("remove")
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        worktree_existed_at_rev_parse: list[bool] = []
+
+        def mock_subprocess_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+                worktree_existed_at_rev_parse.append(Path(kwargs["cwd"]).exists())
+                call_order.append("rev-parse")
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "parallel/bug-timing\n"
+            return result
+
+        with patch("os.kill", side_effect=ProcessLookupError):
+            with patch("subprocess.run", side_effect=mock_subprocess_run):
+                orchestrator._cleanup_orphaned_worktrees()
+
+        assert "rev-parse" in call_order, "rev-parse must be called"
+        assert "remove" in call_order, "worktree remove must be called"
+        assert call_order.index("rev-parse") < call_order.index("remove"), (
+            "rev-parse must fire BEFORE worktree remove (BUG-2324)"
+        )
+        assert all(worktree_existed_at_rev_parse), (
+            "worktree path must exist when rev-parse runs"
+        )
 
     def test_prunes_ghost_worktree_refs(self) -> None:
         """Detects and prunes .git/worktrees/<name>/ entries whose on-disk path is gone."""

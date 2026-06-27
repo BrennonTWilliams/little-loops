@@ -430,8 +430,8 @@ class TestCleanupWorktree:
 # ---------------------------------------------------------------------------
 
 
-class TestWorkerPoolCleanupBackwardsCompat:
-    """Verify WorkerPool._cleanup_worktree still only deletes parallel/ branches."""
+class TestWorkerPoolCleanupBranchGuard:
+    """Verify WorkerPool._cleanup_worktree deletes ll-managed branches (parallel/ and loop-style)."""
 
     def _make_pool(self, tmp_path: Path) -> WorkerPool:
         from little_loops.config import BRConfig
@@ -485,8 +485,8 @@ class TestWorkerPoolCleanupBackwardsCompat:
 
         assert "parallel/bug-001" in branch_deletes
 
-    def test_non_parallel_branch_not_deleted(self, tmp_path: Path) -> None:
-        """_cleanup_worktree does NOT delete branches without parallel/ prefix."""
+    def test_loop_branch_is_deleted(self, tmp_path: Path) -> None:
+        """_cleanup_worktree deletes loop-style YYYYMMDD-HHMMSS-* branches (BUG-2324)."""
         pool = self._make_pool(tmp_path)
         wt = tmp_path / "wt"
         wt.mkdir()
@@ -505,7 +505,31 @@ class TestWorkerPoolCleanupBackwardsCompat:
             ):
                 pool._cleanup_worktree(wt)
 
-        assert not branch_deletes, "Non-parallel/ branches should not be deleted by WorkerPool"
+        assert "20260101-000000-my-loop" in branch_deletes, (
+            "Loop-style YYYYMMDD-HHMMSS-* branches must be deleted by WorkerPool"
+        )
+
+    def test_main_branch_not_deleted(self, tmp_path: Path) -> None:
+        """_cleanup_worktree never deletes main/master/HEAD (safe guard)."""
+        pool = self._make_pool(tmp_path)
+        wt = tmp_path / "wt"
+        wt.mkdir()
+
+        branch_deletes: list[str] = []
+
+        def _mock_git(args: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["branch", "-D"]:
+                branch_deletes.append(args[2])
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(pool._git_lock, "run", side_effect=_mock_git):
+            with patch(
+                "subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0, "main\n", ""),
+            ):
+                pool._cleanup_worktree(wt)
+
+        assert not branch_deletes, "main/master/HEAD must never be deleted by WorkerPool"
 
 
 # ---------------------------------------------------------------------------

@@ -119,6 +119,7 @@ class TestParallelArgumentParsing:
         parser.add_argument("--timeout", "-t", type=int, default=None)
         parser.add_argument("--quiet", "-q", action="store_true")
         parser.add_argument("--cleanup", "-c", action="store_true")
+        parser.add_argument("--cleanup-orphans", action="store_true")
         parser.add_argument("--stream-output", action="store_true")
         parser.add_argument("--show-model", action="store_true")
         parser.add_argument("--config", type=Path, default=None)
@@ -136,6 +137,7 @@ class TestParallelArgumentParsing:
         assert args.timeout is None
         assert args.quiet is False
         assert args.cleanup is False
+        assert args.cleanup_orphans is False
         assert args.stream_output is False
         assert args.show_model is False
         assert args.config is None
@@ -512,6 +514,53 @@ class TestMainParallelIntegration:
 
             assert result == 0
             mock_pool.cleanup_all_worktrees.assert_called_once()
+
+    def test_main_parallel_cleanup_orphans_mode(self, temp_project: Path) -> None:
+        """main_parallel --cleanup-orphans calls _cleanup_orphaned_worktrees and exits."""
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch_cls.return_value = mock_orch
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-parallel",
+                    "--cleanup-orphans",
+                    "--config",
+                    str(temp_project),
+                ],
+            ):
+                from little_loops.cli import main_parallel
+
+                result = main_parallel()
+
+            assert result == 0
+            mock_orch._cleanup_orphaned_worktrees.assert_called_once_with(dry_run=False)
+
+    def test_main_parallel_cleanup_orphans_dry_run_mode(self, temp_project: Path) -> None:
+        """main_parallel --cleanup-orphans --dry-run passes dry_run=True."""
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch_cls.return_value = mock_orch
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-parallel",
+                    "--cleanup-orphans",
+                    "--dry-run",
+                    "--config",
+                    str(temp_project),
+                ],
+            ):
+                from little_loops.cli import main_parallel
+
+                result = main_parallel()
+
+            assert result == 0
+            mock_orch._cleanup_orphaned_worktrees.assert_called_once_with(dry_run=True)
 
     def test_main_parallel_creates_orchestrator_with_correct_args(self, temp_project: Path) -> None:
         """main_parallel creates ParallelOrchestrator with parsed arguments."""

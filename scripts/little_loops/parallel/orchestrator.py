@@ -35,7 +35,7 @@ from little_loops.parallel.types import (
 )
 from little_loops.parallel.worker_pool import WorkerPool
 from little_loops.session_log import append_session_log_entry
-from little_loops.worktree_utils import _is_ll_worktree
+from little_loops.worktree_utils import _is_ll_branch, _is_ll_worktree
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -234,12 +234,15 @@ class ParallelOrchestrator:
         gitignore_path.write_text(existing_content + addition)
         self.logger.info(f"Added {len(missing_entries)} entries to .gitignore")
 
-    def _cleanup_orphaned_worktrees(self) -> None:
+    def _cleanup_orphaned_worktrees(self, dry_run: bool = False) -> None:
         """Clean up worktrees from previous interrupted runs.
 
         Scans the worktree base directory and removes any worktrees that are
         not from the current session. This handles cases where a previous run
         was interrupted (Ctrl+C) and worktrees were not cleaned up.
+
+        Args:
+            dry_run: If True, log what would be removed but make no changes.
         """
         worktree_base = self.repo_path / self.parallel_config.worktree_base
         if not worktree_base.exists():
@@ -272,6 +275,24 @@ class ParallelOrchestrator:
 
             for worktree_path in orphaned:
                 try:
+                    # Resolve branch name BEFORE removing the worktree (BUG-2324)
+                    branch_result = subprocess.run(
+                        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                        cwd=worktree_path,
+                        capture_output=True,
+                        text=True,
+                    )
+                    branch_name = (
+                        branch_result.stdout.strip() if branch_result.returncode == 0 else None
+                    )
+
+                    if dry_run:
+                        self.logger.info(
+                            f"[dry-run] Would remove worktree {worktree_path.name}"
+                            + (f" and branch {branch_name}" if branch_name and _is_ll_branch(branch_name) else "")
+                        )
+                        continue
+
                     self._git_lock.run(
                         ["worktree", "unlock", str(worktree_path)],
                         cwd=self.repo_path,
@@ -288,17 +309,9 @@ class ParallelOrchestrator:
                     if worktree_path.exists():
                         shutil.rmtree(worktree_path, ignore_errors=True)
 
-                    # Try to delete the associated branch using the actual branch name
-                    branch_result = subprocess.run(
-                        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                        cwd=worktree_path,
-                        capture_output=True,
-                        text=True,
-                    )
-                    branch_name = (
-                        branch_result.stdout.strip() if branch_result.returncode == 0 else None
-                    )
-                    if branch_name and branch_name.startswith("parallel/"):
+                    # Delete branch only for ll-managed shapes (BUG-2324: safe guard replaces
+                    # the old parallel/-only guard to also cover loop worktree branches)
+                    if branch_name and _is_ll_branch(branch_name):
                         self._git_lock.run(
                             ["branch", "-D", branch_name],
                             cwd=self.repo_path,
@@ -307,12 +320,13 @@ class ParallelOrchestrator:
                 except Exception as e:
                     self.logger.warning(f"Failed to clean up {worktree_path.name}: {e}")
 
-            # Also prune git worktree references
-            self._git_lock.run(
-                ["worktree", "prune"],
-                cwd=self.repo_path,
-                timeout=30,
-            )
+            if not dry_run:
+                # Also prune git worktree references
+                self._git_lock.run(
+                    ["worktree", "prune"],
+                    cwd=self.repo_path,
+                    timeout=30,
+                )
 
         self._prune_ghost_worktree_refs()
 

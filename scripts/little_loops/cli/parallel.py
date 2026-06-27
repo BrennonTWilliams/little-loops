@@ -52,6 +52,8 @@ Examples:
   %(prog)s --dry-run          # Preview what would be processed
   %(prog)s --priority P1,P2   # Only process P1 and P2 issues
   %(prog)s --cleanup          # Clean up worktrees and exit
+  %(prog)s --cleanup-orphans  # Clean orphaned worktrees (liveness-aware, skips live-process worktrees)
+  %(prog)s --cleanup-orphans --dry-run  # Preview orphan cleanup
   %(prog)s --prune-merged-branches  # Delete merged feature/* branches
   %(prog)s --prune-merged-branches --dry-run  # Preview what would be pruned
   %(prog)s --stream-output    # Stream Claude CLI output in real-time
@@ -88,6 +90,14 @@ Examples:
             "-c",
             action="store_true",
             help="Clean up all worktrees and exit",
+        )
+        parser.add_argument(
+            "--cleanup-orphans",
+            action="store_true",
+            help=(
+                "Remove orphaned worktrees from interrupted runs (liveness-aware: skips "
+                "worktrees owned by live processes). Use with --dry-run to preview."
+            ),
         )
         parser.add_argument(
             "--prune-merged-branches",
@@ -187,6 +197,23 @@ Examples:
             pool = WorkerPool(parallel_config, config, logger, project_root)
             pool.cleanup_all_worktrees()
             logger.success("Cleanup complete")
+            return 0
+
+        # Handle cleanup-orphans mode (liveness-aware orphan cleanup)
+        if args.cleanup_orphans:
+            from little_loops.parallel import ParallelOrchestrator
+
+            parallel_config = config.create_parallel_config(dry_run=args.dry_run)
+            orchestrator = ParallelOrchestrator(
+                parallel_config=parallel_config,
+                br_config=config,
+                repo_path=project_root,
+                verbose=args.verbose or not args.quiet,
+            )
+            if args.dry_run:
+                logger.info("[DRY RUN] No changes will be made.")
+            orchestrator._cleanup_orphaned_worktrees(dry_run=args.dry_run)
+            logger.success("Orphan cleanup complete")
             return 0
 
         # Build priority filter (validates against VALID_PRIORITIES)

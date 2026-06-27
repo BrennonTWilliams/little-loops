@@ -676,7 +676,7 @@ class TestWorkerPoolSetupWorktree:
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             captured_commands.append(cmd)
             if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
-                # Return main so it skips branch deletion (won't delete main branch)
+                # Return main: the safe guard rejects main/master/HEAD, so no branch deletion
                 return subprocess.CompletedProcess(cmd, 0, stdout="main\n", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 

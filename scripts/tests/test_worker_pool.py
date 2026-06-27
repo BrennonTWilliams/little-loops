@@ -778,6 +778,62 @@ class TestWorkerPoolWorktreeManagement:
         branch_cmds = [c for c in captured_commands if "branch" in c and "-D" in c]
         assert len(branch_cmds) >= 1
 
+    def test_cleanup_worktree_deletes_loop_branch(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_cleanup_worktree() deletes loop-style YYYYMMDD-HHMMSS-* branches (BUG-2324)."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "20260101-120000-my-loop"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        captured_commands: list[list[str]] = []
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            captured_commands.append(args)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            with patch("subprocess.run") as mock_subprocess:
+                mock_subprocess.return_value = subprocess.CompletedProcess(
+                    [], 0, "20260101-120000-my-loop\n", ""
+                )
+                with patch("shutil.rmtree"):
+                    worker_pool._cleanup_worktree(worktree_path)
+
+        branch_cmds = [c for c in captured_commands if "branch" in c and "-D" in c]
+        assert len(branch_cmds) >= 1, "branch -D must be called for loop-style branches"
+
+    def test_cleanup_worktree_never_deletes_main_branch(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_cleanup_worktree() never deletes main/master/HEAD (safe guard)."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-main"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        captured_commands: list[list[str]] = []
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            captured_commands.append(args)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            with patch("subprocess.run") as mock_subprocess:
+                mock_subprocess.return_value = subprocess.CompletedProcess(
+                    [], 0, "main\n", ""
+                )
+                with patch("shutil.rmtree"):
+                    worker_pool._cleanup_worktree(worktree_path)
+
+        branch_cmds = [c for c in captured_commands if "branch" in c and "-D" in c]
+        assert not branch_cmds, "branch -D must never be called for main/master/HEAD"
+
     def test_cleanup_worktree_handles_nonexistent(
         self,
         worker_pool: WorkerPool,
