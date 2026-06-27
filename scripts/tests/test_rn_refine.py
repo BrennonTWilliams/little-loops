@@ -45,12 +45,16 @@ def _load_rn_refine():
 class TestLoadsClean:
     def test_rn_refine_validates_without_errors(self) -> None:
         _, errors = load_and_validate(RN_REFINE)
-        hard = [e for e in errors if str(getattr(e.severity, "value", e.severity)).lower() == "error"]
+        hard = [
+            e for e in errors if str(getattr(e.severity, "value", e.severity)).lower() == "error"
+        ]
         assert hard == [], f"rn-refine has validation errors: {hard}"
 
     def test_node_oracle_validates_without_errors(self) -> None:
         _, errors = load_and_validate(NODE_ORACLE)
-        hard = [e for e in errors if str(getattr(e.severity, "value", e.severity)).lower() == "error"]
+        hard = [
+            e for e in errors if str(getattr(e.severity, "value", e.severity)).lower() == "error"
+        ]
         assert hard == [], f"plan-node-refine has validation errors: {hard}"
 
 
@@ -78,7 +82,14 @@ class TestRecursiveStructure:
     def test_synthesis_chain_present(self) -> None:
         """Bottom-up synthesis states exist and chain into assembly."""
         fsm = _load_rn_refine()
-        for s in ("build_synth", "synth_pop", "integrate_node", "assemble", "final_score", "finalize"):
+        for s in (
+            "build_synth",
+            "synth_pop",
+            "integrate_node",
+            "assemble",
+            "final_score",
+            "finalize",
+        ):
             assert s in fsm.states, f"missing synthesis state: {s}"
         assert fsm.states["synth_pop"].on_no == "integrate_node"
         assert fsm.states["synth_pop"].on_yes == "assemble"
@@ -268,7 +279,12 @@ class TestGateDecomposeCaps:
         (rd / "node_counter.txt").write_text(counter)
         rendered = _render(
             self._gate_action(),
-            context={"run_dir": str(rd), "depth": depth, "max_depth": max_depth, "max_nodes": max_nodes},
+            context={
+                "run_dir": str(rd),
+                "depth": depth,
+                "max_depth": max_depth,
+                "max_nodes": max_nodes,
+            },
         )
         return _bash(rendered, tmp_path).stdout
 

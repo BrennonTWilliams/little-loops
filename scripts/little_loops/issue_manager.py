@@ -854,19 +854,13 @@ def process_issue_inplace(
     if config.learning_tests.enabled is True and not dry_run:
         targets = resolve_learning_targets(info)
         if targets:
-            logger.info(
-                f"Learning gate: checking {len(targets)} target(s): {', '.join(targets)}"
-            )
+            logger.info(f"Learning gate: checking {len(targets)} target(s): {', '.join(targets)}")
             gate_cwd = config.repo_path or Path.cwd()
-            verdict = run_learning_gate_for_issue(
-                info.path, skip=skip_learning_gate, cwd=gate_cwd
-            )
+            verdict = run_learning_gate_for_issue(info.path, skip=skip_learning_gate, cwd=gate_cwd)
             if verdict == "skipped":
                 logger.info(f"Learning gate skipped for {info.issue_id} (--skip-learning-gate)")
             elif verdict == "blocked":
-                logger.warning(
-                    f"Learning gate blocked {info.issue_id}: unproven external-API deps"
-                )
+                logger.warning(f"Learning gate blocked {info.issue_id}: unproven external-API deps")
                 return IssueProcessingResult(
                     success=False,
                     duration=time.time() - issue_start_time,

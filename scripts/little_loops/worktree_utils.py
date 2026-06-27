@@ -178,4 +178,6 @@ def _is_ll_branch(branch_name: str) -> bool:
     """
     if not branch_name or branch_name in ("HEAD", "main", "master"):
         return False
-    return branch_name.startswith("parallel/") or re.match(r"^\d{8}-\d{6}-", branch_name) is not None
+    return (
+        branch_name.startswith("parallel/") or re.match(r"^\d{8}-\d{6}-", branch_name) is not None
+    )

@@ -116,7 +116,15 @@ class TestInitHeadlessEndToEnd:
 
         # Apply the plan — _run_apply now delegates host dispatch via --hosts
         apply_code = _run_init(
-            ["--hosts", "claude-code", "--root", str(apply_root), "apply", "--config", str(plan_file)]
+            [
+                "--hosts",
+                "claude-code",
+                "--root",
+                str(apply_root),
+                "apply",
+                "--config",
+                str(plan_file),
+            ]
         )
         assert apply_code == 0
 
@@ -124,5 +132,7 @@ class TestInitHeadlessEndToEnd:
         for root in (yes_root, apply_root):
             assert (root / ".ll" / "ll-config.json").exists(), f"config missing in {root}"
             assert (root / ".claude" / "CLAUDE.md").exists(), f"CLAUDE.md missing in {root}"
-            assert (root / ".claude" / "settings.local.json").exists(), f"settings missing in {root}"
+            assert (root / ".claude" / "settings.local.json").exists(), (
+                f"settings missing in {root}"
+            )
             assert (root / ".issues" / "bugs").is_dir(), f"bugs dir missing in {root}"

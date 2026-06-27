@@ -36,11 +36,11 @@ class EpicDrift:
 
     epic_id: str
     epic_title: str
-    missing_from_body: list[str] = field(default_factory=list)    # (a)
+    missing_from_body: list[str] = field(default_factory=list)  # (a)
     body_without_parent: list[str] = field(default_factory=list)  # (b)
     relates_to_is_child: list[str] = field(default_factory=list)  # (c)
-    sub_epic_advisory: list[str] = field(default_factory=list)    # advisory
-    type_casing_wrong: bool = False   # schema: type: must be 'EPIC'
+    sub_epic_advisory: list[str] = field(default_factory=list)  # advisory
+    type_casing_wrong: bool = False  # schema: type: must be 'EPIC'
     has_children_frontmatter: bool = False  # schema: children: key forbidden
 
     @property
@@ -127,9 +127,7 @@ def compute_drift(
 
     # Advisory: EPICs that carry parent: epic_id (should use relates_to + prose)
     sub_epic_advisory: list[str] = sorted(
-        i.issue_id
-        for i in all_issues
-        if i.parent == epic_id and i.issue_id.startswith("EPIC-")
+        i.issue_id for i in all_issues if i.parent == epic_id and i.issue_id.startswith("EPIC-")
     )
 
     # Parse file content for body and frontmatter checks
@@ -276,9 +274,7 @@ def cmd_epic_consistency(config: BRConfig, args: argparse.Namespace) -> int:
     all_issues = find_issues(config, status_filter=_ALL_STATUSES)
 
     if check_all:
-        epic_ids = sorted(
-            i.issue_id for i in all_issues if i.issue_id.startswith("EPIC-")
-        )
+        epic_ids = sorted(i.issue_id for i in all_issues if i.issue_id.startswith("EPIC-"))
     else:
         epic_ids = [epic_id.upper()]  # type: ignore[union-attr]
 

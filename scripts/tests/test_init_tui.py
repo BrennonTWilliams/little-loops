@@ -474,9 +474,7 @@ class TestExistingConfig:
         assert "$schema" in config  # real config, not the empty placeholder
 
     @patch("little_loops.init.tui.questionary")
-    def test_tui_reinit_preserves_unmodeled_keys(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_tui_reinit_preserves_unmodeled_keys(self, mock_q: MagicMock, tmp_path: Path) -> None:
         """A full TUI re-init round-trip preserves keys the wizard does not model (BUG-2310)."""
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
@@ -498,9 +496,7 @@ class TestExistingConfig:
         assert config["my_custom_section"] == {"key": "value"}
 
     @patch("little_loops.init.tui.questionary")
-    def test_tui_reinit_force_drops_unmodeled_keys(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_tui_reinit_force_drops_unmodeled_keys(self, mock_q: MagicMock, tmp_path: Path) -> None:
         """A forced TUI re-init resets to template defaults, dropping unmodeled keys (BUG-2310)."""
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()

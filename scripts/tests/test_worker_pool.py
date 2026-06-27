@@ -825,9 +825,7 @@ class TestWorkerPoolWorktreeManagement:
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
             with patch("subprocess.run") as mock_subprocess:
-                mock_subprocess.return_value = subprocess.CompletedProcess(
-                    [], 0, "main\n", ""
-                )
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "main\n", "")
                 with patch("shutil.rmtree"):
                     worker_pool._cleanup_worktree(worktree_path)
 

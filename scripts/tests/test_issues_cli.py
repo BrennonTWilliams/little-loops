@@ -718,7 +718,9 @@ class TestIssuesCLIList:
         )
 
         with patch.object(
-            sys, "argv", ["ll-issues", "list", "--json", "--include-summary", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "list", "--json", "--include-summary", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -758,7 +760,6 @@ class TestIssuesCLIList:
         assert len(data) > 0
         for item in data:
             assert "summary" not in item
-
 
     def test_list_filter_by_milestone_match(
         self,

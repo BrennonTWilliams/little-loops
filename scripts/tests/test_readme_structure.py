@@ -46,8 +46,7 @@ class TestReadmePillarStructure:
     def test_pillar_durability_present(self) -> None:
         content = README.read_text()
         assert "Run agents until done" in content, (
-            "README.md must contain the durability pillar heading "
-            '("Run agents until done").'
+            'README.md must contain the durability pillar heading ("Run agents until done").'
         )
 
     def test_pillar_consistency_present(self) -> None:

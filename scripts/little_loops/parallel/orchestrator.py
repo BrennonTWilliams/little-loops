@@ -289,7 +289,11 @@ class ParallelOrchestrator:
                     if dry_run:
                         self.logger.info(
                             f"[dry-run] Would remove worktree {worktree_path.name}"
-                            + (f" and branch {branch_name}" if branch_name and _is_ll_branch(branch_name) else "")
+                            + (
+                                f" and branch {branch_name}"
+                                if branch_name and _is_ll_branch(branch_name)
+                                else ""
+                            )
                         )
                         continue
 

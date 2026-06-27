@@ -711,9 +711,7 @@ class TestOrphanedWorktreeCleanup:
         assert call_order.index("rev-parse") < call_order.index("remove"), (
             "rev-parse must fire BEFORE worktree remove (BUG-2324)"
         )
-        assert all(worktree_existed_at_rev_parse), (
-            "worktree path must exist when rev-parse runs"
-        )
+        assert all(worktree_existed_at_rev_parse), "worktree path must exist when rev-parse runs"
 
     def test_prunes_ghost_worktree_refs(self) -> None:
         """Detects and prunes .git/worktrees/<name>/ entries whose on-disk path is gone."""

@@ -168,7 +168,9 @@ def _run_yes(
     if existing_config and not dry_run:
         # --force resets to template defaults; a plain re-init merges (BUG-2310).
         print(
-            "Overwriting existing configuration." if force else "Merging with existing configuration."
+            "Overwriting existing configuration."
+            if force
+            else "Merging with existing configuration."
         )
 
     # Detect installation; notify-and-act (only with --upgrade) or warn-only.
@@ -347,7 +349,6 @@ def _run_yes(
         print(f"\n✓ little-loops initialized in {project_root}")
         print(f"  Config: {config_path}")
     return 0
-
 
 
 def _run_plan(

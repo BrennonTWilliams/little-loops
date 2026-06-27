@@ -93,9 +93,7 @@ class TestLintProfile:
 
     def test_complete_dark_passes(self, tmp_path: Path) -> None:
         root = _profiles_root(tmp_path)
-        profile = _make_profile(
-            root, "ok", {"light": _LIGHT_SURFACE_ONLY, "dark": _DARK_COMPLETE}
-        )
+        profile = _make_profile(root, "ok", {"light": _LIGHT_SURFACE_ONLY, "dark": _DARK_COMPLETE})
         result = lint_profile(profile)
         assert not result.has_violations
 
@@ -169,9 +167,7 @@ class TestFindProfilesDir:
         assert _find_profiles_dir(tmp_path) == target
 
     def test_finds_source_repo_layout(self, tmp_path: Path) -> None:
-        target = (
-            tmp_path / "scripts" / "little_loops" / "templates" / "design-tokens" / "profiles"
-        )
+        target = tmp_path / "scripts" / "little_loops" / "templates" / "design-tokens" / "profiles"
         target.mkdir(parents=True)
         assert _find_profiles_dir(tmp_path) == target
 
@@ -213,9 +209,7 @@ class TestMain:
         ):
             assert main_verify_design_tokens() == 1
 
-    def test_json_output_is_parseable(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_json_output_is_parseable(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         root = _profiles_root(tmp_path)
         _make_profile(root, "bad", {"dark": _DARK_HALF_FLIPPED})
         with patch(
@@ -229,9 +223,7 @@ class TestMain:
         assert data["violations"][0]["profile"] == "bad"
         assert data["violations"][0]["missing_groups"] == ["action", "border"]
 
-    def test_json_output_clean_passes(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_json_output_clean_passes(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         root = _profiles_root(tmp_path)
         _make_profile(root, "ok", {"dark": _DARK_COMPLETE})
         with patch(

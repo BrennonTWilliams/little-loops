@@ -49,15 +49,21 @@ def _loop(**kwargs: Any) -> Any:
 
 
 class TestLoopRunEndToEnd:
-    def test_success_path_reaches_done(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_success_path_reaches_done(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         """Two passing shell states route forward to the terminal ``done`` state."""
         monkeypatch.chdir(tmp_path)
         fsm = _loop(
             name="happy-path",
             initial="setup",
             states={
-                "setup": _state(action="echo setup", action_type="shell", on_yes="verify", on_no="failed"),
-                "verify": _state(action="echo verify", action_type="shell", on_yes="done", on_no="failed"),
+                "setup": _state(
+                    action="echo setup", action_type="shell", on_yes="verify", on_no="failed"
+                ),
+                "verify": _state(
+                    action="echo verify", action_type="shell", on_yes="done", on_no="failed"
+                ),
                 "failed": _state(terminal=True),
                 "done": _state(terminal=True),
             },
@@ -84,7 +90,9 @@ class TestLoopRunEndToEnd:
             name="failure-path",
             initial="check",
             states={
-                "check": _state(action="exit 1", action_type="shell", on_yes="done", on_no="failed"),
+                "check": _state(
+                    action="exit 1", action_type="shell", on_yes="done", on_no="failed"
+                ),
                 "failed": _state(terminal=True),
                 "done": _state(terminal=True),
             },
@@ -116,7 +124,10 @@ class TestLoopRunEndToEnd:
             states={
                 # `test -f` exits 1 (verdict no) when absent, 0 (verdict yes) when present.
                 "check": _state(
-                    action="test -f artifact.txt", action_type="shell", on_yes="done", on_no="create"
+                    action="test -f artifact.txt",
+                    action_type="shell",
+                    on_yes="done",
+                    on_no="create",
                 ),
                 "create": _state(action="touch artifact.txt", action_type="shell", next="check"),
                 "done": _state(terminal=True),

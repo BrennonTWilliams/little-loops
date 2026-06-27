@@ -103,9 +103,7 @@ def _make_issue_stub(
 ) -> IssueInfo:
     """Create a minimal IssueInfo for resolve_learning_targets tests."""
     issue_path = tmp_path / f"P2-{issue_id}-stub.md"
-    issue_path.write_text(
-        f"---\nid: {issue_id}\ntitle: Stub\nstatus: open\n---\n{body}"
-    )
+    issue_path.write_text(f"---\nid: {issue_id}\ntitle: Stub\nstatus: open\n---\n{body}")
     return IssueInfo(
         path=issue_path,
         issue_type="enhancements",

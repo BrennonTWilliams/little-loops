@@ -99,9 +99,7 @@ def _run_per_worktree_proof_first_gate(
         logger.info(f"[{issue.issue_id}] Learning gate: no external dependencies detected")
         return True
 
-    logger.info(
-        f"[{issue.issue_id}] Running proof-first-task gate (targets: {', '.join(targets)})"
-    )
+    logger.info(f"[{issue.issue_id}] Running proof-first-task gate (targets: {', '.join(targets)})")
     gate_result = subprocess.run(
         [
             "ll-loop",

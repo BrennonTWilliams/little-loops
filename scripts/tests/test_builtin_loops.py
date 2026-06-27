@@ -7926,10 +7926,23 @@ class TestInteractiveComponentGeneratorLoop:
     def test_pipeline_states_exist(self, data: dict) -> None:
         """Fan-out pipeline: profile -> ideate -> rank -> worklist build/smoke/record -> select -> compose -> verify."""
         required = {
-            "init", "profile_input", "ideate", "rank", "pop_next", "prep_component",
-            "build_component", "smoke_component", "record", "check_any_built",
-            "select_best", "compose", "verify_final", "vision_gate", "done",
-            "diagnose", "failed",
+            "init",
+            "profile_input",
+            "ideate",
+            "rank",
+            "pop_next",
+            "prep_component",
+            "build_component",
+            "smoke_component",
+            "record",
+            "check_any_built",
+            "select_best",
+            "compose",
+            "verify_final",
+            "vision_gate",
+            "done",
+            "diagnose",
+            "failed",
         }
         missing = required - set(data["states"].keys())
         assert not missing, f"Missing states: {missing}"

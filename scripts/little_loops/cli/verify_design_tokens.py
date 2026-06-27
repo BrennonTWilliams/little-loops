@@ -145,9 +145,7 @@ def _format_text_report(results: list[ProfileResult]) -> str:
         for r in results:
             for v in r.violations:
                 groups = ", ".join(v.missing_groups)
-                lines.append(
-                    f"  {v.profile}/themes/{v.theme}.json: missing color groups: {groups}"
-                )
+                lines.append(f"  {v.profile}/themes/{v.theme}.json: missing color groups: {groups}")
         lines.append("")
         lines.append("FAILED")
     else:

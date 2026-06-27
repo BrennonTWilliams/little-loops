@@ -3640,7 +3640,7 @@ class TestAutoManagerLearningGate:
         self._write_blocked_state(temp_project_dir)
 
         fail_ready = MagicMock(returncode=1, stdout="", stderr="")
-        gate_proc = MagicMock(returncode=0, stdout="", stderr="")
+        MagicMock(returncode=0, stdout="", stderr="")
 
         with (
             patch("little_loops.issue_manager.run_claude_command", return_value=fail_ready),
@@ -3681,9 +3681,7 @@ class TestAutoManagerLearningGate:
             patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
             patch("little_loops.issue_manager.check_git_status", return_value=False),
         ):
-            process_issue_inplace(
-                issue, lt_enabled_config, MagicMock(), skip_learning_gate=True
-            )
+            process_issue_inplace(issue, lt_enabled_config, MagicMock(), skip_learning_gate=True)
 
         # Gate was called with skip=True
         mock_gate.assert_called_once()
@@ -3705,12 +3703,8 @@ class TestAutoManagerLearningGate:
 
         with (
             patch("little_loops.issue_manager.run_claude_command", return_value=fail_ready),
-            patch(
-                "little_loops.issue_manager.run_learning_gate_for_issue"
-            ) as mock_gate,
-            patch(
-                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
-            ),
+            patch("little_loops.issue_manager.run_learning_gate_for_issue") as mock_gate,
+            patch("little_loops.issue_manager.run_with_continuation", return_value=impl_result),
             patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
             patch("little_loops.issue_manager.check_git_status", return_value=False),
         ):
