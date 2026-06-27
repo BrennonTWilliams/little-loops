@@ -2308,3 +2308,14 @@
     flag (no --strict precedent in CLI, departs from ll-verify-* convention, dual-strictness
     confusion)
   issue: FEAT-2332
+- id: ARCHITECTURE-069
+  type: decision
+  timestamp: '2026-06-27T02:50:45Z'
+  category: architecture
+  labels: []
+  rationale: ll-parallel/ll-sprint have no epic-awareness in branching; propose opt-in
+    per-EPIC integration branch so EPIC children fork from/merge into a shared epic
+    branch and land on main atomically.
+  rule: 'Captured: Per-EPIC integration branch strategy'
+  scope: issue
+  issue: FEAT-2339
