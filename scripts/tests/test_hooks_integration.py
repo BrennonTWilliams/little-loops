@@ -2499,8 +2499,13 @@ class TestScratchPadRedirect:
         finally:
             os.chdir(original_dir)
 
-    def test_read_denied_over_threshold(self, hook_script: Path, tmp_path: Path):
-        """Read of a large filtered-extension file is denied with actionable hint."""
+    def test_read_over_threshold_allowed(self, hook_script: Path, tmp_path: Path):
+        """Read is never intercepted, even for a large filtered-extension file (BUG-2357).
+
+        Denying a Read leaves the Edit/Write "file has been read" precondition
+        unsatisfied, edit-locking the file for the rest of the session. The hook
+        must allow all Reads; only Bash output (which is uncapped) is redirected.
+        """
         import os
 
         original_dir = os.getcwd()
@@ -2520,11 +2525,8 @@ class TestScratchPadRedirect:
             assert result.returncode == 0
             output = json.loads(result.stdout)
             hso = output["hookSpecificOutput"]
-            assert hso["permissionDecision"] == "deny"
-            reason = hso["permissionDecisionReason"]
-            assert "cat" in reason
-            assert ".loops/tmp/scratch/" in reason
-            assert "tail" in reason
+            assert hso["permissionDecision"] == "allow"
+            assert "updatedInput" not in hso
         finally:
             os.chdir(original_dir)
 

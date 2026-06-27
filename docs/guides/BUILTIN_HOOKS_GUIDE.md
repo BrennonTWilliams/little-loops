@@ -55,7 +55,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
 | **PreToolUse** | learning-tests gate | Warns (or blocks) on imports with no Learning Test record | warn/block | off |
 | **PreToolUse** | install-nudge gate | Nudges `/ll:explore-api` when a package-install Bash command is detected | — | off |
-| **PreToolUse** | scratch-pad-redirect | Redirects oversized Bash/Read output to a scratch file | **yes** | off |
+| **PreToolUse** | scratch-pad-redirect | Redirects oversized Bash output to a scratch file | **yes** | off |
 | **PostToolUse** | post-tool-use | Records tool & file events to `history.db` | — | opt-in |
 | **PostToolUse** | context-monitor | Estimates context usage; nudges a handoff near the limit | exit 2 | on |
 | **PostToolUse** | issue-completion-log | Appends a session log entry to issues marked `done` | — | on |
@@ -195,17 +195,20 @@ On `Write`/`Edit`, parses the file for `import`/`require` statements and checks 
 
 In `warn` mode it injects a hint and allows the write; in `block` mode it denies until a Learning Test exists.
 
-### Scratch-pad redirection (blocks oversized reads)
+### Scratch-pad redirection (redirects oversized Bash output)
 
 **Hook:** `scratch-pad-redirect.sh` (pure bash)
 
-Keeps large tool output out of the conversation. On `Bash`, it rewrites allowlisted commands to redirect output into `.loops/tmp/scratch/` and shows only the tail. On `Read`, if the file exceeds the line threshold it **denies** the read and tells you to save it to scratch instead.
+Keeps large **Bash** output out of the conversation: it rewrites allowlisted commands to redirect output into `.loops/tmp/scratch/` and shows only the tail. Bash output is uncapped, so this is where context bloat actually comes from.
+
+`Read` is **not** intercepted. Denying a `Read` would leave the `Edit`/`Write` "file has been read" precondition unsatisfied, edit-locking the file for the rest of the session (BUG-2357); and `Read` is already self-capping via `offset`/`limit` pagination, so there was nothing to gain. Use `Read` with `offset`/`limit` to page through large files.
 
 - `scratch_pad.enabled` (default **false**)
 - `scratch_pad.automation_contexts_only` (default **true**) — by default only fires inside automation sessions (`bypassPermissions`), so it never interrupts interactive work
-- `scratch_pad.threshold_lines` (default `200`), `scratch_pad.tail_lines` (default `20`)
+- `scratch_pad.tail_lines` (default `20`)
 - `scratch_pad.command_allowlist` (default `["cat", "pytest", "mypy", "ruff", "ls", "grep", "find"]`)
-- `scratch_pad.file_extension_filters` (default `[".log", ".txt", ".json", ".md", ".py", ".ts", ".tsx", ".js"]`)
+
+> `scratch_pad.threshold_lines` and `scratch_pad.file_extension_filters` are retained for config compatibility but no longer affect behavior (they only gated the removed `Read` interception).
 
 ### Install-nudge gate (warn)
 
@@ -361,9 +364,8 @@ A few quick controls:
 | `analytics.capture.file_events` | PostToolUse | `true` | Record file events (needs `analytics.enabled`) |
 | `learning_tests.enabled` | PreToolUse | `false` | Enable the import gate |
 | `learning_tests.discoverability.mode` | PreToolUse | `warn` | `off` / `warn` / `block` |
-| `scratch_pad.enabled` | PreToolUse | `false` | Redirect oversized output |
+| `scratch_pad.enabled` | PreToolUse | `false` | Redirect oversized Bash output |
 | `scratch_pad.automation_contexts_only` | PreToolUse | `true` | Only fire in automation |
-| `scratch_pad.threshold_lines` | PreToolUse | `200` | Read-size limit |
 | `context_monitor.enabled` | PostToolUse, Stop | `true` | Track context usage |
 | `context_monitor.auto_handoff_threshold` | PostToolUse | `80` | % at which to nudge handoff |
 | `issues.auto_commit` | PostToolUse | `false` | Auto-commit issue files |

@@ -1,11 +1,17 @@
 #!/bin/bash
 #
 # scratch-pad-redirect.sh
-# PreToolUse hook that redirects oversized Bash output to a scratch file
-# and denies oversized Read calls with an actionable Bash suggestion.
+# PreToolUse hook that redirects oversized Bash output to a scratch file.
 #
 # Active only when scratch_pad.enabled is true and (by default) the run is
 # in an automation context (permission_mode == "bypassPermissions").
+#
+# NOTE: This hook deliberately does NOT intercept Read. Denying a Read with a
+# PreToolUse hook leaves the Edit/Write "file has been read" precondition
+# unsatisfied, which edit-locks the file for the rest of the session (BUG-2357).
+# Read is also self-capping (offset/limit pagination), so interception bought
+# nothing for the read-then-edit path. Bash output is uncapped, so the redirect
+# below remains valuable.
 #
 
 set -euo pipefail
@@ -39,7 +45,7 @@ INPUT=$(cat)
     "__end__"
 ' 2>/dev/null)"
 
-if [[ "$TOOL_NAME" != "Bash" && "$TOOL_NAME" != "Read" ]]; then
+if [[ "$TOOL_NAME" != "Bash" ]]; then
     allow_response
 fi
 
@@ -53,7 +59,6 @@ if [ "$AUTO_ONLY" = "true" ] && [ "$PERM_MODE" != "bypassPermissions" ]; then
     allow_response
 fi
 
-THRESHOLD=$(ll_config_value "scratch_pad.threshold_lines" "200")
 TAIL_LINES=$(ll_config_value "scratch_pad.tail_lines" "20")
 
 case "$TOOL_NAME" in
@@ -86,38 +91,6 @@ case "$TOOL_NAME" in
 
         jq -nc --arg new "$NEW_CMD" --arg ctx "$CTX" \
             '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",updatedInput:{command:$new},additionalContext:$ctx}}'
-        exit 0
-        ;;
-    Read)
-        [ -n "$FILE_PATH" ] || allow_response
-        [ -f "$FILE_PATH" ] || allow_response
-
-        EXT_MATCH=0
-        while IFS= read -r ext; do
-            [ -z "$ext" ] && continue
-            if [[ "$FILE_PATH" == *"$ext" ]]; then
-                EXT_MATCH=1
-                break
-            fi
-        done < <(jq -r '.scratch_pad.file_extension_filters // [] | .[]' "$LL_CONFIG_FILE" 2>/dev/null)
-
-        if [ "$EXT_MATCH" -ne 1 ]; then
-            allow_response
-        fi
-
-        LINES=$(wc -l < "$FILE_PATH" 2>/dev/null | tr -d ' ' || echo 0)
-        LINES="${LINES:-0}"
-        if [ "$LINES" -lt "$THRESHOLD" ] 2>/dev/null; then
-            allow_response
-        fi
-
-        SAFE_NAME=$(basename "$FILE_PATH" | tr -cd '[:alnum:]._-')
-        SAFE_NAME="${SAFE_NAME:-file}"
-        SCRATCH_PATH=".loops/tmp/scratch/${SAFE_NAME}"
-        REASON="[scratch-pad] ${FILE_PATH} has ${LINES} lines (threshold ${THRESHOLD}). Use Bash instead: mkdir -p .loops/tmp/scratch && cat \"${FILE_PATH}\" > ${SCRATCH_PATH} && tail -${TAIL_LINES} ${SCRATCH_PATH}"
-
-        jq -nc --arg r "$REASON" \
-            '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
         exit 0
         ;;
 esac

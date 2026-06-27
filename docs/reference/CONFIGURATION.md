@@ -856,16 +856,16 @@ Persistent CLI defaults for `ll-loop run`. Values are backfilled when the corres
 
 ### `scratch_pad`
 
-Observation masking via scratch pad files to reduce context bloat in automation sessions. When `enabled: true`, the `scratch-pad-redirect` PreToolUse hook (`hooks/scripts/scratch-pad-redirect.sh`) rewrites large `Bash` outputs and large `Read` calls to a scratch file + `tail`, keeping the transcript small.
+Observation masking via scratch pad files to reduce context bloat in automation sessions. When `enabled: true`, the `scratch-pad-redirect` PreToolUse hook (`hooks/scripts/scratch-pad-redirect.sh`) rewrites large `Bash` outputs to a scratch file + `tail`, keeping the transcript small. `Read` is **not** intercepted — denying a `Read` edit-locks the file for the session (BUG-2357), and `Read` is already self-capping via `offset`/`limit`.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `false` | Enable scratch pad instructions for automation sessions |
-| `threshold_lines` | `200` | Line count threshold above which tool outputs are redirected to scratch files (50-1000) |
 | `automation_contexts_only` | `true` | Only enforce redirection in automation sessions (`ll-auto`, `ll-parallel`, `ll-sprint`); skip in interactive sessions |
 | `tail_lines` | `20` | Number of lines to surface via `tail` when redirecting large outputs to a scratch file (5-200) |
 | `command_allowlist` | `["cat", "pytest", "mypy", "ruff", "ls", "grep", "find"]` | Shell commands eligible for `Bash` redirection by the PreToolUse hook |
-| `file_extension_filters` | `[".log", ".txt", ".json", ".md", ".py", ".ts", ".tsx", ".js"]` | File extensions eligible for `Read` redirection when tooling opens a large file |
+| `threshold_lines` | `200` | Retained for config compatibility; no longer affects behavior (previously gated the removed `Read` interception) |
+| `file_extension_filters` | `[".log", ".txt", ".json", ".md", ".py", ".ts", ".tsx", ".js"]` | Retained for config compatibility; no longer affects behavior (previously gated the removed `Read` interception) |
 
 ### `refine_status`
 
