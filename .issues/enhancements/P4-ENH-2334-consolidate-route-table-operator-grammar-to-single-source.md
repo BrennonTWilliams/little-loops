@@ -114,6 +114,9 @@ regex alternation or the error list. Worth a one-line comment wherever this is d
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/policy_rules.py` — provides `_ALL_OPS`; if FEAT-2301 lands first, `grammar_spec()` is the public accessor to prefer
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/edit_routes.py` — primary CLI entry point; imports `CompoundGridParser`, `PolicyRuleApplier`, `PolicyRuleExtractor`, and several other classes from `route_table`; `cmd_edit_routes()` drives the full parse chain into `_COND_PATTERN`; does **not** need to change (no signature changes), but is the key downstream consumer [Agent 1 finding]
+
 ### Similar Patterns
 - FEAT-2301 — browser-side half of the same single-source goal; coordinate accessor promotion (`grammar_spec()`) if worked in parallel
 
@@ -161,6 +164,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-06-26 | Priority: P4
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-27T03:30:04 - `b2aa24d1-a409-4a64-a0d8-916ad884e1ac.jsonl`
 - `/ll:refine-issue` - 2026-06-27T03:22:24 - `b57d4d23-0b03-479a-8de4-c2edac01f6ff.jsonl`
 - `/ll:format-issue` - 2026-06-27T03:17:02 - `e931fe1e-b945-4c66-a5c8-cba8fbf6e4d4.jsonl`
 - `capture` - 2026-06-26 - Filed from the FEAT-2301 review: the browser re-implementing `policy_rules.py:27-34` surfaced that `route_table.py` already duplicates the operator set in-tree (`:382` `_COND_PATTERN`, `:455` error string). Split out as the Python↔Python consolidation so it isn't lost if FEAT-2301 ships without the optional `route_table` repoint.

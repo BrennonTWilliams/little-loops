@@ -3,9 +3,10 @@ id: FEAT-2332
 title: 'll-issues epic-consistency: detect and reconcile EPIC body/parent drift'
 type: FEAT
 priority: P2
-status: open
+status: done
 decision_needed: false
 captured_at: '2026-06-26T22:37:02Z'
+completed_at: '2026-06-27T03:28:32Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 relates_to:
@@ -372,10 +373,23 @@ _Added by `/ll:refine-issue` — concrete anchors from codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-06-26 | Priority: P2
+**Done** | Created: 2026-06-26 | Completed: 2026-06-27 | Priority: P2
+
+## Resolution
+
+Implemented `ll-issues epic-consistency` subcommand:
+
+- `scripts/little_loops/cli/issues/epic_consistency.py` — new module with `compute_drift`, `fix_epic`, `add_epic_consistency_parser`, `cmd_epic_consistency`
+- `scripts/little_loops/cli/issues/__init__.py` — registered import, parser (`add_epic_consistency_parser`), and dispatch (`if args.command == "epic-consistency"`)
+- `scripts/tests/test_epic_consistency.py` — 20 tests covering clean/a/b/c/prose/fix/idempotency/json/all/error cases
+- `.claude/CLAUDE.md` — added `epic-consistency` to ll-issues subcommand list
+- `docs/reference/API.md` — added `epic-consistency` to sub-commands table
+
+The subcommand uses `compute_epic_progress`'s `parent:` resolution logic, filters non-issue tokens (MR-*, CT-*, EG-*) and sub-epic EPIC-* refs, and rewrites `## Children` atomically via `file_utils.atomic_write`. Decision AC#6 implemented as Option A (standalone gate — own non-zero exit, no changes to `ll-deps validate`).
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-27T03:28:32 - `implement`
 - `/ll:ready-issue` - 2026-06-27T03:09:15 - `7d2aa461-8f7c-47a4-be7f-63378073ab98.jsonl`
 - `/ll:confidence-check` - 2026-06-26T23:45:00 - `d398aa33-03ed-4b1a-b141-77db75682f71.jsonl`
 - `/ll:decide-issue` - 2026-06-26T23:25:25 - `9638d775-3967-4517-9cef-a97510938e46.jsonl`
