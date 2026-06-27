@@ -1,7 +1,6 @@
 name: sprint-build-and-validate
 category: issue-management
 input_key: sprint_name
-required_inputs: ["sprint_name"]
 description: |
   Create a sprint from open/active issues, recursively refine all issues to
   confidence threshold (via recursive-refine), run dependency mapping and
