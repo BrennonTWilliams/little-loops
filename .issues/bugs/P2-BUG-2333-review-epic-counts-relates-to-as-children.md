@@ -3,8 +3,9 @@ id: BUG-2333
 title: review-epic counts relates_to as children, diverging from epic-progress
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-26T22:37:02Z'
+completed_at: '2026-06-27T01:24:42Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 relates_to:

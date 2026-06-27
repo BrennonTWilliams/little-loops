@@ -69,14 +69,16 @@ Parse the JSON list as `all_issues`.
 
 ### 2c. Resolve children
 
-Use the union of forward and backward links (mirrors `compute_epic_progress()` in
-`scripts/little_loops/issue_progress.py`):
+Use `parent:` backrefs only — mirrors `compute_epic_progress()` in
+`scripts/little_loops/issue_progress.py:87`:
 
 ```
-forward_ids  = set of IDs from the EPIC's `relates_to` list
-backward_ids = set of issue_ids where parent == EPIC_ID
-child_ids    = forward_ids ∪ backward_ids
-children     = [issue for issue in all_issues if issue.issue_id in child_ids]
+relates_to_ids       = set of IDs from the EPIC's `relates_to` list (recorded in Step 2a)
+child_ids            = {issue_id for issue in all_issues if issue.parent == EPIC_ID}
+children             = [issue for issue in all_issues if issue.issue_id in child_ids]
+related_not_children = [issue for issue in all_issues
+                        if issue.issue_id in relates_to_ids
+                        and issue.issue_id not in child_ids]
 ```
 
 **If no children**, report and stop:
@@ -243,6 +245,13 @@ EPIC HEALTH REPORT: EPIC_ID — EPIC title
 
 [If ready]: All children done or cancelled — recommend: `ll-issues set-status EPIC_ID done`. Use `--cascade` to close any remaining open children in the same call.
 [If not ready]: Not ready (active_count active children)
+
+### Related (not children)
+
+[For each issue in related_not_children]:
+- ISSUE_ID — ISSUE_TITLE (status: STATUS)
+
+[If empty]: No cross-references (relates_to list is empty or all entries are also children).
 
 ================================================================================
 ```

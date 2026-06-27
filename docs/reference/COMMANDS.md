@@ -416,7 +416,7 @@ Read-only health audit for an EPIC: surfaces stalled children, flags scope drift
 
 **Trigger keywords:** "review epic", "epic health", "epic audit", "epic progress", "check epic", "stalled children", "scope drift", "epic ready to close"
 
-**Output:** A structured health report with progress summary, stalled children, scope-drift findings, missing-coverage findings, and closure recommendation — followed by a numbered Recommendations section mapping each finding to a concrete runnable command. Never writes to any file.
+**Output:** A structured health report with progress summary, stalled children, scope-drift findings, missing-coverage findings, closure recommendation, and related (not children) — followed by a numbered Recommendations section mapping each finding to a concrete runnable command. Never writes to any file.
 
 ---
 
