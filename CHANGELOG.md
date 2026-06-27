@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.133.0] - 2026-06-27
+
+### Added
+
+- **`ll-issues epic-consistency` subcommand** — Detects and reconciles EPIC body/parent drift across the issue tree. (FEAT-2332)
+- **`create-epics-from-unparented` skill** — New skill to generate EPIC issues from orphaned features and enhancements. (FEAT-2338)
+- **`--include-summary` flag for `ll-issues list --json`** — Inline summary fields in JSON list output. (ENH-2345)
+- **Interactive component generator loop** — FSM-driven harness for iterative component generation. (8f96b19a, 99978ec1)
+- **Generic host-parametrized conformance harness** — Reusable conformance test framework across host targets. (9a00553c)
+
+### Fixed
+
+- **`ll-init` re-init clobbers unmodeled config keys** — Preserves unknown keys during re-initialization. (BUG-2310)
+- **`ll-init` writes null leaves to generated config** — Strips `None` leaves from `build_config` output. (BUG-2311)
+- **`ll-init --dry-run` preview diverges from actual `--yes` actions** — Routes `--dry-run` through real writers to eliminate preview drift. (BUG-2312)
+- **`ll-init apply` is lossy vs `--yes`** — Apply path now produces identical artifacts to `--yes`. (BUG-2313)
+- **`ll-parallel` silently skips learning gate for unrefined issues** — Resolves learning targets just-in-time per worktree. (BUG-2320)
+- **Autoprompt enabled-default mismatch** — Flips default to `True` to match schema, restoring the feature on standard installs. (BUG-2321)
+- **`cleanup-worktrees` drifts from canonical `_is_ll_worktree` logic** — Delegates to `ll-parallel --cleanup-orphans`. (BUG-2324)
+- **`review-epic` counts `relates_to` as children** — Now uses `parent:` backrefs only, consistent with `epic-progress`. (BUG-2333)
+
+### Changed
+
+- **Learning-test target detection is now just-in-time** — Consistent across `ll-auto`, `ll-parallel`, and `ll-sprint`. (ENH-2319)
+- **EPIC schema normalization** — Standardizes `type:` casing; migrates `children:` frontmatter to `relates_to:`. (ENH-2331)
+
 ## [1.132.0] - 2026-06-26
 
 ### Added
@@ -3518,6 +3544,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.42.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.41.0...v1.42.0
 [1.41.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.40.0...v1.41.0
 [1.40.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.39.0...v1.40.0
+[1.133.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.132.0...v1.133.0
 [1.132.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.131.0...v1.132.0
 [1.39.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.38.0...v1.39.0
 [1.38.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.37.3...v1.38.0
