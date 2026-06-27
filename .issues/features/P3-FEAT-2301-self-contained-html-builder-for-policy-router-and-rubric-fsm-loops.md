@@ -113,10 +113,33 @@ A generated, self-contained `.html` file (no external dependencies; works over
    ("re-scores, then loops" vs "finishes the loop"). Rubric mode replaces the cards
    with two threshold sliders (`threshold_high`, `threshold_medium`) feeding a
    fixed 3-row high/medium/low table.
-5. **Derived action states**: the set of `→ action` targets is auto-listed; each
-   gets a forced `terminal` vs `next:` choice (+ optional prompt body). This is
-   what makes MR-4 dead-ends unrepresentable. The `route:` map and `_:` / `_error:`
-   arms are *generated*, never hand-typed (no unmatched keys).
+5. **Action cards author the full target state** (not just routing). The routed-to
+   states (`light_repair`, `escalate`, `done`, … in `policy-refine.yaml`) are **not**
+   reserved or default names — they are author-invented identifiers that each play
+   three roles by convention: the rule token (RHS of `-> light_repair`), the `route:`
+   entry (`light_repair: light_repair`), and the FSM state name. The fragments are
+   blind to them, so a builder that emitted only routing would produce a loop
+   referencing **undefined** states and `ll-loop validate` would fail. The card
+   therefore collapses token = state-name into **one identifier per outcome** and
+   authors that state along two independent axes:
+   - **Does… (Axis A — `action_type` + body):** a state-type selector whose body
+     field changes with the type — **Prompt** (textarea, default), **Run a skill**
+     (`slash_command`; a dropdown stamped at emit time from the project's invokable
+     skill/command catalog — see "Project-enriched stamping"), or **Nothing** (a pure
+     terminal with no action, e.g. `done`). Shell / MCP-tool / raw live behind an
+     Advanced disclosure (deferrable).
+   - **Then… (Axis B — transition):** **Re-score** (`next: score`), **Go to →**
+     another outcome (dropdown of the derived outcome list), or **Finish**
+     (`terminal: true`). Axis B is a forced choice — which is what makes MR-4
+     dead-ends structurally unrepresentable.
+
+   A and B are independent (e.g. `escalate` = prompt + `next: done`; `done` = nothing
+   + finish; `light_repair` = prompt + re-score). The `route:` map and `_:` / `_error:`
+   arms are *generated* from the outcome list, never hand-typed (no unmatched keys).
+   **No-inert-output invariant:** a Prompt or Skill outcome must emit a non-empty
+   body — `ll-loop validate` checks structure, not body emptiness, so the builder
+   enforces this (the state-level analogue of the dead-predicate class this issue
+   already prevents).
 6. **Live, friendly validation** colored from the active design-token semantics,
    with plain-language inline messages rather than color alone: a shadowed rule is
    flagged in-place — "can never fire — rule #N above already matches everything
@@ -189,9 +212,21 @@ A generated, self-contained `.html` file (no external dependencies; works over
   `<action>`" fallback footer (visually distinct) and is always last in the output YAML's
   rule list
 - [ ] Rubric mode: two threshold sliders produce a fixed high/medium/low 3-row table in YAML
-- [ ] Action-state list auto-populates from rule action targets; each requires an explicit
-  `terminal` or `next:` choice (MR-4 dead-ends are structurally unrepresentable), surfaced
-  per action card as a human-worded toggle ("re-scores, then loops" vs "finishes the loop")
+- [ ] Action cards author the **full target state**, not just routing: each outcome card
+  collapses the rule token / `route:` key / state name into one identifier and exposes two
+  independent controls — **Does** (Axis A: `action_type` + body) and **Then** (Axis B: transition)
+- [ ] Axis A state-type selector renders a type-specific body field: **Prompt** → textarea;
+  **Run a skill** (`slash_command`) → dropdown populated from the emit-time-stamped project
+  skill/command catalog; **Nothing** → pure terminal (no action body). Shell / MCP-tool / raw
+  sit behind an Advanced disclosure (deferrable)
+- [ ] Axis B transition is a forced choice — **Re-score** (`next: score`), **Go to →**
+  <another outcome>, or **Finish** (`terminal: true`) — so MR-4 dead-ends are structurally
+  unrepresentable; the action-state list auto-populates from rule targets
+- [ ] No-inert-output: every Prompt/Skill outcome emits a non-empty `action:` body
+  (builder-enforced; `ll-loop validate` does not flag an empty body)
+- [ ] The `slash_command` skill/command dropdown is **stamped at emit time** from the project's
+  invokable catalog (no runtime fetch — consistent with the `file://` AC), following the
+  `cli/action.py:_load_skills()` enumeration precedent
 - [ ] Live validation surfaces plain-language inline messages (not color alone): a shadowed
   rule reads "can never fire — rule #N above already matches everything this would"; a
   zero-condition rule is flagged as matching everything; unknown action → danger; a clean
@@ -390,6 +425,28 @@ with a shared corpus).**
 repoint `route_table.py`'s hand-listed operator string and `_COND_PATTERN` derivation
 at it, closing the pre-existing Python↔Python drift. Split out as **ENH-2334** so it
 isn't lost if FEAT-2301 ships without the optional repoint.
+
+### Project-enriched stamping: skill/command catalog (decided 2026-06-26)
+
+The Axis-A **Run a skill** (`slash_command`) target needs a dropdown of invokable
+skills/commands. The `file://` / no-runtime-fetch AC forbids fetching this in the
+browser, so — exactly like the design-token CSS vars and `grammar_spec()` — the emit
+path **stamps the catalog at generation time** as a JSON `<script>` block. The Python
+emit path (`policy_builder.py`) enumerates the project's invokable catalog (precedent:
+`cli/action.py:_load_skills()`, which globs `skills/*/SKILL.md` and parses
+name/description from frontmatter; the builder additionally covers the project's
+`commands/*.md` and any installed-plugin skills, since all invoke as `/ll:<name>`) and
+injects `[{name, description}, …]` for the dropdown to render.
+
+**This is the artifact-enrichment principle, not accidental coupling.** The builder
+already stamps the project's *design tokens*; stamping its *skill catalog* and *grammar*
+is the same move. The output is deliberately **not** a portable-generic template — it is
+a project-aware authoring surface generated on demand, and the project context (tokens,
+grammar, skills) is precisely what makes it useful. Two intended consequences, both
+embraced: the dropdown is a snapshot frozen at emit time (regenerate to pick up newly
+added skills), and a generated loop may reference skills that exist in this project. Note
+"self-contained" here means *no runtime fetch / works over `file://`* — a runtime
+property — not cross-project portability.
 
 ### UI presentation: action-grouped cards (decided 2026-06-26)
 
@@ -636,7 +693,7 @@ The original scoring across `ll-loop` subcommand / standalone / built-in-loop-YA
 ## Implementation Steps
 
 1. Add `render_as_css_vars_themed(light, dark)` to `design_tokens.py` (+ optional multi-profile variant); unit-test resolution and scoping.
-2. Build the one-page HTML: mode switch (Rubric / Decision Table), identity fields, dimension chips (typed), reactive decision grid with pinned catch-all + drag-reorder, derived action-state list with forced terminal/next.
+2. Build the one-page HTML: mode switch (Rubric / Decision Table), identity fields, dimension chips (typed), reactive decision grid with pinned catch-all + drag-reorder, and action cards that author the full target state — Axis A (Prompt textarea / Run-a-skill dropdown / Nothing) + Axis B (re-score / go-to-outcome / finish), with the skill dropdown stamped from the project catalog.
 3. Add a public `grammar_spec()` to `fsm/policy_rules.py` and a `_py_pattern_to_js` named-group transform; stamp the operator sets + predicate regex into the HTML as a JSON `<script>` block. Implement client-side validation that builds its operator dropdown / numeric-coercion branch from the stamped data and re-expresses the *logic* (shadow, gap, missing catch-all, unknown action), colored from token semantics. Add the conformance corpus + grammar drift-guard test.
 4. Implement the YAML serializer + live preview + Copy/Download + printed `ll-loop validate <name>` hint.
 5. Wire the embedded theme toggle (precedence: prefers-color-scheme → config active_theme → localStorage) and optional profile picker.
@@ -684,6 +741,7 @@ _Updated by `/ll:confidence-check` on 2026-06-26 (re-run; scores stable)_
 - ~~**Output artifact path not finalized**~~ — _resolved 2026-06-25_: generated on-demand at `<artifacts.default_output_dir>/policy-router-builder.html` (default CWD); `--output` override; no checked-in artifact. `config-schema.json` gets a new `"artifacts"` block.
 
 ## Session Log
+- `target-state authoring decision` - 2026-06-26 - Expanded the builder beyond routing: action cards now author the **full target state** along two independent axes — Does (`action_type` + body: Prompt textarea / Run-a-skill `slash_command` dropdown / Nothing) and Then (transition: re-score / go-to-outcome / finish). Established that routed-to state names (`light_repair`, etc.) are author-invented identifiers, NOT reserved defaults — each plays three roles (rule token, `route:` entry, state name), so the builder MUST emit the states or the loop references undefined targets. Skill catalog is stamped at emit time (no runtime fetch), same pattern as design tokens + `grammar_spec()`. Thesis (user-affirmed): these artifacts are **project-enriched, generated on-demand** — coupling to the project's tokens/skills is the source of value, not a portability defect. Added the no-inert-output (non-empty body) invariant.
 - `grammar single-source decision` - 2026-06-26 - Replaced hand-re-implementation of the JS predicate grammar with emit-time stamping from a new public `policy_rules.grammar_spec()` (operator sets + regex), a `_py_pattern_to_js` named-group transform, a drift-guard test, and a shared shadow/eval conformance corpus; flagged the pre-existing `route_table.py:455` operator duplication for consolidation. Downgraded the "JS grammar drift" outcome risk from open maintenance surface to "data half eliminated, logic half bounded".
 - `UI design decision` - 2026-06-26 - Adopted action-grouped rule cards + "Everything else →" fallback footer + friendly inline validation (plain-language shadow/zero-condition messages); rejected card-drag for action reassignment (dropdown instead). From a Cowork interactive-mockup review.
 - `boolean-dim decision` - 2026-06-26 - Closed the dead boolean/string-dimension hole: boolean chips compile to a numeric 0/100 encoding (`==true`→`>=50`, dim emitted into `rubric_dimensions`), keeping the feature live with no fragment-runtime change. Spun off ENH-2309 (validator rule flagging unscored policy dimensions).
