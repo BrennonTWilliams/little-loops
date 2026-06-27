@@ -60,14 +60,50 @@ while satisfying MR-1 (a non-LLM evaluator also present in the chain).
 
 ## Implementation Steps
 
-1. Add an `llm_structured` evaluator to `audit_conflicts` scoring confidence that all
-   reported conflicts were addressed; set a `min_confidence` (~0.7).
-2. Add `on_no` / `on_error` routing to an `audit_conflicts_retry` (or `manual_review`)
-   state instead of dead-ending or silently committing.
-3. Satisfy MR-1: pair with a non-LLM evaluator (e.g. an `exit_code` check that the audit
-   command succeeded, or a diff/file-mutation check) in the routing chain.
-4. Run `ll-loop diagnose-evaluators sprint-build-and-validate` to confirm the new evaluator
-   has healthy variance (not toothless).
+1. In `scripts/little_loops/loops/sprint-build-and-validate.yaml`, modify the `audit_conflicts`
+   state: remove `next: commit` and add an `evaluate:` block directly on the state. Use
+   `source: "${captured.conflict_result.output}"` so the judge reads the already-captured
+   audit output rather than the current action's stdout. Add `on_yes: commit`,
+   `on_no: audit_conflicts_retry`, `on_partial: audit_conflicts_retry`, `on_error: commit`.
+   The `ll_gate` fragment from `lib/common.yaml` (line 47) provides the `action_type: prompt`
+   + `evaluate: {type: llm_structured}` boilerplate; either reference the fragment or add the
+   evaluate block inline.
+
+2. Add an `audit_conflicts_retry` state (prompt action that re-runs
+   `/ll:audit-issue-conflicts --auto` after reviewing the prior output, capturing into
+   `conflict_result`, routing `next: commit`).
+
+3. MR-1 is already satisfied at the loop level — `_validate_meta_loop_evaluation()` in
+   `scripts/little_loops/fsm/validation.py` performs a loop-wide scan (not per-state) and the
+   loop already contains `exit_code` evaluators in `route_input`, `extract_sprint_issues`,
+   `route_create`, and `run_sprint`. No extra non-LLM state is needed.
+
+4. Note on `min_confidence`: per `scripts/little_loops/fsm/evaluators.py` and `schema.py`,
+   `min_confidence` (default 0.5) only changes routing when combined with
+   `uncertain_suffix: true` — without it, routing is driven solely by the `verdict` string
+   from the LLM's JSON response. Setting `min_confidence: 0.7` documents intent but does not
+   tighten routing on its own. The judge prompt wording is what controls verdict quality.
+
+5. Run `ll-loop validate sprint-build-and-validate` (MR-1/MR-4 checks) and then
+   `ll-loop diagnose-evaluators sprint-build-and-validate` to confirm the new evaluator has
+   healthy Bernoulli variance `p*(1-p) ≥ 0.05` across ≥10 runs.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Capture variable available**: `${captured.conflict_result.output}` holds the full text
+  of Claude's `/ll:audit-issue-conflicts --auto` run. The evaluator's `source:` field accepts
+  this reference because the capture is written before `_evaluate()` is called in
+  `scripts/little_loops/fsm/executor.py`.
+- **Self-referencing pattern**: `outer-loop-eval.yaml:generate_report` uses
+  `source: "${captured.improvement_report.output}"` where `improvement_report` is the same
+  state's own capture key — confirming self-reference works.
+- **Routing fallback**: `_route()` in `executor.py` falls back from `on_no` to `on_error`
+  when `on_no` is absent; always declare both explicitly.
+- **`max_steps` impact**: Adding 2 new states (`audit_conflicts` evaluate path + retry)
+  adds at most 2 extra steps per retry cycle. Current `max_steps: 16` may be tight;
+  consider incrementing to 18.
 
 ## Acceptance Criteria
 
@@ -75,11 +111,52 @@ while satisfying MR-1 (a non-LLM evaluator also present in the chain).
 - [ ] A below-threshold audit does not silently route to `commit`.
 - [ ] MR-1 is satisfied (non-LLM evaluator paired in the chain); `ll-loop validate` passes.
 
+## Impact
+
+- **Priority**: P3 — low-priority quality improvement; explicitly deferrable until BUG-2346 and BUG-2347 are resolved
+- **Effort**: Small — single YAML edit adding one `llm_structured` evaluator plus a retry/review state to `sprint-build-and-validate.yaml`
+- **Risk**: Low — isolated to the `audit_conflicts` state; existing `exit_code` routing is unchanged; `ll-loop validate` will catch MR-1 violations before the loop can run
+- **Breaking Change**: No
+
+## Scope Boundaries
+
+- **In scope**: Adding an `llm_structured` evaluator to the `audit_conflicts` state in `sprint-build-and-validate.yaml` only
+- **Out of scope**: Adding LLM evaluators to other states in the sprint loop
+- **Out of scope**: Modifying or replacing the existing `exit_code` evaluators in the loop
+- **Out of scope**: Changing the behavior of `/ll:audit-issue-conflicts` itself
+- **Out of scope**: Broader FSM refactoring beyond this single state addition
+
+## Integration Map
+
+### Files to Modify
+- `loops/sprint-build-and-validate.yaml` — add `llm_structured` evaluator and `on_no`/`on_error` routing to `audit_conflicts` state
+
+### Dependent Files (Callers/Importers)
+- N/A — loop YAML is invoked directly via `ll-loop run sprint-build-and-validate`
+
+### Similar Patterns
+- `scripts/little_loops/loops/outer-loop-eval.yaml` in `generate_report` — `slash_command` + `llm_structured` with `source: "${captured.improvement_report.output}"` (self-referencing capture), `min_confidence: 0.7`, full four-route table; closest structural match to `audit_conflicts`
+- `scripts/little_loops/loops/fix-quality-and-tests.yaml` in `check-quality` — `prompt` + `llm_structured` (no `source:`), grades its own output, full four-route table; demonstrates the `ll_gate` fragment pattern
+- `scripts/little_loops/loops/loop-specialist-eval.yaml` in `check_skill` — `prompt` + `llm_structured` with `source:` and `min_confidence: 0.7`, multi-condition judge prompt; reference for scoring structured audit output
+- `scripts/little_loops/loops/eval-driven-development.yaml` in `route_eval` — action-less pure-router state with `llm_structured` and `source:` from prior state's capture
+- `scripts/little_loops/loops/lib/common.yaml` `llm_gate` fragment (line 47) — ready-made `action_type: prompt` + `evaluate: {type: llm_structured}` template; `audit_conflicts` could use `fragment: llm_gate`
+
+### Tests
+- N/A — loop YAML changes are validated via `ll-loop validate sprint-build-and-validate` and `ll-loop diagnose-evaluators sprint-build-and-validate` (no unit tests for loop YAML)
+
+### Documentation
+- N/A — no documentation update required for an internal loop evaluator addition
+
+### Configuration
+- N/A
+
 ## Session Log
+- `/ll:refine-issue` - 2026-06-27T21:32:33 - `265ed482-e8e6-4a78-a5cf-d16f10ac38ee.jsonl`
+- `/ll:format-issue` - 2026-06-27T21:21:09 - `d9d01f4a-6f9b-4201-87a6-de089e4470ef.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:16:24Z - conversation analysis of audit-sprint-build-and-validate-2026-06-27.md
 
 ---
 
 ## Status
 
-open
+**Open** | Created: 2026-06-27 | Priority: P3

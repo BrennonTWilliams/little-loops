@@ -62,6 +62,56 @@ Use ${context.order:default=queue} (engine default) or $${ORDER:-queue} (shell, 
 - Choose severity: ERROR is defensible (the pattern always crashes at runtime), but WARNING
   is acceptable if there is concern about edge cases; recommend ERROR.
 
+## Scope Boundaries
+
+- Does not fix the BUG-2346 crash sites — those are BUG-2346's responsibility.
+- Does not add bash `:-` default syntax support to the FSM interpolation engine.
+- Does not validate other unsupported bash expansion forms (e.g. `${ns.path:+alt}`, `${ns.path:?err}`) — only the `:-` form is in scope.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/validation.py` — add `_validate_bash_default_interpolation` function; register in `validate_fsm`
+- `scripts/little_loops/fsm/schema.py` — add `bash_default_ok: bool = False` to `FSMLoop` suppress-flag block (lines 1002–1007); register in `from_dict` / serialization (lines 1077–1088, 1158–1163)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/validation.py` already called by `ll-loop validate` CLI entry point
+- `scripts/little_loops/cli/loop/config_cmds.py:cmd_validate()` — actual CLI caller; calls `load_and_validate()` → `validate_fsm()`; no changes needed here
+
+### Similar Patterns
+- `_validate_meta_loop_evaluation`, `_validate_artifact_isolation`, `_validate_partial_route_dead_end` in `validation.py` — follow the same add-function-register-in-validate_fsm pattern
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `_validate_artifact_isolation` (`validation.py:1346`) and its scanner helper `_find_shared_tmp_writes` (`validation.py:1305`) — canonical two-part pattern: decouple the `re.finditer` scanner from the rule function; follow this split for `_find_bash_default_tokens` + `_validate_bash_default_interpolation`
+- `_validate_partial_route_dead_end` (`validation.py:1398`) — iterates `fsm.states.items()`, emits `ValidationError(message=..., path=f"states.{state_name}.action", severity=ValidationSeverity.ERROR)`
+- `_unguarded_captured_refs` (`validation.py:120`) — covers only `${captured.*}` tokens via `_CAPTURED_REF_FULL_RE`; does NOT catch `${context.*:-...}` or other namespaces; the new rule fills this gap
+- `validate_fsm()` (`validation.py:923`) insertion point: add `errors.extend(_validate_bash_default_interpolation(fsm))` after the `_validate_generator_fix_discipline(fsm)` call (last current MR-* rule)
+- `KNOWN_TOP_LEVEL_KEYS` frozenset (`validation.py:149`) — `"bash_default_ok"` must be added here to prevent the "Unknown top-level key" warning when authors set it
+- Module-level regex model: `_SHARED_TMP_PATH_RE = re.compile(...)` at `validation.py:106`; new rule should define `_BASH_DEFAULT_RE = re.compile(r"(?<!\$)\$\{[^}]*:-[^}]*\}")` analogously to match unescaped `${...:- ...}` tokens while the negative lookbehind exempts `$${`
+
+### Tests
+- `scripts/tests/test_fsm_validation.py` — primary: add coverage for flagged form, `:default=` exempt, `$${VAR:-x}` exempt
+- `scripts/tests/test_fsm_interpolation.py` — secondary: already documents the trap at lines 221, 364; may serve as fixture source
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `test_fsm_validation.py:TestMetaLoopValidation` (line 938) — test class + `_simple_fsm()` builder helper pattern to follow
+- MR-3 block in `test_fsm_validation.py` (~line 1204) — four-test pattern per rule: fires, safe-form-exempt, suppressed-by-flag, end-to-end via `validate_fsm()`; also test `bash_default_ok` key recognized in `KNOWN_TOP_LEVEL_KEYS` via `load_and_validate()`
+- `test_fsm_interpolation.py:test_nested_variable_syntax_raises_interpolation_error` (line 230) — runtime crash fixture (`${MAX_TOTAL:-${context.max_refine_count}}`); confirms what the lint rule prevents
+- `test_fsm_interpolation.py:test_escape_bash_default_value` (line 363) — `$${DEPTH:-0}` safe form; must NOT be flagged
+- Loop YAML end-to-end targets: `recursive-refine.yaml` (lines 50, 70, 71, 106, 275, 291) and `rl-coding-agent.yaml` (line 26) — 7 sites total; lint rule should fire before BUG-2346 fixes land and be clean after
+
+### Documentation
+- N/A — rule is self-documenting via the error message; no separate docs needed
+
+### Configuration
+- N/A
+
 ## Implementation Steps
 
 1. Add a detector that scans every interpolated string field (actions, captures, etc.) for
@@ -72,6 +122,26 @@ Use ${context.order:default=queue} (engine default) or $${ORDER:-queue} (shell, 
    flagged.
 5. Confirm it fires on the BUG-2346 sites before they are fixed, and is clean after.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Concrete 5-step expansion:**
+
+1. **Detector** — define `_BASH_DEFAULT_RE = re.compile(r"(?<!\$)\$\{[^}]*:-[^}]*\}")` at module level in `validation.py`. Primary field to scan: `state.action` (covers all 7 BUG-2346 crash sites). Also scan `state.evaluate.source` for completeness (pattern from `_validate_capture_reachability`).
+
+2. **Exempt forms** — the negative lookbehind `(?<!\$)` in the regex handles `$${VAR:-x}` at regex-match time. The `:default=` form (`${context.X:default=Y}`) never contains `:-` so it is automatically exempt.
+
+3. **Emit finding** — use `ValidationError(message=f"[state: {state_name}] ...", path=f"states.{state_name}.action", severity=ValidationSeverity.ERROR)`. Message must name the matched token and give both corrective forms: `${ns.path:default=Y}` (engine) and `$${VAR:-Y}` (shell escape).
+
+4. **Register suppress flag in 3 locations:**
+   - `KNOWN_TOP_LEVEL_KEYS` frozenset in `validation.py` (line 149): add `"bash_default_ok"`
+   - `FSMLoop` dataclass in `schema.py` (lines 1002–1007): add `bash_default_ok: bool = False`
+   - `FSMLoop.from_dict` / serialization in `schema.py` (lines 1077–1088, 1158–1163): include `bash_default_ok`
+   - Add `errors.extend(_validate_bash_default_interpolation(fsm))` to `validate_fsm()` after `_validate_generator_fix_discipline(fsm)` call
+
+5. **Test targets** — use `recursive-refine.yaml` lines 50, 70, 71, 106, 275, 291 and `rl-coding-agent.yaml` line 26 for the end-to-end "fires before BUG-2346 fix / clean after" test
+
 ## Acceptance Criteria
 
 - [ ] `ll-loop validate` flags `${context.X:-default}` with a corrective message.
@@ -79,11 +149,20 @@ Use ${context.order:default=queue} (engine default) or $${ORDER:-queue} (shell, 
 - [ ] Tests cover flagged and exempt forms.
 - [ ] Rule documented alongside the existing validation rules.
 
+## Impact
+
+- **Priority**: P2 — prevents a class of runtime crash; not P1 because BUG-2346 fixes the immediate live instances
+- **Effort**: Small — reuses existing `${...}` extraction in `validation.py`; ~30–50 lines following established MR-* rule pattern
+- **Risk**: Low — additive lint rule only; no changes to FSM runtime behavior
+- **Breaking Change**: No
+
 ## Session Log
+- `/ll:refine-issue` - 2026-06-27T21:31:57 - `a4e8f246-4b58-4fda-8b36-7c2676ca8027.jsonl`
+- `/ll:format-issue` - 2026-06-27T21:21:46 - `fb662259-f1c0-459f-aa52-a7924d973eb2.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:16:24Z - conversation analysis of audit-sprint-build-and-validate-2026-06-27.md
 
 ---
 
 ## Status
 
-open
+**Open** | Created: 2026-06-27 | Priority: P2
