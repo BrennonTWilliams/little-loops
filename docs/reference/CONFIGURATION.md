@@ -243,6 +243,26 @@ For interactive editing, use `/ll:configure`.
 }
 ```
 
+## Top-Level Fields
+
+### `install_source`
+
+A string recorded by `ll-init` that identifies how little-loops was installed. This field is written automatically and is not intended to be edited by hand.
+
+| Value | Meaning |
+|-------|---------|
+| `"local-editable"` | Installed via `pip install -e` (development / editable install) |
+| `"pypi"` | Installed from PyPI via `pip install little-loops` |
+| `"global-claude-code"` | Installed as a global Claude Code plugin |
+| `"project-claude-code"` | Installed as a project-level Claude Code plugin |
+| `"global-codex"` | Installed as a global Codex plugin |
+| `"global-pi"` | Installed as a global Pi plugin |
+| `null` | Source could not be determined |
+
+`ll-init` re-writes this field on every run. If you change your install method (e.g., switch from a local editable install to a PyPI release), run `ll-init` again to refresh it.
+
+---
+
 ## Configuration Sections
 
 ### `project`

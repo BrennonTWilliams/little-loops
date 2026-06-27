@@ -1465,11 +1465,13 @@ Show a progress summary for an EPIC and all its child issues. Aggregates child s
 **Sample text output:**
 ```
 EPIC-1773: Audit & simplify built-in FSM loops
-  Progress:     ████████░░░░░░░░  8/12 done (67%)
+  Progress:     ████████░░░░░░░░  8/12 resolved (67%)
   Status:       2 in_progress  •  1 blocked  •  1 open  •  8 done
   Oldest open:  ENH-1641 (24 days)
   Blocked:      ENH-1820 → blocked_by BUG-1701
 ```
+
+The "resolved" count on the Progress line is `done + cancelled` (terminal states). When cancelled issues are present, a breakdown is appended: e.g., `8/12 resolved (67%) (7 done, 1 cancelled)`. The Status line always shows individual status buckets including the raw `done` and `cancelled` counts separately.
 
 **Examples:**
 ```bash
