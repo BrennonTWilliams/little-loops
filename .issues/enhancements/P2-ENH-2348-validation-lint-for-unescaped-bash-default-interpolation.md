@@ -1,11 +1,11 @@
 ---
 id: ENH-2348
-title: "Add ll-loop validate lint for unescaped ${ns.path:-default} bash-default interpolation"
+title: Add ll-loop validate lint for unescaped ${ns.path:-default} bash-default interpolation
 type: ENH
 status: open
 priority: P2
-captured_at: "2026-06-27T21:16:24Z"
-discovered_date: "2026-06-27"
+captured_at: '2026-06-27T21:16:24Z'
+discovered_date: '2026-06-27'
 discovered_by: capture-issue
 labels:
 - loops
@@ -14,6 +14,12 @@ labels:
 - linting
 relates_to:
 - BUG-2346
+confidence_score: 100
+outcome_confidence: 84
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # ENH-2348: Add validation lint for unescaped ${ns.path:-default} interpolation
@@ -73,10 +79,22 @@ Use ${context.order:default=queue} (engine default) or $${ORDER:-queue} (shell, 
 ### Files to Modify
 - `scripts/little_loops/fsm/validation.py` — add `_validate_bash_default_interpolation` function; register in `validate_fsm`
 - `scripts/little_loops/fsm/schema.py` — add `bash_default_ok: bool = False` to `FSMLoop` suppress-flag block (lines 1002–1007); register in `from_dict` / serialization (lines 1077–1088, 1158–1163)
+- `.claude/CLAUDE.md` — add `bash_default_ok: true` suppress-flag entry to the Loop Authoring section after the MR-6 block, following the exact format of existing MR-* entries
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — add new rule to the error taxonomy table; update heading range from `MR-1…MR-6` to `MR-1…MR-7` (or next assigned number)
+- `docs/reference/CLI.md` — `#### ll-loop validate` section: add new bullet for the bash-default rule; extend the prose summary sentence that enumerates suppress flags
+- `docs/reference/API.md` — `FSMLoop` dataclass block: add `bash_default_ok: bool = False` field with inline comment; `validate_fsm` bullet list: add new MR bullet
+- `skills/review-loop/reference.md` — `## First-Pass Checks` table: add new MR row for the bash-default rule
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/validation.py` already called by `ll-loop validate` CLI entry point
 - `scripts/little_loops/cli/loop/config_cmds.py:cmd_validate()` — actual CLI caller; calls `load_and_validate()` → `validate_fsm()`; no changes needed here
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py` — calls `load_and_validate()` at line 613; the new lint will also fire at `ll-loop run` time, not just `ll-loop validate`
+- `scripts/little_loops/cli/loop/run.py` — calls `load_and_validate()` at line 99 (same; no changes needed)
+- `scripts/little_loops/cli/loop/edit_routes.py` — calls `load_and_validate()` at lines 37, 51 (no changes needed)
+- `scripts/little_loops/cli/loop/_helpers.py` — calls `load_and_validate()` at lines 883, 903 (no changes needed)
+- `scripts/little_loops/fsm/__init__.py` — re-exports `ValidationError`, `ValidationSeverity`, `validate_fsm`, `load_and_validate` (no changes needed; confirming the export surface is stable)
 
 ### Similar Patterns
 - `_validate_meta_loop_evaluation`, `_validate_artifact_isolation`, `_validate_partial_route_dead_end` in `validation.py` — follow the same add-function-register-in-validate_fsm pattern
@@ -93,8 +111,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Module-level regex model: `_SHARED_TMP_PATH_RE = re.compile(...)` at `validation.py:106`; new rule should define `_BASH_DEFAULT_RE = re.compile(r"(?<!\$)\$\{[^}]*:-[^}]*\}")` analogously to match unescaped `${...:- ...}` tokens while the negative lookbehind exempts `$${`
 
 ### Tests
-- `scripts/tests/test_fsm_validation.py` — primary: add coverage for flagged form, `:default=` exempt, `$${VAR:-x}` exempt
+- `scripts/tests/test_fsm_validation.py` — primary: add coverage for flagged form, `:default=` exempt, `$${VAR:-x}` exempt; also update the import block (lines 24–42) to add `_validate_bash_default_interpolation`
 - `scripts/tests/test_fsm_interpolation.py` — secondary: already documents the trap at lines 221, 364; may serve as fixture source
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_schema.py` — add `TestBashDefaultOk` class (3 tests: `true` round-trips, `False` omitted from dict, defaults-false) after `TestGeneratorFixOk` at line 3467; follows the exact same three-test pattern as `TestSharedStateOk`, `TestPartialRouteOk`, `TestMetaSelfEvalOk`, `TestGeneratorFixOk`
+- `scripts/tests/test_ll_loop_commands.py` — `TestCmdValidate` class (line 32): optionally add an integration test for the new rule following the `test_validate_with_unreachable_state_prints_warning` pattern (line 88)
 
 ### Codebase Research Findings
 
@@ -107,7 +129,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Loop YAML end-to-end targets: `recursive-refine.yaml` (lines 50, 70, 71, 106, 275, 291) and `rl-coding-agent.yaml` (line 26) — 7 sites total; lint rule should fire before BUG-2346 fixes land and be clean after
 
 ### Documentation
-- N/A — rule is self-documenting via the error message; no separate docs needed
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.claude/CLAUDE.md` — **critical**: Loop Authoring section documents each MR-* rule with suppress flag; `bash_default_ok` entry is missing (see Files to Modify above)
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — add to error taxonomy table (see Files to Modify above)
+- `docs/reference/CLI.md` — `ll-loop validate` section needs new bullet (see Files to Modify above)
+- `docs/reference/API.md` — `FSMLoop` field list and `validate_fsm` bullet list (see Files to Modify above)
+- `skills/review-loop/reference.md` — First-Pass Checks table (see Files to Modify above)
 
 ### Configuration
 - N/A
@@ -142,6 +170,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 5. **Test targets** — use `recursive-refine.yaml` lines 50, 70, 71, 106, 275, 291 and `rl-coding-agent.yaml` line 26 for the end-to-end "fires before BUG-2346 fix / clean after" test
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Add `TestBashDefaultOk` to `scripts/tests/test_fsm_schema.py` after `TestGeneratorFixOk` (line 3467) — 3 tests: `true` round-trips, `False` omitted from `to_dict()`, defaults-false via `from_dict()`
+7. Update `.claude/CLAUDE.md` — add `bash_default_ok: true` paragraph to the Loop Authoring section after the MR-6 block, following the format of existing MR-* entries (e.g. `ll-loop validate enforces rule N as ERROR severity. ... Set bash_default_ok: true to suppress. See ENH-2348.`)
+8. Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — extend the design rules heading (`MR-1…MR-6` → `MR-1…MR-7`) and add a new table row for the bash-default rule
+9. Update `docs/reference/CLI.md` — `#### ll-loop validate` section: add new bullet; extend suppress-flag summary sentence
+10. Update `docs/reference/API.md` — `FSMLoop` dataclass block: add `bash_default_ok: bool = False # Suppress MR-7 bash-default interpolation lint rule (ENH-2348)`; `validate_fsm` bullet list: add new MR entry
+11. Update `skills/review-loop/reference.md` — `## First-Pass Checks` table: add new MR row after MR-5
+
 ## Acceptance Criteria
 
 - [ ] `ll-loop validate` flags `${context.X:-default}` with a corrective message.
@@ -157,6 +196,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T22:00:00 - `5f815bfb-e7ec-4c41-8d88-81417a5bf1fe.jsonl`
+- `/ll:wire-issue` - 2026-06-27T21:45:57 - `0aa50755-d2cd-4dbe-a456-f77a9a6fedf8.jsonl`
 - `/ll:refine-issue` - 2026-06-27T21:31:57 - `a4e8f246-4b58-4fda-8b36-7c2676ca8027.jsonl`
 - `/ll:format-issue` - 2026-06-27T21:21:46 - `fb662259-f1c0-459f-aa52-a7924d973eb2.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:16:24Z - conversation analysis of audit-sprint-build-and-validate-2026-06-27.md

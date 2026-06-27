@@ -1,11 +1,12 @@
 ---
 id: BUG-2346
-title: "Bash ${var:-default} syntax crashes FSM interpolator across 7 builtin-loop sites"
+title: Bash ${var:-default} syntax crashes FSM interpolator across 7 builtin-loop
+  sites
 type: BUG
 status: open
 priority: P1
-captured_at: "2026-06-27T21:16:24Z"
-discovered_date: "2026-06-27"
+captured_at: '2026-06-27T21:16:24Z'
+discovered_date: '2026-06-27'
 discovered_by: capture-issue
 decision_needed: false
 learning_tests_required:
@@ -18,6 +19,12 @@ labels:
 relates_to:
 - BUG-2347
 - ENH-2348
+confidence_score: 100
+outcome_confidence: 88
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # BUG-2346: Bash ${var:-default} syntax crashes FSM interpolator across 7 builtin-loop sites
@@ -165,6 +172,16 @@ Note: `target_files` is seeded as `""` (empty string). The `:default=` form fire
 
 **Canonical examples to follow** (`:default=` form, wide usage in codebase): `general-task.yaml` (lines 218, 291, 296, 502), `harness-optimize.yaml`, `loop-router.yaml`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Correct `docs/generalized-fsm-loop.md` — the "Bash default values" row in `## Variable Interpolation` (line 1130) currently endorses `${var:-default}` for optional context variables. This is wrong for FSM `context.*` namespace variables. Update to describe `${context.X:default=val}` as the correct engine-native form and note that `${context.X:-default}` causes `InterpolationError`. [Agent 2 finding]
+6. Add `test_bash_default_operator_raises_interpolation_error` to `TestInterpolate` in `test_fsm_interpolation.py` after line 239 — permanently documents that `:-` on FSM namespace variables raises `InterpolationError`. [Agent 3 finding]
+7. Add `TestRlCodingAgentLoop.test_act_state_uses_no_bash_default_operator` to `test_builtin_loops.py` after line 4984 — verifies `rl-coding-agent.yaml` `act` state contains no `:-` patterns post-fix. [Agent 3 finding]
+8. Add `TestRecursiveRefineInterpolation` class to `test_loops_recursive_refine.py` — loads YAML, extracts `parse_input` action, calls `interpolate()` with seeded context; catches `InterpolationError` if `:-` syntax re-enters the YAML. [Agent 3 finding]
+9. Add secondary regex to `test_no_bare_bash_variable_in_shell_actions` (`test_builtin_loops.py:188`) detecting `${valid_namespace.*:-...}` patterns across all builtin loops. [Agent 3 finding]
+
 ## Integration Map
 
 ### Files to Modify
@@ -185,6 +202,9 @@ _Added by `/ll:refine-issue` — additional callers of `recursive-refine` discov
 - `scripts/little_loops/loops/eval-driven-development.yaml` — references `recursive-refine`
 
 All 5 are affected by BUG-2346 identically: they invoke a sub-loop that crashes before reaching any meaningful state.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/oracles/implement-issue-chain.yaml` — not a direct sub-loop caller; reads artifact files `recursive-refine-passed.txt` and `recursive-refine-skipped.txt` produced by `recursive-refine`. While the artifact format does not change with this fix, this file documents the output dependency. [Agent 1 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/fsm/interpolation.py` — engine under fix; do not modify
@@ -217,8 +237,17 @@ def test_engine_default_replaces_bash_default_operator(self) -> None:
     assert result == 'ORDER="queue"'
 ```
 
+_Wiring pass added by `/ll:wire-issue`:_
+- **Precise insertion point for crash-regression test**: `TestInterpolate` class in `test_fsm_interpolation.py`, after line 239 (before `class TestInterpolateDict` at line 242). The existing neighbors `test_check_lifetime_limit_bash_fallback` (line 217) and `test_nested_variable_syntax_raises_interpolation_error` (line 230) handle the same crash category — place BUG-2346 tests in this group. [Agent 3 finding]
+- **`test_engine_default_replaces_bash_default_operator` — check for overlap**: `TestSafeInterpolation.test_default_suffix_in_context_namespace` (line 554) already tests `${context.missing:default=N/A}` returning `"N/A"`. If added, place in `TestSafeInterpolation` with a BUG-2346 comment; otherwise skip as redundant. [Agent 3 finding]
+- **New `TestRlCodingAgentLoop.test_act_state_uses_no_bash_default_operator`**: add to `test_builtin_loops.py` after `TestRlCodingAgentLoop` line 4984. `TestRlCodingAgentLoop` (line 4933) has 7 tests but none examine the `action` field. Pattern to follow: `test_evaluate_code_uses_run_dir` (line 572, `TestEvaluationQualityLoop`). [Agent 3 finding]
+- **New `TestRecursiveRefineInterpolation` class in `test_loops_recursive_refine.py`**: that file (1514 lines) tests bash-script behavior by running hardcoded `_DONE_SCRIPT` strings via `_bash()`, bypassing the FSM interpolator entirely. A new class loading `recursive-refine.yaml`, extracting `parse_input` action, and calling `interpolate()` with a seeded `InterpolationContext` would have caught BUG-2346 at this layer. [Agent 3 finding]
+- **Enhancement to `test_no_bare_bash_variable_in_shell_actions` (`test_builtin_loops.py:188`)**: add a secondary regex pass that specifically flags `\$\{(context|captured|prev|result|state|loop|env|messages|param)\.[^}]*:-[^}]*\}` — the current check extracts only the namespace token and allows any `context.*` match through without examining the `:-` path suffix. [Agent 3 finding]
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/generalized-fsm-loop.md` — **MUST UPDATE**: the "Bash default values" row in `## Variable Interpolation` at line 1130 explicitly states that `${var:-default}` is valid for optional context variables. This is factually wrong for `context.*` namespace variables and directly endorses the bug pattern. The rows immediately above (`:default=` at line 1127, `$${...}` escaping) describe the correct alternatives. After the YAML fix, this row remains as misinformation that could cause future loop authors to re-introduce BUG-2346. Correct or remove the row as part of this fix. [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -237,6 +266,8 @@ def test_engine_default_replaces_bash_default_operator(self) -> None:
 3. Loop terminates in `failed`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T22:00:00Z - `3bc5e776-bac2-4637-b313-116292da1660.jsonl`
+- `/ll:wire-issue` - 2026-06-27T21:45:04 - `c9c37fb9-c085-4081-b3d7-dbe77eaba98e.jsonl`
 - `/ll:refine-issue` - 2026-06-27T21:30:55 - `265ed482-e8e6-4a78-a5cf-d16f10ac38ee.jsonl`
 - `/ll:format-issue` - 2026-06-27T21:22:16 - `b08dcd42-b1ea-42cd-97d5-276a58fd2363.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:16:24Z - conversation analysis of audit-sprint-build-and-validate-2026-06-27.md

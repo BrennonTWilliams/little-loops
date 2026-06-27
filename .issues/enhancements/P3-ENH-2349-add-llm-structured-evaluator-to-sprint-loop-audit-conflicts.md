@@ -1,11 +1,11 @@
 ---
 id: ENH-2349
-title: "Add llm_structured evaluator to sprint-build-and-validate audit_conflicts state"
+title: Add llm_structured evaluator to sprint-build-and-validate audit_conflicts state
 type: ENH
 status: open
 priority: P3
-captured_at: "2026-06-27T21:16:24Z"
-discovered_date: "2026-06-27"
+captured_at: '2026-06-27T21:16:24Z'
+discovered_date: '2026-06-27'
 discovered_by: capture-issue
 labels:
 - loops
@@ -14,6 +14,12 @@ labels:
 - evaluators
 relates_to:
 - BUG-2347
+confidence_score: 82
+outcome_confidence: 73
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 12
+score_change_surface: 22
 ---
 
 # ENH-2349: Add llm_structured evaluator to sprint-loop audit_conflicts state
@@ -144,13 +150,49 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Tests
 - N/A — loop YAML changes are validated via `ll-loop validate sprint-build-and-validate` and `ll-loop diagnose-evaluators sprint-build-and-validate` (no unit tests for loop YAML)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — `TestSprintBuildAndValidateLoop.test_required_states_exist` (line 3153): update to add `"audit_conflicts_retry"` to the required set [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — add to `TestSprintBuildAndValidateLoop`: new structural test methods: `test_audit_conflicts_uses_llm_structured_evaluator`, `test_audit_conflicts_on_yes_routes_to_commit`, `test_audit_conflicts_on_no_routes_to_retry`, `test_audit_conflicts_no_longer_uses_bare_next`, `test_audit_conflicts_retry_state_exists`, `test_max_steps_accommodates_retry_cycle` (asserts `data.get("max_steps", 0) >= 18`) [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — `TestBuiltinLoopOnBlockedCoverage.REQUIRED_ON_BLOCKED` (line 1491): add `("sprint-build-and-validate.yaml", "audit_conflicts", "<on_blocked_target>")` if the implementation defines an `on_blocked` handler on the new evaluator state [Agent 3 finding]
+
 ### Documentation
 - N/A — no documentation update required for an internal loop evaluator addition
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — FSM flow diagram in the `sprint-build-and-validate` section: the direct `audit_conflicts → commit` edge becomes conditional; add the `audit_conflicts_retry` path [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` — state reference table entry for `audit_conflicts` (line ~756): update description to document the `llm_structured` evaluator type and retry routing [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` — notes block (line ~762): update `max_steps: 16` mention to `max_steps: 18` if that increment is applied [Agent 2 finding]
 
 ### Configuration
 - N/A
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `scripts/tests/test_builtin_loops.py` — in `TestSprintBuildAndValidateLoop.test_required_states_exist`, add `"audit_conflicts_retry"` to the required set; add new structural test methods for the evaluator block and routing (see Tests subsection above)
+7. Update `docs/guides/LOOPS_REFERENCE.md` — revise the `sprint-build-and-validate` FSM flow diagram and state reference table to reflect conditional routing from `audit_conflicts`; update `max_steps` note if incremented to 18
+8. Optionally update `TestBuiltinLoopOnBlockedCoverage.REQUIRED_ON_BLOCKED` in `test_builtin_loops.py` (line 1491) if an `on_blocked` handler is added to the new `audit_conflicts` evaluate block
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-27_
+
+**Readiness Score**: 82/100 → PROCEED WITH CAUTION _(below configured gate: 85)_
+**Outcome Confidence**: 73/100
+
+### Concerns
+- `evaluate.prompt` text is absent — this is the core evaluator design artifact; must be authored during implementation with `loop-specialist-eval.yaml:check_skill` as structural reference
+- BUG-2346 and BUG-2347 (P1, open) are explicitly cited as prerequisites; no end-to-end validation run is possible until they are resolved
+- `on_error: commit` routing proceeds silently to commit on evaluator error — deliberate but counterintuitive; confirm intent before implementing
+
+### Outcome Risk Factors
+- Judge prompt text must be authored during implementation with no draft in the issue body; closest reference is `loop-specialist-eval.yaml:check_skill` (multi-condition judge prompt for structured audit output with `min_confidence: 0.7` and `source:` from prior capture)
+- `max_steps` bump (16→18) is marked "consider" — must be decided and applied before closing
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T22:00:00Z - `4db93a84-28af-46ec-8824-975ef1360e97.jsonl`
+- `/ll:wire-issue` - 2026-06-27T21:41:27 - `b1ff643a-138f-45dd-be1d-f42546ce8905.jsonl`
 - `/ll:refine-issue` - 2026-06-27T21:32:33 - `265ed482-e8e6-4a78-a5cf-d16f10ac38ee.jsonl`
 - `/ll:format-issue` - 2026-06-27T21:21:09 - `d9d01f4a-6f9b-4201-87a6-de089e4470ef.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:16:24Z - conversation analysis of audit-sprint-build-and-validate-2026-06-27.md
