@@ -2330,3 +2330,13 @@
     ranking'
   scope: issue
   issue: ENH-2340
+- id: ARCHITECTURE-071
+  type: decision
+  timestamp: '2026-06-27T22:12:27Z'
+  category: architecture
+  labels: []
+  rationale: New generator-family loop emitting a reusable workflow artifact via staged
+    compiler-lowering passes; meta-loop subject to MR-1..MR-6.
+  rule: 'Captured: Built-in FSM loop that generates reusable Claude Code workflows'
+  scope: issue
+  issue: FEAT-2354

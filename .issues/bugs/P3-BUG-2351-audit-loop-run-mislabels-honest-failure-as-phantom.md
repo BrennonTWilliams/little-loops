@@ -61,6 +61,12 @@ honest failures trains operators to ignore it and masks the genuine upstream
 cause (an environment/auth misconfiguration vs. a loop that lies about its
 work). Keeping the label precise preserves its alarm value.
 
+## Root Cause
+
+- **File**: `skills/audit-loop-run/SKILL.md`
+- **Anchor**: Verdict determination table (~"Determine the verdict" section, `phantom` row)
+- **Cause**: The verdict table keys the `phantom` label on `"artifacts unchanged OR threshold unverified"` without cross-checking the run's own claimed outcome in `summary.json`. Because the check is mutation-count-only, a run that honestly reports `failed: N` in its summary receives the same `phantom` verdict as one that falsely reports `implemented: N` — the claimed-success signal is never consulted.
+
 ## Proposed Solution
 
 In the `audit-loop-run` skill's verdict step, before emitting `phantom`:
@@ -75,6 +81,14 @@ In the `audit-loop-run` skill's verdict step, before emitting `phantom`:
 Relates to BUG-2352 (a sibling precision fix to the same skill's laundering
 check).
 
+## Implementation Steps
+
+1. Locate the verdict determination block in `skills/audit-loop-run/SKILL.md`
+2. Before the `phantom` verdict row, add a `summary.json` parse step: read `implemented`, `failed`, and `decomposed` counters from the run's terminal summary
+3. Split the `phantom` verdict row into two branches: `phantom` (claimed-success > 0 AND no mutation) vs. `honest-failure` (claimed-success == 0 AND no mutation)
+4. Update the verdict output template to include `honest-failure` as a valid verdict value with its own rationale template
+5. Verify by re-auditing the `rn-implement` run `2026-06-27T210732` — verdict should now be `honest-failure`, not `phantom`
+
 ## Steps to Reproduce
 
 1. Run a loop whose terminal `summary.json` records `implemented: 0, failed: N`
@@ -82,12 +96,36 @@ check).
 2. Run `/ll:audit-loop-run <loop> <run-id>`.
 3. Observe the verdict is `phantom` despite the honest failure record.
 
+## Integration Map
+
+### Files to Modify
+- `skills/audit-loop-run/SKILL.md` — update verdict determination logic and verdict table
+
+### Dependent Files (Callers/Importers)
+- Any loop YAML whose states invoke `audit-loop-run` (grep `audit-loop-run` in `loops/`)
+- `commands/audit-loop-run.md` if it documents the verdict enum
+
+### Similar Patterns
+- `skills/debug-loop-run/SKILL.md` — check whether it has analogous verdict logic needing the same split
+
+### Tests
+- N/A — no dedicated unit test file; verify manually by re-auditing `rn-implement` run `2026-06-27T210732`
+
+### Documentation
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — references `phantom` verdict; update to document `honest-failure` alongside it
+
+### Configuration
+- N/A
+
 ## Impact
 
-- **Severity**: Low-Medium — no incorrect mutation, but degraded audit signal.
-- **Scope**: Every audited run that fails honestly with no repo change.
+- **Priority**: P3 — degrades audit signal quality but causes no incorrect mutations or data loss
+- **Effort**: Small — isolated change to verdict logic in one skill file; no new infrastructure
+- **Risk**: Low — additive change introducing a new verdict label; existing `phantom` verdict behavior is preserved for the true self-deception case
+- **Breaking Change**: No — `honest-failure` is a new label; existing `phantom` verdicts are unaffected
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-27T22:06:41 - `afd5fe8f-ea36-4c89-928b-aa3adf4d581c.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:58:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09e0f30a-d9cd-4afe-a20d-1b4ab9afdd5a.jsonl`
 
 ---
