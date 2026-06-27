@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.fsm.policy_rules import _ALL_OPS
+
 if TYPE_CHECKING:
     from little_loops.fsm.policy_rules import Rule
     from little_loops.fsm.schema import FSMLoop
@@ -378,8 +380,11 @@ def _detect_shadows(rules: list[Rule]) -> list[str]:
     return warnings
 
 
+# Multi-char operators must precede their single-char prefixes for longest-match
+# (e.g. ">=" before ">"). Sort by length descending; alphabetical order is NOT safe.
+_OP_ALT = "|".join(sorted(_ALL_OPS, key=len, reverse=True))
 # Regex to parse a condition cell like ">=85", "<65", "==true"
-_COND_PATTERN = re.compile(r"^(>=|<=|==|!=|<|>)(.+)$")
+_COND_PATTERN = re.compile(rf"^({_OP_ALT})(.+)$")
 
 
 class PolicyRuleExtractor:
@@ -452,7 +457,7 @@ def _parse_cond_cell(dim: str, val: str) -> Any:
     if not m:
         raise ValueError(
             f"Cannot parse condition cell {val!r} for dimension {dim!r}; "
-            f"expected operator prefix (>=, <=, ==, !=, <, >)"
+            f"expected operator prefix ({_OP_ALT.replace('|', ', ')})"
         )
     return Predicate(dim=dim, op=m.group(1), value=m.group(2).strip())
 

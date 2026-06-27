@@ -883,6 +883,34 @@ class TestCompoundGridParser:
         with pytest.raises(ValueError, match="Cannot parse condition cell"):
             CompoundGridParser.parse_markdown(md, {"done"})
 
+    def test_cond_pattern_is_derived_not_hardcoded(self) -> None:
+        # After ENH-2334 _COND_PATTERN is built from _ALL_OPS, so the old literal
+        # alternation ">=|<=|==|!=|<|>" must not appear verbatim in the pattern.
+        import little_loops.fsm.route_table as rt
+
+        assert ">=|<=|==|!=|<|>" not in rt._COND_PATTERN.pattern
+
+    def test_cond_pattern_ops_match_all_ops(self) -> None:
+        # Regression gate: every op in _ALL_OPS must be matched by _COND_PATTERN.
+        # Fails if _ALL_OPS is extended but _COND_PATTERN is not updated.
+        import little_loops.fsm.route_table as rt
+        from little_loops.fsm.policy_rules import _ALL_OPS
+
+        for op in _ALL_OPS:
+            m = rt._COND_PATTERN.match(f"{op}85")
+            assert m is not None, f"_COND_PATTERN did not match op {op!r}"
+            assert m.group(1) == op, f"Expected group(1)={op!r}, got {m.group(1)!r}"
+
+    def test_parse_cond_cell_longest_match_gte(self) -> None:
+        # Longest-match guard: ">=85" must parse as op ">=" + value "85",
+        # not op ">" + value "=85". Fails if the alternation puts ">" before ">=".
+        import little_loops.fsm.route_table as rt
+
+        m = rt._COND_PATTERN.match(">=85")
+        assert m is not None
+        assert m.group(1) == ">="
+        assert m.group(2) == "85"
+
     def test_parse_csv_warns_missing_catchall(self) -> None:
         from little_loops.fsm.policy_rules import parse_rules
         from little_loops.fsm.route_table import CompoundGridParser, CompoundGridRenderer

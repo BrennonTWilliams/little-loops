@@ -3,8 +3,9 @@ id: ENH-2334
 title: Consolidate route_table operator grammar to the single policy_rules source
 type: ENH
 priority: P4
-status: open
+status: done
 discovered_date: 2026-06-26
+completed_at: 2026-06-27 04:26:17+00:00
 discovered_by: manual
 relates_to:
 - FEAT-2301
@@ -165,11 +166,24 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `enhancement`, `refactor`, `policy-router`, `fsm`, `tech-debt`
 
+## Resolution
+
+Refactored `route_table.py` to source its operator grammar from `policy_rules._ALL_OPS`:
+
+- Added top-level `from little_loops.fsm.policy_rules import _ALL_OPS` import
+- Built `_OP_ALT` via `sorted(_ALL_OPS, key=len, reverse=True)` (multi-char ops first) and derived `_COND_PATTERN` from it
+- Updated the parse-failure error string in `_parse_cond_cell` to derive from `_OP_ALT`
+- Added three regression tests in `TestCompoundGridParser`:
+  - `test_cond_pattern_is_derived_not_hardcoded` — guards against re-hardcoding
+  - `test_cond_pattern_ops_match_all_ops` — catches `_ALL_OPS` extension without `_COND_PATTERN` update
+  - `test_parse_cond_cell_longest_match_gte` — guards longest-match alternation order
+
 ## Status
 
-**Open** | Created: 2026-06-26 | Priority: P4
+**Done** | Created: 2026-06-26 | Completed: 2026-06-27 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T04:21:28 - `94e53158-d4f1-4394-842b-26a22ea1a453.jsonl`
 - `/ll:confidence-check` - 2026-06-26T00:00:00 - `3be64cc2-203c-4e80-92cf-dc78dc566019.jsonl`
 - `/ll:wire-issue` - 2026-06-27T03:30:04 - `b2aa24d1-a409-4a64-a0d8-916ad884e1ac.jsonl`
 - `/ll:refine-issue` - 2026-06-27T03:22:24 - `b57d4d23-0b03-479a-8de4-c2edac01f6ff.jsonl`
