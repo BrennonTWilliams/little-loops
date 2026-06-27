@@ -10,6 +10,12 @@ labels:
 - captured
 - audit-loop-run
 - verdict-accuracy
+confidence_score: 96
+outcome_confidence: 81
+score_complexity: 16
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # BUG-2351: `audit-loop-run` mislabels honest-failure runs as `phantom`
@@ -164,6 +170,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No — `honest-failure` is a new label; existing `phantom` verdicts are unaffected
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T22:45:00Z - `c505fdec-528c-43ee-bb73-c9762312bc9c.jsonl`
 - `/ll:wire-issue` - 2026-06-27T22:28:20 - `e0ce2dea-8fca-4b08-b38d-f983f2d62cd9.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:19:27 - `b87fb21f-6776-487a-a31c-d78f2b3cc986.jsonl`
 - `/ll:format-issue` - 2026-06-27T22:06:41 - `afd5fe8f-ea36-4c89-928b-aa3adf4d581c.jsonl`

@@ -10,6 +10,12 @@ labels:
 - captured
 - audit-loop-run
 - false-positive
+confidence_score: 100
+outcome_confidence: 88
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 23
 ---
 
 # ENH-2352: `audit-loop-run` laundering check false-positives on the ENH-2005 sidecar pattern
@@ -169,6 +175,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T22:45:00Z - `c505fdec-528c-43ee-bb73-c9762312bc9c.jsonl`
 - `/ll:wire-issue` - 2026-06-27T22:27:58 - `df3795a0-4c42-418a-b848-17bf2aaaccc9.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:13:25 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:format-issue` - 2026-06-27T22:07:01 - `6b0c656c-eeda-41cc-b69d-3c47161977e7.jsonl`

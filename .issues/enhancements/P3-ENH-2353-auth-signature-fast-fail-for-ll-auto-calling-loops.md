@@ -6,7 +6,8 @@ status: open
 captured_at: '2026-06-27T21:58:52Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
-relates_to: [FEAT-1496]
+relates_to:
+- FEAT-1496
 decision_needed: false
 labels:
 - captured
@@ -14,6 +15,12 @@ labels:
 - fast-fail
 - ll-auto
 - host-compat
+confidence_score: 98
+outcome_confidence: 71
+score_complexity: 15
+score_test_coverage: 20
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-2353: Auth-signature fast-fail for `ll-auto`-calling loops
@@ -152,6 +159,16 @@ Decided by `/ll:decide-issue` on 2026-06-27.
 5. **Add tests in `scripts/tests/test_builtin_loops.py`**: structural assertions that (a) each `implement` state has `capture:` set, (b) a `check_*_auth` state exists following each implement state, (c) the ENV_NOT_READY terminal exists; follow the `test_score_state_has_capture` pattern (line 553)
 6. **Validate** with a simulated auth failure (one-issue run with invalid creds): confirm `ENV_NOT_READY` result is emitted and no further issues are dequeued
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Add `import: [lib/common.yaml]` to `loops/eval-driven-development.yaml` top-level — currently has no `import:` block at all; the `ll_auto_auth_check` fragment will raise `ValueError: fragment not found` at runtime without this
+8. Modify `loops/rn-implement.yaml` `classify_remediation` chain — insert `route_rem_env_not_ready` state between `route_rem_scores_missing.on_no` and `record_failure`, routing `ENV_NOT_READY` to a new `abort_env_not_ready` terminal with diagnostic echo; without this, auth failures fall through into `record_failure → dequeue_next` and the queue is never aborted
+9. Name the abort terminal in `oracles/implement-issue-chain.yaml` something other than `"failed"` (e.g., `abort_env_not_ready`) — `TestImplementIssueChainOracle.test_no_unreachable_failed_state` (`test_builtin_loops.py:6118`) asserts `"failed" not in data["states"]`; using `"failed"` will break this test
+10. Update 7 breaking tests after routing changes: `TestAutodevLoop` (lines 2006, 2018, 2023, 2671, 2700, 2728) and `TestImplementIssueChainOracle.test_implement_issue_routes_to_implement_next` (line 6189) — run `pytest scripts/tests/test_builtin_loops.py -k "TestAutodevLoop or TestImplementIssueChain"` to verify
+11. Add new tests to `scripts/tests/test_rn_remediate.py` (new `TestRnRemediateAuthGuard` class) and `scripts/tests/test_fsm_fragments.py` (fragment field assertions for `ll_auto_auth_check`)
+
 ## Integration Map
 
 ### Files to Modify
@@ -159,7 +176,8 @@ Decided by `/ll:decide-issue` on 2026-06-27.
 - `loops/autodev.yaml` — `ll-auto` call site: same guard
 - `loops/eval-driven-development.yaml` — `ll-auto` call site: same guard
 - `loops/oracles/implement-issue-chain.yaml` — `ll-auto` call site: same guard
-- `loops/lib/auth_fast_fail.yaml` — new shared fragment (option 1 / preferred)
+- `loops/lib/common.yaml` — add `ll_auto_auth_check` fragment under `fragments:` key (pre-decision filename `auth_fast_fail.yaml` was incorrect; `lib/common.yaml` is the actual target per implementation steps and decide-issue rationale)
+- `loops/rn-implement.yaml` — add `route_rem_env_not_ready` routing state to the `classify_remediation` chain; `ENV_NOT_READY` currently falls through all token checks (`route_rem_implemented` → `route_rem_scores_missing`) into `record_failure → dequeue_next`, so the queue is never aborted on auth failure [Wiring pass]
 
 ### Dependent Files (Callers/Importers)
 - `loops/cua-agent-desktop.yaml` — `_check_plan_auth_failure` (reference pattern; not modified)
@@ -175,8 +193,23 @@ Decided by `/ll:decide-issue` on 2026-06-27.
 - `scripts/tests/test_builtin_loops.py` — add per-loop test classes (`TestRnRemediateLoop`, etc.) with structural assertions following patterns at lines 553, 674, 1103; use `yaml.safe_load` only (no mocks, no subprocess)
 - Test assertions to add per loop: (a) `implement` state has `capture:` set, (b) `check_auth` state exists with `output_contains` evaluator, (c) `emit_env_not_ready` terminal state has diagnostic `echo` (required by `test_all_failure_terminals_have_diagnostic_action` line 240), (d) `on_yes` from auth check routes to abort terminal
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_rn_remediate.py` — existing 1434-line dedicated test file for rn-remediate; add structural assertions for `check_impl_auth` and `emit_env_not_ready` states in a new `TestRnRemediateAuthGuard` class
+- `scripts/tests/test_fsm_fragments.py` — fragment composition tests; add a test asserting `ll_auto_auth_check` fragment has required fields (`action_type: shell`, `evaluate.type: output_contains`, `evaluate.pattern`)
+
+**Tests to update (WILL BREAK from routing changes):**
+- `TestAutodevLoop.test_implement_current_on_no_routes_to_dequeue_next` (`test_builtin_loops.py:2018`) — `on_no` changes from `dequeue_next` to `check_impl_auth`
+- `TestAutodevLoop.test_implement_current_on_error_routes_to_done` (`test_builtin_loops.py:2023`) — `on_error` routing may change
+- `TestAutodevLoop.test_implement_current_runs_ll_auto_only` (`test_builtin_loops.py:2006`) — action body changes (capture added before `ll-auto --only`)
+- `TestAutodevLoop.test_implement_current_reconciliation_prepends_stale_inflight` (`test_builtin_loops.py:2671`) — runs action shell verbatim; fails if action body changes
+- `TestAutodevLoop.test_implement_current_reconciliation_noop_when_inflight_equals_current` (`test_builtin_loops.py:2700`) — same reason
+- `TestAutodevLoop.test_implement_current_reconciliation_skips_done_inflight` (`test_builtin_loops.py:2728`) — same reason
+- `TestImplementIssueChainOracle.test_implement_issue_routes_to_implement_next` (`test_builtin_loops.py:6189`) — `next: implement_next` changes to conditional routing; assertion must be updated
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — `rn-remediate` outcome token list and state tables will be inaccurate without `ENV_NOT_READY`; advisory update recommended after implementation
 
 ### Configuration
 - N/A
@@ -187,7 +220,20 @@ Decided by `/ll:decide-issue` on 2026-06-27.
   attribution under any unconfigured-auth environment.
 - **Scope**: all autonomous loops that call `ll-auto`.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-27_
+
+**Readiness Score**: 98/100 → PROCEED
+**Outcome Confidence**: 71/100 → borderline (slightly below 75 threshold)
+
+### Outcome Risk Factors
+- **Moderate per-site complexity at 2 of 4 call sites**: `autodev:implement_current` uses dequeue-always routing where both `on_yes`/`on_no` currently advance the queue; the issue notes this complicates abort but doesn't specify the bypass design. `oracles/implement-issue-chain.yaml` uses `with_rate_limit_handling` and must distinguish auth failure from rate-limit exhaustion — no prescribed mechanism.
+- **Broad change surface across 6 loop YAML files**: each requires separate state surgery; a missed site leaves that loop unprotected and the honest-attribution goal partially unmet.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T23:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:wire-issue` - 2026-06-27T22:46:17 - `c505fdec-528c-43ee-bb73-c9762312bc9c.jsonl`
 - `/ll:decide-issue` - 2026-06-27T22:28:21 - `e0ce2dea-8fca-4b08-b38d-f983f2d62cd9.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:13:25 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:format-issue` - 2026-06-27T22:06:59 - `6b0c656c-eeda-41cc-b69d-3c47161977e7.jsonl`
