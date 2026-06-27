@@ -3394,6 +3394,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `fingerprint` | Extract structured fingerprint (id, files_to_modify, key_terms) from an issue file as JSON; used by `audit-issue-conflicts` Phase 2b (`--cross-theme`) |
 | `check-flag` | Exit 0 if a named boolean frontmatter field equals `true`; takes `issue_id` and `field` positional args |
 | `check-readiness` | Exit 0 if `confidence_score` and `outcome_confidence` meet thresholds; reads from `ll-config.json` or `--readiness`/`--outcome` flags |
+| `epic-consistency` | Detect and reconcile EPIC body/parent drift (`--all`, `--fix`, `--format text\|json`); exits non-zero when drift found in report-only mode |
 
 #### next-issue
 
