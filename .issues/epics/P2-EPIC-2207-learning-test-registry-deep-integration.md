@@ -1,7 +1,7 @@
 ---
 id: EPIC-2207
 title: Learning Test Registry — Deep Integration Across ll Features
-type: epic
+type: EPIC
 priority: P2
 status: done
 captured_at: '2026-06-18T15:38:06Z'

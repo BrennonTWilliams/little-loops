@@ -416,7 +416,7 @@ All issues should pass these checks:
 - **BUG**: Numbered steps to reproduce, Root Cause with file + function anchor
 - **FEAT**: Concrete Use Case scenario, API/Interface for public contracts
 - **ENH**: Motivation with quantified impact, Success Metrics with targets
-- **EPIC**: Lists `children:` (constituent BUG/FEAT/ENH IDs), articulates coordination/business goal — not directly implementable
+- **EPIC**: Children tracked via `parent: EPIC-NNN` in child issues + body `## Children` list; articulates coordination/business goal — not directly implementable
 
 ### Best Practices
 

@@ -1,7 +1,7 @@
 ---
 id: EPIC-1978
 title: "CLI-first init \u2014 headless core with thin frontends"
-type: epic
+type: EPIC
 status: done
 priority: P2
 discovered_date: 2026-06-05

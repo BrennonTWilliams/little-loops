@@ -14,6 +14,11 @@ if TYPE_CHECKING:
 
 _ALL_STATUSES: set[str] = {"open", "in_progress", "blocked", "done", "cancelled", "deferred"}
 
+# Matches the frontmatter type: field value (captures the value after "type: ")
+_FM_TYPE_RE = re.compile(r"^type:\s*(\S+)", re.MULTILINE)
+# Matches a frontmatter children: key (list start)
+_FM_CHILDREN_RE = re.compile(r"^children\s*:", re.MULTILINE)
+
 # Issue types that participate in the (a)/(b) parent-child diff.
 # EPIC-* refs in body are treated as sub-epic prose (advisory only).
 # Everything else (MR-*, CT-*, EG-*, …) is skipped.
@@ -35,14 +40,18 @@ class EpicDrift:
     body_without_parent: list[str] = field(default_factory=list)  # (b)
     relates_to_is_child: list[str] = field(default_factory=list)  # (c)
     sub_epic_advisory: list[str] = field(default_factory=list)    # advisory
+    type_casing_wrong: bool = False   # schema: type: must be 'EPIC'
+    has_children_frontmatter: bool = False  # schema: children: key forbidden
 
     @property
     def has_drift(self) -> bool:
-        """True when any actionable drift exists (a/b/c categories)."""
+        """True when any actionable drift exists (a/b/c categories or schema violations)."""
         return bool(
             self.missing_from_body
             or self.body_without_parent
             or self.relates_to_is_child
+            or self.type_casing_wrong
+            or self.has_children_frontmatter
         )
 
     def to_dict(self) -> dict:
@@ -53,6 +62,8 @@ class EpicDrift:
             "body_without_parent": sorted(self.body_without_parent),
             "relates_to_is_child": sorted(self.relates_to_is_child),
             "sub_epic_advisory": sorted(self.sub_epic_advisory),
+            "type_casing_wrong": self.type_casing_wrong,
+            "has_children_frontmatter": self.has_children_frontmatter,
         }
 
 
@@ -121,11 +132,27 @@ def compute_drift(
         if i.parent == epic_id and i.issue_id.startswith("EPIC-")
     )
 
-    # Parse body ## Children section
+    # Parse file content for body and frontmatter checks
     try:
         content = epic_info.path.read_text(encoding="utf-8")
     except OSError:
         content = ""
+
+    # Extract frontmatter block (between first pair of --- delimiters)
+    fm_block = ""
+    if content.startswith("---"):
+        end_marker = content.find("\n---", 3)
+        if end_marker != -1:
+            fm_block = content[3:end_marker]
+
+    # Schema check (d): type: must be 'EPIC' when present; absent is OK
+    type_casing_wrong = False
+    type_match = _FM_TYPE_RE.search(fm_block)
+    if type_match and type_match.group(1) != "EPIC":
+        type_casing_wrong = True
+
+    # Schema check (e): children: frontmatter key is forbidden
+    has_children_frontmatter = bool(_FM_CHILDREN_RE.search(fm_block))
 
     bounds = _section_bounds(content, "Children")
     if bounds is not None:
@@ -151,6 +178,8 @@ def compute_drift(
         body_without_parent=body_without_parent,
         relates_to_is_child=relates_to_is_child,
         sub_epic_advisory=sub_epic_advisory,
+        type_casing_wrong=type_casing_wrong,
+        has_children_frontmatter=has_children_frontmatter,
     )
 
 
@@ -289,6 +318,10 @@ def cmd_epic_consistency(config: BRConfig, args: argparse.Namespace) -> int:
             print(f"{drift.epic_id}: {drift.epic_title} — OK")
             continue
         print(f"{drift.epic_id}: {drift.epic_title}")
+        if drift.type_casing_wrong:
+            print("  (d) Schema: type: casing must be 'EPIC' (not lowercase 'epic')")
+        if drift.has_children_frontmatter:
+            print("  (e) Schema: frontmatter children: array is forbidden; use parent: backrefs")
         if drift.missing_from_body:
             print("  (a) Missing from body (parent: child not documented):")
             for child_id in drift.missing_from_body:

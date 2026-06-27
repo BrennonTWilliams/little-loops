@@ -1,7 +1,7 @@
 ---
 id: EPIC-2171
 title: Complete the branch-based development workflow (use_feature_branches)
-type: epic
+type: EPIC
 status: done
 priority: P3
 captured_at: '2026-06-15T16:51:50Z'

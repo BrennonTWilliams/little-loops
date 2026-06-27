@@ -1,6 +1,6 @@
 ---
 id: EPIC-1626
-type: epic
+type: EPIC
 status: done
 priority: P4
 discovered_date: 2026-05-22

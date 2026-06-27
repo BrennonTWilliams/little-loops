@@ -1,7 +1,7 @@
 ---
 id: EPIC-2258
 title: oh-my-pi (omp) host adapter — tracking
-type: epic
+type: EPIC
 status: open
 priority: P4
 discovered_date: 2026-06-24

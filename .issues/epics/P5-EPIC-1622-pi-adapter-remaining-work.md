@@ -1,7 +1,7 @@
 ---
 id: EPIC-1622
 title: "Pi adapter \u2014 remaining work"
-type: epic
+type: EPIC
 status: cancelled
 priority: P5
 discovered_date: 2026-05-22

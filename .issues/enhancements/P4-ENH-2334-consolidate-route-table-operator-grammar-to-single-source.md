@@ -9,6 +9,12 @@ discovered_by: manual
 relates_to:
 - FEAT-2301
 - ENH-2233
+confidence_score: 96
+outcome_confidence: 89
+score_complexity: 23
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2334: Consolidate route_table operator grammar to the single policy_rules source
@@ -164,6 +170,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-06-26 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-26T00:00:00 - `3be64cc2-203c-4e80-92cf-dc78dc566019.jsonl`
 - `/ll:wire-issue` - 2026-06-27T03:30:04 - `b2aa24d1-a409-4a64-a0d8-916ad884e1ac.jsonl`
 - `/ll:refine-issue` - 2026-06-27T03:22:24 - `b57d4d23-0b03-479a-8de4-c2edac01f6ff.jsonl`
 - `/ll:format-issue` - 2026-06-27T03:17:02 - `e931fe1e-b945-4c66-a5c8-cba8fbf6e4d4.jsonl`

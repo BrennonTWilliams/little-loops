@@ -1,7 +1,7 @@
 ---
 id: EPIC-2178
 title: Gemini CLI host adapter — tracking
-type: epic
+type: EPIC
 status: open
 priority: P4
 captured_at: "2026-06-15T17:09:51Z"

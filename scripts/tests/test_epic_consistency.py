@@ -749,3 +749,211 @@ class TestEpicConsistencyErrorHandling:
             result = main_issues()
 
         assert result != 0
+
+
+# ---------------------------------------------------------------------------
+# TestEpicConsistencyTypeCasing
+# ---------------------------------------------------------------------------
+
+
+class TestEpicConsistencyTypeCasing:
+    """Schema lint: type: must be 'EPIC' (uppercase) on EPIC files."""
+
+    def _write_epic_with_type(self, epics_dir: Path, epic_id: str, type_value: str) -> Path:
+        """Write an EPIC file with an explicit type: field."""
+        body = (
+            f"---\nid: {epic_id}\nstatus: open\ntype: {type_value}\n---\n"
+            f"# {epic_id}: Test epic\n\n## Summary\nTest.\n"
+        )
+        path = epics_dir / f"P2-{epic_id}-test-epic.md"
+        path.write_text(body)
+        return path
+
+    def test_lowercase_type_exits_nonzero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """EPIC with type: epic (lowercase) fails the lint check."""
+        epics_dir = epic_consistency_dir / "epics"
+        self._write_epic_with_type(epics_dir, "EPIC-200", "epic")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-200", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result != 0
+        captured = capsys.readouterr()
+        assert "type" in captured.out.lower() or "casing" in captured.out.lower()
+
+    def test_uppercase_type_exits_zero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """EPIC with type: EPIC (uppercase) passes the type lint check."""
+        epics_dir = epic_consistency_dir / "epics"
+        self._write_epic_with_type(epics_dir, "EPIC-201", "EPIC")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-201", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+
+    def test_missing_type_field_exits_zero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+    ) -> None:
+        """EPIC with no type: field is not flagged (field absence is not a violation)."""
+        epics_dir = epic_consistency_dir / "epics"
+        # _write_epic omits type: field
+        _write_epic(epics_dir, "EPIC-202")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-202", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+
+    def test_all_flag_catches_lowercase_type(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--all flag reports type casing violations across all EPIC files."""
+        epics_dir = epic_consistency_dir / "epics"
+        self._write_epic_with_type(epics_dir, "EPIC-203", "epic")
+        self._write_epic_with_type(epics_dir, "EPIC-204", "EPIC")  # clean
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "--all", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result != 0
+        captured = capsys.readouterr()
+        assert "EPIC-203" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# TestEpicConsistencyChildrenFrontmatter
+# ---------------------------------------------------------------------------
+
+
+class TestEpicConsistencyChildrenFrontmatter:
+    """Schema lint: EPIC files must not carry a frontmatter children: array."""
+
+    def _write_epic_with_children_fm(
+        self, epics_dir: Path, epic_id: str, children_ids: list[str]
+    ) -> Path:
+        """Write an EPIC file with frontmatter children: array."""
+        children_yaml = "\n".join(f"- {c}" for c in children_ids)
+        body = (
+            f"---\nid: {epic_id}\nstatus: open\ntype: EPIC\n"
+            f"children:\n{children_yaml}\n---\n"
+            f"# {epic_id}: Test epic\n\n## Summary\nTest.\n"
+        )
+        path = epics_dir / f"P2-{epic_id}-test-epic.md"
+        path.write_text(body)
+        return path
+
+    def test_children_frontmatter_exits_nonzero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """EPIC with frontmatter children: array fails the lint check."""
+        epics_dir = epic_consistency_dir / "epics"
+        self._write_epic_with_children_fm(epics_dir, "EPIC-210", ["FEAT-001", "ENH-002"])
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-210", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result != 0
+        captured = capsys.readouterr()
+        assert "children" in captured.out.lower()
+
+    def test_no_children_frontmatter_exits_zero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+    ) -> None:
+        """EPIC without frontmatter children: array passes the schema check."""
+        epics_dir = epic_consistency_dir / "epics"
+        # No children_section so no body-level drift either
+        _write_epic(epics_dir, "EPIC-211")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-211", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+
+    def test_json_output_includes_children_fm_flag(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--format json output includes has_children_frontmatter key when children: present."""
+        epics_dir = epic_consistency_dir / "epics"
+        self._write_epic_with_children_fm(epics_dir, "EPIC-212", ["FEAT-001"])
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "epic-consistency",
+                "EPIC-212",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result != 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        entry = data if "epic" in data else data["results"][0]
+        assert entry.get("has_children_frontmatter") is True

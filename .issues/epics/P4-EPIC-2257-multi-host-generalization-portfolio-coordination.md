@@ -1,7 +1,7 @@
 ---
 id: EPIC-2257
 title: Multi-host generalization — portfolio coordination
-type: epic
+type: EPIC
 status: open
 priority: P4
 discovered_date: 2026-06-24

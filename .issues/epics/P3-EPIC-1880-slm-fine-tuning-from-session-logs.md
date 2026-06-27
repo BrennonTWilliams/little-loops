@@ -8,8 +8,7 @@ completed_at: '2026-06-04T00:00:00Z'
 captured_at: '2026-06-02T00:00:00Z'
 discovered_date: '2026-06-02'
 discovered_by: review-epic
-relates_to: [FEAT-1826, ENH-1827, ENH-1885, ENH-1886, ENH-1941, ENH-1942, ENH-1943, ENH-1944, ENH-1948, ENH-1949]
-children: [ENH-1942, ENH-1827, ENH-1885, ENH-1886, ENH-1941, FEAT-1826, ENH-1943, ENH-1944, ENH-1948, ENH-1949]
+relates_to: [ENH-1943, ENH-1944, ENH-1948, ENH-1949]
 labels:
   - epic
   - sft
@@ -49,11 +48,11 @@ Build the tooling needed to turn Claude Code session data (stored in `history.db
 - **ENH-1885** — PII detection utility (`little_loops.pii`) to back `pii_action` filter in the loop ✅ done
 - **ENH-1886** — File-level mtime pre-filter in `extract_conversation_turns()` for faster incremental harvest ✅ done
 - **ENH-1941** — Integrate history.db session-quality signals into sft-corpus filtering → decomposed into ENH-1943 + ENH-1944 ✅ done
-- **ENH-1943** — `lookup_session_metadata()` helper in `history_reader.py` (grandchild via ENH-1941) ✅ done
-- **ENH-1944** — `enrich` state + 4 quality predicates in `sft-corpus.yaml` (grandchild via ENH-1941) ✅ done
-- **FEAT-1826** — `sft-corpus` FSM loop: `stage → enrich → filter → publish` pipeline 🔧 open (loop exists at `scripts/little_loops/loops/sft-corpus.yaml`; issue outdated — see Verification Notes)
-- **ENH-1948** — Wire PII detection into `sft-corpus.yaml` filter chain: adds `pii_action` context key + `check_pii`/`reject_pii` states, following the 4 existing quality-predicate patterns. Depends on ENH-1885 (done). 📋 open
-- **ENH-1949** — Add `parameters:` block to `dataset-curation.yaml` for `with:` binding validation: non-breaking YAML addition (3 params, `required: false` with matching defaults) enabling `_validate_with_bindings()` contract enforcement when `sft-corpus` hands off via `loop:` + `with:`. 📋 open
+- **FEAT-1826** — `sft-corpus` FSM loop: `stage → enrich → filter → publish` pipeline ✅ done
+
+Grandchildren (via ENH-1941, not direct children of EPIC-1880): ENH-1943 (`lookup_session_metadata()` helper), ENH-1944 (quality-predicate `enrich` state in `sft-corpus.yaml`).
+
+Related but not direct children (tracked in `relates_to:`): ENH-1948 (PII detection wiring, follow-on to ENH-1885), ENH-1949 (`parameters:` block in `dataset-curation.yaml`).
 
 ## Scope
 

@@ -1,7 +1,7 @@
 ---
 id: EPIC-1713
 title: "Pi as full `claude -p` replacement \u2014 parity gap tracking"
-type: epic
+type: EPIC
 status: cancelled
 priority: P5
 captured_at: '2026-05-26T02:06:59Z'

@@ -1,7 +1,7 @@
 ---
 id: EPIC-2279
 title: Wheel-self-sufficient package data + unified asset resolver
-type: epic
+type: EPIC
 status: done
 priority: P2
 discovered_date: 2026-06-24

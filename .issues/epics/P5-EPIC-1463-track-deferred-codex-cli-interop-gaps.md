@@ -1,7 +1,7 @@
 ---
 id: EPIC-1463
 title: Track deferred Codex CLI interop gaps
-type: epic
+type: EPIC
 status: open
 priority: P5
 captured_at: '2026-05-15T12:15:21Z'

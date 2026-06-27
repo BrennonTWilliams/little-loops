@@ -1,7 +1,7 @@
 ---
 id: EPIC-2167
 title: Decision-router as the core routing pattern for automated loops
-type: epic
+type: EPIC
 status: done
 priority: P2
 discovered_date: 2026-06-15

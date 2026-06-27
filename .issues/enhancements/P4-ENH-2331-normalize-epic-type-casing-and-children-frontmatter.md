@@ -3,8 +3,9 @@ id: ENH-2331
 title: 'Normalize EPIC schema: type: casing + migrate EPIC-1880 off children: frontmatter'
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-26T22:37:02Z'
+completed_at: '2026-06-27T03:47:04Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 relates_to:
@@ -293,12 +294,22 @@ implementation:_
   lint check to prevent regression; no runtime code paths change.
 - **Breaking Change**: No
 
+## Resolution
+
+All acceptance criteria met (2026-06-27):
+- 13 EPIC files normalized from `type: epic` → `type: EPIC`; `grep -rl '^type: epic$' .issues/epics/*.md` returns nothing.
+- EPIC-1880 `children:` frontmatter removed; `## Children` body updated to list only the 6 real `parent:` children with grandchildren (ENH-1943/1944) and relates_to items (ENH-1948/1949) documented as prose.
+- `epic-consistency` linter extended with category-(d) (type casing) and category-(e) (children frontmatter) checks; exit 1 on violation.
+- Docs updated: `ISSUE_TEMPLATE.md` and `CONTRIBUTING.md` drop `children:` as a valid frontmatter field.
+- `.ll/history.db` retroactively corrected: 3 `issue_type='epic'` rows updated to `'EPIC'`.
+
 ## Status
 
-**Open** | Created: 2026-06-26 | Priority: P4
+**Done** | Created: 2026-06-26 | Completed: 2026-06-27 | Priority: P4
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T03:34:29 - `73f5f323-dc57-418c-9e14-b806053f0305.jsonl`
 - `/ll:confidence-check` - 2026-06-26T23:30:00Z - `746d760f-c9de-4326-b62f-23786bf7c45f.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:14:28 - `f73d0bf6-c23d-4784-89ac-3dfc12aa0b8a.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:01:53 - `64adeb74-858e-4aba-8e05-0d67aa559f7c.jsonl`

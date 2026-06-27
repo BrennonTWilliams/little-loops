@@ -519,7 +519,7 @@ As a user, I want the sprint to retry failures so that I don't have to manually 
 - [ ] Proposed Solution references existing utilities/patterns to reuse
 
 ### EPIC-Specific
-- [ ] Child Issues are enumerated (via `children:` frontmatter or `parent: EPIC-NNN` references in child issues)
+- [ ] Child Issues are enumerated via `parent: EPIC-NNN` references in child issues (no frontmatter `children:` array)
 - [ ] Each child is itself implementable (not a placeholder)
 - [ ] Coordination Scope is bounded: clearly states what is and is not in scope across the children
 - [ ] Acceptance Criteria describe cross-child outcomes, not duplicate per-child criteria

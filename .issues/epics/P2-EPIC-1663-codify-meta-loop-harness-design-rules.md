@@ -1,7 +1,7 @@
 ---
 id: EPIC-1663
 title: Codify meta-loop harness-design rules (SHOR-driven)
-type: epic
+type: EPIC
 status: done
 priority: P2
 discovered_date: 2026-05-23
