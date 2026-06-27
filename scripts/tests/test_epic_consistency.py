@@ -10,7 +10,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -31,7 +30,6 @@ def epic_consistency_dir(temp_project_dir: Path, sample_config: dict[str, Any]) 
 
 def _write_epic(epics_dir: Path, epic_id: str, children_section: str = "") -> Path:
     """Write an EPIC file with an optional ## Children section."""
-    num = epic_id.split("-")[1]
     body = f"---\nstatus: open\n---\n# {epic_id}: Test epic\n\n## Summary\nTest.\n"
     if children_section:
         body += f"\n## Children\n\n{children_section}\n"
@@ -46,8 +44,7 @@ def _write_child(issues_dir: Path, issue_id: str, parent: str | None = None) -> 
     subdir_map = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements"}
     subdir = issues_dir / subdir_map[prefix]
     subdir.mkdir(parents=True, exist_ok=True)
-    num = issue_id.split("-")[1]
-    fm = f"---\nstatus: open\n"
+    fm = "---\nstatus: open\n"
     if parent:
         fm += f"parent: {parent}\n"
     fm += "---\n"
@@ -293,8 +290,7 @@ class TestEpicConsistencyProsePreservation:
             epics_dir,
             "EPIC-040",
             children_section=(
-                "- **FEAT-050** — real child\n"
-                "- **EPIC-041** — sub-epic prose reference\n"
+                "- **FEAT-050** — real child\n- **EPIC-041** — sub-epic prose reference\n"
             ),
         )
         _write_child(epic_consistency_dir, "FEAT-050", parent="EPIC-040")
@@ -573,9 +569,7 @@ class TestEpicConsistencyJsonFormat:
         # EPIC-081 carries parent: EPIC-080 (sub-epic via parent: — advisory case)
         num = "081"
         path = epics_dir / f"P2-EPIC-{num}-sub-epic.md"
-        path.write_text(
-            f"---\nstatus: open\nparent: EPIC-080\n---\n# EPIC-{num}: Sub-epic\n"
-        )
+        path.write_text(f"---\nstatus: open\nparent: EPIC-080\n---\n# EPIC-{num}: Sub-epic\n")
 
         with patch.object(
             sys,
