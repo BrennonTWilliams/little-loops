@@ -1,14 +1,26 @@
 ---
 id: BUG-2321
-title: "Autoprompt enabled-default mismatch silently disables feature on standard installs"
+title: Autoprompt enabled-default mismatch silently disables feature on standard installs
 type: bug
 priority: P2
-status: open
-captured_at: "2026-06-26T22:30:26Z"
-discovered_date: "2026-06-26"
+status: done
+captured_at: '2026-06-26T22:30:26Z'
+completed_at: '2026-06-27T01:05:17Z'
+discovered_date: '2026-06-26'
 discovered_by: capture-issue
-labels: [hooks, prompt-optimization, config, init, default-resolution]
+labels:
+- hooks
+- prompt-optimization
+- config
+- init
+- default-resolution
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 25
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2321: Autoprompt enabled-default mismatch silently disables feature on standard installs
@@ -27,7 +39,7 @@ gated off by a default-resolution disagreement across three sources.
 
 1. Run `ll-init` and keep prompt optimization enabled (the default) — observe
    that no `prompt_optimization` block is written to `.ll/ll-config.json`
-   (see `scripts/little_loops/init/core.py:105-107`).
+   (see `scripts/little_loops/init/core.py:128-130`).
 2. Submit a vague prompt (≥10 chars, not a slash command) so the
    `UserPromptSubmit` hook fires.
 3. Observe that **no** optimization context is injected — the prompt passes
@@ -51,7 +63,7 @@ Three sources disagree on the default:
 | Source | Behavior when block is absent |
 |---|---|
 | `config-schema.json:585-589` | documents `enabled` default = **`true`** |
-| `scripts/little_loops/init/core.py:105-107` (*"default-on; only write when opting out"*) | writes **no block** |
+| `scripts/little_loops/init/core.py:128-130` (*"default-on; only write when opting out"*) | writes **no block** |
 | `scripts/little_loops/hooks/user_prompt_submit.py:102` — `prompt_opt.get("enabled", False)` | reads absence as **disabled** |
 
 Net effect: on any install where the user did not explicitly opt out, the
@@ -88,7 +100,7 @@ if not prompt_opt.get("enabled", False):
 config file and applies **no** schema defaults, so when the
 `prompt_optimization` block is absent, `prompt_opt` is `{}` and
 `.get("enabled", False)` resolves to `False`. This contradicts both the schema
-default (`true`) and the `init/core.py` comment that explicitly assumes
+default (`true`) and the `init/core.py:128-130` comment that explicitly assumes
 "default-on; only write when opting out" — that comment is only correct if a
 *consumer* supplies the `true` default, which the handler does not.
 
@@ -138,7 +150,7 @@ Decided by `/ll:decide-issue` on 2026-06-26.
 
 **Selected**: Option A — flip the runtime handler default to `True` at `user_prompt_submit.py:102` (literal `.get("enabled", True)`, not via `feature_enabled`).
 
-**Reasoning**: Option A is the only change that fixes the *reported* symptom — every existing install with no `prompt_optimization` block, including this source repo, is inert today. The one-line `.get("enabled", True)` flip matches three existing read-back sites (`init/cli.py:296`, `init/tui.py:421`, `init/tui.py:778`), the schema default (`config-schema.json:588`), and the `init/core.py` "write-on-opt-out" comment, so it resolves the three-way default-resolution disagreement at the consumer. Option B (always-write from `ll-init`) only repairs *new* installs and still needs the same runtime change to fix existing ones, while also requiring inversion of three unit tests, a CLI integration assertion, and a docstring contract — strictly more work for an incomplete fix.
+**Reasoning**: Option A is the only change that fixes the *reported* symptom — every existing install with no `prompt_optimization` block, including this source repo, is inert today. The one-line `.get("enabled", True)` flip matches three existing read-back sites (`init/cli.py:292-293`, `init/tui.py:414`, `init/tui.py:772`), the schema default (`config-schema.json:588`), and the `init/core.py:128-130` "write-on-opt-out" comment, so it resolves the three-way default-resolution disagreement at the consumer. Option B (always-write from `ll-init`) only repairs *new* installs and still needs the same runtime change to fix existing ones, while also requiring inversion of three unit tests, a CLI integration assertion, and a docstring contract — strictly more work for an incomplete fix.
 
 #### Scoring Summary
 
@@ -148,13 +160,13 @@ Decided by `/ll:decide-issue` on 2026-06-26.
 | B — `ll-init` always writes explicit block | 2/3 | 2/3 | 2/3 | 1/3 | 7/12 |
 
 **Key evidence**:
-- Option A: `.get("enabled", True)` already used at `init/cli.py:296-298`, `init/tui.py:421`, and the `init/tui.py:778` display guard; `config-schema.json:588` declares `default: true`; `init/core.py:105-107` comment asserts "default-on; only write when opting out". Single-line change fixes existing + new installs; one new absent-block test needed in `TestPromptOptimizationRender` (`test_hook_user_prompt_submit.py:312`).
+- Option A: `.get("enabled", True)` already used at `init/cli.py:292-293`, `init/tui.py:414`, and the `init/tui.py:772` display guard; `config-schema.json:588` declares `default: true`; `init/core.py:128-130` comment asserts "default-on; only write when opting out". Single-line change fixes existing + new installs; one new absent-block test needed in `TestPromptOptimizationRender` (`test_hook_user_prompt_submit.py:312`).
 - Option B: aligns with the `learning_tests`/`analytics`/`history`/`loops` always-write group, but `context_monitor`/`product` (also default-on) use the omit-if-disabled shape, so it is not the dominant convention; fixes only new installs, leaves existing configs (incl. this repo) inert without an additional runtime change; forces inversion of `test_prompt_optimization_omitted_by_default`, `test_prompt_optimization_omitted_when_explicitly_enabled`, the `assert "prompt_optimization" not in data` integration check, and the `build_config` docstring.
 
 ## Integration Map
 
 - `scripts/little_loops/hooks/user_prompt_submit.py:99-103` — enabled gate (the bug site)
-- `scripts/little_loops/init/core.py:105-107` — init write-on-opt-out logic
+- `scripts/little_loops/init/core.py:128-130` — init write-on-opt-out logic
 - `config-schema.json:585-589` — schema `enabled` default
 - `hooks/hooks.json:17-28` → `hooks/scripts/user-prompt-check.sh` → `python -m little_loops.hooks user_prompt_submit` (delivery path; confirmed working)
 - `scripts/little_loops/hooks/prompts/optimize-prompt-hook.md` — injected template (rendered correctly when enabled)
@@ -197,10 +209,10 @@ _Wiring pass added by `/ll:wire-issue`:_
   assert init's write-on-opt-out contract, which Option A leaves unchanged. If any
   go red, the fix accidentally altered `init/core.py`/`init/tui.py` instead of just
   the runtime handler:
-  - `scripts/tests/test_init_core.py:586` `test_prompt_optimization_omitted_by_default`
-  - `scripts/tests/test_init_core.py:594` `test_prompt_optimization_omitted_when_explicitly_enabled`
-  - `scripts/tests/test_init_core.py:602` `test_prompt_optimization_disabled_writes_enabled_false`
-  - `scripts/tests/test_init_core.py:1284` `test_yes_enable_feature_flags_write_sections` (`assert "prompt_optimization" not in data`)
+  - `scripts/tests/test_init_core.py:589` `test_prompt_optimization_omitted_by_default`
+  - `scripts/tests/test_init_core.py:597` `test_prompt_optimization_omitted_when_explicitly_enabled`
+  - `scripts/tests/test_init_core.py:605` `test_prompt_optimization_disabled_writes_enabled_false`
+  - `scripts/tests/test_init_core.py:1417` `test_yes_enable_feature_flags_write_sections` (`assert "prompt_optimization" not in data`)
   - `scripts/tests/test_init_tui.py:785` `test_prompt_optimization_default_on_omits_key`
   [Agent 2 + Agent 3 finding]
 
@@ -301,8 +313,8 @@ implementation. Decision is Option A (one-line runtime flip at
    `test_init_core.py:586,594,602,1284` and `test_init_tui.py:785`.
 3. Implementation Step 4 ("reconcile schema/init") requires **no schema or init edit**
    under Option A: `config-schema.json:588` already declares `default: true`,
-   `init/core.py:105-107` already writes on opt-out only, and the three init read-back
-   sites (`init/cli.py:296`, `init/tui.py:421`, `init/tui.py:778`) already default-on.
+   `init/core.py:128-130` already writes on opt-out only, and the three init read-back
+   sites (`init/cli.py:292-293`, `init/tui.py:414`, `init/tui.py:772`) already default-on.
    The one-line runtime flip makes all sources agree — Step 4 is a verify-agreement
    check, not a modification.
 4. (Optional, advisory) Decide whether to align the display-default sites
@@ -347,6 +359,8 @@ implementation. Decision is Option A (one-line runtime flip at
 hooks, prompt-optimization, config, init, default-resolution
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-27T00:55:03 - `bb0c3491-6da5-4997-a903-10aa80c23b1e.jsonl`
+- `/ll:confidence-check` - 2026-06-27T00:50:18Z - `94060937-a0d0-4f27-9f65-48f6a9862e3c.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:19:50 - `9638d775-3967-4517-9cef-a97510938e46.jsonl`
 - `/ll:decide-issue` - 2026-06-26T23:04:06 - `53786629-d9b8-4f2a-8643-10c3f08458a2.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:46:36 - `ae61a1f8-a8d1-4f8e-949b-9e03bb674838.jsonl`

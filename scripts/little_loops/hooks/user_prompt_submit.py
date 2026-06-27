@@ -99,7 +99,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
     raw_opt = config.get("prompt_optimization", {})
     prompt_opt: dict[str, Any] = raw_opt if isinstance(raw_opt, dict) else {}
 
-    if not prompt_opt.get("enabled", False):
+    if not prompt_opt.get("enabled", True):
         return LLHookResult(exit_code=0)
 
     mode = str(prompt_opt.get("mode", "quick"))

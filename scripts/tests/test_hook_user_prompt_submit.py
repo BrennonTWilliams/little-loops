@@ -372,3 +372,52 @@ class TestPromptOptimizationRender:
         result = handle(_event({"prompt": "short"}))
         assert result.exit_code == 0
         assert not result.stdout
+
+    def _write_empty_config(self, project_dir: Path) -> None:
+        ll_dir = project_dir / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        (ll_dir / "ll-config.json").write_text(json.dumps({}), encoding="utf-8")
+
+    def test_absent_block_defaults_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-2321: absent prompt_optimization block must default to enabled=True."""
+        self._write_empty_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        result = handle(_event({"prompt": "implement authentication flow"}))
+        assert result.exit_code == 0
+        assert result.stdout, "absent block must be treated as enabled; template should render"
+        assert "implement authentication flow" in result.stdout
+
+    def test_explicit_disabled_suppresses_injection(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-2321: explicit enabled=false must still suppress injection."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        config = {"prompt_optimization": {"enabled": False}}
+        (ll_dir / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        result = handle(_event({"prompt": "implement authentication flow"}))
+        assert result.exit_code == 0
+        assert not result.stdout
+
+    def test_bypass_guards_fire_before_enabled_check(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-2321: bypass guards (slash, short) short-circuit even with absent block (default-on)."""
+        self._write_empty_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        slash_result = handle(_event({"prompt": "/ll:manage-issue ENH-123"}))
+        assert slash_result.exit_code == 0
+        assert not slash_result.stdout
+
+        short_result = handle(_event({"prompt": "short"}))
+        assert short_result.exit_code == 0
+        assert not short_result.stdout
