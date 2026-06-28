@@ -1219,7 +1219,7 @@ states:
       Task: "${context.description}"
       Target app: ${context.app_name}
       Max steps: ${context.max_steps}
-      Final state before termination: ${state.last_state}
+      Final state before termination: see ${captured.run_dir.output}/.action_log.md
 
       STEP 1 - Read the action log:
       Read ${captured.run_dir.output}/.action_log.md if it exists.
@@ -1233,7 +1233,8 @@ states:
       ${context.description}
 
       ## Termination
-      Step cap (${context.max_steps}) reached at state: ${state.last_state}.
+      Step cap (${context.max_steps}) reached. See
+      ${captured.run_dir.output}/.action_log.md for the terminating state.
       The task may not be fully complete.
 
       ## Actions Completed
