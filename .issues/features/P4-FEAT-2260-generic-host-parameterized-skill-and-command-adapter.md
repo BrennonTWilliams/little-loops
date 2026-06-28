@@ -8,9 +8,24 @@ discovered_date: 2026-06-24
 discovered_by: planning-assessment
 parent: EPIC-2257
 decision_ref: ARCHITECTURE-049
-labels: [host-compat, portfolio, skills, commands, adapters]
-learning_tests_required: [yaml]
-relates_to: [FEAT-2188, FEAT-2189, ENH-2121]
+labels:
+- host-compat
+- portfolio
+- skills
+- commands
+- adapters
+learning_tests_required:
+- ruamel.yaml
+relates_to:
+- FEAT-2188
+- FEAT-2189
+- ENH-2121
+confidence_score: 87
+outcome_confidence: 61
+score_complexity: 11
+score_test_coverage: 20
+score_ambiguity: 18
+score_change_surface: 12
 ---
 
 # FEAT-2260: Generic host-parameterized skill + command adapter
@@ -147,6 +162,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Frontmatter parsing**: prefer `scripts/little_loops/frontmatter.py:parse_skill_frontmatter()` (canonical, with line-scan fallback) over duplicating the inline `yaml.safe_load(text[3:end])` pattern in `adapters/core.py`.
 
+**`_extract_body(text)` as shared logic**: `adapt_agents_for_codex.py` has `_extract_body(text)` that strips the frontmatter fence and returns everything after the closing `---\n`. This feeds `_emit_agent_toml()` to populate `developer_instructions`. The equivalent for skills is inlined in `_process_skills()`. Both should move to `adapters/core.py` so emitters receive a pre-stripped body without re-implementing the fence scan.
+
+**`cli_event_context` wrapping**: Both `main_adapt_skills_for_codex()` and `main_adapt_agents_for_codex()` wrap their logic in `cli_event_context(DEFAULT_DB_PATH, "<tool-name>", sys.argv[1:])`. The unified `main_adapt()` must do the same with `"ll-adapt"` as the tool name so CLI events land correctly in the session database.
+
+**Stub emitter pattern for `OmpEmitter`**: Follow the `OpenCodeRunner` stub pattern from `host_runner.py:626` — register `OmpEmitter` in `_EMITTER_REGISTRY` so unknown-host errors are descriptive, but exclude it from any auto-detect probe order. All `emit_*` methods should raise a `HostNotConfigured`-equivalent with a remediation hint ("omp emitter not yet implemented; open a PR adding `adapters/omp.py`"). This produces a clear message on `--host omp` instead of a `KeyError`.
+
+**Gemini output format specifics from `thoughts/research/gemini-cli-surface.md`**: Skills land at `.gemini/skills/<name>/SKILL.md` (same SKILL.md format as ll's `skills/*/SKILL.md`; no `agents/openai.yaml` equivalent — Gemini does not use it). Commands land at `.gemini/commands/*.toml`. The `name:` and `description:` fields are required; `metadata.short-description:` has no Gemini equivalent and should be omitted from `GeminiEmitter` output.
+
+**`parse_skill_frontmatter()` fallback caveat**: The line-scan fallback path does NOT resolve YAML block scalars — only the `yaml.safe_load()` primary path does. Agent and skill `description:` values using block scalar syntax (`description: |`) return `None` in the fallback. Test fixtures exercising block-scalar descriptions must use valid YAML so the primary path fires.
+
+**Additional reference research docs**: `thoughts/research/codex-command-discovery.md` and `thoughts/research/codex-agent-selection.md` document Codex command discovery and agent selection behavior; useful context for `CodexEmitter` implementation details.
+
 ## Integration Map
 
 ### Files to Modify
@@ -219,7 +246,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 2. Migrate `ll-adapt-skills-for-codex` and `ll-adapt-agents-for-codex` logic into `CodexEmitter` (with ENH-2121 rich TOML fields)
 3. Implement `GeminiEmitter` covering FEAT-2188 (skills frontmatter) and FEAT-2189 (commands `.toml`) output
 4. Implement `OmpEmitter` stub/functional emitter for the omp surface
-5. Wire `ll-adapt --host <host>` CLI entry point; keep old scripts as thin `--host codex` aliases
+5. Wire `ll-adapt --host <host>` CLI entry point (wrap in `cli_event_context(DEFAULT_DB_PATH, "ll-adapt", sys.argv[1:])` following `main_adapt_skills_for_codex` pattern); keep old scripts as thin `--host codex` aliases
 6. Port/extend tests from `test_adapt_agents_for_codex.py` into unified adapter test suite; assert rich Codex field parity
 7. Update CLI reference docs; verify FEAT-2188, FEAT-2189, ENH-2121 can be closed as superseded
 
@@ -256,7 +283,26 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-06-24 | Priority: P4
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-28_
+
+**Readiness Score**: 87/100 → PROCEED (learning test gate resolved; re-run pending)
+**Outcome Confidence**: 61/100 → Moderate Risk
+
+### Gaps Resolved (2026-06-28)
+- **`toml` learning test** — REMOVED from `learning_tests_required`. TOML output is hand-built f-strings with manual escaping (same as `_emit_agent_toml` in the existing `adapt_agents_for_codex.py`). No TOML library is needed.
+- **`yaml` learning test** — RENAMED `yaml` → `ruamel.yaml`. The new `adapters/core.py` calls `parse_skill_frontmatter()` (canonical parser, already uses ruamel.yaml internally); raw `yaml.safe_load` is not used in the shared core. `ruamel.yaml` is already proven in the registry.
+
+### Outcome Risk Factors
+- Broad enumeration across 21+ distinct change sites: code, tests, config, commands, and docs span 5 subsystems; coordination risk is highest in the docs pass (Codex guides, CONTRIBUTING.md, skills docs).
+- OmpEmitter format not yet defined: scoped as a raising stub, but any consumer expecting `--host omp` hits a hard error rather than a graceful no-op. Backward-compat alias retirement timeline also unspecified.
+- Moderate change surface with 6–10 external callers of existing adapt entry points; backward-compat aliases during transition reduce regression risk.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-28T00:00:00 - `21cf19fc-222d-4e73-a05e-bea40e65db5a.jsonl`
+- `/ll:confidence-check` (re-run, gate cleared) - 2026-06-28 - `dcb52e94-0280-4152-a74c-c9ae184c654c.jsonl`
+- `/ll:refine-issue` - 2026-06-28T17:25:55 - `75663ab2-c73a-4ef7-8c3f-ef349639e486.jsonl`
 - `/ll:wire-issue` - 2026-06-25T18:42:58 - `b48daf6e-e26f-40d4-9aab-ea94d716a199.jsonl`
 - `/ll:refine-issue` - 2026-06-25T18:30:36 - `2896fb18-50ad-4c0c-a3c3-dfbdab05512f.jsonl`
 - `/ll:format-issue` - 2026-06-25T18:20:17 - `9285574b-00e2-4b27-85e4-574f9b9140d0.jsonl`

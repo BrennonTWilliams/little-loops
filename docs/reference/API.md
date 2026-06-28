@@ -4342,6 +4342,7 @@ class FSMLoop:
     generator_fix_ok: bool = False        # Suppress MR-6 generator-fix discipline lint rule (ENH-2079)
     bash_default_ok: bool = False         # Suppress MR-7 bash-default interpolation lint rule (ENH-2348)
     evidence_contract_ok: bool = False    # Suppress MR-8 evidence-contract lint rule (ENH-2342)
+    shell_pid_ok: bool = False            # Suppress MR-9 over-escaped shell $$ PID-corruption lint rule (BUG-2368)
     imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
 
@@ -4996,6 +4997,7 @@ Validate FSM structure and return list of errors.
 - **MR-6 (WARNING)**: meta-loop has a `shell`-type state that writes to the same file path as an LLM-generator state — hand-patching creates fragile output that diverges from the generator on the next run; fix the generator action so every run produces correct output automatically, or set `generator_fix_ok: true` for intentional post-processing (ENH-2079)
 - **MR-7 (ERROR)**: any FSM action string contains an unescaped `${namespace.path:-default}` (bash `:-` default syntax) — the interpolation engine crashes at runtime; use `${ns.path:default=value}` (engine-native) or `$${VAR:-value}` (shell-escaped), or set `bash_default_ok: true` to suppress (ENH-2348)
 - **MR-8 (WARNING)**: a `check_semantic`/`llm_structured` state's `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`) — verdicts without verbatim citation requirements default to optimism (SHOR Table 1: 33–55% accuracy); states with `evaluate.prompt: null` inherit `DEFAULT_LLM_PROMPT` which includes the contract automatically; set `evidence_contract_ok: true` to suppress (ENH-2342)
+- **MR-9 (ERROR)**: a shell action string contains `$$(` or `$$VAR` — over-escaped bash; the FSM interpolator only rewrites the brace form `$${...}` → `${...}`, so bare `$(...)` / `$VAR` doubled with `$$` expand to the runner's PID at runtime, silently corrupting every downstream `${captured.*}` reference; use single `$` for command substitution and variables, reserve `$$` exclusively for the `$${VAR}` brace escape that collides with `${ns.path}` interpolation; set `shell_pid_ok: true` to suppress (BUG-2368)
 
 **Example:**
 ```python
