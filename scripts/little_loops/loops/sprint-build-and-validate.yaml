@@ -98,6 +98,31 @@ states:
       Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
       Run `/ll:audit-issue-conflicts --auto` once for all sprint issues as a single grouped call.
     capture: conflict_result
+    evaluate:
+      type: llm_structured
+      source: "${captured.conflict_result.output}"
+      prompt: |
+        Did the conflict audit resolve or explicitly note every reported conflict?
+        Answer YES if: all conflicts were addressed (issue files mutated, scopes merged,
+        explicit deferral noted) OR no conflicts were found.
+        Answer PARTIAL if some but not all conflicts were addressed.
+        Answer NO if conflicts were reported and none were addressed, or the output is
+        empty or clearly incomplete.
+      min_confidence: 0.7
+    on_yes: commit
+    on_no: audit_conflicts_retry
+    on_partial: audit_conflicts_retry
+    on_error: commit
+
+  audit_conflicts_retry:
+    action_type: prompt
+    timeout: 300
+    action: |
+      The previous conflict audit did not fully address all reported conflicts.
+      Prior output: ${captured.conflict_result.output}
+      Re-run `/ll:audit-issue-conflicts --auto` for the sprint issues in
+      .sprints/${captured.sprint_name.output}.yaml.
+    capture: conflict_result
     next: commit
 
   commit:
@@ -152,6 +177,6 @@ states:
   done:
     terminal: true
 
-max_steps: 16
+max_steps: 18
 timeout: 25200
 on_handoff: spawn

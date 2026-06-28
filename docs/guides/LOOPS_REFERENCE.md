@@ -736,8 +736,9 @@ route_input → [sprint_name provided?]
   │                                   └─ failure/error → refine_failed  (terminal)
   ├─ NO  (no name given)         → create_sprint → route_create → [sprint exists?]
   │                                   ├─ YES → extract_sprint_issues → refine_issues
-  │                                   │           → map_dependencies → audit_conflicts
-  │                                   │           → commit → run_sprint → [exit code?]
+  │                                   │           → map_dependencies → audit_conflicts → [audit resolved?]
+  │                                   │                               ├─ YES/error → commit → run_sprint → [exit code?]
+  │                                   │                               └─ NO/PARTIAL → audit_conflicts_retry → commit → run_sprint → [exit code?]
   │                                   │                       ├─ 0 (clean)   → done  (terminal)
   │                                   │                       ├─ non-zero    → extract_unresolved → [state file?]
   │                                   │                       │                   ├─ has failed issues → refine_unresolved → [child result?]
@@ -761,7 +762,8 @@ route_input → [sprint_name provided?]
 | `refine_issues` | — | Delegates to `recursive-refine` sub-loop via `context_passthrough: true`; `on_success` → `map_dependencies`; `on_failure`/`on_error` → `refine_failed` |
 | `refine_failed` | — | **Terminal** — `recursive-refine` child exited via its `failed` terminal or crashed before refinement completed |
 | `map_dependencies` | 300s | `/ll:map-dependencies --auto` grouped across all sprint issues |
-| `audit_conflicts` | 300s | `/ll:audit-issue-conflicts --auto` grouped across all sprint issues |
+| `audit_conflicts` | 300s | `/ll:audit-issue-conflicts --auto` grouped across all sprint issues; `llm_structured` evaluator grades whether each conflict was addressed — `on_yes` → `commit`; `on_no`/`on_partial` → `audit_conflicts_retry`; `on_error` (evaluator crash) → `commit` |
+| `audit_conflicts_retry` | 300s | Re-runs `/ll:audit-issue-conflicts --auto` after reviewing prior output; unconditionally routes to `commit` |
 | `commit` | 120s | `/ll:commit --auto` with standard sprint commit message |
 | `run_sprint` | 21600s (6h) | `ll-sprint run <name>` — parallelized wave execution; `on_yes` (exit 0) → `done`; `on_no` (non-zero) → `extract_unresolved`; `on_error` (crash/kill) → `sprint_failed` |
 | `extract_unresolved` | 30s | Reads `.sprint-state.json`; merges `failed_issues` + `skipped_blocked_issues`; emits comma-separated IDs; `on_no`/`on_error` (no state file or no failed issues) → `sprint_failed` |
@@ -769,7 +771,7 @@ route_input → [sprint_name provided?]
 | `refine_unresolved` | — | Delegates to `recursive-refine` sub-loop via `context_passthrough: true`; `on_yes` → `done`; `on_no`/`on_error` → `refine_unresolved_failed` |
 | `refine_unresolved_failed` | — | **Terminal** — recovery refinement of blocked/failed issues itself failed or crashed |
 
-**Notes**: The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_steps: 16`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase. Clean sprint exits (exit 0) route directly to `done`. Non-zero exits (partial failures) route through `extract_unresolved` → `refine_unresolved` for recovery; only the success outcome of that chain reaches `done`. Crash/kill exits (no `.sprint-state.json`) terminate at `sprint_failed`. A failed `recursive-refine` child during initial refinement terminates at `refine_failed`; a failed recovery refinement terminates at `refine_unresolved_failed`. All three failure terminals are distinct, so downstream automation can distinguish "sprint never ran" from "sprint ran but recovery refinement failed".
+**Notes**: The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_steps: 18`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase. Clean sprint exits (exit 0) route directly to `done`. Non-zero exits (partial failures) route through `extract_unresolved` → `refine_unresolved` for recovery; only the success outcome of that chain reaches `done`. Crash/kill exits (no `.sprint-state.json`) terminate at `sprint_failed`. A failed `recursive-refine` child during initial refinement terminates at `refine_failed`; a failed recovery refinement terminates at `refine_unresolved_failed`. All three failure terminals are distinct, so downstream automation can distinguish "sprint never ran" from "sprint ran but recovery refinement failed".
 
 ### `sprint-refine-and-implement` — Sprint-Scoped Refine-and-Implement Loop
 

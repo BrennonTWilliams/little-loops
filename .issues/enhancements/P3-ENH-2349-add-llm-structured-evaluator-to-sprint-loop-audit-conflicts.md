@@ -2,9 +2,10 @@
 id: ENH-2349
 title: Add llm_structured evaluator to sprint-build-and-validate audit_conflicts state
 type: ENH
-status: open
+status: done
 priority: P3
 captured_at: '2026-06-27T21:16:24Z'
+completed_at: '2026-06-28T03:15:54Z'
 discovered_date: '2026-06-27'
 discovered_by: capture-issue
 labels:
@@ -238,7 +239,16 @@ _Updated by `/ll:confidence-check` on 2026-06-27_
 - ~~**`on_error: commit` unresolved decision**~~ ✅ **RESOLVED**: `on_error: commit` is intentional — an evaluator crash (API timeout, malformed JSON) is an operational failure, not a correctness failure; the conflict audit output is still valid and should not trigger a retry
 - ~~**`max_steps: 16` uncommitted**~~ ✅ **RESOLVED**: increment to 18 — the retry path adds up to 2 extra steps; keeping 16 risks truncating the retry mid-run and silently falling back to unconditional-commit behavior
 
+## Resolution
+
+Added `llm_structured` evaluator to `audit_conflicts` state in `sprint-build-and-validate.yaml`.
+Removed bare `next: commit`; added full four-route table (`on_yes`/`on_no`/`on_partial`/`on_error`).
+Added `audit_conflicts_retry` state for below-threshold audits. Incremented `max_steps` from 16 to 18.
+Updated structural tests in `test_builtin_loops.py` and state reference in `LOOPS_REFERENCE.md`.
+`ll-loop validate` passes with no new errors.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T03:12:14 - `b51169cf-6c2a-410b-8a70-484c629a0537.jsonl`
 - `/ll:decide-issue` - 2026-06-28T03:08:05 - `b51169cf-6c2a-410b-8a70-484c629a0537.jsonl`
 - `/ll:confidence-check` - 2026-06-27T00:00:00Z - `7175e719-365d-4750-a6bd-b4f54f678467.jsonl`
 - `/ll:confidence-check` - 2026-06-27T00:00:00Z - `fcd085ed-5850-4ae2-ad7a-bf6eb0fdc293.jsonl`

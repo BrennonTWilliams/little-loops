@@ -3221,6 +3221,7 @@ class TestSprintBuildAndValidateLoop:
             "refine_issues",
             "map_dependencies",
             "audit_conflicts",
+            "audit_conflicts_retry",
             "commit",
             "run_sprint",
             "extract_unresolved",
@@ -3425,6 +3426,52 @@ class TestSprintBuildAndValidateLoop:
         failure = state.get("on_failure") or state.get("on_no")
         assert success != failure, (
             f"refine_unresolved launders verdict: on_yes and on_no both map to {success!r}"
+        )
+
+    def test_audit_conflicts_uses_llm_structured_evaluator(self, data: dict) -> None:
+        """audit_conflicts must use an llm_structured evaluator, not bare next:."""
+        state = data["states"].get("audit_conflicts", {})
+        assert "next" not in state, (
+            "audit_conflicts must not use bare next: — it must route via llm_structured evaluate block"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "llm_structured", (
+            f"audit_conflicts.evaluate.type should be 'llm_structured', got {evaluate.get('type')!r}"
+        )
+
+    def test_audit_conflicts_on_yes_routes_to_commit(self, data: dict) -> None:
+        """audit_conflicts.on_yes must route to commit."""
+        state = data["states"].get("audit_conflicts", {})
+        assert state.get("on_yes") == "commit", (
+            f"audit_conflicts.on_yes should be 'commit', got {state.get('on_yes')!r}"
+        )
+
+    def test_audit_conflicts_on_no_routes_to_retry(self, data: dict) -> None:
+        """audit_conflicts.on_no must route to audit_conflicts_retry."""
+        state = data["states"].get("audit_conflicts", {})
+        assert state.get("on_no") == "audit_conflicts_retry", (
+            f"audit_conflicts.on_no should be 'audit_conflicts_retry', got {state.get('on_no')!r}"
+        )
+
+    def test_audit_conflicts_on_partial_routes_to_retry(self, data: dict) -> None:
+        """audit_conflicts.on_partial must route to audit_conflicts_retry."""
+        state = data["states"].get("audit_conflicts", {})
+        assert state.get("on_partial") == "audit_conflicts_retry", (
+            f"audit_conflicts.on_partial should be 'audit_conflicts_retry', got {state.get('on_partial')!r}"
+        )
+
+    def test_audit_conflicts_retry_state_exists(self, data: dict) -> None:
+        """audit_conflicts_retry state must exist with next: commit."""
+        state = data["states"].get("audit_conflicts_retry", {})
+        assert state, "audit_conflicts_retry state must exist"
+        assert state.get("next") == "commit", (
+            f"audit_conflicts_retry.next should be 'commit', got {state.get('next')!r}"
+        )
+
+    def test_max_steps_accommodates_retry_cycle(self, data: dict) -> None:
+        """max_steps must be at least 18 to accommodate the audit_conflicts retry path."""
+        assert data.get("max_steps", 0) >= 18, (
+            f"max_steps should be >= 18 (retry adds up to 2 extra steps), got {data.get('max_steps')}"
         )
 
 
