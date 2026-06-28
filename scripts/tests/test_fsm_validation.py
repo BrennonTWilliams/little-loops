@@ -3119,9 +3119,7 @@ class TestBashDefaultInterpolation:
         fsm = self._simple_fsm("echo ${context.order:-queue}")
         errors = validate_fsm(fsm)
         mr7 = [
-            e
-            for e in errors
-            if e.severity == ValidationSeverity.ERROR and "ENH-2348" in e.message
+            e for e in errors if e.severity == ValidationSeverity.ERROR and "ENH-2348" in e.message
         ]
         assert len(mr7) == 1
 
@@ -3432,7 +3430,7 @@ class TestLLMEvidenceContractValidation:
                     on_no="check",
                 ),
                 "done": make_state(terminal=True),
-            }
+            },
         )
         errors = _validate_llm_evidence_contract(fsm)
         assert errors == [], f"Unexpected errors with suppression flag: {errors}"
@@ -3457,7 +3455,10 @@ class TestLLMEvidenceContractValidation:
         )
         all_errors = validate_fsm(fsm)
         mr8_warnings = [
-            e for e in all_errors
+            e
+            for e in all_errors
             if e.severity == ValidationSeverity.WARNING and "MR-8" in e.message
         ]
-        assert len(mr8_warnings) >= 1, f"MR-8 WARNING not found in validate_fsm output: {all_errors}"
+        assert len(mr8_warnings) >= 1, (
+            f"MR-8 WARNING not found in validate_fsm output: {all_errors}"
+        )

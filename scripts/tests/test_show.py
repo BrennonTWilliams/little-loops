@@ -6,8 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from little_loops.cli.issues.show import (
     _ljust,
     _parse_card_fields,
@@ -15,7 +13,6 @@ from little_loops.cli.issues.show import (
     _resolve_issue_id,
     _source_label,
 )
-
 
 # =============================================================================
 # _source_label
@@ -77,9 +74,7 @@ def _make_config(tmp_path: Path, categories: dict[str, Any]) -> Any:
 class TestResolveIssueId:
     """Tests for _resolve_issue_id()."""
 
-    def _make_config_with_file(
-        self, tmp_path: Path, filename: str
-    ) -> tuple[Any, Path]:
+    def _make_config_with_file(self, tmp_path: Path, filename: str) -> tuple[Any, Path]:
         """Create a config with one issue file and return (config, file_path)."""
         categories = {
             "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "implement"},
@@ -93,25 +88,19 @@ class TestResolveIssueId:
 
     def test_full_format_p_type_nnn(self, tmp_path: Path) -> None:
         """P3-ENH-2001 resolves to the matching file."""
-        config, issue_file = self._make_config_with_file(
-            tmp_path, "P3-ENH-2001-test-issue.md"
-        )
+        config, issue_file = self._make_config_with_file(tmp_path, "P3-ENH-2001-test-issue.md")
         result = _resolve_issue_id(config, "P3-ENH-2001")
         assert result == issue_file
 
     def test_type_nnn_format(self, tmp_path: Path) -> None:
         """ENH-2001 resolves to the matching file."""
-        config, issue_file = self._make_config_with_file(
-            tmp_path, "P3-ENH-2001-test-issue.md"
-        )
+        config, issue_file = self._make_config_with_file(tmp_path, "P3-ENH-2001-test-issue.md")
         result = _resolve_issue_id(config, "ENH-2001")
         assert result == issue_file
 
     def test_numeric_only_format(self, tmp_path: Path) -> None:
         """Bare numeric '2001' resolves to the matching file."""
-        config, issue_file = self._make_config_with_file(
-            tmp_path, "P3-ENH-2001-test-issue.md"
-        )
+        config, issue_file = self._make_config_with_file(tmp_path, "P3-ENH-2001-test-issue.md")
         result = _resolve_issue_id(config, "2001")
         assert result == issue_file
 
@@ -123,9 +112,7 @@ class TestResolveIssueId:
 
     def test_stale_type_prefix_falls_back_to_numeric(self, tmp_path: Path) -> None:
         """FEAT-2001 resolves to ENH-2001 file via numeric fallback (BUG-2003)."""
-        config, issue_file = self._make_config_with_file(
-            tmp_path, "P3-ENH-2001-test-issue.md"
-        )
+        config, issue_file = self._make_config_with_file(tmp_path, "P3-ENH-2001-test-issue.md")
         result = _resolve_issue_id(config, "FEAT-2001")
         assert result == issue_file
 
@@ -286,17 +273,13 @@ class TestLjust:
 class TestRenderCard:
     """Tests for _render_card()."""
 
-    def test_minimal_card_uses_fallback_defaults(
-        self, stable_snapshot_env: None
-    ) -> None:
+    def test_minimal_card_uses_fallback_defaults(self, stable_snapshot_env: None) -> None:
         """Empty fields dict renders with '???' and 'Untitled' fallbacks."""
         card = _render_card({})
         assert "???" in card
         assert "Untitled" in card
 
-    def test_card_contains_issue_id_and_title(
-        self, stable_snapshot_env: None
-    ) -> None:
+    def test_card_contains_issue_id_and_title(self, stable_snapshot_env: None) -> None:
         """Card body includes the issue_id and title."""
         fields: dict[str, str | None] = {
             "issue_id": "ENH-9999",
@@ -309,17 +292,13 @@ class TestRenderCard:
         assert "ENH-9999" in card
         assert "My Test Enhancement" in card
 
-    def test_card_has_box_drawing_borders(
-        self, stable_snapshot_env: None
-    ) -> None:
+    def test_card_has_box_drawing_borders(self, stable_snapshot_env: None) -> None:
         """Rendered card uses box-drawing characters for borders."""
         card = _render_card({"issue_id": "BUG-1", "title": "Test"})
         assert "┌" in card  # ┌ top-left
         assert "┘" in card  # ┘ bottom-right
 
-    def test_long_unbreakable_word_extends_box(
-        self, stable_snapshot_env: None
-    ) -> None:
+    def test_long_unbreakable_word_extends_box(self, stable_snapshot_env: None) -> None:
         """A very long single token in summary extends the card box past structural width."""
         long_word = "x" * 120
         fields: dict[str, str | None] = {

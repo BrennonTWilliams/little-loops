@@ -280,7 +280,11 @@ def cmd_list(
         for lp in group:
             # Name: project loops get bold cyan, built-in loops get dimmer cyan
             name_color = "36" if lp["builtin"] else "36;1"
-            display_name = _truncate(lp["name"], _MAX_NAME_COL) if len(lp["name"]) > _MAX_NAME_COL else lp["name"]
+            display_name = (
+                _truncate(lp["name"], _MAX_NAME_COL)
+                if len(lp["name"]) > _MAX_NAME_COL
+                else lp["name"]
+            )
             name_str = colorize(display_name.ljust(name_col), name_color)
 
             # Suffix: cap labels; mark only project loops (built-in is the default)

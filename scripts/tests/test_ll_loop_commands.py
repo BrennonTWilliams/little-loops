@@ -1286,9 +1286,7 @@ class TestLoopListFormatting:
         )
         # 4 labels: first 2 shown, [+2] overflow badge
         (loops_dir / "many-labels.yaml").write_text(
-            _runnable(
-                "name: many-labels\ncategory: test\nlabels:\n  - a\n  - b\n  - c\n  - d\n"
-            )
+            _runnable("name: many-labels\ncategory: test\nlabels:\n  - a\n  - b\n  - c\n  - d\n")
         )
 
         args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
@@ -1474,8 +1472,10 @@ class TestLoopListFormatting:
         assert "2 loops" in out
         assert "2 categories" in out
         # Summary appears before first category
-        first_cat_pos = min(out.index("Cat1") if "Cat1" in out else len(out),
-                            out.index("Cat2") if "Cat2" in out else len(out))
+        first_cat_pos = min(
+            out.index("Cat1") if "Cat1" in out else len(out),
+            out.index("Cat2") if "Cat2" in out else len(out),
+        )
         assert out.index("2 loops") < first_cat_pos
 
     def test_no_color_output_no_ansi(

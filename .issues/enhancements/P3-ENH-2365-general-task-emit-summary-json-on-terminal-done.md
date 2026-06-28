@@ -78,8 +78,10 @@ Add a `summarize_success` state between `count_final` and `done`:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/general-task.yaml` — add `summarize_success` state; repoint `count_final.on_yes`
-- `scripts/little_loops/fsm/persistence.py:archive_run()` — (Option A) copy `summary.json` from `run_dir` into the history dir; currently copies only `state.json`, `events.jsonl`, `meta-eval.jsonl` (line 420)
+- `scripts/little_loops/loops/general-task.yaml` — add `summarize_success` state; repoint `count_final.on_yes`; update `diagnose` state action text to enumerate `summarize_success`
+- `scripts/little_loops/fsm/persistence.py:archive_run()` — (Option A) copy `summary.json` from `run_dir` into the history dir; currently copies only `state.json`, `events.jsonl`, `meta-eval.jsonl` (line 420); also update module-level docstring file structure example
+- `docs/reference/API.md` — update `archive_run()` method table entry [wiring pass]
+- `docs/guides/LOOPS_REFERENCE.md` — update terminal gate description from three-state to four-state [wiring pass]
 
 ### Dependent Files (Callers/Importers)
 - `skills/audit-loop-run/SKILL.md` — consumes `summary.json` for phantom-vs-honest-failure verdict (lines 258–259); this fix makes the success path legible to its heuristics
@@ -91,14 +93,36 @@ Add a `summarize_success` state between `count_final` and `done`:
 - `scripts/little_loops/loops/rn-implement.yaml` — same
 
 ### Tests
-- `scripts/tests/test_general_task_loop.py` — primary test file; add assertion that `summary.json` appears on the `done` path
-- `scripts/tests/test_audit_loop_run_skill.py` — verify `honest-failure` verdict logic with and without `summary.json`
-- `scripts/tests/test_builtin_loops.py` — may need update if loop topology is validated here
 
-> ⚠ Research finding: `scripts/tests/test_general_task_loop.py` does not exist on disk. The active test class is `TestGeneralTaskLoop` in `scripts/tests/test_builtin_loops.py` (lines ~7771–7903). New tests for `summarize_success` should be added there following the `TestAutoRefineAndImplementLoop.test_finalize_writes_summary_json` pattern (lines 1760–1768).
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that will BREAK (must update before or during implementation):**
+- `scripts/tests/test_general_task_loop.py::TestChange8FinalVerifyGate::test_count_final_routes_yes_to_done` — asserts `raw_data["states"]["count_final"]["on_yes"] == "done"`; ENH-2365 changes this to `"summarize_success"` — rename test and update assertion
+- `scripts/tests/test_fsm_persistence.py::TestArchiveRun` (all 9 tests) — break only if `run_dir` becomes a **required** (non-optional) positional param on `archive_run()`; keep it `run_dir: Path | None = None` to avoid breaking all 9 callers
+
+**Tests to UPDATE:**
+- `scripts/tests/test_general_task_loop.py::TestGeneralTaskLoopFile::test_expected_states_present` — uses `issubset`, so it passes silently when `summarize_success` is added; add `"summarize_success"` to the `expected` set to actively assert the new state
+
+**New tests to WRITE:**
+- `scripts/tests/test_general_task_loop.py` — add `TestENH2365SummarizeSuccess` class following `TestENH1631SummarizePartial` (lines 1240–1263) and `TestAutoRefineAndImplementLoop.test_finalize_writes_summary_json` in `test_builtin_loops.py` (lines 1758–1763). Tests: state exists, `count_final.on_yes == "summarize_success"`, `action_type == "shell"`, `"summary.json" in action`, `"implemented" in action`, `next == "done"`, `on_error == "done"`
+- `scripts/tests/test_fsm_persistence.py::TestArchiveRun` — add `test_archive_run_copies_summary_json_when_exists` and `test_archive_run_does_not_copy_summary_json_when_absent` following the `test_archive_run_copies_meta_eval_when_exists` / `test_archive_run_does_not_copy_meta_eval_when_absent` pair (lines 610–633) as the direct structural template
+
+**Confirmed existing (wiring pass corrected stale note):**
+- `scripts/tests/test_general_task_loop.py` — **exists** (1,400 lines); prior refine-issue research note claiming it was absent is incorrect
+- `scripts/tests/test_audit_loop_run_skill.py` — **exists** (627 lines); `TestHonestFailureDiscriminator` tests are not directly broken by ENH-2365 (they test the skill file, not `general-task` output)
+- `scripts/tests/test_builtin_loops.py` — `TestAutoRefineAndImplementLoop.test_finalize_writes_summary_json` (lines 1758–1763) is the canonical template; `TestGeneralTaskLoop` class (~lines 7771–7903) is not the primary location — `test_general_task_loop.py` is
 
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `StatePersistence` method table entry for `archive_run()` currently reads "Copy state, events, and meta-eval to `.loops/.history/`"; update to include `summary.json` in the listed artifacts
+- `docs/guides/LOOPS_REFERENCE.md` — paragraph describing the terminal gate as "one-time **three**-state terminal gate (`final_verify` + `run_final_tests` + `count_final`)" must be updated to **four**-state after `summarize_success` is inserted; the step-count estimate ("~33 plan steps before the cap fires") decreases by 1 and should be noted
+
+**Within-file documentation coupling (primary file, `general-task.yaml`):**
+- `diagnose` state `action` text — currently enumerates all reachable state names the operator might see ("define_done, plan, …, summarize_partial"); add `summarize_success` to this list after the YAML edit
+
+**Module-level docstring (`persistence.py`):**
+- The "File structure" example under `.loops/.history/<run_id>/` lists only `state.json` and `events.jsonl`; add `summary.json` to reflect the new copy behavior
 
 ### Configuration
 - N/A
@@ -189,6 +213,20 @@ Decided by `/ll:decide-issue` on 2026-06-28.
 5. `ll-loop validate general-task`; run an end-to-end general-task task and assert
    `summary.json` appears on the success path with correct counts.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `test_general_task_loop.py::TestChange8FinalVerifyGate::test_count_final_routes_yes_to_done` — rename and change assertion to `== "summarize_success"`
+7. Update `test_general_task_loop.py::TestGeneralTaskLoopFile::test_expected_states_present` — add `"summarize_success"` to the expected state set
+8. Add `TestENH2365SummarizeSuccess` class to `test_general_task_loop.py` — 7 tests covering state existence, routing, action_type, summary.json content, `on_error`; follow `TestENH1631SummarizePartial` (lines 1240–1263) as the class template
+9. Add `test_archive_run_copies_summary_json_when_exists` and `test_archive_run_does_not_copy_summary_json_when_absent` to `test_fsm_persistence.py::TestArchiveRun` — follow the `meta-eval.jsonl` pair (lines 610–633) exactly
+10. **`archive_run()` parameter threading**: Add `run_dir: Path | None = None` (optional, defaulting to `None`) so existing callers (`clear_all()` at top of `PersistentExecutor.run()`, `_reconcile_stale_runs()`) require no change; only the post-run call site in `PersistentExecutor.run()` passes `run_dir=self.fsm.context["run_dir"]`
+11. Update `diagnose` state action text in `general-task.yaml` — add `summarize_success` to the enumeration of reachable state names
+12. Update `persistence.py` module-level docstring — add `summary.json` to the `.history/` file structure example
+13. Update `docs/reference/API.md` `archive_run()` entry — mention `summary.json` alongside `meta-eval.jsonl`
+14. Update `docs/guides/LOOPS_REFERENCE.md` — change "three-state terminal gate" to "four-state"; adjust step-count estimate
+
 ### Codebase Research Findings on Implementation Steps
 
 _Added by `/ll:refine-issue`:_
@@ -225,6 +263,7 @@ already-resolved BUG-1628 / BUG-1766 convergence cluster.
 **Open** | Created: 2026-06-28 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-28T05:58:08 - `846e532c-b018-45c9-8c76-e4f1186d3d5c.jsonl`
 - `/ll:decide-issue` - 2026-06-28T05:40:28 - `e16f3618-449f-4692-a0be-8b533d2518b7.jsonl`
 - `/ll:refine-issue` - 2026-06-28T05:29:06 - `00ed2b70-0688-4ea0-8cce-ffc4bc7f0d68.jsonl`
 - `/ll:format-issue` - 2026-06-28T05:17:22 - `21071d73-56f5-470a-b6f2-dd07673d1d0e.jsonl`

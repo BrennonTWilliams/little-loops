@@ -773,9 +773,7 @@ class TestMergeSettings:
         target = tmp_project / ".claude" / "settings.local.json"
         target.parent.mkdir(parents=True, exist_ok=True)
         # User-added Bash(ll-mytool:*) is NOT in _LL_PERMISSIONS and must survive re-init.
-        target.write_text(
-            json.dumps({"permissions": {"allow": ["Bash(ll-mytool:*)"]}})
-        )
+        target.write_text(json.dumps({"permissions": {"allow": ["Bash(ll-mytool:*)"]}}))
         merge_settings(tmp_project)
         data = json.loads(target.read_text())
         allow = data["permissions"]["allow"]

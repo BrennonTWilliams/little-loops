@@ -23,7 +23,7 @@ import signal
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any

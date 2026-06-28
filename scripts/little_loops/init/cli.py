@@ -82,8 +82,7 @@ def _dispatch_host_adapters(
     for host in hosts:
         if host not in _KNOWN_HOSTS:
             print(
-                f"[Warning] Unknown host {host!r}; skipping. "
-                f"Known hosts: {sorted(_KNOWN_HOSTS)}",
+                f"[Warning] Unknown host {host!r}; skipping. Known hosts: {sorted(_KNOWN_HOSTS)}",
                 file=sys.stderr,
             )
             continue

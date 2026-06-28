@@ -8,7 +8,6 @@ Focuses on gaps not covered by test_cli.py:
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -17,7 +16,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Shared fixture
@@ -185,9 +183,7 @@ class TestParallelPruneBranches:
 class TestParallelNormalRun:
     """The normal (non-maintenance) path creates and runs a ParallelOrchestrator."""
 
-    def test_orchestrator_run_called_and_exit_code_propagated(
-        self, temp_project: Path
-    ) -> None:
+    def test_orchestrator_run_called_and_exit_code_propagated(self, temp_project: Path) -> None:
         """main_parallel() calls orchestrator.run() and returns its exit code."""
         with patch("little_loops.parallel.ParallelOrchestrator") as mock_cls:
             mock_orch = MagicMock()

@@ -1232,17 +1232,18 @@ class TestEvaluateDispatcherLLM:
         assert "${context.readiness_threshold}" not in prompt_arg
         assert "${context.outcome_threshold}" not in prompt_arg
 
-
     # --- evidence coercion (ENH-2342) ---
 
     def test_empty_evidence_coerces_to_no(self, mock_cli) -> None:
         """Absent evidence coerces verdict to 'no' for default schema."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = json.dumps({
-            "type": "result",
-            "subtype": "success",
-            "structured_output": {"verdict": "yes", "confidence": 0.9, "reason": "Looks done"},
-        })
+        mock_result.stdout = json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {"verdict": "yes", "confidence": 0.9, "reason": "Looks done"},
+            }
+        )
 
         result = evaluate_llm_structured("output")
 
@@ -1277,11 +1278,13 @@ class TestEvaluateDispatcherLLM:
             "properties": {"verdict": {"type": "string", "enum": ["pass", "fail"]}},
             "required": ["verdict"],
         }
-        mock_result.stdout = json.dumps({
-            "type": "result",
-            "subtype": "success",
-            "structured_output": {"verdict": "pass"},
-        })
+        mock_result.stdout = json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {"verdict": "pass"},
+            }
+        )
 
         result = evaluate_llm_structured("output", schema=custom_schema)
 
