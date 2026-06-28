@@ -19,7 +19,14 @@ context:
 
 states:
   init:
-    action: mkdir -p "${context.run_dir}" && rm -f ${context.run_dir}/auto-refine-and-implement-skipped.txt && rm -f ${context.run_dir}/auto-refine-and-implement-impl-queue.txt
+    action: |
+      mkdir -p "${context.run_dir}"
+      RUN_DIR="${context.run_dir}"
+      rm -f "$RUN_DIR/auto-refine-and-implement-skipped.txt"
+      rm -f "$RUN_DIR/auto-refine-and-implement-impl-queue.txt"
+      rm -f "$RUN_DIR/auto-refine-and-implement-errored.txt"
+      rm -f "$RUN_DIR/auto-refine-and-implement-implemented.txt"
+      rm -f "$RUN_DIR/summary.json"
     action_type: shell
     next: get_next_issue
 
@@ -73,31 +80,87 @@ states:
     action_type: shell
     capture: input
     on_yes: refine_issue
-    on_no: done
-    on_error: done
+    on_no: finalize
+    on_error: finalize
 
   refine_issue:
+    # ENH (audit 2026-06-27): on_failure (refinement did not pass thresholds) and
+    # on_error (recursive-refine crashed at the infrastructure level, e.g. a
+    # template-variable parse error) route to DISTINCT states so an automation
+    # defect is not silently laundered into the same skip bucket as a legitimate
+    # confidence-gate miss.
     loop: recursive-refine
     with:
       input: "${captured.input.output}"
     on_success: implement_chain
-    on_failure: skip_and_continue
-    on_error: skip_and_continue
+    on_failure: skip_refinement
+    on_error: record_error
 
   implement_chain:
     loop: oracles/implement-issue-chain
     with:
       caller_prefix: "auto-refine-and-implement"
-    on_success: get_next_issue
-    on_failure: done
-    on_error: done
+    on_success: record_implemented
+    on_failure: finalize
+    on_error: finalize
 
-  skip_and_continue:
+  record_implemented:
+    action: |
+      echo "Implemented ${captured.input.output}"
+      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-implemented.txt
+    fragment: queue_track
+    next: get_next_issue
+
+  skip_refinement:
     action: |
       echo "Skipping ${captured.input.output} after refinement failure"
       echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-skipped.txt
     fragment: queue_track
     next: get_next_issue
+
+  record_error:
+    # recursive-refine crashed (on_error) rather than returning a clean
+    # pass/fail verdict — track separately so finalize can report it as a
+    # sub-loop crash, not a refinement skip. Still added to skipped.txt so the
+    # issue is not re-attempted in the same run.
+    action: |
+      echo "ERROR: recursive-refine crashed on ${captured.input.output} — see events.jsonl"
+      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-errored.txt
+      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-skipped.txt
+    fragment: queue_track
+    next: get_next_issue
+
+  finalize:
+    # Write a machine-readable summary.json so callers (e.g.
+    # sprint-refine-and-implement) and post-hoc audits can distinguish genuine
+    # success from a phantom run where every issue was skipped or crashed.
+    # awk counts non-blank lines and always exits 0 (grep -c exits 1 on zero
+    # matches, which would corrupt the count via the || fallback).
+    action: |
+      RUN_DIR="${context.run_dir}"
+      count() { awk 'NF{c++} END{print c+0}' "$RUN_DIR/$1" 2>/dev/null || echo 0; }
+      IMPL=$(count auto-refine-and-implement-implemented.txt)
+      SKIP=$(count auto-refine-and-implement-skipped.txt)
+      ERR=$(count auto-refine-and-implement-errored.txt)
+      if [ "$ERR" -gt 0 ] && [ "$IMPL" -eq 0 ]; then
+        VERDICT=phantom
+      elif [ "$IMPL" -gt 0 ] && [ "$ERR" -eq 0 ] && [ "$SKIP" -eq 0 ]; then
+        VERDICT=success
+      elif [ "$IMPL" -gt 0 ]; then
+        VERDICT=partial
+      else
+        VERDICT=no-op
+      fi
+      printf '{"verdict":"%s","implemented":%s,"skipped":%s,"errored":%s}\n' \
+        "$VERDICT" "$IMPL" "$SKIP" "$ERR" > "$RUN_DIR/summary.json"
+      # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
+      # sprint-refine-and-implement) recovers the real verdict from this token
+      # rather than the collapsed done/failed routing verdict.
+      printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
+      printf 'auto-refine-and-implement: verdict=%s implemented=%s skipped=%s errored=%s\n' \
+        "$VERDICT" "$IMPL" "$SKIP" "$ERR"
+    action_type: shell
+    next: done
 
   done:
     terminal: true

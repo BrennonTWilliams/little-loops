@@ -1659,7 +1659,10 @@ class TestAutoRefineAndImplementLoop:
             "get_next_issue",
             "refine_issue",
             "implement_chain",
-            "skip_and_continue",
+            "record_implemented",
+            "skip_refinement",
+            "record_error",
+            "finalize",
             "done",
         }
         actual = set(data["states"].keys())
@@ -1712,10 +1715,17 @@ class TestAutoRefineAndImplementLoop:
         )
 
     def test_refine_issue_has_success_and_failure_routes(self, data: dict) -> None:
-        """refine_issue must route success to implement_chain and failure to skip_and_continue."""
+        """refine_issue routes success→implement_chain, failure→skip_refinement, and
+        crash (on_error)→record_error as a DISTINCT state (audit 2026-06-27): an
+        infrastructure crash must not be laundered into the same skip bucket as a
+        legitimate confidence-gate miss."""
         state = data["states"].get("refine_issue", {})
         assert state.get("on_success") == "implement_chain"
-        assert state.get("on_failure") == "skip_and_continue"
+        assert state.get("on_failure") == "skip_refinement"
+        assert state.get("on_error") == "record_error"
+        assert state.get("on_failure") != state.get("on_error"), (
+            "refine_issue must distinguish refinement failure from sub-loop crash"
+        )
 
     def test_implement_chain_delegates_to_oracle(self, data: dict) -> None:
         """implement_chain must delegate to the implement-issue-chain oracle with caller_prefix."""
@@ -1728,16 +1738,34 @@ class TestAutoRefineAndImplementLoop:
             f"implement_chain.with.caller_prefix should be 'auto-refine-and-implement', got {with_.get('caller_prefix')!r}"
         )
 
-    def test_skip_and_continue_uses_input_capture(self, data: dict) -> None:
-        """skip_and_continue must reference captured.input.output (not impl_id)."""
-        state = data["states"].get("skip_and_continue", {})
+    def test_skip_refinement_uses_input_capture(self, data: dict) -> None:
+        """skip_refinement must reference captured.input.output (not impl_id)."""
+        state = data["states"].get("skip_refinement", {})
         action = state.get("action", "")
         assert "${captured.input.output}" in action
 
-    def test_skip_and_continue_routes_to_get_next_issue(self, data: dict) -> None:
-        """skip_and_continue must route back to get_next_issue."""
-        state = data["states"].get("skip_and_continue", {})
+    def test_skip_refinement_routes_to_get_next_issue(self, data: dict) -> None:
+        """skip_refinement must route back to get_next_issue."""
+        state = data["states"].get("skip_refinement", {})
         assert state.get("next") == "get_next_issue"
+
+    def test_record_error_tracks_crash_separately(self, data: dict) -> None:
+        """record_error must write to a distinct errored.txt so a sub-loop crash is
+        not indistinguishable from a refinement skip (audit 2026-06-27)."""
+        state = data["states"].get("record_error", {})
+        action = state.get("action", "")
+        assert "auto-refine-and-implement-errored.txt" in action
+        assert state.get("next") == "get_next_issue"
+
+    def test_finalize_writes_summary_json(self, data: dict) -> None:
+        """finalize must emit a machine-readable summary.json with a verdict so
+        callers and audits can distinguish success from a phantom run."""
+        state = data["states"].get("finalize", {})
+        action = state.get("action", "")
+        assert "summary.json" in action
+        assert "verdict" in action
+        # ENH-2005 artifact-channel sidecar token for the parent to recover.
+        assert "subloop_outcome_auto-refine-and-implement" in action
 
     def test_skipped_file_uses_run_dir(self, data: dict) -> None:
         """Skipped tracking file must use ${context.run_dir} path."""
@@ -1809,6 +1837,23 @@ class TestSprintRefineAndImplementLoop:
         """done state must have terminal: true."""
         done = data.get("states", {}).get("done", {})
         assert done.get("terminal") is True
+
+    def test_delegate_does_not_launder_subloop_verdict(self, data: dict) -> None:
+        """ENH-2005 (audit 2026-06-27): delegate must NOT collapse on_success/on_failure/
+        on_error into the same terminal state. on_error routes to a distinct crash state,
+        and the success/failure path recovers the child's real verdict from the
+        subloop_outcome_ artifact rather than silently reaching done."""
+        states = data.get("states", {})
+        delegate = states.get("delegate", {})
+        assert delegate.get("on_error") not in (
+            delegate.get("on_success"),
+            delegate.get("on_failure"),
+        ), "delegate.on_error must route to a distinct state, not the shared success path"
+        outcome_reader = states.get(delegate.get("on_success"), {})
+        assert "subloop_outcome_" in outcome_reader.get("action", ""), (
+            "the delegate success/failure target must recover the child verdict "
+            "from a subloop_outcome_ artifact (ENH-2005 sidecar)"
+        )
 
 
 class TestAutodevLoop:
