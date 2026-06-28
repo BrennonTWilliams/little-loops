@@ -529,6 +529,21 @@ class LoopsConfig:
     run_defaults: LoopRunDefaults                # Persistent CLI defaults for ll-loop run
 ```
 
+### LoopRunDefaults
+
+Persistent CLI defaults for `ll-loop run`. Values are backfilled when the corresponding flag is absent; explicit CLI flags always take precedence.
+
+```python
+@dataclass
+class LoopRunDefaults:
+    clear: bool = False           # If True, inject --clear into every ll-loop run invocation
+    show_diagrams: str | None = None  # Inject --show-diagrams <value>; 'default' = bare flag; None = disabled
+    mode: str | None = None       # Reserved for a future --mode flag
+    include: str = ""             # Default loop allowlist injected into fsm.context; empty = all loops visible
+```
+
+`include` accepts comma-separated selectors: `loop-name`, `builtin:*`, `project:*`, `category:<label>`. Set in `ll-config.json` as `loops.run_defaults.include`; override per-invocation with `--context include=VALUE`.
+
 ### GitHubSyncConfig
 
 GitHub-specific sync configuration.

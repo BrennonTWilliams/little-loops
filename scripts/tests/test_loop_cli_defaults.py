@@ -138,6 +138,28 @@ class TestLoopRunDefaultsDataclass:
         assert result.clear is False
         assert result.show_diagrams is None
         assert result.mode is None
+        assert result.include == ""
+
+    def test_from_dict_include_set(self) -> None:
+        """include:'project:*' is parsed and round-trips correctly."""
+        from little_loops.config.features import LoopRunDefaults
+
+        result = LoopRunDefaults.from_dict({"include": "project:*"})
+        assert result.include == "project:*"
+
+    def test_from_dict_include_comma_list(self) -> None:
+        """include can hold comma-separated selectors."""
+        from little_loops.config.features import LoopRunDefaults
+
+        result = LoopRunDefaults.from_dict({"include": "builtin:*, project:*"})
+        assert result.include == "builtin:*, project:*"
+
+    def test_from_dict_include_empty_string(self) -> None:
+        """Explicit empty string for include is accepted (means all loops visible)."""
+        from little_loops.config.features import LoopRunDefaults
+
+        result = LoopRunDefaults.from_dict({"include": ""})
+        assert result.include == ""
 
     def test_from_dict_clear_true(self) -> None:
         """clear:true is parsed correctly."""
@@ -173,9 +195,119 @@ class TestLoopRunDefaultsDataclass:
             LoopRunDefaults.from_dict({"show_diagrams": "bad-value"})
 
     def test_loops_config_includes_run_defaults(self) -> None:
-        """LoopsConfig.from_dict parses run_defaults block."""
+        """LoopsConfig.from_dict parses run_defaults block including include field."""
         from little_loops.config.features import LoopsConfig
 
-        result = LoopsConfig.from_dict({"run_defaults": {"clear": True, "show_diagrams": "clean"}})
+        result = LoopsConfig.from_dict(
+            {"run_defaults": {"clear": True, "show_diagrams": "clean", "include": "project:*"}}
+        )
         assert result.run_defaults.clear is True
         assert result.run_defaults.show_diagrams == "clean"
+        assert result.run_defaults.include == "project:*"
+
+
+_MINIMAL_LOOP_YAML = """\
+name: test-loop
+description: minimal loop for include-injection tests
+initial: done
+states:
+  done:
+    terminal: true
+"""
+
+
+class TestLoopRunIncludeContextInjection:
+    """Tests that include config default is injected into fsm.context inside cmd_run."""
+
+    def _write_config(self, tmp_path: Path, include: str) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        config = {"loops": {"run_defaults": {"include": include}}}
+        (ll_dir / "ll-config.json").write_text(json.dumps(config))
+
+    def _write_loop(self, tmp_path: Path) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(exist_ok=True)
+        (loops_dir / "test-loop.yaml").write_text(_MINIMAL_LOOP_YAML)
+
+    def test_include_injected_into_fsm_context_from_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Config include:'project:*' is injected into fsm.context before execution."""
+        self._write_config(tmp_path, "project:*")
+        self._write_loop(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        captured_contexts: list[dict] = []
+
+        def capturing_executor(fsm, **kwargs):  # type: ignore[no-untyped-def]
+            captured_contexts.append(dict(fsm.context))
+            raise SystemExit(0)
+
+        with (
+            patch.object(sys, "argv", ["ll-loop", "run", "test-loop"]),
+            patch("little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor),
+        ):
+            from little_loops.cli import main_loop
+
+            with pytest.raises(SystemExit):
+                main_loop()
+
+        assert captured_contexts, "PersistentExecutor was never constructed"
+        assert captured_contexts[0].get("include") == "project:*"
+
+    def test_cli_context_overrides_config_include(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--context include=builtin:* takes precedence over config include."""
+        self._write_config(tmp_path, "project:*")
+        self._write_loop(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        captured_contexts: list[dict] = []
+
+        def capturing_executor(fsm, **kwargs):  # type: ignore[no-untyped-def]
+            captured_contexts.append(dict(fsm.context))
+            raise SystemExit(0)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["ll-loop", "run", "test-loop", "--context", "include=builtin:*"],
+            ),
+            patch("little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor),
+        ):
+            from little_loops.cli import main_loop
+
+            with pytest.raises(SystemExit):
+                main_loop()
+
+        assert captured_contexts, "PersistentExecutor was never constructed"
+        assert captured_contexts[0].get("include") == "builtin:*"
+
+    def test_empty_config_include_leaves_context_unset(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Config include:'' (or absent) does not inject include into fsm.context."""
+        self._write_config(tmp_path, "")
+        self._write_loop(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        captured_contexts: list[dict] = []
+
+        def capturing_executor(fsm, **kwargs):  # type: ignore[no-untyped-def]
+            captured_contexts.append(dict(fsm.context))
+            raise SystemExit(0)
+
+        with (
+            patch.object(sys, "argv", ["ll-loop", "run", "test-loop"]),
+            patch("little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor),
+        ):
+            from little_loops.cli import main_loop
+
+            with pytest.raises(SystemExit):
+                main_loop()
+
+        assert captured_contexts, "PersistentExecutor was never constructed"
+        assert "include" not in captured_contexts[0]

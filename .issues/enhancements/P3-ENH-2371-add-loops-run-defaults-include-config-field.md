@@ -2,16 +2,23 @@
 id: ENH-2371
 title: Add loops.run_defaults.include config field for default loop allowlist
 type: ENH
-status: open
+status: done
 priority: P3
-captured_at: "2026-06-28T17:57:12Z"
-discovered_date: "2026-06-28"
+captured_at: '2026-06-28T17:57:12Z'
+discovered_date: '2026-06-28'
 discovered_by: capture-issue
 labels:
-  - enhancement
-  - loops
-  - config
-  - captured
+- enhancement
+- loops
+- config
+- captured
+confidence_score: 98
+outcome_confidence: 89
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 24
+completed_at: '2026-06-28T18:38:28Z'
 ---
 
 # ENH-2371: Add `loops.run_defaults.include` config field for default loop allowlist
@@ -116,6 +123,12 @@ The simplest injection site is `run.py` alongside the other injected-if-absent c
 4. Write tests: config round-trip + end-to-end context injection.
 5. Verify `--context include=...` still overrides the config default.
 
+## Success Metrics
+
+- `include` from config is applied: `ll-loop run loop-router` with `"include": "project:*"` in `.ll/ll-config.json` shows only project loops (no `--context` flag required)
+- CLI override respected: `--context include=builtin:*` takes precedence over the config default
+- No regression: omitting `include` from config (or setting it to `""`) leaves all loops visible — identical to current behavior
+
 ## Scope Boundaries
 
 - Only injects into `fsm.context["include"]`; does not change how the three loops consume the value.
@@ -158,11 +171,35 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `config`, `captured`
 
 ## Session Log
+- `ll-auto` - 2026-06-28T18:38:28 - `f931a287-14c8-4bd2-a36f-f39309d4ff04.jsonl`
+- `/ll:ready-issue` - 2026-06-28T18:23:32 - `43c52cd2-7c77-4853-babe-350d18ba8e02.jsonl`
+- `/ll:format-issue` - 2026-06-28T18:18:20 - `15bfadfe-1196-486b-b8a7-508cc3762090.jsonl`
 
 - `/ll:capture-issue` - 2026-06-28T17:57:12Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/813b66f8-3628-4f7d-aeb6-e9dfbc7b6595.jsonl`
+- `/ll:confidence-check` - 2026-06-28T19:00:00Z - `a963f017-885b-4831-950a-df656f539d7d.jsonl`
 
 ---
 
 ## Status
 
 **Open** | Created: 2026-06-28 | Priority: P3
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-06-28
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

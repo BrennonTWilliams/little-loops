@@ -934,6 +934,11 @@
               "type": ["string", "null"],
               "description": "Reserved for a future --mode flag on ll-loop run. No effect until that flag is added.",
               "default": null
+            },
+            "include": {
+              "type": "string",
+              "default": "",
+              "description": "Default loop allowlist injected into FSM context for loop-router/loop-composer. Comma-separated selectors: loop-name, builtin:*, project:*, category:<label>. Empty = all loops visible."
             }
           },
           "additionalProperties": false

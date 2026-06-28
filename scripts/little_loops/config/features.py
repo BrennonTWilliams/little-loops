@@ -526,6 +526,7 @@ class LoopRunDefaults:
     clear: bool = False
     show_diagrams: str | None = None
     mode: str | None = None
+    include: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LoopRunDefaults:
@@ -540,6 +541,7 @@ class LoopRunDefaults:
             clear=data.get("clear", False),
             show_diagrams=show_diagrams,
             mode=data.get("mode", None),
+            include=data.get("include", ""),
         )
 
 

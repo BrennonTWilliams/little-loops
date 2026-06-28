@@ -4,6 +4,7 @@ description: Use when asked to audit documentation accuracy, coverage, or find d
 disable-model-invocation: true
 argument-hint: "[scope]"
 allowed-tools:
+  - Task
   - Read
   - Glob
   - Grep
@@ -35,10 +36,27 @@ This command uses project configuration from `.ll/ll-config.json`:
 - **full**: Audit all documentation files
 - **readme**: Focus on README.md and linked docs
 - **file:<path>**: Audit specific documentation file
+- **dir:<path>** (or a bare directory path, e.g. `docs/guides/`): Audit every markdown file under that directory
+
+## Context Budget (IMPORTANT)
+
+This skill MUST NOT read documentation file bodies into the orchestrator
+context. At `full`, `dir:`, or any multi-file scope, reading every file plus
+every codebase verification search into one window overflows the context limit
+(this is the failure this design exists to prevent).
+
+Instead, the orchestrator **discovers** the file list and **fans out** one
+audit subagent per file (batched, in parallel). Each subagent reads its file
+and runs codebase verification *in its own context*, returning only a compact
+structured findings list. The orchestrator aggregates findings — it never reads
+a doc body or runs verification searches itself. This mirrors the wave-based
+subagent architecture in `audit-claude-config`.
 
 ## Process
 
 ### 1. Find Documentation Files
+
+Discover the file list **only** — do not read file bodies here.
 
 ```bash
 SCOPE="${scope:-readme}"
@@ -56,48 +74,54 @@ case "$SCOPE" in
         # Specific file
         echo "${SCOPE#file:}"
         ;;
+    dir:*)
+        # All markdown under a directory
+        find "${SCOPE#dir:}" -name "*.md" -not -path "*/.git/*"
+        ;;
+    */|*/*)
+        # Bare directory path (e.g. docs/guides/)
+        find "${SCOPE%/}" -name "*.md" -not -path "*/.git/*"
+        ;;
 esac
 ```
 
-### 2. Audit Each Document
+### 2. Audit Each Document (Fan Out to Subagents)
 
-For each documentation file, check:
+**Do not read the files yourself.** For each discovered file, spawn a
+`codebase-analyzer` subagent via the `Task` tool. Spawn them in parallel,
+batching ~4–6 `Task` calls per message (a single message with multiple `Task`
+calls runs them concurrently). For a single-file scope (`readme`, `file:`),
+one subagent is fine.
 
-#### Accuracy
-- [ ] Code examples compile/run
-- [ ] File paths exist
-- [ ] API references match actual code
-- [ ] Version numbers are current
-- [ ] Command examples work
+Give each subagent this verbatim assignment (substitute `<FILE>`):
 
-#### Completeness
-- [ ] All public APIs documented
-- [ ] Installation instructions present
-- [ ] Usage examples provided
-- [ ] Error handling explained
-- [ ] Configuration options listed
+> Audit the documentation file `<FILE>` for accuracy against this codebase.
+> Read the file, then verify its claims by reading/grepping the actual code,
+> file paths, command syntax, config keys, and version numbers it references.
+> Check the dimensions below. **Return ONLY a compact findings list** — for each
+> finding: `file:line`, dimension, severity (high/med/low), a one-line
+> description, and (when mechanically fixable) the exact `old → new` text.
+> Do not return the file contents or your search transcript.
+>
+> Dimensions to check:
+> - **Accuracy**: code examples run, file paths exist, API references match
+>   actual code, version numbers current, command examples work.
+> - **Completeness**: public APIs documented, install/usage/config/error
+>   handling covered.
+> - **Consistency**: terminology, formatting conventions, links resolve,
+>   images accessible.
+> - **Currency**: no deprecated info, reflects latest features, version
+>   requirements accurate.
 
-#### Consistency
-- [ ] Terminology is consistent
-- [ ] Formatting follows conventions
-- [ ] Links are not broken
-- [ ] Images are accessible
+Where a subagent reports a runnable code block worth executing, it should test
+it in its own context (`python -c "..."`, `bash -n`) rather than returning the
+block for the orchestrator to run.
 
-#### Currency
-- [ ] No deprecated information
-- [ ] Reflects latest features
-- [ ] Version requirements accurate
+### 3. Collect Findings
 
-### 3. Test Code Examples
-
-```bash
-# Extract and test code blocks
-# For Python:
-python -c "[extracted code]"
-
-# For shell:
-bash -n <<< "[extracted script]"
-```
+Merge the structured findings returned by all subagents into a single list.
+The orchestrator holds only these compact findings — never the file bodies — so
+multi-file scopes stay within the context budget.
 
 ### 4. Output Report
 
@@ -301,6 +325,7 @@ $ARGUMENTS
   - `full` - All documentation
   - `readme` - README and linked docs
   - `file:<path>` - Specific file
+  - `dir:<path>` or a bare directory path (e.g. `docs/guides/`) - All markdown under a directory
 
 - **--fix** (optional, flag): Automatically apply all auto-fixable corrections without prompting. Skips the action selection prompt for fixable items and applies them directly. Non-fixable findings still flow to issue management.
 
@@ -317,6 +342,9 @@ $ARGUMENTS
 
 # Audit specific file
 /ll:audit-docs file:docs/api.md
+
+# Audit every markdown file under a directory (fans out to subagents)
+/ll:audit-docs docs/guides/
 
 # Auto-fix documentation issues
 /ll:audit-docs --fix

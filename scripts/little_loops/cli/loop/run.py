@@ -196,6 +196,11 @@ def cmd_run(
 
     _config = BRConfig(Path.cwd())
 
+    # Inject include allowlist from config default.
+    # --context include=VALUE (already applied above) takes precedence.
+    if "include" not in fsm.context and _config.loops.run_defaults.include:
+        fsm.context["include"] = _config.loops.run_defaults.include
+
     if not fsm.context.get("design_tokens_context"):
         _tokens = load_design_tokens(_config)
         fsm.context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""

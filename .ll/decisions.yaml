@@ -2779,3 +2779,71 @@
     only transforms `${ns.path}` and `$${VAR}` (b
   enforcement: advisory
   issue: BUG-2368
+- id: ARCH-123
+  type: rule
+  timestamp: '2026-06-28T18:21:51Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Reading all file bodies in the orchestrator context causes context overflow
+    before a report can be produced. Subagents isolate file reads and verification
+    searches so only compact findings return to the main context.
+  rule: Skills that operate on multiple files must fan out per-file work to subagents;
+    the orchestrator aggregates only.
+  enforcement: advisory
+  issue: ENH-2372
+- id: OTHE-124
+  type: rule
+  timestamp: '2026-06-28T18:21:51Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: Without `Task` in allowed-tools the skill has no offload path and is
+    forced to do all work in the orchestrator context, causing context overflow at
+    scale.
+  rule: Include `Task` in `allowed-tools` for any skill that needs to delegate work
+    to subagents.
+  enforcement: advisory
+  issue: ENH-2372
+- id: STYL-125
+  type: rule
+  timestamp: '2026-06-28T18:21:51Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: Missing branches (e.g. `dir:<path>` or a bare directory) force the model
+    to improvise file discovery, producing inconsistent and error-prone behavior.
+  rule: Scope/mode `case` branches in skill prompts must cover all valid input forms,
+    including bare directory paths.
+  enforcement: advisory
+  issue: ENH-2372
+- id: ARCH-126
+  type: rule
+  timestamp: '2026-06-28T18:21:51Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Verbose subagent returns re-bloat the orchestrator context; the point
+    of fan-out is to keep only the aggregated signal in the main window.
+  rule: Subagents in audit-style skills must return only compact structured findings
+    (file:line, dimension, severity, descriptio
+  enforcement: advisory
+  issue: ENH-2372
+- id: ARCH-127
+  type: rule
+  timestamp: '2026-06-28T18:21:51Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The wave-based pattern (discover → fan-out ~4–6 parallel subagents →
+    aggregate) is the proven approach for staying within context budget at multi-file
+    scope.
+  rule: New audit-style skills should mirror the wave-based parallel subagent pattern
+    from `audit-claude-config`, not the single
+  enforcement: advisory
+  issue: ENH-2372
