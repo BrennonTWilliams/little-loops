@@ -92,7 +92,7 @@ class TestBrainstormYaml:
     def test_context_defaults(self, data: dict) -> None:
         ctx = data.get("context", {})
         assert ctx.get("sink") == "none"
-        assert ctx.get("novelty_threshold") == "0.80"
+        assert ctx.get("novelty_threshold") == "0.55"
         assert ctx.get("max_saturation") == "2"
         assert ctx.get("top_k") == "3"
         assert ctx.get("ideas_per_round") == "5"
@@ -304,7 +304,7 @@ print(json.dumps({{"novel": [i["text"] for i in novel], "count": len(novel)}}))
         self,
         new_ideas: list[dict],
         existing: list[str],
-        threshold: float = 0.80,
+        threshold: float = 0.55,
     ) -> dict:
         script = self.DEDUP_SCRIPT.format(
             ideas_json=repr(json.dumps(new_ideas)),
@@ -333,8 +333,8 @@ print(json.dumps({{"novel": [i["text"] for i in novel], "count": len(novel)}}))
     def test_near_duplicate_above_threshold_is_filtered(self) -> None:
         existing = "Use mutation testing to identify untested code branches"
         new = [{"text": "Use mutation testing to find untested branches", "rationale": "..."}]
-        out = self._run_dedup(new, existing=[existing], threshold=0.80)
-        # High similarity (same core phrase) → should be filtered at 0.80 threshold
+        out = self._run_dedup(new, existing=[existing], threshold=0.55)
+        # High similarity (same core phrase) → should be filtered at 0.55 threshold
         # (We don't assert exact filtering since ratio can vary; we assert count <= 1)
         assert out["count"] <= 1
 
@@ -343,7 +343,7 @@ print(json.dumps({{"novel": [i["text"] for i in novel], "count": len(novel)}}))
         new = [
             {"text": "Introduce chaos engineering to surface resilience gaps", "rationale": "..."}
         ]
-        out = self._run_dedup(new, existing=existing, threshold=0.80)
+        out = self._run_dedup(new, existing=existing, threshold=0.55)
         assert out["count"] == 1, f"Semantically different idea should pass, got: {out}"
 
     def test_saturation_counter_increments_on_zero_novel(self, tmp_path: Path) -> None:
@@ -371,7 +371,7 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     pass
 
-threshold = 0.80
+threshold = 0.55
 novel = []
 for idea in new_ideas:
     text = idea.get('text', str(idea))
@@ -416,7 +416,7 @@ new_ideas = [{{"text": "A brand new idea about chaos engineering", "rationale": 
 ideas_file = {repr(str(ideas_file))}
 existing_texts = []
 
-threshold = 0.80
+threshold = 0.55
 novel = []
 for idea in new_ideas:
     text = idea.get('text', str(idea))

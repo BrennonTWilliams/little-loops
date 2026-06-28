@@ -23,7 +23,7 @@ context:
   decision_target: ""    # issue ID, required when sink=decision
   ideas_per_round: "5"
   top_k: "3"
-  novelty_threshold: "0.80"  # difflib ratio at/above which an idea is a duplicate
+  novelty_threshold: "0.55"  # difflib ratio at/above which an idea is a duplicate
   max_saturation: "2"        # consecutive zero-novel rounds before early convergence
   novelty_backend: "difflib" # future opt-in: "embeddings"
 
