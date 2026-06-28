@@ -15,6 +15,9 @@ relates_to:
 - ENH-2325
 depends_on:
 - ENH-2329
+learning_tests_required:
+- pytest
+- hypothesis
 ---
 
 # ENH-2328: Test-suite breadth — dedicated tests for incidental-only modules
@@ -94,6 +97,84 @@ the file — not a systemic hole.
   already-strong evaluator/routing coverage.
 - Out of scope: standing up CI / coverage gates (explicitly excluded from the
   remediation); Phase 3 maintainability work (tracked separately).
+- New test modules must use ENH-2329's project-setup factory fixture (`conftest.py`) rather than raw `tempfile.TemporaryDirectory` + hand-rolled config; write these tests only after ENH-2329 lands (hence `depends_on: ENH-2329`).
+
+## Success Metrics
+
+- Each listed module (`show.py`, `parallel.py`, `config/automation.py`, `worktree_utils.py`, `decisions_sync.py`, `sft_formatter.py`, `analytics/`) gains a dedicated `test_<module>.py` asserting edge cases identified in Current Behavior.
+- `dependency_mapper/formatting.py` coverage confirmed before adding tests; new test file added only if a real gap exists.
+- `fsm/executor.py` uncovered branches identified via `pytest --cov=little_loops.fsm.executor --cov-report=term-missing`; tests added for all genuinely uncovered error/interpolation paths.
+- All new test modules pass `python -m pytest scripts/tests/` with zero failures.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/tests/test_show.py` — new, dedicated tests for `cli/issues/show.py` formatting edge cases
+- `scripts/tests/test_parallel_cli.py` — new, dedicated tests for `cli/parallel.py` worker lifecycle
+- `scripts/tests/test_config_automation.py` — new, dedicated tests for `config/automation.py` rule matching
+- `scripts/tests/test_worktree_utils.py` — new (highest-value L1 module)
+- `scripts/tests/test_decisions_sync.py` — new
+- `scripts/tests/test_sft_formatter.py` — new
+- `scripts/tests/test_analytics_*.py` — new, focused capture-path tests
+- `scripts/tests/test_formatting.py` — conditional; add only if coverage gap confirmed in `dependency_mapper/formatting.py`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/issues/show.py` — module under test
+- `scripts/little_loops/cli/parallel.py` — module under test
+- `scripts/little_loops/config/automation.py` — module under test
+- `scripts/little_loops/dependency_mapper/formatting.py` — module under test (verify gap first)
+- `scripts/little_loops/worktree_utils.py` — module under test
+- `scripts/little_loops/decisions_sync.py` — module under test
+- `scripts/little_loops/sft_formatter.py` — module under test
+- `scripts/little_loops/analytics/` — package under test
+
+### Similar Patterns
+- `scripts/tests/test_dependency_mapper.py` — established integration-style fixture pattern to follow
+- `scripts/tests/conftest.py` — project-setup factory fixture (from ENH-2329); required for all new test modules
+
+### Tests
+- N/A — this issue IS the test additions
+
+### Documentation
+- N/A
+
+### Configuration
+- `scripts/tests/conftest.py` — shared fixtures; ENH-2329 adds the factory required here
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Coverage Reality Check — affects scope of Proposed Solution steps 3–5:**
+
+| Module | Existing Dedicated Tests | True Gap |
+|--------|--------------------------|----------|
+| `config/automation.py` | `test_config.py`: `TestAutomationConfig`, `TestParallelAutomationConfig`, `TestConfidenceGateConfig`, `TestRateLimitsConfig`, `TestCommandsConfig`, `TestScoringWeightsConfig`, `TestDependencyMappingConfig` | No functional gap — skip `test_config_automation.py` unless parametrized legacy-key fallback cases are desired |
+| `sft_formatter.py` | `test_user_messages.py`: `TestSFTFormatter` — `to_chatml`, `to_alpaca`, `to_sharegpt` all tested including edge cases | Already fully covered — skip `test_sft_formatter.py` |
+| `analytics/` package | `test_loop_run_analytics.py`: `TestEvaluatorVariance`, `TestVarianceReport` — thorough | Narrow gaps only: `OSError` branch and malformed-JSON skip in `compute_evaluator_variance` — targeted additions to existing file, not a new file |
+| `worktree_utils.py` | `test_cli_loop_worktree.py`: `TestSetupWorktree`, `TestCleanupWorktree`, `_is_ll_worktree`, `_is_ll_branch` | Narrow gaps: `base_branch` validation path in `setup_worktree`, directory-skip warning in `copy_files` |
+| `decisions_sync.py` | `test_decisions.py`: `TestSyncToLocalMd` — 5 cases | Narrow gaps: `_resolve_path(None)` default path, multiple `## Active Rules` in file (exercises `rfind` vs `find`) |
+
+**`make_project` fixture:** Already landed in `scripts/tests/conftest.py` (ENH-2329 complete). Returns `(project_root, issues_base)` tuple. Accepts optional `config: dict` and `extra_dirs: list[str]`. Can be called multiple times per test (uses internal counter to avoid collisions).
+
+**Specific unit-test targets for `cli/issues/show.py`** (no existing function-level tests):
+- `_source_label(discovered_by)` — falsy input → `"—"` (em dash); known alias (`"/ll:capture-issue"` → `"capture"`); unknown string >7 chars (truncated to 7); unknown string ≤7 chars (returned as-is)
+- `_resolve_issue_id(config, user_input)` — three input formats: `P\d-TYPE-NNN`, `TYPE-NNN`, bare `\d+`; non-existent numeric → `None`; stale-type fallback (input `FEAT-1903` when file is `ENH-1903`); multi-candidate tie-breaking via priority prefix
+- `_parse_card_fields(path, config)` — issue file with no `##` headers; empty `## Summary` section; `labels:` as YAML list vs. comma-string vs. body backtick items; `learning_tests_raw` as list vs. `None`
+- `_ljust(text, width)` — ANSI-colored text (visible width differs from byte length); text longer than `width` (returns unpadded)
+- `_render_card(fields)` — minimal card (all optional fields absent, falls back to `"???"` / `"Untitled"`); extremely long unbreakable word (extends box past structural width)
+
+**Specific uncovered branches in `fsm/executor.py` `_evaluate()` for spot-check:**
+- Lines 1444–1449: `LLMConfig(enabled=False)` + prompt-mode action without explicit `evaluate:` → returns `EvaluationResult(verdict="error", ...)`
+- Lines 1474–1478: `state.evaluate.source` set to unresolvable template → `InterpolationError` caught, falls back to `raw_output`
+- Lines 1482–1488: `state.evaluate.type` matches a key in `_contributed_evaluators` → contributed evaluator dispatched (not yet tested in `_evaluate`, only `_execute_state`)
+- Lines 1489–1493: `LLMConfig(enabled=False)` + explicit `evaluate: {type: llm_structured}` → returns `EvaluationResult(verdict="error", ...)`
+
+**Mock pattern for `cli/parallel.py` tests** (follows `test_cli.py` / `test_orchestrator.py` conventions):
+- Mock manager classes: `patch("little_loops.cli.parallel.WorkerPool")`, `patch("little_loops.cli.parallel.ParallelOrchestrator")`
+- Drive CLI: `patch.object(sys, "argv", ["ll-parallel", ...])`
+- Capture env-var side effects after call: `assert os.environ["LL_HANDOFF_THRESHOLD"] == "75"`
+- Mock git branch detection: `patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, "main\n", ""))`
 
 ## Implementation Steps
 
@@ -116,15 +197,13 @@ the file — not a systemic hole.
 - **Risk**: Low — additive tests; no production code changes expected.
 - **Breaking Change**: No
 
-## Labels
+## Related Key Documentation
 
-- testing, coverage
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): New test modules added under this issue should use ENH-2329's project-setup factory fixture (from `conftest.py`) rather than the raw `tempfile.TemporaryDirectory` + hand-rolled config patterns referenced in the "Proposed Solution." ENH-2329 consolidates those raw fixtures into a stable parameterized factory; test files written before ENH-2329 lands will immediately become refactoring targets. Implement ENH-2329 first (hence `depends_on: ENH-2329`), then write test modules once in the stable fixture pattern. Related issue: ENH-2329.
+- `thoughts/audits/2026-06-26-test-suite-audit.md` — full test-suite audit findings (M5 and L1) that identified the dedicated-test gaps this issue closes.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-28T04:00:56 - `ee42cc0b-b46d-425f-a338-9467f693e4a5.jsonl`
+- `/ll:format-issue` - 2026-06-28T03:47:16 - `25ba2309-4656-4619-af35-ad7f705d9b29.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T22:09:57 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
 - `/ll:capture-issue` - 2026-06-26T22:35:39Z - test-suite audit remediation Phase 2

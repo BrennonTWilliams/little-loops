@@ -11,11 +11,11 @@ labels:
 - evaluator
 - loop-quality
 - llm-accuracy
-confidence_score: 90
-outcome_confidence: 82
+confidence_score: 100
+outcome_confidence: 86
 score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 22
 score_change_surface: 25
 ---
 
@@ -284,6 +284,7 @@ New `ll-loop validate` rule:
 **Open** | Created: 2026-06-27 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T00:00:00Z - `3b9f4ad2-4543-4399-a3e5-090ca3e72d05.jsonl`
 - `/ll:wire-issue` - 2026-06-28T03:58:15 - `b4f024df-10c6-4292-bb5a-b6ebe140c266.jsonl`
 - `/ll:refine-issue` - 2026-06-28T03:43:00 - `9e930281-60b2-460b-9976-e02ec135e310.jsonl`
 - `/ll:refine-issue` - 2026-06-28T03:40:11 - `9e930281-60b2-460b-9976-e02ec135e310.jsonl`
