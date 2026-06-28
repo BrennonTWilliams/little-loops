@@ -4,7 +4,7 @@ category: issue-management
 # Routing summary:
 #   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) restore_best → done
 #                                                       → (on_failure) diagnose
-#                      check_readiness         → (on_no)  check_refine_limit → refine_issue
+#                      check_readiness         → (on_no)  check_refine_limit → refine_followup (additive --gap-analysis)
 #                      check_outcome           → (on_no)  check_decision_needed → (on_yes) done
 #                                                                               → (on_no)  breakdown_issue
 #   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
@@ -78,7 +78,24 @@ states:
     on_error: diagnose
 
   refine_issue:
-    action: "/ll:refine-issue ${captured.issue_id.output} --auto --full-rewrite"
+    # First-pass refine (entered from check_lifetime_limit). ENH-2247 pattern
+    # (mirrors rn-remediate): the initial pass uses --auto (default mode), NOT the
+    # legacy --full-rewrite. Full-rewrite is the heaviest, most destructive mode and
+    # is not warranted on first touch — it bulldozes any existing content and inflates
+    # the budget. --auto can still reshape wrong/sparse content; retries route to
+    # refine_followup (additive --gap-analysis) so a second pass patches gaps instead
+    # of re-bulldozing the first pass's improvements.
+    action: "/ll:refine-issue ${captured.issue_id.output} --auto"
+    action_type: slash_command
+    next: snapshot_issue
+    on_error: diagnose
+
+  refine_followup:
+    # Retry refine (entered from check_refine_limit). ENH-2247: a refine pass already
+    # ran this run, so patch remaining gaps additively (--auto --gap-analysis) instead
+    # of re-running a destructive rewrite over the first pass. Gap-analysis is
+    # additive-only (never removes content) and does not consume max_refine_count.
+    action: "/ll:refine-issue ${captured.issue_id.output} --auto --gap-analysis"
     action_type: slash_command
     next: snapshot_issue
     on_error: diagnose
@@ -235,7 +252,7 @@ states:
       type: output_numeric
       operator: lt
       target: 2
-    on_yes: refine_issue
+    on_yes: refine_followup
     on_no: breakdown_issue
     on_error: diagnose
 

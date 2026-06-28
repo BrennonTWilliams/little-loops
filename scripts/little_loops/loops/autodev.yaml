@@ -271,8 +271,13 @@ states:
   run_refine:
     # Run /ll:refine-issue to fill in missing codebase context when wiring alone
     # is insufficient. on_error falls through to rerun_confidence_after_wire safely.
+    # ENH-2247 (mirrors rn-remediate refine_followup): this is a post-wire repair
+    # pass — run_wire just edited the issue's integration points, so use additive
+    # --gap-analysis (never removes content, does not consume refine budget) rather
+    # than the destructive --full-rewrite, which could bulldoze the wiring changes
+    # this branch exists to apply.
     fragment: with_rate_limit_handling
-    action: "/ll:refine-issue ${captured.input.output} --auto --full-rewrite"
+    action: "/ll:refine-issue ${captured.input.output} --auto --gap-analysis"
     action_type: slash_command
     next: rerun_confidence_after_wire
     on_error: rerun_confidence_after_wire
