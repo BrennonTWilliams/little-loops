@@ -20,6 +20,12 @@ relates_to:
 - ENH-1726
 parent: EPIC-1744
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 91
+score_complexity: 19
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 25
 ---
 
 # ENH-2365: Emit summary.json on general-task terminal `done`, not only on max_steps
