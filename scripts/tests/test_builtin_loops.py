@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import subprocess
 import sys
@@ -1615,7 +1617,7 @@ class TestAutoRefineAndImplementLoop:
             "get_next_issue",
             "refine_issue",
             "implement_chain",
-            "record_implemented",
+            "record_processed",
             "skip_refinement",
             "record_error",
             "finalize",
@@ -1712,6 +1714,163 @@ class TestAutoRefineAndImplementLoop:
         action = state.get("action", "")
         assert "auto-refine-and-implement-errored.txt" in action
         assert state.get("next") == "get_next_issue"
+
+    # --- BUG-2380: parent records "processed", not "implemented" --------------
+
+    def test_implement_chain_success_routes_to_record_processed(self, data: dict) -> None:
+        """implement_chain.on_success must route to record_processed (renamed from
+        record_implemented) so the parent's success sink reflects refine+delegate,
+        not implementation (BUG-2380)."""
+        state = data["states"].get("implement_chain", {})
+        assert state.get("on_success") == "record_processed", (
+            f"implement_chain.on_success should be 'record_processed', got {state.get('on_success')!r}"
+        )
+
+    def test_record_processed_does_not_write_implemented_file(self, data: dict) -> None:
+        """record_processed must NOT write *-implemented.txt — that ledger is owned
+        by implement-issue-chain and only written when ll-auto runs (BUG-2380/2381).
+        It records the umbrella ID to the dedup/accounting *-processed.txt instead."""
+        assert "record_implemented" not in data["states"], (
+            "record_implemented must be renamed to record_processed (BUG-2380)"
+        )
+        action = data["states"].get("record_processed", {}).get("action", "")
+        assert "auto-refine-and-implement-implemented.txt" not in action, (
+            "record_processed must not write the implemented ledger (BUG-2380); "
+            f"got: {action!r}"
+        )
+        assert "auto-refine-and-implement-processed.txt" in action, (
+            "record_processed must record the issue to the processed (dedup) file"
+        )
+        assert data["states"]["record_processed"].get("next") == "get_next_issue"
+
+    def test_record_processed_log_line_is_honest(self, data: dict) -> None:
+        """The log line must not claim 'Implemented' for a refined+delegated issue
+        (BUG-2380): the parent has no proof ll-auto ran."""
+        action = data["states"].get("record_processed", {}).get("action", "")
+        assert "echo \"Implemented" not in action and "echo 'Implemented" not in action, (
+            f"record_processed must not log 'Implemented …', got: {action!r}"
+        )
+
+    # --- ENH-2376: partial-with-errors verdict -------------------------------
+
+    def test_finalize_has_partial_with_errors_verdict(self, data: dict) -> None:
+        """finalize must distinguish a run that implemented something AND crashed
+        (partial-with-errors) from a clean partial (skipped-but-no-error) so
+        sub-loop crashes are not laundered into plain 'partial' (ENH-2376)."""
+        action = data["states"].get("finalize", {}).get("action", "")
+        assert "partial-with-errors" in action, (
+            f"finalize must define a partial-with-errors verdict, got: {action!r}"
+        )
+
+    def _run_finalize(
+        self,
+        data: dict,
+        run_dir: Path,
+        closed: tuple[str, ...] = (),
+        processed: tuple[str, ...] = (),
+        skipped: int = 0,
+        errored: int = 0,
+        baseline: tuple[str, ...] = (),
+    ) -> dict:
+        """Execute finalize against a ground-truth completed/ dir; return summary.json.
+
+        ENH-2385: finalize derives CLOSED from a .issues/completed/ diff against
+        the init baseline, and NOT_CLOSED from processed − completed. `closed` are
+        the issues that reached completed/ DURING the run; `baseline` were already
+        there at init.
+        """
+        p = "auto-refine-and-implement"
+        (run_dir / f"{p}-completed-baseline.txt").write_text(
+            "".join(f"{i}\n" for i in sorted(baseline))
+        )
+        completed_dir = run_dir / ".issues" / "completed"
+        completed_dir.mkdir(parents=True, exist_ok=True)
+        for cid in set(closed) | set(baseline):
+            (completed_dir / f"P3-{cid}-x.md").write_text("done\n")
+        (run_dir / f"{p}-processed.txt").write_text("".join(f"{i}\n" for i in processed))
+        (run_dir / f"{p}-skipped.txt").write_text("".join(f"ID-{i}\n" for i in range(skipped)))
+        (run_dir / f"{p}-errored.txt").write_text("".join(f"ID-{i}\n" for i in range(errored)))
+        action = data["states"]["finalize"].get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        return json.loads((run_dir / "summary.json").read_text())
+
+    def test_finalize_verdict_table(self, data: dict, tmp_path: Path) -> None:
+        """Shell-execution regression (ENH-2385/2376): the verdict reflects real
+        closure (ground-truth completed/ diff), not an ll-auto exit proxy."""
+        # (closed, processed, skipped, errored, expected_verdict)
+        cases = [
+            (("FEAT-1", "FEAT-2"), ("FEAT-1", "FEAT-2"), 0, 0, "success"),
+            (("FEAT-1",), ("FEAT-1", "FEAT-2"), 0, 0, "partial"),  # FEAT-2 not closed
+            (("FEAT-1",), ("FEAT-1",), 2, 0, "partial"),  # closed + skips
+            (("FEAT-1",), ("FEAT-1",), 0, 2, "partial-with-errors"),
+            ((), ("FEAT-2",), 0, 0, "phantom"),  # processed, closed nothing
+            ((), (), 0, 2, "phantom"),  # crashed, closed nothing
+            ((), (), 1, 0, "no-op"),  # only refinement-skips, nothing attempted
+            ((), (), 0, 0, "no-op"),
+        ]
+        for i, (closed, processed, skip, err, expected) in enumerate(cases):
+            run_dir = tmp_path / f"run-{i}"
+            run_dir.mkdir()
+            summary = self._run_finalize(
+                data, run_dir, closed=closed, processed=processed, skipped=skip, errored=err
+            )
+            assert summary["verdict"] == expected, (
+                f"closed={closed} processed={processed} skip={skip} err={err}: "
+                f"expected {expected!r}, got {summary['verdict']!r} ({summary})"
+            )
+
+    def test_finalize_counts_decomposition_closure_as_closed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2385: a decomposed umbrella that recursive-refine git-mv'd into
+        completed/ counts as CLOSED even though it never went through ll-auto /
+        processed. Ground truth is the completed/ diff, not the implement ledger."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        # EPIC-9 was decomposed → moved to completed/, but never 'processed'.
+        summary = self._run_finalize(
+            data, run_dir, closed=("EPIC-9",), processed=(), skipped=1, errored=0
+        )
+        assert summary["closed"] == 1, f"decomposition closure must count, got {summary}"
+
+    def test_finalize_not_closed_excludes_completed_and_avoids_double_count(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2385: NOT_CLOSED = processed − completed. A processed issue that DID
+        close is excluded; a processed issue still open is counted exactly once."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data, run_dir, closed=("FEAT-1",), processed=("FEAT-1", "FEAT-2"), skipped=0, errored=0
+        )
+        assert summary["closed"] == 1 and summary["not_closed"] == 1, (
+            f"FEAT-1 closed, FEAT-2 not-closed expected, got {summary}"
+        )
+
+    def test_finalize_summary_has_closure_keys(self, data: dict, tmp_path: Path) -> None:
+        """summary.json must report the full accounting keys (ENH-2385)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), processed=("FEAT-1",))
+        for key in ("verdict", "closed", "not_closed", "skipped", "errored"):
+            assert key in summary, f"summary.json missing {key!r}: {summary}"
+
+    def test_init_snapshots_completed_baseline(self, data: dict, tmp_path: Path) -> None:
+        """ENH-2385: init must snapshot the completed/ set so finalize can compute a
+        ground-truth closure diff."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        completed = run_dir / ".issues" / "completed"
+        completed.mkdir(parents=True)
+        (completed / "P3-FEAT-1-x.md").write_text("done\n")
+        action = data["states"]["init"].get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        baseline = run_dir / "auto-refine-and-implement-completed-baseline.txt"
+        assert baseline.exists() and "FEAT-1" in baseline.read_text(), (
+            "init must snapshot existing completed/ issues into the baseline file"
+        )
 
     def test_finalize_writes_summary_json(self, data: dict) -> None:
         """finalize must emit a machine-readable summary.json with a verdict so
@@ -6320,6 +6479,137 @@ class TestImplementIssueChainOracle:
         assert "FEAT-366" not in skip_contents, (
             "passed IDs must not leak into the skip file alongside genuine skips"
         )
+
+    # --- BUG-2381: ledger is written only when ll-auto actually runs ----------
+
+    def test_implement_issue_writes_implemented_ledger(self, data: dict) -> None:
+        """Structural guard: implement_issue must append to the caller's
+        *-implemented.txt ledger — the authoritative IMPL count consulted by
+        auto-refine-and-implement.finalize (BUG-2381)."""
+        action = data["states"]["implement_issue"].get("action", "")
+        assert "${context.caller_prefix}-implemented.txt" in action, (
+            "implement_issue must write the ${context.caller_prefix}-implemented.txt "
+            f"ledger, got: {action!r}"
+        )
+        assert "${context.run_dir}" in action, (
+            "the implemented ledger must live under ${context.run_dir}"
+        )
+
+    def _run_implement_issue(
+        self,
+        data: dict,
+        run_dir: Path,
+        issue: str,
+        ll_auto_exit: int = 0,
+        closes: bool = True,
+        prefix: str = "auto-refine-and-implement",
+    ) -> subprocess.CompletedProcess:
+        """Run implement_issue with a stubbed ll-auto.
+
+        `closes` controls whether the stub simulates a real closure by moving the
+        issue into .issues/completed/ — the ground truth implement_issue verifies.
+        """
+        action = data["states"]["implement_issue"].get("action", "")
+        script = (
+            action.replace("${context.run_dir}", str(run_dir))
+            .replace("${context.caller_prefix}", prefix)
+            .replace("${captured.impl_id.output}", issue)
+            .replace("$${", "${")  # FSM brace-escape → bash, as the interpolator does
+        )
+        bindir = run_dir / "bin"
+        bindir.mkdir(exist_ok=True)
+        stub = bindir / "ll-auto"
+        close_line = (
+            f"mkdir -p .issues/completed; echo done > .issues/completed/P3-{issue}-x.md\n"
+            if closes
+            else ""
+        )
+        stub.write_text(f"#!/usr/bin/env bash\n{close_line}exit {ll_auto_exit}\n")
+        stub.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"}
+        return subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
+        )
+
+    def test_implement_issue_records_ledger_when_closed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2385: the implemented ledger records the issue only when it actually
+        reached .issues/completed/ (verified closure)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        self._run_implement_issue(data, run_dir, "FEAT-500", ll_auto_exit=0, closes=True)
+        ledger = run_dir / "auto-refine-and-implement-implemented.txt"
+        assert ledger.exists() and "FEAT-500" in ledger.read_text(), (
+            "a verified closure must be recorded in the implemented ledger"
+        )
+
+    def test_implement_issue_skips_ledger_when_ll_auto_exits_zero_without_closing(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2385 core: ll-auto exit 0 is NOT proof of closure. If the issue did
+        not reach completed/, it must NOT be recorded as implemented."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        self._run_implement_issue(data, run_dir, "FEAT-501", ll_auto_exit=0, closes=False)
+        ledger = run_dir / "auto-refine-and-implement-implemented.txt"
+        contents = ledger.read_text() if ledger.exists() else ""
+        assert "FEAT-501" not in contents, (
+            f"exit 0 without closure must not record as implemented, got: {contents!r}"
+        )
+
+    def test_implement_issue_preserves_ll_auto_exit_code(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2385: the action must re-exit with ll-auto's real exit code so the
+        with_rate_limit_handling fragment's 429 detection (which requires
+        exit_code != 0) still fires. Swallowing it disables rate-limit resilience."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        result = self._run_implement_issue(data, run_dir, "FEAT-502", ll_auto_exit=7, closes=False)
+        assert result.returncode == 7, (
+            f"implement_issue must propagate ll-auto's exit code, got {result.returncode}"
+        )
+
+    def test_implement_issue_records_already_completed_issue(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """An issue already in .issues/completed/ counts as implemented without
+        re-running ll-auto (the completed-guard branch)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        completed = run_dir / ".issues" / "completed"
+        completed.mkdir(parents=True)
+        (completed / "P3-FEAT-366-x.md").write_text("done\n")
+        # ll_auto_exit=1 proves ll-auto is NOT consulted on this path.
+        result = self._run_implement_issue(
+            data, run_dir, "FEAT-366", ll_auto_exit=1, closes=False
+        )
+        assert result.returncode == 0
+        ledger = run_dir / "auto-refine-and-implement-implemented.txt"
+        assert ledger.exists() and "FEAT-366" in ledger.read_text(), (
+            "already-completed issue must be recorded in the implemented ledger"
+        )
+
+    # --- ENH-2385: go-no-go rejections are recorded, not silently dropped -----
+
+    def test_go_no_go_rejection_routes_to_record_rejected(self, data: dict) -> None:
+        """go_no_go.on_no must route to record_rejected (was a silent
+        implement_next drop)."""
+        state = data["states"].get("go_no_go", {})
+        assert state.get("on_no") == "record_rejected", (
+            f"go_no_go.on_no must record the rejection, got {state.get('on_no')!r}"
+        )
+
+    def test_record_rejected_writes_skip_and_drains(self, data: dict) -> None:
+        """record_rejected must append the rejected issue to the caller's skip
+        ledger and loop back to implement_next to drain the queue."""
+        state = data["states"].get("record_rejected", {})
+        action = state.get("action", "")
+        assert "${context.caller_prefix}-skipped.txt" in action, (
+            "record_rejected must record the rejection to the skip ledger"
+        )
+        assert state.get("next") == "implement_next"
 
 
 class TestResearchCoverageOracle:
