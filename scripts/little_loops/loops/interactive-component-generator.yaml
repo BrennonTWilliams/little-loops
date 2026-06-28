@@ -46,8 +46,8 @@ states:
     action_type: shell
     action: |
       DIR="${context.run_dir}"
-      mkdir -p "$$DIR"
-      echo "$$(pwd)/$$DIR"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
     capture: run_dir          # later referenced as ${captured.run_dir.output}
     next: profile_input
 
@@ -152,11 +152,11 @@ states:
     fragment: shell_exit
     action: |
       QUEUE="${captured.run_dir.output}/queue.txt"
-      [ -s "$$QUEUE" ] || exit 1
-      CID="$$(head -n1 "$$QUEUE")"
-      [ -n "$$CID" ] || exit 1
-      tail -n +2 "$$QUEUE" > "$$QUEUE.tmp" && mv "$$QUEUE.tmp" "$$QUEUE"
-      printf '%s\n' "$$CID"
+      [ -s "$QUEUE" ] || exit 1
+      CID="$(head -n1 "$QUEUE")"
+      [ -n "$CID" ] || exit 1
+      tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
+      printf '%s\n' "$CID"
     capture: current_id        # ${captured.current_id.output}
     on_yes: prep_component      # id found -> build it
     on_no: check_any_built      # queue empty -> select winners
@@ -259,7 +259,7 @@ states:
     action_type: shell
     action: |
       CDIR="${captured.run_dir.output}/comp-${captured.current_id.output}"
-      NODE_PATH="$$(npm root -g)" node -e "
+      NODE_PATH="$(npm root -g)" node -e "
       const { chromium } = require('@playwright/test');
       const fs = require('fs');
       const dir = '${captured.run_dir.output}/comp-${captured.current_id.output}';
@@ -308,12 +308,12 @@ states:
     action: |
       RD="${captured.run_dir.output}"
       CID="${captured.current_id.output}"
-      CDIR="$$RD/comp-$$CID"
-      SMOKE="$$(grep -oE 'SMOKE_(PASS|FAIL)' "$$CDIR/smoke.txt" 2>/dev/null | head -1 || echo SMOKE_FAIL)"
-      MINSC="$$(grep -oE '[0-9]+/10' "$$CDIR/critique.md" 2>/dev/null | grep -oE '^[0-9]+' | sort -n | head -1)"
-      [ -n "$$MINSC" ] || MINSC=0
-      printf '{"id":"%s","smoke":"%s","min_rubric":%s}\n' "$$CID" "$$SMOKE" "$$MINSC" >> "$$RD/scoreboard.jsonl"
-      echo "recorded $$CID smoke=$$SMOKE min_rubric=$$MINSC"
+      CDIR="$RD/comp-$CID"
+      SMOKE="$(grep -oE 'SMOKE_(PASS|FAIL)' "$CDIR/smoke.txt" 2>/dev/null | head -1 || echo SMOKE_FAIL)"
+      MINSC="$(grep -oE '[0-9]+/10' "$CDIR/critique.md" 2>/dev/null | grep -oE '^[0-9]+' | sort -n | head -1)"
+      [ -n "$MINSC" ] || MINSC=0
+      printf '{"id":"%s","smoke":"%s","min_rubric":%s}\n' "$CID" "$SMOKE" "$MINSC" >> "$RD/scoreboard.jsonl"
+      echo "recorded $CID smoke=$SMOKE min_rubric=$MINSC"
     next: pop_next
 
   check_any_built:
@@ -395,8 +395,8 @@ states:
     action_type: shell
     action: |
       RD="${captured.run_dir.output}"
-      ROUNDS="$$(cat "$$RD/.compose_rounds" 2>/dev/null || echo 0)"
-      NODE_PATH="$$(npm root -g)" node -e "
+      ROUNDS="$(cat "$RD/.compose_rounds" 2>/dev/null || echo 0)"
+      NODE_PATH="$(npm root -g)" node -e "
       const { chromium } = require('@playwright/test');
       const fs = require('fs');
       const rd = '${captured.run_dir.output}';
@@ -436,16 +436,16 @@ states:
         await browser.close();
       })().catch(e => { console.log('VERIFY_FAIL:harness:' + e.message); });
       "
-      VERDICT="$$(cat "$$RD/verify.txt" 2>/dev/null || echo VERIFY_FAIL)"
-      if echo "$$VERDICT" | grep -q SMOKE_PASS; then
+      VERDICT="$(cat "$RD/verify.txt" 2>/dev/null || echo VERIFY_FAIL)"
+      if echo "$VERDICT" | grep -q SMOKE_PASS; then
         echo "SMOKE_PASS"; exit 0
       fi
-      if [ "$$ROUNDS" -ge 2 ]; then
-        echo "SMOKE_PASS: recompose cap reached, accepting best-so-far ($$VERDICT)"; exit 0
+      if [ "$ROUNDS" -ge 2 ]; then
+        echo "SMOKE_PASS: recompose cap reached, accepting best-so-far ($VERDICT)"; exit 0
       fi
-      echo "$$((ROUNDS + 1))" > "$$RD/.compose_rounds"
-      { echo "# Merge issues to fix (recompose round $$((ROUNDS + 1)))"; echo "$$VERDICT"; } >> "$$RD/compose_critique.md"
-      echo "VERIFY_RETRY: $$VERDICT"
+      echo "$((ROUNDS + 1))" > "$RD/.compose_rounds"
+      { echo "# Merge issues to fix (recompose round $((ROUNDS + 1)))"; echo "$VERDICT"; } >> "$RD/compose_critique.md"
+      echo "VERIFY_RETRY: $VERDICT"
     evaluate:
       type: output_contains
       pattern: "SMOKE_PASS"
@@ -463,15 +463,15 @@ states:
     action_type: shell
     action: |
       RD="${captured.run_dir.output}"
-      case "$$RD" in
-        /*) ABS_DIR="$$RD" ;;
-        *) ABS_DIR="$$(pwd)/$$RD" ;;
+      case "$RD" in
+        /*) ABS_DIR="$RD" ;;
+        *) ABS_DIR="$(pwd)/$RD" ;;
       esac
       if [ -f .env ]; then set -a; . ./.env; set +a; fi
       if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
         echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0
       fi
-      if [ ! -f "$$ABS_DIR/screenshot.png" ]; then
+      if [ ! -f "$ABS_DIR/screenshot.png" ]; then
         echo "VISION_PASS: skipped (no screenshot.png)"; exit 0
       fi
       export ABS_DIR

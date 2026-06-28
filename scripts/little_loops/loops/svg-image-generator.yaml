@@ -140,15 +140,15 @@ states:
     action_type: shell
     action: |
       RUN_DIR="${captured.run_dir.output}"
-      case "$$RUN_DIR" in
-        /*) ABS_DIR="$$RUN_DIR" ;;
-        *) ABS_DIR="$$(pwd)/$$RUN_DIR" ;;
+      case "$RUN_DIR" in
+        /*) ABS_DIR="$RUN_DIR" ;;
+        *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
       esac
       if [ -f .env ]; then set -a; . ./.env; set +a; fi
       if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
         echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0
       fi
-      if [ ! -f "$$ABS_DIR/screenshot.png" ]; then
+      if [ ! -f "$ABS_DIR/screenshot.png" ]; then
         echo "VISION_PASS: skipped (no screenshot.png)"; exit 0
       fi
       export ABS_DIR
