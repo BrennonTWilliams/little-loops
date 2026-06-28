@@ -69,7 +69,7 @@ states:
         > ${context.run_dir}/recursive-refine-skipped-depth.txt
         COMMIT_EVERY="${context.commit_every:default=0}"
         NO_RECURSION="${context.no_recursion:default=false}"
-        echo "Starting next-action mode: commit_every=${COMMIT_EVERY}, no_recursion=${NO_RECURSION}"
+        echo "Starting next-action mode: commit_every=$${COMMIT_EVERY}, no_recursion=$${NO_RECURSION}"
       else
         if [ -z "${context.input}" ]; then
           echo "ERROR: input is required when order=queue. Usage: ll-loop run recursive-refine \"ID1,ID2\""
