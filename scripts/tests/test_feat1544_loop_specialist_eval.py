@@ -199,9 +199,9 @@ class TestLoopSpecialistPIDCorruptionMode:
         idx = content.find("over-escaped-shell-pid-corruption")
         assert idx != -1, "Mode must be present in agent file"
         surrounding = content[idx : idx + 500]
-        assert (
-            "single" in surrounding or "remove" in surrounding or "Remove" in surrounding
-        ), "Fix description must recommend removing the extra $ (single $ form)"
+        assert "single" in surrounding or "remove" in surrounding or "Remove" in surrounding, (
+            "Fix description must recommend removing the extra $ (single $ form)"
+        )
 
 
 @pytest.mark.skipif(

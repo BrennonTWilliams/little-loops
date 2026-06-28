@@ -75,19 +75,13 @@ class OmpEmitter:
     name = "omp"
 
     def emit_skill(self, skill_meta: dict) -> str:
-        raise AdapterError(
-            "omp emitter not yet implemented — open a PR adding adapters/omp.py"
-        )
+        raise AdapterError("omp emitter not yet implemented — open a PR adding adapters/omp.py")
 
     def emit_command(self, cmd_meta: dict) -> str:
-        raise AdapterError(
-            "omp emitter not yet implemented — open a PR adding adapters/omp.py"
-        )
+        raise AdapterError("omp emitter not yet implemented — open a PR adding adapters/omp.py")
 
     def emit_agent(self, agent_meta: dict) -> str:
-        raise AdapterError(
-            "omp emitter not yet implemented — open a PR adding adapters/omp.py"
-        )
+        raise AdapterError("omp emitter not yet implemented — open a PR adding adapters/omp.py")
 
 
 _EMITTER_REGISTRY: dict[str, type[HostEmitter]] = {
@@ -112,7 +106,6 @@ def resolve_emitter(host: str) -> HostEmitter:
     cls = _EMITTER_REGISTRY.get(host)
     if cls is None:
         raise AdapterError(
-            f"Host {host!r} is not registered. "
-            f"Available: {sorted(_EMITTER_REGISTRY)}."
+            f"Host {host!r} is not registered. Available: {sorted(_EMITTER_REGISTRY)}."
         )
     return cls()

@@ -632,14 +632,18 @@ class TestArchiveRun:
         assert archive_path is not None
         assert not (archive_path / "meta-eval.jsonl").exists()
 
-    def test_archive_run_copies_summary_json_when_exists(self, tmp_loops_dir: Path, tmp_path: Path) -> None:
+    def test_archive_run_copies_summary_json_when_exists(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
         """archive_run() copies summary.json from run_dir to .history/ when it exists."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)
         persistence.initialize()
         persistence.save_state(self._make_state())
         run_dir = tmp_path / "run"
         run_dir.mkdir()
-        (run_dir / "summary.json").write_text('{"verdict":"success","implemented":3,"failed_finals":0}\n')
+        (run_dir / "summary.json").write_text(
+            '{"verdict":"success","implemented":3,"failed_finals":0}\n'
+        )
 
         archive_path = persistence.archive_run(run_dir=run_dir)
 
@@ -648,7 +652,9 @@ class TestArchiveRun:
         content = (archive_path / "summary.json").read_text()
         assert "implemented" in content
 
-    def test_archive_run_does_not_copy_summary_json_when_absent(self, tmp_loops_dir: Path, tmp_path: Path) -> None:
+    def test_archive_run_does_not_copy_summary_json_when_absent(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
         """archive_run() omits summary.json when not present in run_dir."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)
         persistence.initialize()

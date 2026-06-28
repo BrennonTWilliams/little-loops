@@ -650,9 +650,7 @@ class TestPIDCorruptionDiscriminator:
         step55_start = content.index("## Step 5.5:")
         step5_section = content[step5_start:step55_start]
         assert (
-            "removing" in step5_section
-            or "remove" in step5_section
-            or "single" in step5_section
+            "removing" in step5_section or "remove" in step5_section or "single" in step5_section
         ), "Step 5 PID-corruption heuristic must recommend removing the extra $"
 
     def test_pid_corruption_skill_has_budget_guard(self) -> None:

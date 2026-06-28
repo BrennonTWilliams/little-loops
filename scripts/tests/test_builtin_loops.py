@@ -1735,8 +1735,7 @@ class TestAutoRefineAndImplementLoop:
         )
         action = data["states"].get("record_processed", {}).get("action", "")
         assert "auto-refine-and-implement-implemented.txt" not in action, (
-            "record_processed must not write the implemented ledger (BUG-2380); "
-            f"got: {action!r}"
+            f"record_processed must not write the implemented ledger (BUG-2380); got: {action!r}"
         )
         assert "auto-refine-and-implement-processed.txt" in action, (
             "record_processed must record the issue to the processed (dedup) file"
@@ -1747,7 +1746,7 @@ class TestAutoRefineAndImplementLoop:
         """The log line must not claim 'Implemented' for a refined+delegated issue
         (BUG-2380): the parent has no proof ll-auto ran."""
         action = data["states"].get("record_processed", {}).get("action", "")
-        assert "echo \"Implemented" not in action and "echo 'Implemented" not in action, (
+        assert 'echo "Implemented' not in action and "echo 'Implemented" not in action, (
             f"record_processed must not log 'Implemented …', got: {action!r}"
         )
 
@@ -6423,9 +6422,7 @@ class TestImplementIssueChainOracle:
         script = action.replace("${context.run_dir}", str(run_dir)).replace(
             "${context.caller_prefix}", prefix
         )
-        return subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
-        )
+        return subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
 
     def test_passed_issues_go_to_queue_and_processed_not_skip(
         self, data: dict, tmp_path: Path
@@ -6460,9 +6457,7 @@ class TestImplementIssueChainOracle:
             f"passed IDs must NOT appear in the skip (verdict) file, got: {skip_contents!r}"
         )
 
-    def test_refinement_skips_still_recorded_in_skip_file(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_refinement_skips_still_recorded_in_skip_file(self, data: dict, tmp_path: Path) -> None:
         """Genuine refinement-skips must still be counted in the skip file."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
@@ -6531,9 +6526,7 @@ class TestImplementIssueChainOracle:
             ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
         )
 
-    def test_implement_issue_records_ledger_when_closed(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_implement_issue_records_ledger_when_closed(self, data: dict, tmp_path: Path) -> None:
         """ENH-2385: the implemented ledger records the issue only when it actually
         reached .issues/completed/ (verified closure)."""
         run_dir = tmp_path / "run"
@@ -6558,9 +6551,7 @@ class TestImplementIssueChainOracle:
             f"exit 0 without closure must not record as implemented, got: {contents!r}"
         )
 
-    def test_implement_issue_preserves_ll_auto_exit_code(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_implement_issue_preserves_ll_auto_exit_code(self, data: dict, tmp_path: Path) -> None:
         """ENH-2385: the action must re-exit with ll-auto's real exit code so the
         with_rate_limit_handling fragment's 429 detection (which requires
         exit_code != 0) still fires. Swallowing it disables rate-limit resilience."""
@@ -6582,9 +6573,7 @@ class TestImplementIssueChainOracle:
         completed.mkdir(parents=True)
         (completed / "P3-FEAT-366-x.md").write_text("done\n")
         # ll_auto_exit=1 proves ll-auto is NOT consulted on this path.
-        result = self._run_implement_issue(
-            data, run_dir, "FEAT-366", ll_auto_exit=1, closes=False
-        )
+        result = self._run_implement_issue(data, run_dir, "FEAT-366", ll_auto_exit=1, closes=False)
         assert result.returncode == 0
         ledger = run_dir / "auto-refine-and-implement-implemented.txt"
         assert ledger.exists() and "FEAT-366" in ledger.read_text(), (

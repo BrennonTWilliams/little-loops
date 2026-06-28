@@ -246,7 +246,9 @@ class TestLoopRunIncludeContextInjection:
 
         with (
             patch.object(sys, "argv", ["ll-loop", "run", "test-loop"]),
-            patch("little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor),
+            patch(
+                "little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor
+            ),
         ):
             from little_loops.cli import main_loop
 
@@ -276,7 +278,9 @@ class TestLoopRunIncludeContextInjection:
                 "argv",
                 ["ll-loop", "run", "test-loop", "--context", "include=builtin:*"],
             ),
-            patch("little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor),
+            patch(
+                "little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor
+            ),
         ):
             from little_loops.cli import main_loop
 
@@ -302,7 +306,9 @@ class TestLoopRunIncludeContextInjection:
 
         with (
             patch.object(sys, "argv", ["ll-loop", "run", "test-loop"]),
-            patch("little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor),
+            patch(
+                "little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor
+            ),
         ):
             from little_loops.cli import main_loop
 
