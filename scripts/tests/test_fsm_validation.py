@@ -32,6 +32,7 @@ from little_loops.fsm.validation import (
     _validate_generator_fix_discipline,
     _validate_harness_multimodal_evaluator_blind_spot,
     _validate_input_key_without_guard,
+    _validate_llm_evidence_contract,
     _validate_meta_loop_evaluation,
     _validate_parameters,
     _validate_partial_route_dead_end,
@@ -3316,3 +3317,147 @@ class TestLoopReferenceValidation:
         assert ref_warnings == [], (
             f"Expected no loop-reference warning for resolvable ref, got: {ref_warnings}"
         )
+
+
+class TestLLMEvidenceContractValidation:
+    """ENH-2342: MR-8 validation rule for LLM evidence contract in check_semantic states."""
+
+    def _simple_fsm(self, **kwargs) -> FSMLoop:
+        defaults: dict = {
+            "name": "test-evidence",
+            "initial": "check",
+            "states": {
+                "check": make_state(terminal=True),
+            },
+        }
+        defaults.update(kwargs)
+        return FSMLoop(**defaults)
+
+    # --- positive controls ---
+
+    def test_mr8_fires_for_llm_state_missing_evidence_keywords(self) -> None:
+        """MR-8 WARNING fires when llm_structured prompt has no evidence keywords."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(
+                        type="llm_structured",
+                        prompt="Did the task complete successfully? Answer yes or no.",
+                    ),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_llm_evidence_contract(fsm)
+        mr8_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "MR-8" in e.message
+        ]
+        assert len(mr8_warnings) == 1, f"Expected one MR-8 WARNING, got: {errors}"
+
+    def test_mr8_does_not_fire_when_verbatim_present(self) -> None:
+        """MR-8 does not fire when prompt contains 'verbatim'."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(
+                        type="llm_structured",
+                        prompt="Quote verbatim from the output to support your verdict.",
+                    ),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_llm_evidence_contract(fsm)
+        mr8_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "MR-8" in e.message
+        ]
+        assert mr8_warnings == [], f"Unexpected MR-8 WARNING: {mr8_warnings}"
+
+    def test_mr8_does_not_fire_when_evaluate_prompt_is_none(self) -> None:
+        """MR-8 does not fire when evaluate.prompt is None — DEFAULT_LLM_PROMPT carries the contract."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_llm_evidence_contract(fsm)
+        mr8_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "MR-8" in e.message
+        ]
+        assert mr8_warnings == [], f"Unexpected MR-8 WARNING for None prompt: {mr8_warnings}"
+
+    def test_mr8_does_not_fire_for_non_llm_evaluators(self) -> None:
+        """MR-8 does not fire for exit_code evaluators."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_llm_evidence_contract(fsm)
+        mr8_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "MR-8" in e.message
+        ]
+        assert mr8_warnings == [], f"Unexpected MR-8 WARNING for exit_code: {mr8_warnings}"
+
+    def test_mr8_suppressed_by_evidence_contract_ok(self) -> None:
+        """evidence_contract_ok: true suppresses MR-8."""
+        fsm = self._simple_fsm(
+            evidence_contract_ok=True,
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(
+                        type="llm_structured",
+                        prompt="Did the task complete? No evidence required.",
+                    ),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_llm_evidence_contract(fsm)
+        assert errors == [], f"Unexpected errors with suppression flag: {errors}"
+
+    def test_mr8_fires_end_to_end_via_validate_fsm(self) -> None:
+        """MR-8 WARNING appears in validate_fsm() output (end-to-end wiring check)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(
+                        type="llm_structured",
+                        prompt="Did the task complete? Answer yes or no.",
+                    ),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        all_errors = validate_fsm(fsm)
+        mr8_warnings = [
+            e for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "MR-8" in e.message
+        ]
+        assert len(mr8_warnings) >= 1, f"MR-8 WARNING not found in validate_fsm output: {all_errors}"

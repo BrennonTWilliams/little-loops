@@ -44,6 +44,7 @@ These are surfaced by running `ll-loop validate <name>`. The review skill presen
 | MR-5 | Harness loop writes artifacts to flat paths in iterative cycles without per-iteration versioning; suppress with `artifact_versioning: true` (snapshot artifacts) or `artifact_versioning_ok: true` (intentional overwrite) (ENH-1957) | Warning |
 | MR-6 | Meta-loop has a `shell` state writing to the same file path as an LLM-generator state — hand-patching anti-pattern; fix the generator action, or suppress with `generator_fix_ok: true` (ENH-2079) | Warning |
 | MR-7 | FSM action string contains unescaped `${ns.path:-default}` (bash `:-` default); runtime crash. Use `${ns.path:default=value}` or `$${VAR:-value}`; suppress with `bash_default_ok: true` (ENH-2348) | Error |
+| MR-8 | `check_semantic`/`llm_structured` state prompt omits evidence-contract keywords (`verbatim`, `quote`, `evidence`) — verdicts may default to optimism (SHOR Table 1: 33–55% accuracy); suppress with `evidence_contract_ok: true` (ENH-2342) | Warning |
 | V-18 | State's `loop:` reference does not resolve to any file (typo, renamed loop, missing sibling) — fails at runtime after expensive setup; caught at definition time (BUG-2305) | Warning |
 
 ---

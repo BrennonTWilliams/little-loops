@@ -173,6 +173,14 @@ does not support this form and will crash at runtime with
 (escaped, handled by the shell) instead. Set `bash_default_ok: true` to
 suppress. See ENH-2348.
 
+`ll-loop validate` enforces rule 8 as WARNING severity (rule MR-8). A
+`check_semantic`/`llm_structured` state whose `evaluate.prompt` omits
+evidence-contract keywords (`verbatim`, `quote`, `evidence`) may default to
+optimism — LLM self-grades are 33–55% accurate without verbatim citation
+requirements (SHOR Table 1). States with no `evaluate.prompt` (using
+`DEFAULT_LLM_PROMPT`) are not flagged; the evidence contract is injected
+automatically. Set `evidence_contract_ok: true` to suppress. See ENH-2342.
+
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.

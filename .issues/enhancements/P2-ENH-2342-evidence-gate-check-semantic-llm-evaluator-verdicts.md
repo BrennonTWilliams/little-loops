@@ -2,9 +2,10 @@
 id: ENH-2342
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-06-27
 captured_at: '2026-06-27T05:17:49Z'
+completed_at: '2026-06-28T04:37:28Z'
 discovered_by: capture-issue
 decision_needed: false
 labels:
@@ -284,6 +285,7 @@ New `ll-loop validate` rule:
 **Open** | Created: 2026-06-27 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T04:12:44 - `64a10a69-0b48-4159-be93-06db0fd50b48.jsonl`
 - `/ll:confidence-check` - 2026-06-27T00:00:00Z - `3b9f4ad2-4543-4399-a3e5-090ca3e72d05.jsonl`
 - `/ll:wire-issue` - 2026-06-28T03:58:15 - `b4f024df-10c6-4292-bb5a-b6ebe140c266.jsonl`
 - `/ll:refine-issue` - 2026-06-28T03:43:00 - `9e930281-60b2-460b-9976-e02ec135e310.jsonl`

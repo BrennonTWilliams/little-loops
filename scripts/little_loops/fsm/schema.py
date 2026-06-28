@@ -1006,6 +1006,7 @@ class FSMLoop:
     artifact_versioning_ok: bool = False
     generator_fix_ok: bool = False
     bash_default_ok: bool = False
+    evidence_contract_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -1089,6 +1090,8 @@ class FSMLoop:
             result["generator_fix_ok"] = self.generator_fix_ok
         if self.bash_default_ok:
             result["bash_default_ok"] = self.bash_default_ok
+        if self.evidence_contract_ok:
+            result["evidence_contract_ok"] = self.evidence_contract_ok
 
         return result
 
@@ -1165,6 +1168,7 @@ class FSMLoop:
             artifact_versioning_ok=data.get("artifact_versioning_ok", False),
             generator_fix_ok=data.get("generator_fix_ok", False),
             bash_default_ok=data.get("bash_default_ok", False),
+            evidence_contract_ok=data.get("evidence_contract_ok", False),
             imports=data.get("import", []),
         )
 

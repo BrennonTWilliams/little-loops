@@ -800,7 +800,9 @@ class TestLLMStructuredEvaluator:
     """Tests for llm_structured evaluator (Tier 2) via Claude CLI."""
 
     @staticmethod
-    def _cli_stdout(verdict: str, confidence: float, reason: str) -> str:
+    def _cli_stdout(
+        verdict: str, confidence: float, reason: str, evidence: str = "Found in output"
+    ) -> str:
         """Helper to create mock CLI JSON output."""
         return json.dumps(
             {
@@ -810,6 +812,7 @@ class TestLLMStructuredEvaluator:
                     "verdict": verdict,
                     "confidence": confidence,
                     "reason": reason,
+                    "evidence": evidence,
                 },
             }
         )
@@ -1012,7 +1015,14 @@ class TestLLMStructuredEvaluator:
         """result field as dict (not string) is handled correctly."""
         mock_run, mock_result = mock_cli
         mock_result.stdout = json.dumps(
-            {"result": {"verdict": "yes", "confidence": 0.9, "reason": "Done"}}
+            {
+                "result": {
+                    "verdict": "yes",
+                    "confidence": 0.9,
+                    "reason": "Done",
+                    "evidence": "Found completion marker in output",
+                }
+            }
         )
 
         result = evaluate_llm_structured("...")
@@ -1112,7 +1122,12 @@ class TestLLMStructuredEvaluator:
         mock_run, mock_result = mock_cli
         # Some CLI versions return JSON directly without a "result" wrapper
         mock_result.stdout = json.dumps(
-            {"verdict": "yes", "confidence": 0.9, "reason": "All checks passed"}
+            {
+                "verdict": "yes",
+                "confidence": 0.9,
+                "reason": "All checks passed",
+                "evidence": "Found 'task complete' in output",
+            }
         )
 
         result = evaluate_llm_structured("test output")
@@ -1141,7 +1156,9 @@ class TestEvaluateDispatcherLLM:
     """Tests for evaluate() dispatcher with llm_structured type."""
 
     @staticmethod
-    def _cli_stdout(verdict: str, confidence: float, reason: str) -> str:
+    def _cli_stdout(
+        verdict: str, confidence: float, reason: str, evidence: str = "Found in output"
+    ) -> str:
         """Helper to create mock CLI JSON output."""
         return json.dumps(
             {
@@ -1151,6 +1168,7 @@ class TestEvaluateDispatcherLLM:
                     "verdict": verdict,
                     "confidence": confidence,
                     "reason": reason,
+                    "evidence": evidence,
                 },
             }
         )
@@ -1213,6 +1231,61 @@ class TestEvaluateDispatcherLLM:
         assert "70" in prompt_arg
         assert "${context.readiness_threshold}" not in prompt_arg
         assert "${context.outcome_threshold}" not in prompt_arg
+
+
+    # --- evidence coercion (ENH-2342) ---
+
+    def test_empty_evidence_coerces_to_no(self, mock_cli) -> None:
+        """Absent evidence coerces verdict to 'no' for default schema."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {"verdict": "yes", "confidence": 0.9, "reason": "Looks done"},
+        })
+
+        result = evaluate_llm_structured("output")
+
+        assert result.verdict == "no"
+        assert result.details["evidence_coerced"] is True
+
+    def test_populated_evidence_passes_through(self, mock_cli) -> None:
+        """Non-empty evidence lets verdict pass through unchanged."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Done")
+
+        result = evaluate_llm_structured("output")
+
+        assert result.verdict == "yes"
+        assert result.details["evidence_coerced"] is False
+
+    def test_evidence_coercion_logged_in_details(self, mock_cli) -> None:
+        """Evidence value and coerced flag are always in details for default schema."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Done")
+
+        result = evaluate_llm_structured("output")
+
+        assert "evidence" in result.details
+        assert "evidence_coerced" in result.details
+
+    def test_custom_schema_not_coerced(self, mock_cli) -> None:
+        """Custom schema bypasses evidence coercion — caller controls the contract."""
+        mock_run, mock_result = mock_cli
+        custom_schema = {
+            "type": "object",
+            "properties": {"verdict": {"type": "string", "enum": ["pass", "fail"]}},
+            "required": ["verdict"],
+        }
+        mock_result.stdout = json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {"verdict": "pass"},
+        })
+
+        result = evaluate_llm_structured("output", schema=custom_schema)
+
+        assert result.verdict == "pass"
 
 
 class TestDiffStallEvaluator:

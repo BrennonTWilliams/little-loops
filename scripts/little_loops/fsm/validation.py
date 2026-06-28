@@ -1101,6 +1101,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_capture_reachability(fsm))
 
+    errors.extend(_validate_llm_evidence_contract(fsm))
+
     return errors
 
 
@@ -1655,6 +1657,51 @@ def _validate_bash_default_interpolation(fsm: FSMLoop) -> list[ValidationError]:
                 severity=ValidationSeverity.ERROR,
             )
         )
+    return errors
+
+
+_EVIDENCE_CONTRACT_KEYWORDS: frozenset[str] = frozenset({"verbatim", "quote", "evidence"})
+
+
+def _validate_llm_evidence_contract(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-8 (ENH-2342): LLM-judged state prompts should include evidence-contract keywords.
+
+    A check_semantic/llm_structured state whose ``evaluate.prompt`` does not contain any of
+    ``{"verbatim", "quote", "evidence"}`` may produce verdicts without cited output text,
+    defaulting to optimism (SHOR Table 1: 33–55% accuracy; Sonnet 4.6 = 33.4%).
+
+    States with no evaluate block (Path B: action prompt) or ``evaluate.prompt is None``
+    inherit DEFAULT_LLM_PROMPT which includes CHECK_SEMANTIC_EVIDENCE_CONTRACT after ENH-2342
+    and are not flagged here.
+
+    Suppressed by ``evidence_contract_ok: true`` at the loop top-level.
+    """
+    if fsm.evidence_contract_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if not _is_llm_judged(state):
+            continue
+        if state.evaluate is None:
+            continue
+        if state.evaluate.prompt is None:
+            continue
+        prompt_lower = state.evaluate.prompt.lower()
+        if not any(kw in prompt_lower for kw in _EVIDENCE_CONTRACT_KEYWORDS):
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"[state: {state_name}] check_semantic/llm_structured prompt "
+                        "does not include evidence-contract keywords (verbatim, quote, evidence). "
+                        "Verdicts without cited evidence default to optimism "
+                        "(SHOR Table 1: 33–55% accuracy). Add a requirement to quote exact "
+                        "output text, or set `evidence_contract_ok: true` to suppress. "
+                        "(ENH-2342 MR-8)"
+                    ),
+                    path=f"states.{state_name}.evaluate.prompt",
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
     return errors
 
 

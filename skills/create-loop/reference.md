@@ -141,7 +141,7 @@ Transitions:
 | `action_type` | `slash_command \| prompt` | recommended | `slash_command` for `/ll:*` commands; `prompt` for free-form instructions |
 | `timeout` | `int` | no | Seconds before abort. Recommended: 120–300 |
 | `evaluate.type` | `llm_structured` | yes | Parses natural-language skill output for YES/NO verdict |
-| `evaluate.prompt` | `str` | yes | Question posed to the LLM evaluator about the skill's output |
+| `evaluate.prompt` | `str` | yes | Question posed to the LLM evaluator about the skill's output; must include evidence-contract keywords (`verbatim`, `quote`, or `evidence`) to satisfy MR-8, or verdicts may default to optimism (SHOR Table 1: 33–55% accuracy) |
 | `on_yes` | `str` | yes | State to transition to on pass |
 | `on_no` | `str` | yes | State to transition to on fail (typically `execute` for retry) |
 

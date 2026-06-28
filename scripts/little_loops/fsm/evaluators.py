@@ -58,6 +58,18 @@ class EvaluationResult:
     details: dict[str, Any]
 
 
+# Evidence contract injected into every LLM evaluator prompt (ENH-2342).
+# Requires the model to cite verbatim output text for each verdict; absent evidence
+# is coerced to "no" at the parsing layer so self-grade optimism can't slip through.
+CHECK_SEMANTIC_EVIDENCE_CONTRACT = """
+IMPORTANT: For each condition you evaluate:
+1. State your verdict: Yes / No / Partial
+2. Provide a VERBATIM quote from the output that supports your verdict (exact text, in quotes)
+3. If you cannot quote specific text, your verdict is automatically No (or Partial if context suggests partial progress)
+
+Do not assert a verdict without evidence. "The task appears complete" is not evidence.
+"""
+
 # Default schema for LLM structured evaluation
 DEFAULT_LLM_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -82,8 +94,15 @@ DEFAULT_LLM_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Brief explanation",
         },
+        "evidence": {
+            "type": "string",
+            "description": (
+                "Verbatim quote from the action output that supports the verdict. "
+                "Empty string means no evidence was found; verdict will be coerced to 'no'."
+            ),
+        },
     },
-    "required": ["verdict", "confidence", "reason"],
+    "required": ["verdict", "confidence", "reason", "evidence"],
 }
 
 DEFAULT_LLM_PROMPT = "Evaluate whether this action succeeded based on its output."
@@ -840,7 +859,7 @@ def evaluate_llm_structured(
         EvaluationResult with verdict from LLM and confidence/reason in details
     """
     effective_schema = schema or DEFAULT_LLM_SCHEMA
-    effective_prompt = prompt or DEFAULT_LLM_PROMPT
+    effective_prompt = (prompt or DEFAULT_LLM_PROMPT) + "\n\n" + CHECK_SEMANTIC_EVIDENCE_CONTRACT
 
     # Truncate output to avoid context limits (keep last 4000 chars)
     truncated = output[-4000:] if len(output) > 4000 else output
@@ -962,6 +981,14 @@ def evaluate_llm_structured(
     confidence = float(llm_result.get("confidence", 1.0))
     confident = confidence >= min_confidence
 
+    # Evidence coercion (ENH-2342): when using the default schema, a verdict without
+    # verbatim evidence is treated as "no" — prevents LLM optimism from passing silently.
+    # Custom schemas bypass this; callers that supply their own schema control the contract.
+    evidence = llm_result.get("evidence", "")
+    evidence_coerced = schema is None and not evidence.strip() and verdict not in ("error",)
+    if evidence_coerced:
+        verdict = "no"
+
     # Optionally modify verdict for low confidence
     if uncertain_suffix and not confident:
         verdict = f"{verdict}_uncertain"
@@ -972,6 +999,8 @@ def evaluate_llm_structured(
             "confidence": confidence,
             "confident": confident,
             "reason": llm_result.get("reason", ""),
+            "evidence": evidence,
+            "evidence_coerced": evidence_coerced,
             "raw": llm_result,
             "llm_model": model,
             "llm_latency_ms": llm_latency_ms,

@@ -811,6 +811,8 @@ states:
         1. <success-criterion: what should be different after the skill runs successfully>
         2. Absence of failure signals: <failure-criterion: what would indicate the skill failed>
         Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
+        Quote the EXACT line(s) from the output supporting your verdict (verbatim, in quotes).
+        If you cannot find a verbatim quote, your verdict MUST be No.
     on_yes: check_invariants # or done if diff invariants omitted
     on_no: execute
   check_invariants:              # include if diff invariants selected
@@ -906,6 +908,8 @@ states:
         1. <success-criterion: what should be different after the skill runs successfully>
         2. Absence of failure signals: <failure-criterion: what would indicate the skill failed>
         Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
+        Quote the EXACT line(s) from the output supporting your verdict (verbatim, in quotes).
+        If you cannot find a verbatim quote, your verdict MUST be No.
     on_yes: check_invariants # or advance
     on_no: execute
   check_invariants:              # include if diff invariants selected
@@ -1072,6 +1076,8 @@ states:
         Did the previous /ll:refine-issue action successfully refine the issue?
         Check that: the issue file was updated with new content, confidence scores
         were added or improved, and no errors occurred. Answer YES or NO.
+        Quote the EXACT line(s) from the output supporting your verdict (verbatim, in quotes).
+        If you cannot find a verbatim quote, your verdict MUST be No.
     on_yes: check_invariants
     on_no: execute
   check_invariants:
@@ -1339,6 +1345,8 @@ states:
         1. At least one file was modified and the task appears meaningfully complete
         2. Absence of failure signals: no errors, no incomplete output
         Answer YES only if all criteria pass. Otherwise NO.
+        Quote the EXACT line(s) from the output supporting your verdict (verbatim, in quotes).
+        If you cannot find a verbatim quote, your verdict MUST be No.
     on_yes: check_invariants         # or report if diff invariants omitted
     on_no: implement
     on_partial: check_semantic

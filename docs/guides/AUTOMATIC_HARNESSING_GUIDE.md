@@ -302,6 +302,30 @@ evaluate:
 
 The wizard asks two follow-up questions when LLM-as-judge is selected: "What should be different in the output after the skill runs successfully?" and "What would indicate the skill failed or made no progress?" The answers populate criteria 1 and 2 respectively. For custom prompts, the same two-question format applies.
 
+#### Evidence Contract (ENH-2342 / MR-8)
+
+LLM self-grades average 33–55% accuracy without grounding (SHOR Table 1; Sonnet 4.6 = 33.4%). The evidence contract addresses this by requiring the judge to cite verbatim output text for every verdict.
+
+**Runtime enforcement** (always on): `evaluate_llm_structured()` injects `CHECK_SEMANTIC_EVIDENCE_CONTRACT` into every prompt and coerces any verdict with an empty `evidence` field to `"no"` at the parsing layer — verdicts cannot pass through without a citation. Custom schemas (explicit `schema:` parameter) bypass coercion; callers who supply their own schema control the contract.
+
+**Static lint** (MR-8 WARNING): `ll-loop validate` flags `check_semantic` states whose `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`). States with no `evaluate.prompt` (inheriting `DEFAULT_LLM_PROMPT`) are not flagged — the contract is injected automatically. Suppress with `evidence_contract_ok: true` when justified.
+
+To satisfy MR-8, add one sentence to your `evaluate.prompt`:
+
+```yaml
+evaluate:
+  type: llm_structured
+  prompt: >
+    Evaluate the previous action on these criteria:
+    1. [success criterion]
+    2. Absence of failure signals: [failure criterion]
+    Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
+    Quote the EXACT line(s) from the output supporting your verdict (verbatim, in quotes).
+    If you cannot find a verbatim quote, your verdict MUST be No.
+```
+
+This pairs with MR-1 (non-LLM evaluator required alongside LLM judges): MR-1 ensures the gate can't be gamed; the evidence contract ensures the LLM side is meaningfully discriminating rather than defaulting to optimism.
+
 ### Baseline Regression Guard (`check_comparator`)
 
 Uses a `comparator` evaluator to run one or more blind A/B comparisons between the current output and a stored baseline, then takes a majority vote. This prevents harness regressions: if a recent change makes outputs worse than a known-good baseline, the loop routes to retry rather than advancing.
