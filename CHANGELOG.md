@@ -14,6 +14,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.134.0] - 2026-06-28
 
+### Added
+
+- **MR-9 FSM validation rule** — Flags over-escaped `$$` in shell action strings that PID-corrupt `run_dir` paths at runtime; existing violations fixed across 3 generator loops. (BUG-2368)
+- **MR-7 FSM validation rule** — Flags unescaped bash `:-default` interpolation syntax that crashes the runner; replaces with engine-native `:default=` form. (feat(validation))
+- **Phase 0 format guard in `rn-remediate`** — Ensures all required issue template sections exist before `assess` runs; auto-repairs with `/ll:format-issue --auto` on missing sections only. (ENH-2360)
+- **HostEmitter Protocol + registry spike** — Foundation for host-agnostic event emission across Claude Code, Codex, and OpenCode adapters. (FEAT-2260)
+
+### Fixed
+
+- **`audit-loop-run` confabulates audit of nonexistent run** — Pre-flight existence gate added; aborts with a clear error instead of hallucinating results. (BUG-2361)
+- **`recursive-refine` `parse_input` crashes on bare shell variables** — Bare `$VAR` in issue text no longer causes a crash for all callers. (BUG-2362)
+- **`implement-issue-chain` routes passed issues to the caller's skip file** — Passed issues now routed to the dedup file; skip file is no longer polluted. (BUG-2374)
+- **Scratch-pad redirect hook intercepts `Read` tool calls** — `Read` interception removed; `Edit`/`Write` tools no longer broken after a redirected command. (BUG-2357)
+- **`is_runnable_loop` non-deterministic for `from:`-inheritance loops** — Cold/warm process ambiguity resolved for inherited loop definitions. (BUG-2344)
+- **`auto-refine-and-implement` exit-proxy accounting** — Replaced exit-proxy heuristic with ground-truth closure; verdict table and go-no-go accounting now accurate.
+- **`sprint-build-and-validate` launders sub-loop verdicts** — Sub-loop pass/fail no longer bubbles up as the sprint's own verdict.
+- **`sprint-build-and-validate` requires a sprint name** — Sprint name argument is now optional; bare invocation works.
+- **Bash `:-default` syntax in loop FSM files** — Seven sites replaced with engine-native `:default=` to prevent runtime interpolation crashes.
+- **Learning-test extractor bypasses `resolve_host()`** — LLM call now routed through `resolve_host()` instead of direct Anthropic SDK; respects `LL_HOST_CLI`.
+
+### Changed
+
+- **`loops.run_defaults.include` config field** — New allowlist field for default loop routing; loop-router and composers respect the configured include list. (ENH-2371)
+- **`ll-loop list` output formatting** — Improved readability and structure of loop catalog display. (ENH-2350)
+- **`general-task` emits `summary.json` on terminal `done`** — Summary artifact is now written on every clean exit, not only on `max_steps`. (ENH-2365)
+- **`audit-loop-run` captures literal values verbatim** — Captured FSM context values shown as-is; PID-corruption heuristic added to detect `$$`-escaped paths. (ENH-2367)
+- **`interactive-component-generator` gains diagnose enrichment** — `failure_reason` discriminator and root-cause access added to the FSM. (ENH-2366)
+- **Evidence-gate contract for LLM evaluator verdicts** — FSM `check_semantic`/`llm_structured` states now require verbatim citation; reduces self-grading optimism. (MR-8, improve(fsm))
+- **PMI/lift scoring in sequence-suggestion ranking** — Analytics now ranks workflow suggestions by pointwise mutual information. (improve(analytics))
+- **Brainstorm `novelty_threshold` lowered to 0.55** — Saturation/early-stop gate now activates in practice. (ENH-2356)
+- **`scope-epic`/`link-epics` stop overloading `relates_to`** — Epic writers now use a dedicated field; post-write validation added. (ENH-2330)
+- **`ll-init` robustness improvements** — Graceful handling of unknown `--hosts` values, permission sweep, and version comparison. (ENH-2314)
+- **Refine passes in `refine-to-ready-issue` and `autodev` switched to additive mode** — `--auto`/`--gap-analysis` flags passed consistently; no more full rewrites.
+- **Auto-refine loops gain distinct error/skip routing** — Error and skip paths now separated; verdict finalized on loop exit.
+- **Dedicated tests for incidental-only modules** — Coverage added for modules only exercised indirectly by other tests. (ENH-2328)
+
 ### Removed
 
 - **`restore_best` and `snapshot_issue` states from `refine-to-ready-issue`** — Retired the best-snapshot retention guard (ENH-2037) now that all refine passes are additive (`--auto`/`--gap-analysis`); the "late rewrite regresses a better earlier iteration" failure mode no longer applies. `check_outcome.on_yes` now routes directly to `done`. `artifact_versioning: true` flag removed (was inert for `issue-management` category loops). (ENH-2364)
@@ -3550,6 +3586,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.42.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.41.0...v1.42.0
 [1.41.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.40.0...v1.41.0
 [1.40.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.39.0...v1.40.0
+[1.134.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.133.0...v1.134.0
 [1.133.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.132.0...v1.133.0
 [1.132.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.131.0...v1.132.0
 [1.39.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.38.0...v1.39.0
