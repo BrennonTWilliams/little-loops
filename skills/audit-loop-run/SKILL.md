@@ -81,6 +81,33 @@ Note: `ll-loop list --running --json` output does **not** include `instance_id` 
 
 ## Step 2: Load Loop Definition and History
 
+### Pre-flight: verify the run actually exists (hard gate)
+
+Before loading or analyzing anything, confirm the run artifacts exist and are
+non-empty. This applies to **every** path that reaches this step — auto-resolved
+runs, directly-supplied run IDs/folders, and running-loop selections alike.
+
+```bash
+RUN_DIR=".loops/.history/<LATEST_RUN_ID>-<loop_name>"
+if [ ! -s "$RUN_DIR/events.jsonl" ] || [ ! -f "$RUN_DIR/state.json" ]; then
+  echo "MISSING_RUN"
+fi
+```
+
+- If the command prints `MISSING_RUN` (or `RUN_DIR` does not exist): report
+  `Run '<LATEST_RUN_ID>-<loop_name>' not found or empty — refusing to audit.`
+  and **stop**. Do **not** emit a verdict, state-transition trace, captured
+  outputs, improvement proposals, or any other section. An audit of a run whose
+  `events.jsonl`/`state.json` cannot be read is a fabrication, not an audit —
+  the only honest output is the refusal above.
+- Never reconstruct, infer, or assume a trace from the loop's FSM definition
+  alone. Every concrete claim in the report (trace, exit codes, captured
+  outputs, timings) MUST be backed by a line actually read from
+  `events.jsonl`/`state.json`. If a tool call returns empty or errors, treat
+  that as absence of evidence, not an invitation to confabulate.
+
+Only once the gate passes, proceed.
+
 Load the fully-materialized FSM:
 
 ```bash

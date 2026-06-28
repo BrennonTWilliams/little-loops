@@ -2492,3 +2492,128 @@
     evaluators for semantic judgments.
   enforcement: advisory
   issue: ENH-2360
+- id: ARCH-105
+  type: rule
+  timestamp: '2026-06-28T00:33:01Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The skill loaded events.jsonl/state.json with no existence gate on the
+    direct-supply path, so missing files produced fabricated output instead of a refusal.
+  rule: Validate that all required input artifacts exist and are non-empty before
+    any analysis or processing begins.
+  enforcement: advisory
+  issue: BUG-2358
+- id: ARCH-106
+  type: rule
+  timestamp: '2026-06-28T00:33:01Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'The auto-resolve path had a guard (''If empty: stop'') but the direct-supply
+    path bypassed it entirely, creating a gap that allowed confabulation.'
+  rule: Apply resource-existence guards to every code path that accesses the resource,
+    not only the primary auto-resolve branch.
+  enforcement: advisory
+  issue: BUG-2358
+- id: OTHE-107
+  type: rule
+  timestamp: '2026-06-28T00:33:01Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: The skill produced a complete confident report with zero real data. A
+    hard stop with a refusal message is the only honest response to missing evidence.
+  rule: When required input artifacts are absent or empty, emit a single refusal line
+    and stop — never emit a verdict, trace, or
+  enforcement: advisory
+  issue: BUG-2358
+- id: OTHE-108
+  type: rule
+  timestamp: '2026-06-28T00:33:01Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: The fabricated report cited nonexistent commits, folders, and sprint
+    files. Anti-confabulation requires evidence-grounding as an explicit constraint,
+    not an assumption.
+  rule: Every concrete claim in an audit or analysis output must be traceable to a
+    line actually read from the source artifacts.
+  enforcement: advisory
+  issue: BUG-2358
+- id: OTHE-109
+  type: rule
+  timestamp: '2026-06-28T00:33:01Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: wc -l on a missing file returns an error, not zero events. The model
+    interpreted absence as a run it could describe, because the instruction set allowed
+    inference from empty output.
+  rule: Treat empty or error output from a tool/shell call as absence of evidence;
+    never use it as a basis for inference or gene
+  enforcement: advisory
+  issue: BUG-2358
+- id: TEST-110
+  type: rule
+  timestamp: '2026-06-28T01:00:59Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: ll-loop validate and the full test suite both passed for ~2 weeks while
+    parse_input crashed on every invocation because no test exercised action bodies
+    through interpolate(). The gap existed because validate only checks YAML structure,
+    not runtime execution semantics.
+  rule: Run loop action/evaluate strings through the real interpolation engine in
+    CI; structural schema checks alone do not catc
+  enforcement: advisory
+  issue: BUG-2362
+- id: ARCH-111
+  type: rule
+  timestamp: '2026-06-28T01:00:59Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The crash fired on both order=queue and order=next-action invocations
+    even though the bare variables appeared only in the order=next-action branch.
+    The whole-body regex pass runs before branch selection, so unreachable branches
+    still fail the parse.
+  rule: FSM interpolation validates the entire action body at parse time; a bare ${VAR}
+    in any branch crashes regardless of whic
+  enforcement: advisory
+  issue: BUG-2362
+- id: TEST-112
+  type: rule
+  timestamp: '2026-06-28T01:00:59Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: The fix added test_builtin_loop_interpolation.py to cover every builtin
+    loop's action strings — not just recursive-refine — so the same bare-variable
+    pattern cannot be reintroduced in any loop without failing CI.
+  rule: When a static validator misses a bug class, add a CI test that exercises the
+    real runtime path across ALL existing insta
+  enforcement: advisory
+  issue: BUG-2362
+- id: STYL-113
+  type: rule
+  timestamp: '2026-06-28T01:00:59Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: The engine's escape pass converts $${VAR} to literal ${VAR} before handing
+    off to the shell. Bare ${VAR} with no dot is treated as a namespace.path reference
+    and rejected at interpolation.py:246-249 with a hard crash.
+  rule: Shell variables assigned earlier in the same FSM shell block must be referenced
+    as $${VAR} (escaped), not bare ${VAR}, i
+  enforcement: advisory
+  issue: BUG-2362
