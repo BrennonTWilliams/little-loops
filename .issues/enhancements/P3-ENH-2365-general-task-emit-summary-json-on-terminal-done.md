@@ -3,8 +3,9 @@ id: ENH-2365
 type: ENH
 title: Emit summary.json on general-task terminal `done`, not only on max_steps
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-28T05:12:41Z'
+completed_at: '2026-06-28T06:25:17Z'
 discovered_date: 2026-06-28
 discovered_by: capture-issue
 labels:
@@ -268,7 +269,19 @@ already-resolved BUG-1628 / BUG-1766 convergence cluster.
 
 **Open** | Created: 2026-06-28 | Priority: P3
 
+## Resolution
+
+Implemented Option A (YAML state + archive_run update):
+
+- Added `summarize_success` shell state in `general-task.yaml` between `count_final` and `done`; emits `{"verdict":"success","implemented":<done_count>,"failed_finals":0}` to `${context.run_dir}/summary.json`
+- Repointed `count_final.on_yes` from `"done"` to `"summarize_success"`
+- Updated `archive_run()` in `persistence.py` to accept optional `run_dir: Path | None = None` and copy `summary.json` into the history dir when present
+- Updated `PersistentExecutor.run()` call site to pass `run_dir` from FSM context
+- Updated `diagnose` state enumeration, module docstring, `docs/reference/API.md`, and `docs/guides/LOOPS_REFERENCE.md`
+- TDD: 11 new/updated tests (all green); `ll-loop validate general-task` passes clean
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T06:09:43 - `83592606-4cbf-481f-a320-cb2b8557a1d2.jsonl`
 - `/ll:wire-issue` - 2026-06-28T05:58:08 - `846e532c-b018-45c9-8c76-e4f1186d3d5c.jsonl`
 - `/ll:decide-issue` - 2026-06-28T05:40:28 - `e16f3618-449f-4692-a0be-8b533d2518b7.jsonl`
 - `/ll:refine-issue` - 2026-06-28T05:29:06 - `00ed2b70-0688-4ea0-8cce-ffc4bc7f0d68.jsonl`

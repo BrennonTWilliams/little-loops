@@ -62,6 +62,7 @@ class TestGeneralTaskLoopFile:
             "count_done",
             "final_verify",
             "count_final",
+            "summarize_success",
             "continue_work",
             "done",
             "diagnose",
@@ -1056,8 +1057,8 @@ class TestChange8FinalVerifyGate:
         assert evaluate["operator"] == "eq"
         assert evaluate["target"] == 0
 
-    def test_count_final_routes_yes_to_done(self, raw_data: dict) -> None:
-        assert raw_data["states"]["count_final"]["on_yes"] == "done"
+    def test_count_final_routes_yes_to_summarize_success(self, raw_data: dict) -> None:
+        assert raw_data["states"]["count_final"]["on_yes"] == "summarize_success"
 
     def test_count_final_routes_no_to_continue_work(self, raw_data: dict) -> None:
         assert raw_data["states"]["count_final"]["on_no"] == "continue_work"
@@ -1397,3 +1398,30 @@ class TestENH2293OOMResilience:
         assert any(marker in action for marker in ("-9", "OOM", "SIGKILL")), (
             "continue_work.action must reference '-9', 'OOM', or 'SIGKILL' in the exit -9 branch (ENH-2293)"
         )
+
+
+class TestENH2365SummarizeSuccess:
+    """ENH-2365: summarize_success state writes summary.json on clean terminal done."""
+
+    def test_summarize_success_state_exists(self, raw_data: dict) -> None:
+        assert "summarize_success" in raw_data.get("states", {})
+
+    def test_count_final_routes_yes_to_summarize_success(self, raw_data: dict) -> None:
+        assert raw_data["states"]["count_final"]["on_yes"] == "summarize_success"
+
+    def test_summarize_success_action_type_is_shell(self, raw_data: dict) -> None:
+        assert raw_data["states"]["summarize_success"]["action_type"] == "shell"
+
+    def test_summarize_success_action_writes_summary_json(self, raw_data: dict) -> None:
+        action = raw_data["states"]["summarize_success"]["action"]
+        assert "summary.json" in action
+
+    def test_summarize_success_action_emits_implemented_key(self, raw_data: dict) -> None:
+        action = raw_data["states"]["summarize_success"]["action"]
+        assert "implemented" in action
+
+    def test_summarize_success_routes_next_to_done(self, raw_data: dict) -> None:
+        assert raw_data["states"]["summarize_success"]["next"] == "done"
+
+    def test_summarize_success_on_error_routes_to_done(self, raw_data: dict) -> None:
+        assert raw_data["states"]["summarize_success"]["on_error"] == "done"

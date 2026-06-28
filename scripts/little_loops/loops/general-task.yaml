@@ -501,9 +501,36 @@ states:
       path: ".failed_finals"
       operator: eq
       target: 0
-    on_yes: done
+    on_yes: summarize_success
     on_no: continue_work
     on_error: diagnose
+
+  summarize_success:
+    action: |
+      RUN_DIR="${context.run_dir}"
+      DONE_TOTAL=$(python3 -c "
+      import json, sys
+      try:
+          data = json.loads('${captured.done_counts.output:default={}}')
+          print(data.get('total', 0))
+      except Exception:
+          print(0)
+      " 2>/dev/null || echo 0)
+      FAILED_FINALS=$(python3 -c "
+      import json, sys
+      try:
+          data = json.loads('${captured.final_counts.output:default={}}')
+          print(data.get('failed_finals', 0))
+      except Exception:
+          print(0)
+      " 2>/dev/null || echo 0)
+      printf '{"verdict":"success","implemented":%s,"failed_finals":%s}\n' \
+        "$DONE_TOTAL" "$FAILED_FINALS" > "$RUN_DIR/summary.json"
+      printf 'general-task: verdict=success implemented=%s failed_finals=%s\n' \
+        "$DONE_TOTAL" "$FAILED_FINALS"
+    action_type: shell
+    next: done
+    on_error: done
 
   continue_work:
     action: |
@@ -603,7 +630,7 @@ states:
       Diagnose what happened:
       - If ${context.run_dir}/plan.md exists, read it and summarize completed steps.
       - If ${context.run_dir}/dod.md exists, report which done-criteria were met.
-      - Identify the most likely failure cause and which state failed (define_done, plan, resume_check, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, run_final_tests, count_final, continue_work, or summarize_partial).
+      - Identify the most likely failure cause and which state failed (define_done, plan, resume_check, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, run_final_tests, count_final, summarize_success, continue_work, or summarize_partial).
 
       Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the task description.
     next: failed

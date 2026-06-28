@@ -5088,7 +5088,7 @@ Manage loop state persistence and event streaming.
 | `read_events()` | Read all events from file |
 | `clear_events()` | Remove events file |
 | `clear_all()` | Archive current run to history, then clear state, events, and meta-eval |
-| `archive_run()` | Copy state, events, and (for meta-loops) meta-eval to `.loops/.history/<run_id>-<name>/` |
+| `archive_run(run_dir=None)` | Copy state, events, meta-eval (meta-loops), and summary.json (when present in `run_dir`) to `.loops/.history/<run_id>-<name>/` |
 
 **File structure:**
 ```

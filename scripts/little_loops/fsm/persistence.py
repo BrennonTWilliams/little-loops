@@ -15,7 +15,8 @@ File structure:
     └── .history/               # Archived run logs (auto-populated)
         └── 2024-01-15T103000-fix-types/
             ├── state.json
-            └── events.jsonl
+            ├── events.jsonl
+            └── summary.json    # present when loop wrote one to run_dir
 """
 
 from __future__ import annotations
@@ -417,15 +418,22 @@ class StatePersistence:
         if self.meta_eval_file.exists():
             self.meta_eval_file.unlink()
 
-    def archive_run(self) -> Path | None:
+    def archive_run(self, run_dir: Path | None = None) -> Path | None:
         """Archive current run files to .history/ before clearing.
 
         Reads the current state to derive the run timestamp, then copies
-        both state.json and events.jsonl into:
+        state.json, events.jsonl, and (when present) meta-eval.jsonl and
+        summary.json into:
             <loops_dir>/.history/<run_id>-<loop_name>/
 
         where run_id is a compact ISO timestamp derived from started_at
         (e.g. "2024-01-15T103000" from "2024-01-15T10:30:00.123456+00:00").
+
+        Args:
+            run_dir: Optional path to the loop's run directory. When provided,
+                summary.json is copied from run_dir to the archive directory if
+                it exists. Pass None (default) when the run directory is not
+                available (e.g. stale-run cleanup paths).
 
         Returns:
             Path to the archive directory if files were archived, None if
@@ -455,6 +463,10 @@ class StatePersistence:
             shutil.copy2(self.events_file, archive_dir / "events.jsonl")
         if self.meta_eval_file.exists():
             shutil.copy2(self.meta_eval_file, archive_dir / "meta-eval.jsonl")
+        if run_dir is not None:
+            summary_src = run_dir / "summary.json"
+            if summary_src.exists():
+                shutil.copy2(summary_src, archive_dir / "summary.json")
 
         return archive_dir
 
@@ -792,7 +804,8 @@ class PersistentExecutor:
             accumulated_ms=result.duration_ms,
         )
         self.persistence.save_state(final_state)
-        self.persistence.archive_run()
+        run_dir_str = self.fsm.context.get("run_dir", "")
+        self.persistence.archive_run(run_dir=Path(run_dir_str) if run_dir_str else None)
 
         return result
 
