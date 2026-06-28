@@ -560,6 +560,116 @@ class TestAssessLoopSkill:
         )
 
 
+class TestPIDCorruptionDiscriminator:
+    """Discriminator tests for the PID-corruption fixture and audit-loop-run skill heuristic.
+
+    The pattern: action contains $$(cmd) or $$VAR — bash expands $$ to the PID,
+    so captured output begins with digits (e.g., "66563(pwd)/66563DIR").
+    The audit must flag this as over-escaped-shell-pid-corruption (MR-9), not
+    an interpolation sentinel or unparseable path.
+    """
+
+    def _load_fixture(self, name: str) -> dict:
+        path = FIXTURES_DIR / name
+        assert path.exists(), f"Fixture not found: {path}"
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    def test_fixture_pid_corruption_validates(self) -> None:
+        """PID-corruption fixture passes FSM validation (shell_pid_ok suppresses MR-9)."""
+        fsm, _ = load_and_validate(FIXTURES_DIR / "assess-pid-corruption.yaml")
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, f"FSM errors: {[str(e) for e in error_list]}"
+
+    def test_pid_corruption_action_contains_overescaped_shell(self) -> None:
+        """PID-corruption fixture action contains $$(  — the over-escape pattern (MR-9)."""
+        spec = self._load_fixture("assess-pid-corruption.yaml")
+        states = spec.get("states", {})
+        initial = spec.get("initial")
+        state = states.get(initial, {})
+        action = state.get("action", "")
+        assert "$$(" in action or "$$" in action
+        # → action has over-escaped shell; $$ expands to PID in bash
+
+    def test_pid_corruption_fixture_captures_output(self) -> None:
+        """PID-corruption fixture captures the shell output — the corrupted value lives here."""
+        spec = self._load_fixture("assess-pid-corruption.yaml")
+        states = spec.get("states", {})
+        initial = spec.get("initial")
+        state = states.get(initial, {})
+        assert state.get("capture") is not None
+        # → captured output will contain <pid>(pwd)/<pid>DIR — the PID-corruption artifact
+
+    def test_pid_corruption_skill_step4_has_verbatim_quote_contract(self) -> None:
+        """Step 4 must instruct the model to quote captured .output values verbatim."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step4_start = content.index("## Step 4:")
+        step5_start = content.index("## Step 5:")
+        step4_section = content[step4_start:step5_start]
+        assert "verbatim" in step4_section, (
+            "Step 4 must include a verbatim-quote contract for captured .output values"
+        )
+        assert (
+            "sentinel" in step4_section
+            or "numeric" in step4_section
+            or "interpolation" in step4_section
+        ), "Step 4 must note that the interpolation engine emits no numeric markers"
+
+    def test_pid_corruption_skill_step4_corrects_schema_comment(self) -> None:
+        """Step 4 captured dict schema must identify keys as capture variable names, not state names."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step4_start = content.index("## Step 4:")
+        step5_start = content.index("## Step 5:")
+        step4_section = content[step4_start:step5_start]
+        assert "variable" in step4_section or "capture_variable" in step4_section, (
+            "Step 4 must clarify that captured dict keys are variable names, not state names"
+        )
+
+    def test_pid_corruption_skill_step5_has_pid_heuristic(self) -> None:
+        """Step 5 fault-signal list must include the over-escaped-shell-pid-corruption heuristic."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step5_start = content.index("## Step 5:")
+        step55_start = content.index("## Step 5.5:")
+        step5_section = content[step5_start:step55_start]
+        assert "over-escaped-shell-pid-corruption" in step5_section, (
+            "Step 5 must include over-escaped-shell-pid-corruption in the fault-signal list"
+        )
+        assert "MR-9" in step5_section, (
+            "Step 5 must reference MR-9 for the PID-corruption heuristic"
+        )
+
+    def test_pid_corruption_skill_step5_recommends_removing_dollar(self) -> None:
+        """Step 5 heuristic must recommend removing the extra $, not adding more escaping."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step5_start = content.index("## Step 5:")
+        step55_start = content.index("## Step 5.5:")
+        step5_section = content[step5_start:step55_start]
+        assert (
+            "removing" in step5_section
+            or "remove" in step5_section
+            or "single" in step5_section
+        ), "Step 5 PID-corruption heuristic must recommend removing the extra $"
+
+    def test_pid_corruption_skill_has_budget_guard(self) -> None:
+        """Skill must include a budget-utilization guard before accepting budget-exhaustion as root cause."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step5_start = content.index("## Step 5:")
+        step6_start = content.index("## Step 6:")
+        pre_step6 = content[step5_start:step6_start]
+        assert "0.3" in pre_step6, (
+            "Skill must include a budget-utilization guard with ratio threshold 0.3 before Step 6"
+        )
+        assert "loop_complete.iterations" in pre_step6 or "STEPS_CONSUMED" in pre_step6, (
+            "Budget guard must derive STEPS_CONSUMED from loop_complete.iterations in events.jsonl"
+        )
+
+
 class TestHonestFailureDiscriminator:
     """Discriminator tests for the honest-failure fixture and its distinguishing properties.
 

@@ -1,10 +1,12 @@
 ---
 id: ENH-2367
 type: ENH
-title: audit-loop-run — surface literal captured values and PID-corruption heuristic instead of inferring "interpolation sentinel"
+title: "audit-loop-run \u2014 surface literal captured values and PID-corruption heuristic\
+  \ instead of inferring \"interpolation sentinel\""
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-28T06:35:00Z'
+completed_at: '2026-06-28T07:20:27Z'
 discovered_date: 2026-06-28
 discovered_by: audit-loop-run
 labels:
@@ -17,7 +19,12 @@ relates_to:
 - ENH-2366
 - BUG-2351
 decision_needed: false
-confidence_score: 85
+confidence_score: 96
+outcome_confidence: 87
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-2367: audit-loop-run — surface literal captured values and a PID-corruption heuristic
@@ -93,6 +100,9 @@ ground truth.
   "over-escaped shell / PID corruption" so post-hoc diagnoses name it correctly and
   point at MR-9.
 
+### Dependent Files (Callers/Importers)
+- N/A — `SKILL.md` and agent markdown files are not imported by Python code.
+
 ### Tests
 - `scripts/tests/test_audit_loop_run_skill.py` — skill presence/argument tests; extend with a scenario that feeds a PID-corrupted captured value and asserts the verdict names "over-escaped-shell-pid-corruption"
 - `scripts/tests/test_feat1544_loop_specialist_eval.py` — loop-specialist eval tests; add case asserting the new failure-mode name is recognized
@@ -101,6 +111,12 @@ ground truth.
 - `scripts/little_loops/fsm/validation.py:_validate_overescaped_shell` (MR-9) — the
   shift-left gate; the audit heuristic should reference the same regex signature:
   `_OVERESCAPED_SHELL_RE = re.compile(r"\$\$(?=\(|[A-Za-z_])")` (line 121)
+
+### Documentation
+- N/A — no standalone documentation files need updating.
+
+### Configuration
+- N/A
 
 ### Codebase Research Findings
 
@@ -174,7 +190,18 @@ recommend single-`$`, not flag an "interpolation sentinel" or recommend more esc
 **Open** | Created: 2026-06-28 | Priority: P2
 
 
+## Resolution
+
+- Added verbatim-quote contract to Step 4 of `skills/audit-loop-run/SKILL.md`: captured `.output` values must be quoted exactly; corrected `captured` dict schema comment to reflect capture *variable names* (not state names).
+- Added `over-escaped-shell-pid-corruption` (MR-9) to the Step 5 fault-signal list with `^\d{2,7}\b` prefix heuristic and recommendation to remove the extra `$`.
+- Added Step 5.6 budget-utilization guard: reject budget-exhaustion as root cause when `STEPS_CONSUMED / MAX_STEPS < 0.3`.
+- Extended `agents/loop-specialist.md` failure-mode taxonomy with 8th mode `over-escaped-shell-pid-corruption`; added checklist entry to diagnosis artifact template.
+- Added `assess-pid-corruption.yaml` fixture and `TestPIDCorruptionDiscriminator` / `TestLoopSpecialistPIDCorruptionMode` test classes.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T07:13:51 - `c8ad6ad7-c82b-42e4-8de7-ab2fd3ccb404.jsonl`
+- `/ll:confidence-check` - 2026-06-28T00:00:00Z - `7f5f9389-2bdf-4820-ba71-87fd2a007ad2.jsonl`
+- `/ll:format-issue` - 2026-06-28T07:08:26 - `37a2d401-2d00-4114-b303-f860dbbb4f51.jsonl`
 - `/ll:refine-issue` - 2026-06-28T06:31:08 - `846e532c-b018-45c9-8c76-e4f1186d3d5c.jsonl`
 - `/ll:refine-issue` - 2026-06-28T06:30:03 - `ba89e2dc-b6ef-4515-a509-01a6b89cf62c.jsonl`
 - `/ll:format-issue` - 2026-06-28T06:22:28 - `bf72d9b6-29c9-40ec-bb42-a2af81be2817.jsonl`

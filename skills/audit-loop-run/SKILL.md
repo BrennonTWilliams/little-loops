@@ -176,7 +176,9 @@ For issue-based loops, inspect frontmatter:
 ll-issues show <id> --json
 ```
 
-Also check in-memory captures in `.loops/.history/<run_id>-<loop_name>/state.json` under `captured` dict (schema: `{state_name: {output, stderr, exit_code, duration_ms}}`).
+Also check in-memory captures in `.loops/.history/<run_id>-<loop_name>/state.json` under `captured` dict (schema: `{capture_variable_name: {output, stderr, exit_code, duration_ms}}` — keys are capture *variable names* from `capture:` declarations, not state names). For step-level capture output in `events.jsonl`, read `action_complete.output_preview`.
+
+Quote every `.output` value verbatim when citing it; do not infer `"sentinel"` or `"placeholder"` labels — the interpolation engine emits no numeric markers (only `\x00ESCAPED\x00`, an internal placeholder that is never present in captured output).
 
 ---
 
@@ -192,6 +194,7 @@ Key signals to flag (fault subset only):
 - Evaluate failures (`verdict == "fail"`, 3+ occurrences on the same state)
 - Sub-loop verdict discarded
 - Throttle hard stop / hard transition (`throttle_stop` = loop halted; `throttle_hard` = loop redirected via `on_throttle_hard`)
+- Over-escaped shell / PID corruption: when a captured `.output` value matches `^\d{2,7}\b` (a bare PID prefix) *and* the action text for that state contains `$$(` or `$$[A-Za-z_]` (same pattern as `_OVERESCAPED_SHELL_RE` in `validation.py:121`), flag as **over-escaped-shell-pid-corruption** (MR-9) and recommend *removing* the extra `$`, never adding more escaping.
 
 ---
 
@@ -230,6 +233,22 @@ The default threshold of 30 `action_complete` events is intentionally conservati
 ```
 
 Pass `result` and `TOOL_CALL_COUNT` to the scorecard in Step 6.
+
+---
+
+## Step 5.6: Budget-Utilization Guard
+
+Before accepting budget-exhaustion as a root cause, compute the budget utilization ratio:
+
+```bash
+STEPS_CONSUMED=$(jq '[.[] | select(.event == "loop_complete")] | last | .iterations // 0' \
+  .loops/.history/<LATEST_RUN_ID>-<loop_name>/events.jsonl)
+MAX_STEPS=$(ll-loop show <loop_name> --resolved --json | jq '.max_steps // .max_iterations // 100')
+```
+
+If `STEPS_CONSUMED / MAX_STEPS < 0.3`, reject budget-exhaustion as the primary root cause — the loop consumed less than 30% of its budget, so it did not run out of steps.
+
+Note: there is no `steps_consumed` field in `state.json`; derive `STEPS_CONSUMED` from `loop_complete.iterations` in `events.jsonl`.
 
 ---
 

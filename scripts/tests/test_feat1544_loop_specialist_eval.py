@@ -162,6 +162,48 @@ class TestBrokenVerifyFixture:
         assert states["done"].get("terminal") is True
 
 
+class TestLoopSpecialistPIDCorruptionMode:
+    """Tests that agents/loop-specialist.md includes over-escaped-shell-pid-corruption
+    in its failure-mode taxonomy and diagnosis artifact checklist (ENH-2367).
+    """
+
+    AGENT_FILE = Path(__file__).parent.parent.parent / "agents" / "loop-specialist.md"
+
+    def test_agent_file_exists(self) -> None:
+        assert self.AGENT_FILE.exists(), "agents/loop-specialist.md not found"
+
+    def test_failure_mode_taxonomy_has_pid_corruption(self) -> None:
+        """Failure-mode taxonomy table must include over-escaped-shell-pid-corruption."""
+        content = self.AGENT_FILE.read_text()
+        assert "over-escaped-shell-pid-corruption" in content, (
+            "agents/loop-specialist.md must include over-escaped-shell-pid-corruption in taxonomy"
+        )
+
+    def test_diagnosis_checklist_has_pid_corruption(self) -> None:
+        """Diagnosis artifact checklist must include over-escaped-shell-pid-corruption."""
+        content = self.AGENT_FILE.read_text()
+        assert "- [ ] over-escaped-shell-pid-corruption" in content, (
+            "Diagnosis artifact checklist must include '- [ ] over-escaped-shell-pid-corruption'"
+        )
+
+    def test_pid_corruption_mode_mentions_mr9(self) -> None:
+        """over-escaped-shell-pid-corruption mode description must reference MR-9."""
+        content = self.AGENT_FILE.read_text()
+        assert "MR-9" in content, (
+            "over-escaped-shell-pid-corruption must reference MR-9 validation rule"
+        )
+
+    def test_pid_corruption_mode_recommends_single_dollar(self) -> None:
+        """over-escaped-shell-pid-corruption fix must recommend removing the extra $."""
+        content = self.AGENT_FILE.read_text()
+        idx = content.find("over-escaped-shell-pid-corruption")
+        assert idx != -1, "Mode must be present in agent file"
+        surrounding = content[idx : idx + 500]
+        assert (
+            "single" in surrounding or "remove" in surrounding or "Remove" in surrounding
+        ), "Fix description must recommend removing the extra $ (single $ form)"
+
+
 @pytest.mark.skipif(
     shutil.which("claude") is None,
     reason="live LLM required; skip in CI unless claude CLI is available",

@@ -1,0 +1,15 @@
+name: assess-pid-corruption
+description: "Generate and capture a file path for downstream processing"
+initial: init
+context:
+  output_dir: "output"
+max_iterations: 120
+shell_pid_ok: true
+states:
+  init:
+    action_type: shell
+    action: 'echo "$$(pwd)/$$DIR"'
+    capture: run_dir
+    next: done
+  done:
+    terminal: true
