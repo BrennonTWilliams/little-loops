@@ -399,6 +399,45 @@ class TestSyncToLocalMd:
         final_target = mock_replace.call_args[0][1]
         assert str(ll_local) == str(final_target)
 
+    def test_resolve_path_none_uses_cwd_default(self, tmp_path: Path) -> None:
+        """_resolve_path(None) uses Path.cwd() / '.ll/decisions.yaml'."""
+        from little_loops.decisions_sync import _resolve_path
+
+        resolved = _resolve_path(None)
+        import pathlib
+
+        expected = pathlib.Path.cwd() / ".ll" / "decisions.yaml"
+        assert resolved == expected
+
+    def test_replaces_last_active_rules_section_when_multiple_present(
+        self, decisions_path: Path
+    ) -> None:
+        """When ll.local.md has multiple '## Active Rules', rfind replaces only the last one."""
+        from little_loops.decisions import save_decisions
+        from little_loops.decisions_sync import sync_to_local_md
+
+        ll_local = decisions_path.parent / "ll.local.md"
+        # Two sections: an earlier one in frontmatter notes, a later one that is the real active block
+        ll_local.write_text(
+            "## Active Rules\n\n- First occurrence (should stay)\n\n"
+            "# Notes\n\nSome text.\n\n"
+            "## Active Rules\n\n- Old last rule\n",
+            encoding="utf-8",
+        )
+
+        rule = RuleEntry(id="R-001", rule="New required rule", enforcement="required")
+        save_decisions([rule], decisions_path)
+
+        sync_to_local_md(path=decisions_path)
+
+        content = ll_local.read_text(encoding="utf-8")
+        # The NEW rule should be present
+        assert "New required rule" in content
+        # Old last rule should be replaced
+        assert "Old last rule" not in content
+        # First occurrence of the heading should still be in the file
+        assert "First occurrence" in content
+
 
 # =============================================================================
 # TestDecisionsGracefulDegradation

@@ -317,6 +317,66 @@ class TestComputeEvaluatorVariance:
         assert result.states[1].state == "mixed"
         assert result.states[1].variance == 0.25
 
+    def test_oserror_on_events_file_skips_run(self, tmp_path: Path) -> None:
+        """OSError when reading events.jsonl skips that run silently."""
+        loops_dir = tmp_path / ".loops"
+        history_root = loops_dir / ".history"
+
+        # Create 10 good runs
+        for i in range(10):
+            run_dir = history_root / f"20260101T0000{i:02d}-my-loop"
+            events = [
+                {"event": "state_enter", "state": "check", "iteration": 1},
+                {"event": "evaluate", "verdict": "yes"},
+            ]
+            self._make_events_jsonl(run_dir, events)
+
+        # Create one run whose events.jsonl raises OSError on read
+        bad_run_dir = history_root / "20260101T000011-my-loop"
+        bad_run_dir.mkdir(parents=True, exist_ok=True)
+        bad_file = bad_run_dir / "events.jsonl"
+        bad_file.write_text("irrelevant — will be patched to raise")
+
+        import unittest.mock as um
+
+        original_read_text = Path.read_text
+
+        def _patched_read_text(self: Path, **kw: object) -> str:
+            if self == bad_file:
+                raise OSError("permission denied")
+            return original_read_text(self, **kw)
+
+        with um.patch.object(Path, "read_text", _patched_read_text):
+            result = compute_evaluator_variance("my-loop", loops_dir, min_runs=10)
+
+        # Should still succeed using the 10 good runs; bad run is skipped
+        assert result is not None
+        assert result.total_runs == 10
+
+    def test_malformed_json_line_skipped_gracefully(self, tmp_path: Path) -> None:
+        """A non-JSON line in events.jsonl is skipped; valid lines are still parsed."""
+        loops_dir = tmp_path / ".loops"
+        history_root = loops_dir / ".history"
+
+        for i in range(10):
+            run_dir = history_root / f"20260101T0000{i:02d}-my-loop"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            # Mix one malformed line with valid lines
+            lines = [
+                '{"event": "state_enter", "state": "check", "iteration": 1}',
+                "NOT VALID JSON <<<",
+                '{"event": "evaluate", "verdict": "yes"}',
+            ]
+            (run_dir / "events.jsonl").write_text("\n".join(lines) + "\n")
+
+        result = compute_evaluator_variance("my-loop", loops_dir, min_runs=10)
+
+        assert result is not None
+        assert result.total_runs == 10
+        # The valid evaluate events should still be counted
+        assert result.states[0].state == "check"
+        assert result.states[0].pass_rate == 1.0
+
 
 class TestEvaluatorVarianceWilsonCI:
     """Wilson CI is computed and stored on EvaluatorVariance (ENH-2084)."""

@@ -3,9 +3,10 @@ id: ENH-2328
 title: 'Test-suite breadth: dedicated tests for incidental-only modules + executor
   coverage spot-check'
 type: ENH
-status: open
+status: done
 priority: P3
 captured_at: '2026-06-26T22:35:39Z'
+completed_at: '2026-06-28T04:44:19Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 labels:
@@ -18,6 +19,12 @@ depends_on:
 learning_tests_required:
 - pytest
 - hypothesis
+confidence_score: 98
+outcome_confidence: 84
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2328: Test-suite breadth — dedicated tests for incidental-only modules
@@ -118,6 +125,17 @@ the file — not a systemic hole.
 - `scripts/tests/test_analytics_*.py` — new, focused capture-path tests
 - `scripts/tests/test_formatting.py` — conditional; add only if coverage gap confirmed in `dependency_mapper/formatting.py`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_worktree.py` — UPDATE: add `base_branch` validation path and directory-skip warning cases; existing `TestSetupWorktree`/`TestCleanupWorktree` already cover the happy paths — replaces proposed `test_worktree_utils.py` (new file is wrong target)
+- `scripts/tests/test_decisions.py` — UPDATE: add `_resolve_path(None)` default-path branch and multiple `## Active Rules` rfind-vs-find case to `TestSyncToLocalMd`; replaces proposed `test_decisions_sync.py`
+- `scripts/tests/test_loop_run_analytics.py` — UPDATE: add `OSError` branch and malformed-JSON skip case to `TestComputeEvaluatorVariance`; replaces proposed `test_analytics_*.py`
+- `scripts/tests/test_fsm_executor.py` — UPDATE: add uncovered `_evaluate()` branch tests (lines 1444–1493) from the executor spot-check; this is the existing main executor test file
+- ~~`scripts/tests/test_config_automation.py`~~ — REDUNDANT; `TestAutomationConfig`, `TestParallelAutomationConfig`, and siblings in `test_config.py` already cover all cases including legacy-key fallbacks — skip
+- ~~`scripts/tests/test_worktree_utils.py`~~ — WRONG TARGET; use `test_cli_loop_worktree.py` instead
+- ~~`scripts/tests/test_decisions_sync.py`~~ — WRONG TARGET; use `test_decisions.py` instead
+- ~~`scripts/tests/test_sft_formatter.py`~~ — REDUNDANT; `TestSFTFormatter` in `test_user_messages.py` covers `to_chatml`/`to_alpaca`/`to_sharegpt` and edge cases — skip
+- ~~`scripts/tests/test_analytics_*.py`~~ — WRONG TARGET; use `test_loop_run_analytics.py` instead
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/show.py` — module under test
 - `scripts/little_loops/cli/parallel.py` — module under test
@@ -132,14 +150,36 @@ the file — not a systemic hole.
 - `scripts/tests/test_dependency_mapper.py` — established integration-style fixture pattern to follow
 - `scripts/tests/conftest.py` — project-setup factory fixture (from ENH-2329); required for all new test modules
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_orchestrator.py` — parallel mocking pattern: `patch("little_loops.parallel.WorkerPool")` / `patch("little_loops.parallel.ParallelOrchestrator")` with `make_project(config=..., extra_dirs=[...])` setup
+- `scripts/tests/test_cli.py` — CLI argument-parsing pattern: `patch.object(sys, "argv", ["ll-parallel", ...])` + `from little_loops.cli import main_parallel`
+
 ### Tests
 - N/A — this issue IS the test additions
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+Existing test files to **UPDATE** (not create new files for):
+- `scripts/tests/test_cli_loop_worktree.py` — add 2 narrow-gap cases to `TestSetupWorktree`
+- `scripts/tests/test_decisions.py` — add 2 narrow-gap cases to `TestSyncToLocalMd`
+- `scripts/tests/test_loop_run_analytics.py` — add 2 narrow-gap cases to `TestComputeEvaluatorVariance`
+- `scripts/tests/test_fsm_executor.py` — target file for executor spot-check additions (lines 1444–1493 branches)
+
+Existing test files whose coverage makes a new dedicated file **redundant**:
+- `scripts/tests/test_config.py` — `TestAutomationConfig`, `TestParallelAutomationConfig`, etc. fully cover `config/automation.py`
+- `scripts/tests/test_user_messages.py` — `TestSFTFormatter` fully covers `sft_formatter.py`
 
 ### Documentation
 - N/A
 
 ### Configuration
 - `scripts/tests/conftest.py` — shared fixtures; ENH-2329 adds the factory required here
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `stable_snapshot_env` fixture (in `conftest.py`) — **required** for any `test_show.py` assertion on exact rendered card strings; patches `terminal_width()` to return `80` and disables color so `_render_card` output is deterministic
+- `_restore_cmd_run_env_vars` autouse fixture (in `conftest.py`) — already handles teardown of `LL_HANDOFF_THRESHOLD` / `LL_CONTEXT_LIMIT` written by `main_parallel()`; no extra cleanup needed in `test_parallel_cli.py`
+- `_isolate_history_db` autouse fixture (in `conftest.py`) — `main_parallel()` wraps all execution in `cli_event_context()` which opens SQLite via `session_store`; all `test_parallel_cli.py` tests that invoke `main_parallel()` implicitly depend on this fixture redirecting the DB to `tmp_path`
+- `make_project` does **not** auto-create `.issues/<category>/` subdirs unless `config` dict includes `issues.categories` entries — any `test_show.py` test using `_resolve_issue_id()` must pass a config with category definitions or the resolver will find no issue directories
 
 ### Codebase Research Findings
 
@@ -188,6 +228,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 6. Run the executor coverage report; add tests for uncovered branches only.
 7. Verify the affected files are green and report new coverage deltas.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_Corrections and additions from wiring analysis — integrate into steps 3, 5, and 6:_
+
+- **Step 3 correction**: Skip `test_config_automation.py` — `test_config.py` already has `TestAutomationConfig`, `TestParallelAutomationConfig`, and five sibling classes covering all rule-matching and legacy-key fallback cases.
+- **Step 5 correction — do not create new files; update existing**:
+  - `worktree_utils.py` → UPDATE `test_cli_loop_worktree.py`: add `base_branch` auto-detection case to `TestSetupWorktree` and a `copy_files` directory-skip warning case.
+  - `decisions_sync.py` → UPDATE `test_decisions.py`: add `_resolve_path(None)` default-path case and multiple `## Active Rules` rfind-vs-find case to `TestSyncToLocalMd`.
+  - `analytics/` → UPDATE `test_loop_run_analytics.py`: add `OSError` on file-open and malformed-JSON line-skip cases to `TestComputeEvaluatorVariance`.
+  - `sft_formatter.py` → SKIP entirely — `TestSFTFormatter` in `test_user_messages.py` fully covers `to_chatml`, `to_alpaca`, `to_sharegpt`, and edge cases.
+- **Step 6 clarification**: Executor spot-check additions go into `test_fsm_executor.py` (existing main executor test file), not a new file. **Corrected** target branches (lines 1482–1488 are already covered by `TestContributedEvaluatorDispatch` in `test_ll_loop_execution.py` — audit predated that class):
+  - Lines 1444–1449: `LLMConfig(enabled=False)` + prompt-mode action without explicit `evaluate:` → `EvaluationResult(verdict="error", ...)`
+  - Lines 1474–1478: `state.evaluate.source` set but `interpolate(...)` raises `InterpolationError` → falls back to `raw_output`
+  - Lines 1489–1493: `LLMConfig(enabled=False)` + explicit `evaluate: {type: llm_structured}` → `EvaluationResult(verdict="error", ...)`
+- **Step 6 — `test_parallel_cli.py` mock requirement**: `subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], ...)` is called unconditionally at `parallel.py:239` in all non-cleanup/non-prune paths — it must be mocked in every test that reaches `config.create_parallel_config(...)`; omitting it will attempt a real git subprocess call.
+- **Step 1 — `test_show.py` helper duplication**: `test_cli_loop_worktree.py` defines `_make_git_lock`, `_ok`, `_ok_with_stdout` locally; if `test_worktree_utils.py` is incorrectly created as a new file, these would need re-declaration. Use `test_cli_loop_worktree.py` directly (per step 5 correction above) to avoid this.
+
 ## Impact
 
 - **Priority**: P3 — Closes real dedicated-test gaps in non-trivial modules; no
@@ -202,6 +259,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `thoughts/audits/2026-06-26-test-suite-audit.md` — full test-suite audit findings (M5 and L1) that identified the dedicated-test gaps this issue closes.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T04:19:31 - `5004a26b-734b-4a90-8ae2-f4befc10c9c5.jsonl`
+- `/ll:wire-issue` - 2026-06-28T04:12:00 - `0fbd1812-a5bf-439a-8e7c-d1ffcf8956ff.jsonl`
 - `/ll:refine-issue` - 2026-06-28T04:00:56 - `ee42cc0b-b46d-425f-a338-9467f693e4a5.jsonl`
 - `/ll:format-issue` - 2026-06-28T03:47:16 - `25ba2309-4656-4619-af35-ad7f705d9b29.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T22:09:57 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`

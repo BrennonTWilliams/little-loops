@@ -254,6 +254,103 @@ class TestSetupWorktree:
         assert marker.exists(), f"Expected session marker at {marker}"
         assert marker.read_text() == str(os.getpid())
 
+    def test_base_branch_valid_issues_verify_before_add(self, tmp_path: Path) -> None:
+        """When base_branch is provided, git rev-parse --verify is called before worktree add."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        wt = tmp_path / "wt"
+        logger = MagicMock()
+        git_lock = _make_git_lock(logger)
+
+        called_args: list[list[str]] = []
+
+        def _mock_run(args: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+            called_args.append(list(args))
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(git_lock, "run", side_effect=_mock_run):
+            with patch("subprocess.run", return_value=_ok()):
+                with patch("shutil.copytree"):
+                    setup_worktree(
+                        repo_path=repo,
+                        worktree_path=wt,
+                        branch_name="branch",
+                        copy_files=[],
+                        logger=logger,
+                        git_lock=git_lock,
+                        base_branch="main",
+                    )
+
+        verify_calls = [c for c in called_args if "--verify" in c]
+        assert verify_calls, "Expected a 'rev-parse --verify' call"
+        assert "main" in verify_calls[0]
+
+        add_calls = [c for c in called_args if "add" in c and "worktree" in c]
+        assert add_calls, "Expected 'git worktree add' after verify"
+        assert "main" in add_calls[0]
+
+    def test_base_branch_invalid_raises_runtime_error(self, tmp_path: Path) -> None:
+        """When base_branch does not resolve, RuntimeError is raised before creating worktree."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        wt = tmp_path / "wt"
+        logger = MagicMock()
+        git_lock = _make_git_lock(logger)
+
+        def _mock_run(args: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+            if "--verify" in args:
+                return subprocess.CompletedProcess(args, 1, "", "fatal: not a valid object name")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(git_lock, "run", side_effect=_mock_run):
+            with pytest.raises(RuntimeError, match="does not resolve"):
+                setup_worktree(
+                    repo_path=repo,
+                    worktree_path=wt,
+                    branch_name="branch",
+                    copy_files=[],
+                    logger=logger,
+                    git_lock=git_lock,
+                    base_branch="nonexistent-branch",
+                )
+
+    def test_copy_files_directory_skipped_with_warning(self, tmp_path: Path) -> None:
+        """A directory listed in copy_files logs a warning and is skipped (not copied)."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        some_dir = repo / "subdir"
+        some_dir.mkdir()
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        logger = MagicMock()
+        git_lock = _make_git_lock(logger)
+
+        copy2_calls: list[str] = []
+
+        def _mock_copy2(src: object, dst: object) -> None:
+            copy2_calls.append(str(src))
+
+        with patch.object(git_lock, "run", return_value=subprocess.CompletedProcess([], 0, "", "")):
+            with patch("subprocess.run", return_value=_ok()):
+                with patch("shutil.copytree"):
+                    with patch("shutil.rmtree"):
+                        with patch("shutil.copy2", side_effect=_mock_copy2):
+                            setup_worktree(
+                                repo_path=repo,
+                                worktree_path=wt,
+                                branch_name="branch",
+                                copy_files=["subdir"],
+                                logger=logger,
+                                git_lock=git_lock,
+                            )
+
+        assert not any("subdir" in c for c in copy2_calls), (
+            "Directory in copy_files should not be copied via copy2"
+        )
+        logger.warning.assert_called()
+        warning_msg = logger.warning.call_args[0][0]
+        assert "subdir" in warning_msg or "directory" in warning_msg.lower()
+
 
 # ---------------------------------------------------------------------------
 # worktree_utils.cleanup_worktree

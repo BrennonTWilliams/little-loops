@@ -8426,3 +8426,93 @@ class TestMaxIterationFullPassCap:
         assert len(cap_events) == 1
         assert cap_events[0]["summary_state"] == "iter_summary"
         assert cap_events[0]["iteration_count"] == 1
+
+
+class TestEvaluateLLMDisabled:
+    """Executor _evaluate() branches when LLMConfig(enabled=False) (lines 1444-1493)."""
+
+    def test_prompt_mode_no_explicit_evaluate_llm_disabled_returns_error(self) -> None:
+        """Lines 1444-1449: prompt action without evaluate: + LLM disabled → error verdict."""
+        from little_loops.fsm.schema import LLMConfig
+
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="/ll:some-skill",  # / prefix → prompt mode
+                    on_yes="done",
+                    on_no="done",
+                    on_error="errored",
+                ),
+                "done": StateConfig(terminal=True),
+                "errored": StateConfig(terminal=True),
+            },
+            llm=LLMConfig(enabled=False),
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(output="some output", exit_code=0)
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+
+        assert result.final_state == "errored", (
+            "LLM disabled for prompt action should produce error verdict → on_error"
+        )
+
+    def test_evaluate_source_interpolation_error_falls_back_to_raw_output(self) -> None:
+        """Lines 1474-1478: unresolvable evaluate.source falls back to raw action output."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="echo hello",
+                    evaluate=EvaluateConfig(
+                        type="output_contains",
+                        pattern="hello",
+                        # Reference a context key that is never set → InterpolationError
+                        source="${context.definitely_missing_key_xyz}",
+                    ),
+                    on_yes="done",
+                    on_no="failed",
+                ),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(output="hello", exit_code=0)
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+
+        assert result.final_state == "done", (
+            "InterpolationError on evaluate.source should fall back to raw output 'hello', "
+            "which output_contains('hello') matches → on_yes → done"
+        )
+
+    def test_explicit_llm_structured_evaluate_llm_disabled_returns_error(self) -> None:
+        """Lines 1489-1493: explicit evaluate: {type: llm_structured} + LLM disabled → error."""
+        from little_loops.fsm.schema import LLMConfig
+
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="echo check",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="failed",
+                    on_error="errored",
+                ),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+                "errored": StateConfig(terminal=True),
+            },
+            llm=LLMConfig(enabled=False),
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(output="some output", exit_code=0)
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+
+        assert result.final_state == "errored", (
+            "explicit llm_structured evaluate + LLM disabled should return error verdict"
+        )
