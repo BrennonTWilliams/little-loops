@@ -22,8 +22,11 @@ states:
   get_passed_issues:
     action: |
       SKIP_FILE="${context.run_dir}/${context.caller_prefix}-skipped.txt"
+      PROCESSED_FILE="${context.run_dir}/${context.caller_prefix}-processed.txt"
       IMPL_QUEUE="${context.run_dir}/${context.caller_prefix}-impl-queue.txt"
 
+      # Genuine refinement-skips are recorded as skips: they count toward the
+      # verdict's SKIP total AND dedup the caller's get_next_issue.
       if [ -s ${context.run_dir}/recursive-refine-skipped.txt ]; then
         grep -v '^[[:space:]]*$' ${context.run_dir}/recursive-refine-skipped.txt >> "$SKIP_FILE"
       fi
@@ -34,7 +37,12 @@ states:
       fi
 
       if [ -n "$PASSED" ]; then
-        echo "$PASSED" >> "$SKIP_FILE"
+        # BUG-2374: passed issues proceed to implementation. Record them in the
+        # dedup-ONLY processed file (consulted by get_next_issue) so they are not
+        # re-selected, WITHOUT polluting the skipped verdict counter that
+        # auto-refine-and-implement.finalize reads. Writing them to SKIP_FILE
+        # forced verdict=partial on every otherwise-successful run.
+        echo "$PASSED" >> "$PROCESSED_FILE"
         echo "$PASSED" > "$IMPL_QUEUE"
         exit 0
       else

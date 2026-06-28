@@ -627,6 +627,57 @@ class TestEvaluationQualityLoop:
         assert data.get("timeout", 0) > 0
 
 
+class TestCuaAgentDesktopLoop:
+    """Regression tests for cua-agent-desktop FSM loop.
+
+    BUG-378: the `max_steps_summary` state prompt interpolates ${context.max_steps},
+    which crashed when a parent loop forgot to forward `max_steps` via `with:`.
+    Hardening: `max_steps` is now declared in the loop's `context:` block with a
+    default, so the variable is always resolvable regardless of parent forwarding.
+    """
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "cua-agent-desktop.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @pytest.fixture
+    def context_vars(self, data: dict) -> set[str]:
+        ctx = data.get("context") or {}
+        return {k for k in ctx if isinstance(k, str)}
+
+    def test_max_steps_in_context_block(self, context_vars: set[str]) -> None:
+        """BUG-378 hardening: max_steps must be declared in context: with default 50.
+
+        If a parent loop forgets to forward max_steps via with:, the
+        max_steps_summary state prompt interpolates ${context.max_steps} and crashes
+        the child. Defaulting here makes the variable always resolvable.
+        """
+        assert "max_steps" in context_vars, (
+            "BUG-378 regression: `max_steps` is referenced by ${context.max_steps} in "
+            "the max_steps_summary state but is not declared in the loop's "
+            "`context:` block. Add `max_steps: 50` (matching the top-level "
+            "max_steps: 50 FSM step cap) to prevent the child crash when a parent "
+            "loop forgets to forward it via `with:`."
+        )
+
+    def test_max_steps_default_matches_top_level(self, data: dict) -> None:
+        """context.max_steps default should mirror the FSM top-level max_steps cap.
+
+        Keeps the prompt's reported "Max steps: N" consistent with the actual
+        step cap that triggered max_steps_summary.
+        """
+        context = data.get("context") or {}
+        top_level = data.get("max_steps")
+        ctx_default = context.get("max_steps")
+        assert ctx_default == top_level, (
+            f"context.max_steps={ctx_default!r} should equal top-level "
+            f"max_steps={top_level!r} so the summary reports the actual cap"
+        )
+
+
 class TestLearningTestsAuditLoop:
     """Structural tests for the learning-tests-audit FSM loop."""
 
@@ -6189,6 +6240,86 @@ class TestImplementIssueChainOracle:
         """implement_issue must loop back to implement_next to drain the queue."""
         state = data["states"].get("implement_issue", {})
         assert state.get("next") == "implement_next"
+
+    # --- BUG-2374: passed issues must not pollute the skip (verdict) file -----
+
+    def test_get_passed_issues_does_not_write_passed_to_skip_file(self, data: dict) -> None:
+        """Structural guard: get_passed_issues must NOT append PASSED to the skip file.
+
+        Writing passed IDs to ${caller_prefix}-skipped.txt double-counts every
+        implemented issue as skipped, forcing verdict=partial on successful runs.
+        """
+        action = data["states"]["get_passed_issues"].get("action", "")
+        assert 'echo "$PASSED" >> "$SKIP_FILE"' not in action, (
+            "get_passed_issues must not append passed IDs to SKIP_FILE (BUG-2374)"
+        )
+        assert "PROCESSED_FILE" in action, (
+            "get_passed_issues must route passed IDs to a dedup-only processed file"
+        )
+
+    def _run_get_passed_issues(
+        self, data: dict, run_dir: Path, prefix: str = "auto-refine-and-implement"
+    ) -> subprocess.CompletedProcess:
+        action = data["states"]["get_passed_issues"].get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir)).replace(
+            "${context.caller_prefix}", prefix
+        )
+        return subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
+        )
+
+    def test_passed_issues_go_to_queue_and_processed_not_skip(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """Shell-execution regression for BUG-2374.
+
+        Given a populated recursive-refine-passed.txt and empty skipped file,
+        the passed IDs must land in the impl queue AND the processed (dedup) file,
+        while the skip (verdict) file stays empty.
+        """
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "recursive-refine-passed.txt").write_text("FEAT-366\nFEAT-368\n")
+        (run_dir / "recursive-refine-skipped.txt").write_text("")
+
+        result = self._run_get_passed_issues(data, run_dir)
+        assert result.returncode == 0, f"get_passed_issues failed: {result.stderr}"
+
+        impl_queue = (run_dir / "auto-refine-and-implement-impl-queue.txt").read_text()
+        assert "FEAT-366" in impl_queue and "FEAT-368" in impl_queue, (
+            f"impl queue must contain the passed IDs, got: {impl_queue!r}"
+        )
+
+        processed = (run_dir / "auto-refine-and-implement-processed.txt").read_text()
+        assert "FEAT-366" in processed and "FEAT-368" in processed, (
+            f"processed (dedup) file must contain the passed IDs, got: {processed!r}"
+        )
+
+        skip_path = run_dir / "auto-refine-and-implement-skipped.txt"
+        skip_contents = skip_path.read_text() if skip_path.exists() else ""
+        assert "FEAT-366" not in skip_contents and "FEAT-368" not in skip_contents, (
+            f"passed IDs must NOT appear in the skip (verdict) file, got: {skip_contents!r}"
+        )
+
+    def test_refinement_skips_still_recorded_in_skip_file(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """Genuine refinement-skips must still be counted in the skip file."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "recursive-refine-passed.txt").write_text("FEAT-366\n")
+        (run_dir / "recursive-refine-skipped.txt").write_text("BUG-999\n")
+
+        result = self._run_get_passed_issues(data, run_dir)
+        assert result.returncode == 0, f"get_passed_issues failed: {result.stderr}"
+
+        skip_contents = (run_dir / "auto-refine-and-implement-skipped.txt").read_text()
+        assert "BUG-999" in skip_contents, (
+            f"refinement-skips must be recorded in the skip file, got: {skip_contents!r}"
+        )
+        assert "FEAT-366" not in skip_contents, (
+            "passed IDs must not leak into the skip file alongside genuine skips"
+        )
 
 
 class TestResearchCoverageOracle:

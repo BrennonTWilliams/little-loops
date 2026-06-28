@@ -23,6 +23,7 @@ states:
       mkdir -p "${context.run_dir}"
       RUN_DIR="${context.run_dir}"
       rm -f "$RUN_DIR/auto-refine-and-implement-skipped.txt"
+      rm -f "$RUN_DIR/auto-refine-and-implement-processed.txt"
       rm -f "$RUN_DIR/auto-refine-and-implement-impl-queue.txt"
       rm -f "$RUN_DIR/auto-refine-and-implement-errored.txt"
       rm -f "$RUN_DIR/auto-refine-and-implement-implemented.txt"
@@ -43,6 +44,7 @@ states:
       arg = """${context.scope}""".strip()
       run_dir = "${context.run_dir}"
       skip_file = os.path.join(run_dir, "auto-refine-and-implement-skipped.txt")
+      processed_file = os.path.join(run_dir, "auto-refine-and-implement-processed.txt")
 
       sprint = SprintManager(config=BRConfig(Path.cwd())).load_or_resolve(arg)
       if sprint is None:
@@ -55,10 +57,13 @@ states:
           sys.stderr.write(f"'{arg}' resolved but has no active issues to process\n")
           sys.exit(1)
 
+      # BUG-2374: dedup on BOTH the skipped (refinement failures) and processed
+      # (passed → implemented) sets so an already-handled issue is never reselected.
       skipped = set()
-      if os.path.exists(skip_file):
-          with open(skip_file) as f:
-              skipped = {ln.strip() for ln in f if ln.strip()}
+      for fp in (skip_file, processed_file):
+          if os.path.exists(fp):
+              with open(fp) as f:
+                  skipped |= {ln.strip() for ln in f if ln.strip()}
 
       for issue_id in issues:
           if issue_id not in skipped:
@@ -67,10 +72,11 @@ states:
       sys.exit(1)
       PYEOF
       else
-        SKIPPED=""
-        if [ -f ${context.run_dir}/auto-refine-and-implement-skipped.txt ]; then
-          SKIPPED=$(paste -sd ',' ${context.run_dir}/auto-refine-and-implement-skipped.txt)
-        fi
+        # BUG-2374: dedup on BOTH the skipped (refinement failures) and processed
+        # (passed → implemented) sets so an already-handled issue is never reselected.
+        SKIPPED=$(cat ${context.run_dir}/auto-refine-and-implement-skipped.txt \
+                      ${context.run_dir}/auto-refine-and-implement-processed.txt 2>/dev/null \
+                  | grep -v '^[[:space:]]*$' | paste -sd ',' -)
         if [ -n "$SKIPPED" ]; then
           ll-issues next-issue --skip "$SKIPPED"
         else

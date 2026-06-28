@@ -21,9 +21,17 @@ timeout: 7200
 
 # Per-run context: description is injected via loop_input or --context.
 # All other variables have defaults that can be overridden at runtime.
+#
+# max_steps MUST live here (not just as the FSM top-level field on line 16,
+# which is the FSMLoop step cap) because the `max_steps_summary` state prompt
+# interpolates ${context.max_steps}. If a parent loop forgets to forward
+# `max_steps` via `with:`, the prompt resolution crashes the child with
+# "Path 'max_steps' not found in context". Defaulting it here makes the
+# variable always resolvable regardless of parent forwarding. See BUG-378.
 context:
   description: ""                # task description, populated from input_key
   app_name: ""                   # optional: target app to automate (empty = any app)
+  max_steps: 50                  # mirrors FSM top-level cap; BUG-378 hardening — see comment above
   stale_ref_max: 3               # max consecutive STALE_REF before replan
   timeout_max: 2                 # max consecutive TIMEOUT before replan
   element_not_found_max: 2       # max consecutive ELEMENT_NOT_FOUND before replan
