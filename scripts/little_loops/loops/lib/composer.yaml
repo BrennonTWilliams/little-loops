@@ -29,6 +29,25 @@ fragments:
       ll-loop list --json --visibility public 2>/dev/null | python3 -c "
       import json, sys, os
       loops = json.load(sys.stdin)
+      include_raw = '${context.include:default=}'
+      includes = [s.strip() for s in include_raw.split(',') if s.strip()]
+      def _matches_include(loop):
+          if not includes:
+              return True
+          name = loop.get('name', '')
+          cat  = loop.get('category', '')
+          is_builtin = loop.get('built_in', False)
+          for sel in includes:
+              if sel == 'builtin:*' and is_builtin:
+                  return True
+              if sel == 'project:*' and not is_builtin:
+                  return True
+              if sel.startswith('category:') and cat == sel[len('category:'):]:
+                  return True
+              if sel == name:
+                  return True
+          return False
+      loops = [l for l in loops if _matches_include(l)]
       exclude_raw = '${context.exclude}'
       excludes = set(x.strip() for x in exclude_raw.split(',') if x.strip())
       excludes.add('loop-router')

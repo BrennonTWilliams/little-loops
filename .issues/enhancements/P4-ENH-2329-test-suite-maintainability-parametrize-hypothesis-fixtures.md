@@ -14,6 +14,13 @@ labels:
 learning_tests_required:
 - hypothesis
 - pytest
+confidence_score: 96
+outcome_confidence: 72
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 17
+score_change_surface: 15
+decision_needed: false
 ---
 
 # ENH-2329: Test-suite maintainability — parametrize, property-test, consolidate
@@ -162,9 +169,10 @@ not modified._
   (extend, don't replace, the existing fixtures).
 - `scripts/tests/test_issue_parser_properties.py:93` — extend the existing
   round-trip strategy to the ~18 omitted `IssueInfo` fields (M4).
-- New property tests for config round-trip and FSM routing — either new files
-  (`test_config_properties.py`, `test_fsm_route_properties.py`) or appended to
-  `test_config.py` / `test_fsm_schema_fuzz.py`.
+- New property tests for config round-trip and FSM routing will use **new files**
+  (`test_config_properties.py`, `test_fsm_route_properties.py`), following the
+  established `test_<module>_properties.py` naming convention (auto-discovered
+  via `testpaths`/glob — no runner config change needed).
 
 ### Source Under Test (targets — do NOT modify)
 - Config: `scripts/little_loops/config/core.py` — `BRConfig` (`class:153`),
@@ -328,7 +336,21 @@ _These touchpoints were identified by wiring analysis and must be included:_
 
 - testing, maintainability
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-27_
+
+**Readiness Score**: 96/100 → PROCEED
+**Outcome Confidence**: 72/100 → below threshold (75)
+
+### Outcome Risk Factors
+- **Unresolved structural decision**: The issue presents "either new files (`test_config_properties.py`, `test_fsm_route_properties.py`) or appended to `test_config.py` / `test_fsm_schema_fuzz.py`" as an either/or without resolution. New files align with the established `test_<module>_properties.py` convention and are auto-discovered; resolve before implementing.
+- **Broad implicit conftest blast radius**: The additive `make_project` factory has 22 implicit fixture-consumer files as its regression surface. Run the full suite (`python -m pytest scripts/tests/`) post-migration, not just the five-file subset.
+
 ## Session Log
+- `/ll:decide-issue` - 2026-06-28T03:27:50 - `678e5c89-b7f5-404d-9a17-a211822445e9.jsonl`
+- `/ll:confidence-check` - 2026-06-27T00:00:00Z - `42c3d343-6292-4ebc-b9a2-8c4572c3562c.jsonl`
+- `/ll:format-issue` - 2026-06-28T03:19:45 - `6ae39568-79a9-4c19-aa48-c88a46b609a7.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:13:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:wire-issue` - 2026-06-26T23:07:53 - `9c00279d-038d-48ea-b8a2-3f7902367e8a.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:59:23 - `613d5df7-a8ed-405a-928c-ec037815b530.jsonl`

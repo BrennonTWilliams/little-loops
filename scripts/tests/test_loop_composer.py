@@ -79,13 +79,14 @@ class TestLoopComposerFile:
 
     def test_context_variables(self, loop_data: dict) -> None:
         ctx = loop_data.get("context", {})
-        for key in ("goal", "auto", "exclude", "max_plan_nodes"):
+        for key in ("goal", "auto", "include", "exclude", "max_plan_nodes"):
             assert key in ctx, f"context missing key: {key}"
 
     def test_context_defaults(self, loop_data: dict) -> None:
         ctx = loop_data.get("context", {})
         assert ctx.get("auto") == "false", "auto must default to 'false' (HITL required)"
         assert ctx.get("max_plan_nodes") == "8"
+        assert ctx.get("include") == ""
         assert ctx.get("exclude") == ""
         assert ctx.get("goal") == ""
 
@@ -296,6 +297,21 @@ class TestComposerLibFragment:
         action = lib_data["fragments"]["discover_loops"].get("action", "")
         assert "goal-cluster" in action, (
             "discover_loops fragment must exclude 'goal-cluster' from the candidate catalog"
+        )
+
+    def test_discover_loops_fragment_handles_include_allowlist(self, lib_data: dict) -> None:
+        action = lib_data["fragments"]["discover_loops"].get("action", "")
+        assert "_matches_include" in action, (
+            "discover_loops fragment must define _matches_include filter for the include allowlist"
+        )
+        assert "category:" in action, (
+            "discover_loops fragment include filter must support category:<label> selector form"
+        )
+        assert "builtin:*" in action, (
+            "discover_loops fragment include filter must support builtin:* selector form"
+        )
+        assert "project:*" in action, (
+            "discover_loops fragment include filter must support project:* selector form"
         )
 
     def test_discover_loops_fragment_uses_visibility_public(self, lib_data: dict) -> None:

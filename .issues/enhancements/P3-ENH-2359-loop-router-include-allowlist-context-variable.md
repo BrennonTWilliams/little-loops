@@ -3,8 +3,9 @@ id: ENH-2359
 title: Add include allowlist context variable to loop-router, loop-composer, and loop-composer-adaptive
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-27T23:08:42Z'
+completed_at: '2026-06-28T03:31:29Z'
 discovered_date: '2026-06-27'
 discovered_by: capture-issue
 labels:
@@ -224,6 +225,7 @@ context:
 loops, loop-router, loop-composer, routing, catalog-filtering
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T03:23:57 - `42c3d343-6292-4ebc-b9a2-8c4572c3562c.jsonl`
 - `/ll:confidence-check` - 2026-06-28T05:00:00Z - `30e32b40-781b-41e9-aeb1-ff1283baedee.jsonl`
 - `/ll:wire-issue` - 2026-06-28T01:34:37 - `fce0028a-6c8d-4538-aab4-731aad444c57.jsonl`
 - `/ll:refine-issue` - 2026-06-28T01:21:19 - `07679074-e054-43f8-91f8-1793865abf75.jsonl`
@@ -237,6 +239,15 @@ loops, loop-router, loop-composer, routing, catalog-filtering
 
 ---
 
+## Resolution
+
+- Added `include: ""` context variable to `loop-router.yaml`, `loop-composer.yaml`, and `loop-composer-adaptive.yaml`
+- Added `_matches_include` filter (supporting `builtin:*`, `project:*`, `category:<label>`, and bare loop name selectors) to `loop-router.yaml`'s inline `discover_loops` and `lib/composer.yaml`'s shared `discover_loops` fragment
+- Fragment uses `${context.include:default=}` engine-native default so `goal-cluster.yaml` callers work without declaring `include`
+- Updated 6 test assertions and added 5 new test methods across the three test files
+- Updated documentation in `LOOPS_REFERENCE.md`, `loops.md`, and `loop-types.md`
+- All 128 tests pass; `ll-loop validate` clean on all three loops
+
 ## Status
 
-**Current status**: open
+**Current status**: done

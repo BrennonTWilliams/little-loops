@@ -57,6 +57,7 @@ Context knobs:
 | `auto` | `"true"` | Skip HITL confirmation when top candidate meets threshold |
 | `auto_create` | `"false"` | When branch C fires (propose_new), invoke `/ll:create-loop` immediately |
 | `confidence_threshold` | `"0.7"` | Minimum score to auto-dispatch without HITL |
+| `include` | `""` | Allowlist: comma-separated selectors (`loop-name`, `builtin:*`, `project:*`, `category:<label>`); empty = all loops |
 | `exclude` | `""` | Comma-separated loop names to omit from the catalog |
 
 **Three routing branches:**
@@ -2411,6 +2412,7 @@ ll-loop run loop-composer --input "your goal" --context exclude="rn-plan,rn-refi
 |----------|---------|-------------|
 | `goal` | `""` | **Required.** Natural-language goal to decompose. |
 | `auto` | `"false"` | When `"true"`, skip HITL plan-approval step. |
+| `include` | `""` | Allowlist: comma-separated selectors (`loop-name`, `builtin:*`, `project:*`, `category:<label>`); empty = all loops |
 | `exclude` | `""` | Comma-separated loop names to exclude from the candidate catalog. |
 | `max_plan_nodes` | `"8"` | Maximum steps allowed in a single plan. |
 
@@ -2456,6 +2458,7 @@ ll-loop run loop-composer-adaptive --input "your goal" --context max_replans=3
 |----------|---------|-------------|
 | `goal` | `""` | **Required.** Natural-language goal to decompose. |
 | `auto` | `"false"` | Skip HITL plan-approval when `"true"`. |
+| `include` | `""` | Allowlist: comma-separated selectors (`loop-name`, `builtin:*`, `project:*`, `category:<label>`); empty = all loops |
 | `exclude` | `""` | Comma-separated loop names to exclude from catalog. |
 | `max_plan_nodes` | `"8"` | Maximum steps in a single plan. |
 | `max_replans` | `"2"` | Maximum tail-replan attempts before `ABORT`. |

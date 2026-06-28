@@ -18,6 +18,7 @@ import:
 context:
   goal: "" # populated via input_key: the natural language goal to decompose
   auto: "false" # "false" = require HITL approval before executing (safe default given blast radius)
+  include: "" # allowlist: comma-separated loop names / builtin:* / project:* / category:<label>; empty = all
   exclude: "" # comma-separated loop names to exclude from the candidate catalog
   max_plan_nodes: "8" # maximum steps allowed in a single plan
 

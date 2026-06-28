@@ -95,6 +95,18 @@ class TestLoopComposerAdaptiveFile:
         assert "max_replans" in ctx
         assert str(ctx["max_replans"]) == "2"
 
+    def test_context_variables(self, loop_data: dict) -> None:
+        ctx = loop_data.get("context", {})
+        for key in ("goal", "auto", "include", "exclude", "max_plan_nodes", "max_replans"):
+            assert key in ctx, f"context missing key: {key}"
+
+    def test_context_defaults(self, loop_data: dict) -> None:
+        ctx = loop_data.get("context", {})
+        assert ctx.get("include") == "", "include default must be empty string"
+        assert ctx.get("auto") == "false", "auto must default to 'false' (HITL required)"
+        assert ctx.get("max_plan_nodes") == "8"
+        assert ctx.get("max_replans") == "2"
+
     def test_is_runnable_loop(self) -> None:
         assert is_runnable_loop(LOOP_FILE)
 

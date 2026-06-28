@@ -1975,6 +1975,7 @@ Then customize the `context:` block:
 context:
   auto: "true"              # set to "false" if "Never auto-dispatch" selected
   confidence_threshold: "<confidence_threshold>"
+  include: ""               # allowlist; comma-separated loop names / builtin:* / project:* / category:<label>
   exclude: ""               # comma-separated loop names to exclude from the catalog
 ```
 
@@ -2004,6 +2005,7 @@ ll-loop run loop-composer --input "natural language goal"
 Key context knobs:
 - `auto: "true"` — skip the HITL plan-approval gate (default: false)
 - `max_plan_nodes: "8"` — maximum steps in a plan (default: 8)
+- `include: "category:harness"` — allowlist; only loops matching selector(s) are offered as candidates
 - `exclude: "loop-a,loop-b"` — comma-separated loop names to exclude from candidates
 
 The composer discovers available loops, decomposes the goal into an ordered DAG of up to 8 steps (each step is an existing loop invocation), shows the plan for approval, then walks the DAG sequentially. See `loop-composer.yaml` in the built-in loops.

@@ -55,6 +55,7 @@ class TestLoopRouterFile:
         assert "auto" in ctx, "context must have auto variable"
         assert "auto_create" in ctx, "context must have auto_create variable"
         assert "confidence_threshold" in ctx, "context must have confidence_threshold variable"
+        assert "include" in ctx, "context must have include variable"
         assert "exclude" in ctx, "context must have exclude variable"
 
     def test_context_defaults(self, loop_data: dict) -> None:
@@ -65,6 +66,7 @@ class TestLoopRouterFile:
         assert ctx.get("confidence_threshold") == "0.7", (
             "confidence_threshold default must be '0.7'"
         )
+        assert ctx.get("include") == "", "include default must be empty string"
         assert ctx.get("exclude") == "", "exclude default must be empty string"
 
 
@@ -214,6 +216,21 @@ class TestLoopRouterStates:
         state = loop_data["states"]["check_auto_create"]
         assert state.get("on_yes") == "invoke_create_loop"
         assert state.get("on_no") == "present_result"
+
+    def test_discover_loops_handles_include_allowlist(self, loop_data: dict) -> None:
+        action = loop_data["states"]["discover_loops"].get("action", "")
+        assert "_matches_include" in action, (
+            "discover_loops must define _matches_include filter for the include allowlist"
+        )
+        assert "category:" in action, (
+            "discover_loops include filter must support category:<label> selector form"
+        )
+        assert "builtin:*" in action, (
+            "discover_loops include filter must support builtin:* selector form"
+        )
+        assert "project:*" in action, (
+            "discover_loops include filter must support project:* selector form"
+        )
 
 
 @pytest.mark.slow

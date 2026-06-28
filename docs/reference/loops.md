@@ -710,6 +710,7 @@ ll-loop run loop-composer --input "your goal" --context auto=true
 |----------|---------|-------------|
 | `goal` | `""` | **Required.** Natural-language goal to decompose. Populated from `input_key: goal`. |
 | `auto` | `"false"` | When `"true"`, skip HITL plan approval. |
+| `include` | `""` | Allowlist: comma-separated selectors (`loop-name`, `builtin:*`, `project:*`, `category:<label>`); empty = all loops |
 | `exclude` | `""` | Comma-separated loop names to exclude from the catalog. |
 | `max_plan_nodes` | `"8"` | Maximum steps allowed in a single plan. |
 
@@ -753,6 +754,7 @@ ll-loop run loop-composer-adaptive --input "your goal" --context max_replans=3
 |----------|---------|-------------|
 | `goal` | `""` | **Required.** Natural-language goal to decompose. |
 | `auto` | `"false"` | Skip HITL plan approval when `"true"`. |
+| `include` | `""` | Allowlist: comma-separated selectors (`loop-name`, `builtin:*`, `project:*`, `category:<label>`); empty = all loops |
 | `exclude` | `""` | Comma-separated loop names to exclude from catalog. |
 | `max_plan_nodes` | `"8"` | Maximum steps in a single plan. |
 | `max_replans` | `"2"` | Maximum tail-replan attempts before `ABORT`. |
