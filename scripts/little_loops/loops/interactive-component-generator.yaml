@@ -149,13 +149,17 @@ states:
   pop_next:
     # FANOUT: Worklist pop (harness-multi-item's `discover`). Removes the next id from
     # queue.txt and emits it; exit 1 when the queue is empty -> route to wrap-up.
+    # Writes .any_popped marker on successful pop so classify_failure can distinguish
+    # an empty-from-start queue (planning failure) from a drained queue (build failure).
     fragment: shell_exit
     action: |
-      QUEUE="${captured.run_dir.output}/queue.txt"
+      RD="${captured.run_dir.output}"
+      QUEUE="$RD/queue.txt"
       [ -s "$QUEUE" ] || exit 1
       CID="$(head -n1 "$QUEUE")"
       [ -n "$CID" ] || exit 1
       tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
+      touch "$RD/.any_popped"
       printf '%s\n' "$CID"
     capture: current_id        # ${captured.current_id.output}
     on_yes: prep_component      # id found -> build it
@@ -318,12 +322,28 @@ states:
 
   check_any_built:
     # FANOUT: Guard before selection — if every build crashed (empty scoreboard),
-    # there is nothing to compose, so route to diagnose instead of producing a stub.
+    # there is nothing to compose, so route to classify_failure instead of producing a stub.
     fragment: shell_exit
     action: |
       [ -s "${captured.run_dir.output}/scoreboard.jsonl" ] && exit 0 || exit 1
     on_yes: select_best
-    on_no: diagnose
+    on_no: classify_failure
+    on_error: classify_failure
+
+  classify_failure:
+    # HARNESS: Discriminates planning failure (queue was empty from the start — pop_next
+    # never fired) from build failure (queue drained without any component passing smoke)
+    # by checking the .any_popped marker written by pop_next on successful pop.
+    # Routes to diagnose with a failure_reason token for targeted operator guidance.
+    action_type: shell
+    action: |
+      if [ -f "${captured.run_dir.output}/.any_popped" ]; then
+        echo "BUILD_FAILURE"
+      else
+        echo "PLANNING_FAILURE"
+      fi
+    capture: failure_reason
+    next: diagnose
     on_error: diagnose
 
   select_best:
@@ -542,14 +562,41 @@ states:
 
   diagnose:
     # HARNESS: Failure analysis — reached when no component built successfully.
+    # Receives failure_reason (PLANNING_FAILURE or BUILD_FAILURE) from classify_failure
+    # for targeted operator guidance. Also receives both run_dir references so path
+    # resolution can be verified before blaming budget exhaustion.
     action_type: prompt
     action: |
-      The loop could not produce a combined artifact.
+      The interactive-component-generator loop could not produce a combined artifact.
 
-      Diagnose: read ${captured.run_dir.output}/scoreboard.jsonl (if present) and any
-      ${captured.run_dir.output}/comp-<id>/critique.md to summarize why each candidate
-      failed. Identify the most likely root cause and write a one-paragraph diagnostic
-      the operator can act on (e.g. re-run, widen n_build, or relax the brief).
+      Context:
+      - Runner-injected run_dir (always present): ${context.run_dir}
+      - Captured run_dir (from init shell): ${captured.run_dir.output}
+      - Failure reason: ${captured.failure_reason.output}
+
+      Diagnose what happened:
+      1. Verify that ${captured.run_dir.output} resolves to an existing directory
+         (use ${context.run_dir} as a cross-check). If it does not exist, the root
+         cause is a missing or mis-captured run_dir — do not attribute the failure to
+         budget exhaustion.
+      2. Identify which state most likely failed from: init, rank, pop_next,
+         prep_component, build_component, smoke_component, record, check_any_built,
+         select_best, compose, verify_final, revise.
+      3. Read ${captured.run_dir.output}/scoreboard.jsonl (if present) and any
+         ${captured.run_dir.output}/comp-<id>/critique.md to summarize why each
+         candidate failed.
+      4. Provide targeted guidance based on the failure reason:
+         - PLANNING_FAILURE (pop_next never fired — queue was empty from the start):
+           check ${captured.run_dir.output}/ranking.md and queue.txt to confirm the
+           queue was written; advise reviewing the rank prompt or broadening the input
+           brief so candidates are generated.
+         - BUILD_FAILURE (queue drained without any component passing smoke): review
+           scoreboard.jsonl scores and per-component critique.md files; advise
+           re-running, increasing n_build, or relaxing the brief.
+         - (empty / unknown): fall back to general root-cause analysis from available
+           artifacts.
+
+      Write a one-paragraph diagnostic the operator can act on.
     next: failed
 
   failed:

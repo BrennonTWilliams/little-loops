@@ -1,10 +1,12 @@
 ---
 id: ENH-2366
 type: ENH
-title: interactive-component-generator — diagnose root-cause access and empty-vs-drained queue disambiguation
+title: "interactive-component-generator \u2014 diagnose root-cause access and empty-vs-drained\
+  \ queue disambiguation"
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-28T06:30:00Z'
+completed_at: '2026-06-28T07:05:42Z'
 discovered_date: 2026-06-28
 discovered_by: audit-loop-run
 labels:
@@ -17,7 +19,12 @@ labels:
 relates_to:
 - ENH-2365
 decision_needed: false
-confidence_score: 90
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 25
+score_test_coverage: 15
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2366: interactive-component-generator — diagnose root-cause access and empty-vs-drained queue disambiguation
@@ -96,6 +103,9 @@ Two targeted changes to `interactive-component-generator.yaml`:
   `diagnose` action with captured run_dir + failure summary and a "verify the path
   resolves" instruction; add a `failure_reason` discriminator feeding
   `check_any_built`/`diagnose`.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/run.py` — FSM runner; loads all loop YAML files generically; no change required.
 
 ### Similar Patterns
 - `scripts/little_loops/loops/general-task.yaml` `diagnose` — enumerates terminal
@@ -216,6 +226,15 @@ JS in a shell heredoc) and is not covered by MR-9.
 **Open** | Created: 2026-06-28 | Priority: P3
 
 
+## Resolution
+
+- **Proposal A**: Extended `diagnose` prompt with `${context.run_dir}` (always-present runner fallback), all 12 reachable state names, path-resolution verification instruction, and `${captured.failure_reason.output}`-based conditional guidance for PLANNING_FAILURE vs BUILD_FAILURE vs unknown.
+- **Proposal B**: Added `.any_popped` marker written by `pop_next` on successful pop; added `classify_failure` shell state that reads the marker and captures `PLANNING_FAILURE` or `BUILD_FAILURE`; updated `check_any_built` routing from `on_no/on_error: diagnose` → `classify_failure`.
+- Validated: `ll-loop validate interactive-component-generator` — all MR-1 through MR-9 rules pass.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T07:03:00 - `9ba180b9-29ff-4da8-8918-f863f1c6c859.jsonl`
+- `/ll:format-issue` - 2026-06-28T06:57:43 - `a304441a-6102-4860-a3b2-08a507a4ee4d.jsonl`
 - `/ll:refine-issue` - 2026-06-28T06:32:17 - `bab668b9-d0cc-4b46-ae13-209d6d4c3d49.jsonl`
 - `/ll:format-issue` - 2026-06-28T06:23:29 - `99f877ea-375e-4379-8117-c031f3ed85dd.jsonl`
+- `/ll:confidence-check` - 2026-06-28T07:15:00Z - `9a39b8a6-b80c-4191-87d7-91065c21e2d7.jsonl`
