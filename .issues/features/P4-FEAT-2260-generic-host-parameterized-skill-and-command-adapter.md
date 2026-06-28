@@ -21,10 +21,10 @@ relates_to:
 - FEAT-2189
 - ENH-2121
 confidence_score: 87
-outcome_confidence: 61
-score_complexity: 11
+outcome_confidence: 73
+score_complexity: 17
 score_test_coverage: 20
-score_ambiguity: 18
+score_ambiguity: 24
 score_change_surface: 12
 ---
 
@@ -88,6 +88,8 @@ adapter with per-host output emitters removes N near-duplicate scripts.
   covers FEAT-2188 (both closed as superseded once this lands).
 - Respects `disable-model-invocation: true` (skips those skills) for every host.
 - Adding a host = adding one output emitter, not a new script.
+- **OmpEmitter scope**: `OmpEmitter` raises `NotImplementedError` with a remediation hint ("omp emitter not yet implemented; open a PR adding `adapters/omp.py`") on any `emit_*` call. This stub is the complete omp deliverable for this issue; full omp surface support is a separate follow-on under EPIC-2258.
+- **Alias retirement**: `ll-adapt-skills-for-codex` and `ll-adapt-agents-for-codex` are removed in the next minor release after this issue lands, not in this PR. The aliases remain functional throughout the transition period.
 
 ### Codex-host emitter parity (absorbs ENH-2121)
 
@@ -172,7 +174,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **`parse_skill_frontmatter()` fallback caveat**: The line-scan fallback path does NOT resolve YAML block scalars — only the `yaml.safe_load()` primary path does. Agent and skill `description:` values using block scalar syntax (`description: |`) return `None` in the fallback. Test fixtures exercising block-scalar descriptions must use valid YAML so the primary path fires.
 
+**Protocol spike findings** (validated 2026-06-28, `adapters/__init__.py` + `adapters/core.py` created as spike artifacts):
+- `...` is valid in Protocol method bodies (same as `HostRunner`) but mypy raises `empty-body` in **concrete** classes — use `raise NotImplementedError` for unimplemented `CodexEmitter`/`GeminiEmitter` methods during the transition period.
+- All three concrete emitters (`CodexEmitter`, `GeminiEmitter`, `OmpEmitter`) satisfy `isinstance(obj, HostEmitter)` at runtime — `@runtime_checkable` structural matching works as expected.
+- `dict` type annotation for `skill_meta`/`cmd_meta`/`agent_meta` is accepted by mypy without complaint; `TypedDict` refinement can be deferred to a follow-on without blocking implementation.
+- Registry + factory design passes mypy clean: `_EMITTER_REGISTRY: dict[str, type[HostEmitter]]` with `resolve_emitter()` matches the `HostRunner` pattern exactly. Protocol design is structurally validated — no interface surprises expected during implementation.
+
 **Additional reference research docs**: `thoughts/research/codex-command-discovery.md` and `thoughts/research/codex-agent-selection.md` document Codex command discovery and agent selection behavior; useful context for `CodexEmitter` implementation details.
+
+**`GeminiEmitter.emit_skill()` — `name:` injection requirement** (`thoughts/research/gemini-cli-surface.md`): Gemini requires `name:` in `SKILL.md` frontmatter (used as slug identifier; Claude Code's format omits it, using directory name instead). Most ll skills already have `name:`; `GeminiEmitter.emit_skill()` must inject `name: <dir-stem>` when absent. Output path: `.gemini/skills/<name>/SKILL.md` — note the `.agents/skills/<name>/SKILL.md` path is also accepted by Gemini as a cross-tool compatibility alias, but `.gemini/skills/` is the canonical target. `metadata.short-description:` (Codex-only) must be omitted from Gemini output.
+
+**`GeminiEmitter.emit_command()` — TOML field names** (`thoughts/research/gemini-cli-surface.md`): Gemini command TOML has exactly two fields: `description = "..."` (optional) and `prompt = "..."` (required). The `prompt` field maps to the ll command body (the full markdown content minus frontmatter); the `description` field maps to the frontmatter `description:` value. Output path: `.gemini/commands/<stem>.toml`. No Gemini equivalent of `developer_instructions` — the body becomes `prompt`. Subdirectory namespacing is supported (`git/commit.toml` → `/git:commit`).
+
+**`test_adapt_skills_for_codex.py` — full test class inventory**: 10 classes fold into the unified adapter test suite: `TestExtractShortDesc`, `TestInsertFields`, `TestMakeOpenaiYaml` (Codex `agents/openai.yaml` side-file), `TestTitleCase` (slug → display name helper), `TestProcessSkills`, `TestMainAdaptSkillsForCodex`, `TestRealSkillsIntegrationGuard` (runs against real `skills/` dir; verifies idempotency), `TestSynthesizedSkillMd` (validates synthesized SKILL.md field injection), `TestProcessCommands`, `TestRealCommandsIntegrationGuard`. The `TestMakeOpenaiYaml` + `TestSynthesizedSkillMd` classes are Codex-specific and have no `GeminiEmitter` equivalent.
 
 ## Integration Map
 
@@ -242,13 +256,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Create `scripts/little_loops/adapters/` package with `core.py` (traversal + filter + `HostEmitter` protocol)
-2. Migrate `ll-adapt-skills-for-codex` and `ll-adapt-agents-for-codex` logic into `CodexEmitter` (with ENH-2121 rich TOML fields)
-3. Implement `GeminiEmitter` covering FEAT-2188 (skills frontmatter) and FEAT-2189 (commands `.toml`) output
-4. Implement `OmpEmitter` stub/functional emitter for the omp surface
-5. Wire `ll-adapt --host <host>` CLI entry point (wrap in `cli_event_context(DEFAULT_DB_PATH, "ll-adapt", sys.argv[1:])` following `main_adapt_skills_for_codex` pattern); keep old scripts as thin `--host codex` aliases
-6. Port/extend tests from `test_adapt_agents_for_codex.py` into unified adapter test suite; assert rich Codex field parity
-7. Update CLI reference docs; verify FEAT-2188, FEAT-2189, ENH-2121 can be closed as superseded
+1. ~~Spike `adapters/__init__.py` + `adapters/core.py` with Protocol + registry only; gate on `mypy` clean~~ **Done** — spike artifacts landed; Protocol design validated (see spike findings in Codebase Research Findings).
+2. Build out `scripts/little_loops/adapters/core.py` with traversal + `disable-model-invocation` filter — spike stubs are the starting point; replace `raise NotImplementedError` with real logic
+3. Migrate `ll-adapt-skills-for-codex` and `ll-adapt-agents-for-codex` logic into `CodexEmitter` (with ENH-2121 rich TOML fields)
+4. Implement `GeminiEmitter` covering FEAT-2188 (skills frontmatter) and FEAT-2189 (commands `.toml`) output
+5. `OmpEmitter` is already a correctly-raising stub (spike artifact) — no additional work needed for omp scope in this issue
+6. Wire `ll-adapt --host <host>` CLI entry point (wrap in `cli_event_context(DEFAULT_DB_PATH, "ll-adapt", sys.argv[1:])` following `main_adapt_skills_for_codex` pattern); keep old scripts as thin `--host codex` aliases
+7. Port/extend tests from `test_adapt_agents_for_codex.py` into unified adapter test suite; assert rich Codex field parity
+8. Update CLI reference docs; verify FEAT-2188, FEAT-2189, ENH-2121 can be closed as superseded
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -300,6 +315,8 @@ _Added by `/ll:confidence-check` on 2026-06-28_
 - Moderate change surface with 6–10 external callers of existing adapt entry points; backward-compat aliases during transition reduce regression risk.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-28T19:58:17 - `fc58955b-8ad7-4f9c-9f01-9db7cc12324e.jsonl`
+- Protocol spike (`adapters/__init__.py` + `adapters/core.py`) - 2026-06-28 - mypy clean; `score_complexity` 11→17, `outcome_confidence` 67→73
 - `/ll:confidence-check` - 2026-06-28T00:00:00 - `21cf19fc-222d-4e73-a05e-bea40e65db5a.jsonl`
 - `/ll:confidence-check` (re-run, gate cleared) - 2026-06-28 - `dcb52e94-0280-4152-a74c-c9ae184c654c.jsonl`
 - `/ll:refine-issue` - 2026-06-28T17:25:55 - `75663ab2-c73a-4ef7-8c3f-ef349639e486.jsonl`

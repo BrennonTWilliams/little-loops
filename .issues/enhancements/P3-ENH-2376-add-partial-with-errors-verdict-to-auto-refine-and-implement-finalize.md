@@ -3,7 +3,7 @@ id: ENH-2376
 title: add a 'partial-with-errors' verdict to auto-refine-and-implement.finalize so
   ERR>0 is not laundered into plain 'partial'
 type: ENH
-status: open
+status: done
 priority: P3
 captured_at: '2026-06-28T00:00:00Z'
 discovered_date: '2026-06-28'
