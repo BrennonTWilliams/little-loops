@@ -530,6 +530,7 @@ After adding this block, `ll-loop run my-loop` behaves identically to `ll-loop r
 - `clear` (`boolean`, default `false`) — if `true`, inject `--clear` automatically
 - `show_diagrams` (`string | null`, default `null`) — inject `--show-diagrams <value>`. Valid values: topologies (`layered`, `neighborhood`, `inline`), presets (`detailed`, `summary`, `clean`, `local`, `slim`, `oneline`), or `"default"` for bare `--show-diagrams` (summary preset)
 - `mode` (`string | null`, default `null`) — reserved for a future `--mode` flag; no effect currently
+- `include` (`string`, default `""`) — default loop allowlist injected into `fsm.context["include"]`; empty string = all loops visible. Accepts comma-separated selectors: `loop-name`, `builtin:*`, `project:*`, `category:<label>`. Override per-invocation with `--context include=VALUE`
 
 Only `ll-loop run` reads `run_defaults`. Other subcommands (`validate`, `list`, etc.) are unaffected.
 
