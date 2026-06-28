@@ -3,11 +3,22 @@ id: ENH-2340
 type: ENH
 priority: P2
 status: open
-captured_at: "2026-06-27T04:45:41Z"
+captured_at: '2026-06-27T04:45:41Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
-relates_to: [FEAT-716, FEAT-1546]
-labels: [loop-suggester, analytics, ranking]
+relates_to:
+- FEAT-716
+- FEAT-1546
+labels:
+- loop-suggester
+- analytics
+- ranking
+confidence_score: 100
+outcome_confidence: 81
+score_complexity: 14
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # ENH-2340: Trivial-baseline (PMI/lift) scoring for loop/workflow suggestion ranking
@@ -223,6 +234,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/COMMANDS.md` (lines 644-675) — `/ll:loop-suggester` section's `--from-sequences` feature bullets; advisory: consider adding a bullet noting the lift-based frequency-prior guard [Agent 2 finding]
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-28T00:00:00Z - `d15094fc-4fd4-4a4e-b81a-677b5caf4c10.jsonl`
 - `/ll:wire-issue` - 2026-06-28T05:16:23 - `21071d73-56f5-470a-b6f2-dd07673d1d0e.jsonl`
 - `/ll:refine-issue` - 2026-06-28T05:04:01 - `ae64e4fc-164f-4fac-8eee-6ac3901e584e.jsonl`
 - `/ll:format-issue` - 2026-06-27T04:49:22 - `8fc23559-5acb-4deb-a2be-144622a379a8.jsonl`

@@ -2630,3 +2630,80 @@
   alternatives_rejected: Option 2 (embeddings backend, out of scope); Option 3 (docs-only,
     defers the behavioral fix)
   issue: ENH-2356
+- id: ARCH-114
+  type: rule
+  timestamp: '2026-06-28T04:25:55Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Using --full-rewrite on every refine pass depletes max_refine_count budget
+    unnecessarily and can overwrite valid prior content. Only a diagnose→REFINE gate
+    should unlock the destructive mode.
+  rule: Reserve destructive/budget-consuming refine modes (--full-rewrite) for confirmed
+    content diagnoses; use additive modes f
+  enforcement: advisory
+  issue: ENH-2363
+- id: ARCH-115
+  type: rule
+  timestamp: '2026-06-28T04:25:55Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: A shared refine state forced both first-touch and retry passes to use
+    the same heavy mode, causing retries to bulldoze first-pass output. First-pass
+    and retry semantics differ and must be encoded separately.
+  rule: When a single loop state is reachable from both an initial path and a retry/repair
+    path, split it into two states with m
+  enforcement: advisory
+  issue: ENH-2363
+- id: ARCH-116
+  type: rule
+  timestamp: '2026-06-28T04:25:55Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: In autodev, run_refine could overwrite run_wire's integration edits;
+    the same hazard exists wherever a refine follows a structural mutation step.
+  rule: Any refine state that executes after an integration/wiring step must be additive-only
+    (--gap-analysis) to avoid overwrit
+  enforcement: advisory
+  issue: ENH-2363
+- id: ARCH-117
+  type: rule
+  timestamp: '2026-06-28T04:25:55Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: restore_best was added as a band-aid to undo --full-rewrite regressions.
+    Its existence was diagnostic evidence the real fix was changing the refine mode,
+    not adding recovery logic.
+  rule: A compensating/rollback state (e.g., restore_best) that exists solely to undo
+    regressions is a signal to fix the upstrea
+  enforcement: advisory
+  issue: ENH-2363
+- id: ARCHITECTURE-074
+  type: decision
+  timestamp: '2026-06-28T05:03:01Z'
+  category: architecture
+  labels: []
+  rationale: Compensating/rollback states signal upstream bugs, not downstream patches;
+    ENH-2363 fixed the upstream cause (additive-only refines). Routing changes fully
+    mapped; 6 specific tests to update.
+  rule: Retire restore_best + snapshot_issue in refine-to-ready-issue
+  scope: issue
+  alternatives_rejected: Downscope (warning-only restore_best)
+  issue: ENH-2364
+- id: ARCHITECTURE-075
+  type: decision
+  timestamp: '2026-06-28T05:14:12Z'
+  category: architecture
+  labels: []
+  rationale: audit-loop-run keys phantom-vs-honest-failure on summary.json presence;
+    success path writes none, mechanically mislabeling clean runs (BUG-2351 class)
+  rule: 'Captured: Emit summary.json on general-task terminal done'
+  scope: issue
+  issue: ENH-2365

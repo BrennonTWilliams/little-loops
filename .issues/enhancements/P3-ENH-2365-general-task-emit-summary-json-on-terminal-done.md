@@ -74,6 +74,33 @@ success path legible to downstream tooling, dashboards, and cost reports.
 
 Add a `summarize_success` state between `count_final` and `done`:
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/general-task.yaml` — add `summarize_success` state; repoint `count_final.on_yes`
+
+### Dependent Files (Callers/Importers)
+- `skills/audit-loop-run/SKILL.md` — consumes `summary.json` for phantom-vs-honest-failure verdict (lines 258–259); this fix makes the success path legible to its heuristics
+- `.loops/.history/<run_id>-general-task/` — destination directory written by the runtime during `_finish`/history export
+
+### Similar Patterns
+- `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — also has `summarize_partial`; check if success path has the same gap
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — same
+- `scripts/little_loops/loops/rn-implement.yaml` — same
+
+### Tests
+- `scripts/tests/test_general_task_loop.py` — primary test file; add assertion that `summary.json` appears on the `done` path
+- `scripts/tests/test_audit_loop_run_skill.py` — verify `honest-failure` verdict logic with and without `summary.json`
+- `scripts/tests/test_builtin_loops.py` — may need update if loop topology is validated here
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+
+
 ```yaml
 states:
   count_final:
@@ -119,13 +146,16 @@ Implementation notes / open questions for refinement:
 
 ## Impact
 
-- **Change surface**: small — one new state + one routing edit in
-  `scripts/little_loops/loops/general-task.yaml`, plus possibly a tiny runtime/path
-  helper. No change to the per-step engine.
-- **Risk**: low — `on_error: done` keeps the success path safe; the `max_steps` path is
-  untouched.
-- **Benefit**: removes a mechanical mislabel vector in `audit-loop-run`, gives clean
-  runs a machine-readable roll-up for dashboards/cost reports.
+- **Priority**: P3 — observability gap; does not block current functionality but creates a mechanical mislabel vector in `audit-loop-run` for every successful run.
+- **Effort**: Small — one new state + one routing edit in `scripts/little_loops/loops/general-task.yaml`, plus possibly a tiny runtime/path helper. No change to the per-step engine.
+- **Risk**: Low — `on_error: done` keeps the success path safe; the `max_steps`/`summarize_partial` path is untouched.
+- **Breaking Change**: No — additive only; downstream tooling gains a signal it was missing.
+- **Benefit**: removes a mechanical mislabel vector in `audit-loop-run`, gives clean runs a machine-readable roll-up for dashboards/cost reports.
+
+## Scope Boundaries
+
+- **In scope**: adding a `summarize_success` state in `general-task.yaml`; resolving run_dir → history-dir path mapping for that state.
+- **Out of scope**: unifying run/history directories (ENH-1726); modifying the per-step FSM engine; changing or fixing `audit-loop-run` itself; applying a similar fix to other loops (`sprint-refine-and-implement`, `auto-refine-and-implement`, `rn-implement`) — those are follow-on work if the gap is confirmed there.
 
 ## Context
 
@@ -136,5 +166,10 @@ Proposal 2 (token aggregate) was dropped as already shipped by ENH-1797; Proposa
 (short-circuit `count_done` on plan exhaustion) was dropped as a minor residual of the
 already-resolved BUG-1628 / BUG-1766 convergence cluster.
 
+## Status
+
+**Open** | Created: 2026-06-28 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-28T05:17:22 - `21071d73-56f5-470a-b6f2-dd07673d1d0e.jsonl`
 - `/ll:capture-issue` - 2026-06-28T05:12:41Z
