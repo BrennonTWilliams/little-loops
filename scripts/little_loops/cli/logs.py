@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from little_loops.analytics.association import compute_lift, compute_pmi
 from little_loops.cli.loop.info import (  # private symbol: cross-module coupling; verify signature on upgrade
     _format_history_event,
 )
@@ -390,6 +391,8 @@ class Edge:
     from_: str
     to: str
     freq: float
+    pmi: float | None = None
+    lift: float | None = None
 
 
 @dataclass
@@ -399,42 +402,57 @@ class ChainResult:
     chain: list[str]
     count: int
     edges: list[Edge]
+    pmi: float | None = None
+    lift: float | None = None
 
     def to_dict(self) -> dict:
-        return {
-            "chain": self.chain,
-            "count": self.count,
-            "edges": [{"from": e.from_, "to": e.to, "freq": e.freq} for e in self.edges],
-        }
+        edges_out = []
+        for e in self.edges:
+            ed: dict = {"from": e.from_, "to": e.to, "freq": e.freq}
+            if e.pmi is not None:
+                ed["pmi"] = e.pmi
+            if e.lift is not None:
+                ed["lift"] = e.lift
+            edges_out.append(ed)
+        result: dict = {"chain": self.chain, "count": self.count, "edges": edges_out}
+        if self.pmi is not None:
+            result["pmi"] = self.pmi
+        if self.lift is not None:
+            result["lift"] = self.lift
+        return result
 
 
 def _count_ngrams(
     events_by_session: dict[str, list[InvocationEvent]],
     min_len: int = 2,
-) -> Counter:
-    """Count n-grams across per-session event streams.
+) -> tuple[Counter, Counter]:
+    """Count n-grams and unigrams across per-session event streams.
 
     Args:
         events_by_session: Per-session ordered event streams.
         min_len: Minimum n-gram length (window size).
 
     Returns:
-        Counter mapping ``(tool_1, tool_2, ...)`` tuples to occurrence counts.
+        Tuple of (ngram_counter, unigram_counter).
+        ngram_counter maps ``(tool_1, tool_2, ...)`` tuples to occurrence counts.
+        unigram_counter maps individual tool names to occurrence counts.
     """
     counter: Counter = Counter()
+    unigram_counter: Counter = Counter()
     for events in events_by_session.values():
         names = [e.tool_name for e in events]
-        # For chains shorter than min_len, still consider them as single n-grams
-        # but note: min_len is the minimum, so we use range(min_len, len(names)+1)
+        for name in names:
+            unigram_counter[name] += 1
         for n in range(min_len, len(names) + 1):
             for i in range(len(names) - n + 1):
                 ngram = tuple(names[i : i + n])
                 counter[ngram] += 1
-    return counter
+    return counter, unigram_counter
 
 
 def _build_chain_results(
     counter: Counter,
+    unigram_counter: Counter | None = None,
     min_count: int = 1,
     top: int | None = None,
 ) -> list[ChainResult]:
@@ -442,6 +460,8 @@ def _build_chain_results(
 
     Args:
         counter: n-gram counter from ``_count_ngrams``.
+        unigram_counter: Unigram counter from ``_count_ngrams``. When provided,
+            PMI and lift scores are attached to each edge and chain result.
         min_count: Minimum occurrence count to include.
         top: If set, limit to top N chains by frequency.
 
@@ -456,12 +476,25 @@ def _build_chain_results(
             all_transitions[pair] += count
             out_degree[ngram_key[i]] += count
 
+    total_unigrams = sum(unigram_counter.values()) if unigram_counter else 0
+
     results: list[ChainResult] = []
     for ngram, count in counter.most_common():
         if count < min_count:
             continue
-        edges = _compute_edges(ngram, all_transitions, out_degree)
-        results.append(ChainResult(chain=list(ngram), count=count, edges=edges))
+        edges = _compute_edges(
+            ngram, all_transitions, out_degree, unigram_counter, total_unigrams, counter
+        )
+
+        chain_pmi: float | None = None
+        chain_lift: float | None = None
+        if edges and all(e.lift is not None for e in edges):
+            chain_lift = min(e.lift for e in edges if e.lift is not None)  # type: ignore[type-var]
+            chain_pmi = min(e.pmi for e in edges if e.pmi is not None)  # type: ignore[type-var]
+
+        results.append(
+            ChainResult(chain=list(ngram), count=count, edges=edges, pmi=chain_pmi, lift=chain_lift)
+        )
 
     if top is not None:
         results = results[:top]
@@ -473,12 +506,18 @@ def _compute_edges(
     ngram: tuple[str, ...],
     all_transitions: Counter,
     out_degree: Counter,
+    unigram_counter: Counter | None = None,
+    total_unigrams: int = 0,
+    ngram_counter: Counter | None = None,
 ) -> list[Edge]:
-    """Compute per-edge transition frequencies for an n-gram chain.
+    """Compute per-edge transition frequencies and PMI/lift for an n-gram chain.
 
     For each adjacent pair ``(from, to)`` in the chain, computes the frequency
     as the proportion of times ``from → to`` appears out of all transitions
-    originating from ``from`` across the entire corpus.
+    originating from ``from`` across the entire corpus.  When ``unigram_counter``
+    and ``ngram_counter`` are provided, also computes PMI and lift for each edge
+    using the raw bigram count from ``ngram_counter`` (not the overcounted
+    ``all_transitions`` which accumulates across all n-gram lengths).
     """
     edges: list[Edge] = []
     for i in range(len(ngram) - 1):
@@ -487,7 +526,19 @@ def _compute_edges(
         pair = (from_, to)
         total_out = out_degree.get(from_, 0)
         freq = all_transitions.get(pair, 0) / total_out if total_out > 0 else 0.0
-        edges.append(Edge(from_=from_, to=to, freq=round(freq, 4)))
+
+        edge_pmi: float | None = None
+        edge_lift: float | None = None
+        if unigram_counter and total_unigrams > 0 and ngram_counter is not None:
+            # Use the raw bigram count (not all_transitions which overcounts from longer n-grams)
+            count_ab = ngram_counter.get(pair, 0)
+            count_a = unigram_counter.get(from_, 0)
+            count_b = unigram_counter.get(to, 0)
+            if count_ab > 0 and count_a > 0 and count_b > 0:
+                edge_lift = round(compute_lift(count_ab, count_a, count_b, total_unigrams), 4)
+                edge_pmi = round(compute_pmi(count_ab, count_a, count_b, total_unigrams), 4)
+
+        edges.append(Edge(from_=from_, to=to, freq=round(freq, 4), pmi=edge_pmi, lift=edge_lift))
 
     return edges
 
@@ -527,8 +578,8 @@ def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
         all_events[sid].sort(key=lambda e: e.timestamp)
 
     # Count n-grams
-    counter = _count_ngrams(all_events, min_len=args.min_len)
-    results = _build_chain_results(counter, min_count=args.min_count, top=args.top)
+    counter, unigram_counter = _count_ngrams(all_events, min_len=args.min_len)
+    results = _build_chain_results(counter, unigram_counter, min_count=args.min_count, top=args.top)
 
     if args.json:
         print_json([r.to_dict() for r in results])

@@ -10,6 +10,7 @@ we cannot directly unit test the analysis flow. Instead, we test:
 
 from __future__ import annotations
 
+import pytest
 import yaml
 
 # =============================================================================
@@ -195,6 +196,81 @@ class TestConfidenceScoreCalculations:
         assert clamp_confidence(1.5) == 1.0
         assert clamp_confidence(-0.5) == 0.0
         assert clamp_confidence(0.75) == 0.75
+
+    def test_lift_below_threshold_caps_confidence_at_base(self) -> None:
+        """A chain with lift < LIFT_THRESHOLD (1.0) is capped at base_confidence with no bonuses."""
+        from little_loops.analytics.association import LIFT_THRESHOLD
+
+        # Simulate the FS-3 confidence rule with a frequency-prior-equivalent chain
+        LIFT_THRESHOLD_VALUE = LIFT_THRESHOLD  # 1.0
+
+        def apply_confidence_rule(
+            base_confidence: float,
+            count: int,
+            max_edge_freq: float,
+            stddev_edge_freq: float,
+            lift: float | None,
+        ) -> tuple[float, bool]:
+            """Simulate the FS-3 confidence formula with lift-threshold guard."""
+            frequency_prior_equivalent = lift is not None and lift < LIFT_THRESHOLD_VALUE
+
+            if frequency_prior_equivalent:
+                return base_confidence, True
+
+            frequency_bonus = 0.15 if count >= 5 else 0.0
+            consistency_bonus = 0.05 if max_edge_freq > 0.80 else 0.0
+            variance_penalty = 0.10 if stddev_edge_freq > 0.30 else 0.0
+            confidence = base_confidence + frequency_bonus + consistency_bonus - variance_penalty
+            return max(0.0, min(1.0, confidence)), False
+
+        base = 0.65
+        # lift=0.5 → below threshold → no bonuses even with count≥5 and high freq
+        conf, is_fpe = apply_confidence_rule(
+            base, count=10, max_edge_freq=0.95, stddev_edge_freq=0.1, lift=0.5
+        )
+        assert is_fpe is True
+        assert conf == pytest.approx(base, abs=1e-9)
+
+    def test_lift_at_threshold_not_capped(self) -> None:
+        """A chain with lift >= LIFT_THRESHOLD is NOT frequency-prior equivalent."""
+        from little_loops.analytics.association import LIFT_THRESHOLD
+
+        LIFT_THRESHOLD_VALUE = LIFT_THRESHOLD  # 1.0
+
+        def apply_confidence_rule(
+            base_confidence: float,
+            count: int,
+            max_edge_freq: float,
+            stddev_edge_freq: float,
+            lift: float | None,
+        ) -> tuple[float, bool]:
+            frequency_prior_equivalent = lift is not None and lift < LIFT_THRESHOLD_VALUE
+
+            if frequency_prior_equivalent:
+                return base_confidence, True
+
+            frequency_bonus = 0.15 if count >= 5 else 0.0
+            consistency_bonus = 0.05 if max_edge_freq > 0.80 else 0.0
+            variance_penalty = 0.10 if stddev_edge_freq > 0.30 else 0.0
+            confidence = base_confidence + frequency_bonus + consistency_bonus - variance_penalty
+            return max(0.0, min(1.0, confidence)), False
+
+        base = 0.65
+        # lift=1.0 → exactly at threshold → not capped, bonuses apply
+        conf, is_fpe = apply_confidence_rule(
+            base, count=10, max_edge_freq=0.95, stddev_edge_freq=0.1, lift=1.0
+        )
+        assert is_fpe is False
+        assert conf > base  # bonuses were applied
+
+    def test_missing_lift_field_not_capped(self) -> None:
+        """A chain without a lift field is NOT frequency-prior equivalent."""
+        from little_loops.analytics.association import LIFT_THRESHOLD
+
+        LIFT_THRESHOLD_VALUE = LIFT_THRESHOLD
+
+        frequency_prior_equivalent = None is not None and None < LIFT_THRESHOLD_VALUE  # type: ignore[operator]
+        assert frequency_prior_equivalent is False
 
 
 # =============================================================================

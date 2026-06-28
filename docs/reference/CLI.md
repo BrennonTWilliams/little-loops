@@ -2021,7 +2021,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--min-count M` | | Minimum occurrence count to include (default: 1) |
 | `--top N` | | Limit output to top N chains by frequency |
 | `--window-days D` | | Only consider records within D days of latest record |
-| `--json` | `-j` | Output as JSON: `[{"chain": [...], "count": N, "edges": [{"from": "...", "to": "...", "freq": f}]}]` |
+| `--json` | `-j` | Output as JSON: `[{"chain": [...], "count": N, "edges": [{"from": "...", "to": "...", "freq": f, "pmi": 1.23, "lift": 3.4}], "pmi": 1.23, "lift": 3.4}]`; `pmi`/`lift` are optional additive fields; `lift < 1.0` signals a frequency-prior-equivalent pair |
 
 `--all` and `--project` are mutually exclusive for `extract`, `sequences`, `stats`, `dead-skills`, `scan-failures`, and `eval-export`.
 

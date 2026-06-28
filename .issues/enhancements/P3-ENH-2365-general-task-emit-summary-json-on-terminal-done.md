@@ -19,6 +19,7 @@ relates_to:
 - ENH-1631
 - ENH-1726
 parent: EPIC-1744
+decision_needed: false
 ---
 
 # ENH-2365: Emit summary.json on general-task terminal `done`, not only on max_steps
@@ -78,6 +79,7 @@ Add a `summarize_success` state between `count_final` and `done`:
 
 ### Files to Modify
 - `scripts/little_loops/loops/general-task.yaml` — add `summarize_success` state; repoint `count_final.on_yes`
+- `scripts/little_loops/fsm/persistence.py:archive_run()` — (Option A) copy `summary.json` from `run_dir` into the history dir; currently copies only `state.json`, `events.jsonl`, `meta-eval.jsonl` (line 420)
 
 ### Dependent Files (Callers/Importers)
 - `skills/audit-loop-run/SKILL.md` — consumes `summary.json` for phantom-vs-honest-failure verdict (lines 258–259); this fix makes the success path legible to its heuristics
@@ -92,6 +94,8 @@ Add a `summarize_success` state between `count_final` and `done`:
 - `scripts/tests/test_general_task_loop.py` — primary test file; add assertion that `summary.json` appears on the `done` path
 - `scripts/tests/test_audit_loop_run_skill.py` — verify `honest-failure` verdict logic with and without `summary.json`
 - `scripts/tests/test_builtin_loops.py` — may need update if loop topology is validated here
+
+> ⚠ Research finding: `scripts/tests/test_general_task_loop.py` does not exist on disk. The active test class is `TestGeneralTaskLoop` in `scripts/tests/test_builtin_loops.py` (lines ~7771–7903). New tests for `summarize_success` should be added there following the `TestAutoRefineAndImplementLoop.test_finalize_writes_summary_json` pattern (lines 1760–1768).
 
 ### Documentation
 - N/A
@@ -134,6 +138,47 @@ Implementation notes / open questions for refinement:
   honest-failure/phantom discrimination works as documented.
 - **on_error: done.** Observability must never demote a real success to `failed`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**shell vs prompt — resolved**: Use `action_type: shell`. All three existing `summary.json` writers in loop YAMLs are shell (`auto-refine-and-implement.yaml:finalize`, `rn-implement.yaml:report`, `sprint-refine-and-implement.yaml:record_crash`). The captured counts are deterministic; no LLM narrative is needed.
+
+**Critical path gap — `archive_run()` does not copy artifacts**: `audit-loop-run` reads `summary.json` from `.loops/.history/<run_id>-general-task/`. `scripts/little_loops/fsm/persistence.py:archive_run()` copies only `state.json`, `events.jsonl`, and `meta-eval.jsonl` to the history dir — it never copies files from `run_dir`. A state writing to `${context.run_dir}/summary.json` alone is **not sufficient**; `archive_run()` must also copy `summary.json` (when present) into the history dir.
+
+**Two implementation options:**
+
+- **Option A (YAML state + archive_run update — matches stated scope):** Add `summarize_success` shell state in `general-task.yaml`; update `archive_run()` in `scripts/little_loops/fsm/persistence.py` to copy `summary.json` into the history dir alongside `state.json`/`events.jsonl`.
+
+> **Selected:** Option A (YAML state + archive_run update) — three existing loop YAML precedents and a direct `shutil.copy2` template in `archive_run()` make this the minimal-risk, maximum-reuse path.
+
+- **Option B (archive_run synthesizes from state.json — no YAML change):** Update `archive_run()` to read `captured.done_counts` and `captured.final_counts` from the archived `state.json` and write a synthesized `summary.json` directly to the history dir. Fixes both the `done` and `max_steps` paths for all general-task runs with no YAML change; broader infrastructure change.
+
+**JSON schema — `audit-loop-run` compatibility**: `skills/audit-loop-run/SKILL.md:258-259` checks `implemented > 0` as the `claimed_success` signal. Emit:
+```json
+{"verdict": "success", "implemented": <done_counts.total>, "failed_finals": 0}
+```
+Follow `auto-refine-and-implement.yaml:finalize` (lines 133–155) as the shell action pattern. Counts are accessible via `${captured.done_counts.output}` and `${captured.final_counts.output}` FSM interpolation in the shell action body.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-28.
+
+**Selected**: Option A (YAML state + archive_run update — matches stated scope)
+
+**Reasoning**: Option A has 3 direct YAML precedents (`auto-refine-and-implement.yaml:finalize`, `rn-implement.yaml:report`, `sprint-refine-and-implement.yaml`) and a near-exact structural template in `archive_run()` via the `meta-eval.jsonl` addition (`persistence.py:456–457`). Option B would introduce loop-specific knowledge into a generic runtime function (`StatePersistence`) with no existing synthesis pattern and fragile raw-stdout JSON parsing — reuse score 1/3 vs 2/3 for Option A.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 2/3 | 2/3 | 3/3 | 2/3 | 9/12 |
+| Option B | 0/3 | 1/3 | 2/3 | 1/3 | 4/12 |
+
+**Key evidence**:
+- **Option A**: Shell state writing `summary.json` has 3 direct codebase precedents; `archive_run()` `shutil.copy2` pattern (`meta-eval.jsonl`, `persistence.py:456–457`) is a near-exact template; test templates exist in `test_builtin_loops.py:1760` and `test_fsm_persistence.py:610`. Only net-new piece: `run_dir` parameter addition to `archive_run()`.
+- **Option B**: `archive_run()` is a pure copy operation with zero synthesis precedent; adding loop-specific knowledge to a generic runtime function; raw stdout string `json.loads()` with no defensive utility; reuse score 1/3.
+
 ## Implementation Steps
 
 1. Add `summarize_success` state; repoint `count_final.on_yes` from `done` to it.
@@ -143,6 +188,15 @@ Implementation notes / open questions for refinement:
 4. Confirm the JSON key surface matches what `audit-loop-run` consumes.
 5. `ll-loop validate general-task`; run an end-to-end general-task task and assert
    `summary.json` appears on the success path with correct counts.
+
+### Codebase Research Findings on Implementation Steps
+
+_Added by `/ll:refine-issue`:_
+
+- **Step 2 (shell vs prompt — resolved)**: Use `action_type: shell`. Pattern: `auto-refine-and-implement.yaml:finalize` (lines 133–155). Access counts via `${captured.done_counts.output}` and `${captured.final_counts.output}` FSM interpolation in the shell action body. `count_done` stdout → `captured.done_counts` holds `{"hard_unchecked_dod": N, ..., "total": N}`; `count_final` stdout → `captured.final_counts` holds `{"failed_finals": N}`.
+- **Step 3 (run_dir → history-dir — resolved)**: `archive_run()` at `scripts/little_loops/fsm/persistence.py:420` controls what enters `.loops/.history/<run_id>-general-task/`. For Option A, add a `shutil.copy2` call for `summary.json` if present in `run_dir`. For Option B, skip the new state and have `archive_run()` synthesize `summary.json` from `state.json` captured values.
+- **Step 4 (JSON schema — resolved)**: `skills/audit-loop-run/SKILL.md:258-259` checks `implemented > 0` for `claimed_success`. Emit `{"verdict": "success", "implemented": <done_counts.total>, "failed_finals": 0}`.
+- **Step 5 (test location — corrected)**: Add tests to `TestGeneralTaskLoop` in `scripts/tests/test_builtin_loops.py` (not a new `test_general_task_loop.py` — that file doesn't exist). Follow `TestAutoRefineAndImplementLoop.test_finalize_writes_summary_json` (lines 1760–1768).
 
 ## Impact
 
@@ -171,5 +225,7 @@ already-resolved BUG-1628 / BUG-1766 convergence cluster.
 **Open** | Created: 2026-06-28 | Priority: P3
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-28T05:40:28 - `e16f3618-449f-4692-a0be-8b533d2518b7.jsonl`
+- `/ll:refine-issue` - 2026-06-28T05:29:06 - `00ed2b70-0688-4ea0-8cce-ffc4bc7f0d68.jsonl`
 - `/ll:format-issue` - 2026-06-28T05:17:22 - `21071d73-56f5-470a-b6f2-dd07673d1d0e.jsonl`
 - `/ll:capture-issue` - 2026-06-28T05:12:41Z

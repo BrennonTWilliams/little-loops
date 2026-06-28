@@ -2,8 +2,9 @@
 id: ENH-2340
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-27T04:45:41Z'
+completed_at: '2026-06-28T05:47:20Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
 relates_to:
@@ -234,6 +235,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/COMMANDS.md` (lines 644-675) — `/ll:loop-suggester` section's `--from-sequences` feature bullets; advisory: consider adding a bullet noting the lift-based frequency-prior guard [Agent 2 finding]
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T05:27:43 - `7455ffb6-691b-4e17-8948-eaf141511bf4.jsonl`
 - `/ll:confidence-check` - 2026-06-28T00:00:00Z - `d15094fc-4fd4-4a4e-b81a-677b5caf4c10.jsonl`
 - `/ll:wire-issue` - 2026-06-28T05:16:23 - `21071d73-56f5-470a-b6f2-dd07673d1d0e.jsonl`
 - `/ll:refine-issue` - 2026-06-28T05:04:01 - `ae64e4fc-164f-4fac-8eee-6ac3901e584e.jsonl`
@@ -241,6 +243,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `/ll:capture-issue` - 2026-06-27T04:45:41Z - conversation mode (research-paper analysis)
 
 ---
+
+## Resolution
+
+Implemented PMI/lift scoring for loop/workflow suggestion ranking.
+
+**Changes made:**
+- `scripts/little_loops/analytics/association.py` (new): `compute_pmi()`, `compute_lift()`, `AssociationScores` dataclass, `LIFT_THRESHOLD = 1.0`
+- `scripts/little_loops/analytics/__init__.py`: re-exports new public symbols
+- `scripts/little_loops/cli/logs.py`: `Edge` and `ChainResult` gain optional `pmi`/`lift` fields; `_count_ngrams()` now returns `(ngram_counter, unigram_counter)` tuple; `_build_chain_results()` and `_compute_edges()` attach PMI/lift using raw bigram counts (not overcounted transition mass)
+- `commands/loop-suggester.md`: Step FS-1 schema updated; Step FS-3 confidence formula adds lift-threshold guard — pairs with `lift < 1.0` are marked `frequency_prior_equivalent` and capped at `base_confidence`
+- `docs/reference/API.md` and `docs/reference/CLI.md`: `sequences` subcommand schema updated to document optional `pmi`/`lift` fields
+- Tests: `test_analytics_association.py` (new, 19 tests), `TestChainResultPMI` in `test_ll_logs.py` (8 tests), lift-threshold tests in `test_loop_suggester.py` (3 tests)
 
 ## Status
 

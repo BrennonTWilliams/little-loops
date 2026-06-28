@@ -312,13 +312,18 @@ When `--from-sequences` is present in `$ARGUMENTS`, perform n-gram analysis on `
 
 **Parsed schema** per entry (matches `ChainResult.to_dict()` in `scripts/little_loops/cli/logs.py`):
 ```json
-{"chain": ["ll-scan-codebase", "ll-manage-issue"], "count": 5, "edges": [{"from": "ll-scan-codebase", "to": "ll-manage-issue", "freq": 0.8}]}
+{"chain": ["ll-scan-codebase", "ll-manage-issue"], "count": 5, "edges": [{"from": "ll-scan-codebase", "to": "ll-manage-issue", "freq": 0.8, "pmi": 1.23, "lift": 3.4}], "pmi": 1.23, "lift": 3.4}
 ```
 
 Each entry must have:
 - `chain`: ordered list of tool/command names (the n-gram)
 - `count`: number of times this chain was observed
 - `edges`: list of `{from, to, freq}` transition objects
+
+Each entry may also have (when unigram corpus data is available):
+- `pmi`: minimum pointwise mutual information across edges (log-scale; positive = above frequency prior)
+- `lift`: minimum lift across edges — `P(b|a)/P(b)`; values < `LIFT_THRESHOLD` (1.0) indicate a
+  frequency-prior-equivalent pair that should not earn confidence bonuses
 
 Record `chains_analyzed` = total chains examined before filtering.
 
@@ -348,14 +353,23 @@ For each filtered chain, detect the paradigm using chain structure:
 - `edges[].freq` feeds the consistency_bonus in the confidence formula
 - For `fix_until_clean`, the last check-command state gets `on_yes: done` / `on_no: fix`
 
-**Confidence calculation** (same formula as message-history mode):
-```
-confidence = base_confidence (from paradigm table in Step 4)
-           + frequency_bonus  (+0.15 if count >= 5)
-           + consistency_bonus (+0.05 if max(edges[].freq) > 0.80)
-           - variance_penalty  (-0.10 if stddev(edges[].freq) > 0.30)
+**Confidence calculation** (same formula as message-history mode, with lift-threshold guard):
 
-Clamp to [0.0, 1.0]
+```
+LIFT_THRESHOLD = 1.0  # pairs at or below the frequency prior earn no bonuses
+
+IF "lift" field is present AND lift < LIFT_THRESHOLD:
+  # Frequency-prior-equivalent: the co-occurrence is no more surprising than
+  # random chance predicts.  Mark it and cap at base confidence.
+  frequency_prior_equivalent = true
+  confidence = base_confidence
+
+ELSE:
+  confidence = base_confidence (from paradigm table in Step 4)
+             + frequency_bonus  (+0.15 if count >= 5)
+             + consistency_bonus (+0.05 if max(edges[].freq) > 0.80)
+             - variance_penalty  (-0.10 if stddev(edges[].freq) > 0.30)
+  Clamp to [0.0, 1.0]
 ```
 
 ### Step FS-4: Generate FSM YAML Proposals

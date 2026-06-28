@@ -14,11 +14,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.cli.logs import (
+    ChainResult,
+    Edge,
     _aggregate_skill_stats,
+    _build_chain_results,
     _build_eval_fixture,
     _classify_outcome,
     _cmd_tail,
     _compute_session_diff,
+    _count_ngrams,
     _detect_ll_signal,
     _EvalInvocation,
     _events_from_jsonl,
@@ -1107,6 +1111,213 @@ class TestSequences:
             captured = capsys.readouterr()
             assert "ll-issues" in captured.out
             assert "ll-history" in captured.out
+
+
+class TestChainResultPMI:
+    """Tests for PMI/lift fields on ChainResult and Edge dataclasses."""
+
+    def test_chain_result_to_dict_without_pmi(self) -> None:
+        """ChainResult.to_dict() omits pmi/lift when not set."""
+        cr = ChainResult(
+            chain=["a", "b"],
+            count=3,
+            edges=[Edge(from_="a", to="b", freq=0.75)],
+        )
+        d = cr.to_dict()
+        assert "pmi" not in d
+        assert "lift" not in d
+        assert "chain" in d
+        assert "count" in d
+        assert "edges" in d
+
+    def test_chain_result_to_dict_with_pmi(self) -> None:
+        """ChainResult.to_dict() includes pmi/lift when set (even if zero)."""
+        import math
+
+        pmi_val = math.log(2.0)
+        cr = ChainResult(
+            chain=["a", "b"],
+            count=4,
+            edges=[Edge(from_="a", to="b", freq=0.80, pmi=pmi_val, lift=2.0)],
+            pmi=pmi_val,
+            lift=2.0,
+        )
+        d = cr.to_dict()
+        assert "pmi" in d
+        assert "lift" in d
+        assert d["pmi"] == pytest.approx(pmi_val, abs=1e-9)
+        assert d["lift"] == pytest.approx(2.0, abs=1e-9)
+
+    def test_chain_result_pmi_zero_is_emitted(self) -> None:
+        """ChainResult.to_dict() emits pmi=0.0 (falsy but valid)."""
+        cr = ChainResult(
+            chain=["a", "b"],
+            count=1,
+            edges=[Edge(from_="a", to="b", freq=0.50, pmi=0.0, lift=1.0)],
+            pmi=0.0,
+            lift=1.0,
+        )
+        d = cr.to_dict()
+        assert "pmi" in d
+        assert d["pmi"] == pytest.approx(0.0)
+        assert d["lift"] == pytest.approx(1.0)
+
+    def test_edge_to_dict_without_pmi(self) -> None:
+        """Edge dict omits pmi/lift when not set."""
+        cr = ChainResult(
+            chain=["x", "y"],
+            count=2,
+            edges=[Edge(from_="x", to="y", freq=0.60)],
+        )
+        edge_dict = cr.to_dict()["edges"][0]
+        assert "pmi" not in edge_dict
+        assert "lift" not in edge_dict
+        assert "from" in edge_dict
+        assert "to" in edge_dict
+        assert "freq" in edge_dict
+
+    def test_edge_to_dict_with_pmi(self) -> None:
+        """Edge dict includes pmi/lift when set."""
+        cr = ChainResult(
+            chain=["x", "y"],
+            count=2,
+            edges=[Edge(from_="x", to="y", freq=0.60, pmi=1.2, lift=3.3)],
+        )
+        edge_dict = cr.to_dict()["edges"][0]
+        assert "pmi" in edge_dict
+        assert "lift" in edge_dict
+        assert edge_dict["pmi"] == pytest.approx(1.2, abs=1e-6)
+        assert edge_dict["lift"] == pytest.approx(3.3, abs=1e-6)
+
+    def test_build_chain_results_attaches_pmi(self) -> None:
+        """_build_chain_results attaches pmi/lift to ChainResult and Edge when unigram data is available."""
+
+        # Simple corpus: session with ["A", "B", "A", "B"]
+        # unigrams: A=2, B=2, total=4
+        # bigrams: (A,B)=2, (B,A)=1, (A,B,A)=1, (B,A,B)=1, (A,B,A,B)=1
+        events_by_session = {
+            "s1": [
+                type("E", (), {"tool_name": "A", "timestamp": 0})(),
+                type("E", (), {"tool_name": "B", "timestamp": 1})(),
+                type("E", (), {"tool_name": "A", "timestamp": 2})(),
+                type("E", (), {"tool_name": "B", "timestamp": 3})(),
+            ]
+        }
+        counter, unigram_counter = _count_ngrams(events_by_session, min_len=2)
+        results = _build_chain_results(counter, unigram_counter, min_count=1)
+
+        # The most common bigram is (A,B) with count=2
+        ab_result = next((r for r in results if r.chain == ["A", "B"]), None)
+        assert ab_result is not None
+        # PMI/lift should be computed and attached
+        assert ab_result.pmi is not None
+        assert ab_result.lift is not None
+        # lift = count(A,B)*total / (count_A * count_B) = 2*4/(2*2) = 2.0
+        assert ab_result.lift == pytest.approx(2.0, abs=1e-6)
+
+    def test_count_ngrams_returns_unigram_counter(self) -> None:
+        """_count_ngrams now returns a (ngram_counter, unigram_counter) tuple."""
+        events_by_session = {
+            "s1": [
+                type("E", (), {"tool_name": "X", "timestamp": 0})(),
+                type("E", (), {"tool_name": "Y", "timestamp": 1})(),
+                type("E", (), {"tool_name": "X", "timestamp": 2})(),
+            ]
+        }
+        result = _count_ngrams(events_by_session, min_len=2)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        ngram_counter, unigram_counter = result
+        # X appears twice, Y appears once
+        assert unigram_counter["X"] == 2
+        assert unigram_counter["Y"] == 1
+        # The bigram (X,Y) appears once and (Y,X) appears once
+        assert ngram_counter[("X", "Y")] == 1
+        assert ngram_counter[("Y", "X")] == 1
+
+    def test_sequences_json_includes_pmi_when_data_sufficient(self, capsys) -> None:
+        """sequences --json output includes pmi/lift fields when sequences are found."""
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True, exist_ok=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            # Create sessions with repeated A→B to ensure pmi can be computed
+            records = []
+            for _ in range(3):
+                records.append(
+                    {
+                        "type": "assistant",
+                        "sessionId": "s1",
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "name": "Bash",
+                                    "input": {"command": "ll-issues list"},
+                                }
+                            ],
+                        },
+                    }
+                )
+                records.append(
+                    {
+                        "type": "assistant",
+                        "sessionId": "s1",
+                        "timestamp": "2026-01-01T00:00:01Z",
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "name": "Bash",
+                                    "input": {"command": "ll-issues show"},
+                                }
+                            ],
+                        },
+                    }
+                )
+
+            project_path = Path(tmpdir) / "home" / "myproject"
+            project_path.mkdir(parents=True, exist_ok=True)
+            encoded = str(project_path.resolve()).replace("/", "-")
+            proj_dir = claude_projects / encoded
+            proj_dir.mkdir(parents=True, exist_ok=True)
+            jsonl_file = proj_dir / "session.jsonl"
+            import json as _json
+
+            with open(jsonl_file, "w") as f:
+                for record in records:
+                    record.setdefault("cwd", str(project_path))
+                    f.write(_json.dumps(record) + "\n")
+
+            with (
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "sequences", "--project", str(project_path), "--json"],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            data = _json.loads(capsys.readouterr().out)
+            assert isinstance(data, list)
+            assert len(data) > 0
+            # pmi and lift should be present in the first chain result
+            first = data[0]
+            assert "pmi" in first, f"Expected 'pmi' in JSON output, got keys: {list(first.keys())}"
+            assert "lift" in first, (
+                f"Expected 'lift' in JSON output, got keys: {list(first.keys())}"
+            )
 
 
 class TestExtract:
