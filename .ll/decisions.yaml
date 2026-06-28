@@ -2847,3 +2847,45 @@
     from `audit-claude-config`, not the single
   enforcement: advisory
   issue: ENH-2372
+- id: STYL-128
+  type: rule
+  timestamp: '2026-06-28T18:38:46Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: Assigning `_config` anywhere in `cmd_run` caused Python to treat it as
+    local throughout; referencing it before the assignment raised `UnboundLocalError`
+    instead of falling back to an outer scope.
+  rule: In Python, place every use of a function-local variable after its assignment;
+    Python makes any assigned name local for t
+  enforcement: advisory
+  issue: BUG-2373
+- id: ARCH-129
+  type: rule
+  timestamp: '2026-06-28T18:38:46Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The include-injection block referenced `_config.loops.run_defaults.include`
+    before `_config = BRConfig(Path.cwd())` executed, crashing every `ll-loop run`
+    invocation.
+  rule: Config-dependent code blocks must be placed after the config object is instantiated,
+    never before.
+  enforcement: advisory
+  issue: BUG-2373
+- id: TEST-130
+  type: rule
+  timestamp: '2026-06-28T18:38:46Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: Tests that route through `main_loop → cmd_run` past the previously-crashing
+    line catch re-misordering; tests that only inspect config attribute values would
+    not.
+  rule: Regression tests for new config-injection paths must exercise the code past
+    the injection point, not just assert the inj
+  enforcement: advisory
+  issue: BUG-2373

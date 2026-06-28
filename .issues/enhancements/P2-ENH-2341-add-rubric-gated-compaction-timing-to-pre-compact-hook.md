@@ -7,6 +7,7 @@ discovered_date: 2026-06-27
 captured_at: "2026-06-27T05:17:49Z"
 discovered_by: capture-issue
 decision_needed: false
+parent: EPIC-2149
 ---
 
 # ENH-2341: Add Rubric-Gated Compaction Timing to pre_compact Hook

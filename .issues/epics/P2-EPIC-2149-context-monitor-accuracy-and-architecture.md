@@ -74,6 +74,10 @@ transcript format (we see real values, not placeholder ~9s).
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 
+## Children
+
+- **ENH-2341** — Add Rubric-Gated Compaction Timing to pre_compact Hook
+
 ## Success Criteria
 
 - On a 100-turn session, `context-monitor.sh` reports usage within ±5% of the
