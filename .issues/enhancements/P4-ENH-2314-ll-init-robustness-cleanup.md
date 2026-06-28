@@ -3,17 +3,18 @@ id: ENH-2314
 title: ll-init robustness cleanup (unknown --hosts, perm sweep, version compare, bare
   except)
 type: ENH
-status: open
+status: done
 priority: P4
 captured_at: '2026-06-26T21:55:52Z'
+completed_at: '2026-06-28T00:19:08Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 labels:
 - init
 - robustness
 learning_tests_required: []
-confidence_score: 93
-outcome_confidence: 79
+confidence_score: 98
+outcome_confidence: 80
 score_complexity: 15
 score_test_coverage: 23
 score_ambiguity: 22
@@ -199,6 +200,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **2026-06-27** (/ll:refine-issue): Fix-2 sweep drifted again — updated `writers.py:252` → `writers.py:231–232` across Current Behavior, Proposed Solution, and Codebase Research. Also clarified that two lines (231 + 232) collapse into one `e not in _LL_PERMISSIONS` check. Updated `test_removes_stale_ll_entries` line ref 721 → 752 (confirmed via pattern-finder). Confirmed: `packaging` absent from `pyproject.toml`; all four `install_check.py` refs (122-127, 157-169) and `_HOST_RUNNER_REGISTRY` keys accurate; `TestCheckVersion::test_installed_ahead_returns_out_of_date` at line 30-32 (accurate); `TestFetchLatestPlugin` at lines 267-351.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T00:12:42 - `74540de4-6e96-49dd-9d18-f34e456d239f.jsonl`
+- `/ll:confidence-check` - 2026-06-27T00:00:00Z - `96d45e70-0732-4189-9b1c-6b6a57646662.jsonl`
+- `/ll:format-issue` - 2026-06-28T00:06:42 - `dd205239-fbe3-478f-bc05-c71d7e2dc944.jsonl`
 - `/ll:confidence-check` - 2026-06-27T00:00:00Z - `38124153-63e0-44fa-802d-293a6e630113.jsonl`
 - `/ll:refine-issue` - 2026-06-27T23:43:48 - `eeed6b9a-de07-4597-8de0-bdc4a6ac5422.jsonl`
 - `/ll:confidence-check` - 2026-06-26T22:31:07 - `6b5f4713-4801-485e-9909-111bcbcf1d9a.jsonl`

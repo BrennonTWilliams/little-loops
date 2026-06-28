@@ -227,9 +227,8 @@ def merge_settings(
     perms: dict[str, Any] = data.setdefault("permissions", {})
     allow: list[str] = list(perms.get("allow", []))
 
-    # Idempotency sweep
-    allow = [e for e in allow if not e.startswith("Bash(ll-")]
-    allow = [e for e in allow if e != "Write(.ll/ll-continue-prompt.md)"]
+    # Idempotency sweep — remove only canonical ll entries; preserve user-added Bash(ll-*) permissions.
+    allow = [e for e in allow if e not in _LL_PERMISSIONS]
     if extra_permissions:
         allow = [e for e in allow if e not in extra_permissions]
 

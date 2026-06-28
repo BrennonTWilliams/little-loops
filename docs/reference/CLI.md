@@ -34,7 +34,7 @@ These flags appear across multiple tools:
 
 ### ll-init
 
-Initialize little-loops for a project. Detects the project root, selects host adapters, generates a `.ll/ll-config.json`, and optionally installs hook adapters for supported host CLIs (`claude-code`, `codex`, `pi`).
+Initialize little-loops for a project. Detects the project root, selects host adapters, generates a `.ll/ll-config.json`, and optionally installs hook adapters for supported host CLIs (`claude-code`, `codex`, `opencode`, `pi`).
 
 When run on a project that already has a `.ll/ll-config.json`, the interactive wizard pre-populates every field with the existing values so you can review and update without losing previous settings. The headless `--yes` path preserves existing feature toggles and project fields, applying only the overrides supplied via `--enable`/`--disable`.
 
@@ -46,7 +46,7 @@ When run on a project that already has a `.ll/ll-config.json`, the interactive w
 | `--force` | `-f` | Reset to template defaults rather than pre-populating from existing config |
 | `--dry-run` | `-n` | Preview actions without writing files |
 | `--plan` | | Emit a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything |
-| `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `pi`). Defaults to auto-detected hosts. |
+| `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `opencode`, `pi`). Defaults to auto-detected hosts. Unknown values produce a warning and are skipped. |
 | `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`. |
 | `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--disable prompt_optimization` to opt out of the default-on prompt optimizer. |
 | `--upgrade` | | Act on version drift automatically (install or upgrade the pip package or plugin). Without this flag, headless mode only warns when a newer version is available. |

@@ -123,7 +123,7 @@ def fetch_latest_plugin(timeout: float = 10.0) -> str | None:
         runner = resolve_host()
         invocation = runner.build_version_check()
         binary = invocation.binary
-    except (HostNotConfigured, Exception):
+    except HostNotConfigured:
         return None
 
     try:
@@ -162,8 +162,12 @@ def check_version(installed: str, latest: str) -> InstallStatus:
         latest: Version string from the latest available release (PyPI or marketplace).
 
     Returns:
-        UpToDate if versions match, OutOfDate otherwise.
+        UpToDate if installed >= latest (semver), OutOfDate if installed < latest.
     """
-    if installed == latest:
+
+    def _parse(v: str) -> tuple[int, ...]:
+        return tuple(int(x) for x in v.split("."))
+
+    if _parse(installed) >= _parse(latest):
         return InstallStatus.UpToDate
     return InstallStatus.OutOfDate

@@ -7728,7 +7728,7 @@ Fetches the latest `ll@little-loops` plugin version from the Claude Code marketp
 def check_version(installed: str, latest: str) -> InstallStatus
 ```
 
-Compares an installed version string against the latest available version. Returns `InstallStatus.UpToDate` when they match, `InstallStatus.OutOfDate` otherwise. Does not perform network I/O; call `fetch_latest_pypi` / `fetch_latest_plugin` first.
+Compares an installed version string against the latest available version using semver-aware tuple comparison. Returns `InstallStatus.UpToDate` when `installed >= latest` (including when the local build is newer than PyPI), `InstallStatus.OutOfDate` when `installed < latest`. Does not perform network I/O; call `fetch_latest_pypi` / `fetch_latest_plugin` first.
 
 ---
 

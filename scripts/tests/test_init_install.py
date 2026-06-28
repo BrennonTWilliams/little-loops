@@ -27,9 +27,14 @@ class TestCheckVersion:
         # installed is behind PyPI latest
         assert check_version("1.0.0", "1.1.0") == InstallStatus.OutOfDate
 
-    def test_installed_ahead_returns_out_of_date(self) -> None:
-        # installed is ahead of known latest (pre-release / downgrade scenario)
-        assert check_version("2.0.0", "1.0.0") == InstallStatus.OutOfDate
+    def test_installed_ahead_returns_up_to_date(self) -> None:
+        # installed is newer than PyPI latest (e.g. dev build or pre-release)
+        assert check_version("2.0.0", "1.0.0") == InstallStatus.UpToDate
+
+    def test_semver_lexicographic_edge_case(self) -> None:
+        # "1.9.0" < "1.10.0" numerically but "1.10.0" < "1.9.0" lexicographically
+        assert check_version("1.10.0", "1.9.0") == InstallStatus.UpToDate
+        assert check_version("1.9.0", "1.10.0") == InstallStatus.OutOfDate
 
 
 class TestDetectInstallation:
@@ -349,3 +354,14 @@ class TestFetchLatestPlugin:
             ]
             result = fetch_latest_plugin()
         assert result == "1.130.0"
+
+    def test_unexpected_exception_from_resolve_host_propagates(self) -> None:
+        """Unexpected exceptions (not HostNotConfigured) must not be swallowed."""
+        import pytest
+
+        with patch(
+            "little_loops.init.install_check.resolve_host",
+            side_effect=RuntimeError("unexpected internal error"),
+        ):
+            with pytest.raises(RuntimeError, match="unexpected internal error"):
+                fetch_latest_plugin()

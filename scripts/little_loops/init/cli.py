@@ -31,6 +31,9 @@ _TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
     }
 )
 
+# Recognized host names for --hosts validation; mirrors _HOST_RUNNER_REGISTRY keys.
+_KNOWN_HOSTS: frozenset[str] = frozenset({"claude-code", "codex", "opencode", "pi"})
+
 
 def _plugin_version() -> str:
     from little_loops import __version__
@@ -59,6 +62,8 @@ def _detect_hosts(project_root: Path) -> list[str]:
         detected.append("claude-code")
     if shutil.which("codex") or (project_root / ".codex").exists():
         detected.append("codex")
+    if shutil.which("opencode"):
+        detected.append("opencode")
     if shutil.which("pi"):
         detected.append("pi")
     return detected or ["claude-code"]
@@ -75,17 +80,22 @@ def _dispatch_host_adapters(
     from little_loops.init.writers import install_codex_adapter
 
     for host in hosts:
+        if host not in _KNOWN_HOSTS:
+            print(
+                f"[Warning] Unknown host {host!r}; skipping. "
+                f"Known hosts: {sorted(_KNOWN_HOSTS)}",
+                file=sys.stderr,
+            )
+            continue
         if host == "codex":
             installed = install_codex_adapter(
                 project_root, plugin_root, force=force, dry_run=dry_run
             )
             if installed is None:
-                import sys as _sys
-
                 print(
                     "[Codex] Warning: adapter template not found in package install; "
                     ".codex/hooks.json was not written.",
-                    file=_sys.stderr,
+                    file=sys.stderr,
                 )
             elif installed and not dry_run:
                 print("[Codex] Hook adapter installed to .codex/hooks.json")
@@ -93,6 +103,8 @@ def _dispatch_host_adapters(
                     "[Codex] Note: Codex will show a hook-trust dialog on next session start. "
                     "Hooks are silently skipped (HookRunStatus::Untrusted) until trusted."
                 )
+        elif host == "opencode":
+            print("[OpenCode] Adapter not yet available — opencode orchestration not yet wired.")
         elif host == "pi":
             print("[Pi] Adapter not yet available — tracked in EPIC-1622.")
         # claude-code: no adapter file needed; plugin hooks fire when globally enabled

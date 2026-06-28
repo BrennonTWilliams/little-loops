@@ -749,14 +749,15 @@ class TestMergeSettings:
         assert "Bash(git:*)" in allow
         assert "Read(*)" in allow
 
-    def test_removes_stale_ll_entries(self, tmp_project: Path) -> None:
+    def test_removes_stale_canonical_ll_entries(self, tmp_project: Path) -> None:
         target = tmp_project / ".claude" / "settings.local.json"
         target.parent.mkdir(parents=True, exist_ok=True)
+        # Seed a canonical entry that should be de-duped (not doubled) on re-init.
         target.write_text(
             json.dumps(
                 {
                     "permissions": {
-                        "allow": ["Bash(ll-old-tool:*)", "Write(.ll/ll-continue-prompt.md)"]
+                        "allow": ["Bash(ll-action:*)", "Write(.ll/ll-continue-prompt.md)"]
                     }
                 }
             )
@@ -764,9 +765,21 @@ class TestMergeSettings:
         merge_settings(tmp_project)
         data = json.loads(target.read_text())
         allow = data["permissions"]["allow"]
-        # Old entry replaced by canonical set; should not be double-entered
-        count = sum(1 for e in allow if e == "Bash(ll-old-tool:*)")
-        assert count == 0
+        # Canonical entries must appear exactly once after merge (idempotent).
+        assert sum(1 for e in allow if e == "Bash(ll-action:*)") == 1
+        assert sum(1 for e in allow if e == "Write(.ll/ll-continue-prompt.md)") == 1
+
+    def test_preserves_custom_ll_prefix_permissions(self, tmp_project: Path) -> None:
+        target = tmp_project / ".claude" / "settings.local.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # User-added Bash(ll-mytool:*) is NOT in _LL_PERMISSIONS and must survive re-init.
+        target.write_text(
+            json.dumps({"permissions": {"allow": ["Bash(ll-mytool:*)"]}})
+        )
+        merge_settings(tmp_project)
+        data = json.loads(target.read_text())
+        allow = data["permissions"]["allow"]
+        assert "Bash(ll-mytool:*)" in allow
 
     def test_extra_permissions_inserted(self, tmp_project: Path) -> None:
         merge_settings(tmp_project, extra_permissions=["Skill(ll:explore-api)"])
@@ -2087,6 +2100,16 @@ class TestDetectHosts:
             hosts = _detect_hosts(tmp_path)
         assert "pi" in hosts
 
+    def test_opencode_binary_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        with patch(
+            "little_loops.init.cli.shutil.which",
+            side_effect=lambda b: b if b == "opencode" else None,
+        ):
+            hosts = _detect_hosts(tmp_path)
+        assert "opencode" in hosts
+
     def test_nothing_detected_defaults_to_claude_code(self, tmp_path: Path) -> None:
         from little_loops.init.cli import _detect_hosts
 
@@ -2146,6 +2169,20 @@ class TestHostDispatch:
             code = main_init(["--yes", "--hosts", "claude-code,codex", "--root", str(tmp_project)])
         assert code == 0
         assert (tmp_project / ".codex" / "hooks.json").exists()
+
+    def test_unknown_host_warns_and_skips(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        _dispatch_host_adapters(
+            ["codx"],  # typo
+            project_root=tmp_project,
+            plugin_root=tmp_project,
+        )
+        captured = capsys.readouterr()
+        assert "Unknown host" in captured.err
+        assert "codx" in captured.err
 
     def test_codex_deprecated_alias_still_works(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
