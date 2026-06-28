@@ -1,0 +1,8 @@
+CLAIM1: @given(st.text()) called function 10 times, all str: True
+CLAIM2: max_examples=5 produced 5 calls (expect ~5+)
+CLAIM3: sampled_from produced 3 values, all in ALLOWED: True
+CLAIM4: from_regex fullmatch=True produced 20 values, all fullmatch: True
+CLAIM5: lists(max_size=3) produced 30 values, all len<=3: True
+CLAIM6: suppress_health_check=list(HealthCheck) accepted without error
+CLAIM7: one_of(none,text) produced 30 values, includes None: True, includes str: True
+ALL DONE
