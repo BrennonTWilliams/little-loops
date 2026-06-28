@@ -262,10 +262,10 @@ Before determining the verdict, check whether the run wrote a `summary.json` to 
 SUMMARY_FILE=".loops/.history/<LATEST_RUN_ID>-<loop_name>/summary.json"
 ```
 
-If the file exists, extract the claimed-outcome counters (`implemented`, `failed`, `decomposed`). Use these counters as the **claimed-success signal**:
+If the file exists, extract the claimed-outcome counters (`closed`, `implemented`, `failed`, `decomposed`). The success token varies by loop — `auto-refine-and-implement` / `sprint-refine-and-implement` emit `closed` (verified terminal closure, ENH-2385), while `rn-implement` / `general-task` emit `implemented`. Use whichever success counter the loop reports as the **claimed-success signal**:
 
-- **claimed_success > 0**: `implemented > 0` or any equivalent success token is present
-- **claimed_success == 0**: `implemented == 0` (or key absent) — the run honestly reports it produced nothing
+- **claimed_success > 0**: `closed > 0` / `implemented > 0` (or any equivalent success token) is present
+- **claimed_success == 0**: the success counter is `0` (or key absent) — the run honestly reports it produced nothing
 
 ### Step 6b: Verdict Table
 

@@ -74,18 +74,51 @@ states:
     fragment: shell_exit
     action: "ll-action invoke go-no-go --args \"${captured.impl_id.output} --check --auto\""
     on_yes: implement_issue
-    on_no: implement_next
+    on_no: record_rejected
     on_error: implement_issue
+
+  record_rejected:
+    # ENH-2385: a passed issue that go-no-go rejects must NOT vanish silently
+    # (the previous on_no: implement_next dropped it with no record). Record it to
+    # the caller's skip ledger (parked-with-reason) so it is deduped by
+    # get_next_issue and counted in the verdict, then drain the rest of the queue.
+    action: |
+      echo "go-no-go rejected ${captured.impl_id.output} — recording as skipped"
+      echo "${captured.impl_id.output}" >> ${context.run_dir}/${context.caller_prefix}-skipped.txt
+      echo "${captured.impl_id.output}" >> ${context.run_dir}/${context.caller_prefix}-skipped-gonogo.txt
+    action_type: shell
+    next: implement_next
 
   implement_issue:
     fragment: with_rate_limit_handling
     action: |
       ISSUE="${captured.impl_id.output}"
+      # ENH-2385: the implemented ledger means VERIFIED CLOSED — the issue file
+      # actually reached .issues/completed/. ll-auto exit 0 is NOT proof of
+      # closure (it can exit 0 with a plan awaiting approval, or refuse to mark
+      # complete), so verify completed/ membership AFTER ll-auto. The parent's
+      # finalize uses a completed/ ground-truth diff for the authoritative count;
+      # this ledger is the per-issue closure signal.
+      #
+      # The action re-exits with ll-auto's real exit code: the
+      # with_rate_limit_handling fragment's 429 detection requires exit_code != 0
+      # (executor.py), so swallowing it (e.g. `if ll-auto; then`) would silently
+      # disable multi-hour rate-limit resilience on the implement step.
+      IMPL_LEDGER="${context.run_dir}/${context.caller_prefix}-implemented.txt"
       if ls .issues/completed/*$${ISSUE}* 2>/dev/null | grep -q .; then
         echo "Issue $${ISSUE} already completed, skipping ll-auto"
+        echo "$${ISSUE}" >> "$${IMPL_LEDGER}"
         exit 0
       fi
       ll-auto --only $${ISSUE}
+      RC=$?
+      if ls .issues/completed/*$${ISSUE}* 2>/dev/null | grep -q .; then
+        echo "Closed $${ISSUE}"
+        echo "$${ISSUE}" >> "$${IMPL_LEDGER}"
+      else
+        echo "WARN: ll-auto ran on $${ISSUE} but it did not reach completed/"
+      fi
+      exit $${RC}
     action_type: shell
     on_rate_limit_exhausted: done
     next: implement_next

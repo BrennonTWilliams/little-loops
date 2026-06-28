@@ -2,11 +2,17 @@ name: "auto-refine-and-implement"
 category: issue-management
 description: |
   For each issue (priority order): recursively refine via recursive-refine
-  (which handles decomposition into child issues), then implement all issues that
-  passed refinement. Skips issues that fail refinement or are decomposed.
+  (which handles decomposition into child issues), then implement every issue
+  that passed refinement via implement-issue-chain → ll-auto, which moves closed
+  issues into .issues/completed/. Drains until the scoped issue set is exhausted,
+  so every issue ends either CLOSED or parked-with-reason (refinement-skipped,
+  decision-needed, go-no-go-rejected, or attempted-but-not-closed).
   When scope is empty (default), polls the full backlog; when scope is a sprint
   name or EPIC-NNN, scopes to that set via SprintManager.load_or_resolve.
-  Loops until the issue set is exhausted.
+  finalize verifies closure from a .issues/completed/ ground-truth diff (ENH-2385)
+  — counting both ll-auto leaf closures and decomposition closures — and emits a
+  summary.json verdict (closed / not_closed / skipped / errored) that reflects
+  real terminal state, not an ll-auto exit-code proxy.
 initial: init
 max_steps: 500
 timeout: 28800
@@ -27,7 +33,15 @@ states:
       rm -f "$RUN_DIR/auto-refine-and-implement-impl-queue.txt"
       rm -f "$RUN_DIR/auto-refine-and-implement-errored.txt"
       rm -f "$RUN_DIR/auto-refine-and-implement-implemented.txt"
+      rm -f "$RUN_DIR/auto-refine-and-implement-not-closed.txt"
+      rm -f "$RUN_DIR/auto-refine-and-implement-skipped-gonogo.txt"
       rm -f "$RUN_DIR/summary.json"
+      # ENH-2385: snapshot the closed set so finalize can compute ground-truth
+      # closures (issues that reached .issues/completed/ during THIS run). This
+      # captures BOTH ll-auto leaf closures and recursive-refine decomposition
+      # closures (enqueue_children git-mv's decomposed umbrellas into completed/).
+      ls .issues/completed/ 2>/dev/null | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
+        | sort -u > "$RUN_DIR/auto-refine-and-implement-completed-baseline.txt"
     action_type: shell
     next: get_next_issue
 
@@ -106,14 +120,19 @@ states:
     loop: oracles/implement-issue-chain
     with:
       caller_prefix: "auto-refine-and-implement"
-    on_success: record_implemented
+    on_success: record_processed
     on_failure: finalize
     on_error: finalize
 
-  record_implemented:
+  record_processed:
+    # BUG-2380: this state fires when implement-issue-chain reaches its terminal
+    # state, which does NOT prove any issue was implemented (see BUG-2381). Record
+    # only that the parent refined + delegated this issue — to the dedup/accounting
+    # *-processed.txt ledger, NOT *-implemented.txt. The authoritative implemented
+    # count is written by implement-issue-chain.implement_issue when ll-auto runs.
     action: |
-      echo "Implemented ${captured.input.output}"
-      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-implemented.txt
+      echo "Processed ${captured.input.output} (refined + delegated; implemented IDs recorded by implement-issue-chain)"
+      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-processed.txt
     fragment: queue_track
     next: get_next_issue
 
@@ -144,27 +163,58 @@ states:
     # matches, which would corrupt the count via the || fallback).
     action: |
       RUN_DIR="${context.run_dir}"
+      P=auto-refine-and-implement
       count() { awk 'NF{c++} END{print c+0}' "$RUN_DIR/$1" 2>/dev/null || echo 0; }
-      IMPL=$(count auto-refine-and-implement-implemented.txt)
-      SKIP=$(count auto-refine-and-implement-skipped.txt)
-      ERR=$(count auto-refine-and-implement-errored.txt)
-      if [ "$ERR" -gt 0 ] && [ "$IMPL" -eq 0 ]; then
-        VERDICT=phantom
-      elif [ "$IMPL" -gt 0 ] && [ "$ERR" -eq 0 ] && [ "$SKIP" -eq 0 ]; then
+
+      # ENH-2385: CLOSED is ground truth — issues that reached .issues/completed/
+      # during this run (ll-auto leaf closures + recursive-refine decomposition
+      # closures). This is the honest "and close" signal, not a proxy for an
+      # ll-auto exit code.
+      ls .issues/completed/ 2>/dev/null | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
+        | sort -u > "$RUN_DIR/$P-completed-now.txt"
+      CLOSED=$(comm -13 "$RUN_DIR/$P-completed-baseline.txt" "$RUN_DIR/$P-completed-now.txt" \
+                 2>/dev/null | awk 'NF{c++} END{print c+0}')
+
+      # NOT_CLOSED: issues we queued/processed for implementation that did NOT
+      # reach completed/ (e.g. ll-auto ran but refused to close, or a plan awaits
+      # approval). Derived as processed − completed, so a rate-limit retry that
+      # eventually closes cannot double-count.
+      sort -u "$RUN_DIR/$P-processed.txt" 2>/dev/null | grep '[^[:space:]]' \
+        > "$RUN_DIR/$P-processed-sorted.txt" || true
+      : > "$RUN_DIR/$P-not-closed.txt"
+      if [ -s "$RUN_DIR/$P-processed-sorted.txt" ]; then
+        comm -23 "$RUN_DIR/$P-processed-sorted.txt" "$RUN_DIR/$P-completed-now.txt" \
+          > "$RUN_DIR/$P-not-closed.txt" 2>/dev/null || true
+      fi
+      NOT_CLOSED=$(count $P-not-closed.txt)
+
+      SKIP=$(count $P-skipped.txt)
+      ERR=$(count $P-errored.txt)
+
+      # Verdict reflects real closure. A run is only 'success' when it closed
+      # something and left nothing parked (no skips, no not-closed, no crash).
+      if [ "$CLOSED" -gt 0 ] && [ "$ERR" -eq 0 ] && [ "$SKIP" -eq 0 ] && [ "$NOT_CLOSED" -eq 0 ]; then
         VERDICT=success
-      elif [ "$IMPL" -gt 0 ]; then
+      elif [ "$CLOSED" -gt 0 ] && [ "$ERR" -gt 0 ]; then
+        # ENH-2376: closed something AND crashed — distinct from a clean partial.
+        VERDICT=partial-with-errors
+      elif [ "$CLOSED" -gt 0 ]; then
         VERDICT=partial
+      elif [ "$ERR" -gt 0 ] || [ "$NOT_CLOSED" -gt 0 ]; then
+        # Attempted work but closed nothing — not a benign no-op.
+        VERDICT=phantom
       else
         VERDICT=no-op
       fi
-      printf '{"verdict":"%s","implemented":%s,"skipped":%s,"errored":%s}\n' \
-        "$VERDICT" "$IMPL" "$SKIP" "$ERR" > "$RUN_DIR/summary.json"
+
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
       printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
-      printf 'auto-refine-and-implement: verdict=%s implemented=%s skipped=%s errored=%s\n' \
-        "$VERDICT" "$IMPL" "$SKIP" "$ERR"
+      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s\n' \
+        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR"
     action_type: shell
     next: done
 
