@@ -5,8 +5,13 @@ type: ENH
 status: open
 discovered_date: 2026-06-27
 discovered_by: audit-loop-run
-confidence_score: 80
+confidence_score: 98
 decision_needed: false
+outcome_confidence: 91
+score_complexity: 22
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # ENH-2356: brainstorm saturation/novelty early-stop gate is inert in practice
@@ -122,6 +127,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Option 1 (lower threshold):**
 - `scripts/little_loops/loops/brainstorm.yaml` — change `novelty_threshold: "0.80"` → `"0.55"` in the `context:` block (line 27)
+- `scripts/little_loops/loops/README.md` — brainstorm table row hard-codes `novelty_threshold (default 0.80)` in `Primary Inputs` column; update to `0.55` [wiring pass]
 
 **Option 3 (document knobs as safety-net-only):**
 - `docs/guides/LOOPS_REFERENCE.md` — update line 191 brainstorm table entry to clarify that `novelty_threshold`/`max_saturation` are safety-net parameters, not convergence tuners
@@ -131,6 +137,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_brainstorm.py` — test class `TestBrainstormDedup` (line 271) exercises the dedup logic in isolation; class `TestBrainstormYaml` (line 22) asserts defaults
   - If Option 1: update `test_context_defaults` at line 96: `assert ctx.get("novelty_threshold") == "0.80"` → `"0.55"`
   - Consider adding a test in `TestBrainstormDedup` that verifies paraphrase-level dedup fires at 0.55 (currently no test covers that threshold range)
+
+_Additional `"0.80"` occurrences in `test_brainstorm.py` that will diverge after the YAML change — added by `/ll:wire-issue`:_
+- Line 307: `_run_dedup()` default parameter `threshold: float = 0.80` — mirrors YAML default; update to `0.55`
+- Line 336: `test_near_duplicate_above_threshold_is_filtered` explicit `threshold=0.80` call and the "filtered at 0.80 threshold" comment — update threshold value and comment
+- Line 346: `test_semantically_different_idea_passes` explicit `threshold=0.80` call — update to `0.55`
+- Line 374: `test_saturation_counter_increments_on_zero_novel` inline Python script `threshold = 0.80` — update to `0.55`
+- Line 419: `test_saturation_counter_resets_on_novel_idea` inline Python script `threshold = 0.80` — update to `0.55`
 
 ### Key Anchors
 
@@ -155,6 +168,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 3. (Optional) Add a `TestBrainstormDedup` test asserting that paraphrase-level near-duplicates (ratio ~0.60) are filtered at 0.55 but pass at 0.80, documenting the rationale for the new value
 4. Run `python -m pytest scripts/tests/test_brainstorm.py -v` to verify all dedup tests pass
 5. Run `ll-loop validate brainstorm` to confirm no new FSM validation errors
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `scripts/little_loops/loops/README.md` — change `novelty_threshold (default 0.80)` to `novelty_threshold (default 0.55)` in the brainstorm `Primary Inputs` column
+7. Update `scripts/tests/test_brainstorm.py` line 307 — change `_run_dedup()` default `threshold: float = 0.80` to `0.55` (mirrors YAML default)
+8. Update `scripts/tests/test_brainstorm.py` lines 336–346 — change explicit `threshold=0.80` args in `test_near_duplicate_above_threshold_is_filtered` and `test_semantically_different_idea_passes`, and update the "filtered at 0.80" comment on line 337
+9. Update `scripts/tests/test_brainstorm.py` lines 374, 419 — change inline-script `threshold = 0.80` literals in `test_saturation_counter_increments_on_zero_novel` and `test_saturation_counter_resets_on_novel_idea`
 
 **Option 3 — Document knobs as safety-net-only:**
 
@@ -188,6 +210,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-28T03:00:00 - `2463358b-0e6b-42c9-ad68-e77096aff9c4.jsonl`
+- `/ll:wire-issue` - 2026-06-28T02:31:48 - `ecbee999-5a16-4c81-9ff4-fd5ddc7d48dd.jsonl`
 - `/ll:decide-issue` - 2026-06-28T02:17:26 - `fcd085ed-5850-4ae2-ad7a-bf6eb0fdc293.jsonl`
 - `/ll:refine-issue` - 2026-06-28T01:39:53 - `30e32b40-781b-41e9-aeb1-ff1283baedee.jsonl`
 - `/ll:format-issue` - 2026-06-28T01:31:49 - `56b196bb-d510-4444-8615-30ddeded49b6.jsonl`

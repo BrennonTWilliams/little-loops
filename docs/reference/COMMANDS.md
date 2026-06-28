@@ -134,7 +134,7 @@ Capture issues from conversation or natural language description.
 
 **Flags:**
 - `--quick` - Use minimal issue template (Summary, Behavior, Impact, Status only)
-- `--parent EPIC-NNN` - Wire the new issue as a child of the given EPIC: sets `parent:` in the child's frontmatter and updates the EPIC's `relates_to:` list and `## Children` section
+- `--parent EPIC-NNN` - Wire the new issue as a child of the given EPIC: sets `parent:` in the child's frontmatter and adds the child to the EPIC's `## Children` section
 
 **Examples:**
 ```
@@ -370,7 +370,7 @@ Discover parentless open issues and propose parent assignments to open epics usi
 - `--auto` — apply all HIGH-confidence proposals without prompting
 - `--min-score MEDIUM|HIGH` — filter proposals to this confidence tier or above (default: MEDIUM)
 
-**Output:** For each accepted link, writes `parent: <EPIC-NNN>` to the child issue frontmatter and appends the child to the epic's `relates_to:` list and `## Children` section.
+**Output:** For each accepted link, writes `parent: <EPIC-NNN>` to the child issue frontmatter and appends the child to the EPIC's `## Children` section.
 
 **Trigger keywords:** "link epics", "assign to epic", "parentless issues", "orphan issues"
 
@@ -432,7 +432,7 @@ Decompose a high-level theme or goal into an EPIC issue file and 3–8 pre-wired
 
 **Trigger keywords:** "decompose theme", "scope epic", "create epic from", "break down initiative", "epic decomposition", "theme to epic", "create child issues"
 
-**Output:** Writes the EPIC file (full template) to `.issues/epics/`, writes each child stub (minimal template) to the appropriate type directory, wires `relates_to:` and `## Children` on the EPIC, sets `parent:` on each child, and stages all files for git. Prints a summary table and next-step hints.
+**Output:** Writes the EPIC file (full template) to `.issues/epics/`, writes each child stub (minimal template) to the appropriate type directory, wires `## Children` on the EPIC, sets `parent:` on each child, and stages all files for git. Prints a summary table and next-step hints.
 
 ---
 

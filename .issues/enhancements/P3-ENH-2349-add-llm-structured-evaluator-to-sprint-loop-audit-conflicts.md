@@ -16,13 +16,13 @@ relates_to:
 - BUG-2347
 depends_on:
 - ENH-2342
-confidence_score: 84
-outcome_confidence: 72
-score_complexity: 20
+confidence_score: 85
+outcome_confidence: 71
+score_complexity: 19
 score_test_coverage: 18
 score_ambiguity: 12
 score_change_surface: 22
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-2349: Add llm_structured evaluator to sprint-loop audit_conflicts state
@@ -93,6 +93,9 @@ while satisfying MR-1 (a non-LLM evaluator also present in the chain).
    from the LLM's JSON response. Setting `min_confidence: 0.7` documents intent but does not
    tighten routing on its own. The judge prompt wording is what controls verdict quality.
 
+4b. Increment `max_steps` from 16 to 18 in the loop's top-level config to accommodate the
+    2-step retry path without risk of mid-run truncation.
+
 5. Run `ll-loop validate sprint-build-and-validate` (MR-1/MR-4 checks) and then
    `ll-loop diagnose-evaluators sprint-build-and-validate` to confirm the new evaluator has
    healthy Bernoulli variance `p*(1-p) ≥ 0.05` across ≥10 runs.
@@ -111,8 +114,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Routing fallback**: `_route()` in `executor.py` falls back from `on_no` to `on_error`
   when `on_no` is absent; always declare both explicitly.
 - **`max_steps` impact**: Adding 2 new states (`audit_conflicts` evaluate path + retry)
-  adds at most 2 extra steps per retry cycle. Current `max_steps: 16` may be tight;
-  consider incrementing to 18.
+  adds at most 2 extra steps per retry cycle. Increment `max_steps` to 18 — keeping 16
+  risks truncating the retry path when `audit_conflicts` is reached late in the run,
+  which would silently fall back to the same unconditional-commit behavior this issue fixes.
 - **MR-1 classification**: `sprint-build-and-validate.yaml` is NOT classified as a meta-loop by `_is_meta_loop()` in `scripts/little_loops/fsm/validation.py` (lines 1107–1129) — it does not import `lib/benchmark.yaml` and none of its state actions match `_META_LOOP_ACTION_PATTERNS`. Therefore `_validate_meta_loop_evaluation()` never fires for this loop. Step 3's conclusion (no extra non-LLM state required) is correct but the reason is the loop isn't a meta-loop, not that existing `exit_code` states satisfy MR-1 pairing.
 - **`on_error` semantics in `_route()`**: In `scripts/little_loops/fsm/executor.py`, `on_error` handles the `"error"` verdict (LLM evaluator crash — API timeout, malformed JSON). A `"no"` verdict routes to `on_no`; `on_error` is only a fallback for `"no"` when `on_no` is absent. Setting `on_error: commit` means evaluator crashes silently proceed to commit — the Confidence Check concern is valid; confirm intent before merging.
 - **`next:` + `evaluate:` are mutually exclusive**: The executor checks `if state.next:` at line 1003 and returns directly, bypassing `_evaluate()`. The `next: commit` key must be removed entirely when adding the `evaluate:` block — do not leave both in the state.
@@ -139,7 +143,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
     on_yes: commit
     on_no: audit_conflicts_retry
     on_partial: audit_conflicts_retry
-    on_error: commit    # evaluator crash → proceed; confirm this is intentional
+    on_error: commit    # intentional: evaluator crash ≠ bad audit output; grader failure is operational, not correctness-related
 
   audit_conflicts_retry:
     action_type: prompt
@@ -209,7 +213,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_REFERENCE.md` — FSM flow diagram in the `sprint-build-and-validate` section: the direct `audit_conflicts → commit` edge becomes conditional; add the `audit_conflicts_retry` path [Agent 2 finding]
 - `docs/guides/LOOPS_REFERENCE.md` — state reference table entry for `audit_conflicts` (line ~756): update description to document the `llm_structured` evaluator type and retry routing [Agent 2 finding]
-- `docs/guides/LOOPS_REFERENCE.md` — notes block (line ~762): update `max_steps: 16` mention to `max_steps: 18` if that increment is applied [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` — notes block (line ~762): update `max_steps: 16` mention to `max_steps: 18` [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -226,21 +230,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Updated by `/ll:confidence-check` on 2026-06-27_
 
-**Readiness Score**: 84/100 → PROCEED WITH CAUTION _(below configured gate: 85)_
-**Outcome Confidence**: 72/100
-
-### Concerns
-- `ENH-2342` (P2, open) is listed as `depends_on` and the issue explicitly says "Implement ENH-2342 first"; without it the evidence contract is undefined and the judge prompt may produce permanent `no` verdicts, spinning the retry loop to `max_steps`
-- `evaluate.prompt` draft exists in Codebase Research Findings but is provisional — conditional on ENH-2342 landing; must be finalized during implementation
-- `on_error: commit` routing is an open question — issue flags it as "confirm this is intentional"; decide before merging
-- `max_steps: 16` (confirmed in YAML line 155) — increment to 18 is marked "consider"; must be decided during implementation
+**Readiness Score**: 85/100 → PROCEED _(at configured gate: 85)_
+**Outcome Confidence**: 71/100
 
 ### Outcome Risk Factors
-- Evidence-contract coupling to open dependency: judge prompt correctness depends on `CHECK_SEMANTIC_EVIDENCE_CONTRACT` semantics from ENH-2342 (open); drafting without it risks permanent `no` verdicts on every run once ENH-2342 lands
-- `on_error: commit` open question — if unintentional, evaluator failures silently bypass the quality gate and proceed to commit, defeating the evaluator's purpose
-- `max_steps: 16` decision unresolved — retry cycle adds up to 2 extra steps; insufficient `max_steps` would terminate the loop mid-audit rather than retrying
+- **Evidence-contract provisional coupling**: judge prompt correctness is provisional on ENH-2342 (open, P2); without it avoid verbatim evidence requirements or risk permanent `no` verdicts once ENH-2342 lands — tighten the prompt after ENH-2342 merges
+- ~~**`on_error: commit` unresolved decision**~~ ✅ **RESOLVED**: `on_error: commit` is intentional — an evaluator crash (API timeout, malformed JSON) is an operational failure, not a correctness failure; the conflict audit output is still valid and should not trigger a retry
+- ~~**`max_steps: 16` uncommitted**~~ ✅ **RESOLVED**: increment to 18 — the retry path adds up to 2 extra steps; keeping 16 risks truncating the retry mid-run and silently falling back to unconditional-commit behavior
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-28T03:08:05 - `b51169cf-6c2a-410b-8a70-484c629a0537.jsonl`
+- `/ll:confidence-check` - 2026-06-27T00:00:00Z - `7175e719-365d-4750-a6bd-b4f54f678467.jsonl`
 - `/ll:confidence-check` - 2026-06-27T00:00:00Z - `fcd085ed-5850-4ae2-ad7a-bf6eb0fdc293.jsonl`
 - `/ll:wire-issue` - 2026-06-28T01:44:00 - `ab5fc155-764c-486f-833a-1ddc70cbb968.jsonl`
 - `/ll:refine-issue` - 2026-06-28T01:35:03 - `6b436cf4-e677-490f-8251-57b34b0928fd.jsonl`

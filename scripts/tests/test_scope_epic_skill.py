@@ -52,9 +52,17 @@ class TestScopeEpicSkillExists:
         content = SKILL_FILE.read_text()
         assert "child" in content.lower(), "Skill must reference child issue creation"
 
-    def test_relates_to_wiring_referenced(self) -> None:
+    def test_relates_to_not_used_for_child_wiring(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "relates_to" in content, "Skill must reference relates_to frontmatter wiring"
+        assert "Add child ID to EPIC relates_to" not in content, (
+            "Skill must not wire children into EPIC relates_to: (ENH-2330)"
+        )
+
+    def test_post_write_validation_referenced(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "Post-write consistency" in content, (
+            "Skill must include a post-write consistency check after wiring (ENH-2330)"
+        )
 
     def test_children_section_wiring_referenced(self) -> None:
         content = SKILL_FILE.read_text()

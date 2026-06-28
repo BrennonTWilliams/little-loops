@@ -55,9 +55,19 @@ class TestLinkEpicsSkillExists:
         content = SKILL_FILE.read_text()
         assert "Jaccard" in content
 
-    def test_relates_to_field_documented(self) -> None:
+    def test_relates_to_not_used_for_child_wiring(self) -> None:
         assert SKILL_FILE.exists(), "Skill file not found"
-        assert "relates_to:" in SKILL_FILE.read_text()
+        content = SKILL_FILE.read_text()
+        assert "6b. Update EPIC relates_to:" not in content, (
+            "Step 6b must be removed — children must not be wired into EPIC relates_to: (ENH-2330)"
+        )
+
+    def test_post_write_validation_referenced(self) -> None:
+        assert SKILL_FILE.exists(), "Skill file not found"
+        content = SKILL_FILE.read_text()
+        assert "Post-write consistency" in content, (
+            "Skill must include a post-write consistency check after wiring (ENH-2330)"
+        )
 
     def test_children_section_documented(self) -> None:
         assert SKILL_FILE.exists(), "Skill file not found"

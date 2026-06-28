@@ -3,8 +3,9 @@ id: ENH-2330
 title: 'scope-epic/link-epics: stop overloading relates_to + add post-write validation'
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-26T22:37:02Z'
+completed_at: '2026-06-28T03:12:12Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 relates_to:
@@ -244,7 +245,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Open** | Created: 2026-06-26 | Priority: P3
 
 
+## Resolution
+
+- Removed Phase 5a (`relates_to:` child-write) from `skills/scope-epic/SKILL.md`; renamed 5b→5a, 5c→5b.
+- Removed Step 6b (`relates_to:` child-write) from `skills/link-epics/SKILL.md`; renamed 6c→6b; added new 6c post-write consistency check.
+- Extended both skills with an inline post-write consistency assertion (checks `parent:` field and `## Children` presence) that substitutes for `ll-issues epic-consistency` until FEAT-2332 ships.
+- Updated `docs/reference/COMMANDS.md` (3 output descriptions) and `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` to drop `relates_to:` membership language.
+- Converted breaking presence-assertions in test files to absence assertions; added `test_post_write_validation_referenced` in both skill test files.
+
 ## Session Log
+- `ll-auto` - 2026-06-28T03:12:12 - `b51169cf-6c2a-410b-8a70-484c629a0537.jsonl`
+- `/ll:ready-issue` - 2026-06-28T02:58:35 - `76af9e89-724d-4481-a3fb-ff870509c133.jsonl`
 - `/ll:confidence-check` - 2026-06-27T00:00:00Z - `6b436cf4-e677-490f-8251-57b34b0928fd.jsonl`
 - `/ll:wire-issue` - 2026-06-28T01:27:51 - `5be78618-84a3-4f49-9f64-b3ead980bc01.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:13:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`

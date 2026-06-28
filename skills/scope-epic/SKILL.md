@@ -375,31 +375,11 @@ For each selected **implementation** child in order (the children from Phase 2, 
 
 ### Phase 5: Wire EPIC ↔ Children
 
-Include learning test sub-issues (from Step 2a) alongside implementation children in all wiring below. Learning test sub-issues are full children of the EPIC and appear in the `relates_to` list and `## Children` section just like implementation children.
+Include learning test sub-issues (from Step 2a) alongside implementation children in all wiring below. Learning test sub-issues are full children of the EPIC and appear in the `## Children` section just like implementation children.
 
 For each child (learning test sub-issues first, then implementation children) that was successfully written:
 
-#### 5a: Add child ID to EPIC `relates_to:` frontmatter
-
-Read the EPIC file's frontmatter. The `relates_to:` field may be:
-- **Absent** — insert `relates_to: [CHILD_ID]` after the last frontmatter field (before closing `---`)
-- **Empty list** `relates_to: []` — replace with `relates_to: [CHILD_ID]`
-- **Populated list** `relates_to: [FEAT-100, FEAT-101]` — append `, CHILD_ID` inside the closing `]`
-
-Use `Edit` to apply each change in-place. Do not rewrite the whole file.
-
-Example transformation:
-```
-# Before
-relates_to: [FEAT-100, FEAT-101]
-
-# After
-relates_to: [FEAT-100, FEAT-101, FEAT-102]
-```
-
-On the first child when the EPIC's `relates_to` is empty (`[]`): replace the empty list with the first ID. On subsequent children: append to the existing list.
-
-#### 5b: Append child to EPIC `## Children` section
+#### 5a: Append child to EPIC `## Children` section
 
 If the EPIC body already contains a `## Children` section (created from the template in Phase 4), append a new bullet:
 
@@ -417,9 +397,17 @@ If no `## Children` section exists (should not happen with the full EPIC templat
 - **CHILD_ID** — [one-sentence child title]
 ```
 
-#### 5c: Verify `parent:` on each child
+#### 5b: Verify `parent:` and post-write consistency
 
 Each child was written with `parent: EPIC-NNN` in its frontmatter during Phase 4. If any child is missing this field (e.g., due to a template issue), add it via `Edit`: insert `parent: EPIC-NNN` before the closing `---` of the child's frontmatter block.
+
+After verifying `parent:`, also confirm the child ID appears exactly once in the EPIC's `## Children` section. If either check fails, emit a non-blocking warning (do not halt):
+
+```
+⚠ Post-write consistency check failed for CHILD_ID: parent: missing or child absent from ## Children
+```
+
+This inline validation substitutes for `ll-issues epic-consistency` until FEAT-2332 ships.
 
 ---
 

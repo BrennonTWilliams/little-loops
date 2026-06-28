@@ -25,7 +25,7 @@ metadata:
 Discovers open BUG/FEAT/ENH issues without a `parent:` frontmatter field, scores each
 against open EPICs using Jaccard similarity on title + summary text, and links accepted
 proposals by writing `parent: EPIC-NNN` to the child issue and updating the EPIC's
-`relates_to:` and `## Children` section.
+`## Children` section.
 
 ---
 
@@ -201,42 +201,7 @@ parent: EPIC-NNN
 If `parent:` already exists with a non-null value, skip this file and log a warning:
 `⚠ CHILD_ID already has parent: <existing_value>, skipping.`
 
-### 6b. Update EPIC `relates_to:` frontmatter
-
-Read the EPIC file. Check the `relates_to:` field (use `Edit`, not `update_frontmatter`,
-to preserve inline list notation). Three cases:
-
-**Case 1: absent** — insert before closing `---`:
-```
-# Before:
-status: open
----
-
-# After:
-status: open
-relates_to: [CHILD_ID]
----
-```
-
-**Case 2: empty list** `relates_to: []` — replace the line:
-```
-# Before:
-relates_to: []
-
-# After:
-relates_to: [CHILD_ID]
-```
-
-**Case 3: populated list** — append to the inline list:
-```
-# Before:
-relates_to: [ENH-100, ENH-101]
-
-# After:
-relates_to: [ENH-100, ENH-101, CHILD_ID]
-```
-
-### 6c. Update EPIC `## Children` section
+### 6b. Update EPIC `## Children` section
 
 **If `## Children` exists**: append a bullet at the end of that section:
 ```markdown
@@ -252,6 +217,20 @@ relates_to: [ENH-100, ENH-101, CHILD_ID]
 ```
 
 Use `Edit` to apply in-place.
+
+### 6c. Post-write consistency check
+
+After wiring each child, verify:
+1. Re-read the child's frontmatter and confirm `parent:` equals the EPIC ID.
+2. Confirm the child ID appears in the EPIC's `## Children` section.
+
+If either check fails, emit a non-blocking warning (do not halt):
+
+```
+⚠ Post-write consistency check failed for CHILD_ID: parent: not set to EPIC-NNN or child absent from ## Children
+```
+
+This inline check substitutes for `ll-issues epic-consistency` until FEAT-2332 ships.
 
 ### 6d. Stage both files
 
