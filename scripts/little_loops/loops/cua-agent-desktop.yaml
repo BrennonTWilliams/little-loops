@@ -841,6 +841,12 @@ states:
     # rather than the separate on_timeout path. The _handle_plan_timeout and
     # _retry_plan_timeout states were dead code — removed. This state now handles
     # both plan API errors and plan timeouts via the same counter-based retry.
+    #
+    # BUG-380 Option 2: Tracks timeout-classified errors separately in
+    # .plan_timeout_count so the parent loop can fail-over to Playwright-only
+    # after 2 consecutive timeouts instead of burning 6+ minutes cascading
+    # through max_plan_errors: 3. Heuristic: empty plan output OR contains
+    # "timeout"/"deadline" signature → likely state-level timeout (exit 124).
     action_type: shell
     action: |
       ABS_DIR="${captured.run_dir.output}"
@@ -852,6 +858,22 @@ states:
         echo "PLAN_AUTH_FAILURE_DETECTED"
         exit 0
       fi
+
+      # ── BUG-380 Option 2: Separate timeout-classified counter ──
+      # The FSM runner routes timeouts (exit 124) to on_error along with API
+      # errors, so we can't rely on exit_code. Heuristic: empty plan output
+      # (prompt killed before producing) OR contains "timeout"/"deadline"
+      # (truncated response) → classify as timeout.
+      PLAN_OUTPUT="${captured.plan_output.output}"
+      TIMEOUT_COUNT_FILE="$ABS_DIR/.plan_timeout_count"
+      TIMEOUT_COUNT=$(cat "$TIMEOUT_COUNT_FILE" 2>/dev/null || echo 0)
+      if [ -z "$PLAN_OUTPUT" ] || echo "$PLAN_OUTPUT" | grep -qiE 'timeout|timed out|deadline'; then
+        TIMEOUT_COUNT=$((TIMEOUT_COUNT + 1))
+        echo "$TIMEOUT_COUNT" > "$TIMEOUT_COUNT_FILE"
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM timeout detected at iteration ${state.iteration} (timeout count: $TIMEOUT_COUNT)" \
+          >> "$ABS_DIR/.plan_timeouts.log"
+      fi
+
       echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM API error or timeout at iteration ${state.iteration}" \
         >> "$ABS_DIR/.plan_errors.log"
       COUNTER_FILE="$ABS_DIR/.plan_error_count"
