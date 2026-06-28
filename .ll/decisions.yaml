@@ -2423,3 +2423,72 @@
   scope: issue
   alternatives_rejected: Inline guard in rn-remediate.implement only
   issue: ENH-2353
+- id: ARCH-100
+  type: rule
+  timestamp: '2026-06-27T23:24:33Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: A malformed issue fed directly to confidence-check produced low-fidelity
+    scores that mis-routed the entire diagnose/converge chain. Structural completeness
+    must be confirmed cheaply before invoking an LLM judge.
+  rule: Run a non-LLM structural guard before any LLM-based scoring state to prevent
+    garbage-in evaluation.
+  enforcement: advisory
+  issue: ENH-2360
+- id: ARCH-101
+  type: rule
+  timestamp: '2026-06-27T23:24:33Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Unresolved files, unparseable templates, or unreadable issues should
+    route through to the next real state, not dead-end remediation. Gate failures
+    are environmental, not semantic.
+  rule: Fail-open on all tooling errors in FSM precondition gates; never let a gate
+    glitch block the main pipeline.
+  enforcement: advisory
+  issue: ENH-2360
+- id: ARCH-102
+  type: rule
+  timestamp: '2026-06-27T23:24:33Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Routing format_issue back to ensure_formatted after a repair pass creates
+    an oscillation risk if template titles ever diverge from grep patterns. Bounding
+    to one pass eliminates that cycle.
+  rule: Repair states must route unconditionally forward after one pass — never back
+    to the evaluating gate.
+  enforcement: advisory
+  issue: ENH-2360
+- id: ARCH-103
+  type: rule
+  timestamp: '2026-06-27T23:24:33Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Keeping the format guard in rn-remediate (not rn-implement) means both
+    orchestrated and standalone paths get coverage without coupling the orchestrator
+    to issue-type-specific logic.
+  rule: Place per-issue domain guards in the sub-loop, not in the queue orchestrator.
+  enforcement: advisory
+  issue: ENH-2360
+- id: PERF-104
+  type: rule
+  timestamp: '2026-06-27T23:24:33Z'
+  category: performance
+  labels:
+  - extracted
+  - global
+  rationale: Checking for the presence of required section headers via grep is deterministic
+    and free. Invoking an LLM for a structural precondition adds cost and non-determinism
+    where neither is warranted.
+  rule: Use exit_code shell evaluators for structural/syntactic checks; reserve LLM
+    evaluators for semantic judgments.
+  enforcement: advisory
+  issue: ENH-2360
