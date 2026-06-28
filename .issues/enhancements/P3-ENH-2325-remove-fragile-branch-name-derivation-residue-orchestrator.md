@@ -1,11 +1,12 @@
 ---
 id: ENH-2325
-title: "Remove residual string-replace branch-name derivation in orchestrator (BUG-823 residue)"
+title: Remove residual string-replace branch-name derivation in orchestrator (BUG-823
+  residue)
 type: ENH
 status: open
 priority: P3
-captured_at: "2026-06-26T22:26:49Z"
-discovered_date: "2026-06-26"
+captured_at: '2026-06-26T22:26:49Z'
+discovered_date: '2026-06-26'
 discovered_by: audit
 decision_needed: false
 labels:
@@ -14,6 +15,12 @@ labels:
 - tech-debt
 relates_to:
 - BUG-823
+confidence_score: 97
+outcome_confidence: 83
+score_complexity: 18
+score_test_coverage: 23
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # ENH-2325: Remove residual string-replace branch-name derivation in orchestrator (BUG-823 residue)
@@ -173,6 +180,7 @@ The feature-branch path through `_handle_worker_result` uses `WorkerResult.branc
 _Added by `/ll:verify-issues` (2026-06-27):_ Line numbers in Implementation Step 4 and the wiring note are stale. Current values in `test_orchestrator.py`: `TestOrphanedWorktreeCleanup` starts at line 334 (not 500–597); `TestInspectWorktree` starts at line 926 (not ~839); the assertion `result.branch_name == "parallel/enh-042-20260117-150000"` is at line 951 (not 863). Verify line numbers before implementation.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T23:00:00Z - `b1f4a25f-7eed-4878-9353-29624bf92132.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T22:09:56 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:55:10 - `613d5df7-a8ed-405a-928c-ec037815b530.jsonl`

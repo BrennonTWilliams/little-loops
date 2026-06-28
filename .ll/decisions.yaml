@@ -2617,3 +2617,16 @@
     as $${VAR} (escaped), not bare ${VAR}, i
   enforcement: advisory
   issue: BUG-2362
+- id: ARCHITECTURE-073
+  type: decision
+  timestamp: '2026-06-28T02:17:19Z'
+  category: architecture
+  labels: []
+  rationale: Option 1 fixes the behavioral inertness with a single constant change;
+    Options 1 and 3 tied at 11/12 but ENH issues warrant behavioral fix over honest-but-inert
+    documentation. Option 3 docs update to be bundled during implementation.
+  rule: Lower novelty_threshold to 0.55 (Option 1)
+  scope: issue
+  alternatives_rejected: Option 2 (embeddings backend, out of scope); Option 3 (docs-only,
+    defers the behavioral fix)
+  issue: ENH-2356

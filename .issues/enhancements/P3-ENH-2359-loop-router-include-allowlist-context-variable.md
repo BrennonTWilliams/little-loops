@@ -103,6 +103,7 @@ The fragment in `lib/composer.yaml` should receive the filter too, so the change
 - `scripts/little_loops/loops/loop-composer.yaml` — `discover_loops` state (delegates to fragment); add `include:` to context block
 - `scripts/little_loops/loops/loop-composer-adaptive.yaml` — `discover_loops` state (delegates to fragment); add `include:` to context block
 - `scripts/little_loops/loops/lib/composer.yaml` — shared `discover_loops` fragment; add filter logic here if shared (one change covers both composer loops)
+- `scripts/little_loops/loops/goal-cluster.yaml` — also uses `lib/composer.yaml:fragments.discover_loops`; adding `${context.include}` to the fragment without a default will crash interpolation for goal-cluster (`Path 'context.include' not found in context`); either add `include: ""` to goal-cluster's context block OR use `${context.include:default=}` (engine-native default) in the fragment's filter line so missing callers degrade to empty-include (pass-all) behavior [Second wiring pass]
 
 ### Dependent Files (Callers/Importers)
 - Any loop or script that invokes `ll-loop run loop-router`, `loop-composer`, or `loop-composer-adaptive` with `--context` — callers gain the new optional `include` key
@@ -129,12 +130,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - New test method to add: `test_loop_router.py:TestLoopRouterStates.test_discover_loops_handles_include_allowlist` — assert include filter logic is present in `loop_data["states"]["discover_loops"]["action"]`
 - New test method to add: `test_loop_composer.py:TestComposerLibFragment.test_discover_loops_fragment_handles_include_allowlist` — assert include filter logic is present in `lib_data["fragments"]["discover_loops"]["action"]`
 - **Correction** (wiring pass): `TestLoopComposerAdaptiveFile.test_context_variables` and `test_context_defaults` listed above as "must be updated" do **not exist** yet in `test_loop_composer_adaptive.py` — both must be created as new test methods following the `TestLoopComposerFile` pattern (`for key in (...): assert key in ctx` and bare `assert ctx.get("include") == ""`). See `TestLoopComposerAdaptiveFile.test_context_has_max_replans` (line 93) for the fixture/access style.
+- **Adaptive context key set** (second refine pass): `loop-composer-adaptive.yaml` has **five** context keys — `goal`, `auto`, `exclude`, `max_plan_nodes`, `max_replans` — vs. loop-composer's four (no `max_replans`). The new `test_context_variables` for adaptive must check all five plus `include`; `test_context_defaults` should assert `include == ""`, `auto == "false"`, `max_plan_nodes == "8"`, `max_replans == "2"`.
+- **Hardcoded exclusion set confirmed** (second refine pass): both `loop-router.yaml:discover_loops` (lines 33-37) and `lib/composer.yaml:fragments.discover_loops` (lines 34-38) hard-exclude **five** loops: `loop-router`, `loop-composer`, `loop-composer-adaptive`, `goal-cluster`, `rn-build`. The `include` filter runs on `loops` before this exclusion step, so including e.g. `loop-router` by name in `include` will still be blocked by the hardcoded set — correct behavior, no special handling needed.
 
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_REFERENCE.md` — documents `exclude` in three separate context-variable tables (loop-router ~line 60, loop-composer ~line 2412, loop-composer-adaptive ~line 2457); each needs a parallel `include` row explaining allowlist semantics and the four selector forms
 - `docs/reference/loops.md` — documents `exclude` in two context-variable tables (loop-composer line 713, loop-composer-adaptive line 756); each needs a parallel `include` row. Note: `loop-router` has no dedicated section in this file.
+- `skills/create-loop/loop-types.md` — two locations documenting `exclude` for routing/orchestration loops: (1) "Orch Router" section YAML context block (~line 1978) shows the customizable context block after `ll-loop install loop-router`; add `include: ""` entry with selector-syntax comment; (2) "Orch Composer" section key context knobs list (~line 2007) enumerates `exclude: "loop-a,loop-b"` as a bullet; add parallel `include` bullet. "Orch Supervisor" (adaptive) has only a paragraph description — no context knob enumeration, no update needed there. [Second wiring pass]
 
 ### Configuration
 - N/A — no config file changes; callers pass `--context include=...` at invocation time
@@ -164,6 +168,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 7. Create `test_loop_composer_adaptive.py:TestLoopComposerAdaptiveFile.test_context_variables` and `test_context_defaults` as **new** test methods (they do not yet exist) — follow `TestLoopComposerFile` pattern; use `ctx = loop_data.get("context", {})` preamble
 8. Update `docs/guides/LOOPS_REFERENCE.md` — add `include` row to the three `exclude`-containing context tables (~line 60 for loop-router, ~line 2412 for loop-composer, ~line 2457 for loop-composer-adaptive) with selector forms documented
 9. Update `docs/reference/loops.md` — add `include` row to the two `exclude`-containing context tables (line 713 for loop-composer, line 756 for loop-composer-adaptive)
+10. Resolve `goal-cluster.yaml` interpolation hazard — choose one: (a) add `include: ""` to `goal-cluster.yaml` context block so the fragment's `${context.include}` resolves correctly, or (b) write the fragment filter line as `include_raw = '${context.include:default=}'` (engine-native default) so all loops using the fragment are safe even without declaring `include`. Option (b) is preferred — no callers need updating. [Second wiring pass]
+11. Update `skills/create-loop/loop-types.md` — (a) "Orch Router" section YAML context block (~line 1978): add `include: ""  # allowlist; comma-separated loop names / builtin:* / project:* / category:<label>`; (b) "Orch Composer" section knobs list (~line 2007): add `\`include: "category:harness"\` — allowlist; only loops matching selector(s) are offered as candidates`. [Second wiring pass]
 
 ## Impact
 
@@ -218,6 +224,9 @@ context:
 loops, loop-router, loop-composer, routing, catalog-filtering
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-28T05:00:00Z - `30e32b40-781b-41e9-aeb1-ff1283baedee.jsonl`
+- `/ll:wire-issue` - 2026-06-28T01:34:37 - `fce0028a-6c8d-4538-aab4-731aad444c57.jsonl`
+- `/ll:refine-issue` - 2026-06-28T01:21:19 - `07679074-e054-43f8-91f8-1793865abf75.jsonl`
 - `/ll:ready-issue` - 2026-06-28T00:05:20 - `d1ce8ed7-3dd3-4d48-8407-ee501fc4d874.jsonl`
 - `/ll:confidence-check` - 2026-06-27T23:59:00Z - `fa16026d-9fe1-4642-94f7-2714dd98d646.jsonl`
 - `/ll:confidence-check` - 2026-06-27T23:45:00Z - `92927046-28e2-424e-a38e-73a6afefae1d.jsonl`

@@ -19,6 +19,12 @@ labels:
 - scope-epic
 - link-epics
 - parent-child
+confidence_score: 98
+outcome_confidence: 80
+score_complexity: 17
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # ENH-2330: Stop overloading `relates_to` in EPIC writers; validate after wiring
@@ -127,6 +133,19 @@ _Added by `/ll:refine-issue` — concrete, file-referenced steps from research:_
 5. **Verify** — Run `python -m pytest scripts/tests/test_scope_epic_skill.py
    scripts/tests/test_link_epics_skill.py scripts/tests/test_issue_progress.py -v`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `docs/reference/COMMANDS.md` — remove `relates_to:` from the output descriptions of `scope-epic **Output:**`, `link-epics **Output:**`, and `capture-issue --parent` flag; describe children as wired via `parent:` + `## Children` only.
+7. Update `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — in the "This does two things atomically:" list, remove step referencing "Appends the new issue ID to the EPIC's `relates_to:` list".
+8. Before running the verify step, update the two breaking tests:
+   - `test_scope_epic_skill.py::test_relates_to_wiring_referenced` → convert to absence assertion (child-write heading no longer present).
+   - `test_link_epics_skill.py::test_relates_to_field_documented` → convert to absence assertion (Step 6b heading no longer present).
+   - Add post-write validation assertions in both skill test files.
+   - Inspect `test_wiring_skills_and_commands.py` for any `relates_to` presence assertions covering scope-epic/link-epics.
+9. Advisory (follow-on, not blocking): update `scripts/little_loops/sprint.py::load_or_resolve()` docstring to reflect deprecation of `relates_to` forward-lookup under ARCHITECTURE-065; update `scripts/little_loops/recursive_finalize.py::finalize_decomposed_parent()` to stop writing children to EPIC's `relates_to:`.
+
 ## Integration Map
 
 - `skills/scope-epic/SKILL.md` (Phase 5 wiring + new validation step).
@@ -168,6 +187,38 @@ the files actually live under `scripts/tests/…`):
 - `scripts/tests/test_issue_progress.py` — confirms the parent:-only reader is
   already correct; no change needed.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/sprint.py` — `load_or_resolve()` (lines 321–330) reads EPIC's `relates_to` as `forward_ids = set(epic_info.relates_to)` for membership forward-lookup, unioned with `parent:` backward refs. After ENH-2330 the forward path degrades gracefully to empty for new EPICs (no children lost); advisory — no immediate code change needed, but the docstring ("forward (relates_to:) + backward (parent:) lookup") diverges from ARCHITECTURE-065 and should be updated as a follow-on. [Agent 1/2 finding]
+- `scripts/little_loops/recursive_finalize.py` — `finalize_decomposed_parent()` (lines 197–201) writes new child IDs into the EPIC's `relates_to` via `update_frontmatter()` (same anti-pattern as scope-epic Phase 5a). Parallel writer; out of scope for ENH-2330 but a required follow-on to prevent the overloading from reappearing on decomposed-parent workflows. [Agent 2 finding]
+- `scripts/little_loops/cli/deps.py` — `forward_ids`/`backward_ids` union for epic membership (lines 277–330); reads `relates_to` as a membership channel. Advisory — degrades gracefully. [Agent 1 finding]
+- `skills/capture-issue/SKILL.md` Phase 4c — identical three-channel wiring (`parent:` + `relates_to:` + `## Children`); the issue notes reference it as an out-of-scope follow-on, but it must be updated for full consistency with ARCHITECTURE-065. [Agent 2 finding]
+- `skills/create-epics-from-unparented/SKILL.md` — EPIC template at line 259 pre-populates `relates_to: [CHILD_ID_1, CHILD_ID_2, ...]` inline (parallel writer, out of scope). [Agent 2 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/reference/COMMANDS.md` — three output descriptions embed `relates_to:` as membership: (1) `capture-issue --parent` flag description, (2) `link-epics **Output:**`, (3) `scope-epic **Output:**`. All three must drop the `relates_to:` reference once the wiring changes. [Agent 2 finding]
+- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — under "This does two things atomically:" step 2 reads "Appends the new issue ID to the EPIC's `relates_to:` list and its `## Children` section." Must be updated to drop the `relates_to:` append. [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that will break (must update before verify step):**
+- `scripts/tests/test_scope_epic_skill.py::TestScopeEpicSkillExists.test_relates_to_wiring_referenced` (line 55) — asserts `"relates_to" in content` on `skills/scope-epic/SKILL.md`. Once Phase 5a is removed, this will fail. Convert from presence to **absence** assertion: `assert "Add child ID to EPIC relates_to" not in content`. [Agent 3 finding]
+- `scripts/tests/test_link_epics_skill.py::TestLinkEpicsSkillExists.test_relates_to_field_documented` (line 58) — asserts `"relates_to:" in SKILL_FILE.read_text()` on `skills/link-epics/SKILL.md`. The entire Step 6b section will be removed; this will fail. Convert to absence assertion: `assert "6b. Update EPIC relates_to:" not in content`. [Agent 3 finding]
+
+**New test assertions to add:**
+- `test_scope_epic_skill.py` — add assertion that post-write validation step (`epic-consistency` or inline equivalent) is referenced in `skills/scope-epic/SKILL.md`. [Agent 3 finding]
+- `test_link_epics_skill.py` — add assertion that post-write validation step is referenced in `skills/link-epics/SKILL.md`. [Agent 3 finding]
+
+**Additional test file to check:**
+- `scripts/tests/test_wiring_skills_and_commands.py` — exercises scope-epic and link-epics skill structural references; inspect for any `relates_to` assertions that need adapting. [Agent 1 finding]
+
 ## Out of Scope
 
 - Reconciling already-drifted EPICs (FEAT-2332 `--fix`).
@@ -194,6 +245,8 @@ the files actually live under `scripts/tests/…`):
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T00:00:00Z - `6b436cf4-e677-490f-8251-57b34b0928fd.jsonl`
+- `/ll:wire-issue` - 2026-06-28T01:27:51 - `5be78618-84a3-4f49-9f64-b3ead980bc01.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:13:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:10:38 - `e233d8ff-bda5-44d0-b347-301325d49c53.jsonl`
 - `/ll:format-issue` - 2026-06-26T23:01:36 - `6584a8f8-113c-40e2-a4bb-bc7c209c1a03.jsonl`
