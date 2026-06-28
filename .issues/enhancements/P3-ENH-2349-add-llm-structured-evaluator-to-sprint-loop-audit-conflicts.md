@@ -16,12 +16,13 @@ relates_to:
 - BUG-2347
 depends_on:
 - ENH-2342
-confidence_score: 82
+confidence_score: 80
 outcome_confidence: 73
 score_complexity: 21
 score_test_coverage: 18
 score_ambiguity: 12
 score_change_surface: 22
+decision_needed: true
 ---
 
 # ENH-2349: Add llm_structured evaluator to sprint-loop audit_conflicts state
@@ -112,6 +113,47 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`max_steps` impact**: Adding 2 new states (`audit_conflicts` evaluate path + retry)
   adds at most 2 extra steps per retry cycle. Current `max_steps: 16` may be tight;
   consider incrementing to 18.
+- **MR-1 classification**: `sprint-build-and-validate.yaml` is NOT classified as a meta-loop by `_is_meta_loop()` in `scripts/little_loops/fsm/validation.py` (lines 1107–1129) — it does not import `lib/benchmark.yaml` and none of its state actions match `_META_LOOP_ACTION_PATTERNS`. Therefore `_validate_meta_loop_evaluation()` never fires for this loop. Step 3's conclusion (no extra non-LLM state required) is correct but the reason is the loop isn't a meta-loop, not that existing `exit_code` states satisfy MR-1 pairing.
+- **`on_error` semantics in `_route()`**: In `scripts/little_loops/fsm/executor.py`, `on_error` handles the `"error"` verdict (LLM evaluator crash — API timeout, malformed JSON). A `"no"` verdict routes to `on_no`; `on_error` is only a fallback for `"no"` when `on_no` is absent. Setting `on_error: commit` means evaluator crashes silently proceed to commit — the Confidence Check concern is valid; confirm intent before merging.
+- **`next:` + `evaluate:` are mutually exclusive**: The executor checks `if state.next:` at line 1003 and returns directly, bypassing `_evaluate()`. The `next: commit` key must be removed entirely when adding the `evaluate:` block — do not leave both in the state.
+- **Concrete YAML draft** for modified `audit_conflicts` + new `audit_conflicts_retry`:
+  ```yaml
+  audit_conflicts:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
+      Run `/ll:audit-issue-conflicts --auto` once for all sprint issues as a single grouped call.
+    capture: conflict_result
+    evaluate:
+      type: llm_structured
+      source: "${captured.conflict_result.output}"
+      prompt: |
+        Did the conflict audit resolve or explicitly note every reported conflict?
+        Answer YES if: all conflicts were addressed (issue files mutated, scopes merged,
+        explicit deferral noted) OR no conflicts were found.
+        Answer PARTIAL if some but not all conflicts were addressed.
+        Answer NO if conflicts were reported and none were addressed, or the output is
+        empty or clearly incomplete.
+      min_confidence: 0.7
+    on_yes: commit
+    on_no: audit_conflicts_retry
+    on_partial: audit_conflicts_retry
+    on_error: commit    # evaluator crash → proceed; confirm this is intentional
+
+  audit_conflicts_retry:
+    action_type: prompt
+    timeout: 300
+    action: |
+      The previous conflict audit did not fully address all reported conflicts.
+      Prior output: ${captured.conflict_result.output}
+      Re-run `/ll:audit-issue-conflicts --auto` for the sprint issues in
+      .sprints/${captured.sprint_name.output}.yaml.
+    capture: conflict_result
+    next: commit
+  ```
+- **Judge prompt and ENH-2342**: `CHECK_SEMANTIC_EVIDENCE_CONTRACT` does not yet exist in `evaluators.py` — ENH-2342 is not merged. The draft judge prompt above is safe to use now; avoid requiring verbatim evidence quotes since the coercion isn't in place. After ENH-2342 lands, tighten the prompt to reference `CHECK_SEMANTIC_EVIDENCE_CONTRACT` semantics.
+- **`llm_gate` fragment location**: `scripts/little_loops/loops/lib/common.yaml` lines 47–59. Provides only `action_type: prompt` and `evaluate.type: llm_structured`; caller must supply `action`, `evaluate.prompt`, `on_yes`, `on_no`. The inline `evaluate:` block approach (as in the draft above) is simpler and avoids fragment merge ambiguity.
 
 ## Acceptance Criteria
 
@@ -134,6 +176,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Out of scope**: Changing the behavior of `/ll:audit-issue-conflicts` itself
 - **Out of scope**: Broader FSM refactoring beyond this single state addition
 
+> **Dependency note**: ENH-2342 will globally coerce every `llm_structured` verdict to `"no"` when the LLM response contains no verbatim evidence — enforced in `evaluate_llm_structured()` in `evaluators.py`. The `audit_conflicts` judge prompt must be authored with awareness of this evidence contract, or the evaluator will return permanent `"no"` verdicts and spin the retry loop until `max_steps` is hit. Implement ENH-2342 first, then draft the judge prompt against `CHECK_SEMANTIC_EVIDENCE_CONTRACT` in `evaluators.py`.
+
 ## Integration Map
 
 ### Files to Modify
@@ -155,7 +199,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py` — `TestSprintBuildAndValidateLoop.test_required_states_exist` (line 3153): update to add `"audit_conflicts_retry"` to the required set [Agent 3 finding]
 - `scripts/tests/test_builtin_loops.py` — add to `TestSprintBuildAndValidateLoop`: new structural test methods: `test_audit_conflicts_uses_llm_structured_evaluator`, `test_audit_conflicts_on_yes_routes_to_commit`, `test_audit_conflicts_on_no_routes_to_retry`, `test_audit_conflicts_no_longer_uses_bare_next`, `test_audit_conflicts_retry_state_exists`, `test_max_steps_accommodates_retry_cycle` (asserts `data.get("max_steps", 0) >= 18`) [Agent 3 finding]
-- `scripts/tests/test_builtin_loops.py` — `TestBuiltinLoopOnBlockedCoverage.REQUIRED_ON_BLOCKED` (line 1491): add `("sprint-build-and-validate.yaml", "audit_conflicts", "<on_blocked_target>")` if the implementation defines an `on_blocked` handler on the new evaluator state [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — `TestBuiltinLoopOnBlockedCoverage.REQUIRED_ON_BLOCKED` (line 1502): add `("sprint-build-and-validate.yaml", "audit_conflicts", "<on_blocked_target>")` if the implementation defines an `on_blocked` handler on the new evaluator state [Agent 3 finding]
 
 ### Documentation
 - N/A — no documentation update required for an internal loop evaluator addition
@@ -178,36 +222,29 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-27_
+_Updated by `/ll:confidence-check` on 2026-06-27_
 
-**Readiness Score**: 82/100 → PROCEED WITH CAUTION _(below configured gate: 85)_
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION _(below configured gate: 85)_
 **Outcome Confidence**: 73/100
 
 ### Concerns
-- `evaluate.prompt` text is absent — this is the core evaluator design artifact; must be authored during implementation with `loop-specialist-eval.yaml:check_skill` as structural reference
-- BUG-2346 and BUG-2347 (P1, open) are explicitly cited as prerequisites; no end-to-end validation run is possible until they are resolved
-- `on_error: commit` routing proceeds silently to commit on evaluator error — deliberate but counterintuitive; confirm intent before implementing
+- `ENH-2342` (P2, open) is listed as `depends_on` and the issue explicitly says "Implement ENH-2342 first"; without it the evidence contract is undefined and the judge prompt may produce permanent `no` verdicts, spinning the retry loop to `max_steps`
+- `evaluate.prompt` draft exists in Codebase Research Findings but is provisional — conditional on ENH-2342 landing; must be finalized during implementation
+- `on_error: commit` routing is an open question — issue flags it as "counterintuitive"; confirm intent before implementing
+- `max_steps` increment 16→18 is marked "consider" — must be decided before closing
 
 ### Outcome Risk Factors
-- Judge prompt text must be authored during implementation with no draft in the issue body; closest reference is `loop-specialist-eval.yaml:check_skill` (multi-condition judge prompt for structured audit output with `min_confidence: 0.7` and `source:` from prior capture)
-- `max_steps` bump (16→18) is marked "consider" — must be decided and applied before closing
+- Evidence-contract coupling to open dependency: judge prompt correctness depends on `CHECK_SEMANTIC_EVIDENCE_CONTRACT` semantics from ENH-2342 (open); drafting without it risks permanent `no` verdicts on every run once ENH-2342 lands
+- `on_error: commit` is an open question — if unintentional, evaluator failures silently proceed to commit, defeating the evaluator's purpose
+- `max_steps: 16` may be insufficient for a retry cycle; increment decision is unresolved
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-27T23:55:35 - `ca3a6d49-ed3c-4ce1-b89d-4d43df7442b1.jsonl`
+- `/ll:confidence-check` - 2026-06-27T23:55:00Z - `5d604424-edea-410a-99e0-58cd77b7379c.jsonl`
+- `/ll:format-issue` - 2026-06-27T23:44:12 - `eeed6b9a-de07-4597-8de0-bdc4a6ac5422.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T22:09:56 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:confidence-check` - 2026-06-27T22:00:00Z - `4db93a84-28af-46ec-8824-975ef1360e97.jsonl`
 - `/ll:wire-issue` - 2026-06-27T21:41:27 - `b1ff643a-138f-45dd-be1d-f42546ce8905.jsonl`
 - `/ll:refine-issue` - 2026-06-27T21:32:33 - `265ed482-e8e6-4a78-a5cf-d16f10ac38ee.jsonl`
 - `/ll:format-issue` - 2026-06-27T21:21:09 - `d9d01f4a-6f9b-4201-87a6-de089e4470ef.jsonl`
 - `/ll:capture-issue` - 2026-06-27T21:16:24Z - conversation analysis of audit-sprint-build-and-validate-2026-06-27.md
-
----
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): ENH-2342 will globally coerce every `llm_structured` verdict to "no" when the LLM response contains no verbatim evidence — enforced in `evaluate_llm_structured()` in `evaluators.py`. The judge prompt for the `audit_conflicts` state added by this issue is explicitly unwritten ("must be authored during implementation"). If the prompt is authored without awareness of ENH-2342's evidence contract, the evaluator will return permanent "no" verdicts and spin the retry loop until `max_steps` is hit. Implement ENH-2342 first (hence `depends_on: ENH-2342`), then author the `audit_conflicts` judge prompt to include the evidence-contract block (verbatim citation required per condition; absent evidence defaults to No). Draft the prompt against `CHECK_SEMANTIC_EVIDENCE_CONTRACT` in `evaluators.py` once ENH-2342 is merged. Related issue: ENH-2342.
-
----
-
-## Status
-
-**Open** | Created: 2026-06-27 | Priority: P3

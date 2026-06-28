@@ -11,13 +11,12 @@ discovered_by: capture-issue
 labels:
 - init
 - robustness
-learning_tests_required:
-- packaging
-confidence_score: 92
-outcome_confidence: 75
-score_complexity: 14
+learning_tests_required: []
+confidence_score: 93
+outcome_confidence: 79
+score_complexity: 15
 score_test_coverage: 23
-score_ambiguity: 18
+score_ambiguity: 22
 score_change_surface: 20
 ---
 
@@ -40,7 +39,7 @@ Four robustness gaps in `ll-init`:
 1. `_dispatch_host_adapters` (`cli.py`) silently ignores unrecognized `--hosts`
    values; a typo like `--hosts codx` does nothing. `opencode` is a documented
    host (`host_runner.py`) but absent from `_detect_hosts` and adapter dispatch.
-2. `merge_settings` (`writers.py:252`) strips every permission matching the
+2. `merge_settings` (`writers.py:231–232`) strips every permission matching the
    `Bash(ll-` prefix, so a user's custom `Bash(ll-mytool:*)` entry is silently
    removed on re-init.
 3. `check_version` (`install_check.py:157-169`) compares versions as strings
@@ -57,9 +56,9 @@ Four robustness gaps in `ll-init`:
    and `_dispatch_host_adapters`.
 2. `merge_settings` scopes its sweep to the canonical `_LL_PERMISSIONS` list;
    user-added `Bash(ll-mytool:*)` permissions are preserved across re-inits.
-3. `check_version` uses `packaging.version.Version` for semver-aware comparison;
-   an installed version newer than PyPI latest is reported `UpToDate` (or `Ahead`),
-   not `OutOfDate`.
+3. `check_version` uses stdlib tuple comparison (`tuple(int(x) for x in v.split("."))`)
+   for semver-aware comparison; an installed version newer than PyPI latest is
+   reported `UpToDate` (or `Ahead`), not `OutOfDate`. No new dependency added.
 4. `fetch_latest_plugin` catches only the expected exception types (e.g.
    `HostNotConfigured`, `urllib.error.URLError`, `json.JSONDecodeError`);
    unexpected exceptions surface normally.
@@ -75,14 +74,15 @@ Four robustness gaps in `ll-init`:
    → Validate host names against a known set; warn/error on unknown.
 
 2. **`merge_settings` over-aggressive sweep.** The idempotency sweep strips *every*
-   entry matching `Bash(ll-` (`scripts/little_loops/init/writers.py:252`), so a
+   entry matching `Bash(ll-` (`scripts/little_loops/init/writers.py:231–232`), so a
    user's custom `Bash(ll-mytool:*)` permission is silently removed on re-init.
    → Scope the sweep to the canonical `_LL_PERMISSIONS` set rather than the
    `Bash(ll-` prefix.
 
 3. **`check_version` is string-equality only** (`scripts/little_loops/init/install_check.py:157-169`).
    Any mismatch → `OutOfDate`, so an install *newer* than PyPI latest is reported
-   stale. → Use a semver-aware comparison (e.g. `packaging.version`).
+   stale. → Use stdlib tuple comparison: `tuple(int(x) for x in v.split("."))`.
+   No new dependency needed.
 
 4. **Bare `except Exception`** in `fetch_latest_plugin`
    (`scripts/little_loops/init/install_check.py:126`,
@@ -95,7 +95,7 @@ Four robustness gaps in `ll-init`:
 - Only the four nits identified above; no other `ll-init` behavior changes.
 - No new host detection heuristics beyond adding `opencode` to the known-host set.
 - No new `--hosts` validation modes; a simple warn-and-skip or error-and-exit is sufficient.
-- `packaging` is likely already a transitive dependency; no new top-level dependency expected.
+- Fix 3 uses stdlib tuple comparison (`tuple(int(x) for x in v.split("."))`); no new dependency added to `pyproject.toml`.
 - Out of scope: reworking `_detect_hosts` auto-detection logic, changing the `OutOfDate` UX flow, or adding new permission groups.
 
 ## Implementation Steps
@@ -104,8 +104,9 @@ Four robustness gaps in `ll-init`:
    to `_detect_hosts` and its adapter branch.
 2. Replace the `Bash(ll-` prefix sweep in `merge_settings` (`writers.py`) with a
    set-membership check against `_LL_PERMISSIONS`.
-3. Replace string equality in `check_version` (`install_check.py`) with
-   `packaging.version.Version` comparison; handle `installed > latest` case.
+3. Replace string equality in `check_version` (`install_check.py`) with stdlib tuple
+   comparison (`tuple(int(x) for x in v.split("."))`); handle `installed > latest`
+   case returning `UpToDate` (or a new `Ahead` value). No `pyproject.toml` change needed.
 4. Narrow the broad `except Exception` in `fetch_latest_plugin` to specific expected
    exception types.
 5. Add/update tests in `test_init_core.py` covering each of the four fixes.
@@ -116,7 +117,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 6. Update `scripts/tests/test_init_core.py` — invert `test_removes_stale_ll_entries` assertion and add the five new test cases (unknown host, opencode detection, custom-ll-permission preserved)
 7. Update `scripts/tests/test_init_install.py` — invert `test_installed_ahead_returns_out_of_date` assertion and add semver lexicographic edge case + Fix 4 unexpected-exception propagation case
-8. (Conditional) Add `packaging>=21.0` to `[project.dependencies]` in `scripts/pyproject.toml` if Fix 3 uses `packaging.version.Version`; skip if stdlib tuple comparison is used instead
+8. ~~(Conditional) Add `packaging>=21.0` to `[project.dependencies]`~~ — stdlib tuple comparison chosen; no `pyproject.toml` change needed
 9. Update `docs/reference/CLI.md` — add `opencode` to the `--hosts` valid-values list
 10. Update `docs/reference/API.md` — update `check_version` semantics to describe three-way comparison behavior
 
@@ -129,7 +130,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/little_loops/init/tui.py` — also calls `_dispatch_host_adapters()` (line 871); verify host-name validation UX is consistent with the headless path
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/pyproject.toml` — add `packaging>=21.0` to `[project.dependencies]` (only required if Fix 3 uses `packaging.version.Version`; stdlib tuple comparison avoids this change)
+- `scripts/pyproject.toml` — no change needed; stdlib tuple comparison chosen for Fix 3
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/init/cli.py` calls `check_version` and `fetch_latest_plugin` from `install_check`
@@ -149,7 +150,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 
 **Tests that will break and must be updated:**
-- `scripts/tests/test_init_core.py::TestMergeSettings::test_removes_stale_ll_entries` (line 721) — asserts `count == 0` for `Bash(ll-old-tool:*)` after re-init; Fix 2 preserves that entry (it is not in `_LL_PERMISSIONS`), so the assertion inverts. Replace with a test that seeds a genuinely stale canonical entry and a companion case asserting `Bash(ll-mytool:*)` is preserved.
+- `scripts/tests/test_init_core.py::TestMergeSettings::test_removes_stale_ll_entries` (line 752) — asserts `count == 0` for `Bash(ll-old-tool:*)` after re-init; Fix 2 preserves that entry (it is not in `_LL_PERMISSIONS`), so the assertion inverts. Replace with a test that seeds a genuinely stale canonical entry and a companion case asserting `Bash(ll-mytool:*)` is preserved.
 - `scripts/tests/test_init_install.py::TestCheckVersion::test_installed_ahead_returns_out_of_date` (line 31) — asserts `check_version("2.0.0", "1.0.0") == InstallStatus.OutOfDate`; Fix 3 makes installed > latest return `UpToDate` (or `Ahead`). Assert must be inverted.
 
 **New test cases needed (coverage gaps per fix):**
@@ -177,8 +178,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Fix 1 — host validation**: `_dispatch_host_adapters()` is at `cli.py:67–98`; `_detect_hosts()` is at `cli.py:55–64`. The canonical known-host set lives in `host_runner._HOST_RUNNER_REGISTRY` (keys: `claude-code`, `codex`, `opencode`, `pi`). The `--hosts` argument enters `main_init()` at `cli.py:609–617` with comma-splitting but no validation before reaching `_dispatch_host_adapters`. `opencode` only needs a dispatch branch added to `_dispatch_host_adapters` — it is intentionally absent from `_PROBE_ORDER` and auto-detection should stay that way. Validation pattern to follow: `resolve_host()` raises `HostNotConfigured(f"Host {explicit!r} is not registered. Available: {sorted(_HOST_RUNNER_REGISTRY)}.")` for unknown names.
-- **Fix 2 — permission sweep**: `_LL_PERMISSIONS` is defined at `writers.py:24–52` (27 entries: 26 `Bash(ll-…:*)` + 1 trailing `Write(.ll/ll-continue-prompt.md)`). The idempotency sweep at `writers.py:252` uses `e.startswith("Bash(ll-")`. Replace with `e in _LL_PERMISSIONS` (or `e in set(_LL_PERMISSIONS)` for O(1) — the tuple is small so either is fine).
-- **Fix 3 — version comparison ⚠ dependency gap**: `check_version()` is at `install_check.py:157–169`; current body is `if installed == latest: return UpToDate; return OutOfDate`. `packaging` is **not declared** in `scripts/pyproject.toml` `[project.dependencies]` (lines 37–43) — it must be added there, or a stdlib alternative used (e.g., `tuple(int(x) for x in v.split("."))` works for strict `MAJOR.MINOR.PATCH` strings). The scope boundary says "no new top-level dependency expected" but research shows `packaging` is not a current transitive — either add it or use the stdlib tuple approach.
+- **Fix 2 — permission sweep**: `_LL_PERMISSIONS` is defined at `writers.py:25–53` (27 entries: 26 `Bash(ll-…:*)` + 1 trailing `Write(.ll/ll-continue-prompt.md)`). The idempotency sweep occupies two lines at `writers.py:231–232`: line 231 strips by prefix (`e.startswith("Bash(ll-")`), line 232 strips the Write sentinel separately. Replacing both with `e not in _LL_PERMISSIONS` covers both patterns in one pass (the Write entry is already in the tuple).
+- **Fix 3 — version comparison**: `check_version()` is at `install_check.py:157–169`; current body is `if installed == latest: return UpToDate; return OutOfDate`. **Decision**: use stdlib tuple comparison `tuple(int(x) for x in v.split("."))` (works for strict `MAJOR.MINOR.PATCH` strings); `packaging` is not declared in `scripts/pyproject.toml` and will not be added. The three-way result: `installed < latest` → `OutOfDate`, `installed == latest` → `UpToDate`, `installed > latest` → `UpToDate` (or a new `Ahead` value if desired).
 - **Fix 4 — bare except**: `fetch_latest_plugin()` Zone 1 catch is at `install_check.py:122–127`: `except (HostNotConfigured, Exception)`. `HostNotConfigured` is a `RuntimeError` subclass and is already subsumed by `Exception`, making the tuple redundant. The correct narrowing is `except HostNotConfigured` — this is the only expected error from `resolve_host()` / `build_version_check()` when no host is configured. Zones 2 and 3 in the same function already use properly narrowed catches (`subprocess.TimeoutExpired, FileNotFoundError, OSError` / `…, json.JSONDecodeError`) and need no changes.
 
 ## Impact
@@ -195,8 +196,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Verification Notes
 
 - **2026-06-26** (/ll:verify-issues): Updated Fix-2's permission-sweep edit site from `writers.py:185` to `writers.py:252` (the `e.startswith("Bash(ll-")` line drifted); Current Behavior, Proposed Solution, Implementation, and Codebase Research now point at the correct line. The four other nits and the `install_check.py` refs (126, 157-169) verified accurate and left unchanged.
+- **2026-06-27** (/ll:refine-issue): Fix-2 sweep drifted again — updated `writers.py:252` → `writers.py:231–232` across Current Behavior, Proposed Solution, and Codebase Research. Also clarified that two lines (231 + 232) collapse into one `e not in _LL_PERMISSIONS` check. Updated `test_removes_stale_ll_entries` line ref 721 → 752 (confirmed via pattern-finder). Confirmed: `packaging` absent from `pyproject.toml`; all four `install_check.py` refs (122-127, 157-169) and `_HOST_RUNNER_REGISTRY` keys accurate; `TestCheckVersion::test_installed_ahead_returns_out_of_date` at line 30-32 (accurate); `TestFetchLatestPlugin` at lines 267-351.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-27T00:00:00Z - `38124153-63e0-44fa-802d-293a6e630113.jsonl`
+- `/ll:refine-issue` - 2026-06-27T23:43:48 - `eeed6b9a-de07-4597-8de0-bdc4a6ac5422.jsonl`
 - `/ll:confidence-check` - 2026-06-26T22:31:07 - `6b5f4713-4801-485e-9909-111bcbcf1d9a.jsonl`
 - `/ll:wire-issue` - 2026-06-26T22:27:48 - `6b5f4713-4801-485e-9909-111bcbcf1d9a.jsonl`
 - `/ll:refine-issue` - 2026-06-26T22:13:46 - `6b5f4713-4801-485e-9909-111bcbcf1d9a.jsonl`
