@@ -2707,3 +2707,75 @@
   rule: 'Captured: Emit summary.json on general-task terminal done'
   scope: issue
   issue: ENH-2365
+- id: OTHE-118
+  type: rule
+  timestamp: '2026-06-28T06:29:55Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: The FSM interpolator only rewrites `${...}` and `$${...}` (brace form);
+    bare `$(...)` and `$VAR` pass to `bash -c` verbatim. Doubling to `$$(` or `$$VAR`
+    causes bash to expand `$$` as the runner PID, silently corrupting all downstream
+    `${captured.*}` references.
+  rule: In FSM shell actions, use single `$` for `$(...)` and `$VAR`; only escape
+    as `$${VAR}` when the brace form collides with
+  enforcement: advisory
+  issue: BUG-2368
+- id: TEST-119
+  type: rule
+  timestamp: '2026-06-28T06:29:55Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: 'audit-loop-run misdiagnosed `66563(pwd)/66563DIR` as under-escaping
+    and recommended adding `$$`. Empirical testing inverted the conclusion: the numeric
+    prefix was the PID from over-escaping, not a sentinel value. LLM diagnostics on
+    runtime output can invert the root cause direction.'
+  rule: Never treat a PID-like numeric prefix in captured shell output as an 'interpolation
+    sentinel' — verify empirically befor
+  enforcement: advisory
+  issue: BUG-2368
+- id: ARCH-120
+  type: rule
+  timestamp: '2026-06-28T06:29:55Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: BUG-2368 ran undetected through multiple loop iterations producing corrupt
+    `run_dir` captures. The shift-left MR-9 rule now catches `$$(`/`$$VAR` at validate
+    time. Runtime-silent corruption should always have a pre-run gate.
+  rule: Any shell pattern that silently corrupts captured output at runtime must be
+    caught by a static `ll-loop validate` rule (
+  enforcement: advisory
+  issue: BUG-2368
+- id: ARCH-121
+  type: rule
+  timestamp: '2026-06-28T06:29:55Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Validation rules need an explicit opt-out path for intentional exceptions
+    (e.g., a loop that genuinely needs the runner PID). Without a suppression flag,
+    legitimate uses must violate the rule or the rule must be weakened for everyone.
+  rule: Every new `ll-loop validate` ERROR/WARNING rule must be paired with a named
+    boolean suppression flag on the `FSMLoop` sc
+  enforcement: advisory
+  issue: BUG-2368
+- id: ARCH-122
+  type: rule
+  timestamp: '2026-06-28T06:29:55Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Developers incorrectly assumed `interpolate()` would normalize or unescape
+    `$$`. The function has a narrow scope by design. Misunderstanding this boundary
+    was the proximate cause of three loops being authored with wrong escaping.
+  rule: The FSM `interpolate()` function is not a general shell pre-processor — it
+    only transforms `${ns.path}` and `$${VAR}` (b
+  enforcement: advisory
+  issue: BUG-2368
