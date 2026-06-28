@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.134.0] - 2026-06-28
+
+### Removed
+
+- **`restore_best` and `snapshot_issue` states from `refine-to-ready-issue`** — Retired the best-snapshot retention guard (ENH-2037) now that all refine passes are additive (`--auto`/`--gap-analysis`); the "late rewrite regresses a better earlier iteration" failure mode no longer applies. `check_outcome.on_yes` now routes directly to `done`. `artifact_versioning: true` flag removed (was inert for `issue-management` category loops). (ENH-2364)
+
 ## [1.133.0] - 2026-06-27
 
 ### Added

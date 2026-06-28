@@ -3,8 +3,9 @@ id: ENH-2364
 title: 'refine-to-ready-issue: retire or downscope the restore_best snapshot guard'
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-28T04:24:39Z'
+completed_at: '2026-06-28T05:56:58Z'
 discovered_date: '2026-06-28'
 discovered_by: conversation
 decision_needed: false
@@ -138,12 +139,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 Known breaking tests in `scripts/tests/test_builtin_loops.py` (`TestRefineToReadyIssueSubLoop`):
 
-- `test_check_outcome_on_yes_routes_to_restore_best` (line 917) — **UPDATE**: rename and change assert from `"restore_best"` to `"done"`; update docstring to drop ENH-2037 rationale
-- `test_restore_best_state_exists` (line 1162) — **DELETE** (state removed)
-- `test_restore_best_is_shell` (line 1169) — **DELETE** (state removed)
-- `test_restore_best_routes_to_done` (line 1176) — **DELETE** (state removed)
-- `test_restore_best_shell_action_restores_higher_scoring_snapshot` (line 1183) — **DELETE** (state removed)
-- `test_restore_best_no_op_when_current_is_already_best` (line 1238) — **DELETE** (state removed)
+- `test_check_outcome_on_yes_routes_to_restore_best` (line 915) — **UPDATE**: rename and change assert from `"restore_best"` to `"done"`; update docstring to drop ENH-2037 rationale
+- `test_restore_best_state_exists` (line 1160) — **DELETE** (state removed)
+- `test_restore_best_is_shell` (line 1167) — **DELETE** (state removed)
+- `test_restore_best_routes_to_done` (line 1174) — **DELETE** (state removed)
+- `test_restore_best_shell_action_restores_higher_scoring_snapshot` (line 1181) — **DELETE** (state removed)
+- `test_restore_best_no_op_when_current_is_already_best` (line 1236) — **DELETE** (state removed)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_fragments.py:993` — `TestBuiltinLoopMigration.test_builtin_loops_load_after_migration` loads and validates `refine-to-ready-issue.yaml`; will stay green as long as YAML remains structurally valid — **VERIFY** (no code change needed)
@@ -225,14 +226,14 @@ skill, not a `run_dir` path — so MR-5 would not catch them anyway.)
 Tests that **must be updated** if `restore_best` is retired (Option 1) and
 `check_outcome.on_yes` is rewired to `done`:
 
-- `test_check_outcome_on_yes_routes_to_restore_best` (line 917) — asserts
+- `test_check_outcome_on_yes_routes_to_restore_best` (line 915) — asserts
   `check_outcome.on_yes == "restore_best"`. Becomes false; update to assert `done` (or the
   warning-only diagnostic state under Option 2).
-- `test_restore_best_state_exists` (line 1162)
-- `test_restore_best_is_shell` (line 1169)
-- `test_restore_best_routes_to_done` (line 1176)
-- `test_restore_best_shell_action_restores_higher_scoring_snapshot` (line 1183)
-- `test_restore_best_no_op_when_current_is_already_best` (line 1238)
+- `test_restore_best_state_exists` (line 1160)
+- `test_restore_best_is_shell` (line 1167)
+- `test_restore_best_routes_to_done` (line 1174)
+- `test_restore_best_shell_action_restores_higher_scoring_snapshot` (line 1181)
+- `test_restore_best_no_op_when_current_is_already_best` (line 1236)
 
 Tests that **stay green**:
 
@@ -267,7 +268,7 @@ Tests that **stay green**:
   (`restore_best` is a reused pattern name across loops — `rlhf-animated-svg.yaml`,
   proposed `vega-viz` in ENH-2045 — so scope edits to this loop's test class
   `TestRefineToReadyIssueSubLoop` only.)
-- **`test_check_readiness_on_yes_routes_to_check_outcome`** (`test_builtin_loops.py:896`)
+- **`test_check_readiness_on_yes_routes_to_check_outcome`** (`test_builtin_loops.py:894`)
   exercises the path *leading to* `restore_best` but asserts only `check_readiness → check_outcome`;
   it stays green under either option.
 
@@ -282,12 +283,13 @@ Tests that **stay green**:
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 1. Edit `refine-to-ready-issue.yaml` — rewire `check_outcome.on_yes` → `done`; rewire `refine_issue.next` and `refine_followup.next` → `check_wire_done`; delete `snapshot_issue` state; delete `restore_best` state; remove `artifact_versioning: true` top-level key.
-2. Update `test_builtin_loops.py` — rename `test_check_outcome_on_yes_routes_to_restore_best` (line 917) and change its assert to `"done"`; delete the 5 `restore_best`-specific tests (lines 1162, 1169, 1176, 1183, 1238).
+2. Update `test_builtin_loops.py` — rename `test_check_outcome_on_yes_routes_to_restore_best` (line 915) and change its assert to `"done"`; delete the 5 `restore_best`-specific tests (lines 1160, 1167, 1174, 1181, 1236).
 3. Write 5 new tests in `TestRefineToReadyIssueSubLoop` — `test_check_outcome_on_yes_routes_to_done`, `test_refine_issue_next_is_check_wire_done`, `test_refine_followup_next_is_check_wire_done`, `test_restore_best_state_absent`, `test_snapshot_issue_state_absent`.
 4. Run `ll-loop validate refine-to-ready-issue` — confirm no MR-5 / artifact-versioning warning fires; confirm `TestValidatorWarningBudget` ratchet passes.
 5. Add `### Removed` entry to `CHANGELOG.md` in the release that ships this change.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T05:51:03 - `f7aaa303-d744-43b2-abf2-4648dc2f6be6.jsonl`
 - `/ll:confidence-check` - 2026-06-28T06:00:00Z - `703279fb-8dcb-48bd-aeb4-d68977d78282.jsonl`
 - `/ll:wire-issue` - 2026-06-28T05:16:42 - `d85817cb-a77f-47c1-b630-287fcad6d515.jsonl`
 - `/ll:decide-issue` - 2026-06-28T05:03:07 - `df40cbc8-6274-462a-a779-6eadb47810e2.jsonl`
