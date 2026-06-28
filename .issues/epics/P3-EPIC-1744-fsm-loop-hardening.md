@@ -8,7 +8,7 @@ captured_at: "2026-05-27T00:00:00Z"
 discovered_date: "2026-05-27"
 discovered_by: manual
 labels: [epic, loops, fsm, resilience]
-relates_to: [ENH-1677, ENH-1678, ENH-1701, ENH-1735, ENH-1684, ENH-1797, FEAT-1689, ENH-1816, BUG-1723]
+relates_to: [ENH-1677, ENH-1678, ENH-1701, ENH-1735, ENH-1684, ENH-1797, FEAT-1689, ENH-1816, BUG-1723, ENH-2365]
 ---
 
 # EPIC-1744: FSM Loop Hardening
@@ -56,6 +56,7 @@ Observed pain points from production loop runs:
 - **FEAT-1689** — add ll-harness CLI for one-shot runner evaluation
 - **ENH-1816** — Screenshot harness loses frame determinism when ticker advances mid-capture
 - **BUG-1723** — Wire idle_timeout through FSM schema, Protocol, runner, and executor to kill hung subprocesses
+- **ENH-2365** — Emit `summary.json` on `general-task` terminal `done` (not only max_steps) so audit-loop-run can't mechanically mislabel clean runs as phantom
 
 ## Implementation Order
 

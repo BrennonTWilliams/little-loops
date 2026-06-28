@@ -338,6 +338,16 @@ states:
     on_error: select_step
 
   count_done:
+    description: |
+      Counts unchecked hard criteria + soft criteria (when pass rate < min_pass_rate)
+      + unchecked plan steps. Deliberately decoupled from `failed_samples`: Sample
+      Verification sections accumulate across iterations and are free-form LLM prose
+      that re-emit historical FAILEDs, so including `failed_samples` in the gate would
+      permanently poison the count. The criterion-level gate (HARD/SOFT_UNCHECKED_DOD)
+      is authoritative — a genuine sample failure already blocks because check_done
+      flips the affected criterion back to [ ]; final_verify then re-verifies every
+      criterion from scratch before terminal done. Do NOT re-add `failed_samples` to
+      the gate. See the inline rationale in the action below.
     action: |
       DOD="${context.run_dir}/dod.md"
       PLAN="${context.run_dir}/plan.md"
