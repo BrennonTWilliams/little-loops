@@ -26,6 +26,7 @@ score_complexity: 17
 score_test_coverage: 22
 score_ambiguity: 23
 score_change_surface: 21
+parent: EPIC-2369
 ---
 
 # ENH-2317: `ll-logs` CWD defaults, `--all` opt-in, finish host-awareness

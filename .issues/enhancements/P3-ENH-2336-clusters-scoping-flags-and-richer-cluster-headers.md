@@ -16,6 +16,7 @@ labels:
 - ll-issues
 - clusters
 - output-styling
+parent: EPIC-2370
 ---
 
 # ENH-2336: `ll-issues clusters` — scoping flags and richer per-cluster headers

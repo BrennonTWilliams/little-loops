@@ -24,6 +24,7 @@ labels:
 - scan-failures
 depends_on:
 - ENH-2317
+parent: EPIC-2369
 ---
 
 # ENH-2318: Retarget `ll-logs scan-failures` at the user's own failures (keep current behavior behind a flag)

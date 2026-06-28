@@ -18,6 +18,7 @@ labels:
 - ll-issues
 - clusters
 - output-styling
+parent: EPIC-2370
 ---
 
 # FEAT-2337: `ll-issues clusters` — graph-aware layout to replace the linear box-stack

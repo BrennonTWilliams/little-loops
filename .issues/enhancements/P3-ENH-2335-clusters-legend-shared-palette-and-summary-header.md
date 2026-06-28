@@ -16,6 +16,7 @@ labels:
 - ll-issues
 - clusters
 - output-styling
+parent: EPIC-2370
 ---
 
 # ENH-2335: `ll-issues clusters` — legend, filter/summary header, shared palette, unified edge notation

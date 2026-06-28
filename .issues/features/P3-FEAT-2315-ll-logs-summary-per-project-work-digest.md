@@ -26,6 +26,7 @@ score_complexity: 15
 score_test_coverage: 20
 score_ambiguity: 18
 score_change_surface: 22
+parent: EPIC-2369
 ---
 
 # FEAT-2315: `ll-logs summary` — user-facing per-project work digest

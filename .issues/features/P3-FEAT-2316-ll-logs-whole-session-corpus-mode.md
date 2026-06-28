@@ -30,6 +30,7 @@ score_complexity: 15
 score_test_coverage: 22
 score_ambiguity: 21
 score_change_surface: 20
+parent: EPIC-2369
 ---
 
 # FEAT-2316: `ll-logs` whole-session corpus mode (analyze non-ll tool activity)
