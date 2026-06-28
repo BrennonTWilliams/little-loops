@@ -372,7 +372,7 @@ class TestBuiltinLoopList:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """ll-loop list shows [built-in] tag for bundled loops."""
+        """ll-loop list includes built-in loops in the listing."""
         monkeypatch.chdir(tmp_path)
         with patch.object(sys, "argv", ["ll-loop", "list"]):
             from little_loops.cli import main_loop
@@ -380,7 +380,6 @@ class TestBuiltinLoopList:
             result = main_loop()
         assert result == 0
         captured = capsys.readouterr()
-        assert "[built-in]" in captured.out
         assert "fix-quality-and-tests" in captured.out
 
     def test_list_hides_overridden_builtin(

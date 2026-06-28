@@ -1063,7 +1063,7 @@ class TestFSMHealth:
             "on_rate_limit_exhausted",
         )
         reachable: set[str] = set()
-        queue = ["assess"]
+        queue = [data.get("initial", "assess")]
         while queue:
             current = queue.pop(0)
             if current in reachable or current not in data["states"]:

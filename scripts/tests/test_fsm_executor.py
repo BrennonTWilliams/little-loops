@@ -2044,6 +2044,7 @@ class TestEvaluators:
                         "verdict": "yes",
                         "confidence": 0.95,
                         "reason": "Deployment completed successfully",
+                        "evidence": "Deployed to production",
                     }
                 ),
             }
@@ -2134,6 +2135,7 @@ class TestEvaluators:
                         "verdict": "blocked",
                         "confidence": 0.85,
                         "reason": "Missing permissions",
+                        "evidence": "Permission denied",
                     }
                 ),
             }
