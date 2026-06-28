@@ -2889,3 +2889,97 @@
     the injection point, not just assert the inj
   enforcement: advisory
   issue: BUG-2373
+- id: ARCH-131
+  type: rule
+  timestamp: '2026-06-28T19:51:42Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The audited run reported 'implemented=3' based on ll-auto exit code,
+    but every target issue remained open. Snapshot before/after (e.g., .issues/completed/)
+    is the only reliable measure.
+  rule: Use ground-truth state diffs for accounting; never use sub-process exit codes
+    as a proxy for completion.
+  enforcement: advisory
+  issue: EPIC-2386
+- id: ARCH-132
+  type: rule
+  timestamp: '2026-06-28T19:51:42Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'BUG-2381: the parent fired record_implemented on sub-loop exit, including
+    no-op exits. The ledger must be written by the state that confirmed the file moved
+    to completed/, not by the caller.'
+  rule: Write authoritative ledger entries only after verifying the artifact reached
+    its terminal location.
+  enforcement: advisory
+  issue: EPIC-2386
+- id: ARCH-133
+  type: rule
+  timestamp: '2026-06-28T19:51:42Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'ENH-2385: items that were neither closed nor explicitly skipped fell
+    through with no record, making audits impossible and verdicts untrustworthy.'
+  rule: 'Every scoped input must resolve to exactly one terminal accounting bucket:
+    closed, not_closed, skipped, or errored.'
+  enforcement: advisory
+  issue: EPIC-2386
+- id: ARCH-134
+  type: rule
+  timestamp: '2026-06-28T19:51:42Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: go_no_go.on_no previously dropped issues invisibly. Silent drops make
+    accounting impossible and hide real failures behind clean-looking summaries.
+  rule: Never route rejected or dropped items silently; always park them in a skip/reject
+    ledger with a reason.
+  enforcement: advisory
+  issue: EPIC-2386
+- id: STYL-135
+  type: rule
+  timestamp: '2026-06-28T19:51:42Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: 'BUG-2380: record_implemented was called after delegation/refinement
+    steps, not after verified closure, inflating the implemented count and misleading
+    callers.'
+  rule: Keep 'processed' and 'implemented' as distinct concepts; log the weaker claim
+    when only refinement or delegation occurre
+  enforcement: advisory
+  issue: EPIC-2386
+- id: ARCH-136
+  type: rule
+  timestamp: '2026-06-28T19:51:42Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'BUG-2374: passing implemented issues through the caller skip file double-counted
+    every successful issue as skipped, forcing verdict=partial on successful runs.'
+  rule: Use a single dedup channel for cross-path accounting; do not reuse skip/status
+    channels as dedup channels.
+  enforcement: advisory
+  issue: EPIC-2386
+- id: ARCH-137
+  type: rule
+  timestamp: '2026-06-28T19:51:42Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Mid-run accumulation double-counts on retry paths. Computing closed =
+    |completed after| − |completed before| is idempotent and retry-safe.
+  rule: Derive summary counters at finalize time from the ground-truth diff, not by
+    accumulating counters during mid-run states.
+  enforcement: advisory
+  issue: EPIC-2386
