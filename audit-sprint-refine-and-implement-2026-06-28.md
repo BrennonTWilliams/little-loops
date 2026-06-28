@@ -336,3 +336,94 @@ A single crash with no successful implementations triggers `phantom`; a single c
 - **Events analyzed**: 952
 - **Sub-loops traversed**: `auto-refine-and-implement`, `recursive-refine`, `implement-issue-chain`, `refine-to-ready-issue`
 - **No issue files created** — per user request, all findings consolidated here.
+
+---
+
+## 7. Resolution (2026-06-28)
+
+Session record of the remediation. The goal became making
+`sprint-refine-and-implement` / `auto-refine-and-implement` honestly **implement
+and close** issues — and report closure from ground truth — rather than
+"refine-and-report."
+
+### What we found (the chain, end-to-end)
+
+Tracing `sprint-refine-and-implement → auto-refine-and-implement → recursive-refine
+→ implement-issue-chain → ll-auto` against the code established that the
+implement-and-close **machinery already existed**:
+
+- `ll-auto --only` implements AND closes — `process_issue_inplace` verifies the
+  work and `complete_issue_lifecycle` moves the file into `.issues/completed/`
+  (`issue_manager.py`). Its `--only` exit code is a usable proxy (`run()` returns
+  1 when it attempted but closed nothing).
+- `recursive-refine.enqueue_children` already `git mv`s a decomposed umbrella
+  into `completed/`, prepends children to the recursion queue, and routes
+  refined-and-passed children onward to implementation.
+
+So the loop already closed ready leaves and decomposed umbrellas. This run looked
+like "refine only" because every target was an umbrella whose freshly-created
+children were born unready (the readiness gate) — not because the implement path
+was broken. The defects were in **honesty and accounting**, not in the ability to
+close.
+
+### Finding → resolution
+
+| Finding | Resolution | Issue | Status |
+|---|---|---|---|
+| #1 (CRITICAL) — passed issues written to skip file | dedup-only `*-processed.txt` channel | BUG-2374 | done |
+| #2 (HIGH) — `record_implemented` misnomer | renamed `record_processed`; records to `*-processed.txt`, honest log line; stopped claiming implementation | BUG-2380 | done |
+| #3 (HIGH) — sub-loop terminal ≠ work done | authoritative implemented ledger moved into `implement_issue`, written only on real closure | BUG-2381 | done |
+| #4 (MEDIUM) — `decision_needed` "silent skip" | **reclassified**: not a silent drop — `check_decision_needed` already parks to `skipped-decision.txt` + `skipped.txt`. The symptom was #3, now fixed. Remaining is rename/docs only | BUG-2375 | open (docs-only) |
+| #5 (MEDIUM) — `--group-by epic` not transitive | not addressed this session | ENH-1727 (pre-existing) | open |
+| #6 (MEDIUM) — FEAT-369 missing | external data defect in the audited EPIC-364 project, not a little-loops fix | — | n/a |
+| #7 (LOW) — no `partial-with-errors` verdict | added the verdict | ENH-2376 | done |
+| #8 (LOW) — name/scope ambiguity | folded into BUG-2380 rename + loop description update | BUG-2380 | done |
+
+### Verify-and-close + drain-to-empty (ENH-2385, done)
+
+Beyond the individual findings, the loop now verifies and accounts for closure:
+
+- **Ground-truth closure**: `init` snapshots `.issues/completed/`; `finalize`
+  diffs it to count issues that actually reached `completed/` this run —
+  capturing both `ll-auto` leaf closures and decomposition closures. `closed` is
+  no longer an `ll-auto`-exit proxy.
+- **Per-issue closure verification**: `implement_issue` records the implemented
+  ledger only when the issue truly landed in `completed/`.
+- **No silent drops**: `go_no_go.on_no` previously dropped go-no-go-rejected
+  issues invisibly; it now routes to a new `record_rejected` state that parks
+  them in the skip ledger with a reason.
+- **Full accounting**: `summary.json` reports `closed / not_closed / skipped /
+  errored`, with `not_closed = processed − completed` (derived at finalize so a
+  rate-limit retry can't double-count). Every scoped issue ends as closed or
+  parked-with-reason → drain-to-empty.
+- **429 regression fix**: the BUG-2381 `if ll-auto; then` wrapper had forced exit
+  0, silently disabling the rate-limit fragment's 429 detection (it requires
+  `exit_code != 0`). `implement_issue` now re-exits with `ll-auto`'s real code.
+
+### Files touched
+
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `init` baseline
+  snapshot; `record_processed` rename; ground-truth `finalize`; description.
+- `scripts/little_loops/loops/oracles/implement-issue-chain.yaml` —
+  closure-verified `implement_issue` (exit-code preserved); new `record_rejected`.
+- `scripts/tests/test_builtin_loops.py` — ground-truth finalize verdict table,
+  closure-source / not-closed / exit-code-preservation / go-no-go / init-baseline
+  regressions (+ BUG-2380/2381/2374 structural and shell-exec tests).
+- `skills/audit-loop-run/SKILL.md` — recognize `closed` as a success counter.
+
+### Outcome
+
+- Both loops `ll-loop validate` clean.
+- 1642 tests pass (loop + audit-skill + general-task + fragments + interpolation
+  + persistence suites); ruff clean.
+- The loop now implements-and-closes everything closeable and accounts for the
+  rest; the verdict reflects real terminal state.
+
+### Deliberately deferred
+
+- **Readiness contract (Gap A)**: freshly-decomposed children won't implement in
+  the same pass unless they reach the readiness threshold. Lowering that bar so a
+  single run drives a fresh EPIC end-to-end was explicitly out of scope this
+  session — the next follow-up if single-run end-to-end is desired.
+- **BUG-2375** (decision_needed rename/docs) and **ENH-1727** (`--group-by epic`
+  transitivity) remain open.
