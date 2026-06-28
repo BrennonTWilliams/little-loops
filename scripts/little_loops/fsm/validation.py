@@ -110,6 +110,16 @@ _SHARED_TMP_PATH_RE = re.compile(r"\.loops/tmp/[\w./-]+")
 # Negative lookbehind exempts the legitimate escaped form $${VAR:-value}.
 _BASH_DEFAULT_RE = re.compile(r"(?<!\$)\$\{[^}]*:-[^}]*\}")
 
+# MR-9: over-escaped shell `$$` detector. The FSM interpolator only rewrites the
+# brace form `$${...}` → `${...}`; bare `$(...)` and `$VAR` are passed to the shell
+# untouched (interpolation.py). Doubling them — `$$(` or `$$VAR` — is NOT an escape:
+# the runner's `bash -c` expands the leading `$$` to the PID, so `$$(pwd)/$$DIR`
+# becomes `<pid>(pwd)/<pid>DIR`. The lookahead matches `$$(` (command substitution)
+# and `$$<identifier-start>` (variable) while exempting the legitimate `$${...}`
+# brace escape (next char `{`) and a standalone PID `$$` (followed by `/`, `.`, space,
+# or end). See ENH for the interactive-/html-/svg-generator over-escape bug.
+_OVERESCAPED_SHELL_RE = re.compile(r"\$\$(?=\(|[A-Za-z_])")
+
 # ENH-1961: Regex for extracting captured variable names from ${captured.<var>.*} references
 _CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")
 
@@ -187,6 +197,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "artifact_versioning_ok",
         "generator_fix_ok",
         "bash_default_ok",
+        "shell_pid_ok",
         "import",
         "fragments",
         "from",
@@ -1088,6 +1099,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_bash_default_interpolation(fsm))
 
+    errors.extend(_validate_overescaped_shell(fsm))
+
     errors.extend(_validate_classify_route_default(fsm))
 
     errors.extend(_validate_zero_retry_counter(fsm))
@@ -1657,6 +1670,59 @@ def _validate_bash_default_interpolation(fsm: FSMLoop) -> list[ValidationError]:
                 severity=ValidationSeverity.ERROR,
             )
         )
+    return errors
+
+
+def _validate_overescaped_shell(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-9: over-escaped shell ``$$`` that expands to the PID.
+
+    The FSM interpolation engine only rewrites the brace form ``$${...}`` → ``${...}``;
+    bare ``$(...)`` command substitution and ``$VAR`` references are passed through to
+    ``bash -c`` untouched. Doubling them is therefore NOT an escape — ``$$(`` and
+    ``$$VAR`` reach the shell literally, where the leading ``$$`` expands to the process
+    ID. An ``init`` state that does ``echo "$$(pwd)/$$DIR"`` captures ``<pid>(pwd)/<pid>DIR``
+    instead of an absolute path, silently corrupting every downstream ``${captured…}``
+    reference (observed in interactive-/html-/svg-generator).
+
+    Correct forms:
+      - ``$(pwd)`` / ``$DIR``   — command substitution / variable (shell handles them)
+      - ``$${VAR}`` / ``$${VAR:-x}`` — ONLY brace vars collide with ``${ns.path}`` and
+        need the ``$$`` escape; the interpolator converts ``$${`` → ``${``.
+
+    Scans shell actions only (``action_type`` shell/untyped, excluding slash commands);
+    ``$$VAR`` in a prompt is inert text. Suppressed by ``shell_pid_ok: true`` at the
+    loop top-level for the rare case where a literal PID is intended.
+    """
+    if fsm.shell_pid_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if not state.action:
+            continue
+        # Shell-only: prompt/slash-command actions never reach `bash -c`, so a `$$`
+        # there is harmless text. Mirror the shell gate used by other shell rules.
+        if state.action_type not in ("shell", None):
+            continue
+        if state.action.lstrip().startswith("/"):
+            continue
+        for match in _OVERESCAPED_SHELL_RE.finditer(state.action):
+            # Show the offending token plus the next char for context (e.g. `$$(` / `$$D`).
+            start = match.start()
+            token = state.action[start : start + 3]
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"[state: {state_name}] '{token}' over-escapes shell `$$`. "
+                        "The interpolator only converts the brace form $${{...}}; bare "
+                        "$(...) and $VAR pass through untouched, so $$ here expands to the "
+                        "PID at `bash -c` time (e.g. $$(pwd)/$$DIR -> <pid>(pwd)/<pid>DIR). "
+                        "Use single $ ($(pwd), $DIR); reserve $$ for the $${{VAR}} brace "
+                        "escape. Set `shell_pid_ok: true` to suppress. (MR-9)"
+                    ),
+                    path=f"states.{state_name}.action",
+                    severity=ValidationSeverity.ERROR,
+                )
+            )
     return errors
 
 

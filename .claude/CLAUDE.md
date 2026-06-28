@@ -181,6 +181,17 @@ requirements (SHOR Table 1). States with no `evaluate.prompt` (using
 `DEFAULT_LLM_PROMPT`) are not flagged; the evidence contract is injected
 automatically. Set `evidence_contract_ok: true` to suppress. See ENH-2342.
 
+`ll-loop validate` enforces rule 9 as ERROR severity (rule MR-9). A shell
+action containing `$$(` or `$$VAR` over-escapes bash. The FSM interpolator only
+rewrites the brace form `$${...}` → `${...}`; bare `$(...)` command substitution
+and `$VAR` references are passed to `bash -c` untouched. Doubling them is NOT an
+escape — the leading `$$` expands to the runner's PID, so `echo "$$(pwd)/$$DIR"`
+captures `<pid>(pwd)/<pid>DIR` instead of an absolute path, silently corrupting
+every downstream `${captured…}` reference. Use single `$` (`$(pwd)`, `$DIR`) for
+command substitution and variables; reserve `$$` exclusively for the `$${VAR}`
+brace escape that collides with `${ns.path}` interpolation. Set `shell_pid_ok:
+true` to suppress in the rare case where a literal PID is intended.
+
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.

@@ -34,6 +34,7 @@ from little_loops.fsm.validation import (
     _validate_input_key_without_guard,
     _validate_llm_evidence_contract,
     _validate_meta_loop_evaluation,
+    _validate_overescaped_shell,
     _validate_parameters,
     _validate_partial_route_dead_end,
     _validate_progress_paths_isolation,
@@ -3131,6 +3132,109 @@ class TestBashDefaultInterpolation:
             "description: A loop that intentionally uses bash default syntax\n"
             "initial: work\n"
             "bash_default_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
+
+class TestOverescapedShell:
+    """MR-9: over-escaped shell `$$` that expands to the PID at `bash -c` time."""
+
+    def _simple_fsm(
+        self,
+        action: str,
+        *,
+        action_type: str | None = "shell",
+        shell_pid_ok: bool = False,
+    ) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(
+                    action=action, action_type=action_type, on_yes="done", on_no="work"
+                ),
+                "done": make_state(terminal=True),
+            },
+            shell_pid_ok=shell_pid_ok,
+        )
+
+    def test_mr9_fires_for_overescaped_command_substitution(self) -> None:
+        """MR-9 ERROR fires for $$( command substitution."""
+        fsm = self._simple_fsm('echo "$$(pwd)"')
+        errors = _validate_overescaped_shell(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.ERROR
+        assert errors[0].path == "states.work.action"
+        assert "$$(" in errors[0].message
+
+    def test_mr9_fires_for_overescaped_variable(self) -> None:
+        """MR-9 ERROR fires for a bare $$VAR reference."""
+        fsm = self._simple_fsm('echo "$$DIR"')
+        errors = _validate_overescaped_shell(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.ERROR
+
+    def test_mr9_counts_each_occurrence(self) -> None:
+        """The real init bug ($$(pwd)/$$DIR) yields two findings."""
+        fsm = self._simple_fsm('echo "$$(pwd)/$$DIR"')
+        errors = _validate_overescaped_shell(fsm)
+        assert len(errors) == 2
+
+    def test_mr9_does_not_fire_for_correct_single_dollar(self) -> None:
+        """MR-9 does not fire for the correct $(pwd)/$DIR form."""
+        fsm = self._simple_fsm('echo "$(pwd)/$DIR"')
+        errors = _validate_overescaped_shell(fsm)
+        assert errors == []
+
+    def test_mr9_does_not_fire_for_legit_brace_escape(self) -> None:
+        """MR-9 does not fire for the legit $${VAR} / $${VAR:-x} brace escape."""
+        fsm = self._simple_fsm('[ -z "$${VISION_API_KEY:-}" ] && echo "$${HOME}"')
+        errors = _validate_overescaped_shell(fsm)
+        assert errors == []
+
+    def test_mr9_does_not_fire_for_standalone_pid(self) -> None:
+        """MR-9 does not fire for a standalone PID `$$` (tmp.$$ / "$$ ")."""
+        fsm = self._simple_fsm('echo "tmp.$$"; echo "pid=$$ "')
+        errors = _validate_overescaped_shell(fsm)
+        assert errors == []
+
+    def test_mr9_ignores_prompt_actions(self) -> None:
+        """A $$VAR in a prompt action is inert text and is not flagged."""
+        fsm = self._simple_fsm("Summarize $$DIR for the user", action_type="prompt")
+        errors = _validate_overescaped_shell(fsm)
+        assert errors == []
+
+    def test_mr9_suppressed_by_shell_pid_ok(self) -> None:
+        """shell_pid_ok: true suppresses MR-9."""
+        fsm = self._simple_fsm('echo "$$(pwd)"', shell_pid_ok=True)
+        errors = _validate_overescaped_shell(fsm)
+        assert errors == []
+
+    def test_mr9_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes MR-9 errors for over-escaped shell $$."""
+        fsm = self._simple_fsm('echo "$$(pwd)"')
+        errors = validate_fsm(fsm)
+        mr9 = [
+            e for e in errors if e.severity == ValidationSeverity.ERROR and "(MR-9)" in e.message
+        ]
+        assert len(mr9) == 1
+
+    def test_shell_pid_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level shell_pid_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that intentionally embeds a literal PID via $$\n"
+            "initial: work\n"
+            "shell_pid_ok: true\n"
             "states:\n"
             "  work:\n"
             "    action: run.sh\n"
