@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 
@@ -134,6 +134,56 @@ def temp_project_dir() -> Generator[Path, None, None]:
         ll_dir = project_root / ".ll"
         ll_dir.mkdir(exist_ok=True)
         yield project_root
+
+
+@pytest.fixture
+def make_project(
+    tmp_path: Path,
+) -> Callable[[dict[str, Any] | None, list[str] | None], tuple[Path, Path]]:
+    """Factory fixture for creating temporary project directories with custom configs.
+
+    Each call creates a numbered subdirectory under pytest's ``tmp_path`` so the
+    factory can be invoked multiple times in a single test without collisions.
+    Cleanup is handled automatically by pytest's ``tmp_path`` teardown.
+
+    Args:
+        config: Full config dict written to ``.ll/ll-config.json``.  When
+            omitted a minimal ``{"project": {"name": "test-project"}}`` is used.
+        extra_dirs: Additional directories to create, given as paths relative to
+            the project root (e.g. ``[".issues/completed", ".worktrees"]``).
+
+    Returns:
+        ``(project_root, issues_base)`` — project root and the resolved
+        ``issues.base_dir`` directory (default ``.issues``).
+    """
+    _counter = [0]
+
+    def _factory(
+        config: dict[str, Any] | None = None,
+        extra_dirs: list[str] | None = None,
+    ) -> tuple[Path, Path]:
+        _counter[0] += 1
+        project = tmp_path / f"project_{_counter[0]}"
+        project.mkdir()
+        ll_dir = project / ".ll"
+        ll_dir.mkdir()
+
+        cfg: dict[str, Any] = config or {"project": {"name": "test-project"}}
+        (ll_dir / "ll-config.json").write_text(json.dumps(cfg))
+
+        base_dir = cfg.get("issues", {}).get("base_dir", ".issues")
+        issues_base = project / base_dir
+        categories: dict[str, Any] = cfg.get("issues", {}).get("categories", {})
+        for cat_key, cat_val in categories.items():
+            cat_dir_name = cat_val.get("dir", cat_key) if isinstance(cat_val, dict) else cat_key
+            (issues_base / cat_dir_name).mkdir(parents=True, exist_ok=True)
+
+        for d in extra_dirs or []:
+            (project / d).mkdir(parents=True, exist_ok=True)
+
+        return project, issues_base
+
+    return _factory
 
 
 @pytest.fixture

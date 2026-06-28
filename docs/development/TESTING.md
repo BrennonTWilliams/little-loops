@@ -98,8 +98,10 @@ pytest -m slow scripts/tests/
 # Run all property-based tests
 pytest scripts/tests/test_*_properties.py -v
 
-# Run specific property test file
+# Run specific property test files
 pytest scripts/tests/test_issue_parser_properties.py -v
+pytest scripts/tests/test_config_properties.py -v
+pytest scripts/tests/test_fsm_route_properties.py -v
 ```
 
 ---
@@ -131,7 +133,7 @@ scripts/tests/
 | `test_<module>.py` | Unit tests for a module | `test_config.py`, `test_issue_parser.py` |
 | `test_<feature>_integration.py` | Integration tests | `test_issue_workflow_integration.py` |
 | `test_cli_e2e.py` | E2E CLI tests | `test_cli_e2e.py` |
-| `test_<module>_properties.py` | Property-based tests | `test_issue_parser_properties.py` |
+| `test_<module>_properties.py` | Property-based tests | `test_issue_parser_properties.py`, `test_config_properties.py`, `test_fsm_route_properties.py` |
 
 ### Test Class and Method Naming
 
@@ -1035,7 +1037,8 @@ Verify the line is exactly in `exclude_lines` configuration.
 
 | Fixture | Purpose |
 |---------|---------|
-| `temp_project_dir` | Temporary project directory |
+| `temp_project_dir` | Temporary project directory with `.ll/` subdir |
+| `make_project` | Factory: `make_project(config=..., extra_dirs=...)` → `(project_root, issues_base)` — creates a numbered project dir per call with custom config and extra dirs |
 | `sample_config` | Sample configuration dict |
 | `fixtures_dir` | Path to fixtures |
 | `issue_fixtures` | Path to issue fixtures |

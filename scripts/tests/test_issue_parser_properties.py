@@ -88,6 +88,26 @@ class TestIssueInfoProperties:
         learning_tests_required=st.one_of(
             st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5)
         ),
+        epic=st.one_of(st.none(), st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True)),
+        effort=st.one_of(st.none(), st.integers(min_value=1, max_value=13)),
+        impact=st.one_of(st.none(), st.integers(min_value=1, max_value=13)),
+        confidence_score=st.one_of(st.none(), st.integers(min_value=0, max_value=100)),
+        outcome_confidence=st.one_of(st.none(), st.integers(min_value=0, max_value=100)),
+        score_complexity=st.one_of(st.none(), st.integers(min_value=0, max_value=25)),
+        score_test_coverage=st.one_of(st.none(), st.integers(min_value=0, max_value=25)),
+        score_ambiguity=st.one_of(st.none(), st.integers(min_value=0, max_value=25)),
+        score_change_surface=st.one_of(st.none(), st.integers(min_value=0, max_value=25)),
+        size=st.one_of(st.none(), st.sampled_from(["XS", "S", "M", "L", "XL"])),
+        testable=st.one_of(st.none(), st.booleans()),
+        decision_needed=st.one_of(st.none(), st.booleans()),
+        missing_artifacts=st.one_of(st.none(), st.booleans()),
+        implementation_order_risk=st.one_of(st.none(), st.booleans()),
+        milestone=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
+        session_commands=st.lists(st.text(min_size=1, max_size=50), max_size=5),
+        session_command_counts=st.dictionaries(
+            st.text(min_size=1, max_size=20), st.integers(min_value=0, max_value=100), max_size=5
+        ),
+        labels=st.lists(st.text(min_size=1, max_size=50), max_size=10),
     )
     @settings(max_examples=200)
     def test_roundtrip_serialization(
@@ -106,8 +126,26 @@ class TestIssueInfoProperties:
         relates_to: list[str],
         duplicate_of: str | None,
         learning_tests_required: list[str] | None,
+        epic: str | None,
+        effort: int | None,
+        impact: int | None,
+        confidence_score: int | None,
+        outcome_confidence: int | None,
+        score_complexity: int | None,
+        score_test_coverage: int | None,
+        score_ambiguity: int | None,
+        score_change_surface: int | None,
+        size: str | None,
+        testable: bool | None,
+        decision_needed: bool | None,
+        missing_artifacts: bool | None,
+        implementation_order_risk: bool | None,
+        milestone: str | None,
+        session_commands: list[str],
+        session_command_counts: dict[str, int],
+        labels: list[str],
     ) -> None:
-        """IssueInfo survives roundtrip through to_dict/from_dict."""
+        """IssueInfo survives roundtrip through to_dict/from_dict for all fields."""
         original = IssueInfo(
             path=path,
             issue_type=issue_type,
@@ -123,6 +161,24 @@ class TestIssueInfoProperties:
             relates_to=relates_to,
             duplicate_of=duplicate_of,
             learning_tests_required=learning_tests_required,
+            epic=epic,
+            effort=effort,
+            impact=impact,
+            confidence_score=confidence_score,
+            outcome_confidence=outcome_confidence,
+            score_complexity=score_complexity,
+            score_test_coverage=score_test_coverage,
+            score_ambiguity=score_ambiguity,
+            score_change_surface=score_change_surface,
+            size=size,
+            testable=testable,
+            decision_needed=decision_needed,
+            missing_artifacts=missing_artifacts,
+            implementation_order_risk=implementation_order_risk,
+            milestone=milestone,
+            session_commands=session_commands,
+            session_command_counts=session_command_counts,
+            labels=labels,
         )
         restored = IssueInfo.from_dict(original.to_dict())
 
@@ -140,6 +196,24 @@ class TestIssueInfoProperties:
         assert restored.relates_to == original.relates_to
         assert restored.duplicate_of == original.duplicate_of
         assert restored.learning_tests_required == original.learning_tests_required
+        assert restored.epic == original.epic
+        assert restored.effort == original.effort
+        assert restored.impact == original.impact
+        assert restored.confidence_score == original.confidence_score
+        assert restored.outcome_confidence == original.outcome_confidence
+        assert restored.score_complexity == original.score_complexity
+        assert restored.score_test_coverage == original.score_test_coverage
+        assert restored.score_ambiguity == original.score_ambiguity
+        assert restored.score_change_surface == original.score_change_surface
+        assert restored.size == original.size
+        assert restored.testable == original.testable
+        assert restored.decision_needed == original.decision_needed
+        assert restored.missing_artifacts == original.missing_artifacts
+        assert restored.implementation_order_risk == original.implementation_order_risk
+        assert restored.milestone == original.milestone
+        assert restored.session_commands == original.session_commands
+        assert restored.session_command_counts == original.session_command_counts
+        assert restored.labels == original.labels
 
     @given(priority=st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5"]))
     def test_priority_int_valid_priorities(self, priority: str) -> None:

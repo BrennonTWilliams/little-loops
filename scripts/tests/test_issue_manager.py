@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -176,39 +177,33 @@ class TestAutoManagerIntegration:
     """Integration tests for AutoManager path handling."""
 
     @pytest.fixture
-    def setup_project(self, temp_project_dir: Path) -> tuple[Path, Path]:
+    def setup_project(
+        self,
+        make_project: Callable[[dict[str, Any] | None, list[str] | None], tuple[Path, Path]],
+    ) -> tuple[Path, Path]:
         """Set up a minimal project structure."""
-        # Create .claude directory with config
-        ll_dir = temp_project_dir / ".ll"
-        ll_dir.mkdir(exist_ok=True)
-
-        config_content = {
-            "project": {"name": "test-project"},
-            "issues": {
-                "base_dir": ".issues",
-                "categories": {
-                    "enhancements": {
-                        "prefix": "ENH",
-                        "dir": "enhancements",
-                        "action": "improve",
-                    }
+        project, issues_base = make_project(
+            config={
+                "project": {"name": "test-project"},
+                "issues": {
+                    "base_dir": ".issues",
+                    "categories": {
+                        "enhancements": {
+                            "prefix": "ENH",
+                            "dir": "enhancements",
+                            "action": "improve",
+                        }
+                    },
+                    "completed_dir": "completed",
                 },
-                "completed_dir": "completed",
+                "automation": {
+                    "timeout_seconds": 60,
+                    "state_file": ".auto-manage-state.json",
+                },
             },
-            "automation": {
-                "timeout_seconds": 60,
-                "state_file": ".auto-manage-state.json",
-            },
-        }
-
-        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
-
-        # Create issues directory
-        issues_dir = temp_project_dir / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
-        (temp_project_dir / ".issues" / "completed").mkdir()
-
-        return temp_project_dir, issues_dir
+            extra_dirs=[".issues/completed"],
+        )
+        return project, issues_base / "enhancements"
 
     def test_auto_manager_wires_sqlite(self, setup_project: tuple[Path, Path]) -> None:
         """AutoManager wires SQLiteTransport; close_issue live-writes rows (no backfill needed)."""

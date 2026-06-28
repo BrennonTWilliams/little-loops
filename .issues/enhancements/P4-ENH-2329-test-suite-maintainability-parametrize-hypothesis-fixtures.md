@@ -3,9 +3,10 @@ id: ENH-2329
 title: 'Test-suite maintainability: parametrize duplicated bodies, extend hypothesis,
   consolidate setup fixtures'
 type: ENH
-status: open
+status: done
 priority: P4
 captured_at: '2026-06-26T22:35:39Z'
+completed_at: '2026-06-28T03:55:33Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 labels:
@@ -15,11 +16,11 @@ learning_tests_required:
 - hypothesis
 - pytest
 confidence_score: 96
-outcome_confidence: 72
+outcome_confidence: 76
 score_complexity: 18
 score_test_coverage: 22
-score_ambiguity: 17
-score_change_surface: 15
+score_ambiguity: 20
+score_change_surface: 16
 decision_needed: false
 ---
 
@@ -347,7 +348,24 @@ _Added by `/ll:confidence-check` on 2026-06-27_
 - **Unresolved structural decision**: The issue presents "either new files (`test_config_properties.py`, `test_fsm_route_properties.py`) or appended to `test_config.py` / `test_fsm_schema_fuzz.py`" as an either/or without resolution. New files align with the established `test_<module>_properties.py` convention and are auto-discovered; resolve before implementing.
 - **Broad implicit conftest blast radius**: The additive `make_project` factory has 22 implicit fixture-consumer files as its regression surface. Run the full suite (`python -m pytest scripts/tests/`) post-migration, not just the five-file subset.
 
+## Resolution
+
+**Completed**: 2026-06-28
+
+### Changes Made
+- `scripts/tests/test_config.py`: Replaced 3 structurally identical `test_events_*_round_trips_through_to_dict` tests with a single `@pytest.mark.parametrize` test (ids: socket/otel/webhook) — each failure now has its own test ID.
+- `scripts/tests/test_issue_parser_properties.py`: Extended `test_roundtrip_serialization` `@given` strategy with 18 previously-omitted `IssueInfo` fields (`epic`, `effort`, `impact`, `confidence_score`, `outcome_confidence`, `score_*`, `size`, `testable`, `decision_needed`, `missing_artifacts`, `implementation_order_risk`, `milestone`, `session_commands`, `session_command_counts`, `labels`).
+- `scripts/tests/test_config_properties.py` (new): Hypothesis idempotency test for `BRConfig.to_dict()` (dump∘load invariant, 50 examples, `@pytest.mark.slow`).
+- `scripts/tests/test_fsm_route_properties.py` (new): Hypothesis round-trip test for `RouteTableRenderer.to_markdown()` → `RouteTableParser.parse_markdown()` (100 examples, `@pytest.mark.slow`).
+- `scripts/tests/conftest.py`: Added `make_project` factory fixture.
+- `scripts/tests/test_orchestrator.py`: Migrated `temp_repo_with_config` to use `make_project`.
+- `scripts/tests/test_cli.py`: Migrated `TestMainAutoIntegration.temp_project` and `TestMainParallelIntegration.temp_project` to use `make_project`.
+- `scripts/tests/test_issue_manager.py`: Migrated `TestAutoManagerIntegration.setup_project` to use `make_project`.
+- `docs/development/TESTING.md`: Added new property files to "Running Property-Based Tests", "Test File Naming Conventions", and "Key Fixtures" table.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-28T03:36:14 - `4d719093-2f1a-4a24-aec3-97a59ddcf424.jsonl`
+- `/ll:confidence-check` - 2026-06-27T00:00:00Z - `1591d862-e1e8-44ac-aeac-7779d062ed98.jsonl`
 - `/ll:decide-issue` - 2026-06-28T03:27:50 - `678e5c89-b7f5-404d-9a17-a211822445e9.jsonl`
 - `/ll:confidence-check` - 2026-06-27T00:00:00Z - `42c3d343-6292-4ebc-b9a2-8c4572c3562c.jsonl`
 - `/ll:format-issue` - 2026-06-28T03:19:45 - `6ae39568-79a9-4c19-aa48-c88a46b609a7.jsonl`

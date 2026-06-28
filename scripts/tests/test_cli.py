@@ -10,6 +10,7 @@ import argparse
 import signal
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
@@ -279,15 +280,13 @@ class TestMainAutoIntegration:
     """Integration tests for main_auto entry point."""
 
     @pytest.fixture
-    def temp_project(self) -> Generator[Path, None, None]:
+    def temp_project(
+        self,
+        make_project: Callable[[dict[str, Any] | None, list[str] | None], tuple[Path, Path]],
+    ) -> Path:
         """Create a temporary project with config."""
-        import json
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            project = Path(tmpdir)
-            ll_dir = project / ".ll"
-            ll_dir.mkdir()
-            config = {
+        project, _ = make_project(
+            config={
                 "project": {"name": "test"},
                 "issues": {
                     "base_dir": ".issues",
@@ -296,10 +295,8 @@ class TestMainAutoIntegration:
                 },
                 "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
             }
-            (ll_dir / "ll-config.json").write_text(json.dumps(config))
-            issues_dir = project / ".issues" / "bugs"
-            issues_dir.mkdir(parents=True)
-            yield project
+        )
+        return project
 
     def test_main_auto_creates_manager_with_correct_args(self, temp_project: Path) -> None:
         """main_auto creates AutoManager with parsed arguments."""
@@ -465,15 +462,13 @@ class TestMainParallelIntegration:
     """Integration tests for main_parallel entry point."""
 
     @pytest.fixture
-    def temp_project(self) -> Generator[Path, None, None]:
+    def temp_project(
+        self,
+        make_project: Callable[[dict[str, Any] | None, list[str] | None], tuple[Path, Path]],
+    ) -> Path:
         """Create a temporary project with config."""
-        import json
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            project = Path(tmpdir)
-            ll_dir = project / ".ll"
-            ll_dir.mkdir()
-            config = {
+        project, _ = make_project(
+            config={
                 "project": {"name": "test"},
                 "issues": {
                     "base_dir": ".issues",
@@ -487,10 +482,8 @@ class TestMainParallelIntegration:
                     "timeout_seconds": 1800,
                 },
             }
-            (ll_dir / "ll-config.json").write_text(json.dumps(config))
-            issues_dir = project / ".issues" / "bugs"
-            issues_dir.mkdir(parents=True)
-            yield project
+        )
+        return project
 
     def test_main_parallel_cleanup_mode(self, temp_project: Path) -> None:
         """main_parallel --cleanup calls cleanup and exits."""

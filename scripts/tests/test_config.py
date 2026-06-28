@@ -1817,64 +1817,53 @@ class TestBRConfigEventsIntegration:
         assert "events" in result
         assert "transports" in result["events"]
 
-    def test_events_socket_round_trips_through_to_dict(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    @pytest.mark.parametrize(
+        "transport,sub_cfg,expected",
+        [
+            (
+                "socket",
+                {"path": "/tmp/test.sock", "max_clients": 4},
+                {"path": "/tmp/test.sock", "max_clients": 4},
+            ),
+            (
+                "otel",
+                {"endpoint": "http://collector:4317", "service_name": "my-svc"},
+                {"endpoint": "http://collector:4317", "service_name": "my-svc"},
+            ),
+            (
+                "webhook",
+                {
+                    "url": "https://hooks.example.com/ll",
+                    "batch_ms": 500,
+                    "headers": {"Authorization": "Bearer tok"},
+                },
+                {
+                    "url": "https://hooks.example.com/ll",
+                    "batch_ms": 500,
+                    "headers": {"Authorization": "Bearer tok"},
+                },
+            ),
+        ],
+        ids=["socket", "otel", "webhook"],
+    )
+    def test_events_transport_sub_config_round_trips_through_to_dict(
+        self,
+        transport: str,
+        sub_cfg: dict[str, Any],
+        expected: dict[str, Any],
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
     ) -> None:
-        """events.socket sub-config round-trips through BRConfig.to_dict()."""
-        sample_config["events"] = {
-            "transports": ["socket"],
-            "socket": {"path": "/tmp/test.sock", "max_clients": 4},
-        }
+        """events.<transport> sub-config round-trips through BRConfig.to_dict()."""
+        sample_config["events"] = {"transports": [transport], transport: sub_cfg}
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
         result = config.to_dict()
 
-        assert result["events"]["transports"] == ["socket"]
-        assert result["events"]["socket"]["path"] == "/tmp/test.sock"
-        assert result["events"]["socket"]["max_clients"] == 4
-
-    def test_events_otel_round_trips_through_to_dict(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
-        """events.otel sub-config round-trips through BRConfig.to_dict()."""
-        sample_config["events"] = {
-            "transports": ["otel"],
-            "otel": {"endpoint": "http://collector:4317", "service_name": "my-svc"},
-        }
-        config_path = temp_project_dir / ".ll" / "ll-config.json"
-        config_path.write_text(json.dumps(sample_config))
-
-        config = BRConfig(temp_project_dir)
-        result = config.to_dict()
-
-        assert result["events"]["transports"] == ["otel"]
-        assert result["events"]["otel"]["endpoint"] == "http://collector:4317"
-        assert result["events"]["otel"]["service_name"] == "my-svc"
-
-    def test_events_webhook_round_trips_through_to_dict(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
-        """events.webhook sub-config round-trips through BRConfig.to_dict()."""
-        sample_config["events"] = {
-            "transports": ["webhook"],
-            "webhook": {
-                "url": "https://hooks.example.com/ll",
-                "batch_ms": 500,
-                "headers": {"Authorization": "Bearer tok"},
-            },
-        }
-        config_path = temp_project_dir / ".ll" / "ll-config.json"
-        config_path.write_text(json.dumps(sample_config))
-
-        config = BRConfig(temp_project_dir)
-        result = config.to_dict()
-
-        assert result["events"]["transports"] == ["webhook"]
-        assert result["events"]["webhook"]["url"] == "https://hooks.example.com/ll"
-        assert result["events"]["webhook"]["batch_ms"] == 500
-        assert result["events"]["webhook"]["headers"] == {"Authorization": "Bearer tok"}
+        assert result["events"]["transports"] == [transport]
+        assert result["events"][transport] == expected
 
 
 class TestScoringWeightsConfig:

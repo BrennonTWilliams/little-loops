@@ -23,7 +23,7 @@ import signal
 import tempfile
 import threading
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
@@ -47,45 +47,30 @@ def mock_logger() -> MagicMock:
 
 
 @pytest.fixture
-def temp_repo_with_config() -> Generator[Path, None, None]:
-    """Create a temporary directory with .claude config and issues."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        repo_path = Path(tmpdir)
-
-        # Create .claude directory with config
-        ll_dir = repo_path / ".ll"
-        ll_dir.mkdir()
-        config = {
-            "project": {"name": "test", "src_dir": "src/"},
-            "issues": {
-                "base_dir": ".issues",
-                "categories": {
-                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
-                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
-                    "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
-                },
-                "completed_dir": "completed",
+def temp_repo_with_config(
+    make_project: Callable[[dict[str, Any] | None, list[str] | None], tuple[Path, Path]],
+) -> Path:
+    """Create a temporary directory with .ll config and issues."""
+    config = {
+        "project": {"name": "test", "src_dir": "src/"},
+        "issues": {
+            "base_dir": ".issues",
+            "categories": {
+                "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
             },
-        }
-        (ll_dir / "ll-config.json").write_text(json.dumps(config))
-
-        # Create issues directory structure
-        issues_dir = repo_path / ".issues"
-        bugs_dir = issues_dir / "bugs"
-        completed_dir = issues_dir / "completed"
-        bugs_dir.mkdir(parents=True)
-        completed_dir.mkdir(parents=True)
-
-        # Create sample issue
-        (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
-            "# BUG-001: Test Bug\n\n## Summary\nTest bug."
-        )
-
-        # Create worktree base
-        worktree_base = repo_path / ".worktrees"
-        worktree_base.mkdir()
-
-        yield repo_path
+            "completed_dir": "completed",
+        },
+    }
+    repo_path, issues_base = make_project(
+        config=config,
+        extra_dirs=[".issues/completed", ".worktrees"],
+    )
+    (issues_base / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+        "# BUG-001: Test Bug\n\n## Summary\nTest bug."
+    )
+    return repo_path
 
 
 @pytest.fixture
