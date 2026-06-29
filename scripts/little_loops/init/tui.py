@@ -184,7 +184,18 @@ def run_tui(
                 check_version(installed_version, _plugin_latest) == InstallStatus.OutOfDate
             )
 
-    if _needs_install or _pkg_outdated or _plugin_outdated:
+    # Adapter-staleness rows for non-Claude hosts (codex today), symmetric with
+    # the package/plugin rows above (FEAT-2387). The gen-version stamp embedded
+    # in .codex/hooks.json is compared against the installed package version.
+    _adapter_stale = False
+    _adapter_stamp: str | None = None
+    if "codex" in _selected_hosts and installed_version is not None:
+        from little_loops.init.writers import read_adapter_gen_version
+
+        _adapter_stamp = read_adapter_gen_version(project_root)
+        _adapter_stale = _adapter_stamp is not None and _adapter_stamp != installed_version
+
+    if _needs_install or _pkg_outdated or _plugin_outdated or _adapter_stale:
         console.print()
         console.rule("[bold]1 / 7  Plugin Install[/bold]")
         if _needs_install:
@@ -211,6 +222,12 @@ def run_tui(
                 "  Upgrade: [cyan]claude plugin marketplace update little-loops "
                 "&& claude plugin update ll@little-loops[/cyan]"
             )
+        if _adapter_stale:
+            console.print(
+                f"[yellow]Codex adapter outdated:[/yellow] generated against "
+                f"[cyan]{_adapter_stamp}[/cyan], package is [cyan]{installed_version}[/cyan]."
+            )
+            console.print("  Refresh: [cyan]ll-init --upgrade[/cyan]")
 
         _proceed: bool | None = questionary.confirm(
             "Proceed with wizard? (install/upgrade separately after)",

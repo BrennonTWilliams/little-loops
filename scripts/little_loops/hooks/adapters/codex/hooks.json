@@ -1,4 +1,5 @@
 {
+  "_ll_gen_version": "{{LL_GEN_VERSION}}",
   "hooks": {
     "SessionStart": [
       {

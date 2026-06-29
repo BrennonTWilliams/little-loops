@@ -7772,7 +7772,7 @@ class InstallStatus(Enum):
 def detect_installation(project_root: Path) -> tuple[str | None, str | None, str | None]
 ```
 
-Detects the active little-loops installation. Checks pip metadata first; falls back to `claude plugin list --json` for global/project plugin installs.
+Detects the active little-loops installation. Checks pip metadata first; falls back to `<host> plugin list --json` for global/project plugin installs. The plugin-check binary is resolved via `resolve_host()` rather than a hardcoded `claude` literal (CLAUDE.md host-abstraction rule), so the check is skipped cleanly when no host CLI is configured.
 
 **Returns**: `(install_source, installed_version, install_path)` where `install_source` is one of `"local-editable"`, `"pypi"`, `"global-claude-code"`, `"project-claude-code"`, or `None` (not found). `installed_version` is the version string for pip-based and claude-code plugin installs (populated via `--json` flag; `None` if the CLI is too old to support it). `install_path` is the `installPath` from the plugin JSON for claude-code plugin installs; `None` otherwise.
 
@@ -7783,6 +7783,14 @@ Detects the active little-loops installation. Checks pip metadata first; falls b
 | `"global-claude-code"` | Installed as a user-scoped Claude Code plugin (`scope: "user"`) |
 | `"project-claude-code"` | Installed as a project-scoped Claude Code plugin (`scope: "project"`) |
 | `None` | Not found |
+
+### installed_package_version
+
+```python
+def installed_package_version() -> str | None
+```
+
+Returns the installed `little-loops` package version via `importlib.metadata.version`, or `None` when the package is not installed. Single source of truth for the codex adapter gen-version stamp (written by `install_codex_adapter`) and the warn-only staleness comparison in `ll-init`.
 
 ### fetch_latest_pypi
 

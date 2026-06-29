@@ -92,7 +92,7 @@ ll-init
 | `--plan` | Emits a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything | CI pipelines, inspection before applying, or piping into `ll-init apply --config` |
 | `--enable FEATURE` | Enable an optional feature in the headless config (repeatable). Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization` | Activating optional features without the TUI |
 | `--disable FEATURE` | Disable a feature (same valid names as `--enable`) | Turning off a feature that was auto-enabled |
-| `--upgrade` | Act on version drift automatically (install or upgrade the pip package). Default headless mode is warn-only | CI pipelines or automation where you want hands-free upgrades |
+| `--upgrade` | Act on version drift automatically, then refresh every active host's integration surface: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`), and scope-aware-update the claude-code plugin. Default headless mode is warn-only | CI pipelines or automation where you want hands-free upgrades |
 | `--root / -C` | Set the project root directory (default: current directory) | Running `ll-init` from a different working directory |
 | `--hosts HOST…` | Wire adapters for additional host CLIs: `claude-code`, `codex`, `opencode`, `pi` | Only needed if you use little-loops with multiple AI coding tools |
 
@@ -119,6 +119,7 @@ Start with the auto-detected defaults.
 | Local dev install (editable `pip install -e`) | Reads the installed version; checks PyPI for drift |
 | PyPI consumer install (`pip install little-loops`) | Reads the installed version; checks PyPI for drift |
 | Version mismatch (installed ≠ PyPI latest) | Prints a notice with the upgrade command; **warns only** by default — pass `--upgrade` to upgrade automatically |
+| Stale adapter (generated gen-version ≠ installed package version) | Prints a hint for the affected host (e.g. codex); **warns only** by default — pass `--upgrade` to force-regenerate the adapter |
 | Up to date | Proceeds silently |
 
 When an existing `.ll/ll-config.json` is found, the TUI pre-populates every field from its current values so a re-run always starts from your actual config rather than defaults. Use `--force` to reset to template defaults instead of merging.

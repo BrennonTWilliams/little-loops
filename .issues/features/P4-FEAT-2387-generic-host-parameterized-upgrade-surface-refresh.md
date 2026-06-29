@@ -2,14 +2,15 @@
 id: FEAT-2387
 title: Generic host-parameterized ll-init --upgrade surface refresh
 type: feature
-status: open
+status: done
 priority: P4
 discovered_date: 2026-06-24
+completed_at: 2026-06-29 18:22:50+00:00
 discovered_by: capture-issue
 parent: EPIC-2257
 decision_ref: ARCHITECTURE-049
 blocked_by: []
-decision_needed: true
+decision_needed: false
 relates_to:
 - ENH-2256
 - FEAT-2260
@@ -20,11 +21,11 @@ labels:
 - portfolio
 - init
 - upgrade
-confidence_score: 86
-outcome_confidence: 62
+confidence_score: 92
+outcome_confidence: 72
 score_complexity: 14
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 20
 score_change_surface: 20
 ---
 
@@ -63,7 +64,7 @@ warn/advise path for the **Claude marketplace plugin**, but:
 `ll-init --upgrade` dispatches a host-parameterized surface refresh for every active host after the package upgrade:
 
 - **claude-code**: scope-aware plugin update — auto for project-scoped installs, advise-only for user-scoped.
-- **Adapter hosts** (codex, gemini, omp): force-regenerate all adapter files against the upgraded `plugin_root`, correcting stale version paths.
+- **Adapter hosts** (codex today; gemini/omp once their writers land): force-regenerate all adapter files against the upgraded `plugin_root`, correcting stale version paths.
 - Generated adapters embed a version stamp; `--upgrade` warns when the stamp diverges from the installed package version.
 - TUI Screen-1 shows staleness rows for non-Claude hosts, symmetric with existing package/plugin rows.
 
@@ -74,6 +75,41 @@ A developer uses little-loops with both claude-code and codex. After `pip instal
 ## Motivation
 
 After a package upgrade, integration adapter files can silently drift from the upgraded package — stale template content (renamed hooks, schema bumps) or an install-mode change that shifts the resolved package dir. (The original "absolute path pointing at a deleted version directory" failure largely dissolved with EPIC-2279's in-package `{{LL_PLUGIN_ROOT}}` substitution — see "Why the adapter can still go stale".) Users discover drift only when codex/gemini/omp integrations misbehave after an upgrade. The upgrade surface must be as multi-host-aware as initial installation; without this, every package upgrade requires manual adapter regeneration for each non-Claude host.
+
+## Proposed Solution
+
+Add a `_dispatch_host_upgrade(hosts, plugin_root)` dispatcher in `cli.py` that iterates active hosts and routes per surface flavor:
+
+- **claude-code**: scope-aware plugin update via `resolve_host()` — auto-update for project-scoped installs, advise-only for user-scoped (using the `install_source` field already returned by `detect_installation()`; BUG-2266 is done).
+- **Adapter hosts** (codex today; gemini/omp once their writers land): call `install_codex_adapter(force=True)` against the upgraded `plugin_root` to force-regenerate stale adapter files, overriding the skip-existing guard at `writers.py:~459`.
+
+Insert the dispatcher in the upgrade block at `cli.py` between the pip-upgrade step and the normal `_dispatch_host_adapters` call. On upgrade, pass `force=True` so adapters always regenerate rather than skip.
+
+Embed a gen-version stamp in each regenerated adapter so a subsequent `--upgrade` in warn-only mode can compare stamp vs installed version (via `importlib.metadata.version("little-loops")`). Stamp location: **JSON field `"_ll_gen_version"` inside `.codex/hooks.json`**. No schema validation rejects unknown fields; a `{{LL_GEN_VERSION}}` placeholder is substituted identically to `{{LL_PLUGIN_ROOT}}`, keeping all version metadata in one file with no additional sidecar artifact. Read path: `json.load(dest)["_ll_gen_version"]` vs `importlib.metadata.version("little-loops")`.
+
+Extend TUI Screen-1 to show per-host adapter-staleness rows using the same boolean-gate pattern as `_pkg_outdated` / `_plugin_outdated`.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-29.
+
+**Decision 1 — Adapter gen-version stamp location**: JSON field `"_ll_gen_version"` inside `.codex/hooks.json` (8/12).
+
+**Reasoning**: Codebase evidence confirmed no schema validation rejects unknown fields in `.codex/hooks.json` (no `$schema`, no `additionalProperties`). The `{{LL_GEN_VERSION}}` placeholder substitution is mechanically identical to the existing `{{LL_PLUGIN_ROOT}}` pattern in `install_codex_adapter`, keeping all metadata in one file. The sidecar alternative (5/12) has no Python writer to reuse, no `.codex/`-scoped sidecar precedent, and requires an extra dry-run preview line and gitignore entry.
+
+**Decision 2 — User-scoped Claude plugin behavior**: Auto-update for project-scoped; advise-only for user-scoped (11/12).
+
+**Reasoning**: `detect_installation()` already returns `"project-claude-code"` vs `"global-claude-code"` — no new function needed. The scope gate mirrors the existing `"local-editable"` vs `"pypi"` conditional at `cli.py:218`. Always-advise (10/12) contradicts the AC which explicitly requires auto-update for project-scoped installs. The `--upgrade-global` flag (5/12) has no codebase precedent and goes against the current CLI simplification direction.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Stamp: JSON field `"_ll_gen_version"` | 2/3 | 2/3 | 2/3 | 2/3 | **8/12** ✓ |
+| Stamp: Sidecar `.codex/ll-gen-version` | 1/3 | 1/3 | 1/3 | 2/3 | 5/12 |
+| Plugin: Auto project-scoped + advise user | 3/3 | 2/3 | 3/3 | 3/3 | **11/12** ✓ |
+| Plugin: Always advise | 3/3 | 3/3 | 3/3 | 1/3 | 10/12 |
+| Plugin: `--upgrade-global` flag | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
 
 ## The two surface flavors
 
@@ -120,9 +156,9 @@ scoped) against template/package-version drift rather than path rot.
   `resolve_host()`), built once — no per-host bespoke branches beyond the
   surface-flavor split.
 - **claude-code branch**: scope-aware plugin update — auto-update when the
-  install is **project-scoped**; **advise only** (or require explicit opt-in)
-  when **user-scoped**, to avoid mutating shared global state from a
-  project-scoped command. (Depends on BUG-2266 for scope.)
+  install is **project-scoped**; **advise only** when **user-scoped**, to avoid
+  mutating shared global state from a project-scoped command. (Depends on
+  BUG-2266 for scope.)
 - **adapter-host branch**: force-regenerate each active host's adapters against
   the upgraded `plugin_root` (re-substitute the path so a dangling version
   stamp is corrected).
@@ -137,19 +173,16 @@ scoped) against template/package-version drift rather than path rot.
   adapter-staleness rows for non-Claude hosts, symmetric with the existing
   package/plugin rows.
 
-## Open design questions (keep explicit; do not pre-decide)
+## Design Decisions (Resolved)
 
-- User-scoped Claude plugin: auto-update gated on `scope == project` only, vs.
-  a separate `--upgrade-global` opt-in, vs. always advise. (Scope philosophy:
-  should a project-scoped command ever mutate global state?)
-- Where the adapter gen-version stamp lives (inside each adapter file as a
-  comment/field, vs. a sidecar watermark per host).
+- **User-scoped Claude plugin**: Advise-only for user-scoped installs (`"global-claude-code"`); auto-update for project-scoped (`"project-claude-code"`). A project-scoped command must not mutate global state. Gate: `install_source == "project-claude-code"` from `detect_installation()`. Advise path prints `"  Hint: claude plugin update ll@little-loops"` to stderr, mirroring the existing warn-without-upgrade shape at `cli.py:271-274`.
+- **Adapter gen-version stamp location**: JSON field `"_ll_gen_version"` inside `.codex/hooks.json`. No schema validation rejects unknown fields; `{{LL_GEN_VERSION}}` substitution is mechanically identical to `{{LL_PLUGIN_ROOT}}`; all metadata stays in one file. Read path: `json.load(dest)["_ll_gen_version"]` vs `importlib.metadata.version("little-loops")`.
 
 ## Reference
 
 - `scripts/little_loops/init/cli.py:159-236` — current package/plugin upgrade block.
 - `scripts/little_loops/init/install_check.py:105-146` — `fetch_latest_plugin`.
-- `scripts/little_loops/init/writers.py:450-490` — `install_codex_adapter` (skip-without-force at ~:478 + package-relative `{{LL_PLUGIN_ROOT}}` substitution at ~:481-482; `plugin_root` arg now unused, ~:464).
+- `scripts/little_loops/init/writers.py:431-471` — `install_codex_adapter` (skip-without-force at ~:459 + package-relative `{{LL_PLUGIN_ROOT}}` substitution at ~:462-463; `plugin_root` arg now unused).
 - `scripts/little_loops/init/cli.py:57-80` — `_dispatch_host_adapters`.
 - ENH-2256 — originating work. FEAT-2260 — generic skill/command adapter (sibling shared-infra child).
 
@@ -186,7 +219,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/GETTING_STARTED.md` — `--upgrade` flag table (line 95) currently says "install or upgrade the pip package" only; needs multi-host adapter refresh behavior documented; "Installation Detection" table (lines 117–121) is also pip-centric [Agent 2]
-- `docs/codex/getting-started.md` — troubleshooting table (line 132) directs users to `pip install --upgrade little-loops` for stale adapters; after FEAT-2267, `ll-init --upgrade` is the canonical path and should be mentioned here; if sidecar file (`.codex/ll-gen-version`) is introduced, that artifact is not documented anywhere yet [Agent 2]
+- `docs/codex/getting-started.md` — troubleshooting table (line 132) directs users to `pip install --upgrade little-loops` for stale adapters; after FEAT-2387, `ll-init --upgrade` is the canonical path and should be mentioned here; if sidecar file (`.codex/ll-gen-version`) is introduced, that artifact is not documented anywhere yet [Agent 2]
 - `docs/reference/API.md` — `fetch_latest_plugin` entry says "Only meaningful when the `claude-code` host is active"; update after scope fix extends or replaces this behavior [Agent 2]
 - `skills/init/SKILL.md` — example comment for `--upgrade` (in Parse Flags section) describes claude-only behavior; update when adapter-host branch is complete [Agent 2]
 
@@ -194,8 +227,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - N/A — uses existing `orchestration.host_cli` / `LL_HOST_CLI`; no new config keys
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/hooks/adapters/codex/hooks.json` (in-package template) — if the JSON-field approach is chosen for the gen-version stamp (`"_ll_gen_version"` key inside the file), the template itself must be modified; this template is verified by `ll-verify-package-data` [Agent 2]
-- `scripts/little_loops/init/cli.py` (`_print_dry_run()`) — if a gen-version sidecar file (e.g., `.codex/ll-gen-version`) is introduced as a separate artifact, the dry-run preview block for codex (which currently prints only `[write] .codex/hooks.json`) needs a corresponding `[write] .codex/ll-gen-version` line [Agent 2]
+- `scripts/little_loops/hooks/adapters/codex/hooks.json` (in-package template) — add `"_ll_gen_version": "{{LL_GEN_VERSION}}"` field (JSON-field stamp approach selected); verified by `ll-verify-package-data` on presence, not structure [Agent 2]
 
 ### Codebase Research Findings
 
@@ -205,13 +237,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Exact upgrade hook point**: `_run_yes` calls `_dispatch_host_adapters(hosts, project_root, plugin_root, force=force)` at `cli.py:339`. The upgrade (pip) runs in the block at `cli.py:200-265`, **before** this call. The `_dispatch_host_upgrade()` dispatcher should be inserted **between** the pip-upgrade block and the normal `_dispatch_host_adapters` call, calling `_dispatch_host_adapters(hosts, project_root, plugin_root, force=True)` when an upgrade was performed (instead of routing through the normal `force` flag).
 
-**`install_codex_adapter` already has `force` param** (`writers.py:450-490`): returns `True|False|None`; skips an existing dest without `--force` at ~:478. Note (post-EPIC-2279): the `{{LL_PLUGIN_ROOT}}` substitution now uses `str(Path(__file__).parent.parent)` — the in-package dir (~:481-482) — and the `plugin_root` arg is unused (~:464), so the substituted path is no longer a version-stamped marketplace path. Gen-version stamp is not yet written. The rendered output is `.codex/hooks.json` (JSON) — JSON does not support comments, so a `# generated by little-loops v0.9.0`-style comment is invalid. Options for stamp location: (a) a `"_ll_gen_version"` key inside the JSON (codex may reject unknown fields), or (b) a sidecar file (e.g., `.codex/ll-gen-version`) mirroring the `.claude/ll-update-docs.watermark` pattern. **This is one of the open design questions — do not pre-decide.** Document the constraint (no JSON comments) when implementing.
+**`install_codex_adapter` already has `force` param** (`writers.py:450-490`): returns `True|False|None`; skips an existing dest without `--force` at ~:478. Note (post-EPIC-2279): the `{{LL_PLUGIN_ROOT}}` substitution now uses `str(Path(__file__).parent.parent)` — the in-package dir (~:481-482) — and the `plugin_root` arg is unused (~:464), so the substituted path is no longer a version-stamped marketplace path. Gen-version stamp is not yet written. The rendered output is `.codex/hooks.json` (JSON) — JSON does not support comments, so a `# generated by little-loops v0.9.0`-style comment is invalid. Options for stamp location: (a) a `"_ll_gen_version"` key inside the JSON (codex may reject unknown fields), or (b) a sidecar file (e.g., `.codex/ll-gen-version`) mirroring the `.claude/ll-update-docs.watermark` pattern. **Decision: JSON field `"_ll_gen_version"` inside `.codex/hooks.json`** (see Design Decisions section). Note: JSON does not support comments; the stamp is a named field, not a comment.
 
 **Watermark format mismatch**: `.claude/ll-update-docs.watermark` stores a **git commit hash**, not a package version string. The gen-version stamp for adapters needs the **package version** (`importlib.metadata.version("little-loops")`), not a commit hash. The watermark "pattern" to mirror is the sidecar-file concept, not the hash format.
 
-**`detect_installation` hardcodes `"claude"` literal** (`install_check.py:60, 63`): violates the CLAUDE.md host-abstraction rule. Pre-existing debt; fix opportunistically when modifying this file for FEAT-2267.
+**`detect_installation` hardcodes `"claude"` literal** (`install_check.py:60, 63`): violates the CLAUDE.md host-abstraction rule. Pre-existing debt; fix opportunistically when modifying this file for FEAT-2387.
 
-**Gemini/OMP adapter writers don't exist yet**: `_dispatch_host_adapters` has no `elif host == "gemini"` or `elif host == "opencode"` branch. FEAT-2260 (sibling) delivers those writers. FEAT-2267's upgrade dispatcher must be designed to call the same writer functions FEAT-2260 introduces — **implement the upgrade dispatcher interface against FEAT-2260's writer contract, not ahead of it**. Consider marking this as `depends_on: [FEAT-2260]` for sequencing.
+**Gemini/OMP adapter writers don't exist yet**: `_dispatch_host_adapters` has no `elif host == "gemini"` or `elif host == "opencode"` branch. FEAT-2260 (sibling, now **done**) delivers those writers. FEAT-2387's upgrade dispatcher must be designed to call the same writer functions FEAT-2260 introduces — **implement the upgrade dispatcher interface against FEAT-2260's writer contract, not ahead of it**. Note (verified 2026-06-29): only the **codex** branch of `_dispatch_host_adapters` has a real writer (`install_codex_adapter`); `opencode` still prints "Adapter not yet available" and there is no `gemini` branch — scope the adapter-host refresh to codex initially.
 
 **TUI Screen-1 staleness pattern** (`tui.py:179-230`): `_pkg_outdated` and `_plugin_outdated` booleans gate the Screen-1 section; adapter staleness rows follow the same boolean pattern. The new per-host staleness boolean would compare the gen-version stamp (read from `.codex/ll-gen-version` or the JSON field) against `installed_version`. The console output follows `console.print("[yellow]...[/yellow] ...")` with a fix hint.
 
@@ -233,7 +265,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 8. Update 6 tests in `TestDetectInstallation` (`test_init_install.py`) — patch target changes from `little_loops.init.install_check.shutil.which` to `resolve_host` when the hardcoded `"claude"` literal at `install_check.py:60,63` is fixed
 9. Update `_wire_q` helper and affected `_wire_q`-based tests in `test_init_tui.py` if a new `questionary.confirm()` call is added to Screen-1 (adapter-staleness proceed dialog); positional `confirm_returns` lists will be off by one for all existing host-selection tests
-10. Update `scripts/little_loops/init/cli.py::_print_dry_run()` — add `[write] .codex/ll-gen-version` preview line if sidecar-file stamp approach is chosen
+10. No `_print_dry_run()` change needed for the stamp — JSON-field approach embeds the version in the existing `.codex/hooks.json` artifact; no new file preview line required
 11. Update `scripts/little_loops/init/__init__.py` — add any new public functions (staleness reader, version stamp writer) to imports and `__all__`
 
 ## Impact
@@ -243,9 +275,48 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Medium — touches global plugin state (gated on scope) and force-regenerates project files; scope gate mitigates global-state risk
 - **Breaking Change**: No (additive behavior; `--upgrade` currently does nothing for non-Claude hosts)
 
+## Resolution
+
+_Implemented 2026-06-29 via `/ll:manage-issue feature implement FEAT-2387`._
+
+**What shipped** (host-parameterized surface refresh, built once per ARCHITECTURE-049):
+
+- **`cli._dispatch_host_upgrade(hosts, project_root, plugin_root, install_source)`** —
+  scope-aware claude-code plugin update (`<resolved-binary> plugin update
+  ll@little-loops`, `check=False`, only when `install_source ==
+  "project-claude-code"`; advise-only hint otherwise), then delegates adapter
+  force-regeneration to `_dispatch_host_adapters(force=True)` so FEAT-2260's
+  future gemini/omp writers are picked up automatically. Wired into `_run_yes`:
+  `--upgrade` → `_dispatch_host_upgrade`; non-upgrade → normal dispatch +
+  `_warn_adapter_staleness`.
+- **`cli._warn_adapter_staleness`** — warn-only path; prints
+  `generated against X, package is now Y — re-run with --upgrade` when a codex
+  adapter's stamp diverges from the installed package.
+- **Gen-version stamp** — `"_ll_gen_version": "{{LL_GEN_VERSION}}"` added to the
+  in-package `hooks/adapters/codex/hooks.json` template; `install_codex_adapter`
+  substitutes it from `installed_package_version()` (single source of truth);
+  `writers.read_adapter_gen_version()` reads it back.
+- **Host abstraction** — `detect_installation` migrated off the hardcoded
+  `"claude"` literals (`install_check.py`) to
+  `resolve_host().build_version_check().binary`; `shutil` import dropped.
+- **TUI Screen-1** — codex adapter-staleness row added to the *existing* confirm
+  gate (no new `questionary.confirm`, avoiding `_wire_q` off-by-one).
+- **Exports** — `installed_package_version`, `read_adapter_gen_version` added to
+  `init/__init__.py`.
+
+**Tests**: new `TestDispatchHostUpgrade` + stamp/round-trip tests in
+`test_init_core.py`; 6 `TestDetectInstallation` tests migrated from
+`shutil.which` to `resolve_host` patches in `test_init_install.py`; codex
+staleness-row test in `test_init_tui.py`. Docs updated: `CLI.md`,
+`GETTING_STARTED.md`, `codex/getting-started.md`, `API.md`, `skills/init/SKILL.md`.
+
+**Verification**: init test suite green; `ruff`/`mypy`/`ll-verify-package-data`
+clean. (4 unrelated pre-existing failures in `test_host_runner`/`test_sprint`/
+`test_issue_manager` are not in this change's surface.)
+
 ## Status
 
-**Open** | Created: 2026-06-24 | Priority: P4
+**Done** | Created: 2026-06-24 | Completed: 2026-06-29 | Priority: P4
 
 ## Verification Notes
 _Added by `/ll:verify-issues` (2026-06-27):_ Multiple references to `writers.py:478` (skip-without-force guard) are stale — `scripts/little_loops/init/writers.py` is 472 lines; line 478 does not exist. The actual guard is at ~line 461. Confirm exact line number before implementation.
@@ -262,17 +333,25 @@ _Added by `/ll:verify-issues` (2026-06-27):_ Multiple references to `writers.py:
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-29_
+_Updated by `/ll:confidence-check` on 2026-06-29 (decisions resolved ▲62→72 outcome)_
 
-**Readiness Score**: 86/100 → PROCEED
-**Outcome Confidence**: 62/100 → CAUTION
+**Readiness Score**: 92/100 → PROCEED
+**Outcome Confidence**: 72/100 → CAUTION
 
 ### Outcome Risk Factors
 
-- **Two open design decisions require resolution before implementing**: (1) gen-version stamp location — JSON field `"_ll_gen_version"` inside hooks.json vs. sidecar file `.codex/ll-gen-version` — affects `writers.py`, `_print_dry_run()`, the hooks template, and TUI staleness comparison; (2) user-scoped claude plugin behavior — auto-update vs. explicit opt-in vs. always-advise — affects the scope-gate logic in the claude-code branch.
-- **Moderate coordination surface**: 11 sites across 4 code files, 3 test files, and 4 doc files; systematic execution order (writers → cli → tui → tests → docs) reduces collision risk but increases total implementation scope.
+- **Six tests in TestDetectInstallation will need patch-target migration**: when `install_check.py:60,63` hardcoded `"claude"` literals are replaced with `resolve_host()`, the 6 tests that patch `little_loops.init.install_check.shutil.which` must switch to patching `resolve_host` — implement in the same commit as the literal fix to avoid a window where tests pass against the wrong binary.
+- **TUI proceed-dialog is conditional**: if a `questionary.confirm()` call is added to the staleness section, `_wire_q`'s positional `confirm_returns` list goes off-by-one for all host-selection tests — confirm the UX choice (informational-only vs. confirm dialog) before starting `tui.py` changes.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-29T17:39:36 - `a6949c04-c2c6-4f5d-8751-ebc22a5d843a.jsonl`
+- `/ll:confidence-check` - 2026-06-29T00:00:00 - `ffd092a1-8266-42ea-92d9-725cd9b75735.jsonl`
+- `/ll:decide-issue` - 2026-06-29T17:12:11 - `ffd092a1-8266-42ea-92d9-725cd9b75735.jsonl`
+- `/ll:decide-issue` - 2026-06-29T16:33:52 - `923b6d15-b39f-4119-93ad-d8a831de3410.jsonl`
+- `/ll:confidence-check` - 2026-06-29T00:00:00 - `d4594414-cc9f-4d52-acd6-3f8213008171.jsonl`
+- `/ll:decide-issue` - 2026-06-29T16:26:41 - `217064df-7292-4208-b677-dccb43ed2514.jsonl`
+- `/ll:confidence-check` - 2026-06-29T00:00:00 - `05b1d858-69cc-4785-b8ea-e091c8ec3d68.jsonl`
+- `/ll:format-issue` - 2026-06-29T16:20:34 - `65f14512-011a-4527-9655-7fdad857237c.jsonl`
 - `/ll:decide-issue` - 2026-06-29T16:02:12 - `f644b71d-1c3f-4f0d-8372-bc5e0c03556f.jsonl`
 - `/ll:confidence-check` - 2026-06-29T00:00:00 - `6c956c22-e04c-4850-ab67-c7899299dbef.jsonl`
 - `/ll:format-issue` - 2026-06-29T15:56:01 - `1d1df55a-e3f6-450e-9adc-7c1ed5bda1be.jsonl`

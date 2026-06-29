@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
-import shutil
 import subprocess
 import sys
 from enum import Enum
@@ -18,6 +17,20 @@ class InstallStatus(Enum):
     OutOfDate = "out_of_date"
     NotInstalled = "not_installed"
     Unknown = "unknown"
+
+
+def installed_package_version() -> str | None:
+    """Return the installed little-loops package version, or None if not installed.
+
+    Thin wrapper over :func:`importlib.metadata.version` used as the single
+    source of truth for the adapter gen-version stamp (write side in
+    ``install_codex_adapter``) and the warn-only staleness comparison
+    (``cli._warn_adapter_staleness``).
+    """
+    try:
+        return importlib.metadata.version("little-loops")
+    except importlib.metadata.PackageNotFoundError:
+        return None
 
 
 def _is_editable_install() -> bool:
@@ -56,11 +69,17 @@ def detect_installation(
     except importlib.metadata.PackageNotFoundError:
         pass
 
-    # Global claude plugin check — use --json to retrieve version and scope.
-    if shutil.which("claude"):
+    # Plugin check — resolve the host binary via resolve_host() rather than
+    # hardcoding "claude" (CLAUDE.md host-abstraction rule). Mirrors
+    # fetch_latest_plugin; only meaningful when the active host is claude-code.
+    try:
+        binary: str | None = resolve_host().build_version_check().binary
+    except HostNotConfigured:
+        binary = None
+    if binary:
         try:
             result = subprocess.run(
-                ["claude", "plugin", "list", "--json"],
+                [binary, "plugin", "list", "--json"],
                 capture_output=True,
                 text=True,
                 timeout=10,

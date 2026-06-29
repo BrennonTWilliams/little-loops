@@ -703,6 +703,37 @@ class TestHostSelection:
         assert "not yet available" in capsys.readouterr().out
 
     @patch("little_loops.init.tui.questionary")
+    def test_codex_adapter_staleness_row_shown(
+        self, mock_q: MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """FEAT-2387: Screen-1 surfaces a staleness row when the codex adapter's
+        gen-version stamp diverges from the installed package version."""
+        codex = tmp_path / ".codex"
+        codex.mkdir()
+        (codex / "hooks.json").write_text('{"_ll_gen_version": "0.0.1", "hooks": {}}')
+        with (
+            patch("sys.stdin") as mock_stdin,
+            # Override the autouse (None,None,None) fixture: a known install +
+            # version so the staleness comparison path is exercised.
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("pypi", "9.9.9", None),
+            ),
+            patch(
+                "little_loops.init.install_check.fetch_latest_pypi",
+                return_value="9.9.9",
+            ),
+        ):
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], hosts=["codex"])
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, hosts=["codex"])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Codex adapter outdated" in out
+        assert "0.0.1" in out
+
+    @patch("little_loops.init.tui.questionary")
     def test_detection_seeded_defaults_shown(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True

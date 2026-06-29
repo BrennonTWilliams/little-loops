@@ -8,6 +8,7 @@ from little_loops.init.install_check import (
     detect_installation,
     fetch_latest_plugin,
     fetch_latest_pypi,
+    installed_package_version,
 )
 from little_loops.init.validate import DepWarning, validate_deps
 from little_loops.init.writers import (
@@ -18,6 +19,7 @@ from little_loops.init.writers import (
     make_issue_dirs,
     make_learning_tests_dir,
     merge_settings,
+    read_adapter_gen_version,
     update_gitignore,
     write_config,
 )
@@ -36,9 +38,11 @@ __all__ = [
     "fetch_latest_plugin",
     "fetch_latest_pypi",
     "install_codex_adapter",
+    "installed_package_version",
     "make_issue_dirs",
     "make_learning_tests_dir",
     "merge_settings",
+    "read_adapter_gen_version",
     "update_gitignore",
     "validate_deps",
     "write_config",

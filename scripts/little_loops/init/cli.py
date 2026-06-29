@@ -109,6 +109,81 @@ def _dispatch_host_adapters(
         # claude-code: no adapter file needed; plugin hooks fire when globally enabled
 
 
+def _dispatch_host_upgrade(
+    hosts: list[str],
+    project_root: Path,
+    plugin_root: Path,
+    install_source: str | None,
+) -> None:
+    """Refresh every active host's integration surface after a package upgrade.
+
+    Built once, host-parameterized (ARCHITECTURE-049): the claude-code surface
+    is a versioned marketplace plugin (scope-aware update), while adapter hosts
+    (codex today) get their generated files force-regenerated against the
+    upgraded package dir so a stale gen-version stamp / template drift is
+    corrected.
+
+    Args:
+        hosts: Active hosts (from --hosts / auto-detection).
+        project_root: Project root directory.
+        plugin_root: Plugin root (passed through to the adapter writer).
+        install_source: install_source from detect_installation() — gates the
+            claude-code scope-aware behavior ("project-claude-code" auto-updates;
+            anything else is advise-only to avoid mutating shared global state).
+    """
+    from little_loops.host_runner import HostNotConfigured, resolve_host
+
+    for host in hosts:
+        if host != "claude-code":
+            continue
+        # Scope-aware plugin update: auto for project-scoped, advise otherwise.
+        if install_source == "project-claude-code":
+            try:
+                binary = resolve_host().build_version_check().binary
+            except HostNotConfigured:
+                binary = None
+            if binary:
+                print("[Claude] Updating project-scoped plugin ll@little-loops...")
+                # Best-effort (check=False): a missing/unauthenticated host must
+                # never abort the init or config write.
+                _subprocess.run(
+                    [binary, "plugin", "update", "ll@little-loops"],
+                    check=False,
+                )
+        else:
+            print(
+                "  Hint: claude plugin update ll@little-loops",
+                file=sys.stderr,
+            )
+
+    # Adapter hosts: force-regenerate against the upgraded package dir. Reuses
+    # the standard per-host dispatch (claude-code is a no-op there) so writers
+    # introduced by later work (FEAT-2260: gemini/omp) are picked up for free.
+    _dispatch_host_adapters(hosts, project_root, plugin_root, force=True)
+
+
+def _warn_adapter_staleness(hosts: list[str], project_root: Path) -> None:
+    """Warn when a generated adapter's gen-version stamp diverges from the package.
+
+    Warn-only counterpart to :func:`_dispatch_host_upgrade`: run on a non-upgrade
+    init so a developer learns their ``.codex/hooks.json`` was generated against
+    an older package and should be refreshed with ``--upgrade``.
+    """
+    from little_loops.init.install_check import installed_package_version
+    from little_loops.init.writers import read_adapter_gen_version
+
+    if "codex" not in hosts:
+        return
+    stamp = read_adapter_gen_version(project_root)
+    installed = installed_package_version()
+    if stamp and installed and stamp != installed:
+        print(
+            f"[Codex] Adapter generated against {stamp}, package is now {installed} "
+            "— re-run with --upgrade to regenerate .codex/hooks.json.",
+            file=sys.stderr,
+        )
+
+
 def _feature_choices_from_args(enable: list[str], disable: list[str]) -> dict[str, Any]:
     """Translate --enable/--disable feature names into build_config choice keys.
 
@@ -345,7 +420,14 @@ def _run_yes(
 
     write_claude_md(project_root, dry_run=dry_run)
 
-    _dispatch_host_adapters(hosts, project_root, plugin_root, force=force, dry_run=dry_run)
+    if upgrade and not dry_run:
+        # Host-parameterized surface refresh: force-regenerate adapters and run
+        # the scope-aware claude-code plugin update (FEAT-2387).
+        _dispatch_host_upgrade(hosts, project_root, plugin_root, install_source)
+    else:
+        _dispatch_host_adapters(hosts, project_root, plugin_root, force=force, dry_run=dry_run)
+        if not dry_run:
+            _warn_adapter_staleness(hosts, project_root)
 
     if not dry_run:
         print("\nValidating dependencies...")

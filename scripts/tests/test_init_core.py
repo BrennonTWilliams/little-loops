@@ -37,6 +37,7 @@ from little_loops.init.writers import (
     make_learning_tests_dir,
     merge_settings,
     merge_with_existing,
+    read_adapter_gen_version,
     strip_none_leaves,
     update_gitignore,
     write_claude_md,
@@ -996,6 +997,45 @@ class TestInstallCodexAdapter:
         )
         installed = install_codex_adapter(project_root, tmp_path)
         assert installed is None
+
+    def test_writes_gen_version_stamp(self, tmp_path: Path) -> None:
+        """The rendered adapter embeds the installed package version, not a placeholder."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        plugin_root = self._make_plugin_root(tmp_path)
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="9.9.9",
+        ):
+            install_codex_adapter(project_root, plugin_root)
+        dest = project_root / ".codex" / "hooks.json"
+        data = json.loads(dest.read_text())
+        assert data["_ll_gen_version"] == "9.9.9"
+        assert "{{LL_GEN_VERSION}}" not in dest.read_text()
+
+    def test_read_adapter_gen_version_round_trip(self, tmp_path: Path) -> None:
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        plugin_root = self._make_plugin_root(tmp_path)
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="9.9.9",
+        ):
+            install_codex_adapter(project_root, plugin_root)
+        assert read_adapter_gen_version(project_root) == "9.9.9"
+
+    def test_read_adapter_gen_version_missing_file_returns_none(self, tmp_path: Path) -> None:
+        assert read_adapter_gen_version(tmp_path) is None
+
+    def test_read_adapter_gen_version_malformed_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / ".codex").mkdir()
+        (tmp_path / ".codex" / "hooks.json").write_text("{not valid json")
+        assert read_adapter_gen_version(tmp_path) is None
+
+    def test_read_adapter_gen_version_absent_field_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / ".codex").mkdir()
+        (tmp_path / ".codex" / "hooks.json").write_text('{"hooks": {}}')
+        assert read_adapter_gen_version(tmp_path) is None
 
 
 # ===========================================================================
@@ -2220,6 +2260,118 @@ class TestHostDispatch:
         assert code == 0
         plan = json.loads(capsys.readouterr().out)
         assert "has_pi" in plan["host_options"]
+
+
+# ===========================================================================
+# TestDispatchHostUpgrade
+# ===========================================================================
+
+
+class TestDispatchHostUpgrade:
+    """FEAT-2387: host-parameterized surface refresh on --upgrade."""
+
+    @staticmethod
+    def _runner_mock(binary: str = "claude") -> MagicMock:
+        invocation = MagicMock()
+        invocation.binary = binary
+        runner = MagicMock()
+        runner.build_version_check.return_value = invocation
+        return runner
+
+    def test_project_scoped_runs_plugin_update(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import _dispatch_host_upgrade
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+        ):
+            _dispatch_host_upgrade(
+                ["claude-code"], tmp_project, _PROJECT_ROOT, "project-claude-code"
+            )
+        assert any("plugin" in c and "update" in c and "ll@little-loops" in c for c in captured), (
+            f"expected plugin update call; got {captured}"
+        )
+
+    def test_user_scoped_advise_only(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _dispatch_host_upgrade
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with patch("little_loops.init.cli._subprocess.run", side_effect=record):
+            _dispatch_host_upgrade(
+                ["claude-code"], tmp_project, _PROJECT_ROOT, "global-claude-code"
+            )
+        # No plugin-update subprocess for user-scoped installs.
+        assert not any("plugin" in c for c in captured), f"unexpected plugin call: {captured}"
+        assert "claude plugin update ll@little-loops" in capsys.readouterr().err
+
+    def test_codex_force_regenerates_stale_adapter(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import _dispatch_host_upgrade
+
+        codex = tmp_project / ".codex"
+        codex.mkdir()
+        (codex / "hooks.json").write_text('{"_ll_gen_version": "0.0.1", "stale": true}')
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            _dispatch_host_upgrade(["codex"], tmp_project, _PROJECT_ROOT, "pypi")
+        data = json.loads((codex / "hooks.json").read_text())
+        # Regenerated from the in-package template (force=True), not the stale stub.
+        assert "hooks" in data
+        assert "stale" not in data
+
+    def test_warn_adapter_staleness_prints_hint(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _warn_adapter_staleness
+
+        codex = tmp_project / ".codex"
+        codex.mkdir()
+        (codex / "hooks.json").write_text('{"_ll_gen_version": "0.0.1"}')
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="9.9.9",
+        ):
+            _warn_adapter_staleness(["codex"], tmp_project)
+        err = capsys.readouterr().err
+        assert "0.0.1" in err and "9.9.9" in err
+        assert "--upgrade" in err
+
+    def test_warn_adapter_staleness_silent_when_current(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _warn_adapter_staleness
+
+        codex = tmp_project / ".codex"
+        codex.mkdir()
+        (codex / "hooks.json").write_text('{"_ll_gen_version": "9.9.9"}')
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="9.9.9",
+        ):
+            _warn_adapter_staleness(["codex"], tmp_project)
+        assert "generated against" not in capsys.readouterr().err
+
+    def test_warn_adapter_staleness_noop_without_codex(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _warn_adapter_staleness
+
+        _warn_adapter_staleness(["claude-code"], tmp_project)
+        assert capsys.readouterr().err == ""
 
 
 # ===========================================================================

@@ -55,5 +55,5 @@ ll-init --yes $FORCE_FLAG $DRY_RUN_FLAG $HOSTS_FLAG $CODEX_FLAG $UPGRADE_FLAG
 /ll:init --force       # reset to template defaults (re-run without --force to review and edit existing config)
 /ll:init --dry-run     # preview without writing
 /ll:init --hosts codex # also install Codex hook adapter
-/ll:init --upgrade     # auto-upgrade stale pip package or plugin (default is warn-only)
+/ll:init --upgrade     # auto-upgrade pip package + refresh each host's surface: force-regenerate adapters (.codex/hooks.json) and scope-aware-update the claude-code plugin (default is warn-only)
 ```

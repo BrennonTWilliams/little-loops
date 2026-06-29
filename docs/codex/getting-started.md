@@ -122,6 +122,7 @@ Start a Codex session and confirm hooks are active:
 | `codex: command not found` during init | Ensure the `codex` binary is on `PATH`: `which codex` |
 | Adapter scripts not executable | `chmod +x scripts/little_loops/hooks/adapters/codex/*.sh` |
 | `LL_HOOK_HOST=codex` not recognized | Upgrade to the latest little-loops version: `pip install --upgrade little-loops` |
+| Stale `.codex/hooks.json` after a package upgrade | Run `ll-init --upgrade` — it force-regenerates the adapter and re-stamps the embedded gen-version. (`ll-init` warns when the stamp diverges from the installed package.) |
 | Skills not appearing in Codex TUI | Re-run `ll-adapt --host codex --apply` |
 
 For more issues see [Troubleshooting](../development/TROUBLESHOOTING.md) and the "Hook Debugging" section.

@@ -459,8 +459,15 @@ def install_codex_adapter(
     if dest.exists() and not force:
         return False
 
+    from little_loops.init.install_check import installed_package_version
+
     package_root = str(Path(__file__).parent.parent)
-    rendered = template_path.read_text(encoding="utf-8").replace("{{LL_PLUGIN_ROOT}}", package_root)
+    gen_version = installed_package_version() or ""
+    rendered = (
+        template_path.read_text(encoding="utf-8")
+        .replace("{{LL_PLUGIN_ROOT}}", package_root)
+        .replace("{{LL_GEN_VERSION}}", gen_version)
+    )
 
     if dry_run:
         print("[write] .codex/hooks.json")
@@ -469,3 +476,25 @@ def install_codex_adapter(
     dest.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(dest, rendered)
     return True
+
+
+def read_adapter_gen_version(project_root: Path) -> str | None:
+    """Return the gen-version stamp embedded in ``.codex/hooks.json``.
+
+    Reads the ``"_ll_gen_version"`` field written by
+    :func:`install_codex_adapter`. Used by the warn-only staleness check and
+    the TUI Screen-1 staleness row.
+
+    Returns:
+        The stamped version string, or None if the adapter is absent, malformed,
+        or carries no (string) stamp.
+    """
+    dest = project_root / ".codex" / "hooks.json"
+    if not dest.exists():
+        return None
+    try:
+        data = json.loads(dest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    stamp = data.get("_ll_gen_version") if isinstance(data, dict) else None
+    return stamp if isinstance(stamp, str) and stamp else None

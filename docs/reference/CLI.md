@@ -49,7 +49,7 @@ When run on a project that already has a `.ll/ll-config.json`, the interactive w
 | `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `opencode`, `pi`). Defaults to auto-detected hosts. Unknown values produce a warning and are skipped. |
 | `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`. |
 | `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--disable prompt_optimization` to opt out of the default-on prompt optimizer. |
-| `--upgrade` | | Act on version drift automatically (install or upgrade the pip package or plugin). Without this flag, headless mode only warns when a newer version is available. |
+| `--upgrade` | | Act on version drift automatically, then run a **host-parameterized surface refresh** for every active host: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`, re-stamping the embedded gen-version), and scope-aware-update the claude-code plugin (auto for project-scoped installs, advise-only for user-scoped). Without this flag, headless mode only warns — including a hint when a generated adapter's gen-version stamp diverges from the installed package. |
 | `--root ROOT` | `-C` | Project root directory (default: current directory) |
 
 Richer features (`parallel`, `sync`, `documents`, `design_tokens`, `confidence_gate`, `tdd`) carry sub-config and remain interactive-only; they are not accepted by `--enable`/`--disable`. Unknown feature names exit `2`.

@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from little_loops.host_runner import HostNotConfigured
 from little_loops.init.install_check import (
     InstallStatus,
     check_version,
@@ -15,6 +16,15 @@ from little_loops.init.install_check import (
     fetch_latest_plugin,
     fetch_latest_pypi,
 )
+
+
+def _resolve_host_mock(binary: str = "claude") -> MagicMock:
+    """Return a resolve_host() mock whose runner reports *binary*."""
+    invocation = MagicMock()
+    invocation.binary = binary
+    runner = MagicMock()
+    runner.build_version_check.return_value = invocation
+    return runner
 
 
 class TestCheckVersion:
@@ -44,7 +54,10 @@ class TestDetectInstallation:
                 "little_loops.init.install_check.importlib.metadata.version",
                 side_effect=importlib.metadata.PackageNotFoundError("little-loops"),
             ),
-            patch("little_loops.init.install_check.shutil.which", return_value=None),
+            patch(
+                "little_loops.init.install_check.resolve_host",
+                side_effect=HostNotConfigured("no host"),
+            ),
         ):
             source, version, install_path = detect_installation(tmp_path)
         assert source is None
@@ -61,7 +74,6 @@ class TestDetectInstallation:
                 "little_loops.init.install_check.importlib.metadata.version",
                 return_value="1.2.3",
             ),
-            patch("little_loops.init.install_check.shutil.which", return_value=None),
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout=pip_show_out)
@@ -77,7 +89,6 @@ class TestDetectInstallation:
                 "little_loops.init.install_check.importlib.metadata.version",
                 return_value="1.2.3",
             ),
-            patch("little_loops.init.install_check.shutil.which", return_value=None),
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout=pip_show_out)
@@ -94,8 +105,8 @@ class TestDetectInstallation:
                 side_effect=importlib.metadata.PackageNotFoundError("little-loops"),
             ),
             patch(
-                "little_loops.init.install_check.shutil.which",
-                return_value="/usr/bin/claude",
+                "little_loops.init.install_check.resolve_host",
+                return_value=_resolve_host_mock("claude"),
             ),
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
@@ -114,8 +125,8 @@ class TestDetectInstallation:
                 side_effect=importlib.metadata.PackageNotFoundError("little-loops"),
             ),
             patch(
-                "little_loops.init.install_check.shutil.which",
-                return_value="/usr/bin/claude",
+                "little_loops.init.install_check.resolve_host",
+                return_value=_resolve_host_mock("claude"),
             ),
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
@@ -135,10 +146,6 @@ class TestDetectInstallation:
                 "little_loops.init.install_check.importlib.metadata.version",
                 return_value="1.2.3",
             ),
-            patch(
-                "little_loops.init.install_check.shutil.which",
-                return_value="/usr/bin/claude",
-            ),
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout=pip_show_out)
@@ -154,8 +161,8 @@ class TestDetectInstallation:
                 side_effect=importlib.metadata.PackageNotFoundError("little-loops"),
             ),
             patch(
-                "little_loops.init.install_check.shutil.which",
-                return_value="/usr/bin/claude",
+                "little_loops.init.install_check.resolve_host",
+                return_value=_resolve_host_mock("claude"),
             ),
             patch(
                 "little_loops.init.install_check.subprocess.run",
@@ -174,8 +181,8 @@ class TestDetectInstallation:
                 side_effect=importlib.metadata.PackageNotFoundError("little-loops"),
             ),
             patch(
-                "little_loops.init.install_check.shutil.which",
-                return_value="/usr/bin/claude",
+                "little_loops.init.install_check.resolve_host",
+                return_value=_resolve_host_mock("claude"),
             ),
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
@@ -192,7 +199,6 @@ class TestDetectInstallation:
                 "little_loops.init.install_check.importlib.metadata.version",
                 return_value="1.2.3",
             ),
-            patch("little_loops.init.install_check.shutil.which", return_value=None),
             patch(
                 "little_loops.init.install_check.subprocess.run",
                 side_effect=subprocess.TimeoutExpired("pip", 10),
@@ -215,8 +221,8 @@ class TestDetectInstallation:
                 side_effect=importlib.metadata.PackageNotFoundError("little-loops"),
             ),
             patch(
-                "little_loops.init.install_check.shutil.which",
-                return_value="/usr/bin/claude",
+                "little_loops.init.install_check.resolve_host",
+                return_value=_resolve_host_mock("claude"),
             ),
             patch("little_loops.init.install_check.subprocess.run") as mock_run,
         ):
