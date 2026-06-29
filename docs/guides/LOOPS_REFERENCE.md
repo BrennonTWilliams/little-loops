@@ -570,7 +570,7 @@ Phase 2 — Dimensional Diagnosis:
 
 Phase 3 — Remediation Actions:
   implement (shell: ll-auto --only) → done
-  decide    (slash_command: /ll:decide-issue --auto) on_yes → re_assess | on_no/on_error → emit_implement_failed
+  decide    (slash_command: /ll:decide-issue --auto) on_yes → re_assess | on_no → emit_needs_manual_review | on_error → emit_implement_failed
   wire      (slash_command: /ll:wire-issue --auto) → mark_wired (on_no → refine_first)
   refine          (slash_command: /ll:refine-issue --auto --full-rewrite)   → mark_refined → re_assess  [ONLY diagnose → REFINE]
   refine_first    (slash_command: /ll:refine-issue --auto)                   → mark_refined → re_assess  [assess/gate/wire/check_wire_needed_outcome]

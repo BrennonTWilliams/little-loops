@@ -434,7 +434,7 @@ states:
     action: "/ll:decide-issue ${context.issue_id} --auto"
     action_type: slash_command
     on_yes: re_assess
-    on_no: emit_implement_failed
+    on_no: emit_needs_manual_review
     on_partial: re_assess
     on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic

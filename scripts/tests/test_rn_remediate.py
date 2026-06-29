@@ -330,15 +330,15 @@ class TestRemediationActions:
         assert dec["on_partial"] == "re_assess"
 
     def test_decide_failure_routes_to_emit_implement_failed(self) -> None:
-        """decide routes to emit_implement_failed on no/error (ENH-2307).
+        """decide routes on_no → emit_needs_manual_review, on_error → emit_implement_failed (BUG-2396).
 
-        When /ll:decide-issue --auto cannot resolve (no viable options or ambiguous scoring),
-        the loop surfaces failure immediately rather than silently re-assessing.
-        Mirrors the assert/re_assess pattern of on_error: emit_implement_failed.
+        When /ll:decide-issue --auto cannot auto-resolve (author-gated decision), the loop
+        classifies the outcome as MANUAL_REVIEW_NEEDED, not an implementation failure.
+        on_error (genuine infra crash) still routes to emit_implement_failed.
         """
         data = _load_loop()
         dec = data["states"]["decide"]
-        assert dec["on_no"] == "emit_implement_failed"
+        assert dec["on_no"] == "emit_needs_manual_review"
         assert dec["on_error"] == "emit_implement_failed"
 
     def test_wire_is_slash_command_with_auto(self) -> None:

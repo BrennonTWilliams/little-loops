@@ -7365,11 +7365,11 @@ class TestRnRemediateAssessRouting:
             f"decide.on_yes should be 're_assess', got {state.get('on_yes')!r}"
         )
 
-    def test_decide_on_no_routes_to_emit_implement_failed(self, data: dict) -> None:
-        """decide.on_no must route to emit_implement_failed (ENH-2307: surface failure immediately)."""
+    def test_decide_on_no_routes_to_emit_needs_manual_review(self, data: dict) -> None:
+        """decide.on_no must route to emit_needs_manual_review (BUG-2396: un-auto-resolvable decision ≠ implement failure)."""
         state = data["states"].get("decide", {})
-        assert state.get("on_no") == "emit_implement_failed", (
-            f"decide.on_no should be 'emit_implement_failed', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "emit_needs_manual_review", (
+            f"decide.on_no should be 'emit_needs_manual_review', got {state.get('on_no')!r}"
         )
 
     def test_decide_on_error_routes_to_emit_implement_failed(self, data: dict) -> None:

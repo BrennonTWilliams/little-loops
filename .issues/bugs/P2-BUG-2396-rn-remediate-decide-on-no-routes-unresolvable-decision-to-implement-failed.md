@@ -4,8 +4,9 @@ title: 'rn-remediate: decide.on_no routes un-auto-resolvable decision to emit_im
   (mislabels needs-decision as IMPLEMENT_FAILED)'
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_date: '2026-06-29'
+completed_at: '2026-06-29T20:26:13Z'
 discovered_by: audit-loop-run
 source_loop: rn-implement
 source_state: decide
@@ -306,6 +307,7 @@ the *classification* of that outcome, not a phantom success.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-29T20:22:57 - `d052c20e-111c-4837-ab85-c26e5b1fbccf.jsonl`
 - `/ll:confidence-check` - 2026-06-29T18:15:00 - `a6949c04-c2c6-4f5d-8751-ebc22a5d843a.jsonl`
 - `/ll:wire-issue` - 2026-06-29T17:30:52 - `be9de5a8-9c38-4dcc-84c5-79686f3ced49.jsonl`
 - `/ll:refine-issue` - 2026-06-29T17:14:33 - `e7d74289-f32b-48e5-b1fc-0dc56410799b.jsonl`
