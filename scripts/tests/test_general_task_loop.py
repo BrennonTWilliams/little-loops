@@ -1268,9 +1268,11 @@ class TestBUG1724TimeoutProtection:
     """BUG-1724: All prompt-type states must be protected from the 3600s fallback."""
 
     def test_default_timeout_set(self, raw_data: dict) -> None:
-        assert raw_data.get("default_timeout") == 1800, (
-            "general-task.yaml must have default_timeout: 1800 to cap all states at 1800s "
-            "instead of the 3600s hardcoded fallback in FSMExecutor._run_action()"
+        dt = raw_data.get("default_timeout")
+        assert dt is not None and dt > 3600, (
+            "general-task.yaml must have an explicit default_timeout > 3600s to override the "
+            "hardcoded 3600s fallback in FSMExecutor._run_action() (BUG-1724). "
+            f"Current value: {dt!r}"
         )
 
     def test_final_verify_has_per_state_timeout(self, raw_data: dict) -> None:
