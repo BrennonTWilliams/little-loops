@@ -940,14 +940,17 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
         states.append(state)
 
     # Include loops that have a PID file but no state file yet (still starting up).
-    # Strip instance-ID timestamp suffix (e.g. "autodev-20240115T103000" → "autodev")
-    # before the known_names check to avoid spurious "starting" entries for loops
-    # that already have a state file under their logical name.
-    known_names = {s.loop_name for s in states}
+    # Match on the full instance stem (not the logical name) to avoid suppressing a
+    # live PID file when a *different* instance of the same loop has a stale state
+    # file — as observed in BUG-2386 where the state file lived in the worktree.
+    known_stems = {
+        Path(sf.stem).stem  # strip double suffix: loop-20260628T.state.json → loop-20260628T
+        for sf in running_dir.glob("*.state.json")
+    }
     for pid_file in running_dir.glob("*.pid"):
+        if pid_file.stem in known_stems:
+            continue  # exact instance already has a state file
         logical_name = _INSTANCE_SUFFIX.sub("", pid_file.stem)
-        if logical_name in known_names:
-            continue  # state file already covers this loop
         try:
             pid = int(pid_file.read_text().strip())
         except (ValueError, OSError):

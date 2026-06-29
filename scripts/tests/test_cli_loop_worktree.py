@@ -808,3 +808,329 @@ class TestCmdRunWorktree:
                 cmd_run("test-loop", args, loops_dir, logger)
 
         assert "--worktree and --background cannot be combined" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# BUG-2386: absolute loops_dir regression
+# ---------------------------------------------------------------------------
+
+
+def _mock_br_config(mock_cfg: MagicMock, tmp_path: Path) -> None:
+    """Configure a minimal BRConfig mock for worktree cmd_run tests."""
+    mock_cfg.return_value.get_worktree_base.return_value = tmp_path / ".worktrees"
+    mock_cfg.return_value.parallel.worktree_copy_files = []
+    mock_cfg.return_value.cli.colors.fsm_edge_labels.to_dict.return_value = {}
+    mock_cfg.return_value.cli.colors.fsm_active_state = None
+    mock_cfg.return_value.loops.glyphs.to_dict.return_value = {}
+    mock_cfg.return_value.loops.run_defaults.include = None
+    mock_cfg.return_value.loops.queue_wait_timeout_seconds = 60
+    mock_cfg.return_value.commands.rate_limits.circuit_breaker_enabled = False
+    mock_cfg.return_value.design_tokens.enabled = False
+    mock_cfg.return_value.extensions = []
+    mock_cfg.return_value.events = MagicMock(transports=[])
+
+
+class TestCmdRunWorktreeAbsoluteLoopsDir:
+    """Regression (BUG-2386 Step 1): cmd_run must resolve loops_dir to absolute
+    before any os.chdir so tracking files always land in the main repo."""
+
+    def _make_args(self, **kwargs: object) -> argparse.Namespace:
+        defaults = {
+            "input": None,
+            "context": [],
+            "max_steps": None,
+            "max_iterations": None,
+            "delay": None,
+            "no_llm": False,
+            "llm_model": None,
+            "dry_run": False,
+            "background": False,
+            "foreground_internal": False,
+            "quiet": False,
+            "verbose": False,
+            "follow": False,
+            "show_diagrams": None,
+            "diagram_edge_labels": None,
+            "diagram_state_detail": None,
+            "diagram_scope": None,
+            "clear": False,
+            "queue": False,
+            "handoff_threshold": None,
+            "worktree": True,
+            "program_md": None,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def _make_loop(self, tmp_path: Path) -> Path:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test-loop.yaml").write_text(
+            "name: test-loop\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        return loops_dir
+
+    def test_loops_dir_resolved_to_absolute(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """PersistentExecutor must receive an absolute loops_dir even when a
+        relative Path('.loops') is passed to cmd_run."""
+        import little_loops.fsm.persistence as _fsmpers
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        # Set cwd to tmp_path so Path(".loops") resolves there
+        monkeypatch.chdir(tmp_path)
+        self._make_loop(tmp_path)  # creates .loops/test-loop.yaml under tmp_path
+        expected_abs = tmp_path / ".loops"
+
+        captured_loops_dirs: list[Path] = []
+        _OrigPE = _fsmpers.PersistentExecutor
+
+        class _CapturingPE(_OrigPE):  # type: ignore[misc]
+            def __init__(self, fsm, loops_dir=None, **kw):  # type: ignore[override]
+                captured_loops_dirs.append(Path(loops_dir) if loops_dir is not None else None)
+                super().__init__(fsm, loops_dir=loops_dir, **kw)
+
+        args = self._make_args()
+        logger = Logger(use_color=False)
+
+        with (
+            patch("little_loops.config.BRConfig") as mock_cfg,
+            patch("little_loops.worktree_utils.setup_worktree"),
+            patch("little_loops.cli.loop.run.os.chdir"),
+            patch("little_loops.cli.loop.run.atexit.register"),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.transport.wire_transports"),
+            patch("little_loops.fsm.persistence.PersistentExecutor", _CapturingPE),
+            patch("little_loops.fsm.persistence._reconcile_stale_runs"),
+            patch("little_loops.cli.loop.run.subprocess.run",
+                  return_value=subprocess.CompletedProcess([], 0, "abc123\n", "")),
+        ):
+            _mock_br_config(mock_cfg, tmp_path)
+
+            # Pass a RELATIVE loops_dir — cmd_run must resolve it internally
+            cmd_run("test-loop", args, Path(".loops"), logger)
+
+        assert captured_loops_dirs, "PersistentExecutor was never instantiated"
+        actual = captured_loops_dirs[0]
+        assert actual.is_absolute(), (
+            f"PersistentExecutor must receive an absolute loops_dir; got {actual!r}"
+        )
+        assert actual == expected_abs, (
+            f"Expected {expected_abs}, got {actual}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# BUG-2386: fail-loud on pending worktree work
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupWorktreeFailLoud:
+    """Regression (BUG-2386 Step 3): _cleanup_worktree_on_exit must retain the
+    branch when the worktree has uncommitted changes or commits ahead of base."""
+
+    def _make_args(self, **kwargs: object) -> argparse.Namespace:
+        defaults = {
+            "input": None,
+            "context": [],
+            "max_steps": None,
+            "max_iterations": None,
+            "delay": None,
+            "no_llm": False,
+            "llm_model": None,
+            "dry_run": False,
+            "background": False,
+            "foreground_internal": False,
+            "quiet": False,
+            "verbose": False,
+            "follow": False,
+            "show_diagrams": None,
+            "diagram_state_detail": None,
+            "diagram_edge_labels": None,
+            "diagram_scope": None,
+            "clear": False,
+            "queue": False,
+            "handoff_threshold": None,
+            "worktree": True,
+            "program_md": None,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def _make_loop(self, tmp_path: Path) -> Path:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test-loop.yaml").write_text(
+            "name: test-loop\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        return loops_dir
+
+    def _run_and_capture_cleanup(
+        self,
+        tmp_path: Path,
+        subprocess_side_effect: Callable[..., subprocess.CompletedProcess[str]],
+    ) -> tuple[list[dict], MagicMock]:
+        """Run cmd_run, invoke the registered _cleanup_worktree_on_exit closure,
+        and return (cleanup_worktree call kwargs list, logger mock)."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args()
+        logger = Logger(use_color=False)
+        registered: list = []
+        cleanup_calls: list[dict] = []
+        chdir_calls: list = []
+
+        with (
+            patch("little_loops.config.BRConfig") as mock_cfg,
+            patch("little_loops.worktree_utils.setup_worktree"),
+            patch("little_loops.worktree_utils.cleanup_worktree",
+                  side_effect=lambda **kw: cleanup_calls.append(kw)),
+            patch("little_loops.cli.loop.run.os.chdir",
+                  side_effect=chdir_calls.append),
+            patch("little_loops.cli.loop.run.atexit.register",
+                  side_effect=registered.append),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.transport.wire_transports"),
+            patch("little_loops.fsm.persistence._reconcile_stale_runs"),
+            patch("little_loops.cli.loop.run.subprocess.run",
+                  side_effect=subprocess_side_effect),
+        ):
+            _mock_br_config(mock_cfg, tmp_path)
+
+            mock_pe = MagicMock()
+            mock_pe.event_bus = MagicMock()
+            mock_pe.close_transports = MagicMock()
+
+            with patch("little_loops.fsm.persistence.PersistentExecutor",
+                       return_value=mock_pe):
+                cmd_run("test-loop", args, loops_dir, logger)
+
+            # Create the worktree directory so .exists() → True during cleanup
+            if chdir_calls:
+                Path(chdir_calls[-1]).mkdir(parents=True, exist_ok=True)
+
+            # Invoke _cleanup_worktree_on_exit while patches are still active
+            cleanup_fn = next(
+                fn for fn in registered if fn.__name__ == "_cleanup_worktree_on_exit"
+            )
+            cleanup_fn()
+
+        return cleanup_calls, logger
+
+    def test_branch_retained_when_uncommitted_changes(self, tmp_path: Path) -> None:
+        """When git status --porcelain returns output, delete_branch must be False."""
+
+        def _subprocess(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+            if list(cmd)[1:3] == ["rev-parse", "HEAD"]:  # base commit capture
+                return subprocess.CompletedProcess(cmd, 0, "deadbeef\n", "")
+            if list(cmd)[1:3] == ["status", "--porcelain"]:  # dirty!
+                return subprocess.CompletedProcess(cmd, 0, " M modified.py\n", "")
+            if list(cmd)[1:2] == ["rev-list"]:
+                return subprocess.CompletedProcess(cmd, 0, "0\n", "")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        calls, _ = self._run_and_capture_cleanup(tmp_path, _subprocess)
+
+        assert calls, "cleanup_worktree must have been called"
+        assert calls[0].get("delete_branch") is False, (
+            "Branch must be retained (delete_branch=False) when uncommitted changes exist"
+        )
+
+    def test_branch_retained_when_commits_ahead(self, tmp_path: Path) -> None:
+        """When the worktree branch has commits ahead of base, delete_branch must be False."""
+
+        def _subprocess(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+            if list(cmd)[1:3] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(cmd, 0, "deadbeef\n", "")
+            if list(cmd)[1:3] == ["status", "--porcelain"]:  # clean working tree
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if list(cmd)[1:2] == ["rev-list"]:  # 3 commits ahead!
+                return subprocess.CompletedProcess(cmd, 0, "3\n", "")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        calls, _ = self._run_and_capture_cleanup(tmp_path, _subprocess)
+
+        assert calls, "cleanup_worktree must have been called"
+        assert calls[0].get("delete_branch") is False, (
+            "Branch must be retained (delete_branch=False) when commits exist ahead of base"
+        )
+
+    def test_branch_deleted_when_clean(self, tmp_path: Path) -> None:
+        """When working tree is clean and no commits ahead, delete_branch must be True."""
+
+        def _subprocess(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+            if list(cmd)[1:3] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(cmd, 0, "deadbeef\n", "")
+            if list(cmd)[1:3] == ["status", "--porcelain"]:  # clean
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if list(cmd)[1:2] == ["rev-list"]:  # 0 commits ahead
+                return subprocess.CompletedProcess(cmd, 0, "0\n", "")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        calls, _ = self._run_and_capture_cleanup(tmp_path, _subprocess)
+
+        assert calls, "cleanup_worktree must have been called"
+        assert calls[0].get("delete_branch") is True, (
+            "Branch must be deleted (delete_branch=True) when worktree is clean"
+        )
+
+    def test_warning_logged_with_branch_name_on_pending_work(self, tmp_path: Path) -> None:
+        """A warning mentioning the branch name must be logged when pending work is detected."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args()
+        logger = MagicMock(spec=Logger)
+        registered: list = []
+        chdir_calls: list = []
+
+        def _subprocess(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+            if list(cmd)[1:3] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(cmd, 0, "deadbeef\n", "")
+            if list(cmd)[1:3] == ["status", "--porcelain"]:
+                return subprocess.CompletedProcess(cmd, 0, " M modified.py\n", "")
+            if list(cmd)[1:2] == ["rev-list"]:
+                return subprocess.CompletedProcess(cmd, 0, "0\n", "")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with (
+            patch("little_loops.config.BRConfig") as mock_cfg,
+            patch("little_loops.worktree_utils.setup_worktree"),
+            patch("little_loops.worktree_utils.cleanup_worktree"),
+            patch("little_loops.cli.loop.run.os.chdir",
+                  side_effect=chdir_calls.append),
+            patch("little_loops.cli.loop.run.atexit.register",
+                  side_effect=registered.append),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.transport.wire_transports"),
+            patch("little_loops.fsm.persistence._reconcile_stale_runs"),
+            patch("little_loops.cli.loop.run.subprocess.run",
+                  side_effect=_subprocess),
+        ):
+            _mock_br_config(mock_cfg, tmp_path)
+            mock_pe = MagicMock()
+            mock_pe.event_bus = MagicMock()
+            mock_pe.close_transports = MagicMock()
+            with patch("little_loops.fsm.persistence.PersistentExecutor",
+                       return_value=mock_pe):
+                cmd_run("test-loop", args, loops_dir, logger)
+
+            if chdir_calls:
+                Path(chdir_calls[-1]).mkdir(parents=True, exist_ok=True)
+
+            cleanup_fn = next(
+                fn for fn in registered if fn.__name__ == "_cleanup_worktree_on_exit"
+            )
+            cleanup_fn()
+
+        # A warning must mention the branch name
+        warning_calls = [str(c) for c in logger.warning.call_args_list]
+        branch_mentioned = any("test-loop" in w or "20" in w for w in warning_calls)
+        assert branch_mentioned, (
+            f"logger.warning must be called with branch name info; got: {warning_calls}"
+        )

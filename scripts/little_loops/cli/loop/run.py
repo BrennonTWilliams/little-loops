@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import time
 import uuid
 from datetime import UTC, datetime
@@ -93,6 +94,10 @@ def cmd_run(
     logger: Logger,
 ) -> int:
     """Run a loop."""
+    # Resolve to absolute so tracking files always land in the main repo,
+    # regardless of any subsequent os.chdir (e.g. the --worktree path, BUG-2386).
+    loops_dir = loops_dir.resolve()
+
     from little_loops.fsm.concurrency import LockManager, resolve_scope
     from little_loops.fsm.persistence import PersistentExecutor, _reconcile_stale_runs
     from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
@@ -390,6 +395,20 @@ def cmd_run(
             _worktree_base.mkdir(parents=True, exist_ok=True)
             _git_lock = GitLock(logger)
 
+            # Capture main-repo HEAD before creating the worktree so the
+            # cleanup closure can detect commits added during the run (BUG-2386).
+            _base_result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=_repo_path,
+                capture_output=True,
+                text=True,
+            )
+            _base_commit: str | None = (
+                _base_result.stdout.strip()
+                if _base_result.returncode == 0 and _base_result.stdout.strip()
+                else None
+            )
+
             setup_worktree(
                 repo_path=_repo_path,
                 worktree_path=_worktree_path,
@@ -403,12 +422,46 @@ def cmd_run(
             logger.info(f"Branch:   {_branch_name}")
 
             def _cleanup_worktree_on_exit() -> None:
+                _delete_branch = True
+                if _worktree_path.exists() and _base_commit:
+                    _status = subprocess.run(
+                        ["git", "status", "--porcelain"],
+                        cwd=_worktree_path,
+                        capture_output=True,
+                        text=True,
+                    )
+                    _has_dirty = bool(_status.returncode == 0 and _status.stdout.strip())
+
+                    _revcount = subprocess.run(
+                        ["git", "rev-list", "--count", f"{_base_commit}..HEAD"],
+                        cwd=_worktree_path,
+                        capture_output=True,
+                        text=True,
+                    )
+                    _ahead_str = _revcount.stdout.strip()
+                    _commits_ahead = (
+                        int(_ahead_str)
+                        if _revcount.returncode == 0 and _ahead_str.isdigit()
+                        else 0
+                    )
+
+                    if _has_dirty or _commits_ahead > 0:
+                        _delete_branch = False
+                        logger.warning(
+                            f"Worktree has pending work — branch '{_branch_name}' was NOT deleted."
+                        )
+                        if _commits_ahead:
+                            logger.warning(f"  {_commits_ahead} commit(s) ahead of base.")
+                        if _has_dirty:
+                            logger.warning("  Uncommitted changes detected.")
+                        logger.warning(f"  To recover: git checkout {_branch_name}")
+
                 cleanup_worktree(
                     worktree_path=_worktree_path,
                     repo_path=_repo_path,
                     logger=logger,
                     git_lock=_git_lock,
-                    delete_branch=True,
+                    delete_branch=_delete_branch,
                 )
 
             atexit.register(_cleanup_worktree_on_exit)

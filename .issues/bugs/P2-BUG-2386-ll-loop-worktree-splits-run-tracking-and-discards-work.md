@@ -2,8 +2,9 @@
 id: BUG-2386
 priority: P2
 type: BUG
-status: open
+status: done
 captured_at: '2026-06-29T01:04:25Z'
+completed_at: '2026-06-29T15:38:01Z'
 discovered_date: 2026-06-28
 discovered_by: investigation
 relates_to:
@@ -307,6 +308,7 @@ _Added by `/ll:confidence-check` on 2026-06-28; re-confirmed 2026-06-28_
 - **5-file breadth across CLI, FSM, and concurrency subsystems** adds per-site coordination overhead even though each individual change is local in depth.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-29T15:13:04 - `64f9da68-6eb8-47fe-b361-859080fafe19.jsonl`
 - `/ll:confidence-check` - 2026-06-29T00:00:00Z - `7d826006-5d05-4a4e-8afa-e92539258ea6.jsonl`
 - `/ll:wire-issue` - 2026-06-29T14:37:42 - `f98b1853-8aff-4a1e-8bb0-eff1bed28dc6.jsonl`
 - `/ll:decide-issue` - 2026-06-29T14:23:56 - `f7ff821b-d1e4-4e2e-bb06-c8ab49551135.jsonl`
@@ -324,6 +326,14 @@ _Added by `/ll:confidence-check` on 2026-06-28; re-confirmed 2026-06-28_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue modifies `worktree_utils.py:cleanup_worktree` (adding a merge-back or fail-loud policy for `delete_branch=True`). Two related open issues are actively coordinating over the same function's `:141` branch-detection call — ENH-2325 mandates that call uses bare `subprocess.run` (not GitLock, because the lock machinery must not block on a partially torn-down worktree), while ENH-2326 plans to route it through `git_lock.run()`. Before touching `cleanup_worktree`, confirm whether the `:141` path falls within your change surface and coordinate with ENH-2325/ENH-2326 implementers accordingly. Related issues: ENH-2325, ENH-2326.
 
 ---
+
+## Resolution
+
+Fixed in three coordinated changes:
+
+1. **`scripts/little_loops/cli/loop/run.py`** — `cmd_run` resolves `loops_dir` to absolute at entry so all tracking files (`.pid`, `.lock`, `.state.json`, `.log`, `run_dir`) use an absolute path regardless of any subsequent `os.chdir`. Added `import subprocess`. Added `_base_commit` capture before `setup_worktree`. Modified `_cleanup_worktree_on_exit` to check for uncommitted changes and commits ahead of base; when pending work is detected, calls `cleanup_worktree(delete_branch=False)` and warns with the branch name for recovery.
+2. **`scripts/little_loops/fsm/persistence.py`** — `list_running_loops` now uses per-instance-stem deduplication so a live PID file is not suppressed by a stale state file of a different instance of the same loop.
+3. **`docs/reference/CLI.md`** — Updated `--worktree` flag description to document the fail-loud branch-retain behavior.
 
 ## Status
 

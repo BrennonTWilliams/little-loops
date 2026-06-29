@@ -2572,3 +2572,95 @@ class TestVerdictIsYes:
     def test_none_like_string(self) -> None:
         """String 'None' returns False."""
         assert _verdict_is_yes("None") is False
+
+
+# ---------------------------------------------------------------------------
+# BUG-2386: cross-instance PID suppression regression
+# ---------------------------------------------------------------------------
+
+
+class TestListRunningLoopsCrossInstanceSuppression:
+    """Regression for BUG-2386: a live PID file with a DIFFERENT instance stem
+    from a stale state file of the same loop must NOT be suppressed."""
+
+    def test_live_pid_different_stem_not_suppressed_by_stale_state_file(
+        self, tmp_path: Path
+    ) -> None:
+        """list_running_loops() surfaces a live PID when its instance stem has no state file,
+        even if a stale state file for a different instance of the same loop exists.
+
+        Exact scenario from BUG-2386:
+          rn-implement-20260626T120000.state.json  (stale, from a previous run)
+          rn-implement-20260628T192650.pid          (live, current run — state in worktree)
+
+        Old code: extracts logical name "rn-implement" from the PID stem, finds it in
+        known_names (put there by the stale state file), and skips the PID → live run invisible.
+        New code: matches on full instance stem; stale "20260626" stem ≠ live "20260628" stem.
+        """
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        # Stale state file from a previous (now-dead) instance
+        stale_state = {
+            "loop_name": "rn-implement",
+            "current_state": "done",
+            "iteration": 10,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-06-26T12:00:00Z",
+            "updated_at": "2026-06-26T13:00:00Z",
+            "status": "done",
+        }
+        (running_dir / "rn-implement-20260626T120000.state.json").write_text(
+            json.dumps(stale_state)
+        )
+
+        # Live PID file for the current run — its state file is inside the worktree
+        (running_dir / "rn-implement-20260628T192650.pid").write_text("50194")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+            states = list_running_loops(loops_dir)
+
+        loop_names = [s.loop_name for s in states]
+        # Must include the live "starting" entry (not just the stale done entry)
+        assert (
+            loop_names.count("rn-implement") == 2
+        ), f"Expected 2 rn-implement entries (stale + live), got: {loop_names}"
+
+        statuses = {s.status for s in states if s.loop_name == "rn-implement"}
+        assert "starting" in statuses, (
+            "Live PID-only entry must appear as 'starting'; "
+            f"found statuses: {statuses}"
+        )
+
+    def test_same_stem_pid_still_deduplicated(self, tmp_path: Path) -> None:
+        """list_running_loops() still deduplicates when PID stem matches state file stem exactly."""
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        state = {
+            "loop_name": "myloop",
+            "current_state": "check",
+            "iteration": 3,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-06-28T10:00:00Z",
+            "updated_at": "2026-06-28T10:01:00Z",
+            "status": "running",
+        }
+        (running_dir / "myloop-20260628T100000.state.json").write_text(json.dumps(state))
+        (running_dir / "myloop-20260628T100000.pid").write_text("12345")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+            states = list_running_loops(loops_dir)
+
+        names = [s.loop_name for s in states]
+        assert names.count("myloop") == 1, (
+            "Same-stem PID and state file must produce exactly one entry"
+        )
