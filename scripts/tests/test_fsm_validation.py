@@ -35,6 +35,7 @@ from little_loops.fsm.validation import (
     _validate_llm_evidence_contract,
     _validate_meta_loop_evaluation,
     _validate_overescaped_shell,
+    _validate_parse_swallow,
     _validate_parameters,
     _validate_partial_route_dead_end,
     _validate_progress_paths_isolation,
@@ -3566,3 +3567,138 @@ class TestLLMEvidenceContractValidation:
         assert len(mr8_warnings) >= 1, (
             f"MR-8 WARNING not found in validate_fsm output: {all_errors}"
         )
+
+
+# ---------------------------------------------------------------------------
+# MR-10 — parse-swallow detector
+# ---------------------------------------------------------------------------
+
+_SWALLOW_ACTION = """\
+import json, sys
+text = open("data.json").read()
+try:
+    data = json.loads(text)
+except json.JSONDecodeError:
+    sys.exit(0)
+print(data)
+"""
+
+_SWALLOW_ACTION_VALUE_ERROR = """\
+import json, sys
+text = open("data.json").read()
+try:
+    data = json.loads(text)
+except ValueError:
+    exit(0)
+print(data)
+"""
+
+
+class TestParseSwallow:
+    """MR-10: shell state silently swallows a JSON parse failure with exit 0."""
+
+    def _simple_fsm(
+        self,
+        action: str,
+        *,
+        action_type: str | None = "shell",
+        on_error: str | None = None,
+        parse_swallow_ok: bool = False,
+    ) -> FSMLoop:
+        state_kwargs: dict = dict(
+            action=action,
+            action_type=action_type,
+            on_yes="done",
+            on_no="work",
+        )
+        if on_error is not None:
+            state_kwargs["on_error"] = on_error
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(**state_kwargs),
+                "done": make_state(terminal=True),
+            },
+            parse_swallow_ok=parse_swallow_ok,
+        )
+
+    def test_mr10_fires_for_explicit_zero_exit(self) -> None:
+        """MR-10 WARNING fires for json.loads + except JSONDecodeError + sys.exit(0)."""
+        fsm = self._simple_fsm(_SWALLOW_ACTION)
+        errors = _validate_parse_swallow(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert errors[0].path == "states.work.action"
+        assert "MR-10" in errors[0].message
+
+    def test_mr10_fires_for_value_error_variant(self) -> None:
+        """MR-10 WARNING fires when ValueError is caught and exit(0) is used."""
+        fsm = self._simple_fsm(_SWALLOW_ACTION_VALUE_ERROR)
+        errors = _validate_parse_swallow(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+
+    def test_mr10_clean_with_on_error_route(self) -> None:
+        """MR-10 does not fire when on_error: is present on the state."""
+        fsm = self._simple_fsm(_SWALLOW_ACTION, on_error="handle_error")
+        errors = _validate_parse_swallow(fsm)
+        assert errors == []
+
+    def test_mr10_suppressed_by_parse_swallow_ok(self) -> None:
+        """parse_swallow_ok: true suppresses MR-10."""
+        fsm = self._simple_fsm(_SWALLOW_ACTION, parse_swallow_ok=True)
+        errors = _validate_parse_swallow(fsm)
+        assert errors == []
+
+    def test_mr10_does_not_fire_without_json_parse_call(self) -> None:
+        """MR-10 does not fire when there is no json.loads/json.load call."""
+        action = "import sys\ntry:\n    pass\nexcept ValueError:\n    sys.exit(0)\n"
+        fsm = self._simple_fsm(action)
+        errors = _validate_parse_swallow(fsm)
+        assert errors == []
+
+    def test_mr10_does_not_fire_for_prompt_action(self) -> None:
+        """MR-10 ignores prompt-type actions (only shell is relevant)."""
+        fsm = self._simple_fsm(_SWALLOW_ACTION, action_type="prompt")
+        errors = _validate_parse_swallow(fsm)
+        assert errors == []
+
+    def test_mr10_does_not_fire_without_except_clause(self) -> None:
+        """MR-10 does not fire when there is no except clause catching the right exceptions."""
+        action = "import json, sys\ndata = json.loads(open('f').read())\nsys.exit(0)\n"
+        fsm = self._simple_fsm(action)
+        errors = _validate_parse_swallow(fsm)
+        assert errors == []
+
+    def test_mr10_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes MR-10 WARNING for parse-swallow pattern."""
+        fsm = self._simple_fsm(_SWALLOW_ACTION)
+        all_errors = validate_fsm(fsm)
+        mr10 = [
+            e
+            for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "(MR-10)" in e.message
+        ]
+        assert len(mr10) == 1
+
+    def test_mr10_parse_swallow_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level parse_swallow_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: Intentionally swallows parse errors\n"
+            "initial: work\n"
+            "parse_swallow_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        from little_loops.fsm.validation import load_and_validate
+
+        _, warnings = load_and_validate(loop_yaml, raise_on_error=False)
+        unknown = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown == [], f"parse_swallow_ok flagged as unknown: {unknown}"

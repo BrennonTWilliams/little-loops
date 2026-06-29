@@ -192,6 +192,17 @@ command substitution and variables; reserve `$$` exclusively for the `$${VAR}`
 brace escape that collides with `${ns.path}` interpolation. Set `shell_pid_ok:
 true` to suppress in the rare case where a literal PID is intended.
 
+`ll-loop validate` enforces rule 10 as WARNING severity (rule MR-10). A shell
+state whose inline Python calls `json.loads`/`json.load`, catches
+`JSONDecodeError`/`ValueError`/bare `Exception`, and explicitly exits 0
+(`sys.exit(0)` or `exit(0)`) — without an `on_error:` route — silently discards
+parse failures: the FSM receives exit 0 and treats the state as successful,
+producing zero results with no log, no stderr, and no non-zero exit code (as
+observed in BUG-2383 across three loops). Add `on_error:` to the state to route
+parse failures explicitly. Set `parse_swallow_ok: true` to suppress in the rare
+case where treating a parse failure as an empty result is intentional and the
+absence of an error route is deliberate.
+
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.

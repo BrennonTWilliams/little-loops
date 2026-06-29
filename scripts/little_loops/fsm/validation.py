@@ -120,6 +120,15 @@ _BASH_DEFAULT_RE = re.compile(r"(?<!\$)\$\{[^}]*:-[^}]*\}")
 # or end). See ENH for the interactive-/html-/svg-generator over-escape bug.
 _OVERESCAPED_SHELL_RE = re.compile(r"\$\$(?=\(|[A-Za-z_])")
 
+# MR-10: parse-swallow detector. Flags shell states that call json.loads/json.load,
+# catch JSONDecodeError/ValueError/Exception, and explicitly exit 0 — without an
+# on_error: route. Shifts the BUG-2383 silent-swallow class left into the validator.
+_JSON_PARSE_CALL_RE = re.compile(r"\bjson\.loads?\s*\(")
+_PARSE_EXCEPT_CATCHING_RE = re.compile(
+    r"\bexcept\s+(?:\(\s*)?(?:(?:json\.)?JSONDecodeError|ValueError|Exception)\b"
+)
+_ZERO_EXIT_RE = re.compile(r"\b(?:sys\.exit|exit)\s*\(\s*0\s*\)")
+
 # ENH-1961: Regex for extracting captured variable names from ${captured.<var>.*} references
 _CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")
 
@@ -198,6 +207,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "generator_fix_ok",
         "bash_default_ok",
         "shell_pid_ok",
+        "parse_swallow_ok",
         "import",
         "fragments",
         "from",
@@ -1101,6 +1111,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_overescaped_shell(fsm))
 
+    errors.extend(_validate_parse_swallow(fsm))
+
     errors.extend(_validate_classify_route_default(fsm))
 
     errors.extend(_validate_zero_retry_counter(fsm))
@@ -1723,6 +1735,55 @@ def _validate_overescaped_shell(fsm: FSMLoop) -> list[ValidationError]:
                     severity=ValidationSeverity.ERROR,
                 )
             )
+    return errors
+
+
+def _validate_parse_swallow(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-10: shell state silently swallows a JSON parse failure with exit 0.
+
+    Flags any shell state whose inline Python calls ``json.loads``/``json.load``,
+    catches ``JSONDecodeError``, ``ValueError``, or bare ``Exception``, and explicitly
+    exits 0 (``sys.exit(0)`` or ``exit(0)``) — without an ``on_error:`` route on the
+    state. When all three hold the FSM receives exit 0 on a parse failure and treats the
+    state as successful, producing zero results with no log, no stderr, and no non-zero
+    exit code (as observed in BUG-2383 across three loops).
+
+    Suppressed by ``parse_swallow_ok: true`` at the loop top-level for the rare case
+    where treating a parse failure as an empty result is intentional.
+    """
+    if fsm.parse_swallow_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if not state.action:
+            continue
+        if state.action_type not in ("shell", None):
+            continue
+        if state.action.lstrip().startswith("/"):
+            continue
+        if state.on_error is not None:
+            continue
+        action = state.action
+        if not _JSON_PARSE_CALL_RE.search(action):
+            continue
+        if not _PARSE_EXCEPT_CATCHING_RE.search(action):
+            continue
+        if not _ZERO_EXIT_RE.search(action):
+            continue
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] shell action calls json.loads/json.load, "
+                    "catches JSONDecodeError/ValueError/Exception, and exits 0 without "
+                    "an on_error: route. Parse failures are silently discarded; the FSM "
+                    "sees exit 0 and treats the state as successful (BUG-2383 pattern). "
+                    "Add on_error: to route parse failures, or set parse_swallow_ok: true "
+                    "to suppress. (MR-10)"
+                ),
+                path=f"states.{state_name}.action",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
     return errors
 
 

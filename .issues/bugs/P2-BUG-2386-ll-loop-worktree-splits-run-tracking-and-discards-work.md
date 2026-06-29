@@ -8,11 +8,11 @@ discovered_date: 2026-06-28
 discovered_by: investigation
 relates_to:
 - BUG-823
-confidence_score: 90
-outcome_confidence: 71
-score_complexity: 16
-score_test_coverage: 18
-score_ambiguity: 17
+confidence_score: 93
+outcome_confidence: 83
+score_complexity: 19
+score_test_coverage: 21
+score_ambiguity: 23
 score_change_surface: 20
 decision_needed: false
 ---
@@ -201,6 +201,17 @@ Decided by `/ll:decide-issue` on 2026-06-29.
 - Option A: `MergeCoordinator._process_merge()` is the only merge-back pattern (`merge_coordinator.py:577–806`), but it is a stateful background thread queue; no single-shot helper exists. `_cleanup_worktree_on_exit` (`run.py:405-414`) has no access to `run_foreground()`'s return code. Reuse score: 1/3.
 - Option B: `orchestrator.py:424-434` (`git status --porcelain` → `PendingWorktreeInfo`), `orchestrator.py:476-493` (warn + print options), `orchestrator.py:1290` ("local-only branch retained" format), `worker_pool.py:726-732` (skip-with-warning), `worktree_utils.py:120` (`delete_branch=False` param). Reuse score: 2/3.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Verify `scripts/little_loops/cli/loop/_helpers.py` `run_foreground()` line 1167: if `running_dir` is `None`, the `Path(".running")` fallback resolves relative to post-chdir cwd. Pass an explicit absolute `running_dir` from `cmd_run` (derived from the absolute `loops_dir` resolved in Step 1) so the log path always lands under the main repo.
+7. Update `scripts/tests/test_cli_loop_worktree.py` `TestCleanupWorktree.test_deletes_branch_when_delete_branch_true` (line 406): add `subprocess.run` mock returns for `git status --porcelain` and `git rev-list --count` to satisfy the new pre-delete checks added in Step 3.
+8. Write new `TestCmdRunWorktreeAbsoluteLoopsDir` in `test_cli_loop_worktree.py`: Step 1+5 regression test asserting `.pid`/`.lock`/`.state.json` all resolve under the main repo's `.loops/.running` after `os.chdir`; extend existing `TestCmdRunWorktree` fixture (`_make_args`, `_make_loop`, mock-`BRConfig`).
+9. Write new `TestListRunningLoopsCrossInstanceSuppression` in `test_fsm_persistence.py`: regression test for the stale-same-name-state.json-suppresses-live-different-stem-PID scenario (exact bug observed on `rn-implement-20260628T192650`; not covered by existing tests).
+10. Write new `TestCleanupWorktreeFailLoud` in `test_cli_loop_worktree.py`: regression test for Step 3 fail-loud branch-retain behavior — assert `logger.warning` called, branch NOT deleted, recovery instructions printed.
+11. Update `docs/reference/CLI.md` `--worktree` row to describe the retained-branch / fail-loud scenario for runs with pending work.
+
 ## Integration Map
 
 ### Files to Modify
@@ -210,8 +221,19 @@ Decided by `/ll:decide-issue` on 2026-06-29.
 - `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_stop`: discovery fix, orphaned-lock fallback
 - `scripts/little_loops/worktree_utils.py` — `cleanup_worktree`: merge-back or fail-loud delete_branch policy
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/_helpers.py` — `run_foreground()` line 1167: `running_dir = Path(".running")` fallback resolves relative to post-chdir cwd; pass explicit absolute `running_dir` from `cmd_run` [Agent 2]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/parallel/merge_coordinator.py` — reference for the merge-back pattern to mirror in `--worktree` cleanup
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/__init__.py` — `main_loop()` line 49 constructs the relative `loops_dir = Path(config.loops.loops_dir)` that is passed to `cmd_run`; fix resolves inside `cmd_run`, not here [Agent 1]
+- `scripts/little_loops/cli/loop/next_loop.py` — calls `cmd_run()` at line 333 for `--execute` flag [Agent 1]
+- `scripts/little_loops/cli/loop/info.py` — `cmd_list()` line 75 calls `list_running_loops(loops_dir)` with the same relative `loops_dir` [Agent 1]
+- `scripts/little_loops/cli/loop/_helpers.py` — imports `LockManager`, `_process_alive`, `resolve_scope`; also owns `run_foreground()` secondary path [Agent 1]
+- `scripts/little_loops/fsm/executor.py` — uses `StatePersistence`; part of the persistence surface [Agent 1]
+- `scripts/little_loops/transport.py` — `_make_seed_callback()` line 580 hardcodes `list_running_loops(Path(".loops"))` relative path; will miss worktree runs even after the primary fix [Agent 2]
 
 ### Similar Patterns
 - `ll-parallel` merge flow — `merge_coordinator.py` handles worktree merge-back; the `--worktree` run path should mirror this
@@ -219,8 +241,25 @@ Decided by `/ll:decide-issue` on 2026-06-29.
 ### Tests
 - `scripts/tests/` — new regression tests: mocked worktree run asserts `.pid`/`.lock`/`.state.json` all resolve under the main repo's `.loops/.running`, that `list_running`/`_find_instances` discover the instance, and that exit leaves no orphaned files
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that will break (update required):**
+- `scripts/tests/test_cli_loop_worktree.py:406` — `TestCleanupWorktree.test_deletes_branch_when_delete_branch_true`: add `subprocess.run` mock returns for `git status --porcelain` + `git rev-list --count` (currently only mocks `rev-parse --abbrev-ref HEAD`) [Agent 3]
+- `scripts/tests/test_fsm_persistence.py:1313` — `TestListRunningLoops.test_list_running_loops_no_duplicate_for_loop_with_both_files`: premise changes if Step 4 replaces logical-name suppression with per-instance-stem matching [Agent 3]
+
+**Existing tests to monitor:**
+- `scripts/tests/test_cli_loop_worktree.py:719` — `TestCmdRunWorktree.test_worktree_atexit_registration`: references `run.py` line numbers in comments; verify after pid/lock reorder [Agent 3]
+
+**New tests to write (follow `TestActiveWorktreeProtection.test_cleanup_worktree_logs_warning_for_active` at `test_worker_pool.py:1027`):**
+- `scripts/tests/test_fsm_persistence.py` — new `TestListRunningLoopsCrossInstanceSuppression`: stale same-name `*.state.json` suppresses live different-stem PID — exact bug scenario, not yet covered [Agent 3]
+- `scripts/tests/test_cli_loop_worktree.py` — new `TestCmdRunWorktreeAbsoluteLoopsDir`: assert `.pid`/`.lock`/`.state.json` resolve under main repo absolute path after `os.chdir`; extend `TestCmdRunWorktree` fixture [Agent 3]
+- `scripts/tests/test_cli_loop_worktree.py` — new `TestCleanupWorktreeFailLoud`: `logger.warning` called, `cleanup_worktree(delete_branch=False)` used, `git branch -D` NOT called when pending work exists [Agent 3]
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `--worktree` row in `ll-loop run` flags table currently states "removed on exit"; update to describe fail-loud branch-retain behavior for runs with pending work [Agent 2]
+- `docs/reference/API.md` — documents `list_running_loops` (line 5169) and `LockManager` (line 5247); update if PID fallback behavior or `running_dir` path resolution semantics change [Agent 2]
 
 ### Configuration
 - N/A
@@ -268,6 +307,8 @@ _Added by `/ll:confidence-check` on 2026-06-28; re-confirmed 2026-06-28_
 - **5-file breadth across CLI, FSM, and concurrency subsystems** adds per-site coordination overhead even though each individual change is local in depth.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-29T00:00:00Z - `7d826006-5d05-4a4e-8afa-e92539258ea6.jsonl`
+- `/ll:wire-issue` - 2026-06-29T14:37:42 - `f98b1853-8aff-4a1e-8bb0-eff1bed28dc6.jsonl`
 - `/ll:decide-issue` - 2026-06-29T14:23:56 - `f7ff821b-d1e4-4e2e-bb06-c8ab49551135.jsonl`
 - `/ll:confidence-check` - 2026-06-28T00:00:00Z - `b4095ce2-bcc3-4891-8aa8-2197b4e25d41.jsonl`
 - `/ll:decide-issue` - 2026-06-29T04:30:18 - `e74ec2e6-7eaf-4ca4-80e7-1aab21043b09.jsonl`
