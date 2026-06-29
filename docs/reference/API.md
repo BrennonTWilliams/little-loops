@@ -798,7 +798,7 @@ Check whether an issue file has been formatted to the template structure.
 
 An issue is considered formatted if either:
 1. Its `## Session Log` section contains a `/ll:format-issue` entry, **or**
-2. All required sections for its type template are present as `##` headings.
+2. All required sections for its type template are present as `##` headings. `Labels` is no longer a required body heading post-ENH-1392 (it moved to `labels:` frontmatter); `is_formatted()` derives this from the template, so no `## Labels` body section is needed.
 
 **Parameters:**
 - `issue_path` - Path to the issue markdown file

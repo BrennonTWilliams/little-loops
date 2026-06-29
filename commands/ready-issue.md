@@ -137,7 +137,7 @@ If matches exist, add each correction as a `Historical Concerns` sub-bullet in t
 #### Required Sections
 
 Run `ll-issues sections {type}` to get the per-type template, where `{type}` is `bug`, `feat`, or `enh` based on the issue type, and verify:
-- [ ] All `common_sections` where `required: true` are present and non-empty (Summary, Current Behavior, Expected Behavior, Impact, Labels, Status)
+- [ ] All `common_sections` where `required: true` are present and non-empty (Summary, Current Behavior, Expected Behavior, Impact, Status) — `Labels` is now a frontmatter field (`labels:`) not a required body section (post-ENH-1392)
 - [ ] All `type_sections` entries where `level: "required"` are present and non-empty
 - [ ] Proposed Solution section is present (even if marked TBD)
 

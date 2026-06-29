@@ -227,3 +227,72 @@ class TestSectionsResolverTiers:
         assert result == 0
         data = json.loads(out)
         assert data.get("explicit") is True
+
+
+# ---------------------------------------------------------------------------
+# TestLabelsNotRequired — BUG-2395
+# ---------------------------------------------------------------------------
+
+TEMPLATES_DIR = Path(__file__).parent.parent / "little_loops" / "templates"
+
+
+class TestLabelsNotRequired:
+    """Template guard: Labels must not be a required body section (BUG-2395).
+
+    ENH-1392 moved labels to frontmatter. The *-sections.json templates must
+    reflect this so every consumer (is_formatted(), ensure_formatted gate,
+    format-issue --check) stops chasing a phantom body section.
+    """
+
+    ISSUE_TYPES = ["feat", "bug", "enh", "epic"]
+
+    def test_labels_required_false_in_all_templates(self) -> None:
+        """Labels.required must be false in all four issue-type templates (BUG-2395)."""
+        for issue_type in self.ISSUE_TYPES:
+            data = json.loads((TEMPLATES_DIR / f"{issue_type}-sections.json").read_text())
+            labels_def = data.get("common_sections", {}).get("Labels", {})
+            assert labels_def.get("required") is not True, (
+                f"{issue_type}-sections.json: Labels.required must be false "
+                f"(ENH-1392 moved labels to frontmatter) — got {labels_def.get('required')!r}"
+            )
+
+    def test_user_story_not_required_in_feat(self) -> None:
+        """User Story must not have level='required' in feat-sections.json (BUG-2395).
+
+        'User Story' was renamed to 'Use Case'; the deprecated entry must not block
+        issues that use the canonical ## Use Case heading.
+        """
+        data = json.loads((TEMPLATES_DIR / "feat-sections.json").read_text())
+        user_story = data.get("type_sections", {}).get("User Story", {})
+        assert user_story.get("level") != "required", (
+            "feat-sections.json: User Story.level must not be 'required' — "
+            "issues use the canonical ## Use Case heading (BUG-2395)"
+        )
+
+    def test_required_set_non_empty_for_all_types(self) -> None:
+        """Demoting Labels must not empty the required set (vacuous-True regression guard).
+
+        is_formatted() returns True unconditionally when required is empty.
+        Each type must retain at least one required section after demotion.
+        """
+        for issue_type in self.ISSUE_TYPES:
+            data = json.loads((TEMPLATES_DIR / f"{issue_type}-sections.json").read_text())
+            required: set[str] = set()
+            for name, defn in data.get("common_sections", {}).items():
+                if (
+                    isinstance(defn, dict)
+                    and defn.get("required") is True
+                    and not defn.get("deprecated", False)
+                ):
+                    required.add(name)
+            for name, defn in data.get("type_sections", {}).items():
+                if (
+                    isinstance(defn, dict)
+                    and defn.get("level") == "required"
+                    and not defn.get("deprecated", False)
+                ):
+                    required.add(name)
+            assert len(required) >= 1, (
+                f"{issue_type}-sections.json: required set is empty after demotion — "
+                "is_formatted() would return vacuous True for all issues"
+            )

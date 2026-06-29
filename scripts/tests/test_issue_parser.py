@@ -3120,3 +3120,143 @@ class TestIssueInfoMilestone:
         info = parser.parse_file(issue_file)
 
         assert info.milestone is None
+
+
+# ---------------------------------------------------------------------------
+# TestIsFormatted — BUG-2395
+# ---------------------------------------------------------------------------
+
+
+class TestIsFormatted:
+    """is_formatted() must return True for canonical post-ENH-1392 issues.
+
+    Pre-fix: Labels.required=true in templates causes is_formatted() to return
+    False for issues whose labels live in frontmatter (canonical post-ENH-1392).
+    Also, feat issues with ## Use Case (v2.0 name) are flagged because the
+    deprecated 'User Story' entry still had level='required'.
+
+    Post-fix: Labels.required demoted to false; User Story.level demoted to
+    optional → is_formatted() returns True for canonical frontmatter-labels issues.
+
+    Model: test_refine_status.py:1245 (test_fmt_checkmark_after_append_session_log_entry).
+    Uses direct Python call to is_formatted(), not shell execution.
+    """
+
+    def test_feat_frontmatter_labels_use_case_is_formatted(self, tmp_path: Path) -> None:
+        """feat with labels: frontmatter + ## Use Case → is_formatted() True (BUG-2395).
+
+        Pre-fix: returns False (Labels required but absent from body).
+        Post-fix: returns True (Labels no longer required; Use Case satisfies type req).
+        """
+        from little_loops.issue_parser import is_formatted
+
+        feats_dir = tmp_path / "feats"
+        feats_dir.mkdir()
+        issue_file = feats_dir / "P3-FEAT-9999-test-feature.md"
+        issue_file.write_text(
+            "\n".join([
+                "---",
+                "labels:",
+                "- host-compat",
+                "- portfolio",
+                "---",
+                "",
+                "# FEAT-9999: Test feature",
+                "",
+                "## Summary",
+                "A test feature.",
+                "",
+                "## Current Behavior",
+                "N/A — new feature.",
+                "",
+                "## Expected Behavior",
+                "It works as described.",
+                "",
+                "## Use Case",
+                "As a developer, I want X so that Y.",
+                "",
+                "## Acceptance Criteria",
+                "- Criterion 1",
+                "",
+                "## Impact",
+                "- **Priority**: P3 - Low",
+                "",
+                "## Status",
+                "open",
+            ])
+        )
+        assert is_formatted(issue_file) is True, (
+            "feat with frontmatter labels + ## Use Case should be formatted (BUG-2395)"
+        )
+
+    def test_bug_frontmatter_labels_is_formatted(self, tmp_path: Path) -> None:
+        """bug with labels: frontmatter + no ## Labels body → is_formatted() True (BUG-2395).
+
+        Pre-fix: returns False (Labels required but absent from body).
+        Post-fix: returns True (Labels.required demoted to false).
+        """
+        from little_loops.issue_parser import is_formatted
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9999-test-bug.md"
+        issue_file.write_text(
+            "\n".join([
+                "---",
+                "labels:",
+                "- rn-remediate",
+                "- loop",
+                "---",
+                "",
+                "# BUG-9999: Test bug",
+                "",
+                "## Summary",
+                "A test bug.",
+                "",
+                "## Current Behavior",
+                "It breaks.",
+                "",
+                "## Expected Behavior",
+                "It works.",
+                "",
+                "## Steps to Reproduce",
+                "1. Do the thing.",
+                "",
+                "## Impact",
+                "- **Priority**: P3 - Low",
+                "",
+                "## Status",
+                "open",
+            ])
+        )
+        assert is_formatted(issue_file) is True, (
+            "bug with frontmatter labels + no ## Labels body should be formatted (BUG-2395)"
+        )
+
+    def test_sparse_issue_still_not_formatted(self, tmp_path: Path) -> None:
+        """issue missing a genuinely required section → is_formatted() False after demotion.
+
+        Regression guard: demoting Labels must not gut the check (vacuous-True risk).
+        A feat missing ## Impact is still not formatted.
+        """
+        from little_loops.issue_parser import is_formatted
+
+        feats_dir = tmp_path / "feats"
+        feats_dir.mkdir()
+        issue_file = feats_dir / "P3-FEAT-9998-sparse.md"
+        issue_file.write_text(
+            "\n".join([
+                "---",
+                "labels:",
+                "- test",
+                "---",
+                "",
+                "# FEAT-9998: Sparse",
+                "",
+                "## Summary",
+                "Only has Summary — missing Impact, Status, Use Case, etc.",
+            ])
+        )
+        assert is_formatted(issue_file) is False, (
+            "feat missing required sections should still report not formatted after demotion"
+        )

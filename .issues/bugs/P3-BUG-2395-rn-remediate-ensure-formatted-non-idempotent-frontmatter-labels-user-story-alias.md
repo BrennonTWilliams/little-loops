@@ -3,9 +3,10 @@ id: BUG-2395
 title: rn-remediate ensure_formatted re-formats every run (frontmatter labels + User
   Story/Use Case alias)
 type: bug
-status: open
+status: done
 priority: P3
 captured_at: '2026-06-29T16:59:29Z'
+completed_at: '2026-06-29T20:20:11Z'
 discovered_date: 2026-06-29
 discovered_by: capture-issue
 relates_to:
@@ -397,6 +398,8 @@ authored correctly, and three doc sites must stay in sync — both mechanical bu
 human-touchable.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-29T20:20:11Z - `fix(templates): demote Labels.required to false in all 4 templates; User Story.level to optional in feat`
+- `/ll:ready-issue` - 2026-06-29T20:06:43 - `8b0415eb-5881-4f82-a87d-1dd623baf8ac.jsonl`
 - manual reconciliation - 2026-06-29 - reconciled plan to selected Option B: struck stale Option-A `is_formatted()`/shell-test scaffolding (verified template-driven, no Python needed), swapped loop-rerun for deterministic acceptance gate, ruled out empty-required regression, spun out ENH-2398/ENH-2399; outcome_confidence 72 → 88
 - `/ll:confidence-check` - 2026-06-29T19:00:00Z - re-check after decide-issue + wire-issue
 - `/ll:wire-issue` - 2026-06-29T18:01:03 - `ea38ba49-3bae-4693-9961-165fbf1039bb.jsonl`

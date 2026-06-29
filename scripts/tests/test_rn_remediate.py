@@ -6,7 +6,9 @@ rn-implement.yaml monolith into sub-loops).
 
 from __future__ import annotations
 
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -1432,3 +1434,98 @@ class TestCounterIncrementInEmitImplemented:
         action = data["states"]["implement"]["action"]
         assert "ll-auto --only" in action
         assert "exit $?" in action or "exit $EXIT_CODE" in action
+
+
+# ---------------------------------------------------------------------------
+# TestEnsureFormatted — BUG-2395
+# ---------------------------------------------------------------------------
+
+TEMPLATES_DIR = Path(__file__).parent.parent / "little_loops" / "templates"
+
+
+class TestEnsureFormatted:
+    """ensure_formatted gate must exit 0 for canonical post-ENH-1392 issues.
+
+    Before BUG-2395 fix: gate flags Labels (moved to frontmatter by ENH-1392)
+    and User Story (renamed to Use Case) as missing required sections, causing
+    a redundant format pass on every rn-remediate run.
+
+    Model: TestDiagnoseAmbiguityWireDiscrimination (line 1277) — extract inline
+    shell from YAML action and run via subprocess with pre-set env vars.
+    """
+
+    def _extract_gate_script(self) -> str:
+        """Extract the MISSING=(...) portion of the ensure_formatted action."""
+        data = _load_loop()
+        action = data["states"]["ensure_formatted"]["action"]
+        start = action.find("MISSING=$(")
+        assert start != -1, "Could not locate MISSING=$( in ensure_formatted action"
+        return action[start:]
+
+    def _run_gate(self, issue_body: str, issue_type: str) -> subprocess.CompletedProcess[str]:
+        template_path = TEMPLATES_DIR / f"{issue_type}-sections.json"
+        sections_json = template_path.read_text()
+
+        with tempfile.NamedTemporaryFile(suffix=".md", mode="w", delete=False) as f:
+            f.write(issue_body)
+            issue_file = f.name
+
+        try:
+            script = self._extract_gate_script()
+            env = os.environ.copy()
+            env["ISSUE_FILE"] = issue_file
+            env["SECTIONS_JSON"] = sections_json
+            return subprocess.run(
+                ["bash", "-c", script],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+        finally:
+            os.unlink(issue_file)
+
+    def test_feat_frontmatter_labels_use_case_exits_0(self) -> None:
+        """feat with labels: frontmatter + ## Use Case must exit 0 (BUG-2395).
+
+        Pre-fix: gate emits 'missing required sections: Labels; User Story' → exits 1.
+        Post-fix: Labels.required demoted to false; User Story.level demoted to optional
+        → gate finds all required sections and exits 0.
+        """
+        body = "\n".join([
+            "---",
+            "labels:",
+            "- host-compat",
+            "- portfolio",
+            "---",
+            "",
+            "# FEAT-9999: Test feature",
+            "",
+            "## Summary",
+            "A test feature.",
+            "",
+            "## Current Behavior",
+            "N/A — new feature.",
+            "",
+            "## Expected Behavior",
+            "It works as described.",
+            "",
+            "## Use Case",
+            "As a developer, I want X so that Y.",
+            "",
+            "## Acceptance Criteria",
+            "- Criterion 1",
+            "",
+            "## Impact",
+            "- **Priority**: P3 - Low",
+            "- **Effort**: Small",
+            "- **Risk**: Low",
+            "- **Breaking Change**: No",
+            "",
+            "## Status",
+            "open",
+        ])
+        result = self._run_gate(body, "feat")
+        assert result.returncode == 0, (
+            "Gate should exit 0 for feat with frontmatter labels + ## Use Case.\n"
+            f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+        )

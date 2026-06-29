@@ -1130,6 +1130,75 @@ class TestRefineStatusFormatColumn:
         assert record["id"] == "BUG-300"
         assert record["formatted"] is True, "Fully formatted BUG should report formatted=True"
 
+    def test_fmt_checkmark_for_bug_without_labels_body_section(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """✓ appears in fmt column for a BUG whose labels are in frontmatter (BUG-2395).
+
+        Post-ENH-1392 canonical issues carry labels in `labels:` frontmatter, not
+        a `## Labels` body section. After BUG-2395 fix, Labels.required is false
+        so is_formatted() returns True for these issues.
+        """
+        import json as json_module
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        content = "\n".join([
+            "---",
+            "labels:",
+            "- bug",
+            "- idempotency",
+            "---",
+            "",
+            "# BUG-302: Frontmatter labels bug",
+            "",
+            "## Summary",
+            "Test issue with labels in frontmatter.",
+            "",
+            "## Current Behavior",
+            "It breaks.",
+            "",
+            "## Expected Behavior",
+            "It works.",
+            "",
+            "## Steps to Reproduce",
+            "1. Do the thing.",
+            "",
+            "## Impact",
+            "- **Priority**: P3 - Low",
+            "- **Effort**: Small",
+            "- **Risk**: Low",
+            "- **Breaking Change**: No",
+            "",
+            "## Status",
+            "**Open** | Created: 2026-01-01 | Priority: P3",
+        ])
+        (bugs_dir / "P3-BUG-302-frontmatter-labels.md").write_text(content)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--format", "json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+        record = json_module.loads(lines[0])
+        assert record["id"] == "BUG-302"
+        assert record["formatted"] is True, (
+            "BUG with labels in frontmatter (no ## Labels body) should report formatted=True (BUG-2395)"
+        )
+
     def test_fmt_x_for_missing_required_sections(
         self,
         temp_project_dir: Path,

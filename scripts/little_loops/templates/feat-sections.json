@@ -111,7 +111,7 @@
       "creation_template": "_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._"
     },
     "Labels": {
-      "required": true,
+      "required": false,
       "description": "Issue categorization labels",
       "ai_usage": "MEDIUM",
       "human_value": "LOW",
@@ -146,7 +146,7 @@
       ]
     },
     "User Story": {
-      "level": "required",
+      "level": "optional",
       "description": "Who is the user and what do they want to achieve (deprecated - use Use Case instead)",
       "ai_usage": "HIGH",
       "human_value": "HIGH",
