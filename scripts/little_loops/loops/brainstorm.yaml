@@ -102,41 +102,41 @@ states:
       - "text": a concise one-sentence description of the idea
       - "rationale": one sentence explaining why this lens unlocks this specific idea
 
-      After your analysis, output EXACTLY this on the LAST LINE of your response:
-      IDEAS_JSON: [{"text": "...", "rationale": "..."}, ...]
+      After your analysis, output one IDEAS_JSON line per idea, in exactly this format:
+      IDEAS_JSON: {"text": "...", "rationale": "..."}
 
-      The IDEAS_JSON line must be valid JSON — an array of objects each with "text" and "rationale".
+      Emit exactly one IDEAS_JSON: line per idea (no wrapping array). Each line must be a valid
+      JSON object with "text" and "rationale" keys.
     capture: round_ideas
     next: dedup_novelty
     on_error: failed
 
   dedup_novelty:
-    # Extracts IDEAS_JSON from diverge output, deduplicates via difflib.SequenceMatcher,
-    # appends novel ideas to ideas.jsonl, and updates the saturation counter.
-    # saturation.txt is reset to 0 on any novel idea; incremented otherwise.
+    # Collects all IDEAS_JSON lines (NDJSON: one object per line), deduplicates via
+    # difflib.SequenceMatcher, appends novel ideas to ideas.jsonl, and updates the
+    # saturation counter.  saturation.txt is reset to 0 on any novel idea; incremented otherwise.
     fragment: parse_tagged_json
     action: |
       python3 << 'PYEOF'
       import json, sys, difflib
 
       raw = """${captured.round_ideas.output}"""
-      ideas_json_str = None
-      for line in reversed(raw.split('\n')):
+      new_ideas = []
+      for line in raw.split('\n'):
           line = line.strip()
           if line.startswith('IDEAS_JSON:'):
-              ideas_json_str = line[len('IDEAS_JSON:'):]
-              break
+              json_str = line[len('IDEAS_JSON:'):].strip()
+              try:
+                  idea = json.loads(json_str)
+                  if isinstance(idea, dict):
+                      new_ideas.append(idea)
+                  elif isinstance(idea, list):
+                      # backwards-compat: model emitted the old array form on this line
+                      new_ideas.extend(i for i in idea if isinstance(i, dict))
+              except (json.JSONDecodeError, ValueError) as e:
+                  print(f"Warning: skipping malformed IDEAS_JSON line: {e}", file=sys.stderr)
 
-      if not ideas_json_str:
-          # No IDEAS_JSON tag found; treat as zero novel ideas
-          print(0)
-          sys.exit(0)
-
-      try:
-          new_ideas = json.loads(ideas_json_str)
-          if not isinstance(new_ideas, list):
-              new_ideas = []
-      except (json.JSONDecodeError, ValueError):
+      if not new_ideas:
           print(0)
           sys.exit(0)
 

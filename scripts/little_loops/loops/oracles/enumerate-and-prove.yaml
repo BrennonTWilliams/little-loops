@@ -39,25 +39,17 @@ states:
     action: |
       python3 << 'PYEOF'
       import json, sys
+      from little_loops.output_parsing import extract_tagged_json
+
       output = """${context.raw_enumeration}"""
       tag = "${context.tag}"
-      prefix = tag + ":"
-      found = None
-      for line in reversed(output.split('\n')):
-          line = line.strip()
-          if line.startswith(prefix):
-              found = line[len(prefix):]
-              break
-      if not found:
-          print(json.dumps({"targets": [], "count": 0, "rationale": "Failed to parse enumeration output — no " + tag + ": line found."}))
-          sys.exit(0)
-      try:
-          data = json.loads(found)
-          targets = [t.strip() for t in data.get("targets", []) if str(t).strip()][:7]
-          count = len(targets)
-          print(json.dumps({"targets": targets, "count": count, "rationale": data.get("rationale", "")}))
-      except (json.JSONDecodeError, ValueError) as e:
-          print(json.dumps({"targets": [], "count": 0, "rationale": f"JSON parse error: {e}"}))
+      data, error = extract_tagged_json(output, tag)
+      if data is None:
+          print(error, file=sys.stderr)
+          sys.exit(2)
+      targets = [t.strip() for t in data.get("targets", []) if str(t).strip()][:7]
+      count = len(targets)
+      print(json.dumps({"targets": targets, "count": count, "rationale": data.get("rationale", "")}))
       PYEOF
     capture: enumeration
     evaluate:
@@ -67,6 +59,7 @@ states:
       target: 0
     on_yes: flatten
     on_no: failed
+    on_error: failed
 
   flatten:
     action_type: shell

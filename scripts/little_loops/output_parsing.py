@@ -6,6 +6,7 @@ used by both issue_manager (ll-auto) and worker_pool (ll-parallel).
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -21,6 +22,53 @@ STATUS_PATTERN = re.compile(r"^- (\w+): (\w+)", re.MULTILINE)
 
 # Valid verdicts for ready-issue
 VALID_VERDICTS = ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW", "CLOSE", "BLOCKED")
+
+
+def extract_tagged_json(raw: str, tag: str) -> tuple[list | dict | None, str | None]:
+    """Extract and parse a tagged JSON line from LLM output.
+
+    Scans for the last line starting with ``tag:`` and parses the JSON. On
+    failure attempts bounded structural repair (balancing trailing ``]``/``}``).
+
+    Args:
+        raw: Full LLM output text to search
+        tag: Tag prefix (without colon), e.g. ``"ASSUMPTIONS_JSON"``
+
+    Returns:
+        ``(data, None)`` on clean parse, ``(data, warning)`` on successful
+        repair, ``(None, error_msg)`` on unrecoverable failure. Never swallows
+        — callers must surface the error when ``data is None``.
+    """
+    prefix = tag + ":"
+    found: str | None = None
+    for line in reversed(raw.split("\n")):
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            found = stripped[len(prefix):].strip()
+            break
+
+    if found is None:
+        return None, f"No {tag}: line found in output"
+
+    try:
+        return json.loads(found), None
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Attempt repair: balance unmatched square brackets and curly braces.
+    # Close inner braces before outer brackets (inner-to-outer order).
+    open_sq = found.count("[") - found.count("]")
+    open_cu = found.count("{") - found.count("}")
+    if open_sq > 0 or open_cu > 0:
+        repaired = found + ("}" * open_cu) + ("]" * open_sq)
+        try:
+            warning = f"Repaired malformed {tag}: JSON (added {open_cu} '}}', {open_sq} ']')"
+            return json.loads(repaired), warning
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    tail = found[-200:] if len(found) > 200 else found
+    return None, f"Unrecoverable JSON parse failure for {tag}: — tail: {tail!r}"
 
 
 def _clean_verdict_content(content: str) -> str:

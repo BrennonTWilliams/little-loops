@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from little_loops.output_parsing import (
+    extract_tagged_json,
     parse_manage_issue_output,
     parse_ready_issue_output,
     parse_sections,
@@ -1021,3 +1022,70 @@ Issue resolved successfully.
         assert "sections" in result
         assert "METADATA" in result["sections"]
         assert "PLAN" in result["sections"]
+
+
+class TestExtractTaggedJson:
+    """Tests for extract_tagged_json — BUG-2383: must never silently swallow parse failures."""
+
+    def test_clean_array(self) -> None:
+        raw = 'Some preamble\nIDEAS_JSON: [{"text": "a", "rationale": "b"}]'
+        data, error = extract_tagged_json(raw, "IDEAS_JSON")
+        assert error is None
+        assert data == [{"text": "a", "rationale": "b"}]
+
+    def test_clean_dict(self) -> None:
+        raw = 'ASSUMPTIONS_JSON:{"targets": ["x"], "count": 1}'
+        data, error = extract_tagged_json(raw, "ASSUMPTIONS_JSON")
+        assert error is None
+        assert data == {"targets": ["x"], "count": 1}
+
+    def test_repairs_missing_closing_bracket(self) -> None:
+        """Core BUG-2383 scenario: LLM truncates the trailing ] of a long array."""
+        raw = 'IDEAS_JSON: [{"text": "idea1", "rationale": "r1"}, {"text": "idea2"'
+        data, error = extract_tagged_json(raw, "IDEAS_JSON")
+        assert data is not None, f"Expected repair to succeed, got error: {error}"
+        assert error is not None  # warns about repair
+        assert "Repaired" in error
+        assert isinstance(data, list)
+        assert data[0]["text"] == "idea1"
+
+    def test_repairs_missing_closing_brace(self) -> None:
+        raw = 'ASSUMPTIONS_JSON:{"targets": ["x"], "count": 1'
+        data, error = extract_tagged_json(raw, "ASSUMPTIONS_JSON")
+        assert data is not None
+        assert error is not None
+        assert "Repaired" in error
+        assert data["count"] == 1
+
+    def test_returns_none_error_on_unrecoverable(self) -> None:
+        """Completely garbled JSON after tag → (None, error), never empty result."""
+        raw = "IDEAS_JSON: this is not json at all }{]["
+        data, error = extract_tagged_json(raw, "IDEAS_JSON")
+        assert data is None
+        assert error is not None
+        assert "Unrecoverable" in error
+
+    def test_no_tag_returns_none_error(self) -> None:
+        """Missing tag → (None, error) so callers can decide how to route."""
+        raw = "Some output with no tag line at all."
+        data, error = extract_tagged_json(raw, "IDEAS_JSON")
+        assert data is None
+        assert error is not None
+        assert "No IDEAS_JSON" in error
+
+    def test_uses_last_matching_line(self) -> None:
+        """When multiple tag lines exist, the last one wins."""
+        raw = (
+            'IDEAS_JSON: [{"text": "first"}]\n'
+            'Some intervening text\n'
+            'IDEAS_JSON: [{"text": "last"}]'
+        )
+        data, error = extract_tagged_json(raw, "IDEAS_JSON")
+        assert error is None
+        assert data == [{"text": "last"}]
+
+    def test_strips_whitespace_around_json(self) -> None:
+        raw = "ENUMERATE_JSON:   [\"a\", \"b\"]   "
+        data, error = extract_tagged_json(raw, "ENUMERATE_JSON")
+        assert error is None
+        assert data == ["a", "b"]

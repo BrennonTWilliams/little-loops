@@ -2,11 +2,20 @@
 id: BUG-2383
 priority: P2
 type: BUG
-status: open
-captured_at: "2026-06-28T19:07:41Z"
+status: done
+captured_at: '2026-06-28T19:07:41Z'
+completed_at: '2026-06-29T04:09:26Z'
 discovered_date: 2026-06-28
 discovered_by: capture-issue
-relates_to: [ENH-2356, ENH-2384]
+relates_to:
+- ENH-2356
+- ENH-2384
+confidence_score: 95
+outcome_confidence: 80
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # BUG-2383: Tagged-JSON parse states silently swallow malformed JSON, yielding zero results
@@ -66,6 +75,21 @@ caller reinvented the same fragile parser.
 3. The fragile single-line-array contract is removed at the source for
    `brainstorm` (see Implementation Steps #3).
 
+## Steps to Reproduce
+
+1. Run `ll-loop run brainstorm` on a topic that generates many ideas (long LLM
+   output increases likelihood of truncation on the `IDEAS_JSON:` line).
+2. After the run completes, inspect output artifacts:
+   `cat .loops/runs/brainstorm-<timestamp>/ideas.jsonl`
+3. Observe: `ideas.jsonl` is 0 bytes despite the LLM visibly producing ideas
+   in the session transcript.
+4. Verify: exit code is 0, no error messages in the run log, no stderr output —
+   the FSM reports "0 novel ideas" as if that were the legitimate result.
+
+The `brainstorm-20260628T134036` run is a confirmed reproduction: 45 ideas
+generated, every `IDEAS_JSON:` line missing its trailing `]`, `ideas.jsonl`
+0 bytes.
+
 ## Root Cause
 
 **Anchor:** `brainstorm.yaml` → `dedup_novelty` state → inline `python3`
@@ -100,6 +124,17 @@ Two layered causes:
    and assert it either repairs or raises/returns an error — never silently
    returns empty.
 
+## Motivation
+
+Silent parse failures make brainstorm (and other affected loops) undebuggable:
+the run exits with code 0 and "0 ideas", indistinguishable from a legitimate
+empty result. Operators cannot distinguish "the model had nothing to say" from
+"the model said plenty but the parser crashed". Re-running does not help — the
+same stop-sequence/max-tokens truncation recurs on the same long JSON line
+(9/9 iterations in the diagnosed run). Fixing this also removes the fragile
+single-line-array contract from the `brainstorm` `diverge` prompt, improving
+output reliability for all future runs beyond just the error-surfacing fix.
+
 ## Affected Files
 
 - `scripts/little_loops/loops/brainstorm.yaml`
@@ -108,6 +143,21 @@ Two layered causes:
 - `scripts/little_loops/output_parsing.py`
 - `scripts/little_loops/loops/lib/common.yaml` (fragment doc note)
 - `scripts/tests/test_output_parsing.py`
+
+## Impact
+
+- **Priority**: P2 — Silent data loss on every malformed-JSON run; impossible to
+  distinguish from a legitimate zero-result without inspecting artifacts manually.
+- **Effort**: Medium — Add `extract_tagged_json` to `output_parsing.py` (new
+  shared utility), update three YAML callers, add `on_error:` routing, write
+  unit tests. Existing `test_output_parsing.py` infrastructure reduces test setup.
+- **Risk**: Low — Change is localised to `except` blocks in parse heredocs; all
+  well-formed JSON paths are unchanged; unit tests guard regressions.
+- **Breaking Change**: No
+
+## Labels
+
+`bug`, `loops`, `json-parsing`, `captured`
 
 ## Related
 
@@ -122,6 +172,9 @@ Two layered causes:
 - Diagnosis artifact: `brainstorm-zero-ideas-diagnosis-20260628.md` (repo root).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-29T03:54:27 - `7dd76920-765a-4cff-9611-a52aa03157fb.jsonl`
+- `/ll:confidence-check` - 2026-06-28T00:00:00Z - `75982e78-60cc-4fcf-896d-3455dec6a27e.jsonl`
+- `/ll:format-issue` - 2026-06-29T03:49:00 - `22bf7394-8fa1-41f7-a1fa-75ab387564bd.jsonl`
 - `/ll:capture-issue` - 2026-06-28T19:07:41Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b88673d-6bf0-48cb-a5d7-7d07fc889091.jsonl`
 
 ---

@@ -58,23 +58,20 @@ states:
     action: |
       python3 << 'PYEOF'
       import json, sys
+      from little_loops.output_parsing import extract_tagged_json
+
       output = """${captured.raw_extraction.output}"""
-      found = None
-      for line in reversed(output.split('\n')):
-          line = line.strip()
-          if line.startswith('ASSUMPTIONS_JSON:'):
-              found = line[len('ASSUMPTIONS_JSON:'):]
-              break
-      if not found:
-          print(json.dumps({"targets": [], "rationale": "Failed to parse extraction output.", "count": 0}))
-          sys.exit(0)
-      try:
-          data = json.loads(found)
-          targets = [t for t in data.get("targets", []) if t.strip()][:7]
-          count = len(targets)
-          print(json.dumps({"targets": targets, "rationale": data.get("rationale", ""), "count": count}))
-      except (json.JSONDecodeError, ValueError) as e:
-          print(json.dumps({"targets": [], "rationale": f"JSON parse error: {e}", "count": 0}))
+      data, error = extract_tagged_json(output, "ASSUMPTIONS_JSON")
+      if data is None:
+          if error.startswith("No ASSUMPTIONS_JSON"):
+              # Model didn't emit tag; treat as no external dependencies
+              print(json.dumps({"targets": [], "rationale": "No ASSUMPTIONS_JSON tag in output.", "count": 0}))
+              sys.exit(0)
+          print(error, file=sys.stderr)
+          sys.exit(2)
+      targets = [t for t in data.get("targets", []) if str(t).strip()][:7]
+      count = len(targets)
+      print(json.dumps({"targets": targets, "rationale": data.get("rationale", ""), "count": count}))
       PYEOF
     capture: extracted
     evaluate:
@@ -84,6 +81,7 @@ states:
       target: 0
     on_yes: classify_assumptions
     on_no: no_external_deps
+    on_error: blocked
 
   classify_assumptions:
     action_type: prompt
@@ -121,36 +119,27 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
-      import json, subprocess, re
+      import json, sys, subprocess
+      from little_loops.output_parsing import extract_tagged_json
 
       output = """${captured.raw_classified.output}"""
-      found = None
-      for line in reversed(output.split('\n')):
-          line = line.strip()
-          if line.startswith('CLASSIFIED_JSON:'):
-              found = line[len('CLASSIFIED_JSON:'):]
-              break
-
-      if not found:
-          print(json.dumps({"recorded": [], "errors": ["Failed to parse classification output."]}))
-      else:
+      data, error = extract_tagged_json(output, "CLASSIFIED_JSON")
+      if data is None:
+          print(error, file=sys.stderr)
+          sys.exit(2)
+      recorded = []
+      errors = []
+      for claim in data.get("untestable", []):
           try:
-              classified = json.loads(found)
-              recorded = []
-              errors = []
-              for claim in classified.get("untestable", []):
-                  try:
-                      subprocess.run(
-                          ["ll-action", "invoke", "explore-api",
-                           "--args", f"{claim} --assume {claim!r}"],
-                          check=False, capture_output=True, text=True
-                      )
-                      recorded.append(claim)
-                  except Exception as e:
-                      errors.append(f"Failed to record '{claim}': {e}")
-              print(json.dumps({"recorded": recorded, "errors": errors}))
-          except (json.JSONDecodeError, ValueError) as e:
-              print(json.dumps({"recorded": [], "errors": [f"JSON parse error: {e}"]}))
+              subprocess.run(
+                  ["ll-action", "invoke", "explore-api",
+                   "--args", f"{claim} --assume {claim!r}"],
+                  check=False, capture_output=True, text=True
+              )
+              recorded.append(claim)
+          except Exception as e:
+              errors.append(f"Failed to record '{claim}': {e}")
+      print(json.dumps({"recorded": recorded, "errors": errors}))
       PYEOF
     capture: untestable_result
     on_error: flatten_testable
@@ -160,24 +149,15 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
-      import json, re
+      import json, sys
+      from little_loops.output_parsing import extract_tagged_json
 
       classified_output = """${captured.raw_classified.output}"""
-      found = None
-      for line in reversed(classified_output.split('\n')):
-          line = line.strip()
-          if line.startswith('CLASSIFIED_JSON:'):
-              found = line[len('CLASSIFIED_JSON:'):]
-              break
-
-      if not found:
-          print("")
-      else:
-          try:
-              data = json.loads(found)
-              print(",".join(data.get("testable", [])))
-          except (json.JSONDecodeError, ValueError):
-              print("")
+      data, error = extract_tagged_json(classified_output, "CLASSIFIED_JSON")
+      if data is None:
+          print(error, file=sys.stderr)
+          sys.exit(2)
+      print(",".join(data.get("testable", [])))
       PYEOF
     capture: targets
     evaluate:
@@ -187,6 +167,7 @@ states:
       target: 0
     on_yes: no_external_deps
     on_no: run_gate
+    on_error: blocked
 
   run_gate:
     loop: ready-to-implement-gate
