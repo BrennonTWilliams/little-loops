@@ -9,10 +9,23 @@ discovered_by: capture-issue
 parent: EPIC-2257
 decision_ref: ARCHITECTURE-049
 blocked_by: []
-decision_needed: false
-relates_to: [ENH-2256, FEAT-2260]
-depends_on: [FEAT-2260]
-labels: [host-compat, portfolio, init, upgrade]
+decision_needed: true
+relates_to:
+- ENH-2256
+- FEAT-2260
+depends_on:
+- FEAT-2260
+labels:
+- host-compat
+- portfolio
+- init
+- upgrade
+confidence_score: 86
+outcome_confidence: 62
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 20
 ---
 
 # FEAT-2387: Generic host-parameterized ll-init --upgrade surface refresh
@@ -247,7 +260,22 @@ _Added by `/ll:verify-issues` (2026-06-27):_ Multiple references to `writers.py:
   research-note 383-423; now the 450-490 range, skip-without-force ~:478). Intent
   kept; still unimplemented.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-29_
+
+**Readiness Score**: 86/100 → PROCEED
+**Outcome Confidence**: 62/100 → CAUTION
+
+### Outcome Risk Factors
+
+- **Two open design decisions require resolution before implementing**: (1) gen-version stamp location — JSON field `"_ll_gen_version"` inside hooks.json vs. sidecar file `.codex/ll-gen-version` — affects `writers.py`, `_print_dry_run()`, the hooks template, and TUI staleness comparison; (2) user-scoped claude plugin behavior — auto-update vs. explicit opt-in vs. always-advise — affects the scope-gate logic in the claude-code branch.
+- **Moderate coordination surface**: 11 sites across 4 code files, 3 test files, and 4 doc files; systematic execution order (writers → cli → tui → tests → docs) reduces collision risk but increases total implementation scope.
+
 ## Session Log
+- `/ll:decide-issue` - 2026-06-29T16:02:12 - `f644b71d-1c3f-4f0d-8372-bc5e0c03556f.jsonl`
+- `/ll:confidence-check` - 2026-06-29T00:00:00 - `6c956c22-e04c-4850-ab67-c7899299dbef.jsonl`
+- `/ll:format-issue` - 2026-06-29T15:56:01 - `1d1df55a-e3f6-450e-9adc-7c1ed5bda1be.jsonl`
 - `/ll:verify-issues` - 2026-06-29T01:39:33 - `f12e79a8-668c-41bc-b237-a5dd7b91e4d5.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:27:28 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`

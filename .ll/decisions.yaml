@@ -3050,3 +3050,48 @@
     delegate loop.
   enforcement: advisory
   issue: ENH-2389
+- id: ARCH-143
+  type: rule
+  timestamp: '2026-06-29T16:17:26Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The FSM interprets exit 0 as success regardless of what the script printed.
+    Without `on_error:`, a parse failure or crash silently discards the error and
+    the state appears to have succeeded — exactly the silent-discard pattern MR-10
+    was written to prevent.
+  rule: Declare `on_error:` on every FSM shell state whose inline script catches exceptions
+    and exits 0 on failure.
+  enforcement: advisory
+  issue: BUG-2394
+- id: ARCH-144
+  type: rule
+  timestamp: '2026-06-29T16:17:26Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Fail-open states (errors are non-fatal, skip and move on) still need
+    an explicit `on_error:` to handle hard crashes that occur before the script writes
+    its sentinels. Routing to the same state as `next:` preserves the intent while
+    satisfying the validator and documenting the design decision for future readers.
+  rule: When fail-open is intentional, route `on_error:` to the same successor as
+    `next:` and add a comment explaining why.
+  enforcement: advisory
+  issue: BUG-2394
+- id: ARCH-145
+  type: rule
+  timestamp: '2026-06-29T16:17:26Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Sentinels cover the code path where the interpreter runs successfully.
+    A hard crash (e.g., import error, OOM, missing binary) kills the process before
+    any sentinel is written, leaving the FSM with only the exit code. `on_error:`
+    is the only mechanism that handles this pre-sentinel failure class.
+  rule: Do not rely solely on in-script sentinel strings to signal errors to the FSM
+    — always pair them with an explicit `on_err
+  enforcement: advisory
+  issue: BUG-2394

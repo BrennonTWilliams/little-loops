@@ -667,6 +667,7 @@ states:
       mv "$NEW_DEFERRED" "$DEFERRED"
       echo "$ADDED"
     next: dequeue_next
+    on_error: dequeue_next   # fail-open: if the shell itself crashes, move on
 
   route_rem_decompose:
     evaluate:
