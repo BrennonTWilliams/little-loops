@@ -731,10 +731,6 @@ class GitHubSyncManager:
         )
         section_content["Status"] = f"**Open** | Created: {today} | Priority: {priority}"
 
-        labels_str = ", ".join(f"`{lbl}`" for lbl in gh_labels) if gh_labels else ""
-        if labels_str:
-            section_content["Labels"] = labels_str
-
         variant = self.sync_config.github.pull_template
         content = assemble_issue_markdown(
             sections_data=self._sections_data[issue_type],
@@ -744,7 +740,6 @@ class GitHubSyncManager:
             title=gh_title,
             frontmatter=frontmatter,
             content=section_content,
-            labels=gh_labels,
         )
         issue_path.write_text(content, encoding="utf-8")
         result.created.append(f"#{gh_number} → {issue_id}")

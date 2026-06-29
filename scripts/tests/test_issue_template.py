@@ -156,21 +156,6 @@ class TestAssembleIssueMarkdown:
         # Default creation_template should NOT appear for Summary
         assert "[Description extracted from input]" not in result
 
-    def test_labels_appended_in_minimal(self, enh_sections: dict) -> None:
-        """Labels section is appended even when not in minimal variant."""
-        result = assemble_issue_markdown(
-            sections_data=enh_sections,
-            issue_type="ENH",
-            variant="minimal",
-            issue_id="ENH-300",
-            title="Labels Test",
-            frontmatter={"discovered_by": "test"},
-            labels=["enhancement", "sync"],
-        )
-        assert "## Labels" in result
-        assert "`enhancement`" in result
-        assert "`sync`" in result
-
     def test_frontmatter_rendered(self, feat_sections: dict) -> None:
         """Frontmatter is correctly rendered as YAML block."""
         result = assemble_issue_markdown(
@@ -202,8 +187,8 @@ class TestAssembleIssueMarkdown:
                 frontmatter={},
             )
 
-    def test_labels_in_content_used_by_full_variant(self, enh_sections: dict) -> None:
-        """When Labels is in include_common, content dict is used."""
+    def test_labels_not_in_full_variant(self, enh_sections: dict) -> None:
+        """Full variant no longer emits a ## Labels body section (ENH-2399)."""
         result = assemble_issue_markdown(
             sections_data=enh_sections,
             issue_type="ENH",
@@ -212,10 +197,8 @@ class TestAssembleIssueMarkdown:
             title="Full Labels",
             frontmatter={"discovered_by": "test"},
             content={"Labels": "`enhancement`, `sync`"},
-            labels=["enhancement", "sync"],
         )
-        assert "## Labels" in result
-        assert "`enhancement`, `sync`" in result
+        assert "## Labels" not in result
 
 
 class TestResolveTemplatesDir:

@@ -1733,12 +1733,12 @@ class TestRemoveFromSection:
     def test_remove_last_entry_removes_section(self, tmp_path: Path) -> None:
         """Remove the only entry — section header should also be removed."""
         f = tmp_path / "issue.md"
-        f.write_text("# FEAT-001\n\n## Blocked By\n\n- FEAT-002\n\n## Labels\n\n`feature`\n")
+        f.write_text("# FEAT-001\n\n## Blocked By\n\n- FEAT-002\n\n## Status\n\nopen\n")
         changed = _remove_from_section(f, "Blocked By", "FEAT-002")
         assert changed is True
         content = f.read_text()
         assert "## Blocked By" not in content
-        assert "## Labels" in content
+        assert "## Status" in content
 
     def test_noop_when_not_present(self, tmp_path: Path) -> None:
         """No-op when the entry is not in the section."""

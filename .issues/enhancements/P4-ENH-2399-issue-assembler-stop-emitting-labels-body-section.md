@@ -2,7 +2,7 @@
 id: ENH-2399
 title: Issue assembler still emits `## Labels` body section for new issues post-ENH-1392
 type: enhancement
-status: open
+status: done
 priority: P4
 discovered_date: 2026-06-29
 discovered_by: BUG-2395 reconciliation
@@ -13,7 +13,14 @@ labels:
 - issue-template
 - assembler
 - cleanup
+completed_at: 2026-06-29 22:10:47+00:00
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 20
+score_test_coverage: 25
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2399: Issue assembler still emits `## Labels` body section for new issues post-ENH-1392
@@ -99,5 +106,7 @@ open
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-29T22:04:10 - `a3542061-4985-4991-af20-f42261823396.jsonl`
+- `/ll:confidence-check` - 2026-06-29T22:00:00 - `84931661-25be-468a-b685-8e5e0dc0f405.jsonl`
 - `/ll:wire-issue` - 2026-06-29T21:58:37 - `b7bf5167-27d7-41c6-a78e-542f6cd6cbd5.jsonl`
 - `/ll:refine-issue` - 2026-06-29T21:49:56 - `e64a7c26-25a2-445e-903b-32e93688b461.jsonl`

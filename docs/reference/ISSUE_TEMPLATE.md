@@ -656,10 +656,6 @@ Issue is marked as failed, sprint continues, no retry occurs.
 - **Risk**: Low - Sequential retry uses existing safe code path
 - **Breaking Change**: No
 
-## Labels
-
-`bug`, `sprint`, `reliability`
-
 ## Status
 
 **Open** | Created: 2026-02-10 | Priority: P2
@@ -799,10 +795,6 @@ Authorization: Bearer <jwt-token>
 - **Risk**: Medium - Changes authentication flow, requires careful testing
 - **Breaking Change**: Yes - Clients must include auth token (migration plan needed)
 
-## Labels
-
-`feature`, `security`, `authentication`, `breaking-change`
-
 ## Status
 
 **Open** | Created: 2026-02-10 | Priority: P0
@@ -815,7 +807,7 @@ Authorization: Bearer <jwt-token>
 ### Full Template (v2.0)
 Includes all non-deprecated sections. Use for important issues.
 
-**Sections**: Summary, Current Behavior, Expected Behavior, Motivation, Proposed Solution, Implementation Steps, Impact, Related Key Documentation, Labels, Status + type-specific sections
+**Sections**: Summary, Current Behavior, Expected Behavior, Motivation, Proposed Solution, Implementation Steps, Impact, Related Key Documentation, Status + type-specific sections
 
 ### Minimal Template
 Core sections only. Use for quick captures that will be refined later.

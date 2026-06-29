@@ -256,6 +256,19 @@ class TestLabelsNotRequired:
                 f"(ENH-1392 moved labels to frontmatter) — got {labels_def.get('required')!r}"
             )
 
+    def test_labels_not_in_full_variant_include_common(self) -> None:
+        """Labels must not appear in creation_variants.full.include_common (ENH-2399).
+
+        Labels live in frontmatter only; the body section is deprecated.
+        """
+        for issue_type in self.ISSUE_TYPES:
+            data = json.loads((TEMPLATES_DIR / f"{issue_type}-sections.json").read_text())
+            full_include = data.get("creation_variants", {}).get("full", {}).get("include_common", [])
+            assert "Labels" not in full_include, (
+                f"{issue_type}-sections.json: 'Labels' must not be in "
+                f"creation_variants.full.include_common (ENH-2399 — labels live in frontmatter)"
+            )
+
     def test_user_story_not_required_in_feat(self) -> None:
         """User Story must not have level='required' in feat-sections.json (BUG-2395).
 

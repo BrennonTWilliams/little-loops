@@ -91,7 +91,6 @@ def assemble_issue_markdown(
     title: str,
     frontmatter: dict[str, Any],
     content: dict[str, str] | None = None,
-    labels: list[str] | None = None,
 ) -> str:
     """Assemble structured markdown from template sections and content.
 
@@ -104,7 +103,6 @@ def assemble_issue_markdown(
         frontmatter: Dict of YAML frontmatter key-value pairs.
         content: Optional mapping of section name to content string.
             Sections not in this dict get their creation_template placeholder.
-        labels: Optional list of label strings for the Labels section.
 
     Returns:
         Complete markdown string with frontmatter, heading, and sections.
@@ -148,14 +146,6 @@ def assemble_issue_markdown(
             if exclude_deprecated and section_def.get("deprecated", False):
                 continue
             _append_section(parts, section_name, section_def, content)
-
-    # Ensure Labels section is present (even if not in variant's include_common)
-    if labels is not None and "Labels" not in include_common:
-        labels_str = ", ".join(f"`{lbl}`" for lbl in labels) if labels else ""
-        parts.append("## Labels")
-        parts.append("")
-        parts.append(labels_str)
-        parts.append("")
 
     return "\n".join(parts)
 

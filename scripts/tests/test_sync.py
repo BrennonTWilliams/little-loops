@@ -753,10 +753,10 @@ github_issue: 1
         assert "discovered_by: github_sync" in content
         assert "discovered_date:" in content
 
-    def test_create_local_issue_labels_in_section(
+    def test_create_local_issue_labels_in_frontmatter(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
-        """GitHub labels appear in Labels section."""
+        """GitHub labels appear in frontmatter only, not in a ## Labels body section (ENH-2399)."""
         manager = GitHubSyncManager(mock_config, mock_logger)
         result = SyncResult(action="pull", success=True)
         gh_issue = {
@@ -772,9 +772,10 @@ github_issue: 1
         created = list((tmp_path / ".issues" / "enhancements").glob("*.md"))
         assert len(created) == 1
         content = created[0].read_text()
-        assert "## Labels" in content
-        assert "`enhancement`" in content
-        assert "`testing`" in content
+        assert "## Labels" not in content
+        assert "labels:" in content
+        # "enhancement" is filtered as a managed type label; "testing" passes through
+        assert "testing" in content
 
     def test_create_local_issue_has_captured_at(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
