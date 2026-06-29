@@ -46,8 +46,7 @@ _LL_PERMISSIONS: tuple[str, ...] = (
     "Bash(ll-session:*)",
     "Bash(ll-doctor:*)",
     "Bash(ll-ctx-stats:*)",
-    "Bash(ll-adapt-skills-for-codex:*)",
-    "Bash(ll-adapt-agents-for-codex:*)",
+    "Bash(ll-adapt:*)",
     "Bash(ll-harness:*)",
     "Write(.ll/ll-continue-prompt.md)",
 )
@@ -91,8 +90,9 @@ _CLAUDE_MD_COMMANDS_BLOCK = """\
 - `ll-logs` - Discover, extract, and analyze (sequences, scan-failures) ll-relevant log entries from Claude project logs
 - `ll-doctor` - Check host CLI capability support for little-loops features
 - `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals)
-- `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands for Codex discovery
-- `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` for Codex agent-select support
+- `ll-adapt` - Generate host-specific artefacts for a given host (``--host codex``, etc.)
+- `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands (alias for ll-adapt --host codex)
+- `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` (alias for ll-adapt --host codex)
 
 Install: `pip install -e "./scripts[dev]"`
 """

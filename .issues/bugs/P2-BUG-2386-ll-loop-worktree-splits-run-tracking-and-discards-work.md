@@ -3,10 +3,18 @@ id: BUG-2386
 priority: P2
 type: BUG
 status: open
-captured_at: "2026-06-29T01:04:25Z"
+captured_at: '2026-06-29T01:04:25Z'
 discovered_date: 2026-06-28
 discovered_by: investigation
-relates_to: [BUG-823]
+relates_to:
+- BUG-823
+confidence_score: 90
+outcome_confidence: 71
+score_complexity: 16
+score_test_coverage: 18
+score_ambiguity: 17
+score_change_surface: 20
+decision_needed: true
 ---
 
 # BUG-2386: `ll-loop run --worktree` splits run-tracking across two dirs (invisible/unstoppable) and silently discards the worktree's work
@@ -40,7 +48,16 @@ the worktree). Consequences observed on a live run
    `rn-implement-20260628T192650.{lock,pid}` in the main repo's
    `.loops/.running/` (manually removed during diagnosis).
 
+## Motivation
+
+`--worktree` is the recommended isolation mode for autonomous `rn-*` loops, making this failure path the default in production automation. Silent data loss is the worst failure mode for an automation runner: the loop exits normally, the user believes work was done, and there is no signal that anything was lost. Confirmed data loss on `rn-implement-20260628T192650` (FEAT-2301). Stale `.lock`/`.pid` files additionally pollute `ll-loop list --running` and can block future scope acquisition on unrelated runs, compounding the disruption.
+
 ## Impact
+
+- **Priority**: P2 — confirmed data loss on the `--worktree` path; this is the recommended isolation mode for autonomous `rn-*` loops
+- **Effort**: Medium — primary fix (resolve `loops_dir` to absolute before chdir) is minimal; secondary changes (merge-back policy, fallback heuristic fix, cleanup hardening) span 4–5 files
+- **Risk**: Medium — touches core loop lifecycle (pid/lock/state write ordering, cleanup registration); well-isolated to the `--worktree` code path; mitigated by regression test in Step 5
+- **Breaking Change**: No — internal tracking behavior only; `--worktree` CLI interface and loop YAML format unchanged
 
 **Severity: high (silent data loss + loss of operator control).** Any
 `ll-loop run --worktree` (the recommended isolation mode, used by the
@@ -160,19 +177,29 @@ so even the one path that could have surfaced a stateless live run was inert.
    `.loops/.running`, that `list_running`/`_find_instances` discover the
    instance, and that exit leaves no orphaned `.pid`/`.lock`.
 
-## Affected Files
+## Integration Map
 
-- `scripts/little_loops/cli/loop/run.py` (`cmd_run` worktree block, pid/lock
-  setup, cleanup registrations)
-- `scripts/little_loops/fsm/persistence.py` (`list_running_loops`,
-  `_find_instances`)
-- `scripts/little_loops/fsm/concurrency.py` (`LockManager` running_dir
-  resolution)
-- `scripts/little_loops/cli/loop/lifecycle.py` (`cmd_stop` discovery / lock
-  fallback)
-- `scripts/little_loops/worktree_utils.py` (`cleanup_worktree` delete_branch
-  policy)
-- `scripts/tests/` (new regression coverage)
+### Files to Modify
+- `scripts/little_loops/cli/loop/run.py` — `cmd_run` worktree block: resolve `loops_dir` to absolute, reorder pid/lock setup, fix cleanup registrations
+- `scripts/little_loops/fsm/persistence.py` — `list_running_loops`, `_find_instances`: harden stateless-live-run fallback
+- `scripts/little_loops/fsm/concurrency.py` — `LockManager`: fix `running_dir` resolution for cwd-relative paths
+- `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_stop`: discovery fix, orphaned-lock fallback
+- `scripts/little_loops/worktree_utils.py` — `cleanup_worktree`: merge-back or fail-loud delete_branch policy
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/parallel/merge_coordinator.py` — reference for the merge-back pattern to mirror in `--worktree` cleanup
+
+### Similar Patterns
+- `ll-parallel` merge flow — `merge_coordinator.py` handles worktree merge-back; the `--worktree` run path should mirror this
+
+### Tests
+- `scripts/tests/` — new regression tests: mocked worktree run asserts `.pid`/`.lock`/`.state.json` all resolve under the main repo's `.loops/.running`, that `list_running`/`_find_instances` discover the instance, and that exit leaves no orphaned files
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
 
 ## Steps to Reproduce
 
@@ -204,7 +231,23 @@ cleanup). Main repo was left with orphaned
 - data-loss
 - lifecycle
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-28; re-confirmed 2026-06-28_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE RISK
+
+### Outcome Risk Factors
+- **Unresolved decision in Step 3 (merge-back policy):** the issue presents two options — merge-back on success, or retain-branch + warn on dirty exit — without choosing. This is an unresolved decision; resolve before implementing Step 3 to avoid backtracking into `worktree_utils.py` a second time.
+- **ENH-2325/ENH-2326 conflict on `cleanup_worktree`:** both open issues touch the same function. Coordinate with those implementers before writing Step 3 changes to `worktree_utils.py` or the changes may diverge.
+- **5-file breadth across CLI, FSM, and concurrency subsystems** adds per-site coordination overhead even though each individual change is local in depth.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-28T00:00:00Z - `b4095ce2-bcc3-4891-8aa8-2197b4e25d41.jsonl`
+- `/ll:decide-issue` - 2026-06-29T04:30:18 - `e74ec2e6-7eaf-4ca4-80e7-1aab21043b09.jsonl`
+- `/ll:confidence-check` - 2026-06-28T00:00:00Z - `4b35c7de-a1b2-4099-bbbe-43b3121a65f2.jsonl`
+- `/ll:format-issue` - 2026-06-29T04:23:30 - `7ddeb4f3-57a5-42a6-b2f6-0ae22a35f006.jsonl`
 - investigation - 2026-06-29T01:04:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:audit-issue-conflicts` - 2026-06-28
 

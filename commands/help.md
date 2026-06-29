@@ -290,6 +290,7 @@ ll-migrate-status Normalize non-canonical status: values to canonical ones (one-
 ll-create-extension Scaffold a new little-loops extension project
 ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintainer tool)
 ll-generate-skill-descriptions Auto-generate ≤100-char skill descriptions via Claude CLI (release utility)
+ll-adapt         Generate host-specific artefacts for a given host (--host codex, etc.)
 ll-adapt-skills-for-codex Add Codex Skills API frontmatter to all skills AND bridge commands/*.md into skills/ll-<name>/
 ll-adapt-agents-for-codex Generate .codex/agents/*.toml from agents/*.md for Codex agent-select support
 ll-doctor         Check host CLI capability support for little-loops features

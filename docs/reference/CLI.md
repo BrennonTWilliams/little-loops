@@ -2712,6 +2712,31 @@ ll-generate-skill-descriptions --quiet       # Suppress per-skill output
 
 ---
 
+### ll-adapt
+
+Unified host-parameterized adapter. Dispatches to a host-specific emitter via `--host <host>` and generates all skill, command, and agent artefacts for that host in one pass.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--host HOST` | Target host (e.g. `codex`, `omp`) — required |
+| `--apply` | Write changes (default: dry-run) |
+| `--dry-run` | Explicit dry-run alias |
+| `--only NAME` | Restrict agent processing to a single agent stem |
+| `--quiet` | Suppress per-entry output; only print final summary |
+
+**Exit codes:** `0` = success (no errors), `1` = unknown host or one or more entries failed
+
+**Examples:**
+```bash
+ll-adapt --host codex                # Dry-run: preview all Codex artefacts
+ll-adapt --host codex --apply        # Write Codex artefacts
+ll-adapt --host codex --only codebase-analyzer --apply  # Single agent
+```
+
+---
+
 ### ll-adapt-skills-for-codex
 
 Adapt ll's `skills/*/SKILL.md` files for the Codex Skills API **and** bridge every `commands/*.md` slash command into a Codex-discoverable `skills/ll-<name>/` entry.

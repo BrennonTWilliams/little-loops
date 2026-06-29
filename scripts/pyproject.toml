@@ -79,6 +79,7 @@ ll-ctx-stats = "little_loops.cli:main_ctx_stats"
 # internal: dev tooling — regenerates docs/reference/schemas/ after LLEvent changes
 ll-generate-schemas = "little_loops.cli:main_generate_schemas"
 ll-generate-skill-descriptions = "little_loops.cli:main_generate_skill_descriptions"
+ll-adapt = "little_loops.cli:main_adapt"
 ll-adapt-skills-for-codex = "little_loops.cli:main_adapt_skills_for_codex"
 ll-learning-tests = "little_loops.cli:main_learning_tests"
 ll-verify-triggers = "little_loops.cli:main_verify_triggers"

@@ -440,7 +440,7 @@ class CodexRunner:
         print(
             f"[ll] Warning: Codex does not support --agent at invocation time (ENH-1531).\n"
             f"     Persona hint {agent!r} was dropped. For interactive sessions,\n"
-            f"     run `ll-adapt-agents-for-codex --apply` and use `--agent {agent}`\n"
+            f"     run `ll-adapt --host codex --apply` and use `--agent {agent}`\n"
             f"     in the Codex TUI.",
             file=sys.stderr,
         )
