@@ -1,14 +1,25 @@
 ---
 id: EPIC-2257
-title: Multi-host generalization — portfolio coordination
+title: "Multi-host generalization \u2014 portfolio coordination"
 type: EPIC
 status: open
 priority: P4
 discovered_date: 2026-06-24
 discovered_by: planning-assessment
 decision_ref: ARCHITECTURE-048, ARCHITECTURE-049
-labels: [epic, host-compat, portfolio, tracking, coordination]
-relates_to: [EPIC-1463, EPIC-2178, FEAT-2274]
+labels:
+- epic
+- host-compat
+- portfolio
+- tracking
+- coordination
+relates_to:
+- EPIC-1463
+- EPIC-2178
+- FEAT-2274
+- FEAT-2391
+- FEAT-2392
+- FEAT-2393
 ---
 
 # EPIC-2257: Multi-host generalization — portfolio coordination

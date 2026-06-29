@@ -25,6 +25,16 @@ decision_needed: false
 
 # FEAT-2301: Visual builder for policy-router and rubric FSM loops (UX shell)
 
+## Prototype mockup
+
+Static UX mockup (open over `file://`):
+[`thoughts/feat-2301-ui-mockup.html`](../../thoughts/feat-2301-ui-mockup.html). A **single
+header toggle is the sole mode switch** (no duplicate in-form mode picker); it flips between
+Decision Table (ordered rule sentences, visible/reorderable precedence, shadow nudge, pinned
+"Otherwise") and Rubric (the minimal two-threshold / three-tier surface). Also shows the
+demoted-YAML summary rail, seeded example, and config-honoring theme. Non-functional shell
+only; the emit/validate engine is FEAT-2390. See § Mode asymmetry.
+
 ## Rescope (2026-06-28)
 
 A first implementation shipped on branch `feat-2301-self-contained-html-builder` and was
@@ -79,10 +89,12 @@ the on-screen order **is** the precedence.
    re-prompt, then re-score." The visible number is the precedence (first-match-wins, top
    to bottom). A fixed, dashed "**Otherwise →** `deep-repair`" is pinned last and cannot be
    deleted or moved. Precedence is **reorderable** (drag, or ↑/↓ buttons — see Non-goals).
-2. **Progressive disclosure, not a flat fieldset dump.** Step 1: what you're grading +
-   mode (Rubric = one aggregate score; Decision Table = per-signal rules), each explained
-   in a plain sentence — never "Lite/Full". Step 2: the signals you score (dimensions).
-   Step 3: the rule list + per-outcome action. Don't show everything at once.
+2. **Progressive disclosure, not a flat fieldset dump.** Mode (Rubric vs Decision Table) is
+   chosen by a **single persistent toggle** in the header — the *only* mode control, never
+   duplicated by an in-form picker. Step 1: what you're grading, with the active mode
+   explained in one plain sentence (Rubric = one aggregate score; Decision Table = per-signal
+   rules) — never "Lite/Full". Step 2: the signals you score (dimensions). Step 3: the rule
+   list + per-outcome action. Don't show everything at once.
 3. **Plain-language action authoring, each outcome named once.** An outcome's action
    ("re-prompt with this text" / "run `/ll:<skill>`" / "do nothing") and its follow-up
    ("score again" / "go to `<outcome>`" / "stop here") are two human-labeled dropdowns. The
@@ -103,6 +115,33 @@ the on-screen order **is** the precedence.
    `active_theme` (stamped by FEAT-2390), the toggle flips light/dark and persists, and
    neither the configured default nor an explicit user toggle is silently overridden by OS
    preference.
+
+## Mode asymmetry (2026-06-28)
+
+The two modes are **not** symmetric surfaces, and the UX model above (ordered
+first-match rule sentences, visible + reorderable precedence, shadow nudges, the
+pinned "Otherwise →" footer) describes **Decision Table only**. That maps onto
+`lib/policy-router.yaml`'s `context.policy_rules` table — ordered, conjunctive
+(`&`), per-dimension predicates with a `*` catch-all dispatched through a generated
+`route:` map.
+
+The Rubric grammar (`lib/rubric-router.yaml`) is far smaller: **pipe-separated
+dimension names with no weights**, a fixed two-threshold ladder
+(`threshold_high` / `threshold_medium`) routed by two `on_yes`/`on_no` exit-code
+gates → exactly **three tiers** (high / medium / low). There is no rule ordering,
+no per-dimension predicate, no arbitrary band count, and nothing to reorder.
+
+**Decision: keep both modes, but build Rubric as a deliberately minimal,
+grammar-faithful surface** — dimension *names* only (no weight inputs), exactly two
+threshold fields, three tier outcomes with the same plain "Do / And then" action
+authoring, and a pinned low-tier "Otherwise". The DT-specific affordances (reorder,
+add-rule, shadow detection, conjunctions) are **not** shown in Rubric mode, because
+the UI must not let the author express structure the grammar can't emit (the inverse
+of the "make invalid states unrepresentable" principle). "Decision Table" already
+*is* "rubric + policy" (it imports the rubric fragment to produce the scores it then
+routes on); there is no third "both" mode. The earlier worktree mockup that showed
+weighted dimensions and reorderable "bands" in Rubric mode was fabricating capability
+and has been corrected.
 
 ## Acceptance Criteria
 
@@ -134,8 +173,15 @@ the on-screen order **is** the precedence.
 - [ ] **Theme honors config:** the page opens in `active_theme`; toggle flips + persists;
   OS preference does not silently override either. *(Worktree build fails — opens light
   despite `active_theme: dark`; emit path never stamps `active_theme`.)*
+- [ ] **Single mode control:** mode (Rubric ⇄ Decision Table) is selected by exactly one
+  persistent toggle; no second in-form mode picker duplicates it. *(Original mockup paired
+  the header toggle with a redundant Step-1 mode-card selector — removed for clarity.)*
 - [ ] **Seeded example** present on load; "Start blank" clears it.
 - [ ] **Inline messages reference visible rule numbers** and update live.
+- [ ] **Rubric mode is grammar-faithful, not a DT clone:** dimensions show names only
+  (no weight inputs), exactly two threshold fields / three fixed tiers, and the DT-only
+  affordances (reorder, add-rule, shadow nudges, conjunctions) are absent. The UI never
+  offers structure `lib/rubric-router.yaml` cannot emit. *(See Mode asymmetry.)*
 
 ## Verification (the gate that can fail)
 
@@ -195,6 +241,22 @@ rule silently veto the interaction design.
 `feature`, `loops`, `policy-router`, `design-tokens`, `html`, `tooling`, `ux`
 
 ## Session Log
+- `single-toggle mode control` - 2026-06-28 - Removed the duplicate Step-1 mode-card picker
+  from `thoughts/feat-2301-ui-mockup.html` so the header toggle is the sole Decision Table ⇄
+  Rubric switch. Two competing mode selectors were cluttering the surface and obscuring which
+  one drives the form; Step 1 is now just "what you're grading" plus a one-line plain-language
+  explainer of the active mode. Also pruned the now-dead `.mode-card` CSS and the `setMode`
+  JS that toggled the cards. Propagated to the spec: rewrote UX-model §2, updated the
+  Prototype-mockup blurb, and added a "Single mode control" usability AC. Simplicity-first per
+  user direction ("the toggle must be the only expression of mode").
+- `mode-asymmetry decision` - 2026-06-28 - While mocking up the UI, checked the emitted
+  grammar against the canonical `lib/policy-router.yaml` / `lib/rubric-router.yaml` and
+  `loops/{policy,rubric}-refine.yaml`. Found the ordered-reorderable-rule-list UX model is
+  Decision-Table-specific; Rubric is only dimension names + two thresholds → three tiers
+  (no weights, no reorder, no extra bands). Decided to keep both modes but make Rubric a
+  minimal grammar-faithful surface; added the "Mode asymmetry" section + a usability AC, and
+  corrected the working mockup (`thoughts/feat-2301-ui-mockup.html`), which had been showing
+  fabricated weighted-dimensions and reorderable bands in Rubric mode.
 - `rescope (UX-first rewrite)` - 2026-06-28 - Rewrote around the UX after the worktree
   build shipped sub-par. Split the testable engine to FEAT-2390; led with the
   ordered-sentence rule-list model (visible + reorderable precedence, progressive

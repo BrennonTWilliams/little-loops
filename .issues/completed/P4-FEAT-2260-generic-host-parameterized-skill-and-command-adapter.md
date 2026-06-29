@@ -27,6 +27,7 @@ score_test_coverage: 20
 score_ambiguity: 24
 score_change_surface: 12
 size: Very Large
+completed_at: '2026-06-29T05:22:02Z'
 ---
 
 # FEAT-2260: Generic host-parameterized skill + command adapter
@@ -451,3 +452,13 @@ _Added by `/ll:confidence-check` on 2026-06-28 (updated 2026-06-29 post-refineme
 - `/ll:wire-issue` - 2026-06-25T18:42:58 - `b48daf6e-e26f-40d4-9aab-ea94d716a199.jsonl`
 - `/ll:refine-issue` - 2026-06-25T18:30:36 - `2896fb18-50ad-4c0c-a3c3-dfbdab05512f.jsonl`
 - `/ll:format-issue` - 2026-06-25T18:20:17 - `9285574b-00e2-4b27-85e4-574f9b9140d0.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-06-29
+- **Decomposed into**: FEAT-2391, FEAT-2392, FEAT-2393
+
+Work for FEAT-2260 is now carried by its child issues; this parent was closed by rn-decompose.

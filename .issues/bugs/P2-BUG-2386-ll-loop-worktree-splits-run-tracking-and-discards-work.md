@@ -14,7 +14,7 @@ score_complexity: 16
 score_test_coverage: 18
 score_ambiguity: 17
 score_change_surface: 20
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-2386: `ll-loop run --worktree` splits run-tracking across two dirs (invisible/unstoppable) and silently discards the worktree's work
@@ -163,11 +163,16 @@ so even the one path that could have surfaced a stateless live run was inert.
    (`run_dir`, `.state.json`, `.log`) should live in the main repo so they
    survive `cleanup_worktree` and are discoverable. Verify
    `${context.run_dir}` consumers still resolve correctly once it's absolute.
-3. **Merge-back or fail-loud on branch delete** — in `_cleanup_worktree_on_exit`
-   (`run.py:405-414`), do not `delete_branch=True` unconditionally. Either
-   merge the worktree branch back to the origin branch on success, or detect an
-   unmerged/dirty worktree and retain the branch + print recovery instructions
-   instead of deleting. Mirror `ll-parallel`'s merge handling where practical.
+3. **Fail-loud on branch delete** — in `_cleanup_worktree_on_exit`
+   (`run.py:405-414`), do not `delete_branch=True` unconditionally. Before
+   calling `cleanup_worktree`, run `git status --porcelain` and
+   `git rev-list --count <base>..<branch>` against the worktree; if either
+   indicates uncommitted changes or commits ahead of base, retain the branch
+   (pass `delete_branch=False`) and print recovery instructions including the
+   branch name. Do not attempt an automatic merge — leave the branch for the
+   user. Mirror the `orchestrator._check_pending_worktrees` detect-and-warn
+   pattern and the `worker_pool._cleanup_worktree` skip-with-warning guard.
+> **Selected:** Option B — Fail-loud: retain branch + print recovery instructions
 4. **Harden the stateless-live-run fallback** — in `list_running_loops`
    (`persistence.py:947`), don't suppress a live-PID pid-file entry just because
    the *logical name* exists in `known_names`; match on instance stem, or always
@@ -176,6 +181,25 @@ so even the one path that could have surfaced a stateless live run was inert.
    the `.pid`/`.lock`/`.state.json` all resolve under the main repo's
    `.loops/.running`, that `list_running`/`_find_instances` discover the
    instance, and that exit leaves no orphaned `.pid`/`.lock`.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-29.
+
+**Selected**: Option B — Fail-loud: retain branch + print recovery instructions
+
+**Reasoning**: Option B has strong codebase precedent — `orchestrator._check_pending_worktrees()`/`has_pending_work`/`PendingWorktreeInfo` is a full detect-dirty-and-warn pipeline, `worker_pool._cleanup_worktree` demonstrates the skip-with-warning pattern with existing tests (`test_worker_pool.py:1027`), and `cleanup_worktree(delete_branch=False)` already exists. Option A (merge-back) requires threading a success-flag into an atexit closure where exceptions are silently swallowed, replicating key parts of the 230-line `MergeCoordinator._process_merge()` (stash, index recovery, conflict handling) without any single-shot helper — high complexity for a bug fix, and it would fire on failed runs too. Option B achieves the critical requirement (no silent data loss) with a contained change: a pre-delete `git status --porcelain` + `rev-list --count` check before calling `cleanup_worktree`, plus a clear warning with the branch name.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A — Merge-back on success | 1/3 | 1/3 | 1/3 | 1/3 | 4/12 |
+| B — Fail-loud: retain + warn | 2/3 | 2/3 | 2/3 | 2/3 | 8/12 |
+
+**Key evidence**:
+- Option A: `MergeCoordinator._process_merge()` is the only merge-back pattern (`merge_coordinator.py:577–806`), but it is a stateful background thread queue; no single-shot helper exists. `_cleanup_worktree_on_exit` (`run.py:405-414`) has no access to `run_foreground()`'s return code. Reuse score: 1/3.
+- Option B: `orchestrator.py:424-434` (`git status --porcelain` → `PendingWorktreeInfo`), `orchestrator.py:476-493` (warn + print options), `orchestrator.py:1290` ("local-only branch retained" format), `worker_pool.py:726-732` (skip-with-warning), `worktree_utils.py:120` (`delete_branch=False` param). Reuse score: 2/3.
 
 ## Integration Map
 
@@ -244,6 +268,7 @@ _Added by `/ll:confidence-check` on 2026-06-28; re-confirmed 2026-06-28_
 - **5-file breadth across CLI, FSM, and concurrency subsystems** adds per-site coordination overhead even though each individual change is local in depth.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-29T14:23:56 - `f7ff821b-d1e4-4e2e-bb06-c8ab49551135.jsonl`
 - `/ll:confidence-check` - 2026-06-28T00:00:00Z - `b4095ce2-bcc3-4891-8aa8-2197b4e25d41.jsonl`
 - `/ll:decide-issue` - 2026-06-29T04:30:18 - `e74ec2e6-7eaf-4ca4-80e7-1aab21043b09.jsonl`
 - `/ll:confidence-check` - 2026-06-28T00:00:00Z - `4b35c7de-a1b2-4099-bbbe-43b3121a65f2.jsonl`
