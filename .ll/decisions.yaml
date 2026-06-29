@@ -2983,3 +2983,70 @@
     accumulating counters during mid-run states.
   enforcement: advisory
   issue: EPIC-2386
+- id: ARCH-138
+  type: rule
+  timestamp: '2026-06-29T02:33:13Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Two-phase 'refine-all-then-implement-all' delays first results, hides
+    implementation failures until late, and contradicts user expectation that items
+    are processed one at a time end-to-end.
+  rule: Interleave refine→implement per item; never batch all refinement before any
+    implementation begins.
+  enforcement: advisory
+  issue: ENH-2389
+- id: ARCH-139
+  type: rule
+  timestamp: '2026-06-29T02:33:13Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The autodev engine already implemented depth-first interleaved processing;
+    duplicating that machinery inline would diverge over time and add maintenance
+    burden.
+  rule: Delegate to an existing tested sub-loop rather than reimplementing its logic
+    inline.
+  enforcement: advisory
+  issue: ENH-2389
+- id: STYL-140
+  type: rule
+  timestamp: '2026-06-29T02:33:13Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: The implement-issue-chain oracle had no remaining callers after the refactor;
+    leaving it would create dead artifacts that confuse future contributors.
+  rule: Remove files with zero callers immediately when their last call site is deleted.
+  enforcement: advisory
+  issue: ENH-2389
+- id: ARCH-141
+  type: rule
+  timestamp: '2026-06-29T02:33:13Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The ENH-2005 subloop_outcome token and summary.json are consumed by upstream
+    callers; silently breaking them would propagate failures to callers that expect
+    the contract.
+  rule: Preserve established output contracts (summary files, outcome tokens) when
+    refactoring loop internals.
+  enforcement: advisory
+  issue: ENH-2389
+- id: ARCH-142
+  type: rule
+  timestamp: '2026-06-29T02:33:13Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: sprint-refine-and-implement inherited the fix for free because it was
+    a thin alias; had it duplicated logic, it would have required a separate fix.
+  rule: Keep alias/wrapper loops thin; place core behavior in a single authoritative
+    delegate loop.
+  enforcement: advisory
+  issue: ENH-2389

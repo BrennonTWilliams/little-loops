@@ -776,9 +776,9 @@ route_input → [sprint_name provided?]
 
 ### `sprint-refine-and-implement` — Sprint-Scoped Refine-and-Implement Loop
 
-**Technique**: Like `auto-refine-and-implement` but bounded to a named sprint. Reads `.sprints/<sprint_name>.yaml` and processes each issue in sprint YAML order: delegates `format → refine → wire → confidence-check` to the `recursive-refine` sub-loop (with automatic decomposition of oversized issues), runs `/ll:go-no-go` as an adversarial gate before implementation, then implements each issue that passed both refinement and the gate via `ll-auto --only`. Issues that fail refinement or are decomposed are recorded in a skip file; issues that receive a NO-GO verdict are skipped back to the queue without being implemented. Both categories are excluded from re-processing on resume.
+**Technique**: A thin alias for `auto-refine-and-implement` scoped to a named sprint or `EPIC-NNN`. Delegates to `auto-refine-and-implement` with `scope=<sprint-name|EPIC-NNN>`, which resolves the sprint's issue set and drives it through the interleaved `autodev` engine: each issue is refined to readiness, implemented immediately via `ll-auto --only`, and on decomposition its children are processed depth-first (refined **and** implemented) before the next sibling. Equivalent to `ll-loop run auto-refine-and-implement --input scope=<sprint-name|EPIC-NNN>`.
 
-**When to use**: When you have a defined sprint and want to run the full refine-and-implement pipeline over exactly those issues, in sprint order, rather than the confidence-ranking order that `auto-refine-and-implement` uses. Prefer `auto-refine-and-implement` for open-ended backlog processing.
+**When to use**: When you have a defined sprint or EPIC and want the full refine-and-implement pipeline over exactly those issues. Prefer `auto-refine-and-implement` (no scope) for open-ended backlog processing.
 
 **Invocation:**
 ```bash
@@ -798,26 +798,23 @@ Sprint file must exist at `.sprints/<sprint-name>.yaml` (standard sprint locatio
 | `max_issues` | `100` | Maximum number of issues to process per run; guards against runaway iteration |
 
 **Error behavior:**
-- Missing sprint name → prints `Usage: ll-loop run sprint-refine-and-implement <sprint-name>` and exits to `done`
-- Sprint file not found → prints `Sprint '<name>' not found at .sprints/<name>.yaml` and exits to `done`
+- Missing sprint name → rejected by `required_inputs: [sprint_name]` before the loop runs
+- Sprint / EPIC not resolvable → `auto-refine-and-implement.resolve_set` writes a stderr message and exits to `finalize`, producing a `no-op` verdict
 
 **FSM flow:**
 ```
-get_next_issue → [issue found?]
-  ├─ YES → refine_issue (sub-loop: recursive-refine) → [success?]
-  │           ├─ YES → implement_chain (sub-loop: oracles/implement-issue-chain)
-  │           │           └─ [get_passed_issues → implement_next → go_no_go → implement_issue]
-  │           └─ NO  → skip_and_continue → get_next_issue
-  └─ NO  → done
+delegate (sub-loop: auto-refine-and-implement, scope=<sprint_name>)
+  ├─ on_success / on_failure → read_outcome (recover real verdict from the
+  │                            subloop_outcome_auto-refine-and-implement token)
+  └─ on_error → record_crash
+→ done
 ```
 
-**Notes**: All tmp files are prefixed `sprint-refine-and-implement-*` to avoid state collision with `auto-refine-and-implement` when both loops are used in the same project. The loop uses `on_handoff: spawn` and `max_steps: 500` with an 8-hour global timeout, so it can survive session boundaries for long sprints.
-
-**Skip tracking**: When `recursive-refine` marks an issue as skipped (refinement failure or decomposition), it is written to `.loops/tmp/sprint-refine-and-implement-skipped.txt` — both for the current run and for any future resume of the same sprint. Decomposed parents are additionally marked `status: done` in frontmatter so they never re-appear as active candidates after a skip-file reset. On resume, `get_next_issue` reads the skip file and advances past any previously processed issues.
+**Notes**: This loop is a verdict-recovering wrapper (ENH-2005); the per-issue refine+implement work, depth-first child handling, and ground-truth closure accounting all live in `auto-refine-and-implement` → `autodev`. The child shares this loop's `run_dir`, so its `summary.json` / `subloop_outcome` token land where `read_outcome` reads them. The loop uses `on_handoff: spawn` so it can survive session boundaries for long sprints.
 
 ### `auto-refine-and-implement` — Full-Backlog Refine-and-Implement Loop
 
-**Technique**: For each backlog issue in priority order, run `recursive-refine` as a sub-loop to bring it to ready status (with automatic decomposition of oversized issues into child issues). After refinement, all issues that passed are queued for sequential implementation; before each implementation, `/ll:go-no-go` runs as an adversarial gate — issues that receive a NO-GO verdict are skipped without being implemented. Decomposed parents are marked `status: done` in frontmatter and recorded in a skip list; failed or NO-GO issues are recorded in a skip list — all are excluded from subsequent `ll-issues next-issue` calls so the loop never retries a persistently failing issue.
+**Technique**: Resolve the issue set once — a named sprint / `EPIC-NNN` via `scope`, or the priority-ranked backlog (`ll-issues next-issues`, capped at `max_issues`) when `scope` is empty — then delegate the whole refine+implement to the `autodev` engine. `autodev` maintains a **single unified depth-first queue** and **interleaves** refinement and implementation per issue: refine one issue to readiness via `refine-to-ready-issue`, implement it immediately via `ll-auto --only`, and on decomposition prepend the children depth-first so each child is refined **and** implemented before the next sibling. First implementation runs as soon as the first leaf passes refinement — there is no "refine-all-then-implement-all" gap. `finalize` then verifies closure from a `.issues/completed/` ground-truth diff and emits `summary.json` + a `subloop_outcome` token.
 
 **When to use**: When you want fully-automated end-to-end issue processing — from raw backlog to committed implementation — without manual intervention between refinement and implementation. Prefer `issue-refinement` if you only want to refine issues without implementing them, or `ll-auto` for direct implementation without the refinement pass.
 
@@ -838,17 +835,18 @@ ll-loop run auto-refine-and-implement --context max_issues=10
 
 **FSM flow**:
 ```
-init → get_next_issue → [issue found?]
-         ├─ YES → refine_issue (sub-loop: recursive-refine) → [success?]
-         │         ├─ YES → implement_chain (sub-loop: oracles/implement-issue-chain)
-         │         │         └─ [get_passed_issues → implement_next → go_no_go → implement_issue]
-         │         └─ NO  → skip_and_continue → get_next_issue (loop)
-         └─ NO → done
+init (snapshot .issues/completed/ baseline)
+  → resolve_set (scope → SprintManager; else ll-issues next-issues, capped at max_issues)
+      ├─ set non-empty → delegate (sub-loop: autodev, input=<resolved IDs>)
+      │                    ├─ on_success / on_failure → finalize
+      │                    └─ on_error → record_error → finalize
+      └─ set empty → finalize (no-op verdict)
+  → finalize (ground-truth completed/ diff → summary.json + subloop_outcome) → done
 ```
 
-**Skip tracking**: The `init` state runs at the start of each `ll-loop run auto-refine-and-implement` invocation and truncates both `.loops/tmp/auto-refine-and-implement-skipped.txt` and `.loops/tmp/auto-refine-and-implement-impl-queue.txt`, ensuring every run starts with a clean slate. After `recursive-refine` completes, `get_passed_issues` merges its skipped output (`.loops/tmp/recursive-refine-skipped.txt`) into `.loops/tmp/auto-refine-and-implement-skipped.txt`, and queues passed issues in `.loops/tmp/auto-refine-and-implement-impl-queue.txt` for sequential implementation. Each `get_next_issue` reads the skip file and passes the IDs as `--skip` to `ll-issues next-issue`, preventing infinite retry loops for persistently-unrefineable or decomposed issues within the current run.
+**Closure accounting**: `init` snapshots the `.issues/completed/` set; `finalize` diffs it against the post-run set to count real closures (both `ll-auto` leaf closures and decomposed parents that `autodev` git-mv's into `completed/`). `NOT_CLOSED` / `SKIPPED` are read from `autodev`'s `autodev-passed.txt` / `autodev-skipped.txt` under the shared `run_dir`; `ERRORED` is recorded by `record_error` on an `autodev` infrastructure crash. The verdict (`success` / `partial` / `partial-with-errors` / `phantom` / `no-op`) reflects real terminal state, not an exit-code proxy.
 
-**Notes**: The loop runs up to 100 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Use `ll-loop install auto-refine-and-implement` to copy the YAML to `.loops/` and customize the refinement thresholds or post-implementation steps.
+**Notes**: The backlog set is resolved once upfront (not re-polled per issue); decomposition children created mid-run are still processed depth-first by `autodev`, but brand-new unrelated issues created during the run are not picked up — a deliberate, deterministic semantic. The loop uses `on_handoff: spawn` and an 8-hour timeout to continue across session boundaries. Use `ll-loop install auto-refine-and-implement` to copy the YAML to `.loops/` and customize.
 
 ### `autodev` — Targeted Refine-and-Implement for Specific Issues
 

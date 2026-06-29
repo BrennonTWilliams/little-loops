@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -1595,7 +1594,12 @@ class TestPromptAcrossIssuesLoop:
 
 
 class TestAutoRefineAndImplementLoop:
-    """Structural tests for the auto-refine-and-implement FSM loop."""
+    """Structural tests for the auto-refine-and-implement FSM loop.
+
+    The loop resolves an issue set (scope → SprintManager, else the ranked
+    backlog) and delegates the interleaved per-issue refine+implement to the
+    autodev engine, then computes a ground-truth closure verdict in finalize.
+    """
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml"
 
@@ -1611,14 +1615,11 @@ class TestAutoRefineAndImplementLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present."""
+        """All required states must be present (delegate-to-autodev structure)."""
         required = {
             "init",
-            "get_next_issue",
-            "refine_issue",
-            "implement_chain",
-            "record_processed",
-            "skip_refinement",
+            "resolve_set",
+            "delegate",
             "record_error",
             "finalize",
             "done",
@@ -1627,156 +1628,120 @@ class TestAutoRefineAndImplementLoop:
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
 
-    def test_init_state_exists(self, data: dict) -> None:
-        """init state must exist to clear temp files on each fresh run."""
-        assert "init" in data["states"], "init state missing from auto-refine-and-implement"
+    def test_legacy_two_phase_states_removed(self, data: dict) -> None:
+        """The old refine-all-then-implement-all states must be gone — refinement and
+        implementation are now interleaved per issue inside autodev."""
+        states = set(data["states"].keys())
+        for legacy in (
+            "get_next_issue",
+            "refine_issue",
+            "implement_chain",
+            "record_processed",
+            "skip_refinement",
+        ):
+            assert legacy not in states, f"legacy state {legacy!r} must be removed"
 
-    def test_init_state_is_shell_type(self, data: dict) -> None:
-        """init state must be a shell action with unconditional next: get_next_issue."""
+    def test_init_state_is_shell_and_routes_to_resolve_set(self, data: dict) -> None:
+        """init must be a shell action that unconditionally advances to resolve_set."""
         init = data["states"].get("init", {})
         assert init.get("action_type") == "shell"
-        assert init.get("next") == "get_next_issue"
-
-    def test_init_clears_skip_file(self, data: dict) -> None:
-        """init action must clear the skip file so each run starts fresh."""
-        init = data["states"].get("init", {})
-        action = init.get("action", "")
-        assert "auto-refine-and-implement-skipped.txt" in action, (
-            f"init.action should clear auto-refine-and-implement-skipped.txt, got: {action!r}"
-        )
-
-    def test_init_clears_impl_queue_file(self, data: dict) -> None:
-        """init action must clear the impl queue so each run starts fresh."""
-        init = data["states"].get("init", {})
-        action = init.get("action", "")
-        assert "auto-refine-and-implement-impl-queue.txt" in action, (
-            f"init.action should clear auto-refine-and-implement-impl-queue.txt, got: {action!r}"
-        )
+        assert init.get("next") == "resolve_set"
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""
         done_state = data["states"].get("done", {})
         assert done_state.get("terminal") is True
 
-    def test_get_next_issue_captures_input(self, data: dict) -> None:
-        """get_next_issue must capture as 'input' for context_passthrough to work."""
-        state = data["states"].get("get_next_issue", {})
-        assert state.get("capture") == "input"
+    def test_resolve_set_captures_issue_set(self, data: dict) -> None:
+        """resolve_set must capture as 'issue_set' for the autodev sub-loop input."""
+        state = data["states"].get("resolve_set", {})
+        assert state.get("capture") == "issue_set"
 
-    def test_refine_issue_delegates_to_recursive_refine(self, data: dict) -> None:
-        """refine_issue must delegate to recursive-refine with explicit input binding."""
-        state = data["states"].get("refine_issue", {})
-        assert state.get("loop") == "recursive-refine"
-        # Migrated from context_passthrough to explicit with: binding (FEAT-1311)
-        assert "input" in state.get("with", {}), (
-            "refine_issue must bind 'input' via 'with:' to pass the issue ID to recursive-refine"
+    def test_resolve_set_routes(self, data: dict) -> None:
+        """resolve_set routes a non-empty set to delegate, an empty set to finalize."""
+        state = data["states"].get("resolve_set", {})
+        assert state.get("on_yes") == "delegate"
+        assert state.get("on_no") == "finalize"
+
+    def test_resolve_set_supports_scope_branching(self, data: dict) -> None:
+        """resolve_set scoped path uses load_or_resolve + EPIC; backlog path uses
+        ll-issues next-issues."""
+        action = data["states"]["resolve_set"].get("action", "")
+        assert "load_or_resolve" in action, (
+            "resolve_set scoped path must use SprintManager.load_or_resolve"
+        )
+        assert "ll-issues next-issues" in action, (
+            "resolve_set backlog path must use ll-issues next-issues"
+        )
+        assert "EPIC" in action, (
+            "resolve_set scoped path must support EPIC IDs (BUG-2136 preservation)"
         )
 
-    def test_refine_issue_has_success_and_failure_routes(self, data: dict) -> None:
-        """refine_issue routes success→implement_chain, failure→skip_refinement, and
-        crash (on_error)→record_error as a DISTINCT state (audit 2026-06-27): an
-        infrastructure crash must not be laundered into the same skip bucket as a
-        legitimate confidence-gate miss."""
-        state = data["states"].get("refine_issue", {})
-        assert state.get("on_success") == "implement_chain"
-        assert state.get("on_failure") == "skip_refinement"
-        assert state.get("on_error") == "record_error"
-        assert state.get("on_failure") != state.get("on_error"), (
-            "refine_issue must distinguish refinement failure from sub-loop crash"
-        )
-
-    def test_implement_chain_delegates_to_oracle(self, data: dict) -> None:
-        """implement_chain must delegate to the implement-issue-chain oracle with caller_prefix."""
-        state = data["states"].get("implement_chain", {})
-        assert state.get("loop") == "oracles/implement-issue-chain", (
-            f"implement_chain.loop should be 'oracles/implement-issue-chain', got {state.get('loop')!r}"
+    def test_delegate_uses_autodev_engine(self, data: dict) -> None:
+        """delegate must run the autodev sub-loop with the resolved set as input."""
+        state = data["states"].get("delegate", {})
+        assert state.get("loop") == "autodev", (
+            f"delegate.loop should be 'autodev', got {state.get('loop')!r}"
         )
         with_ = state.get("with", {})
-        assert with_.get("caller_prefix") == "auto-refine-and-implement", (
-            f"implement_chain.with.caller_prefix should be 'auto-refine-and-implement', got {with_.get('caller_prefix')!r}"
+        assert "issue_set" in with_.get("input", ""), (
+            "delegate must pass the captured issue_set as autodev's input"
         )
 
-    def test_skip_refinement_uses_input_capture(self, data: dict) -> None:
-        """skip_refinement must reference captured.input.output (not impl_id)."""
-        state = data["states"].get("skip_refinement", {})
-        action = state.get("action", "")
-        assert "${captured.input.output}" in action
+    def test_delegate_crash_routes_to_record_error(self, data: dict) -> None:
+        """on_error must route to a DISTINCT crash state (not finalize directly) so an
+        infrastructure crash is recorded, not laundered into a clean no-op (ENH-2005)."""
+        state = data["states"].get("delegate", {})
+        assert state.get("on_success") == "finalize"
+        assert state.get("on_failure") == "finalize"
+        assert state.get("on_error") == "record_error"
+        assert state.get("on_error") != state.get("on_success")
 
-    def test_skip_refinement_routes_to_get_next_issue(self, data: dict) -> None:
-        """skip_refinement must route back to get_next_issue."""
-        state = data["states"].get("skip_refinement", {})
-        assert state.get("next") == "get_next_issue"
-
-    def test_record_error_tracks_crash_separately(self, data: dict) -> None:
-        """record_error must write to a distinct errored.txt so a sub-loop crash is
-        not indistinguishable from a refinement skip (audit 2026-06-27)."""
+    def test_record_error_tracks_crash_and_finalizes(self, data: dict) -> None:
+        """record_error writes a distinct errored.txt and routes to finalize."""
         state = data["states"].get("record_error", {})
         action = state.get("action", "")
         assert "auto-refine-and-implement-errored.txt" in action
-        assert state.get("next") == "get_next_issue"
+        assert state.get("next") == "finalize"
 
-    # --- BUG-2380: parent records "processed", not "implemented" --------------
-
-    def test_implement_chain_success_routes_to_record_processed(self, data: dict) -> None:
-        """implement_chain.on_success must route to record_processed (renamed from
-        record_implemented) so the parent's success sink reflects refine+delegate,
-        not implementation (BUG-2380)."""
-        state = data["states"].get("implement_chain", {})
-        assert state.get("on_success") == "record_processed", (
-            f"implement_chain.on_success should be 'record_processed', got {state.get('on_success')!r}"
-        )
-
-    def test_record_processed_does_not_write_implemented_file(self, data: dict) -> None:
-        """record_processed must NOT write *-implemented.txt — that ledger is owned
-        by implement-issue-chain and only written when ll-auto runs (BUG-2380/2381).
-        It records the umbrella ID to the dedup/accounting *-processed.txt instead."""
-        assert "record_implemented" not in data["states"], (
-            "record_implemented must be renamed to record_processed (BUG-2380)"
-        )
-        action = data["states"].get("record_processed", {}).get("action", "")
-        assert "auto-refine-and-implement-implemented.txt" not in action, (
-            f"record_processed must not write the implemented ledger (BUG-2380); got: {action!r}"
-        )
-        assert "auto-refine-and-implement-processed.txt" in action, (
-            "record_processed must record the issue to the processed (dedup) file"
-        )
-        assert data["states"]["record_processed"].get("next") == "get_next_issue"
-
-    def test_record_processed_log_line_is_honest(self, data: dict) -> None:
-        """The log line must not claim 'Implemented' for a refined+delegated issue
-        (BUG-2380): the parent has no proof ll-auto ran."""
-        action = data["states"].get("record_processed", {}).get("action", "")
-        assert 'echo "Implemented' not in action and "echo 'Implemented" not in action, (
-            f"record_processed must not log 'Implemented …', got: {action!r}"
+    def test_has_optional_scope_parameter(self, data: dict) -> None:
+        """scope must be in context with empty default (optional sprint/EPIC scoping)."""
+        ctx = data.get("context", {})
+        assert "scope" in ctx, "context must have a 'scope' field for sprint/EPIC scoping"
+        assert ctx["scope"] == "", (
+            "context.scope must default to empty string (backlog rank when unset)"
         )
 
     # --- ENH-2376: partial-with-errors verdict -------------------------------
 
     def test_finalize_has_partial_with_errors_verdict(self, data: dict) -> None:
-        """finalize must distinguish a run that implemented something AND crashed
-        (partial-with-errors) from a clean partial (skipped-but-no-error) so
-        sub-loop crashes are not laundered into plain 'partial' (ENH-2376)."""
+        """finalize must distinguish closed+crashed (partial-with-errors) from a clean
+        partial so autodev crashes are not laundered into plain 'partial' (ENH-2376)."""
         action = data["states"].get("finalize", {}).get("action", "")
-        assert "partial-with-errors" in action, (
-            f"finalize must define a partial-with-errors verdict, got: {action!r}"
-        )
+        assert "partial-with-errors" in action
+
+    def test_finalize_sources_autodev_ledgers(self, data: dict) -> None:
+        """finalize must read autodev's passed/skipped ledgers (shared run_dir)."""
+        action = data["states"].get("finalize", {}).get("action", "")
+        assert "autodev-passed.txt" in action
+        assert "autodev-skipped.txt" in action
 
     def _run_finalize(
         self,
         data: dict,
         run_dir: Path,
         closed: tuple[str, ...] = (),
-        processed: tuple[str, ...] = (),
+        passed: tuple[str, ...] = (),
         skipped: int = 0,
         errored: int = 0,
         baseline: tuple[str, ...] = (),
     ) -> dict:
         """Execute finalize against a ground-truth completed/ dir; return summary.json.
 
-        ENH-2385: finalize derives CLOSED from a .issues/completed/ diff against
-        the init baseline, and NOT_CLOSED from processed − completed. `closed` are
+        ENH-2385: finalize derives CLOSED from a .issues/completed/ diff against the
+        init baseline, and NOT_CLOSED from autodev-passed − completed. `closed` are
         the issues that reached completed/ DURING the run; `baseline` were already
-        there at init.
+        there at init; `passed` are autodev's passed (attempted-implementation) IDs.
         """
         p = "auto-refine-and-implement"
         (run_dir / f"{p}-completed-baseline.txt").write_text(
@@ -1786,9 +1751,14 @@ class TestAutoRefineAndImplementLoop:
         completed_dir.mkdir(parents=True, exist_ok=True)
         for cid in set(closed) | set(baseline):
             (completed_dir / f"P3-{cid}-x.md").write_text("done\n")
-        (run_dir / f"{p}-processed.txt").write_text("".join(f"{i}\n" for i in processed))
-        (run_dir / f"{p}-skipped.txt").write_text("".join(f"ID-{i}\n" for i in range(skipped)))
-        (run_dir / f"{p}-errored.txt").write_text("".join(f"ID-{i}\n" for i in range(errored)))
+        # finalize sources autodev's ledgers under the shared run_dir.
+        (run_dir / "autodev-passed.txt").write_text("".join(f"{i}\n" for i in passed))
+        (run_dir / "autodev-skipped.txt").write_text(
+            "".join(f"ID-{i}\n" for i in range(skipped))
+        )
+        (run_dir / f"{p}-errored.txt").write_text(
+            "".join(f"ID-{i}\n" for i in range(errored))
+        )
         action = data["states"]["finalize"].get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
         subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
@@ -1797,51 +1767,55 @@ class TestAutoRefineAndImplementLoop:
     def test_finalize_verdict_table(self, data: dict, tmp_path: Path) -> None:
         """Shell-execution regression (ENH-2385/2376): the verdict reflects real
         closure (ground-truth completed/ diff), not an ll-auto exit proxy."""
-        # (closed, processed, skipped, errored, expected_verdict)
+        # (closed, passed, skipped, errored, expected_verdict)
         cases = [
             (("FEAT-1", "FEAT-2"), ("FEAT-1", "FEAT-2"), 0, 0, "success"),
             (("FEAT-1",), ("FEAT-1", "FEAT-2"), 0, 0, "partial"),  # FEAT-2 not closed
             (("FEAT-1",), ("FEAT-1",), 2, 0, "partial"),  # closed + skips
             (("FEAT-1",), ("FEAT-1",), 0, 2, "partial-with-errors"),
-            ((), ("FEAT-2",), 0, 0, "phantom"),  # processed, closed nothing
+            ((), ("FEAT-2",), 0, 0, "phantom"),  # passed, closed nothing
             ((), (), 0, 2, "phantom"),  # crashed, closed nothing
-            ((), (), 1, 0, "no-op"),  # only refinement-skips, nothing attempted
+            ((), (), 1, 0, "no-op"),  # only skips, nothing attempted
             ((), (), 0, 0, "no-op"),
         ]
-        for i, (closed, processed, skip, err, expected) in enumerate(cases):
+        for i, (closed, passed, skip, err, expected) in enumerate(cases):
             run_dir = tmp_path / f"run-{i}"
             run_dir.mkdir()
             summary = self._run_finalize(
-                data, run_dir, closed=closed, processed=processed, skipped=skip, errored=err
+                data, run_dir, closed=closed, passed=passed, skipped=skip, errored=err
             )
             assert summary["verdict"] == expected, (
-                f"closed={closed} processed={processed} skip={skip} err={err}: "
+                f"closed={closed} passed={passed} skip={skip} err={err}: "
                 f"expected {expected!r}, got {summary['verdict']!r} ({summary})"
             )
 
     def test_finalize_counts_decomposition_closure_as_closed(
         self, data: dict, tmp_path: Path
     ) -> None:
-        """ENH-2385: a decomposed umbrella that recursive-refine git-mv'd into
-        completed/ counts as CLOSED even though it never went through ll-auto /
-        processed. Ground truth is the completed/ diff, not the implement ledger."""
+        """ENH-2385: a decomposed umbrella that autodev git-mv'd into completed/ counts
+        as CLOSED even though it never went through ll-auto / passed. Ground truth is
+        the completed/ diff, not the implement ledger."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
-        # EPIC-9 was decomposed → moved to completed/, but never 'processed'.
         summary = self._run_finalize(
-            data, run_dir, closed=("EPIC-9",), processed=(), skipped=1, errored=0
+            data, run_dir, closed=("EPIC-9",), passed=(), skipped=1, errored=0
         )
         assert summary["closed"] == 1, f"decomposition closure must count, got {summary}"
 
     def test_finalize_not_closed_excludes_completed_and_avoids_double_count(
         self, data: dict, tmp_path: Path
     ) -> None:
-        """ENH-2385: NOT_CLOSED = processed − completed. A processed issue that DID
-        close is excluded; a processed issue still open is counted exactly once."""
+        """ENH-2385: NOT_CLOSED = autodev-passed − completed. A passed issue that DID
+        close is excluded; a passed issue still open is counted exactly once."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         summary = self._run_finalize(
-            data, run_dir, closed=("FEAT-1",), processed=("FEAT-1", "FEAT-2"), skipped=0, errored=0
+            data,
+            run_dir,
+            closed=("FEAT-1",),
+            passed=("FEAT-1", "FEAT-2"),
+            skipped=0,
+            errored=0,
         )
         assert summary["closed"] == 1 and summary["not_closed"] == 1, (
             f"FEAT-1 closed, FEAT-2 not-closed expected, got {summary}"
@@ -1851,7 +1825,7 @@ class TestAutoRefineAndImplementLoop:
         """summary.json must report the full accounting keys (ENH-2385)."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
-        summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), processed=("FEAT-1",))
+        summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
         for key in ("verdict", "closed", "not_closed", "skipped", "errored"):
             assert key in summary, f"summary.json missing {key!r}: {summary}"
 
@@ -1872,47 +1846,11 @@ class TestAutoRefineAndImplementLoop:
         )
 
     def test_finalize_writes_summary_json(self, data: dict) -> None:
-        """finalize must emit a machine-readable summary.json with a verdict so
-        callers and audits can distinguish success from a phantom run."""
-        state = data["states"].get("finalize", {})
-        action = state.get("action", "")
+        """finalize must emit summary.json + the subloop_outcome token (ENH-2005)."""
+        action = data["states"].get("finalize", {}).get("action", "")
         assert "summary.json" in action
         assert "verdict" in action
-        # ENH-2005 artifact-channel sidecar token for the parent to recover.
         assert "subloop_outcome_auto-refine-and-implement" in action
-
-    def test_skipped_file_uses_run_dir(self, data: dict) -> None:
-        """Skipped tracking file must use ${context.run_dir} path."""
-        states = data.get("states", {})
-        skipped_ref = "auto-refine-and-implement-skipped"
-        found = False
-        for state_data in states.values():
-            action = state_data.get("action", "")
-            if skipped_ref in action:
-                found = True
-                assert "${context.run_dir}" in action
-        assert found, f"No state references {skipped_ref!r}"
-
-    def test_has_optional_scope_parameter(self, data: dict) -> None:
-        """scope must be in context with empty default (optional sprint/EPIC scoping)."""
-        ctx = data.get("context", {})
-        assert "scope" in ctx, "context must have a 'scope' field for sprint/EPIC scoping"
-        assert ctx["scope"] == "", (
-            "context.scope must default to empty string (backlog poll when unset)"
-        )
-
-    def test_get_next_issue_supports_scope_branching(self, data: dict) -> None:
-        """get_next_issue must branch on scope: scoped path uses load_or_resolve, backlog path uses ll-issues next-issue."""
-        action = data["states"]["get_next_issue"].get("action", "")
-        assert "load_or_resolve" in action, (
-            "get_next_issue scoped path must use SprintManager.load_or_resolve"
-        )
-        assert "ll-issues next-issue" in action, (
-            "get_next_issue must still use ll-issues next-issue for the default backlog path"
-        )
-        assert "EPIC" in action, (
-            "get_next_issue scoped path must support EPIC IDs (BUG-2136 preservation)"
-        )
 
 
 class TestSprintRefineAndImplementLoop:
@@ -6281,324 +6219,6 @@ class TestEnumerateAndProveOracle:
     def test_imports_common_yaml(self, data: dict) -> None:
         imports = data.get("import", [])
         assert "lib/common.yaml" in imports, "must import lib/common.yaml"
-
-
-class TestImplementIssueChainOracle:
-    """Structural tests for the implement-issue-chain oracle sub-loop (ENH-1874)."""
-
-    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles/implement-issue-chain.yaml"
-
-    @pytest.fixture
-    def data(self) -> dict:
-        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
-        return yaml.safe_load(self.LOOP_FILE.read_text())
-
-    def test_required_top_level_fields(self, data: dict) -> None:
-        assert data.get("name") == "implement-issue-chain"
-        assert data.get("initial") == "get_passed_issues"
-        assert isinstance(data.get("states"), dict)
-
-    def test_has_parameters_block(self, data: dict) -> None:
-        params = data.get("parameters", {})
-        assert "caller_prefix" in params, "parameters block must declare caller_prefix"
-        assert params["caller_prefix"].get("required") is True
-
-    def test_shared_state_ok_not_set(self, data: dict) -> None:
-        assert data.get("shared_state_ok") is not True, (
-            "shared_state_ok must not be set after ENH-2097 run_dir migration"
-        )
-
-    def test_required_states_exist(self, data: dict) -> None:
-        states = data.get("states", {})
-        for name in (
-            "get_passed_issues",
-            "implement_next",
-            "go_no_go",
-            "implement_issue",
-            "done",
-        ):
-            assert name in states, f"required state '{name}' missing"
-
-    def test_done_is_terminal(self, data: dict) -> None:
-        state = data["states"].get("done", {})
-        assert state.get("terminal") is True, "done.terminal should be True"
-
-    def test_no_unreachable_failed_state(self, data: dict) -> None:
-        """All failure paths drain to done; an unreachable failed terminal was removed."""
-        assert "failed" not in data["states"], (
-            "implement-issue-chain intentionally has no failed state; all error paths route to done"
-        )
-
-    def test_imports_common_yaml(self, data: dict) -> None:
-        imports = data.get("import", [])
-        assert "lib/common.yaml" in imports, "must import lib/common.yaml"
-
-    def test_get_passed_issues_reads_recursive_refine_outputs(self, data: dict) -> None:
-        """get_passed_issues must read both recursive-refine output files."""
-        state = data["states"].get("get_passed_issues", {})
-        action = state.get("action", "")
-        assert "recursive-refine-passed.txt" in action
-        assert "recursive-refine-skipped.txt" in action
-
-    def test_get_passed_issues_uses_caller_prefix(self, data: dict) -> None:
-        """get_passed_issues must use ${context.caller_prefix} instead of a hardcoded prefix."""
-        state = data["states"].get("get_passed_issues", {})
-        action = state.get("action", "")
-        assert "${context.caller_prefix}" in action
-
-    def test_implement_next_captures_impl_id(self, data: dict) -> None:
-        """implement_next must capture as 'impl_id' for implement_issue to reference."""
-        state = data["states"].get("implement_next", {})
-        assert state.get("capture") == "impl_id"
-
-    def test_implement_next_uses_caller_prefix(self, data: dict) -> None:
-        """implement_next must use ${context.caller_prefix} for the impl-queue path."""
-        state = data["states"].get("implement_next", {})
-        action = state.get("action", "")
-        assert "${context.caller_prefix}" in action
-
-    def test_impl_queue_file_uses_run_dir(self, data: dict) -> None:
-        """Impl queue file must use ${context.run_dir} with caller_prefix interpolation."""
-        states = data.get("states", {})
-        found = False
-        for state_data in states.values():
-            action = state_data.get("action", "")
-            if "${context.caller_prefix}-impl-queue" in action:
-                found = True
-                assert "${context.run_dir}" in action
-        assert found, (
-            "No state references ${context.caller_prefix}-impl-queue in ${context.run_dir}"
-        )
-
-    def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
-        """go_no_go must call ll-action via the invoke subcommand."""
-        state = data["states"].get("go_no_go", {})
-        action = state.get("action", "")
-        assert "ll-action invoke" in action, (
-            "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
-        )
-        assert "--check" in action, "go_no_go action must pass --check flag"
-
-    def test_implement_issue_uses_impl_id(self, data: dict) -> None:
-        """implement_issue action must reference captured.impl_id.output."""
-        state = data["states"].get("implement_issue", {})
-        action = state.get("action", "")
-        assert "${captured.impl_id.output}" in action
-
-    def test_implement_issue_has_completed_guard(self, data: dict) -> None:
-        """implement_issue must skip ll-auto when the issue is already in completed/."""
-        state = data["states"].get("implement_issue", {})
-        action = state.get("action", "")
-        assert "completed" in action, "implement_issue action must check .issues/completed/"
-        assert "exit 0" in action, (
-            "implement_issue action must exit 0 when issue is already completed"
-        )
-
-    def test_implement_issue_routes_to_implement_next(self, data: dict) -> None:
-        """implement_issue must loop back to implement_next to drain the queue."""
-        state = data["states"].get("implement_issue", {})
-        assert state.get("next") == "implement_next"
-
-    # --- BUG-2374: passed issues must not pollute the skip (verdict) file -----
-
-    def test_get_passed_issues_does_not_write_passed_to_skip_file(self, data: dict) -> None:
-        """Structural guard: get_passed_issues must NOT append PASSED to the skip file.
-
-        Writing passed IDs to ${caller_prefix}-skipped.txt double-counts every
-        implemented issue as skipped, forcing verdict=partial on successful runs.
-        """
-        action = data["states"]["get_passed_issues"].get("action", "")
-        assert 'echo "$PASSED" >> "$SKIP_FILE"' not in action, (
-            "get_passed_issues must not append passed IDs to SKIP_FILE (BUG-2374)"
-        )
-        assert "PROCESSED_FILE" in action, (
-            "get_passed_issues must route passed IDs to a dedup-only processed file"
-        )
-
-    def _run_get_passed_issues(
-        self, data: dict, run_dir: Path, prefix: str = "auto-refine-and-implement"
-    ) -> subprocess.CompletedProcess:
-        action = data["states"]["get_passed_issues"].get("action", "")
-        script = action.replace("${context.run_dir}", str(run_dir)).replace(
-            "${context.caller_prefix}", prefix
-        )
-        return subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
-
-    def test_passed_issues_go_to_queue_and_processed_not_skip(
-        self, data: dict, tmp_path: Path
-    ) -> None:
-        """Shell-execution regression for BUG-2374.
-
-        Given a populated recursive-refine-passed.txt and empty skipped file,
-        the passed IDs must land in the impl queue AND the processed (dedup) file,
-        while the skip (verdict) file stays empty.
-        """
-        run_dir = tmp_path / "run"
-        run_dir.mkdir()
-        (run_dir / "recursive-refine-passed.txt").write_text("FEAT-366\nFEAT-368\n")
-        (run_dir / "recursive-refine-skipped.txt").write_text("")
-
-        result = self._run_get_passed_issues(data, run_dir)
-        assert result.returncode == 0, f"get_passed_issues failed: {result.stderr}"
-
-        impl_queue = (run_dir / "auto-refine-and-implement-impl-queue.txt").read_text()
-        assert "FEAT-366" in impl_queue and "FEAT-368" in impl_queue, (
-            f"impl queue must contain the passed IDs, got: {impl_queue!r}"
-        )
-
-        processed = (run_dir / "auto-refine-and-implement-processed.txt").read_text()
-        assert "FEAT-366" in processed and "FEAT-368" in processed, (
-            f"processed (dedup) file must contain the passed IDs, got: {processed!r}"
-        )
-
-        skip_path = run_dir / "auto-refine-and-implement-skipped.txt"
-        skip_contents = skip_path.read_text() if skip_path.exists() else ""
-        assert "FEAT-366" not in skip_contents and "FEAT-368" not in skip_contents, (
-            f"passed IDs must NOT appear in the skip (verdict) file, got: {skip_contents!r}"
-        )
-
-    def test_refinement_skips_still_recorded_in_skip_file(self, data: dict, tmp_path: Path) -> None:
-        """Genuine refinement-skips must still be counted in the skip file."""
-        run_dir = tmp_path / "run"
-        run_dir.mkdir()
-        (run_dir / "recursive-refine-passed.txt").write_text("FEAT-366\n")
-        (run_dir / "recursive-refine-skipped.txt").write_text("BUG-999\n")
-
-        result = self._run_get_passed_issues(data, run_dir)
-        assert result.returncode == 0, f"get_passed_issues failed: {result.stderr}"
-
-        skip_contents = (run_dir / "auto-refine-and-implement-skipped.txt").read_text()
-        assert "BUG-999" in skip_contents, (
-            f"refinement-skips must be recorded in the skip file, got: {skip_contents!r}"
-        )
-        assert "FEAT-366" not in skip_contents, (
-            "passed IDs must not leak into the skip file alongside genuine skips"
-        )
-
-    # --- BUG-2381: ledger is written only when ll-auto actually runs ----------
-
-    def test_implement_issue_writes_implemented_ledger(self, data: dict) -> None:
-        """Structural guard: implement_issue must append to the caller's
-        *-implemented.txt ledger — the authoritative IMPL count consulted by
-        auto-refine-and-implement.finalize (BUG-2381)."""
-        action = data["states"]["implement_issue"].get("action", "")
-        assert "${context.caller_prefix}-implemented.txt" in action, (
-            "implement_issue must write the ${context.caller_prefix}-implemented.txt "
-            f"ledger, got: {action!r}"
-        )
-        assert "${context.run_dir}" in action, (
-            "the implemented ledger must live under ${context.run_dir}"
-        )
-
-    def _run_implement_issue(
-        self,
-        data: dict,
-        run_dir: Path,
-        issue: str,
-        ll_auto_exit: int = 0,
-        closes: bool = True,
-        prefix: str = "auto-refine-and-implement",
-    ) -> subprocess.CompletedProcess:
-        """Run implement_issue with a stubbed ll-auto.
-
-        `closes` controls whether the stub simulates a real closure by moving the
-        issue into .issues/completed/ — the ground truth implement_issue verifies.
-        """
-        action = data["states"]["implement_issue"].get("action", "")
-        script = (
-            action.replace("${context.run_dir}", str(run_dir))
-            .replace("${context.caller_prefix}", prefix)
-            .replace("${captured.impl_id.output}", issue)
-            .replace("$${", "${")  # FSM brace-escape → bash, as the interpolator does
-        )
-        bindir = run_dir / "bin"
-        bindir.mkdir(exist_ok=True)
-        stub = bindir / "ll-auto"
-        close_line = (
-            f"mkdir -p .issues/completed; echo done > .issues/completed/P3-{issue}-x.md\n"
-            if closes
-            else ""
-        )
-        stub.write_text(f"#!/usr/bin/env bash\n{close_line}exit {ll_auto_exit}\n")
-        stub.chmod(0o755)
-        env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"}
-        return subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
-        )
-
-    def test_implement_issue_records_ledger_when_closed(self, data: dict, tmp_path: Path) -> None:
-        """ENH-2385: the implemented ledger records the issue only when it actually
-        reached .issues/completed/ (verified closure)."""
-        run_dir = tmp_path / "run"
-        run_dir.mkdir()
-        self._run_implement_issue(data, run_dir, "FEAT-500", ll_auto_exit=0, closes=True)
-        ledger = run_dir / "auto-refine-and-implement-implemented.txt"
-        assert ledger.exists() and "FEAT-500" in ledger.read_text(), (
-            "a verified closure must be recorded in the implemented ledger"
-        )
-
-    def test_implement_issue_skips_ledger_when_ll_auto_exits_zero_without_closing(
-        self, data: dict, tmp_path: Path
-    ) -> None:
-        """ENH-2385 core: ll-auto exit 0 is NOT proof of closure. If the issue did
-        not reach completed/, it must NOT be recorded as implemented."""
-        run_dir = tmp_path / "run"
-        run_dir.mkdir()
-        self._run_implement_issue(data, run_dir, "FEAT-501", ll_auto_exit=0, closes=False)
-        ledger = run_dir / "auto-refine-and-implement-implemented.txt"
-        contents = ledger.read_text() if ledger.exists() else ""
-        assert "FEAT-501" not in contents, (
-            f"exit 0 without closure must not record as implemented, got: {contents!r}"
-        )
-
-    def test_implement_issue_preserves_ll_auto_exit_code(self, data: dict, tmp_path: Path) -> None:
-        """ENH-2385: the action must re-exit with ll-auto's real exit code so the
-        with_rate_limit_handling fragment's 429 detection (which requires
-        exit_code != 0) still fires. Swallowing it disables rate-limit resilience."""
-        run_dir = tmp_path / "run"
-        run_dir.mkdir()
-        result = self._run_implement_issue(data, run_dir, "FEAT-502", ll_auto_exit=7, closes=False)
-        assert result.returncode == 7, (
-            f"implement_issue must propagate ll-auto's exit code, got {result.returncode}"
-        )
-
-    def test_implement_issue_records_already_completed_issue(
-        self, data: dict, tmp_path: Path
-    ) -> None:
-        """An issue already in .issues/completed/ counts as implemented without
-        re-running ll-auto (the completed-guard branch)."""
-        run_dir = tmp_path / "run"
-        run_dir.mkdir()
-        completed = run_dir / ".issues" / "completed"
-        completed.mkdir(parents=True)
-        (completed / "P3-FEAT-366-x.md").write_text("done\n")
-        # ll_auto_exit=1 proves ll-auto is NOT consulted on this path.
-        result = self._run_implement_issue(data, run_dir, "FEAT-366", ll_auto_exit=1, closes=False)
-        assert result.returncode == 0
-        ledger = run_dir / "auto-refine-and-implement-implemented.txt"
-        assert ledger.exists() and "FEAT-366" in ledger.read_text(), (
-            "already-completed issue must be recorded in the implemented ledger"
-        )
-
-    # --- ENH-2385: go-no-go rejections are recorded, not silently dropped -----
-
-    def test_go_no_go_rejection_routes_to_record_rejected(self, data: dict) -> None:
-        """go_no_go.on_no must route to record_rejected (was a silent
-        implement_next drop)."""
-        state = data["states"].get("go_no_go", {})
-        assert state.get("on_no") == "record_rejected", (
-            f"go_no_go.on_no must record the rejection, got {state.get('on_no')!r}"
-        )
-
-    def test_record_rejected_writes_skip_and_drains(self, data: dict) -> None:
-        """record_rejected must append the rejected issue to the caller's skip
-        ledger and loop back to implement_next to drain the queue."""
-        state = data["states"].get("record_rejected", {})
-        action = state.get("action", "")
-        assert "${context.caller_prefix}-skipped.txt" in action, (
-            "record_rejected must record the rejection to the skip ledger"
-        )
-        assert state.get("next") == "implement_next"
 
 
 class TestResearchCoverageOracle:

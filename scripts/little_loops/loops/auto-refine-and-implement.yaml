@@ -1,194 +1,161 @@
 name: "auto-refine-and-implement"
 category: issue-management
 description: |
-  For each issue (priority order): recursively refine via recursive-refine
-  (which handles decomposition into child issues), then implement every issue
-  that passed refinement via implement-issue-chain → ll-auto, which moves closed
-  issues into .issues/completed/. Drains until the scoped issue set is exhausted,
-  so every issue ends either CLOSED or parked-with-reason (refinement-skipped,
-  decision-needed, go-no-go-rejected, or attempted-but-not-closed).
-  When scope is empty (default), polls the full backlog; when scope is a sprint
-  name or EPIC-NNN, scopes to that set via SprintManager.load_or_resolve.
-  finalize verifies closure from a .issues/completed/ ground-truth diff (ENH-2385)
-  — counting both ll-auto leaf closures and decomposition closures — and emits a
-  summary.json verdict (closed / not_closed / skipped / errored) that reflects
-  real terminal state, not an ll-auto exit-code proxy.
+  Refine and implement an issue set with refinement and implementation
+  INTERLEAVED depth-first per issue. Resolves the issue set once (a named
+  sprint / EPIC-NNN via scope, or the priority-ranked backlog when scope is
+  empty) and delegates the per-issue work to the autodev engine: refine one
+  issue to readiness via refine-to-ready-issue, implement it immediately via
+  ll-auto --only, and when it decomposes into children, prepend the children
+  depth-first so each child is refined AND implemented before the next sibling.
+  First implementation runs as soon as the first leaf passes refinement — NOT
+  after the whole tree is refined.
+
+  finalize verifies closure from a .issues/completed/ ground-truth diff
+  (ENH-2385) — counting both ll-auto leaf closures and decomposition closures
+  (autodev git-mv's decomposed umbrellas into completed/) — and emits a
+  summary.json verdict (success / partial / partial-with-errors / phantom /
+  no-op) plus a subloop_outcome token that reflects real terminal state, not an
+  exit-code proxy (ENH-2005).
 initial: init
-max_steps: 500
+max_steps: 50
 timeout: 28800
 on_handoff: spawn
 import:
   - lib/common.yaml
 context:
   max_issues: 100
-  scope: ""   # optional: sprint name (.sprints/<name>.yaml) or EPIC-NNN; empty → poll backlog
+  scope: ""   # optional: sprint name (.sprints/<name>.yaml) or EPIC-NNN; empty → rank backlog
 
 states:
   init:
     action: |
       mkdir -p "${context.run_dir}"
       RUN_DIR="${context.run_dir}"
-      rm -f "$RUN_DIR/auto-refine-and-implement-skipped.txt"
-      rm -f "$RUN_DIR/auto-refine-and-implement-processed.txt"
-      rm -f "$RUN_DIR/auto-refine-and-implement-impl-queue.txt"
       rm -f "$RUN_DIR/auto-refine-and-implement-errored.txt"
-      rm -f "$RUN_DIR/auto-refine-and-implement-implemented.txt"
-      rm -f "$RUN_DIR/auto-refine-and-implement-not-closed.txt"
-      rm -f "$RUN_DIR/auto-refine-and-implement-skipped-gonogo.txt"
       rm -f "$RUN_DIR/summary.json"
       # ENH-2385: snapshot the closed set so finalize can compute ground-truth
       # closures (issues that reached .issues/completed/ during THIS run). This
-      # captures BOTH ll-auto leaf closures and recursive-refine decomposition
-      # closures (enqueue_children git-mv's decomposed umbrellas into completed/).
+      # captures BOTH ll-auto leaf closures and autodev decomposition closures
+      # (enqueue_children git-mv's decomposed umbrellas into completed/).
       ls .issues/completed/ 2>/dev/null | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
         | sort -u > "$RUN_DIR/auto-refine-and-implement-completed-baseline.txt"
     action_type: shell
-    next: get_next_issue
+    next: resolve_set
 
-  get_next_issue:
+  resolve_set:
+    # Resolve the full issue set to a single comma-separated list, captured as
+    # 'issue_set' for the autodev sub-loop's context.input. autodev maintains a
+    # unified depth-first queue from this list and interleaves refine+implement
+    # per issue, so there is no per-issue polling loop here.
+    #   scope set    → SprintManager.load_or_resolve(scope) issue list
+    #   scope empty  → priority-ranked backlog via `ll-issues next-issues`,
+    #                  capped at max_issues
+    # Exits non-zero (→ finalize, a no-op verdict) when the set is empty.
     action: |
       mkdir -p "${context.run_dir}"
       if [ -n "${context.scope}" ]; then
-        python3 << 'PYEOF'
-      import os, sys
+        LIST=$(python3 << 'PYEOF'
+      import sys
       from pathlib import Path
       from little_loops.config import BRConfig
       from little_loops.sprint import SprintManager
 
       arg = """${context.scope}""".strip()
-      run_dir = "${context.run_dir}"
-      skip_file = os.path.join(run_dir, "auto-refine-and-implement-skipped.txt")
-      processed_file = os.path.join(run_dir, "auto-refine-and-implement-processed.txt")
-
       sprint = SprintManager(config=BRConfig(Path.cwd())).load_or_resolve(arg)
       if sprint is None:
           sys.stderr.write(
               f"'{arg}' not found: no .sprints/{arg}.yaml and not a resolvable EPIC ID\n")
           sys.exit(1)
-
       issues = sprint.issues or []
       if not issues:
           sys.stderr.write(f"'{arg}' resolved but has no active issues to process\n")
           sys.exit(1)
-
-      # BUG-2374: dedup on BOTH the skipped (refinement failures) and processed
-      # (passed → implemented) sets so an already-handled issue is never reselected.
-      skipped = set()
-      for fp in (skip_file, processed_file):
-          if os.path.exists(fp):
-              with open(fp) as f:
-                  skipped |= {ln.strip() for ln in f if ln.strip()}
-
-      for issue_id in issues:
-          if issue_id not in skipped:
-              print(issue_id)
-              sys.exit(0)
-      sys.exit(1)
+      print(",".join(issues))
       PYEOF
-      else
-        # BUG-2374: dedup on BOTH the skipped (refinement failures) and processed
-        # (passed → implemented) sets so an already-handled issue is never reselected.
-        SKIPPED=$(cat ${context.run_dir}/auto-refine-and-implement-skipped.txt \
-                      ${context.run_dir}/auto-refine-and-implement-processed.txt 2>/dev/null \
-                  | grep -v '^[[:space:]]*$' | paste -sd ',' -)
-        if [ -n "$SKIPPED" ]; then
-          ll-issues next-issue --skip "$SKIPPED"
-        else
-          ll-issues next-issue
+      )
+        if [ $? -ne 0 ]; then
+          exit 1
         fi
+      else
+        LIST=$(ll-issues next-issues 2>/dev/null \
+                 | grep -v '^[[:space:]]*$' \
+                 | head -n ${context.max_issues} \
+                 | paste -sd ',' -)
       fi
-    action_type: shell
-    capture: input
-    on_yes: refine_issue
+      LIST=$(printf '%s' "$LIST" | tr -d '[:space:]')
+      if [ -z "$LIST" ]; then
+        echo "No issues to process" >&2
+        exit 1
+      fi
+      printf '%s\n' "$LIST"
+    fragment: shell_exit
+    capture: issue_set
+    on_yes: delegate
     on_no: finalize
     on_error: finalize
 
-  refine_issue:
-    # ENH (audit 2026-06-27): on_failure (refinement did not pass thresholds) and
-    # on_error (recursive-refine crashed at the infrastructure level, e.g. a
-    # template-variable parse error) route to DISTINCT states so an automation
-    # defect is not silently laundered into the same skip bucket as a legitimate
-    # confidence-gate miss.
-    loop: recursive-refine
+  delegate:
+    # Delegate the entire refine+implement to the autodev engine. autodev shares
+    # this loop's run_dir (executor injects it via setdefault), so its
+    # autodev-passed.txt / autodev-skipped.txt land under ${context.run_dir}
+    # where finalize reads them. on_success/on_failure both route to finalize
+    # (the ground-truth completed/ diff is the authoritative verdict regardless
+    # of autodev's collapsed terminal verdict). on_error routes to a DISTINCT
+    # crash state so an infrastructure failure is not laundered into a clean
+    # completion (ENH-2005 / ENH-2376).
+    loop: autodev
     with:
-      input: "${captured.input.output}"
-    on_success: implement_chain
-    on_failure: skip_refinement
+      input: "${captured.issue_set.output}"
+    on_success: finalize
+    on_failure: finalize
     on_error: record_error
 
-  implement_chain:
-    loop: oracles/implement-issue-chain
-    with:
-      caller_prefix: "auto-refine-and-implement"
-    on_success: record_processed
-    on_failure: finalize
-    on_error: finalize
-
-  record_processed:
-    # BUG-2380: this state fires when implement-issue-chain reaches its terminal
-    # state, which does NOT prove any issue was implemented (see BUG-2381). Record
-    # only that the parent refined + delegated this issue — to the dedup/accounting
-    # *-processed.txt ledger, NOT *-implemented.txt. The authoritative implemented
-    # count is written by implement-issue-chain.implement_issue when ll-auto runs.
-    action: |
-      echo "Processed ${captured.input.output} (refined + delegated; implemented IDs recorded by implement-issue-chain)"
-      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-processed.txt
-    fragment: queue_track
-    next: get_next_issue
-
-  skip_refinement:
-    action: |
-      echo "Skipping ${captured.input.output} after refinement failure"
-      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-skipped.txt
-    fragment: queue_track
-    next: get_next_issue
-
   record_error:
-    # recursive-refine crashed (on_error) rather than returning a clean
-    # pass/fail verdict — track separately so finalize can report it as a
-    # sub-loop crash, not a refinement skip. Still added to skipped.txt so the
-    # issue is not re-attempted in the same run.
+    # autodev crashed at the infrastructure level before it could drain the set.
+    # Record the crash so finalize can report partial-with-errors / phantom
+    # rather than a silent no-op.
     action: |
-      echo "ERROR: recursive-refine crashed on ${captured.input.output} — see events.jsonl"
-      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-errored.txt
-      echo "${captured.input.output}" >> ${context.run_dir}/auto-refine-and-implement-skipped.txt
-    fragment: queue_track
-    next: get_next_issue
+      echo "${captured.issue_set.output}" >> ${context.run_dir}/auto-refine-and-implement-errored.txt
+      echo "ERROR: autodev crashed on set ${captured.issue_set.output} — see events.jsonl"
+    action_type: shell
+    next: finalize
 
   finalize:
     # Write a machine-readable summary.json so callers (e.g.
     # sprint-refine-and-implement) and post-hoc audits can distinguish genuine
     # success from a phantom run where every issue was skipped or crashed.
-    # awk counts non-blank lines and always exits 0 (grep -c exits 1 on zero
-    # matches, which would corrupt the count via the || fallback).
+    # CLOSED is ground truth (completed/ diff). NOT_CLOSED/SKIPPED are sourced
+    # from autodev's ledgers under the shared run_dir; ERRORED from record_error.
+    # awk counts non-blank lines and always exits 0.
     action: |
       RUN_DIR="${context.run_dir}"
       P=auto-refine-and-implement
       count() { awk 'NF{c++} END{print c+0}' "$RUN_DIR/$1" 2>/dev/null || echo 0; }
 
       # ENH-2385: CLOSED is ground truth — issues that reached .issues/completed/
-      # during this run (ll-auto leaf closures + recursive-refine decomposition
-      # closures). This is the honest "and close" signal, not a proxy for an
-      # ll-auto exit code.
+      # during this run (ll-auto leaf closures + autodev decomposition closures).
       ls .issues/completed/ 2>/dev/null | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
         | sort -u > "$RUN_DIR/$P-completed-now.txt"
       CLOSED=$(comm -13 "$RUN_DIR/$P-completed-baseline.txt" "$RUN_DIR/$P-completed-now.txt" \
                  2>/dev/null | awk 'NF{c++} END{print c+0}')
 
-      # NOT_CLOSED: issues we queued/processed for implementation that did NOT
-      # reach completed/ (e.g. ll-auto ran but refused to close, or a plan awaits
-      # approval). Derived as processed − completed, so a rate-limit retry that
-      # eventually closes cannot double-count.
-      sort -u "$RUN_DIR/$P-processed.txt" 2>/dev/null | grep '[^[:space:]]' \
-        > "$RUN_DIR/$P-processed-sorted.txt" || true
+      # NOT_CLOSED: issues autodev passed refinement and ran ll-auto on that did
+      # NOT reach completed/ (e.g. ll-auto refused to close, or a plan awaits
+      # approval). Derived as autodev-passed − completed, so a rate-limit retry
+      # that eventually closes cannot double-count.
+      sort -u "$RUN_DIR/autodev-passed.txt" 2>/dev/null | grep '[^[:space:]]' \
+        > "$RUN_DIR/$P-passed-sorted.txt" || true
       : > "$RUN_DIR/$P-not-closed.txt"
-      if [ -s "$RUN_DIR/$P-processed-sorted.txt" ]; then
-        comm -23 "$RUN_DIR/$P-processed-sorted.txt" "$RUN_DIR/$P-completed-now.txt" \
+      if [ -s "$RUN_DIR/$P-passed-sorted.txt" ]; then
+        comm -23 "$RUN_DIR/$P-passed-sorted.txt" "$RUN_DIR/$P-completed-now.txt" \
           > "$RUN_DIR/$P-not-closed.txt" 2>/dev/null || true
       fi
       NOT_CLOSED=$(count $P-not-closed.txt)
 
-      SKIP=$(count $P-skipped.txt)
+      # SKIPPED: issues autodev parked (refinement failure, decomposed parent,
+      # dead-end leaf). ERRORED: infrastructure crash recorded by record_error.
+      SKIP=$(count autodev-skipped.txt)
       ERR=$(count $P-errored.txt)
 
       # Verdict reflects real closure. A run is only 'success' when it closed
