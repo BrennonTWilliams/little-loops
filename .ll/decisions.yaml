@@ -3095,3 +3095,88 @@
     — always pair them with an explicit `on_err
   enforcement: advisory
   issue: BUG-2394
+- id: TEST-146
+  type: rule
+  timestamp: '2026-06-29T17:37:55Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: The sidecar-write contract was correct across multiple runs but held
+    only by convention. A new terminal path added without the write would silently
+    misclassify the outcome with no error, no log, and no non-zero exit — the BUG-2383
+    silent-failure class.
+  rule: Pin behavioral invariants enforced only by convention with a regression test
+    to prevent silent drift.
+  enforcement: advisory
+  issue: ENH-2397
+- id: TEST-147
+  type: rule
+  timestamp: '2026-06-29T17:37:55Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: If a structural change removes all candidate states, a test without a
+    count-check passes trivially having verified nothing. The guard catches this class
+    of false-green silently introduced by refactoring.
+  rule: Structural iteration tests must include a vacuous-pass guard so that finding
+    zero items fails loudly.
+  enforcement: advisory
+  issue: ENH-2397
+- id: TEST-148
+  type: rule
+  timestamp: '2026-06-29T17:37:55Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: States defined in loops/lib/common.yaml and referenced via fragments
+    are invisible to tests that operate on raw YAML. Fragment resolution is required
+    to achieve real coverage.
+  rule: Resolve FSM fragments before asserting loop state properties to avoid skipping
+    shared library states.
+  enforcement: advisory
+  issue: ENH-2397
+- id: ARCH-149
+  type: rule
+  timestamp: '2026-06-29T17:37:55Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Terminal verdicts collapse every non-done exit into a bare 'failed',
+    losing nuanced outcomes (MANUAL_REVIEW_NEEDED, NEEDS_DECOMPOSE). The parent sidecar
+    read recovers the true outcome; skipping the write silently discards it.
+  rule: Sub-loop terminal states must write an explicit outcome token before transitioning;
+    never rely solely on the terminal ve
+  enforcement: advisory
+  issue: ENH-2397
+- id: TEST-150
+  type: rule
+  timestamp: '2026-06-29T17:37:55Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: Partial coverage misses regressions on symmetric paths. If the invariant
+    (sidecar write before terminal) matters for 'failed', it also matters for 'done';
+    testing only one creates a coverage blind spot.
+  rule: When an audit flags one failing path, pin all transitions to the same terminal
+    class — not just the audited path.
+  enforcement: advisory
+  issue: ENH-2397
+- id: ARCHITECTURE-076
+  type: decision
+  timestamp: '2026-06-29T17:51:52Z'
+  category: architecture
+  labels: []
+  rationale: Template files are the single source of truth consumed live by both is_formatted()
+    and ensure_formatted; three JSON edits cascade automatically via existing deprecated
+    guard with no Python or YAML code changes. Option A would have created a parallel
+    re-implementation with no codebase precedent.
+  rule: 'Option B — Upstream template fix: demote Labels.required and User Story.level
+    in *-sections.json'
+  scope: issue
+  alternatives_rejected: Option A (gate-level fix in ensure_formatted inline Python)
+  issue: BUG-2395
