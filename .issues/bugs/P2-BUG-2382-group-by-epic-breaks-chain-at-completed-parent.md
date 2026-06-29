@@ -1,12 +1,21 @@
 ---
 id: BUG-2382
-title: "ll-issues list --group-by epic drops issues whose chain passes through a completed parent"
-status: open
+title: ll-issues list --group-by epic drops issues whose chain passes through a completed
+  parent
+status: done
 priority: P2
-captured_at: "2026-06-28T19:07:09Z"
-discovered_date: "2026-06-28"
+captured_at: '2026-06-28T19:07:09Z'
+discovered_date: '2026-06-28'
 discovered_by: capture-issue
-relates_to: [EPIC-2149]
+relates_to:
+- EPIC-2149
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
+completed_at: '2026-06-29T03:47:04Z'
 ---
 
 # BUG-2382: ll-issues list --group-by epic drops issues whose chain passes through a completed parent
@@ -40,6 +49,14 @@ bucketed under **Unparented**.
 A secondary symptom: when the resolved EPIC ancestor itself is not in `raw`,
 `parent_titles.get(key)` misses and the group header renders the bare EPIC id
 with no title.
+
+## Steps to Reproduce
+
+1. Create issues with a multi-level parent chain where an intermediate parent has status `done` or `deferred` (e.g., `BUG-A (open) → FEAT-B (done) → EPIC-C (open)`).
+2. Run `ll-issues list --group-by epic` (default `--status open` filter).
+3. Observe: `BUG-A` appears under **Unparented** instead of the **EPIC-C** group.
+
+Secondary: if the EPIC ancestor itself is not in `raw`, `parent_titles.get(key)` misses and the group header renders the bare EPIC id with no title.
 
 ## Expected Behavior
 
@@ -78,11 +95,11 @@ Note: `_find_issues_all` returns issues (not `(issue, status)` tuples like
 
 ## Impact
 
-- **Cost**: one extra full `.issues/` scan when `--group-by epic` runs with a
-  non-`all` status filter. Free for `--status all` (already loads everything).
-  Epic grouping is an interactive, non-hot path — acceptable.
-- **Scope**: display-only command; no data is mutated. Fix corrects grouping
-  accuracy and header titles.
+- **Priority**: P2 — `--group-by epic` silently misfiles issues whenever a completed intermediate parent exists; makes epic grouping unreliable for any project using `done`/`deferred` features or sub-epics as hierarchy nodes
+- **Effort**: Small — change isolated to the `group_by == "epic"` branch in `cmd_list`; replaces two derived maps and removes one redundant load
+- **Risk**: Low — display-only command; no data is mutated; fix corrects grouping accuracy and header titles
+- **Breaking Change**: No
+- **Performance cost**: one extra full `.issues/` scan per `--group-by epic` invocation with a non-`all` status filter (free for `--status all`); non-hot interactive path — acceptable
 
 ## Implementation Steps
 
@@ -95,7 +112,15 @@ Note: `_find_issues_all` returns issues (not `(issue, status)` tuples like
    groups under the EPIC, not Unparented. This boundary (completed intermediate
    parent) is currently untested.
 
+## Labels
+
+`bug`, `cli`, `ll-issues`, `group-by-epic`
+
 ## Session Log
+- `ll-auto` - 2026-06-29T03:47:04 - `2219da24-461f-4044-901c-80d204b2618d.jsonl`
+- `/ll:ready-issue` - 2026-06-29T03:41:25 - `e74614ab-caf8-4745-be71-4ecdc58460b0.jsonl`
+- `/ll:confidence-check` - 2026-06-28T00:00:00Z - `8c236840-c3ad-41d9-88f2-7257ccea6054.jsonl`
+- `/ll:format-issue` - 2026-06-29T03:35:23 - `75189fec-3507-47e0-944b-5ff5e5d765ae.jsonl`
 - `/ll:capture-issue` - 2026-06-28T19:07:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b88673d-6bf0-48cb-a5d7-7d07fc889091.jsonl`
 
 ---
@@ -104,3 +129,23 @@ Note: `_find_issues_all` returns issues (not `(issue, status)` tuples like
 
 - **Status**: open
 - **Priority**: P2
+
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-06-28
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

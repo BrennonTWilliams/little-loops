@@ -151,12 +151,24 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
 
     group_by = getattr(args, "group_by", "type")
     if group_by == "epic":
-        # Build parent title lookup from raw (before type filter) so headers
-        # resolve correctly when --type BUG is combined with --group-by epic
-        parent_titles: dict[str, str] = {i.issue_id: i.title for i, _ in raw if i.title}
+        from little_loops.issue_parser import find_issues as _find_issues_all
+
+        _all_statuses: set[str] = {
+            "open",
+            "in_progress",
+            "blocked",
+            "done",
+            "cancelled",
+            "deferred",
+        }
+        # Load all issues regardless of status filter so chain traversal and title
+        # lookup are not severed at completed/deferred intermediate nodes.
+        _all_issues = _find_issues_all(config, status_filter=_all_statuses)
+
+        parent_titles: dict[str, str] = {i.issue_id: i.title for i in _all_issues if i.title}
 
         # Build parent map for walking up multi-level chains (e.g. FEAT → FEAT → EPIC)
-        _parent_map: dict[str, str] = {i.issue_id: i.parent for i, _ in raw if i.parent}
+        _parent_map: dict[str, str] = {i.issue_id: i.parent for i in _all_issues if i.parent}
 
         def _find_epic_ancestor(issue_id: str) -> str | None:
             seen: set[str] = set()
@@ -183,20 +195,10 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         # Pre-compute progress badges for named EPIC buckets
         epic_progress_cache: dict[str, tuple[int, int, int]] = {}
         if named_keys:
-            from little_loops.issue_parser import find_issues as _find_issues_all
             from little_loops.issue_progress import compute_epic_progress
 
-            _all_statuses: set[str] = {
-                "open",
-                "in_progress",
-                "blocked",
-                "done",
-                "cancelled",
-                "deferred",
-            }
-            all_issues_for_progress = _find_issues_all(config, status_filter=_all_statuses)
             for epic_key in named_keys:
-                prog = compute_epic_progress(epic_key, all_issues_for_progress)
+                prog = compute_epic_progress(epic_key, _all_issues)
                 if prog is not None:
                     done = prog.by_status.get("done", 0) + prog.by_status.get("cancelled", 0)
                     blocked = prog.by_status.get("blocked", 0)

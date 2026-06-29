@@ -180,6 +180,27 @@ def issues_dir_with_epic_children(issues_dir_with_epic: Path) -> Path:
     return issues_dir_with_epic
 
 
+@pytest.fixture
+def issues_dir_with_completed_intermediate(issues_dir_with_epic: Path) -> Path:
+    """Chain: BUG-300 (open) → FEAT-200 (done) → EPIC-001 (open).
+
+    Exercises the case where an intermediate parent has status 'done', which
+    formerly severed the chain in _parent_map and caused BUG-300 to land under
+    Unparented instead of EPIC-001.
+    """
+    features_dir = issues_dir_with_epic / "features"
+    features_dir.mkdir(parents=True, exist_ok=True)
+    (features_dir / "P2-FEAT-200-done-intermediate.md").write_text(
+        "---\nstatus: done\nparent: EPIC-001\n---\n# FEAT-200: Done intermediate feature\n\n## Summary\nCompleted middle node."
+    )
+    bugs_dir = issues_dir_with_epic / "bugs"
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    (bugs_dir / "P2-BUG-300-child-of-done-feat.md").write_text(
+        "---\nstatus: open\nparent: FEAT-200\n---\n# BUG-300: Child of done feature\n\n## Summary\nShould group under EPIC-001."
+    )
+    return issues_dir_with_epic
+
+
 class TestIssuesCLIList:
     """Tests for ll-issues list sub-command."""
 
@@ -937,6 +958,39 @@ class TestIssuesCLIList:
         assert "Unparented" in captured.out
         # Base issues_dir issues have no parent field
         assert "BUG-001" in captured.out
+
+    def test_list_group_by_epic_completed_intermediate_parent(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_completed_intermediate: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-2382: open issue chains through a done intermediate still groups under the EPIC."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--group-by", "epic", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # BUG-300 must appear under EPIC-001, not Unparented
+        assert "EPIC-001" in captured.out
+        assert "BUG-300" in captured.out
+        # The EPIC title should resolve correctly (parent_titles must include the EPIC)
+        assert "Parent initiative" in captured.out
+        # BUG-300 must NOT appear under Unparented
+        unparented_idx = captured.out.find("Unparented")
+        bug300_idx = captured.out.find("BUG-300")
+        # Either there is no Unparented section, or BUG-300 comes before it
+        assert unparented_idx == -1 or bug300_idx < unparented_idx
 
     def test_list_group_by_type_default(
         self,
