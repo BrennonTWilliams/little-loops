@@ -7812,7 +7812,7 @@ Compares an installed version string against the latest available version using 
 
 ## Agents
 
-Specialized sub-agents live in `agents/*.md` and are registered in `.claude-plugin/plugin.json`. Each agent is spawned via the `Task` / `Agent` tool with `subagent_type` set to the agent name. Codex-CLI mirrors are generated into `.codex/agents/*.toml` by `ll-adapt-agents-for-codex`.
+Specialized sub-agents live in `agents/*.md` and are registered in `.claude-plugin/plugin.json`. Each agent is spawned via the `Task` / `Agent` tool with `subagent_type` set to the agent name. Codex-CLI mirrors are generated into `.codex/agents/*.toml` by `ll-adapt --host codex --apply`.
 
 | Agent | Model | Tools | Purpose |
 |-------|-------|-------|---------|

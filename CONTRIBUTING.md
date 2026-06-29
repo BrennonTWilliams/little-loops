@@ -500,7 +500,7 @@ Only add flags that meaningfully change command behavior. Flags are optional —
 
 ### After Creating a New Command
 
-Run `ll-adapt-skills-for-codex --apply` to bridge the new command into `skills/ll-<command-name>/` so Codex CLI users can discover it via the Skills API. Skipping this step will fail CI (`test_every_command_has_bridged_skill`). Commands tagged `disable-model-invocation: true` are exempt. This mirrors the New Skill Checklist step below — the same tool now handles both surfaces.
+Run `ll-adapt --host codex --apply` to bridge the new command into `skills/ll-<command-name>/` so Codex CLI users can discover it via the Skills API. Skipping this step will fail CI (`test_every_command_has_bridged_skill`). Commands tagged `disable-model-invocation: true` are exempt. This mirrors the New Skill Checklist step below — the same tool now handles both surfaces.
 
 ## Adding Agents
 
@@ -512,7 +512,7 @@ Agents are defined as Markdown files in `agents/`:
 [System prompt and instructions for the agent]
 ```
 
-After creating a new agent, run `ll-adapt-agents-for-codex --apply` to generate a `.codex/agents/<name>.toml` file so Codex CLI users can select the agent via `--agent <name>`.
+After creating a new agent, run `ll-adapt --host codex --apply` to generate a `.codex/agents/<name>.toml` file so Codex CLI users can select the agent via `--agent <name>`.
 
 ## Adding Skills
 
@@ -597,7 +597,7 @@ Before adding a new skill, answer:
 2. **Should the LLM route to this skill from natural language?**
    If yes → keep default (no flag). Keep the `description` field ≤ 100 characters. No bullet lists in descriptions.
 
-3. **After creating a new skill:** run `ll-adapt-skills-for-codex --apply` to generate `agents/openai.yaml` alongside the `SKILL.md`. Skipping this step will fail CI (`test_all_real_skills_have_openai_yaml`). Skills tagged `disable-model-invocation: true` are exempt.
+3. **After creating a new skill:** run `ll-adapt --host codex --apply` to generate `agents/openai.yaml` alongside the `SKILL.md`. Skipping this step will fail CI (`test_all_real_skills_have_openai_yaml`). Skills tagged `disable-model-invocation: true` are exempt.
 
 4. **Before release:** run `ll-verify-skill-budget` to check the total description token footprint. Exits 1 if over the 2000-token budget — shorten descriptions or tag more skills with `disable-model-invocation: true`. Then run `/doctor` and verify "0 skill descriptions dropped".
 

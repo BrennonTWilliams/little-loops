@@ -38,7 +38,7 @@ You can also set the host permanently in `.ll/ll-config.json` (or `.codex/ll-con
 
 ## Invoking skills
 
-After running `ll-adapt-skills-for-codex --apply` (see [Getting Started](getting-started.md#skill-and-command-discovery)), all `/ll:*` slash commands are available in the Codex TUI:
+After running `ll-adapt --host codex --apply` (see [Getting Started](getting-started.md#skill-and-command-discovery)), all `/ll:*` slash commands are available in the Codex TUI:
 
 ```
 /ll:manage-issue enhancement improve ENH-001
@@ -47,7 +47,7 @@ After running `ll-adapt-skills-for-codex --apply` (see [Getting Started](getting
 /ll:create-sprint
 ```
 
-Skills are installed to `~/.codex/skills/<name>/SKILL.md`. Re-run `ll-adapt-skills-for-codex --apply` after upgrading little-loops to pick up new or updated skills.
+Skills are installed to `~/.codex/skills/<name>/SKILL.md`. Re-run `ll-adapt --host codex --apply` after upgrading little-loops to pick up new or updated skills.
 
 ---
 
@@ -82,9 +82,9 @@ After saving, start a new Codex session. Codex will prompt you to re-trust the m
 
 `CodexRunner` has no native `--agent` CLI flag (this is the permanent native gap tracked in ENH-1531 / openai/codex#10067). Instead, ENH-1533 implements a **prompt-injection workaround**: when `CodexRunner.build_streaming(agent=…)` is called, it reads `.codex/agents/<name>.toml`, extracts `developer_instructions`, and prepends a `[Persona: <name>]\n<instructions>\n\n---\n\n` block to the prompt payload. No warning fires when injection succeeds, and `describe_capabilities()` reports `agent_select.status == "partial"`.
 
-**Setup:** Run `ll-adapt-agents-for-codex --apply` once to generate `.codex/agents/*.toml` files from ll's `agents/*.md` definitions. Re-run after adding new agents.
+**Setup:** Run `ll-adapt --host codex --apply` once to generate `.codex/agents/*.toml` files from ll's `agents/*.md` definitions. Re-run after adding new agents.
 
-**Fallback path:** When the TOML file (or its `developer_instructions` key) is absent, `CodexRunner` emits `CapabilityNotSupported` and prints a `[ll] Warning` stderr notice that names the dropped persona and points at `ll-adapt-agents-for-codex --apply`. The session proceeds with Codex's default model configuration.
+**Fallback path:** When the TOML file (or its `developer_instructions` key) is absent, `CodexRunner` emits `CapabilityNotSupported` and prints a `[ll] Warning` stderr notice that names the dropped persona and points at `ll-adapt --host codex --apply`. The session proceeds with Codex's default model configuration.
 
 **Native-flag gap (permanent).** Research (ENH-1531, `thoughts/research/codex-agent-selection.md`) confirmed no Codex CLI mechanism selects a named profile at invocation time:
 - The `codex` CLI has no `--agent` flag. Feature request: openai/codex#10067 (open, no timeline).

@@ -82,8 +82,8 @@ into `LLHookEvent` payloads.
 
 | Surface                  | Claude Code               | OpenCode                  | Codex CLI                 | Gemini CLI                |
 | ------------------------ | ------------------------- | ------------------------- | ------------------------- | ------------------------- |
-| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt-skills-for-codex` (FEAT-1493)[^cmds] | (deferred)[^gemini] — `.gemini/commands/*.toml`; TOML format; bridge script needed |
-| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt-skills-for-codex` (FEAT-1486)[^cmds] | (deferred)[^gemini] — `.gemini/skills/<name>/SKILL.md`; compatible format; minor adaptation (add `name:`) |
+| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt --host codex` (FEAT-1493)[^cmds] | (deferred)[^gemini] — `.gemini/commands/*.toml`; TOML format; bridge script needed |
+| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt --host codex` (FEAT-1486)[^cmds] | (deferred)[^gemini] — `.gemini/skills/<name>/SKILL.md`; compatible format; minor adaptation (add `name:`) |
 
 [^cmds]: Codex has no `.codex/prompts/` slash-command path (that reference in
     prior footnotes was speculative — no such surface exists in the current
@@ -97,7 +97,7 @@ into `LLHookEvent` payloads.
     commands are discoverable from Codex; landed — every active command
     is now exposed).
 
-    **`disable-model-invocation` flag scope:** `ll-adapt-skills-for-codex`
+    **`disable-model-invocation` flag scope:** `ll-adapt --host codex`
     does **not** read `disable-model-invocation: true`; all 16 SKILL.md files
     carrying that flag are exposed in Codex. The flag governs two other tools
     only: `ll-generate-skill-descriptions` (skips for token-budget compliance)
@@ -134,7 +134,7 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
     `developer_instructions` and optional `model`, `model_reasoning_effort`,
     `sandbox_mode`, `mcp_servers`, `skills.config`, `nickname_candidates`
     (see <https://developers.openai.com/codex/subagents>). ll generates these
-    via `ll-adapt-agents-for-codex --apply` (FEAT-1527).
+    via `ll-adapt --host codex --apply` (FEAT-1527).
 
     **Spawn-based, not flag-based.** Codex's agent model differs from Claude
     Code's: agents are *spawned from within a session* (in-session prompt,
@@ -154,12 +154,10 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
     covering the one case Codex's spawn-based model does not. When the TOML
     file (or its `developer_instructions` key) is absent, `CodexRunner` emits
     `CapabilityNotSupported` plus a stderr notice pointing at
-    `ll-adapt-agents-for-codex --apply`. `describe_capabilities()` reports
+    `ll-adapt --host codex --apply`. `describe_capabilities()` reports
     `agent_select.status == "partial"`.
 
-    **Follow-ups:** the adapter currently emits only `name`/`description`/
-    `model`/`developer_instructions` and drops the richer Codex fields
-    (**ENH-2121**); ll does not yet exploit the native `spawn_agents_on_csv`
+    **Follow-ups:** ll does not yet exploit the native `spawn_agents_on_csv`
     batch model, which maps onto `ll-parallel`'s per-issue fan-out
     (**FEAT-2122**). See `thoughts/research/codex-agent-selection.md`.
 

@@ -183,7 +183,7 @@ All fields are optional. Only `description` is recommended so Claude knows when 
 | `allowed-tools`            | No          | Tools Claude can use without asking permission when this skill is active.                                                                             |
 | `model`                    | No          | Model to use when this skill is active.                                                                                                               |
 | `context`                  | No          | Set to `fork` to run in a forked subagent context.                                                                                                    |
-| `metadata.short-description` | No        | Codex-specific: short description (≤80 chars) shown in the Codex TUI chip panel. Populated automatically by `ll-adapt-skills-for-codex`.             |
+| `metadata.short-description` | No        | Codex-specific: short description (≤80 chars) shown in the Codex TUI chip panel. Populated automatically by `ll-adapt --host codex`.             |
 | `agent`                    | No          | Which subagent type to use when `context: fork` is set.                                                                                               |
 | `hooks`                    | No          | Hooks scoped to this skill's lifecycle. See [Hooks in skills and agents](/en/hooks#hooks-in-skills-and-agents) for configuration format.              |
 

@@ -85,23 +85,15 @@ cp .ll/ll-config.json .codex/ll-config.json
 
 ## Skill and command discovery
 
-Run `ll-adapt-skills-for-codex --apply` once after install to bridge all little-loops skills and commands into `~/.codex/skills/`:
+Run `ll-adapt --host codex --apply` once after install to bridge all little-loops skills, commands, and agent personas into Codex:
 
 ```bash
-ll-adapt-skills-for-codex --apply
+ll-adapt --host codex --apply
 ```
 
-After this step, typing `/ll:` in the Codex TUI will show the full list of available commands (e.g., `/ll:manage-issue`, `/ll:scan-codebase`, `/ll:prioritize-issues`).
+After this step, typing `/ll:` in the Codex TUI will show the full list of available commands (e.g., `/ll:manage-issue`, `/ll:scan-codebase`, `/ll:prioritize-issues`). It also writes `.codex/agents/*.toml` so you can select ll agents via `--agent <name>` (e.g., `--agent codebase-analyzer`).
 
-Re-run this command after upgrading little-loops to pick up any new skills or commands.
-
-To also enable ll subagent personas in the Codex TUI, run the companion command:
-
-```bash
-ll-adapt-agents-for-codex --apply
-```
-
-This writes `.codex/agents/*.toml` files so you can select ll agents via `--agent <name>` in Codex (e.g., `--agent codebase-analyzer`). Re-run after adding new agents to `agents/`.
+Re-run this command after upgrading little-loops or adding new skills/agents to pick up any changes.
 
 ---
 
@@ -130,7 +122,7 @@ Start a Codex session and confirm hooks are active:
 | `codex: command not found` during init | Ensure the `codex` binary is on `PATH`: `which codex` |
 | Adapter scripts not executable | `chmod +x scripts/little_loops/hooks/adapters/codex/*.sh` |
 | `LL_HOOK_HOST=codex` not recognized | Upgrade to the latest little-loops version: `pip install --upgrade little-loops` |
-| Skills not appearing in Codex TUI | Re-run `ll-adapt-skills-for-codex --apply` |
+| Skills not appearing in Codex TUI | Re-run `ll-adapt --host codex --apply` |
 
 For more issues see [Troubleshooting](../development/TROUBLESHOOTING.md) and the "Hook Debugging" section.
 

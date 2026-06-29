@@ -97,7 +97,7 @@ Harness-driven development is TDD's analog for agent-built software: define what
 pip install little-loops
 ```
 
-**Using Codex CLI?** See [docs/codex/getting-started.md](docs/codex/getting-started.md) — run `ll-init --hosts codex` and `ll-adapt-skills-for-codex --apply` to get started.
+**Using Codex CLI?** See [docs/codex/getting-started.md](docs/codex/getting-started.md) — run `ll-init --hosts codex` and `ll-adapt --host codex --apply` to get started.
 
 <details>
 <summary>Alternative install methods</summary>
