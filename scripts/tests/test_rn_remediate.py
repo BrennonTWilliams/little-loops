@@ -1529,3 +1529,48 @@ class TestEnsureFormatted:
             "Gate should exit 0 for feat with frontmatter labels + ## Use Case.\n"
             f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
         )
+
+    def test_enh_deprecated_section_exits_0(self) -> None:
+        """enh without ## Current Pain Point must exit 0 (ENH-2398).
+
+        enh-sections.json "Current Pain Point" has level: required + deprecated: true.
+        The gate must skip it (mirroring is_formatted()), so an ENH issue that has
+        all non-deprecated required sections but omits "Current Pain Point" exits 0.
+
+        Pre-fix: gate includes deprecated section → exits 1 (false-positive block).
+        Post-fix: deprecated guard skips it → exits 0.
+        """
+        body = "\n".join([
+            "---",
+            "id: ENH-9999",
+            "status: open",
+            "---",
+            "",
+            "# ENH-9999: Test enhancement",
+            "",
+            "## Summary",
+            "A test enhancement.",
+            "",
+            "## Current Behavior",
+            "Things work one way.",
+            "",
+            "## Expected Behavior",
+            "Things should work another way.",
+            "",
+            "## Impact",
+            "- **Priority**: P4 - Low",
+            "- **Effort**: Small",
+            "- **Risk**: Low",
+            "- **Breaking Change**: No",
+            "",
+            "## Scope Boundaries",
+            "Out of scope: everything else.",
+            "",
+            "## Status",
+            "open",
+        ])
+        result = self._run_gate(body, "enh")
+        assert result.returncode == 0, (
+            "Gate should exit 0 for enh missing only deprecated 'Current Pain Point'.\n"
+            f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+        )

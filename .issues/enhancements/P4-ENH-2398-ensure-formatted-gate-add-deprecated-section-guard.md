@@ -2,9 +2,10 @@
 id: ENH-2398
 title: ensure_formatted gate should honor the `deprecated` section flag like is_formatted()
 type: enhancement
-status: open
+status: done
 priority: P4
 discovered_date: 2026-06-29
+completed_at: 2026-06-29 21:54:13+00:00
 discovered_by: BUG-2395 reconciliation
 relates_to:
 - BUG-2395
@@ -153,6 +154,8 @@ open
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-29T21:46:05 - `3fa3f1a4-b0bc-4e51-a82b-4bd01e604630.jsonl`
+- `/ll:confidence-check` - 2026-06-29T22:00:00 - `27a4c85c-0252-4a1e-8148-80b8423150fc.jsonl`
 - `/ll:confidence-check` - 2026-06-29T00:00:00 - `57a23f87-8546-4859-a567-225b9e704bf1.jsonl`
 - `/ll:wire-issue` - 2026-06-29T21:05:29 - `fdb615b1-e11f-4b21-ab3d-c73fca7ae7d3.jsonl`
 - `/ll:refine-issue` - 2026-06-29T20:48:21 - `d2b99d55-ba8c-40e6-b265-f6b74db485ea.jsonl`

@@ -111,10 +111,14 @@ states:
       required = []
       # common_sections: dict keyed by title, value has `required: true`
       for title, meta in (d.get("common_sections") or {}).items():
+          if isinstance(meta, dict) and meta.get("deprecated"):
+              continue
           if isinstance(meta, dict) and meta.get("required") is True:
               required.append(title)
       # type_sections: dict keyed by title, value has `level: required`
       for title, meta in (d.get("type_sections") or {}).items():
+          if isinstance(meta, dict) and meta.get("deprecated"):
+              continue
           if isinstance(meta, dict) and meta.get("level") == "required":
               required.append(title)
       try:
