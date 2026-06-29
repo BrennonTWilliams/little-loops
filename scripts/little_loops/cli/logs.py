@@ -28,6 +28,11 @@ from little_loops.user_messages import get_project_folder
 _COMMAND_NAME_RE = re.compile(r"<command-name>/ll:")
 BRIDGE_MARKER = "Bridged from `commands/"
 
+# Built-in loops live one level up from this file: little_loops/loops/
+_LOOPS_DIR = Path(__file__).parent.parent / "loops"
+# Archive run folder naming: <YYYY-MM-DDTHHMMSS>-<loop-name>
+_HISTORY_RUN_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6})-(.+)$")
+
 
 def _is_ll_relevant(record: dict) -> bool:
     """Return True if a JSONL record indicates ll activity.
@@ -997,6 +1002,20 @@ def _extract_error_text(content: object) -> str:
 
 
 @dataclass
+class _LoopRunRecord:
+    """Single archived loop run record, used by loop-fleet aggregation."""
+
+    loop_name: str
+    project_path: Path
+    run_folder: str
+    final_state: str
+    iterations: int
+    outcome: str  # converged / failed / max-steps / stalled / interrupted / error
+    ts: str
+    attribution: str  # builtin / custom
+
+
+@dataclass
 class _FailureCluster:
     """Aggregated failure cluster keyed on (cwd_path, tool_name, normalized_sig)."""
 
@@ -1717,6 +1736,220 @@ def _cmd_eval_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _get_builtin_loop_names() -> frozenset[str]:
+    """Return stem names of all runnable built-in loops in the package (excludes lib/ fragments)."""
+    if not _LOOPS_DIR.exists():
+        return frozenset()
+    names: set[str] = set()
+    for yaml_file in _LOOPS_DIR.rglob("*.yaml"):
+        if "lib" in yaml_file.relative_to(_LOOPS_DIR).parts:
+            continue
+        names.add(yaml_file.stem)
+    return frozenset(names)
+
+
+def _derive_loop_outcome(event: dict) -> str:
+    """Derive an outcome category from a loop_complete event dict."""
+    if "error" in event:
+        return "error"
+    terminated_by = event.get("terminated_by", "")
+    if terminated_by in ("max_steps", "max_iterations_reached"):
+        return "max-steps"
+    if terminated_by == "cycle_detected":
+        return "stalled"
+    if terminated_by in ("signal", "handoff", "timeout"):
+        return "interrupted"
+    final_state = event.get("final_state", "")
+    if any(kw in final_state for kw in ("fail", "error", "abort")):
+        return "failed"
+    return "converged"
+
+
+def _parse_terminal_event(events_file: Path) -> dict | None:
+    """Read events.jsonl and return the loop_complete event, or None if absent."""
+    try:
+        with open(events_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                    if record.get("event") == "loop_complete":
+                        return record
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+    return None
+
+
+def _collect_loop_runs(
+    project_path: Path,
+    builtin_names: frozenset[str],
+    *,
+    loop_filter: str | None = None,
+    cutoff: datetime | None = None,
+) -> list[_LoopRunRecord]:
+    """Collect archived loop runs from a project's .loops/.history/ directory."""
+    history_dir = project_path / ".loops" / ".history"
+    if not history_dir.exists():
+        return []
+
+    records: list[_LoopRunRecord] = []
+    visited: set[Path] = set()
+
+    for run_dir in history_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+
+        m = _HISTORY_RUN_RE.match(run_dir.name)
+        if m:
+            # Flat layout: <run_id>-<loop_name>/events.jsonl
+            loop_name = m.group(2)
+            events_file = run_dir / "events.jsonl"
+            if not events_file.exists():
+                continue
+            visited.add(run_dir)
+            if loop_filter and loop_name != loop_filter:
+                continue
+            terminal = _parse_terminal_event(events_file)
+            if terminal is None:
+                continue
+            ts = terminal.get("ts", "")
+            if cutoff is not None and ts:
+                if _parse_iso_timestamp(ts) < cutoff:
+                    continue
+            attribution = "builtin" if loop_name in builtin_names else "custom"
+            records.append(
+                _LoopRunRecord(
+                    loop_name=loop_name,
+                    project_path=project_path,
+                    run_folder=run_dir.name,
+                    final_state=terminal.get("final_state", "unknown"),
+                    iterations=terminal.get("iterations", 0),
+                    outcome=_derive_loop_outcome(terminal),
+                    ts=ts,
+                    attribution=attribution,
+                )
+            )
+        else:
+            # Legacy nested layout: <loop_name>/<run_id>/events.jsonl
+            loop_name = run_dir.name
+            if loop_filter and loop_name != loop_filter:
+                continue
+            if run_dir in visited:
+                continue
+            for run_subdir in run_dir.iterdir():
+                if not run_subdir.is_dir():
+                    continue
+                events_file = run_subdir / "events.jsonl"
+                if not events_file.exists():
+                    continue
+                terminal = _parse_terminal_event(events_file)
+                if terminal is None:
+                    continue
+                ts = terminal.get("ts", "")
+                if cutoff is not None and ts:
+                    if _parse_iso_timestamp(ts) < cutoff:
+                        continue
+                attribution = "builtin" if loop_name in builtin_names else "custom"
+                records.append(
+                    _LoopRunRecord(
+                        loop_name=loop_name,
+                        project_path=project_path,
+                        run_folder=f"{loop_name}/{run_subdir.name}",
+                        final_state=terminal.get("final_state", "unknown"),
+                        iterations=terminal.get("iterations", 0),
+                        outcome=_derive_loop_outcome(terminal),
+                        ts=ts,
+                        attribution=attribution,
+                    )
+                )
+
+    return records
+
+
+def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
+    """Aggregate cross-project loop-run outcomes for built-in loop improvement."""
+    import statistics as _statistics
+
+    builtin_names = _get_builtin_loop_names()
+    cutoff = (
+        datetime.now(UTC) - timedelta(days=args.window_days)
+        if args.window_days is not None
+        else None
+    )
+    loop_filter: str | None = getattr(args, "loop", None)
+
+    if args.project:
+        projects = [Path(args.project)]
+    else:
+        projects = discover_all_projects(logger, existing_only=args.existing_only)
+
+    all_runs: list[_LoopRunRecord] = []
+    for proj in projects:
+        all_runs.extend(
+            _collect_loop_runs(proj, builtin_names, loop_filter=loop_filter, cutoff=cutoff)
+        )
+
+    if not all_runs:
+        if args.json:
+            print_json([])
+        else:
+            print("No loop-fleet runs found.")
+        return 0
+
+    if args.json:
+        print_json(
+            [
+                {
+                    "loop_name": r.loop_name,
+                    "project": str(r.project_path),
+                    "run_folder": r.run_folder,
+                    "final_state": r.final_state,
+                    "iterations": r.iterations,
+                    "outcome": r.outcome,
+                    "ts": r.ts,
+                    "attribution": r.attribution,
+                }
+                for r in sorted(all_runs, key=lambda r: r.ts, reverse=True)
+            ]
+        )
+        return 0
+
+    # Aggregate per loop name for human-readable table
+    by_loop: dict[str, list[_LoopRunRecord]] = defaultdict(list)
+    for r in all_runs:
+        by_loop[r.loop_name].append(r)
+
+    rows = []
+    for loop_name in sorted(by_loop):
+        runs = by_loop[loop_name]
+        total = len(runs)
+        converged = sum(1 for r in runs if r.outcome == "converged")
+        success_pct = int(round(converged / total * 100)) if total else 0
+        iterations = [r.iterations for r in runs]
+        med_iter = _statistics.median(iterations) if iterations else 0.0
+        top_outcome = Counter(r.outcome for r in runs).most_common(1)[0][0]
+        projects_list = sorted({r.project_path.name for r in runs})
+        attribution = runs[0].attribution
+        rows.append(
+            [
+                loop_name,
+                attribution,
+                str(total),
+                f"{success_pct}%",
+                f"{med_iter:.1f}",
+                top_outcome,
+                ", ".join(projects_list[:3]) + ("…" if len(projects_list) > 3 else ""),
+            ]
+        )
+
+    print(table(["Loop", "Type", "Runs", "Success%", "Med-Iter", "Top Outcome", "Projects"], rows))
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for ll-logs."""
     parser = argparse.ArgumentParser(
@@ -1967,6 +2200,42 @@ Examples:
     )
     add_json_arg(eval_export_parser, help_text="JSON output instead of YAML (default: YAML)")
 
+    loop_fleet_parser = subparsers.add_parser(
+        "loop-fleet",
+        help="Aggregate cross-project loop-run outcomes for built-in loop improvement",
+    )
+    loop_fleet_target = loop_fleet_parser.add_mutually_exclusive_group(required=True)
+    loop_fleet_target.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help="Working directory of the target project",
+    )
+    loop_fleet_target.add_argument(
+        "--all",
+        action="store_true",
+        help="Aggregate across all projects with ll activity",
+    )
+    loop_fleet_parser.add_argument(
+        "--loop",
+        metavar="NAME",
+        help="Filter to a specific loop name",
+    )
+    loop_fleet_parser.add_argument(
+        "--window-days",
+        type=int,
+        default=None,
+        metavar="D",
+        help="Only consider runs within the last D calendar days",
+    )
+    loop_fleet_parser.add_argument(
+        "--existing-only",
+        action="store_true",
+        default=False,
+        help="Skip projects that no longer exist on disk (passed to discover; only meaningful with --all)",
+    )
+    add_json_arg(loop_fleet_parser)
+
     return parser
 
 
@@ -2027,5 +2296,8 @@ def main_logs() -> int:
 
         if args.command == "eval-export":
             return _cmd_eval_export(args)
+
+        if args.command == "loop-fleet":
+            return _cmd_loop_fleet(args, logger)
 
         return 1

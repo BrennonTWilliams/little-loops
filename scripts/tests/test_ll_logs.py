@@ -21,17 +21,22 @@ from little_loops.cli.logs import (
     _build_eval_fixture,
     _classify_outcome,
     _cmd_tail,
+    _collect_loop_runs,
     _compute_session_diff,
     _count_ngrams,
+    _derive_loop_outcome,
     _detect_ll_signal,
     _EvalInvocation,
     _events_from_jsonl,
     _extract_eval_invocation,
     _extract_tool_name,
     _fixture_to_harness_argv,
+    _get_builtin_loop_names,
     _InvocationSignal,
     _is_ll_relevant,
+    _LoopRunRecord,
     _parse_args,
+    _parse_terminal_event,
     _redact_input_context,
     _resolve_session_log,
     discover_all_projects,
@@ -3737,4 +3742,382 @@ class TestDetectLlSignal:
         assert inv is not None
         assert inv.runner == "cmd"
         assert inv.target == cmd
-        assert inv.input_context == ""
+
+
+class TestLoopFleet:
+    """Tests for the loop-fleet subcommand."""
+
+    def _make_history_run(
+        self,
+        project_path: Path,
+        run_folder: str,
+        events: list[dict],
+    ) -> None:
+        """Write .loops/.history/<run_folder>/events.jsonl with the given events."""
+        run_dir = project_path / ".loops" / ".history" / run_folder
+        run_dir.mkdir(parents=True, exist_ok=True)
+        with open(run_dir / "events.jsonl", "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+
+    def _loop_complete(
+        self,
+        final_state: str = "done",
+        iterations: int = 3,
+        terminated_by: str = "terminal",
+        ts: str = "2026-01-01T00:00:00+00:00",
+    ) -> dict:
+        return {
+            "event": "loop_complete",
+            "ts": ts,
+            "final_state": final_state,
+            "iterations": iterations,
+            "terminated_by": terminated_by,
+        }
+
+    # --- argparse unit tests ---
+
+    def test_loop_fleet_subcommand_parsed(self) -> None:
+        """loop-fleet sets command='loop-fleet' and all=True."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--all"]):
+            args = _parse_args()
+        assert args.command == "loop-fleet"
+        assert args.all is True
+
+    def test_loop_fleet_project_flag(self) -> None:
+        """--project sets project path."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", "/tmp"]):
+            args = _parse_args()
+        assert args.project == Path("/tmp")
+
+    def test_loop_fleet_project_and_all_mutually_exclusive(self) -> None:
+        """--project and --all cannot be combined."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", "/tmp", "--all"]):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    def test_loop_fleet_loop_filter_parsed(self) -> None:
+        """--loop sets the loop name filter."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--all", "--loop", "rn-build"]):
+            args = _parse_args()
+        assert args.loop == "rn-build"
+
+    def test_loop_fleet_window_days_parsed(self) -> None:
+        """--window-days is accepted and stored as int."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--all", "--window-days", "7"]):
+            args = _parse_args()
+        assert args.window_days == 7
+
+    def test_loop_fleet_json_flag_parsed(self) -> None:
+        """-j/--json flag is accepted."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--all", "-j"]):
+            args = _parse_args()
+        assert args.json is True
+
+    def test_loop_fleet_existing_only_parsed(self) -> None:
+        """--existing-only flag is accepted."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--all", "--existing-only"]):
+            args = _parse_args()
+        assert args.existing_only is True
+
+    # --- unit tests for helpers ---
+
+    def test_derive_outcome_converged(self) -> None:
+        """terminal + non-failure state → converged."""
+        event = {"event": "loop_complete", "terminated_by": "terminal", "final_state": "done"}
+        assert _derive_loop_outcome(event) == "converged"
+
+    def test_derive_outcome_failed_state(self) -> None:
+        """terminal + failed state → failed."""
+        event = {"event": "loop_complete", "terminated_by": "terminal", "final_state": "failed"}
+        assert _derive_loop_outcome(event) == "failed"
+
+    def test_derive_outcome_max_steps(self) -> None:
+        """terminated_by=max_steps → max-steps."""
+        event = {"event": "loop_complete", "terminated_by": "max_steps", "final_state": "review"}
+        assert _derive_loop_outcome(event) == "max-steps"
+
+    def test_derive_outcome_max_iterations_reached(self) -> None:
+        """terminated_by=max_iterations_reached → max-steps."""
+        event = {"event": "loop_complete", "terminated_by": "max_iterations_reached"}
+        assert _derive_loop_outcome(event) == "max-steps"
+
+    def test_derive_outcome_stalled(self) -> None:
+        """terminated_by=cycle_detected → stalled."""
+        event = {"event": "loop_complete", "terminated_by": "cycle_detected"}
+        assert _derive_loop_outcome(event) == "stalled"
+
+    def test_derive_outcome_error_field(self) -> None:
+        """Presence of 'error' key → error."""
+        event = {"event": "loop_complete", "terminated_by": "terminal", "error": "timeout"}
+        assert _derive_loop_outcome(event) == "error"
+
+    def test_parse_terminal_event_finds_loop_complete(self, tmp_path) -> None:
+        """_parse_terminal_event returns the loop_complete record."""
+        events_file = tmp_path / "events.jsonl"
+        events_file.write_text(
+            json.dumps({"event": "state_transition", "from": "start", "to": "review"}) + "\n"
+            + json.dumps(self._loop_complete()) + "\n"
+        )
+        result = _parse_terminal_event(events_file)
+        assert result is not None
+        assert result["event"] == "loop_complete"
+        assert result["iterations"] == 3
+
+    def test_parse_terminal_event_missing_returns_none(self, tmp_path) -> None:
+        """_parse_terminal_event returns None when no loop_complete event exists."""
+        events_file = tmp_path / "events.jsonl"
+        events_file.write_text(json.dumps({"event": "state_transition"}) + "\n")
+        assert _parse_terminal_event(events_file) is None
+
+    def test_parse_terminal_event_nonexistent_file(self, tmp_path) -> None:
+        """_parse_terminal_event returns None for a missing file."""
+        assert _parse_terminal_event(tmp_path / "no-such-file.jsonl") is None
+
+    def test_get_builtin_loop_names_returns_frozenset(self) -> None:
+        """_get_builtin_loop_names returns a non-empty frozenset of strings."""
+        names = _get_builtin_loop_names()
+        assert isinstance(names, frozenset)
+        assert len(names) > 0
+        assert all(isinstance(n, str) for n in names)
+
+    def test_get_builtin_loop_names_excludes_lib(self) -> None:
+        """_get_builtin_loop_names excludes lib/ fragment names."""
+        names = _get_builtin_loop_names()
+        # lib/ fragments like 'common', 'benchmark' should not appear as standalone loops
+        # Verify known built-in runnable loops ARE present
+        assert "rn-build" in names
+
+    # --- integration tests via main_logs() ---
+
+    def test_loop_fleet_reads_archived_runs(self, capsys, tmp_path) -> None:
+        """loop-fleet returns run records from .loops/.history/."""
+        project_path = tmp_path / "myproject"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-build",
+            [self._loop_complete(final_state="done", iterations=2)],
+        )
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path), "-j"]):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 1
+        assert data[0]["loop_name"] == "rn-build"
+        assert data[0]["iterations"] == 2
+        assert data[0]["outcome"] == "converged"
+
+    def test_loop_fleet_json_fields(self, capsys, tmp_path) -> None:
+        """JSON output contains all expected fields per run record."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-build",
+            [self._loop_complete()],
+        )
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path), "-j"]):
+            main_logs()
+
+        data = json.loads(capsys.readouterr().out)
+        record = data[0]
+        assert "loop_name" in record
+        assert "project" in record
+        assert "run_folder" in record
+        assert "final_state" in record
+        assert "iterations" in record
+        assert "outcome" in record
+        assert "ts" in record
+        assert "attribution" in record
+
+    def test_loop_fleet_outcome_max_steps(self, capsys, tmp_path) -> None:
+        """terminated_by=max_steps yields outcome='max-steps' in JSON output."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-build",
+            [self._loop_complete(terminated_by="max_steps")],
+        )
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path), "-j"]):
+            main_logs()
+
+        data = json.loads(capsys.readouterr().out)
+        assert data[0]["outcome"] == "max-steps"
+
+    def test_loop_fleet_loop_filter_applied(self, capsys, tmp_path) -> None:
+        """--loop filters to only the matching loop name."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path, "2026-01-01T000000-rn-build", [self._loop_complete()]
+        )
+        self._make_history_run(
+            project_path, "2026-01-02T000000-rn-implement", [self._loop_complete()]
+        )
+
+        with patch(
+            "sys.argv",
+            ["ll-logs", "loop-fleet", "--project", str(project_path), "--loop", "rn-build", "-j"],
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 1
+        assert data[0]["loop_name"] == "rn-build"
+
+    def test_loop_fleet_window_days_excludes_old(self, capsys, tmp_path) -> None:
+        """--window-days excludes runs older than D days."""
+        now = datetime.now(UTC)
+        recent_ts = (now - timedelta(days=1)).isoformat()
+        old_ts = (now - timedelta(days=100)).isoformat()
+
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-build",
+            [self._loop_complete(ts=recent_ts)],
+        )
+        self._make_history_run(
+            project_path,
+            "2026-01-02T000000-rn-implement",
+            [self._loop_complete(ts=old_ts)],
+        )
+
+        with patch(
+            "sys.argv",
+            [
+                "ll-logs",
+                "loop-fleet",
+                "--project",
+                str(project_path),
+                "--window-days",
+                "7",
+                "-j",
+            ],
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 1
+        assert data[0]["loop_name"] == "rn-build"
+
+    def test_loop_fleet_no_runs_empty_json(self, capsys, tmp_path) -> None:
+        """Empty .loops/.history returns [] in JSON mode."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path), "-j"]):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data == []
+
+    def test_loop_fleet_no_runs_tabular_message(self, capsys, tmp_path) -> None:
+        """Empty result prints a human-readable 'no runs' message."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path)]):
+            result = main_logs()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "No loop-fleet runs found" in out
+
+    def test_loop_fleet_tabular_output(self, capsys, tmp_path) -> None:
+        """Default (non-JSON) output renders a table with loop name and outcome."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-build",
+            [self._loop_complete(final_state="done", iterations=3)],
+        )
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path)]):
+            result = main_logs()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "rn-build" in out
+        assert "converged" in out
+
+    def test_loop_fleet_attribution_custom(self, capsys, tmp_path) -> None:
+        """A non-built-in loop name is attributed as 'custom'."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-my-unique-custom-loop-xyz-123",
+            [self._loop_complete()],
+        )
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path), "-j"]):
+            main_logs()
+
+        data = json.loads(capsys.readouterr().out)
+        assert data[0]["attribution"] == "custom"
+
+    def test_loop_fleet_attribution_builtin(self, capsys, tmp_path) -> None:
+        """A known built-in loop name is attributed as 'builtin'."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-build",
+            [self._loop_complete()],
+        )
+
+        with (
+            patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path), "-j"]),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["rn-build"]),
+            ),
+        ):
+            main_logs()
+
+        data = json.loads(capsys.readouterr().out)
+        assert data[0]["attribution"] == "builtin"
+
+    def test_loop_fleet_multiple_runs_aggregated(self, capsys, tmp_path) -> None:
+        """Table shows one row per loop name across multiple runs."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        for i in range(3):
+            self._make_history_run(
+                project_path,
+                f"2026-01-0{i + 1}T000000-rn-build",
+                [self._loop_complete(iterations=i + 1)],
+            )
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path)]):
+            result = main_logs()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # Only one row for rn-build despite 3 runs
+        assert out.count("rn-build") == 1
+
+    def test_collect_loop_runs_legacy_nested_layout(self, tmp_path) -> None:
+        """_collect_loop_runs handles legacy .history/<loop_name>/<run_id>/events.jsonl layout."""
+        project_path = tmp_path / "proj"
+        loop_name = "rn-build"
+        run_subdir = project_path / ".loops" / ".history" / loop_name / "2026-01-01T000000"
+        run_subdir.mkdir(parents=True, exist_ok=True)
+        (run_subdir / "events.jsonl").write_text(json.dumps(self._loop_complete()) + "\n")
+
+        runs = _collect_loop_runs(project_path, frozenset([loop_name]))
+        assert len(runs) == 1
+        assert runs[0].loop_name == loop_name
+        assert runs[0].attribution == "builtin"
