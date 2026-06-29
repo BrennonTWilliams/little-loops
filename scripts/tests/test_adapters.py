@@ -1,4 +1,4 @@
-"""Tests for adapters.core and adapters.codex (FEAT-2391)."""
+"""Tests for adapters.core, adapters.codex (FEAT-2391), and adapters.gemini (FEAT-2392)."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from little_loops.adapters.core import (
     process_skills,
     resolve_emitter,
 )
+from little_loops.adapters.gemini import GeminiEmitter
 
 # =============================================================================
 # Fixture helpers
@@ -319,6 +320,19 @@ class TestProcessAgentsTraversal:
         for key in ("agent_name", "agent_path", "content", "fm", "output_dir", "apply", "quiet"):
             assert key in meta
 
+    def test_adapter_error_from_emit_agent_counted_as_error(self, tmp_path: Path) -> None:
+        class _RaisingEmitter(_MockEmitter):
+            def emit_agent(self, meta: dict) -> str:
+                raise AdapterError("preview feature")
+
+        _make_agent(tmp_path, "stub-agent")
+        emitter = _RaisingEmitter()
+        adapted, skipped, errors = process_agents(
+            emitter, tmp_path / "agents", tmp_path / ".codex" / "agents", False, True
+        )
+        assert errors == 1
+        assert adapted == 0
+
 
 # =============================================================================
 # CodexEmitter: marker
@@ -588,3 +602,233 @@ class TestCodexEmitterEmitAgent:
         meta = self._meta(tmp_path, "plain", tools=["Read", "WebSearch"])
         CodexEmitter().emit_agent(meta)
         assert "mcp_servers" not in (meta["output_dir"] / "plain.toml").read_text()
+
+
+# =============================================================================
+# GeminiEmitter.emit_skill
+# =============================================================================
+
+
+def _make_skill_with_short_desc(
+    tmp_path: Path,
+    name: str,
+    description: str = "Use when user asks for tasks.",
+    include_name: bool = False,
+    include_short_desc: bool = False,
+) -> Path:
+    """Create a SKILL.md fixture with optional ``name:`` and ``metadata.short-description:``."""
+    skills_dir = tmp_path / "skills"
+    skill_dir = skills_dir / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_md = skill_dir / "SKILL.md"
+
+    name_line = f"name: {name}\n" if include_name else ""
+    metadata_block = (
+        f"metadata:\n  short-description: {description[:80]}\n"
+        if include_short_desc
+        else ""
+    )
+    skill_md.write_text(
+        f"---\n{name_line}description: {description}\n{metadata_block}---\n\n# Body\n"
+    )
+    return skill_md
+
+
+class TestGeminiEmitterEmitSkill:
+    def _meta(
+        self,
+        tmp_path: Path,
+        name: str,
+        apply: bool = True,
+        include_name: bool = False,
+        include_short_desc: bool = False,
+        description: str = "Use when user asks for tasks.",
+    ) -> dict:
+        skill_path = _make_skill_with_short_desc(
+            tmp_path,
+            name,
+            description=description,
+            include_name=include_name,
+            include_short_desc=include_short_desc,
+        )
+        content = skill_path.read_text()
+        fm = _read_frontmatter(content) or {}
+        return {
+            "skill_name": name,
+            "skill_path": skill_path,
+            "content": content,
+            "fm": fm,
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, name: str) -> Path:
+        return tmp_path / ".gemini" / "skills" / name / "SKILL.md"
+
+    def test_writes_to_gemini_skills_dir(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        GeminiEmitter().emit_skill(meta)
+        assert self._out_path(tmp_path, "my-skill").exists()
+
+    def test_injects_name_when_absent(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_name=False)
+        GeminiEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert "name: my-skill" in content
+
+    def test_does_not_duplicate_name_when_present(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_name=True)
+        GeminiEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert content.count("name: my-skill") == 1
+
+    def test_strips_metadata_short_description(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_short_desc=True)
+        GeminiEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert "short-description:" not in content
+
+    def test_strips_empty_metadata_block(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_short_desc=True)
+        GeminiEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert "metadata:" not in content
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        assert GeminiEmitter().emit_skill(meta) == "adapted"
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", apply=False)
+        GeminiEmitter().emit_skill(meta)
+        assert not self._out_path(tmp_path, "my-skill").exists()
+
+    def test_dry_run_returns_adapted(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", apply=False)
+        assert GeminiEmitter().emit_skill(meta) == "adapted"
+
+    def test_already_adapted_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        GeminiEmitter().emit_skill(meta)
+        assert GeminiEmitter().emit_skill(meta) == "skipped"
+
+    def test_idempotent_no_double_name_insert(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        GeminiEmitter().emit_skill(meta)
+        content1 = self._out_path(tmp_path, "my-skill").read_text()
+        # Re-run using the already-written output as input
+        meta2 = {**meta, "content": content1, "fm": _read_frontmatter(content1) or {}}
+        GeminiEmitter().emit_skill(meta2)
+        content2 = self._out_path(tmp_path, "my-skill").read_text()
+        assert content1 == content2
+        assert content2.count("name: my-skill") == 1
+
+
+# =============================================================================
+# GeminiEmitter.emit_command
+# =============================================================================
+
+
+class TestGeminiEmitterEmitCommand:
+    def _meta(
+        self,
+        tmp_path: Path,
+        stem: str,
+        apply: bool = True,
+        description: str = "Run this command.",
+        body: str = "# My Command\n\nDo the thing.\n",
+    ) -> dict:
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir(exist_ok=True)
+        cmd_md = commands_dir / f"{stem}.md"
+        cmd_md.write_text(f"---\ndescription: {description}\n---\n\n{body}")
+        content = cmd_md.read_text()
+        fm = _read_frontmatter(content) or {}
+        return {
+            "stem": stem,
+            "cmd_path": cmd_md,
+            "content": content,
+            "fm": fm,
+            "output_dir": tmp_path / "skills",  # ignored by GeminiEmitter
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, stem: str) -> Path:
+        return tmp_path / ".gemini" / "commands" / f"{stem}.toml"
+
+    def test_writes_to_gemini_commands_dir(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        GeminiEmitter().emit_command(meta)
+        assert self._out_path(tmp_path, "my-cmd").exists()
+
+    def test_toml_contains_description(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", description="Run this command.")
+        GeminiEmitter().emit_command(meta)
+        content = self._out_path(tmp_path, "my-cmd").read_text()
+        assert 'description = "Run this command."' in content
+
+    def test_toml_contains_prompt(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", body="Do the thing.\n")
+        GeminiEmitter().emit_command(meta)
+        content = self._out_path(tmp_path, "my-cmd").read_text()
+        assert "prompt" in content
+        assert "Do the thing." in content
+
+    def test_toml_omits_description_when_empty(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", description="")
+        GeminiEmitter().emit_command(meta)
+        content = self._out_path(tmp_path, "my-cmd").read_text()
+        assert "description" not in content
+        assert "prompt" in content
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        assert GeminiEmitter().emit_command(meta) == "adapted"
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", apply=False)
+        GeminiEmitter().emit_command(meta)
+        assert not self._out_path(tmp_path, "my-cmd").exists()
+
+    def test_dry_run_returns_adapted(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", apply=False)
+        assert GeminiEmitter().emit_command(meta) == "adapted"
+
+    def test_already_adapted_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        GeminiEmitter().emit_command(meta)
+        assert GeminiEmitter().emit_command(meta) == "skipped"
+
+    def test_skips_when_no_body(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", body="")
+        assert GeminiEmitter().emit_command(meta) == "skipped"
+        assert not self._out_path(tmp_path, "my-cmd").exists()
+
+
+# =============================================================================
+# GeminiEmitter.emit_agent
+# =============================================================================
+
+
+class TestGeminiEmitterEmitAgent:
+    def test_raises_adapter_error(self) -> None:
+        with pytest.raises(AdapterError, match="preview feature"):
+            GeminiEmitter().emit_agent({})
+
+    def test_error_message_contains_remediation(self) -> None:
+        with pytest.raises(AdapterError, match="open a PR when they exit preview"):
+            GeminiEmitter().emit_agent({"agent_name": "any"})
+
+
+# =============================================================================
+# resolve_emitter: gemini registration
+# =============================================================================
+
+
+class TestResolveEmitterGemini:
+    def test_gemini_returns_gemini_emitter(self) -> None:
+        assert isinstance(resolve_emitter("gemini"), GeminiEmitter)
+
+    def test_gemini_emitter_satisfies_protocol(self) -> None:
+        assert isinstance(resolve_emitter("gemini"), HostEmitter)

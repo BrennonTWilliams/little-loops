@@ -44,6 +44,7 @@ class HostEmitter(Protocol):
 # not import them at the module level — only resolve on demand via importlib.
 _EMITTER_MAP: dict[str, tuple[str, str]] = {
     "codex": ("little_loops.adapters.codex", "CodexEmitter"),
+    "gemini": ("little_loops.adapters.gemini", "GeminiEmitter"),
     "omp": ("little_loops.adapters.omp", "OmpEmitter"),
 }
 
@@ -52,7 +53,7 @@ def resolve_emitter(host: str) -> HostEmitter:
     """Return a :class:`HostEmitter` instance for *host*.
 
     Args:
-        host: One of ``"codex"``, ``"omp"``.
+        host: One of ``"codex"``, ``"gemini"``, ``"omp"``.
 
     Returns:
         A :class:`HostEmitter` ready to emit skills, commands, and agents.
@@ -280,17 +281,23 @@ def process_agents(
 
         fm = _read_frontmatter(content) or {}
 
-        result = emitter.emit_agent(
-            {
-                "agent_name": agent_name,
-                "agent_path": agent_md,
-                "content": content,
-                "fm": fm,
-                "output_dir": output_dir,
-                "apply": apply,
-                "quiet": quiet,
-            }
-        )
+        try:
+            result = emitter.emit_agent(
+                {
+                    "agent_name": agent_name,
+                    "agent_path": agent_md,
+                    "content": content,
+                    "fm": fm,
+                    "output_dir": output_dir,
+                    "apply": apply,
+                    "quiet": quiet,
+                }
+            )
+        except AdapterError as exc:
+            if not quiet:
+                print(f"  ERROR  {agent_name}: {exc}", file=sys.stderr)
+            errors += 1
+            continue
         if result == "adapted":
             adapted += 1
         elif result == "skipped":
