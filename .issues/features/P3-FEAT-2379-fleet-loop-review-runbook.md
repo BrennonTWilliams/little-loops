@@ -17,6 +17,9 @@ labels:
 relates_to:
 - BUG-2377
 - ENH-2378
+blocked_by:
+- BUG-2377
+- ENH-2378
 decision_needed: false
 confidence_score: 75
 ---
@@ -88,3 +91,7 @@ If the on-demand runbook proves valuable, promote it to a scheduled capture
 (`scan-failures --capture-foreign` on a cron) and/or a built-in `fleet-loop-improve.yaml`
 meta-loop following `diagnose → propose → apply → measure-externally`. Captured here so the
 path is recorded, not built.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-29T01:47:32 - `0f8f08b1-212f-4f62-9ad9-264556960322.jsonl`

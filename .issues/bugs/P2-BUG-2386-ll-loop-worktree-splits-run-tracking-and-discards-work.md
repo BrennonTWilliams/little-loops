@@ -206,6 +206,13 @@ cleanup). Main repo was left with orphaned
 
 ## Session Log
 - investigation - 2026-06-29T01:04:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:audit-issue-conflicts` - 2026-06-28
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue modifies `worktree_utils.py:cleanup_worktree` (adding a merge-back or fail-loud policy for `delete_branch=True`). Two related open issues are actively coordinating over the same function's `:141` branch-detection call — ENH-2325 mandates that call uses bare `subprocess.run` (not GitLock, because the lock machinery must not block on a partially torn-down worktree), while ENH-2326 plans to route it through `git_lock.run()`. Before touching `cleanup_worktree`, confirm whether the `:141` path falls within your change surface and coordinate with ENH-2325/ENH-2326 implementers accordingly. Related issues: ENH-2325, ENH-2326.
 
 ---
 

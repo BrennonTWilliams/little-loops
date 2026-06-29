@@ -16,6 +16,7 @@ labels:
 relates_to:
 - BUG-2377
 - FEAT-2379
+blocked_by: BUG-2377
 decision_needed: false
 confidence_score: 80
 ---
@@ -92,3 +93,7 @@ Behavior:
 
 - **BUG-2377** (stdout pollution + `--existing-only`) must land first, or the harvester
   inherits unparseable input.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-29T01:47:24 - `0f8f08b1-212f-4f62-9ad9-264556960322.jsonl`
